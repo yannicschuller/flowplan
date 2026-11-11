@@ -235,25 +235,41 @@ export async function exportLook(workspaceId: string) {
 }
 // An archive's look in the workspace it is imported into: only by an owner
 // and only into a workspace that still has Flowplan's own look (an import
-// never replaces a look someone chose). Faces get new ids; ones that are
-// not fonts are left out. Counted against the quota by the import's
-// checkpoint.
-export async function importLook(user: Identity, workspaceId: string, look: { theme: unknown; fonts: { id: string; name: string; data: Buffer }[] }) {
-  if ((await one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id))?.role !== "owner") return false;
-  if (await storedTheme(workspaceId)) return false;
-  const parsed = workspaceThemeSchema.safeParse(look.theme);
-  if (!parsed.success) return false;
+// never replaces a look someone chose). Checked like the settings: the
+// theme by workspaceThemeSchema, each face like an upload (a real font, at
+// most 5 MB, at most 20 per workspace, within the workspace quota and the
+// importer's storage). What fails is left out and counted (`droppedTheme`,
+// `droppedFonts`), never the whole import. Faces get new ids; a slot whose
+// face was left out goes back to the default. `data: null`: a face the
+// archive declares larger than allowed (not read at all).
+export async function importLook(user: Identity, workspaceId: string, look: { theme: unknown; fonts: { id: string; name: string; data: Buffer | null }[] }) {
+  const result = { imported: false, droppedTheme: false, droppedFonts: 0 };
+  if ((await one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id))?.role !== "owner") return result;
+  if (await storedTheme(workspaceId)) return result;
+  const parsed = look.theme === null || look.theme === undefined ? null : workspaceThemeSchema.safeParse(look.theme);
+  if (parsed && !parsed.success) result.droppedTheme = true;
   const remap = new Map<string, string>();
-  const existing = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workspace_fonts WHERE workspace_id=?", workspaceId))?.n ?? 0);
-  for (const font of look.fonts.slice(0, Math.max(0, FONT_LIMITS.perWorkspace - existing))) {
-    const sniffed = font.data.length <= FONT_LIMITS.bytes ? sniffFont(font.data) : null;
-    if (!sniffed) continue;
+  let count = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workspace_fonts WHERE workspace_id=?", workspaceId))?.n ?? 0);
+  for (const font of look.fonts) {
+    const sniffed = font.data && font.data.length <= FONT_LIMITS.bytes && count < FONT_LIMITS.perWorkspace ? sniffFont(font.data) : null;
+    if (!sniffed || !font.data) {
+      result.droppedFonts++;
+      continue;
+    }
+    try {
+      await enforceQuota(workspaceId, font.data.length);
+      await enforceUserStorage(user, font.data.length);
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+      result.droppedFonts++;
+      continue;
+    }
     const fontId = id();
     await run(
       "INSERT INTO workspace_fonts(id,workspace_id,name,mime,format,variable,data,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
       fontId,
       workspaceId,
-      font.name.slice(0, FONT_LIMITS.nameLength) || "Schrift",
+      font.name.trim().slice(0, FONT_LIMITS.nameLength).trim() || "Schrift",
       sniffed.mime,
       sniffed.format,
       sniffed.variable ? 1 : 0,
@@ -262,16 +278,19 @@ export async function importLook(user: Identity, workspaceId: string, look: { th
       Date.now(),
     );
     remap.set(font.id, fontId);
+    count++;
   }
+  const chosen = parsed?.success ? parsed.data : {};
   const fonts: Record<string, string> = {};
   for (const slot of FONT_SLOTS) {
-    const ref = parsed.data.fonts?.[slot];
+    const ref = chosen.fonts?.[slot];
     if (!ref) continue;
     if (!ref.startsWith(CUSTOM_PREFIX)) fonts[slot] = ref;
     else if (remap.has(ref.slice(CUSTOM_PREFIX.length))) fonts[slot] = `${CUSTOM_PREFIX}${remap.get(ref.slice(CUSTOM_PREFIX.length))}`;
   }
-  const theme = normalizeTheme({ ...parsed.data, fonts });
-  if (!theme && !remap.size) return false;
-  await run("UPDATE workspaces SET theme=? WHERE id=?", theme ? JSON.stringify(theme) : null, workspaceId);
-  return true;
+  const theme = normalizeTheme({ ...chosen, fonts });
+  if (!theme && !remap.size) return result;
+  if (theme) await run("UPDATE workspaces SET theme=? WHERE id=?", JSON.stringify(theme), workspaceId);
+  result.imported = true;
+  return result;
 }

@@ -62,7 +62,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
 import { createTemplate, libraryFile } from "@/lib/notebook-library";
-import { FONT_LIMITS, fontResponse, storedTheme, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
+import { FONT_LIMITS, fontResponse, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
 import {
   requireUser,
   checkOrigin,
@@ -141,7 +141,7 @@ import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
 import { trashCounts, trashDays } from "@/lib/trash";
 import { listFileTrash } from "@/lib/file-trash";
-import { ARCHIVE_LIMIT } from "@/lib/archive";
+import { ARCHIVE_LIMIT, jsonExportWorkspace } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
 import { plainHttpInstance } from "@/lib/instance-https";
 import { updateStatus } from "@/lib/update-check";
@@ -1170,8 +1170,8 @@ async function handleGET(
         {
           format: "flowplan-1",
           exportedAt: new Date().toISOString(),
-          // Name, icon and look (#196; uploaded faces only in the ZIP archive).
-          workspace: { ...(await one<{ name: string; icon: string }>("SELECT name,icon FROM workspaces WHERE id=?", wid)), theme: await storedTheme(wid) },
+          // Name, icon, look and link rules (lib/archive.ts).
+          workspace: await jsonExportWorkspace(wid),
           pages: await mapAsync(pages, async (p) => ({
             ...p,
             data:

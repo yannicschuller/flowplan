@@ -4,7 +4,7 @@
 import { audit, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requireMember } from "./permissions";
-import { AUTO_LINK_LIMITS, autoLinkRulesSchema, ruleProblems, type AutoLinkProblem, type AutoLinkRule, type AutoLinkRuleInput } from "./auto-link";
+import { AUTO_LINK_LIMITS, autoLinkRuleSchema, autoLinkRulesSchema, ruleProblems, type AutoLinkProblem, type AutoLinkRule, type AutoLinkRuleInput } from "./auto-link";
 import type { Identity } from "./types";
 
 // The server's (German) message for the first problem of a rule
@@ -58,4 +58,44 @@ export async function saveWorkspaceLinkRules(user: Identity, workspaceId: string
   await run("UPDATE workspaces SET link_rules=? WHERE id=?", rules.length ? JSON.stringify(rules) : null, workspaceId);
   await audit(user.id, "workspace.linkRules", workspaceId, String(rules.length));
   return { rules };
+}
+
+// ---- Archives (lib/archive.ts) and the JSON backup ----
+
+// An archive's rules in the workspace it is imported into: only by an owner
+// (as in the settings), checked rule by rule like saveWorkspaceLinkRules –
+// an invalid one is left out and counted (`dropped`), never the whole
+// import. Added to the workspace's own rules like tags and property
+// definitions: a rule whose pattern the workspace already has keeps the
+// workspace's version; at most AUTO_LINK_LIMITS.rules in all (the rest
+// counts as dropped).
+export async function importLinkRules(user: Identity, workspaceId: string, input: unknown) {
+  if (input === undefined || input === null) return { added: 0, dropped: 0 };
+  if ((await one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id))?.role !== "owner") return { added: 0, dropped: 0 };
+  if (!Array.isArray(input)) return { added: 0, dropped: 1 };
+  const rules = await workspaceLinkRules(workspaceId);
+  const patterns = new Set(rules.map((r) => r.pattern));
+  const ids = new Set(rules.map((r) => r.id));
+  let added = 0,
+    dropped = 0;
+  for (const entry of input) {
+    const parsed = autoLinkRuleSchema.safeParse(entry);
+    const rule = parsed.success ? normalize(parsed.data) : null;
+    if (!rule || ruleProblems(rule).length) {
+      dropped++;
+      continue;
+    }
+    if (patterns.has(rule.pattern)) continue;
+    if (rules.length >= AUTO_LINK_LIMITS.rules) {
+      dropped++;
+      continue;
+    }
+    if (ids.has(rule.id)) rule.id = id();
+    patterns.add(rule.pattern);
+    ids.add(rule.id);
+    rules.push(rule);
+    added++;
+  }
+  if (added) await run("UPDATE workspaces SET link_rules=? WHERE id=?", JSON.stringify(rules), workspaceId);
+  return { added, dropped };
 }

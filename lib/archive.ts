@@ -1,5 +1,6 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
-import { exportLook, FONT_LIMITS, importLook } from "./workspace-fonts";
+import { exportLook, FONT_LIMITS, importLook, storedTheme } from "./workspace-fonts";
+import { importLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importWorkflow, workflowArchive, workflowArchiveSchema } from "./workflows/archive";
 import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
@@ -225,16 +226,22 @@ export const archiveSchema = z.object({
   home: z.unknown().optional(),
   // The workspace's look (#196, lib/workspace-fonts.ts): its theme and the
   // faces its owners uploaded (fonts/<id>). Taken over on import by an owner
-  // into a workspace with Flowplan's own look.
+  // into a workspace with Flowplan's own look. Checked there like the
+  // settings (theme, font type, size, count, quota): what does not pass is
+  // left out and counted, so the limits here only bound the archive.
   look: z
     .object({
       theme: z.unknown(),
       fonts: z
-        .array(z.object({ id: uid, name: z.string().max(200), size: z.number().int().min(0).max(FONT_LIMITS.bytes), sha256: z.string().regex(/^[a-f0-9]{64}$/) }))
-        .max(FONT_LIMITS.perWorkspace)
+        .array(z.object({ id: uid, name: z.string().max(200), size: z.number().int().min(0), sha256: z.string().regex(/^[a-f0-9]{64}$/) }))
+        .max(MAX_ARCHIVE_FILES)
         .default([]),
     })
     .optional(),
+  // The workspace's automatic link rules (#202, lib/auto-link-rules.ts),
+  // checked rule by rule on import (importLinkRules). Archives from before
+  // have none; an older Flowplan ignores the key (zod strips it).
+  linkRules: z.unknown().optional(),
   templates: z
     .array(
       z.object({
@@ -481,6 +488,13 @@ async function snapshotFor(user: Identity, wid: string) {
               }),
             },
           };
+        })()),
+    // The automatic link rules, for members (#202).
+    ...((await isGuest(user, wid))
+      ? {}
+      : await (async () => {
+          const rules = await workspaceLinkRules(wid);
+          return rules.length ? { linkRules: rules } : {};
         })()),
     favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
@@ -741,6 +755,17 @@ export async function writeZip(entries: Map<string, ArchiveEntry>) {
     zip.once("error", reject);
     zip.outputStream.once("end", () => resolve(Buffer.concat(chunks)));
   });
+}
+// The workspace part of the JSON export (GET /api/export, "flowplan-1"):
+// name, icon, look (#196; uploaded faces only in the ZIP archive) and link
+// rules (#202) – what every member and guest sees anyway. Imported by the
+// workspace.import command (lib/api.ts).
+export async function jsonExportWorkspace(wid: string) {
+  return {
+    ...(await one<{ name: string; icon: string }>("SELECT name,icon FROM workspaces WHERE id=?", wid)),
+    theme: await storedTheme(wid),
+    linkRules: await workspaceLinkRules(wid),
+  };
 }
 // Streams a workspace archive without holding its files in memory.
 export async function exportArchiveStream(user: Identity, wid: string) {
@@ -1737,12 +1762,20 @@ async function importEntries(
         await insertRelationPair(pair);
       await importHomeLayout(user.id, wid, data.home, { pages: pageMap, rows: rowMap, spaces: spaceMap, rewriteUrl });
       // The workspace's look, when an owner imports into a workspace that
-      // has none yet (lib/workspace-fonts.ts importLook).
-      if (data.look)
-        await importLook(user, wid, {
+      // has none yet (lib/workspace-fonts.ts importLook), and its link
+      // rules, added to the workspace's own (lib/auto-link-rules.ts).
+      // Invalid ones are left out and counted for the report.
+      const omittedSettings = { linkRules: 0, fonts: 0, theme: 0 };
+      if (data.look) {
+        const look = await importLook(user, wid, {
           theme: data.look.theme,
-          fonts: data.look.fonts.map((f) => ({ id: f.id, name: f.name, data: entryBytes(entries.get(`fonts/${f.id}`)!) })),
+          // Faces larger than allowed are not even read.
+          fonts: data.look.fonts.map((f) => ({ id: f.id, name: f.name, data: f.size <= FONT_LIMITS.bytes ? entryBytes(entries.get(`fonts/${f.id}`)!) : null })),
         });
+        omittedSettings.fonts = look.droppedFonts;
+        omittedSettings.theme = look.droppedTheme ? 1 : 0;
+      }
+      omittedSettings.linkRules = (await importLinkRules(user, wid, data.linkRules)).dropped;
       await audit(
         user.id,
         "workspace.archive.import",
@@ -1756,6 +1789,7 @@ async function importEntries(
         spaces: [...spaceMap.values()],
         pageIds: Object.fromEntries(pageMap),
         omittedRelations,
+        omittedSettings,
       };
     }, user);
   } catch (error) {
