@@ -5,7 +5,7 @@
 // bottom edge of the dialog – on phones above the on-screen keyboard, the
 // sheet ends at it, as high as its content, and its middle scrolls when the
 // content does not fit (app/new-page-dialog.css).
-import { useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import {
   FileText,
   FlowArrow,
@@ -58,7 +58,9 @@ export function NewPageDialog({
   onTitle,
   kind,
   onKind,
-  starterTemplate,
+  template,
+  titleFromTemplate,
+  onTemplateTitle,
   onTemplates,
   databaseChoice,
   onDatabaseChoice,
@@ -81,7 +83,13 @@ export function NewPageDialog({
   kind: PageKind;
   // A kind of page chosen (clears a chosen template).
   onKind: (kind: PageKind) => void;
-  starterTemplate: string | null;
+  // The template chosen in the gallery (built-in or saved), if any.
+  template: { name: string } | null;
+  // The name field holds the template's name, not one typed by hand: it is
+  // selected when the dialog opens, so typing replaces it (#213).
+  titleFromTemplate: boolean;
+  // A database template in the kind picker: its name, unless one was typed.
+  onTemplateTitle: (name: string) => void;
   // "Aus Vorlage": the template gallery takes over (#112).
   onTemplates: () => void;
   databaseChoice: DatabaseChoice;
@@ -99,10 +107,17 @@ export function NewPageDialog({
 }) {
   const t = useT();
   const name = useRef<HTMLInputElement>(null);
+  // A template's name in the field: selected the first time the field gets
+  // the focus after opening (autoFocus or onOpenAutoFocus), so typing
+  // replaces it (#213).
+  const selected = useRef(false);
+  useEffect(() => {
+    if (!open) selected.current = false;
+  }, [open]);
   const tiles = useRef<HTMLDivElement>(null);
-  const chosen: Choice = starterTemplate ? "template" : kind;
+  const chosen: Choice = template ? "template" : kind;
   const aiDatabase = aiUsable(boot.ai, "database");
-  const database = kind === "database" && !starterTemplate;
+  const database = kind === "database" && !template;
   const types: { id: Choice; icon: Icon; label: string; description: string }[] = [
     {
       id: "document",
@@ -131,9 +146,9 @@ export function NewPageDialog({
     {
       id: "template",
       icon: SquaresFour,
-      label: starterTemplate ? t("Vorlage gewählt", "Template chosen") : t("Aus Vorlage", "From a template"),
-      description: starterTemplate
-        ? t("Tippe, um eine andere Vorlage zu wählen", "Tap to choose another template")
+      label: template ? t("Vorlage gewählt", "Template chosen") : t("Aus Vorlage", "From a template"),
+      description: template
+        ? t(`Vorlage „${template.name}“ – tippe, um eine andere zu wählen`, `Template “${template.name}” – tap to choose another one`)
         : t("Besprechungsnotizen, Projektsteckbrief, Spezifikation … und deine gespeicherten Vorlagen", "Meeting notes, project brief, spec … and your saved templates"),
     },
   ];
@@ -186,6 +201,10 @@ export function NewPageDialog({
             autoFocus
             value={title}
             onChange={(e) => onTitle(e.target.value)}
+            onFocus={(e) => {
+              if (titleFromTemplate && !selected.current) e.currentTarget.select();
+              selected.current = true;
+            }}
             placeholder={t("Wie heißt deine Seite?", "What is your page called?")}
             enterKeyHint="done"
           />
@@ -246,9 +265,9 @@ export function NewPageDialog({
               <DatabaseKindPicker
                 workspaceId={boot.workspace.id}
                 value={databaseChoice}
-                onChange={(choice, template) => {
+                onChange={(choice, picked) => {
                   onDatabaseChoice(choice);
-                  if (template && !title) onTitle(template.name);
+                  if (picked) onTemplateTitle(picked.name);
                 }}
               />
             )}

@@ -283,7 +283,10 @@ const NODE_TEXT: Record<string, { name: [string, string]; description: [string, 
   },
   "action.page.create": {
     name: ["Seite anlegen", "Create page"],
-    description: ["Legt eine Seite unter einer Elternseite an.", "Creates a page below a parent page."],
+    description: [
+      "Legt eine Seite unter einer Elternseite an, auf Wunsch aus einer Seitenvorlage. Der Titel (mit Platzhaltern) gilt auch dann; der Name der Vorlage nur, wenn er leer bleibt.",
+      "Creates a page below a parent page, from a page template if you like. The title (with placeholders) applies then as well; the template’s name only when it comes out empty.",
+    ],
   },
   "action.page.append": {
     name: ["An Seite anhängen", "Append to page"],

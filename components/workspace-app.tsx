@@ -713,6 +713,12 @@ export default function WorkspaceApp({
   const [templateScope, setTemplateScope] = useState<"space" | "workspace">("space"),
     [templateSpaceRefs, setTemplateSpaceRefs] = useState("");
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
+  // A saved template chosen for the "New page" dialog; `meta` holds what
+  // to do with its space's tags, decided for the space `metaSpace` (#136).
+  const [savedTemplate, setSavedTemplate] = useState<{ id: string; name: string; meta?: MetaPlan; metaSpace?: string } | null>(null);
+  // The name a chosen template put into the dialog's name field: replaced by
+  // the next template's, unlike a name typed by hand (#213).
+  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
   const [galleryCategory, setGalleryCategory] = useState("all");
   // Saved templates of this workspace (and personal ones): their own
   // category in the gallery, hidden while there are none (#132).
@@ -1571,21 +1577,15 @@ export default function WorkspaceApp({
         const space = boot.spaces.find((s) =>
           ["owner", "editor"].includes((s as { role?: string }).role || "editor"),
         );
+        // The "New page" dialog with the template chosen: the name first,
+        // the template's as a start (#213).
+        const sid = space?.id || boot.spaces[0]?.id || "";
         // A template that comes with Flowplan (public gallery).
         if (useTemplate.startsWith("starter:")) {
           const key = useTemplate.slice(8);
           const builtIn = catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[key];
           if (!builtIn) throw new Error(t("Diese Vorlage ist nicht mehr verfügbar.", "This template is no longer available."));
-          const created = await mutate({
-            action: "page.create",
-            workspaceId: boot.workspace.id,
-            spaceId: space?.id || boot.spaces[0]?.id,
-            title: builtIn.name,
-            kind: builtIn.kind,
-            starterTemplate: key,
-          });
-          if (created?.id && builtIn.openDiagram) queueDrawioOpen(String(created.id));
-          if (created?.id) void openPage(String(created.id));
+          newPageFromTemplate({ starter: key, name: builtIn.name, kind: builtIn.kind }, sid, null, false);
           return;
         }
         const list = await api<{ id: string; name: string; kind: string }[]>(
@@ -1594,15 +1594,7 @@ export default function WorkspaceApp({
         const template = list.find((t) => t.id === useTemplate);
         if (!template)
           throw new Error(t("Diese Vorlage ist nicht mehr verfügbar.", "This template is no longer available."));
-        const created = await mutate({
-          action: "page.create",
-          workspaceId: boot.workspace.id,
-          spaceId: space?.id || boot.spaces[0]?.id,
-          title: template.name,
-          kind: template.kind,
-          templateId: template.id,
-        });
-        if (created?.id) void openPage(String(created.id));
+        newPageFromTemplate({ saved: template.id, name: template.name, kind: template.kind }, sid, null, false);
       } catch (e) {
         notifyError(e);
       }
@@ -1959,6 +1951,8 @@ export default function WorkspaceApp({
     setNewKind(kind);
     setDatabaseChoice(rememberedDatabaseKind());
     setStarterTemplate(null);
+    setSavedTemplate(null);
+    setSuggestedTitle(null);
     setParent(parentId);
     setSpaceId(
       sid ||
@@ -1967,6 +1961,27 @@ export default function WorkspaceApp({
         "",
     );
     setNewTitle("");
+    setCreate(true);
+  }
+  // A template chosen for the "New page" dialog (#213): a name typed there
+  // before stays; otherwise the template's name goes into the field,
+  // selected, so typing replaces it and Enter creates the page. `typed`:
+  // chosen from the dialog, whose name field may hold a name typed by hand.
+  function newPageFromTemplate(
+    template: { starter: string; name: string; kind: string } | { saved: string; name: string; kind: string; meta?: MetaPlan },
+    sid: string,
+    parentId: string | null,
+    typed: boolean,
+  ) {
+    if (!typed || !newTitle.trim() || newTitle === suggestedTitle) {
+      setNewTitle(template.name);
+      setSuggestedTitle(template.name);
+    }
+    setStarterTemplate("starter" in template ? template.starter : null);
+    setSavedTemplate("saved" in template ? { id: template.saved, name: template.name, meta: template.meta, metaSpace: sid } : null);
+    setNewKind(template.kind as PageKind);
+    setSpaceId(sid);
+    setParent(parentId);
     setCreate(true);
   }
   // The shell stays inert until the other workspace has loaded, so settings,
@@ -5194,8 +5209,24 @@ export default function WorkspaceApp({
         onKind={(kind) => {
           setNewKind(kind);
           setStarterTemplate(null);
+          setSavedTemplate(null);
+          // The template's name goes with it, a name typed by hand stays.
+          if (suggestedTitle !== null && newTitle === suggestedTitle) setNewTitle("");
+          setSuggestedTitle(null);
         }}
-        starterTemplate={starterTemplate}
+        template={
+          savedTemplate
+            ? { name: savedTemplate.name }
+            : starterTemplate
+              ? { name: catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.name ?? "" }
+              : null
+        }
+        titleFromTemplate={suggestedTitle !== null && newTitle === suggestedTitle}
+        onTemplateTitle={(name) => {
+          if (newTitle.trim() && newTitle !== suggestedTitle) return;
+          setNewTitle(name);
+          setSuggestedTitle(name);
+        }}
         onTemplates={() => {
           setTemplatesFor({ spaceId, parent });
           setCreate(false);
@@ -5231,10 +5262,17 @@ export default function WorkspaceApp({
             workspaceId: boot.workspace.id,
             spaceId,
             parentId: parent,
-            title: titleEncrypted ? ENCRYPTED_TITLE : newTitle || t("Ohne Titel", "Untitled"),
+            title: titleEncrypted ? ENCRYPTED_TITLE : newTitle.trim() || savedTemplate?.name || (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.name) || t("Ohne Titel", "Untitled"),
             kind: newKind,
-            starterTemplate,
-            ...(newKind === "database" && !starterTemplate
+            ...(savedTemplate
+              ? {
+                  templateId: savedTemplate.id,
+                  // Decided for the space the template was chosen for; in
+                  // another one the server's default.
+                  ...(savedTemplate.meta && savedTemplate.metaSpace === spaceId ? { meta: savedTemplate.meta } : {}),
+                }
+              : { starterTemplate }),
+            ...(newKind === "database" && !starterTemplate && !savedTemplate
               ? aiCreate && aiProposal
                 ? { aiDatabase: proposalPayload(aiProposal) }
                 : databaseChoicePayload(databaseChoice)
@@ -5248,12 +5286,12 @@ export default function WorkspaceApp({
               notifyError(error);
             }
           if (result?.id) {
-            if (newKind === "notebook" && notebookPdf) queueNotebookImport(String(result.id), notebookPdf);
+            if (newKind === "notebook" && notebookPdf && !savedTemplate) queueNotebookImport(String(result.id), notebookPdf);
             // "Diagramm-Seite": draw.io opens for the new page's diagram.
             if (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.openDiagram)
               queueDrawioOpen(String(result.id));
             setNotebookPdf(null);
-            if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
+            if (newKind === "database" && !starterTemplate && !savedTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
             setCreate(false);
             setAiCreate(false);
             setAiProposal(null);
@@ -5713,14 +5751,10 @@ export default function WorkspaceApp({
                   key={templateKey}
                   onClick={() => {
                     setTemplates(false);
-                    setNewTitle(template.name);
-                    setStarterTemplate(templateKey);
-                    setNewKind(template.kind as PageKind);
-                    // From the "New page" dialog the page keeps its place.
-                    if (templatesFor) setSpaceId(templatesFor.spaceId);
-                    setParent(templatesFor?.parent ?? null);
+                    // From the "New page" dialog the page keeps its place
+                    // and the name typed there (#213).
+                    newPageFromTemplate({ starter: templateKey, name: template.name, kind: template.kind }, templatesFor?.spaceId ?? spaceId, templatesFor?.parent ?? null, !!templatesFor);
                     setTemplatesFor(null);
-                    setCreate(true);
                   }}
                 >
                   <span className="template-emoji" aria-hidden="true">
@@ -5748,22 +5782,12 @@ export default function WorkspaceApp({
           spaceId={templatesFor?.spaceId ?? boot.spaces[0]?.id}
           spaces={boot.spaces.filter((sp) => !sp.deleted_at)}
           manageWorkspace={!!boot.taxonomy?.manage}
+          // The "New page" dialog with the template chosen: the name first
+          // (#213), then the page.
           onUse={async (t, meta) => {
-            const r = await act({
-              action: "page.create",
-              workspaceId: boot.workspace.id,
-              spaceId: templatesFor?.spaceId ?? boot.spaces[0].id,
-              ...(templatesFor?.parent ? { parentId: templatesFor.parent } : {}),
-              title: t.name,
-              kind: t.kind,
-              templateId: t.id,
-              ...(meta ? { meta } : {}),
-            });
-            if (r?.id) {
-              setTemplatesFor(null);
-              setTemplates(false);
-              void openPage(String(r.id));
-            }
+            setTemplates(false);
+            newPageFromTemplate({ saved: t.id, name: t.name, kind: t.kind, meta }, templatesFor?.spaceId ?? boot.spaces[0].id, templatesFor?.parent ?? null, !!templatesFor);
+            setTemplatesFor(null);
           }}
         />
       </Modal>
