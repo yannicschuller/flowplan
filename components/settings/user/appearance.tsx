@@ -1,6 +1,7 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
 // light or dark (this device), the workspace's look or Flowplan's own (#196,
+// profile, all devices), the page icon above or next to the title (#214,
 // profile, all devices), the related pages and backlinks below pages
 // and records (this device), the editor's block handles and code blocks
 // and draw.io's theme
@@ -20,6 +21,8 @@ import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
 import type { TextMenuPref } from "@/lib/text-menu-pref";
 import { setTextMenuPrefLocal, textMenuPref, useTextMenuPref } from "@/lib/text-menu-pref-client";
+import type { PageIconPref } from "@/lib/page-icon-pref";
+import { pageIconPref, setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
 
 export default function AppearanceSection() {
   const t = useT();
@@ -41,6 +44,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.textMenu", textMenu: value });
       } catch (e) {
         setTextMenuPrefLocal(before);
+        throw e;
+      }
+    });
+  };
+  const pageIcon = usePageIconPref();
+  const [pageIconStatus, runPageIcon] = useSaveState();
+  const choosePageIcon = (value: PageIconPref) => {
+    const before = pageIconPref();
+    setPageIconPrefLocal(value);
+    void runPageIcon(async () => {
+      try {
+        await mutate({ action: "profile.pageIcon", pageIcon: value });
+      } catch (e) {
+        setPageIconPrefLocal(before);
         throw e;
       }
     });
@@ -103,6 +120,28 @@ export default function AppearanceSection() {
             label={t("Darstellung des Arbeitsbereichs verwenden", "Use the workspace's appearance")}
             onChange={(on) => void runLook(async () => await mutate({ action: "profile.plainLook", plain: !on }))}
           />
+        </SettingRow>
+        <SettingRow
+          anchor="page-icon"
+          label={t("Seitensymbol", "Page icon")}
+          description={t(
+            "Groß über dem Titel oder klein neben dem Titel in seiner ersten Zeile – weniger Platz über dem Text. Ein Cover bleibt darüber. Nur deine Ansicht: Titel und Symbol der Seite ändern sich nicht. Gilt auf allen Geräten.",
+            "Large above the title or small next to the title on its first line – less space above the text. A cover stays above it. Only how you see pages: the page's title and icon do not change. Applies on all devices.",
+          )}
+        >
+          <SaveState status={pageIconStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Seitensymbol", "Page icon")}>
+            {(
+              [
+                ["above", t("Über dem Titel", "Above the title")],
+                ["inline", t("Neben dem Titel", "Next to the title")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={pageIcon === value}>
+                <input type="radio" name="page-icon" checked={pageIcon === value} onChange={() => choosePageIcon(value)} /> {label}
+              </label>
+            ))}
+          </div>
         </SettingRow>
         <SwitchRow
           label={t("Verwandte Seiten und Rückverweise anzeigen", "Show related pages and backlinks")}

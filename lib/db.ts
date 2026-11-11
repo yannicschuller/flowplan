@@ -1327,6 +1327,11 @@ function migrate(d: DatabaseSync) {
   // column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "text_menu"))
     d.exec("ALTER TABLE users ADD COLUMN text_menu TEXT");
+  // "Seitensymbol" per person (#214, lib/page-icon-pref.ts): users.page_icon,
+  // NULL = the default (above the title). An older version ignores the
+  // column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "page_icon"))
+    d.exec("ALTER TABLE users ADD COLUMN page_icon TEXT");
   // The state of a document task (#201, lib/task-status.ts): 'progress',
   // 'cancelled' or 'deferred', NULL for open and done (`checked` says
   // which; cancelled counts as checked). An older version writes NULL and
