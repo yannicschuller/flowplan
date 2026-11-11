@@ -12451,6 +12451,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   hyphens: auto;
   overflow-wrap: break-word;
 }
+/* A long word ("Verbindungslinie", "Mermaid/PlantUML") breaks inside the
+   tile instead of reaching past it. */
+.wb-sheet-grid button > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .wb-sheet-grid button.active {
   background: var(--blue-light);
   color: var(--blue);
