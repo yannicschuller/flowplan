@@ -205,7 +205,7 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
           const list = (boot.favoriteRows || []).filter((f) => f.rowId !== rowId);
           return {
             ...boot,
-            favoriteRows: b.value ? [...list, { pageId, rowId, title: cellText(row?.cells[titleField]) }] : list,
+            favoriteRows: b.value ? [...list, { pageId, rowId, title: cellText(row?.cells[titleField]), icon: row?.icon || "" }] : list,
           };
         },
       };

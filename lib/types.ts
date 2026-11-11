@@ -296,7 +296,7 @@ export type Bootstrap = {
   // Journals whose days show differently in the page tree (lib/journal-nav.ts).
   journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
   favorites: string[];
-  favoriteRows?: { pageId: string; rowId: string; title: string }[];
+  favoriteRows?: { pageId: string; rowId: string; title: string; icon?: string }[];
   collections?: import("./collections").CollectionInfo[];
   // Tags and property definitions of pages, the tags of the pages shown
   // (lib/page-properties-server.ts workspaceTaxonomy).

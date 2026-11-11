@@ -160,7 +160,7 @@ test("records can be favourited per person", async () => {
     viewer,
   );
   assert.deepEqual((await bootstrap(viewer, wid)).favoriteRows, [
-    { pageId: page, rowId: row, title: "Stern" },
+    { pageId: page, rowId: row, icon: "", title: "Stern" },
   ]);
   assert.deepEqual((await bootstrap(owner, wid)).favoriteRows, []);
   await act({ action: "row.delete", pageId: page, rowId: row });
@@ -232,4 +232,16 @@ test("a restored record keeps its versions, visitor comments and comment reactio
     (await one<{ html: string }>("SELECT html FROM row_snapshots WHERE row_id=? ORDER BY created_at LIMIT 1", rid))!.html,
     /Erste Fassung/,
   );
+});
+
+test("a favourite record carries its own icon to the sidebar (#198)", async () => {
+  const notes = await db("Notizen mit Symbol");
+  const [withIcon, plain] = await mapAsync(["Mit Symbol", "Ohne Symbol"], async (title) =>
+    (await act({ action: "row.create", pageId: notes, cells: { title } })).id,
+  );
+  await run("UPDATE rows SET icon=? WHERE id=?", "🚀", withIcon);
+  for (const rowId of [withIcon, plain]) await act({ action: "favorite.row", pageId: notes, rowId, value: true });
+  const favourites = (await bootstrap(owner, wid)).favoriteRows || [];
+  assert.equal(favourites.find((f) => f.rowId === withIcon)?.icon, "🚀");
+  assert.equal(favourites.find((f) => f.rowId === plain)?.icon, "");
 });

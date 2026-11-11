@@ -403,8 +403,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // New accounts see the introduction once (components/onboarding.tsx).
     onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
     // Favourite records of readable databases in this workspace.
-    favoriteRows: (await filterAsync(await all<Page & { row_id: string; cells: string; fields: string }>(
-      `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
+    favoriteRows: (await filterAsync(await all<Page & { row_id: string; row_icon: string | null; cells: string; fields: string }>(
+      `SELECT p.*,r.id row_id,r.icon row_icon,r.cells,d.fields FROM row_favorites f
        JOIN rows r ON r.id=f.row_id JOIN pages p ON p.id=f.page_id
        JOIN databases d ON d.page_id=p.id
        WHERE f.user_id=? AND p.workspace_id=? AND p.deleted_at IS NULL`,
@@ -414,6 +414,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       .map((p) => ({
         pageId: p.id,
         rowId: p.row_id,
+        // The record's own icon (the sidebar shows the file icon without one).
+        icon: p.row_icon || "",
         title:
           cellText(
             JSON.parse(p.cells)[

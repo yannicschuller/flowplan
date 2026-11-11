@@ -3218,7 +3218,7 @@ export default function WorkspaceApp({
                     openPage(f.pageId, { pageId: f.pageId, rowId: f.rowId })
                   }
                 >
-                  <PageIcon name="file" />
+                  <PageIcon name={shownPageIcon(f.icon, "document")} />
                   <span>{f.title}</span>
                 </button>
               ))}
