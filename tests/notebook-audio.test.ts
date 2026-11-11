@@ -61,6 +61,21 @@ function webm({ seekHead = false, segmentSize }: { seekHead?: boolean; segmentSi
   return Buffer.concat([header, Buffer.from("18538067", "hex"), size, body]);
 }
 
+// The recordings route loads lib/notebook-audio.ts first; through
+// e2ee-server → workspace-lifecycle → page-tree it reaches lib/notebook.ts,
+// whose archive schema must not read notebook-audio's schema before that
+// module has run ("Cannot access 'recordingsArchiveSchema' before
+// initialization", every request to /api/pages/…/recordings).
+test("notebook-audio loads first, as the recordings route does", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const out = execFileSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "-e", 'await import("./lib/notebook-audio.ts"); const { notebookArchiveSchema } = await import("./lib/notebook.ts"); process.stdout.write(String(notebookArchiveSchema.shape.recordings.safeParse([{ id: "r1", file: "f", name: "a", durationMs: 1 }]).success));'],
+    { cwd: resolve(import.meta.dirname, ".."), env: { ...process.env, FLOWPLAN_DATA_DIR: mkdtempSync(join(tmpdir(), "flowplan-nb-audio-order-")) }, stdio: ["ignore", "pipe", "pipe"] },
+  ).toString();
+  assert.equal(out, "true");
+});
+
 test("WebM: the duration is written into Info, the rest of the file stays", () => {
   const file = webm();
   assert.equal(webmDurationMs(file), null);
