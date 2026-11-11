@@ -12,7 +12,10 @@ async function imagePage(page: import("@playwright/test").Page) {
     data: { action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Kopie ${Date.now()}`, kind: "document" },
   });
   const pageId = (await created.json()).id;
-  await page.goto("/");
+  // A blank page draws the picture: had the app been loaded here, the goto
+  // to the page below would only change the hash, which the app can miss
+  // while it is still starting.
+  await page.goto("about:blank");
   const b64 = await page.evaluate(() => {
     const c = document.createElement("canvas");
     c.width = 400;
