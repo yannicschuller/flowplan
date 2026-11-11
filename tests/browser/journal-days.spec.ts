@@ -209,3 +209,36 @@ test("long page titles wrap on phones instead of being cut off", async ({ page }
   await title.blur();
   await expect.poll(async () => (await read(pageId)).page.title).toBe(`${name} Notizen mehr`);
 });
+
+// The day bar (trackers, place, the day's appointments) stays inside its box
+// on a phone: a long appointment row wraps instead of widening the bar past
+// the screen's edge, where it was cut off.
+test("the day bar fits a phone's width", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The phone's width.");
+  const { boot, command, read } = await setup(page);
+  const journal = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: `Tagesleiste ${Date.now()}`, kind: "journal" });
+  const { dayId } = await command({ action: "journal.roll", pageId: journal.id, date: localDay(new Date()), write: true });
+  // An appointment with a long title and source, from a calendar database.
+  const db = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: "Produkt-Roadmap für das ganze Team", kind: "database" });
+  await command({
+    action: "database.update",
+    pageId: db.id,
+    version: (await read(db.id)).database.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "start", name: "Datum", type: "date" },
+    ],
+    views: [{ id: "calendar", name: "Kalender", type: "calendar", filters: [], sorts: [], dateField: "start" }],
+  });
+  await command({ action: "row.create", pageId: db.id, cells: { title: "Designsystem dokumentieren und abstimmen", start: localDay(new Date()) } });
+  await page.goto(`/#page=${dayId}`);
+  const bar = page.locator(".journal-daybar");
+  await expect(bar.getByText("Designsystem dokumentieren und abstimmen").first()).toBeVisible({ timeout: 30000 });
+  const outside = await bar.evaluate((el) => {
+    const right = el.getBoundingClientRect().right;
+    return [...el.querySelectorAll("*")]
+      .filter((child) => child.getBoundingClientRect().width && child.getBoundingClientRect().right > right + 0.5)
+      .map((child) => `${child.tagName}.${child.className}`);
+  });
+  expect(outside).toEqual([]);
+});

@@ -15024,6 +15024,8 @@ li[data-journal-since] > label::after {
 /* Day page: trackers, place, appointments above the text. */
 .journal-daybar {
   display: grid;
+  /* Not wider than the bar: long appointment rows wrap (phones). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 4px 0 18px;
   padding: 12px 14px;
@@ -15116,10 +15118,13 @@ li[data-journal-since] > label::after {
   display: grid;
   gap: 3px;
   flex: 1;
+  min-width: 0;
 }
 .journal-daybar-events li {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 2px;
   align-items: baseline;
 }
 .journal-daybar-events time {
