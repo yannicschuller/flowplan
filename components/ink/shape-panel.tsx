@@ -62,8 +62,8 @@ const DASHES: ShapeToolSettings["dash"][] = ["solid", "dash", "dot"];
 
 function DashIcon({ dash }: { dash: ShapeToolSettings["dash"] }) {
   return (
-    <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true">
-      <line x1="2" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={dash === "dash" ? "4 3" : dash === "dot" ? "0.1 3.5" : undefined} />
+    <svg width="40" height="12" viewBox="0 0 40 12" aria-hidden="true">
+      <line x1="2" y1="6" x2="38" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={dash === "dash" ? "4 3" : dash === "dot" ? "0.1 3.5" : undefined} />
     </svg>
   );
 }
@@ -139,6 +139,7 @@ export function ShapeLineSection() {
       <Segmented
         label={t("Linienart", "Line style")}
         className="ink-panel-dashes"
+        iconOnly
         value={settings.dash}
         onChange={(dash) => setShapeSettings({ dash })}
         options={DASHES.map((dash) => ({ value: dash, label: names[dash], icon: <DashIcon dash={dash} /> }))}

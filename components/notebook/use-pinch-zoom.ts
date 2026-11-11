@@ -1,6 +1,6 @@
 "use client";
-// Pinch to zoom the sheets of a notebook (lib/pinch-zoom.ts for the
-// arithmetic): two fingers on a tablet or phone (touch events, also while
+// Pinch to zoom the sheets of a notebook or the pages of the PDF viewer
+// (lib/pinch-zoom.ts for the arithmetic): two fingers on a tablet or phone (touch events, also while
 // fingers draw), a trackpad pinch (ctrl + wheel; Safari's gesture events on
 // the Mac). The sheets follow the fingers smoothly – drawn scaled while the
 // gesture runs, laid out at the new zoom at its end – anchored at the pinch

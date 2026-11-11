@@ -1,6 +1,7 @@
 // The arithmetic of zooming a scrolled surface with two fingers, a trackpad
 // pinch (ctrl + wheel, Safari's gesture events) or steps (buttons, keys).
-// Pure, for the tests; the notebook uses it (components/notebook/use-pinch-zoom.ts).
+// Pure, for the tests; notebooks and the PDF viewer use it
+// (components/notebook/use-pinch-zoom.ts).
 //
 // A pinch is measured against its start: the factor is the distance of the
 // fingers now over their distance when the second one landed – never the

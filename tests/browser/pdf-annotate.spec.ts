@@ -240,6 +240,104 @@ test("holding the pen snaps a line; the lasso moves and recolours it; ⌘S saves
   expect(versions.versions.length).toBe(2);
 });
 
+// Two fingers zoom the pages as in notebooks (components/notebook/use-pinch-zoom.ts):
+// live while they move, continuously (not in 25 % steps), anchored at the
+// pinch centre, also with pen-only drawing on; the ink stays on its spot of
+// the page and the pen still draws after it. On phones too, without jumping
+// to 300 %.
+async function pinch(cdp: CDPSession, centre: Point, from: number, to: number, steps = 10, during?: (i: number) => Promise<void>) {
+  const at = (d: number) => [
+    { x: centre.x - d / 2, y: centre.y, id: 1 },
+    { x: centre.x + d / 2, y: centre.y, id: 2 },
+  ];
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at(from)[0]] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(from) });
+  for (let i = 1; i <= steps; i++) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(from + ((to - from) * i) / steps) });
+    await during?.(i);
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+test("two fingers zoom the pages smoothly around the pinch, the ink stays on the page", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { id } = await pdfPage(page, `Zoom ${Date.now()}`);
+  const viewer = await openViewer(page, id);
+  await viewer.getByRole("button", { name: "Anmerken" }).click();
+  const tools = page.getByRole("toolbar", { name: "Werkzeuge zum Anmerken" });
+  const cdp = await page.context().newCDPSession(page);
+  const wrap = page.locator('.pdf-page-wrap[data-page="1"]');
+  const zoom = viewer.locator(".pdf-viewer-zoom");
+  let box = (await wrap.boundingBox())!;
+  const stroke = (b: { x: number; y: number; width: number }) => ({ x: b.x + b.width * 0.2, y: b.y + b.width * 0.25 });
+  const s = stroke(box);
+  await pen(cdp, path(s, { x: s.x + box.width * 0.4, y: s.y + 20 }));
+  await expect(strokes(page, 1)).toHaveCount(1);
+  // Pen-only drawing is on now: fingers do not draw, they zoom.
+  await page.waitForTimeout(700);
+  await expect(zoom).toHaveText("100 %");
+  // Where the ink lies on the page, as fractions of it.
+  const inkOnPage = async () => {
+    const page1 = (await wrap.boundingBox())!;
+    const ink = (await strokes(page, 1).first().boundingBox())!;
+    return { x: (ink.x - page1.x) / page1.width, y: (ink.y - page1.y) / page1.height, w: ink.width / page1.width };
+  };
+  const before = await inkOnPage();
+  const centre = { x: box.x + box.width * 0.4, y: Math.min(box.y + box.height * 0.3, (page.viewportSize()!.height * 2) / 3) };
+  const spot = { x: (centre.x - box.x) / box.width, y: (centre.y - box.y) / box.height };
+  // Halfway through, the pages are already drawn larger, around the fingers.
+  const widths: number[] = [];
+  if (shots) await page.screenshot({ path: `${shots}/pdf-pinch-${info.project.name}-1-before.png` });
+  await pinch(cdp, centre, 120, 180, 10, async (i) => {
+    widths.push((await wrap.boundingBox())!.width);
+    if (shots && i === 5) await page.screenshot({ path: `${shots}/pdf-pinch-${info.project.name}-2-during.png` });
+  });
+  expect(widths[4] / box.width).toBeGreaterThan(1.2);
+  expect(widths[4] / box.width).toBeLessThan(1.3);
+  for (let i = 1; i < widths.length; i++) expect(widths[i]).toBeGreaterThan(widths[i - 1]);
+  // At the end: 150 %, not rounded to a quarter step, the spot under the fingers stays.
+  await expect(zoom).toHaveText("150 %");
+  await expect.poll(async () => Math.round((await wrap.boundingBox())!.width / box.width * 100)).toBe(150);
+  box = (await wrap.boundingBox())!;
+  expect(Math.abs(box.y + spot.y * box.height - centre.y)).toBeLessThan(4);
+  // Sideways the page stays under the fingers where it can scroll there; still narrower than the window it is centred.
+  const area = (await viewer.locator(".pdf-viewer-pages-area").boundingBox())!;
+  if (box.width > area.width - 32) expect(Math.abs(box.x + spot.x * box.width - centre.x)).toBeLessThan(4);
+  else expect(Math.abs(box.x + box.width / 2 - (area.x + area.width / 2))).toBeLessThan(10);
+  expect(await page.locator(".pdf-viewer-sheets").evaluate((el) => (el as HTMLElement).style.transform)).toBe("");
+  if (shots) await page.screenshot({ path: `${shots}/pdf-pinch-${info.project.name}-3-after.png` });
+  // The ink lies where it lay on the page.
+  const after = await inkOnPage();
+  expect(Math.abs(after.x - before.x)).toBeLessThan(0.005);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(0.005);
+  expect(Math.abs(after.w - before.w)).toBeLessThan(0.005);
+  // A small pinch zooms a little (no 25 % steps, no jump to 300 %).
+  await pinch(cdp, centre, 150, 130);
+  await expect(zoom).toHaveText("130 %");
+  // The buttons step on from there.
+  await viewer.getByRole("button", { name: "Vergrößern" }).click();
+  await expect(zoom).toHaveText("150 %");
+  // The pen still writes where it touches the zoomed page.
+  box = (await wrap.boundingBox())!;
+  const p2 = { x: box.x + box.width * 0.3, y: Math.min(box.y + box.height * 0.5, page.viewportSize()!.height - 120) };
+  await pen(cdp, path(p2, { x: p2.x + 120, y: p2.y }));
+  await expect(strokes(page, 1)).toHaveCount(2);
+  const drawn = (await strokes(page, 1).nth(1).boundingBox())!;
+  expect(Math.abs(drawn.x - p2.x)).toBeLessThan(12);
+  expect(Math.abs(drawn.y + drawn.height / 2 - p2.y)).toBeLessThan(14);
+  // With fingers drawing too, two fingers zoom and leave no stroke.
+  await tools.getByRole("button", { name: "Stifteinstellungen" }).click();
+  await page.getByLabel("Nur mit dem Stift zeichnen").uncheck();
+  await tools.getByRole("button", { name: "Stifteinstellungen" }).click();
+  await page.waitForTimeout(700);
+  box = (await wrap.boundingBox())!;
+  await pinch(cdp, { x: box.x + Math.min(box.width * 0.5, 180), y: Math.min(box.y + box.height * 0.5, page.viewportSize()!.height - 160) }, 160, 120);
+  await expect(zoom).toHaveText("113 %");
+  await expect(strokes(page, 1)).toHaveCount(2);
+  await expect(tools).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("screenshots: iPad and desktop", async ({ page }, info) => {
   test.skip(!shots || info.project.name !== "desktop", "Only when screenshots are asked for.");
   test.setTimeout(240_000);
