@@ -627,3 +627,16 @@ label.hit-check {
     overflow-wrap: anywhere;
   }
 }
+
+/* ===== A database calendar's month on phones: a day is about 90 px wide.
+   The entry's time and title take the chip's first line, the drag handle
+   and the date button a line below it – beside them only "09:…" was left. ===== */
+@media (max-width: 767px) {
+  .calendar-day .calendar-chip {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .calendar-day .calendar-chip .calendar-event {
+    flex-basis: 100%;
+  }
+}
