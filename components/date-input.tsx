@@ -6,7 +6,7 @@ import {
   browserZone,
   dateInZone,
   isTimed,
-  localValue,
+  fieldValue,
   dateToSave,
   draftDateValue,
   InvalidDateDraft,
@@ -30,7 +30,7 @@ export default function DateInput({
 }) {
   const t = useT();
   const zone = timeZone || browserZone();
-  const [draft, setDraft] = useState(() => localValue(value, zone)),
+  const [draft, setDraft] = useState(() => fieldValue(value, zone)),
     [timed, setTimed] = useState(isTimed(value)),
     [choice, setChoice] = useState<TimeChoice>("reject"),
     [error, setError] = useState("");
@@ -41,7 +41,7 @@ export default function DateInput({
     // Keep unsaved/invalid drafts during the regular background refresh.
     if (value !== last.current) {
       last.current = value;
-      setDraft(localValue(value, zone));
+      setDraft(fieldValue(value, zone));
       setTimed(isTimed(value));
       setChoice("reject");
       setError("");
@@ -121,7 +121,9 @@ export default function DateInput({
         ref={input}
         aria-label={name}
         type={timed ? "datetime-local" : "date"}
-        step={timed ? "0.001" : undefined}
+        // Seconds and milliseconds only for a time that has them ("08:30",
+        // not "08:30:00.000"); they are kept as they are.
+        step={timed && draft.length > 16 ? "0.001" : undefined}
         min={timed ? "0001-01-01T00:00" : "0001-01-01"}
         max={timed ? "9999-12-31T23:59:59.999" : "9999-12-31"}
         disabled={disabled}

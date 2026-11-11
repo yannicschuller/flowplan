@@ -1200,6 +1200,13 @@ kbd,
   margin: 0 0 21px;
   border-radius: 0;
   box-shadow: none !important;
+  /* A <textarea> of one line (components/page-title-field.tsx): on one line
+     like an input where there is room, wrapped on phones (app/mobile-ux.css). */
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
 }
 .page-title:focus {
   outline: none;
@@ -12444,6 +12451,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   hyphens: auto;
   overflow-wrap: break-word;
 }
+/* A long word ("Verbindungslinie", "Mermaid/PlantUML") breaks inside the
+   tile instead of reaching past it. */
+.wb-sheet-grid button > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .wb-sheet-grid button.active {
   background: var(--blue-light);
   color: var(--blue);
@@ -15017,6 +15030,8 @@ li[data-journal-since] > label::after {
 /* Day page: trackers, place, appointments above the text. */
 .journal-daybar {
   display: grid;
+  /* Not wider than the bar: long appointment rows wrap (phones). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 4px 0 18px;
   padding: 12px 14px;
@@ -15109,10 +15124,13 @@ li[data-journal-since] > label::after {
   display: grid;
   gap: 3px;
   flex: 1;
+  min-width: 0;
 }
 .journal-daybar-events li {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 2px;
   align-items: baseline;
 }
 .journal-daybar-events time {

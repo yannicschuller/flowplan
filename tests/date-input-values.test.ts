@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dateToSave, draftDateValue, InvalidDateDraft, localValue } from "../lib/date-values";
+import { dateToSave, draftDateValue, fieldValue, InvalidDateDraft, localValue } from "../lib/date-values";
 
 const zone = "Europe/Berlin";
 
@@ -35,4 +35,19 @@ test("date drafts become stored values", () => {
   // The repeated hour of the clock change needs a choice.
   assert.throws(() => draftDateValue("2026-10-25T02:30", true, "reject", "", zone));
   assert.equal(draftDateValue("2026-10-25T02:30", true, "later", "", zone), "2026-10-25T01:30:00Z");
+});
+
+test("the date field shows whole minutes without seconds", () => {
+  // "08:30", not "08:30:00.000": seconds only when there are some.
+  assert.equal(fieldValue("2026-11-10T07:30:00Z", zone), "2026-11-10T08:30");
+  assert.equal(fieldValue("2026-11-10T07:30:15Z", zone), "2026-11-10T08:30:15.000");
+  assert.equal(fieldValue("2026-11-10T07:30:00.250Z", zone), "2026-11-10T08:30:00.250");
+  assert.equal(fieldValue("2026-11-10", zone), "2026-11-10");
+  assert.equal(fieldValue("", zone), "");
+  // Unchanged, the shorter form still keeps the stored instant – also in the
+  // repeated hour of the clock change.
+  const stored = "2026-10-25T00:30:00Z";
+  assert.equal(fieldValue(stored, zone), "2026-10-25T02:30");
+  assert.equal(draftDateValue(fieldValue(stored, zone), true, "reject", stored, zone), stored);
+  assert.equal(dateToSave(draftDateValue(fieldValue(stored, zone), true, "reject", stored, zone), stored), null);
 });

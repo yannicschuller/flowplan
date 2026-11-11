@@ -304,7 +304,7 @@ test("iOS: titles and other fields get a floating hide button above the keyboard
   const before = await title.inputValue();
   await expect(fab(page)).toHaveCount(0);
   await title.tap();
-  await expect.poll(() => activeIs(page, "input.page-title")).toBe(true);
+  await expect.poll(() => activeIs(page, "textarea.page-title")).toBe(true);
   await keyboard(page, KEYBOARD);
   await expectFabAboveKeyboard(page, visibleBottom);
   // Not over the title it ends.
@@ -317,7 +317,7 @@ test("iOS: titles and other fields get a floating hide button above the keyboard
     await page.evaluate(() => document.getElementById("test-keyboard")?.remove());
   }
   await fab(page).tap();
-  await expect.poll(() => activeIs(page, "input.page-title")).toBe(false);
+  await expect.poll(() => activeIs(page, "textarea.page-title")).toBe(false);
   await keyboard(page, 0);
   await expect(fab(page)).toHaveCount(0);
   await expect(title).toHaveValue(before);
@@ -398,12 +398,12 @@ test("iOS: in a document only the toolbar's hide button shows", async ({ page },
   await expect(fab(page)).toHaveCount(0);
   // The page's title: the docked toolbar is there with its button already.
   await page.getByLabel("Seitentitel", { exact: true }).tap();
-  await expect.poll(() => activeIs(page, "input.page-title")).toBe(true);
+  await expect.poll(() => activeIs(page, "textarea.page-title")).toBe(true);
   await page.waitForTimeout(500);
   await expect(hide).toHaveCount(1);
   await expect(fab(page)).toHaveCount(0);
   await hide.tap();
-  await expect.poll(() => activeIs(page, "input.page-title")).toBe(false);
+  await expect.poll(() => activeIs(page, "textarea.page-title")).toBe(false);
   await keyboard(page, 0);
   // No field, no keyboard: nothing.
   await expect(hide).toHaveCount(0);
@@ -417,7 +417,7 @@ test("there is no floating hide-keyboard button on a desktop", async ({ page }, 
   await openDatabase(page);
   const title = page.getByLabel("Seitentitel", { exact: true });
   await title.click();
-  await expect.poll(() => activeIs(page, "input.page-title")).toBe(true);
+  await expect.poll(() => activeIs(page, "textarea.page-title")).toBe(true);
   // Even a viewport that shrinks (a narrow window, a tablet's keyboard).
   await keyboard(page, KEYBOARD);
   await page.waitForTimeout(600);

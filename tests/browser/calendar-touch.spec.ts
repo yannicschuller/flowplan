@@ -58,6 +58,12 @@ test("touch devices move whole-day calendar entries with a drag handle", async (
     await expect(handle).toBeHidden();
     return command({ action: "page.delete", pageId: p.id });
   }
+  // The title is readable beside the handle and the date button: on a phone
+  // they get a line of their own below it instead of squeezing it to "Wo…".
+  const event = page.locator(".calendar-day .calendar-event").filter({ hasText: "Workshop" });
+  expect(await event.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  for (const control of [handle, page.getByRole("button", { name: "Termin für Workshop bearbeiten" })])
+    expect((await control.boundingBox())!.y).toBeGreaterThan((await event.boundingBox())!.y);
   const target = page.locator(`.calendar-day[data-day="${month}-12"]`);
   await target.scrollIntoViewIfNeeded();
   await handle.scrollIntoViewIfNeeded();
