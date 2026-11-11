@@ -11,6 +11,7 @@ import { Fingerprint, LinkSimple, SpinnerGap } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import type { PendingLinkInfo } from "@/lib/oidc-link";
 import { BrandMark } from "./brand-mark";
+import { AuthLayout } from "./auth-layout";
 import { useT } from "./i18n";
 
 async function post(path: string, body?: unknown) {
@@ -64,7 +65,7 @@ export default function LinkAccount({ info, instanceName = "" }: { info: Pending
       return post("link-passkey", response);
     });
   return (
-    <main className="login">
+    <AuthLayout instanceName={instanceName}>
       <div className="login-brand">
         <BrandMark size={32} />
         flowplan
@@ -144,6 +145,6 @@ export default function LinkAccount({ info, instanceName = "" }: { info: Pending
           </>
         )}
       </section>
-    </main>
+    </AuthLayout>
   );
 }

@@ -34328,3 +34328,312 @@ html.native-app body {
 [data-theme="dark"] .ink-ruler-text.measure {
   stroke: #1d1c23;
 }
+
+/* ===== Sign-in: split layout (components/auth-layout.tsx) and the fastest
+   way first (components/login.tsx). Phones and narrow windows show one
+   column: the mark and the greeting above, the ways at the bottom in reach
+   of the thumb. From 960 px a panel in Flowplan's colours takes the left
+   45 % with the logo and one line; the column sits centred on the right. */
+:root {
+  --auth-panel: linear-gradient(160deg, #3b3fd8, #6b4fe0 60%, #8f6cf0);
+}
+[data-theme="dark"] {
+  --auth-panel: linear-gradient(160deg, #24267a, #3a2c8c 60%, #5b42b0);
+}
+.login.auth-split {
+  flex-direction: row;
+  align-items: stretch;
+  padding: 0;
+}
+.auth-panel {
+  display: none;
+}
+.auth-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 32px;
+}
+.login-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 400px;
+}
+.login-head {
+  margin-top: clamp(16px, 9vh, 96px);
+  text-align: center;
+}
+.login-head-mark .brand-mark {
+  margin: 0 auto 22px;
+  border-radius: 24%;
+}
+.login-head h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: 400;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.login-instance {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.login-head > p:not(.login-instance) {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--secondary);
+  text-wrap: pretty;
+}
+.login-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 28px;
+}
+.login-column[data-mode="signin"] .login-body {
+  margin-top: auto;
+}
+.login-body > .error,
+.login-body > .login-notice {
+  margin: 0;
+}
+.login-column .login-form {
+  margin: 0;
+}
+.login-ways {
+  position: relative;
+  display: grid;
+  gap: 10px;
+}
+/* Until the page knows the last way (storage, passkeys, the app). */
+.login-ways[data-pending] {
+  visibility: hidden;
+}
+.login-way-group {
+  display: grid;
+  gap: 10px;
+}
+.login-column .button.wide {
+  margin: 0;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.login-column .button.wide.primary {
+  min-height: 52px;
+}
+.login-column a.button.wide:not(.primary) {
+  color: var(--text);
+  text-decoration: none;
+}
+.login-last-used {
+  margin: -4px 0 2px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.login-password-link.text-button {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blue);
+}
+/* E-mail and password while closed: in the page, out of sight (inert). */
+.login-password[data-collapsed] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  visibility: hidden;
+}
+.login-password {
+  display: grid;
+  gap: 12px;
+}
+.login-password .login-browser {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.login-field {
+  display: grid;
+  gap: 5px;
+}
+.login-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.login-label-row .login-forgot {
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--blue);
+}
+.login-column .login-options {
+  justify-content: center;
+  margin: 2px 0 0;
+}
+.login-column .callout {
+  font-size: 13px;
+  line-height: 1.6;
+}
+/* "Konto erstellen · Anderer Server": one quiet line. */
+.login-more {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 10px;
+  margin: 18px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.login-more:empty {
+  display: none;
+}
+.login-more > * + *::before {
+  content: "·" / "";
+  margin-right: 10px;
+  color: var(--muted);
+}
+.login-more .text-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+}
+.login-more .login-app-profiles {
+  font-weight: 500;
+  color: var(--secondary);
+}
+.login-column .login-switch {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.login-column .login-http-note {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.auth-split footer.login-footer {
+  justify-content: center;
+  margin-top: 20px;
+}
+@media (max-width: 700px) {
+  .auth-side {
+    padding: max(16px, var(--safe-top, 0px)) 16px max(12px, var(--safe-bottom, 0px));
+  }
+  .login-head h1 {
+    font-size: 42px;
+  }
+}
+@media (max-height: 640px) {
+  .login-head-mark {
+    display: none;
+  }
+  .login-head h1 {
+    font-size: 36px;
+  }
+}
+/* Tablets and wider: the column in the middle of the screen. */
+@media (min-width: 701px) {
+  .login-column {
+    flex: none;
+    margin: auto 0;
+  }
+  .login-head {
+    margin-top: 0;
+  }
+  .login-column[data-mode="signin"] .login-body {
+    margin-top: 0;
+  }
+}
+@media (min-width: 960px) {
+  .auth-panel {
+    position: sticky;
+    top: 0;
+    flex: 0 0 45%;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 44px 48px;
+    background: var(--auth-panel);
+    color: #fff;
+    overflow: hidden;
+  }
+  .auth-panel-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 23px;
+    font-weight: 620;
+    letter-spacing: -0.035em;
+  }
+  .auth-panel-brand .brand-mark {
+    box-shadow: 0 0 0 2px #ffffff40;
+  }
+  .auth-panel-instance {
+    font-weight: 500;
+    opacity: 0.8;
+  }
+  .auth-panel-line {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(40px, 4vw, 56px);
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .auth-side {
+    padding: 32px 56px 24px;
+  }
+  /* The panel carries the logo and the instance's name. */
+  .auth-split .login-brand,
+  .login-head-mark,
+  .login-instance {
+    display: none;
+  }
+  .login-head {
+    text-align: left;
+  }
+  .login-head h1 {
+    font-size: 40px;
+  }
+  .auth-split .login-card {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+}

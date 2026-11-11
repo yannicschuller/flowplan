@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
+import { openPasswordForm } from "./sign-in-form";
 
 // Accounts with e-mail and password, and passkeys, next to optional SSO.
 const setSignup = (on: boolean) => {
@@ -44,6 +45,11 @@ test("create an account, sign out, sign in with the password and change it", asy
     setSignup(false);
     await page.goto("/register");
     await expect(page.getByRole("button", { name: "Konto erstellen" })).toHaveCount(0);
+    // A first visit: passkeys first, e-mail and password a tap away.
+    await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mit Passkey anmelden" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeHidden();
+    await openPasswordForm(page);
     await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
 
     setSignup(true);
@@ -71,13 +77,20 @@ test("create an account, sign out, sign in with the password and change it", asy
     // Sign out and in again with the new password; a wrong one is refused.
     await context.clearCookies();
     await page.goto("/login");
+    // Signed up with a password here: the form is the main way, marked
+    // as the one last used.
+    await page.locator(".login-ways:not([data-pending])").waitFor();
+    await expect(page.getByRole("button", { name: "Mit E-Mail und Passwort" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toHaveAccessibleDescription("Zuletzt verwendet");
     await page.getByLabel("E-Mail-Adresse").fill(email);
     await page.locator("input[name=password]").fill("ein-langes-passwort");
     await page.getByRole("button", { name: "Anmelden", exact: true }).click();
-    await expect(page.locator(".login-card [role=alert]")).toContainText("stimmt nicht");
+    await expect(page.locator(".login-column .error[role=alert]")).toContainText("stimmt nicht");
     await page.locator("input[name=password]").fill("ganz-neues-passwort");
-    await page.getByRole("button", { name: "Anmelden", exact: true }).click();
+    // Enter submits the form.
+    await page.locator("input[name=password]").press("Enter");
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 20_000 });
+    expect(await page.evaluate(() => localStorage.getItem("flowplan:last-sign-in"))).toBe("password");
     expect(errors).toEqual([]);
   } finally {
     setSignup(false);
@@ -145,6 +158,7 @@ test("an invitation link creates the account while sign-ups are closed", async (
     await context.clearCookies();
     for (const path of [`/?invite=${token}`, `/register?invite=${token}`, "/register?invite=unbekannt-0123456789abcdef"]) {
       await page.goto(path);
+      await openPasswordForm(page);
       await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Konto erstellen" })).toHaveCount(0);
       await expect(page.getByLabel("Name")).toHaveCount(0);
@@ -192,6 +206,11 @@ test("add a passkey and sign in with it", async ({ browser }, info) => {
     await page.goto("/login");
     await page.getByRole("button", { name: "Mit Passkey anmelden" }).click();
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 20_000 });
+    // Next time on this device the passkey comes first.
+    await context.clearCookies();
+    await page.goto("/login");
+    await expect(page.getByRole("button", { name: "Mit Passkey anmelden" })).toHaveClass(/primary/);
+    await expect(page.getByRole("button", { name: "Mit Passkey anmelden" })).toHaveAccessibleDescription("Zuletzt verwendet");
   } finally {
     setSignup(false);
     await context.close();

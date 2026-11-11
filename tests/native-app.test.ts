@@ -51,7 +51,11 @@ test("sign-in pages: \"Other server? Switch profile\" only inside the mobile app
 test("the profiles link sits on the pages before signing in, not in the signed-in app", async () => {
   const { readFileSync } = await import("node:fs");
   const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-  for (const page of ["components/login.tsx", "components/reset-password.tsx", "components/two-factor.tsx"]) assert.match(read(page), /<AppProfilesLink \/>/, page);
+  for (const page of ["components/reset-password.tsx", "components/two-factor.tsx"]) assert.match(read(page), /<AppProfilesLink \/>/, page);
+  // The sign-in page: "Anderer Server" in its quiet line under the buttons,
+  // and the full line in its other steps (registration, reset link).
+  assert.match(read("components/login.tsx"), /<AppProfilesLink inline \/>/);
+  assert.match(read("components/login.tsx"), /<AppProfilesLink \/>/);
   // Signed in, the app's settings hold the profiles (Settings → Notifications → Open app settings).
   assert.doesNotMatch(read("components/workspace-app.tsx"), /AppProfilesLink/);
 });
@@ -74,8 +78,9 @@ test("passkeys in the desktop app's window only where the app says so – Window
   const login = readFileSync(new URL("../components/login.tsx", import.meta.url), "utf8");
   assert.match(login, /setPasskeyInApp\(desktopPasskeysInWindow\(\) && browserSupportsWebAuthn\(\)\)/);
   assert.match(login, /passkeyHandOff = desktopApp && !passkeyInApp/);
-  assert.match(login, /mode === "signin" && passkeyHandOff && \(\s*<a/);
-  assert.match(login, /passkeys && \(!desktopApp \|\| passkeyInApp\) && \(\s*<button className="button wide" onClick=\{passkey\}/);
+  assert.match(login, /\{passkeyHandOff && \(\s*<a/);
+  assert.match(login, /const passkeyButton = localLogin && passkeys && \(!desktopApp \|\| passkeyInApp\);/);
+  assert.match(login, /\{passkeyButton && \(\s*<button className=\{wayClass\("passkey"\)\} onClick=\{passkey\}/);
   assert.match(login, /passkeyInApp && passkeyFallback && \([\s\S]{0,200}href="\/api\/auth\/desktop"\s*onClick=\{handOff\("passkey"\)\}/);
   // SSO keeps going to the browser in every app.
   assert.match(login, /href=\{desktopApp \? "\/api\/auth\/desktop\?via=sso"/);

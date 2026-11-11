@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
+import { openPasswordForm } from "./sign-in-form";
 
 // Admins delete an account once it is disabled; the dialog says what happens.
 test("an admin deletes a disabled account after seeing what happens", async ({ browser }, info) => {
@@ -169,10 +170,11 @@ test("an account with a password confirms with it; the last admin is refused", a
     await expect(dialog.getByRole("alert")).toContainText("Passwort stimmt nicht");
     await password.fill("ein-langes-passwort");
     await dialog.getByRole("button", { name: "Konto endgültig löschen" }).click();
-    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible({ timeout: 20_000 });
     expect(db.prepare("SELECT count(*) n FROM local_accounts WHERE user_id=?").get(uid)).toEqual({ n: 0 });
     // The old password no longer signs in.
     await page.waitForLoadState("networkidle");
+    await openPasswordForm(page);
     await page.getByLabel("E-Mail-Adresse").fill(email);
     await page.locator("input[name=password]").fill("ein-langes-passwort");
     await page.getByRole("button", { name: "Anmelden", exact: true }).click();

@@ -3,6 +3,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 // The page behind a reset link: set a new password, then sign in.
 import { useState, type FormEvent } from "react";
 import { BrandMark } from "./brand-mark";
+import { AuthLayout } from "./auth-layout";
 import { useT } from "./i18n";
 import { AppProfilesLink } from "./app-profiles-link";
 
@@ -34,7 +35,7 @@ export default function ResetPassword({ token, confirmed = false }: { token: str
     else setMessage(serverMessage(data.error) || response.statusText);
   };
   return (
-    <main className="login">
+    <AuthLayout>
       <div className="login-brand">
         <BrandMark size={32} />
         flowplan
@@ -89,6 +90,6 @@ export default function ResetPassword({ token, confirmed = false }: { token: str
         )}
         <AppProfilesLink />
       </section>
-    </main>
+    </AuthLayout>
   );
 }
