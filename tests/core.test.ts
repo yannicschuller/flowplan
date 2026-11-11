@@ -1659,3 +1659,23 @@ test("internal forms ask for people and relations; public forms never expose the
   assert.equal(anon.cells.owner, undefined);
   assert.equal(anon.cells.contact, undefined);
 });
+
+test("each copy of a page sits directly after its source, without ties", async () => {
+  const create = async (title: string, parentId?: string) =>
+    ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: page.space_id, title, parentId })) as { id: string }).id;
+  const parent = await create("Kopien");
+  const a = await create("A", parent),
+    b = await create("B", parent);
+  const dup = async (pageId: string) => ((await command(owner, { action: "page.duplicate", pageId })) as { id: string }).id;
+  const first = await dup(a),
+    second = await dup(a),
+    copyOfCopy = await dup(second);
+  const order = (
+    await (await import("../lib/db")).all<{ id: string; position: number }>(
+      "SELECT id,position FROM pages WHERE parent_id=? AND deleted_at IS NULL ORDER BY position,id",
+      parent,
+    )
+  );
+  assert.deepEqual(order.map((p) => p.id), [a, second, copyOfCopy, first, b]);
+  assert.equal(new Set(order.map((p) => p.position)).size, order.length);
+});
