@@ -1,7 +1,7 @@
 import { test, after } from "node:test";
 import { onPostgres } from "./helpers/backend";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -247,13 +247,13 @@ test("an attachment above 10 MB is synced, not refused like a foreign import", {
     const status = await runSpaceGitExport(ben, archive);
     assert.equal(status.last?.error, null, String(status.last?.error));
     assert.equal(status.last?.pushed, true);
-    const dir = mkdtempSync(join(tmpdir(), "flowplan-space-git-clone-"));
-    execFileSync("git", ["clone", "-q", `http://flowplan:secret-token@127.0.0.1:${port}/big.git`, dir]);
-    const scan = execFileSync("git", ["-C", dir, "ls-files"], { encoding: "utf8" }).split("\n").find((name) => name.endsWith("scan.pdf"));
-    assert.ok(scan);
-    assert.equal(statSync(join(dir, scan)).size, size);
+    // "<mode> blob <hash> <size>\t<path>" of every file pushed.
+    const tree = execFileSync("git", ["-C", join(repos, "big.git"), "ls-tree", "-r", "-l", "main"], { encoding: "utf8" });
+    assert.match(tree, new RegExp(`\\s${size}\\t[^\\n]*scan\\.pdf$`, "m"));
   } finally {
     await as(ben)({ action: "space.gitExport", spaceId: archive, enabled: false });
+    rmSync(join(repos, "big.git"), { recursive: true, force: true });
+    rmSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid), { force: true });
   }
 });
 
