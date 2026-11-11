@@ -115,3 +115,19 @@ test("title-only matches (duplicate titles, related pages)", async () => {
   );
   assert.deepEqual(rows.map((r) => r.title).sort(), ["Notizen", "Projektplanung Q3"]);
 });
+
+test("formatting inside a word does not split it", async () => {
+  await page("Formatiert", "<p><strong>Pro</strong>jektmappe und Donau<em>dampf</em>schiff, H<sub>2</sub>O</p><p>Ende</p>");
+  await refreshSearchIndex();
+  assert.deepEqual(await titles("Projektmappe"), ["Formatiert"]);
+  assert.deepEqual(await titles("Donaudampfschiff"), ["Formatiert"]);
+  assert.deepEqual(await titles("H2O"), ["Formatiert"]);
+  // Blocks stay apart.
+  assert.deepEqual(await titles("H2OEnde"), []);
+});
+
+test("short queries ignore the case of letters beyond ASCII", async () => {
+  await page("Speisekammer", "<p>Öl und Essig.</p>");
+  await refreshSearchIndex();
+  for (const q of ["Öl", "öl", "ÖL"]) assert.deepEqual(await titles(q), ["Speisekammer"], q);
+});
