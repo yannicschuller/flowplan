@@ -334,6 +334,7 @@ type PageData = DatabaseData & {
   shareLinks?: ShareLink[];
   publication?: {
     includeChildren: boolean;
+    autoChildren?: boolean;
     count: number;
     allowCopy?: boolean;
     publishedAt?: string | null;

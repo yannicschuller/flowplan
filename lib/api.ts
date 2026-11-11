@@ -2936,8 +2936,9 @@ async function runCommand(
           enabled,
           z.boolean().optional().parse(b.includeChildren) ?? false,
           z.boolean().optional().parse(b.allowCopy) ?? true,
+          z.boolean().optional().parse(b.autoChildren) ?? false,
         );
-        if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? " with subpages" : ""}` });
+        if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? (b.autoChildren === true ? " with subpages, new ones automatically" : " with subpages") : ""}` });
         break;
       }
       case "publication.copy":

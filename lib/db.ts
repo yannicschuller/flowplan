@@ -329,6 +329,11 @@ function migrate(d: DatabaseSync) {
     ["published_at", "TEXT"],
     ["published_by", "TEXT"],
     ["allow_copy", "INTEGER NOT NULL DEFAULT 1"],
+    // New sub-pages join the publication by themselves (lib/publication.ts).
+    // Off for existing publications; an older version ignores the column
+    // and only publishes the stored list (the safe side), so the schema
+    // number stays.
+    ["auto_children", "INTEGER NOT NULL DEFAULT 0"],
   ])
     if (!publicationColumns.some((c) => c.name === column))
       d.exec(`ALTER TABLE publications ADD COLUMN ${column} ${type}`);
