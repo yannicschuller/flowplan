@@ -66,8 +66,12 @@ test("visitors browse the public template gallery and use a template after signi
   );
   await visitorContext.close();
 
-  // Signed in, the same link creates the page in the workspace.
+  // Signed in, the same link creates the page in the workspace – after the
+  // name, the template's to start with (#213).
   await page.goto(`/?useTemplate=${template.id}`);
+  const create = page.getByRole("dialog", { name: "Neue Seite" });
+  await expect(create.getByLabel("Name", { exact: true })).toHaveValue(name);
+  await create.getByLabel("Name", { exact: true }).press("Enter");
   await expect(
     page.getByLabel("Dokumentinhalt", { exact: true }),
   ).toContainText("Was lief gut?");

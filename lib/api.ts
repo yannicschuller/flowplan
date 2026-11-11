@@ -215,6 +215,7 @@ import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
 import { duplicatePageTree } from "./page-tree";
 import { applyStarterTemplate, starterTemplates } from "./starter-templates";
+import { catalogFor } from "./template-catalogs";
 import { templateKeys } from "./template-catalog";
 import {
   requireRow,
@@ -1297,11 +1298,18 @@ async function runCommand(
             .parse(b.kind || "document");
         // Workflows (#168): not when switched off on the instance.
         if (kind === "workflow") await assertWorkflowsEnabled();
+        // From a template (#213): the given title wins; without one the
+        // template's name.
+        const givenTitle = typeof b.title === "string" && b.title.trim() ? b.title : undefined;
+        const starterName =
+          typeof b.starterTemplate === "string" && Object.hasOwn(starterTemplates, b.starterTemplate)
+            ? catalogFor(contentLocale())[b.starterTemplate]?.name
+            : undefined;
         const created = await createPage(
           wid(),
           sid,
           user.id,
-          str.parse(b.title),
+          str.parse(givenTitle ?? savedTemplate?.name ?? starterName ?? b.title),
           kind,
           parent,
           b.aiDatabase !== undefined ? "empty" : z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
@@ -3912,7 +3920,7 @@ import { workflowCommand } from "./workflows/commands";
 import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
 import { assertWorkflowsEnabled, restoreVersion, trashWorkflows, workflowState } from "./workflows/store";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
-import { ct } from "./content-locale";
+import { ct, contentLocale } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";
 import { ensureBlockIds, linkedBlockIds } from "./block-links";
 import { filterAsync, forEachAsync, mapAsync } from "./each-async";

@@ -813,7 +813,7 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "action": Required[Literal["page.create"]],
     "workspaceId": Required[str],
     "spaceId": Required[str],
-    "title": Required[str],
+    "title": str,  # Required unless `templateId` or `starterTemplate` is given: from a template the given title wins, without one the page takes the template's name
     "kind": Literal["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"],  # Default: document
     "parentId": str,  # Parent page in the same space
     "databaseKind": Literal["tasks", "documents", "contacts", "empty"],

@@ -149,14 +149,17 @@ export const pageAppend: NodeImpl = async (ctx) => {
 export const pageCreate: NodeImpl = async (ctx) => {
   const c = ctx.config as { parent: string; title: string; blocks: WorkflowBlock[]; template?: string; tags: string[] };
   const parent = await targetPage(ctx, c.parent, true);
-  const title = renderText(c.title, ctx.scope).trim().slice(0, 500) || "Ohne Titel";
-  if (dryRun(ctx)) return { port: "out", output: { wouldCreate: { parent: parent.id, title, blocks: c.blocks.length } } };
+  // The configured title (placeholders filled) wins over a template's name;
+  // the template's name only when it comes out empty (#213).
+  const rendered = renderText(c.title, ctx.scope).trim().slice(0, 500);
+  const title = rendered || (c.template ? undefined : "Ohne Titel");
+  if (dryRun(ctx)) return { port: "out", output: { wouldCreate: { parent: parent.id, title: title ?? null, ...(c.template ? { template: c.template } : {}), blocks: c.blocks.length } } };
   const created = (await asCommand(ctx, {
     action: "page.create",
     workspaceId: parent.workspace_id,
     spaceId: parent.space_id,
     parentId: parent.id,
-    title,
+    ...(title ? { title } : {}),
     kind: "document",
     ...(c.template ? { templateId: c.template } : {}),
   })) as { id: string };

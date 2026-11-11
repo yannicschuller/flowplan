@@ -177,6 +177,7 @@ const TYPE_KEY_TEXT: Record<string, [string, string]> = {
   "trigger.mail.received:address": ["E-Mail-Eingang", "Inbound address"],
   "notify.email:to": ["An", "To"],
   "notify.person:to": ["Empfänger", "Recipients"],
+  "action.page.create:template": ["Seitenvorlage", "Page template"],
 };
 // i18n-table: 1 – [German, English] pairs (choices)
 const ENUM_TEXT: Record<string, [string, string]> = {
@@ -364,6 +365,7 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
         </Select>
       </Labeled>
     );
+  if (name === "template" && type === "action.page.create") return <PageTemplateSelect id={id} label={label} value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "scope") return <ScopeEditor value={value as Scope} ws={ctx.ws} disabled={ctx.disabled} onChange={onChange} t={t} />;
   // Wave 2 (§6): their own editors.
   if (name === "cases" && type === "logic.switch") return <CasesEditor label={label} value={(value as Case[]) || []} ctx={ctx} onChange={onChange} t={t} />;
@@ -1210,6 +1212,44 @@ function HookBox({ ctx, t, mode }: { ctx: FormContext; t: T; mode: "signed" | "t
         </>
       )}
     </div>
+  );
+}
+
+// The saved document templates of "Create page" by name (stored by id). The
+// configured title wins over the template's name (#213).
+const pageTemplateCache = new Map<string, Promise<{ id: string; name: string }[]>>();
+function PageTemplateSelect({ id, label, value, ctx, onChange, t }: { id: string; label: string; value: string; ctx: FormContext; onChange: (v: string) => void; t: T }) {
+  const [templates, setTemplates] = useState<{ id: string; name: string }[] | null>(null);
+  const workspaceId = ctx.ws.workspaceId;
+  useEffect(() => {
+    if (!workspaceId) return;
+    let live = true;
+    if (!pageTemplateCache.has(workspaceId))
+      pageTemplateCache.set(
+        workspaceId,
+        api<{ id: string; name: string; kind: string }[]>(`/api/templates?workspace=${workspaceId}`)
+          .then((list) => list.filter((x) => x.kind === "document").map(({ id, name }) => ({ id, name })))
+          .catch(() => []),
+      );
+    void pageTemplateCache.get(workspaceId)!.then((r) => live && setTemplates(r));
+    return () => {
+      live = false;
+    };
+  }, [workspaceId]);
+  return (
+    <Labeled id={id} label={label}>
+      <Select id={id} value={value} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{t("Keine", "None")}</option>
+        {templates && value && !templates.some((x) => x.id === value) && <option value={value}>{t("Nicht (mehr) verfügbar", "Not available (any more)")}</option>}
+        {(templates || []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </Select>
+      <small className="muted">
+        {t(
+          "Die Seite bekommt den Titel oben (mit Platzhaltern), auch mit Vorlage; den Namen der Vorlage nur, wenn der Titel leer bleibt.",
+          "The page gets the title above (with placeholders), with a template as well; the template’s name only when the title comes out empty.",
+        )}
+      </small>
+    </Labeled>
   );
 }
 
