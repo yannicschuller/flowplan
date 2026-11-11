@@ -196,3 +196,36 @@ test("tasks of a deleted record leave My tasks and come back with it", async () 
   await run("DELETE FROM doc_tasks WHERE row_id<>'' AND NOT EXISTS (SELECT 1 FROM rows r WHERE r.id=doc_tasks.row_id AND r.page_id=doc_tasks.page_id)");
   assert.ok(!(await one("SELECT 1 FROM doc_tasks WHERE text='Waise'")));
 });
+
+// The further states (#201): in progress, deferred and unknown Obsidian
+// symbols are open tasks; cancelled is closed (not done, no reminder).
+test("in progress, deferred and other symbols stay in My tasks; cancelled leaves it", async () => {
+  const cancelled = `<li data-type="taskItem" data-checked="true" data-status="cancelled"><p>Abgesagt ${mention(ben)}</p></li>`;
+  await sync(
+    anna,
+    `<ul data-type="taskList">${task(`Läuft ${mention(ben)}`, ' data-status="progress"')}${task(`Später ${mention(ben)}`, ' data-status="deferred"')}${task(`Frage ${mention(ben)}`, ' data-symbol="?"')}${cancelled}${task(`Heute fällig ${mention(ben)}`, ` data-status="progress" data-due="${today}"`)}</ul>`,
+  );
+  const open = (await myTasks(ben, wid)).filter((t) => t.pageId === pageId);
+  assert.deepEqual(
+    open.map((t) => [t.text, t.status]).sort(),
+    [["Frage @Ben", "open"], ["Heute fällig @Ben", "progress"], ["Läuft @Ben", "progress"], ["Später @Ben", "deferred"]],
+  );
+  const everything = await myTasks(ben, wid, true);
+  assert.deepEqual(everything.filter((t) => t.text === "Abgesagt @Ben").map((t) => [t.checked, t.status]), [[true, "cancelled"]]);
+  // The morning reminder comes for the task in progress.
+  await run("DELETE FROM task_reminders");
+  await run("DELETE FROM notifications");
+  await processDueTasks(today);
+  assert.deepEqual((await all<{ body: string }>("SELECT body FROM notifications WHERE user_id=?", ben.id)).map((n) => n.body.replace(/ \(.*$/, "")).sort(), ["Heute fällig: Alpha prüfen @Ben", "Heute fällig: Heute fällig @Ben"]);
+  // Ticked off in My tasks: the task in progress is done (its state goes).
+  const running = open.find((t) => t.text === "Läuft @Ben")!;
+  await command(ben, { action: "task.update", pageId, index: running.index, text: running.text, checked: true });
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html;
+  assert.doesNotMatch(html, /data-status="progress"><label><input type="checkbox" checked/);
+  assert.equal((await one<{ status: string | null; checked: number }>("SELECT status,checked FROM doc_tasks WHERE page_id=? AND text='Läuft @Ben'", pageId))!.status, null);
+  // A state set directly.
+  const later = open.find((t) => t.text === "Später @Ben")!;
+  await command(ben, { action: "task.update", pageId, index: later.index, text: later.text, status: "cancelled" });
+  assert.ok(!(await myTasks(ben, wid)).some((t) => t.text === "Später @Ben"));
+  assert.equal((await one<{ status: string }>("SELECT status FROM doc_tasks WHERE page_id=? AND text='Später @Ben'", pageId))!.status, "cancelled");
+});

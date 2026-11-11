@@ -13,6 +13,8 @@ import { MyRecords } from "./my-records";
 import { ListSkeleton } from "./skeleton";
 import { dueLabel, dueState } from "@/lib/task-due-plugin";
 import { dueGroupName, groupByDue } from "@/lib/due-groups";
+import { statusName, type TaskStatus } from "@/lib/task-status";
+import { TaskStatusIcon } from "./task-status-menu";
 
 type Task = {
   pageId: string;
@@ -20,6 +22,8 @@ type Task = {
   index: number;
   text: string;
   checked: boolean;
+  // In progress, deferred, cancelled (#201); older servers send none.
+  status?: TaskStatus;
   due: string | null;
   assigned: boolean;
   journal?: boolean;
@@ -147,6 +151,12 @@ export function MyTasks({
           onChange={(e) => void change(task, { checked: e.target.checked })}
         />
         <span className="my-task-text">{task.text || t("Ohne Text", "No text")}</span>
+        {task.status && task.status !== "open" && task.status !== "done" && !settling.has(key) && (
+          <span className="my-task-status" data-status={task.status}>
+            <TaskStatusIcon status={task.status} />
+            {statusName(t, task.status)}
+          </span>
+        )}
         <button type="button" className="my-task-page" onClick={() => onOpen(task.pageId, task.rowId)}>
           <PageIcon name={task.icon} size={14} />
           {task.title || t("Ohne Titel", "Untitled")}

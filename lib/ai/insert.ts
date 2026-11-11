@@ -8,6 +8,7 @@ import { Plugin, PluginKey, Selection, type EditorState, type Transaction } from
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { markdownToRawHtml } from "../markdown-html";
 import { fenceLanguage } from "../code-languages";
+import { markdownSymbol } from "../task-status";
 import { expandLinkHandles, pageLinkHref, type LinkTarget } from "./links";
 import { cleanAnswer } from "./prompts";
 
@@ -165,7 +166,7 @@ export function selectionText(doc: ProseMirrorNode, from: number, to: number) {
         : type === "listItem"
           ? "- "
           : type === "taskItem"
-            ? `- [${parent?.attrs.checked ? "x" : " "}] `
+            ? `- [${markdownSymbol(parent?.attrs)}] `
             : "";
     lines.push(node.type.name === "codeBlock" ? "```" + fenceLanguage(String(node.attrs.language || "")).replace(/^plaintext$/, "") + "\n" + text + "\n```" : prefix + text);
     return false;

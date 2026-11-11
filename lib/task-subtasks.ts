@@ -1,5 +1,6 @@
-// Ticking off a task ticks off its subtasks too (nested tasks below it).
-// Unticking leaves them as they are, so nothing done gets lost.
+// Ticking off a task ticks off its subtasks too (nested tasks below it);
+// cancelling it cancels its open subtasks (lib/task-status.ts). Unticking
+// leaves them as they are, so nothing done gets lost.
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { AttrStep, Mapping, ReplaceAroundStep } from "@tiptap/pm/transform";
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
@@ -29,9 +30,10 @@ export function checkSubtasks(
   const tr = newState.tr;
   newState.doc.descendants((node, pos) => {
     if (node.type.name !== "taskItem" || !node.attrs.checked || wasChecked.has(pos)) return true;
+    const status = node.attrs.status === "cancelled" ? "cancelled" : null;
     node.descendants((child, offset) => {
       if (child.type.name === "taskItem" && !child.attrs.checked)
-        tr.setNodeMarkup(pos + 1 + offset, undefined, { ...child.attrs, checked: true });
+        tr.setNodeMarkup(pos + 1 + offset, undefined, { ...child.attrs, checked: true, status, symbol: null });
       return true;
     });
     return false;

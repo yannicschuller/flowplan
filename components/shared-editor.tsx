@@ -9,7 +9,7 @@ import {
   MathEditorDialog,
   type MathTarget,
 } from "./math-editor";
-import { documentExtensions, Media, widthStyle } from "@/lib/document-schema";
+import { documentExtensions, FlowTaskItem, Media, widthStyle } from "@/lib/document-schema";
 import { DrawBlock } from "@/lib/draw-block-node";
 import { DrawioBlock } from "@/lib/drawio-node";
 import { mountDrawioPreview } from "@/lib/drawio-preview";
@@ -88,6 +88,9 @@ export default function SharedEditor({
                   };
                 },
               })
+            : e.name === "taskItem"
+            ? // The box names its state in the reader's language (#201).
+              FlowTaskItem.configure({ nested: true, translate: t })
             : e.name === "drawioBlock"
             ? DrawioBlock.extend({
                 // draw.io diagrams show their picture; editing is for members.

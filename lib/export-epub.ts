@@ -58,6 +58,7 @@ th > p, td > p { margin: 0; }
 ul.task-list { list-style: none; padding-left: 1.2em; }
 .task-box { font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif; }
 .task.done > p { color: #666; }
+.task.cancelled > p { text-decoration: line-through; }
 .due { font-size: 0.85em; color: #666; }
 mark { background: #fff3a3; }
 hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }

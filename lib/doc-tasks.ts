@@ -22,6 +22,10 @@ import type { Identity, Page, Row } from "./types";
 import { filterAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { TASK_STATUSES, isClosedStatus, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
+
+// The state as doc_tasks keeps it: NULL for open and done (`checked` says which).
+const storedStatus = (status: TaskStatus) => (isStoredStatus(status) ? status : null);
 
 
 type JsonNode = {
@@ -33,7 +37,10 @@ type JsonNode = {
 export type DocTask = {
   index: number;
   text: string;
+  // Done or cancelled (closed); in progress, deferred and other symbols are open.
   checked: boolean;
+  // The state (lib/task-status.ts), shown in My tasks.
+  status: TaskStatus;
   assignees: string[];
   due: string | null;
 };
@@ -73,7 +80,8 @@ export function extractTasks(json: JsonNode): DocTask[] {
     if (node.type === "taskItem") {
       const { text, assignees } = lineOf(node);
       const due = typeof node.attrs?.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(node.attrs.due) ? node.attrs.due : null;
-      tasks.push({ index: tasks.length, text, checked: !!node.attrs?.checked, assignees, due });
+      const status = taskStatusOf(node.attrs);
+      tasks.push({ index: tasks.length, text, checked: isClosedStatus(status), status, assignees, due });
     }
     for (const child of node.content || []) walk(child);
   };
@@ -105,13 +113,14 @@ export async function syncDocTasks(
     const people = task.assignees.length ? task.assignees : [null];
     for (const assignee of people) {
       await run(
-        "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         id(),
         page.id,
         rowId || "",
         task.index,
         task.text.slice(0, TASK_TEXT_MAX),
         task.checked ? 1 : 0,
+        storedStatus(task.status),
         assignee,
         task.due,
         page.workspace_id,
@@ -154,6 +163,7 @@ type TaskRow = {
   idx: number;
   text: string;
   checked: number;
+  status: string | null;
   assignee: string | null;
   due: string | null;
   updated_at: number;
@@ -164,7 +174,7 @@ type TaskRow = {
 };
 async function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
   const rows = await all<TaskRow>(
-    `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.assignee,t.due,t.updated_at,p.title,p.icon,t.workspace_id,
+    `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.status,t.assignee,t.due,t.updated_at,p.title,p.icon,t.workspace_id,
        (j.id IS NOT NULL) AS journal
      FROM doc_tasks t JOIN pages p ON p.id=t.page_id
      LEFT JOIN pages j ON j.id=p.parent_id AND j.kind='journal' AND p.journal_date IS NOT NULL
@@ -200,6 +210,7 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
       index: row.idx,
       text: row.text,
       checked: !!row.checked,
+      status: taskStatusOf({ checked: !!row.checked, status: row.status }),
       due: row.due,
       assigned: row.assignee === user.id,
       journal: !!row.journal,
@@ -243,6 +254,8 @@ export const taskChangeSchema = z
     text: z.string().max(TASK_TEXT_MAX).optional(),
     key: z.string().min(1).max(64).optional(),
     checked: z.boolean().optional(),
+    // One of the five states (#201); wins over `checked`.
+    status: z.enum(TASK_STATUSES).optional(),
     due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   })
   .refine((change) => change.text !== undefined || change.key !== undefined, { message: "text or key" });
@@ -258,24 +271,28 @@ export async function changeDocTask(user: Identity, input: unknown) {
   const result = (await rewriteDocument(page.id, rowId, user.id, (doc) => {
     let index = -1;
     // Ticking a task off ticks off its subtasks too.
-    const edit = (node: PMNode, tickAll = false): PMNode => {
+    const edit = (node: PMNode, tickAll: boolean | "cancelled" = false): PMNode => {
       if (node.isText || node.isLeaf) return node;
       let attrs = node.attrs;
-      let tick = tickAll;
+      let tick: boolean | "cancelled" = tickAll;
       if (node.type.name === "taskItem") {
         index++;
-        if (tickAll) attrs = { ...node.attrs, checked: true };
+        if (tickAll && !node.attrs.checked) attrs = { ...node.attrs, ...statusAttrs(tickAll === "cancelled" ? "cancelled" : "done") };
         if (index === change.index) {
           const json = node.toJSON() as JsonNode;
           if (!sameTask(lineOf(json).text, change))
             throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
           found = true;
+          // Ticked off from My tasks or a widget: done (also a task in
+          // progress); unticked: open. A state given wins.
+          const status = change.status ?? (change.checked === undefined ? undefined : change.checked ? "done" : "open");
+          const before = taskStatusOf(node.attrs);
           attrs = {
             ...node.attrs,
-            ...(change.checked !== undefined ? { checked: change.checked } : {}),
+            ...(status !== undefined && status !== before ? statusAttrs(status) : {}),
             ...(change.due !== undefined ? { due: change.due } : {}),
           };
-          if (change.checked === true) tick = true;
+          if (status !== undefined && isClosedStatus(status)) tick = status === "cancelled" ? "cancelled" : true;
         }
       }
       const children: PMNode[] = [];
@@ -388,13 +405,14 @@ export async function backfillDocTasks() {
       for (const task of tasks.slice(0, 2000))
         for (const assignee of task.assignees.length ? task.assignees : [null])
           await run(
-            "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             id(),
             page.id,
             rowId || "",
             task.index,
             task.text.slice(0, TASK_TEXT_MAX),
             task.checked ? 1 : 0,
+            storedStatus(task.status),
             assignee,
             task.due,
             page.workspace_id,

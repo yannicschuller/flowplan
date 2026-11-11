@@ -12,6 +12,10 @@ import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { subtasksPlugin } from "./task-subtasks";
+import { cycleTaskStatus, taskStatusPlugin } from "./task-status-commands";
+import { isStoredStatus, isTaskSymbol, statusHtmlAttrs, statusName, taskStatusOf, taskSymbolOf } from "./task-status";
+import type { TaskItemOptions } from "@tiptap/extension-task-item";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import {
   Table,
   TableCell,
@@ -332,10 +336,115 @@ export const SyncedBlock = Node.create({
 });
 // Tasks remember the day they were first carried over in a journal, so a day
 // that only holds carried tasks counts as untouched.
-export const FlowTaskItem = TaskItem.extend({
-  // Ticking a task off ticks off its subtasks (lib/task-subtasks.ts).
+// The states beyond open and done (#201, lib/task-status.ts): `status` and
+// an Obsidian `symbol`, shown as data-status / data-symbol on the item.
+type FlowTaskItemOptions = TaskItemOptions & {
+  // Right click or long press on the box: the menu of the five states.
+  onStatusMenu: ((pos: number, anchor: DOMRect) => void) | null;
+  // The interface language for the box's accessible name.
+  translate: (de: string, en: string) => string;
+};
+export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
+  addOptions() {
+    return {
+      ...(this.parent?.() as TaskItemOptions),
+      onStatusMenu: null,
+      translate: (_de: string, en: string) => en.split("||")[0],
+    };
+  },
+  // Ticking a task off ticks off its subtasks (lib/task-subtasks.ts); a
+  // state that no longer fits the box goes (lib/task-status-commands.ts).
   addProseMirrorPlugins() {
-    return [...(this.parent?.() || []), subtasksPlugin()];
+    return [...(this.parent?.() || []), subtasksPlugin(), taskStatusPlugin()];
+  },
+  // The box names the state ("In Arbeit: Angebot schreiben"); in progress
+  // is "mixed" for screen readers. Right click or a long press opens the
+  // menu of the states while editing.
+  addNodeView() {
+    const parent = this.parent?.();
+    if (!parent) return null;
+    const options = this.options;
+    return (props) => {
+      const view = parent(props) as {
+        dom: HTMLElement;
+        update?: (node: PMNode, ...rest: never[]) => boolean;
+      };
+      const label = view.dom.querySelector<HTMLElement>(":scope > label");
+      const box = label?.querySelector<HTMLInputElement>("input");
+      const hidden = label?.querySelector<HTMLElement>("span");
+      const describe = (node: PMNode) => {
+        if (!box) return;
+        const status = taskStatusOf(node.attrs);
+        const symbol = taskSymbolOf(node.attrs);
+        const text = node.firstChild?.textContent.trim() || options.translate("Leere Aufgabe", "Empty task");
+        const name = `${statusName(options.translate, status)}${symbol ? ` [${symbol}]` : ""}: ${text}`;
+        box.setAttribute("aria-label", name);
+        if (hidden) hidden.textContent = name;
+        box.indeterminate = status === "progress";
+      };
+      describe(props.node);
+      if (label && box) {
+        let timer: ReturnType<typeof setTimeout> | null = null,
+          pressed = 0;
+        const open = () => {
+          const pos = typeof props.getPos === "function" ? props.getPos() : undefined;
+          if (typeof pos !== "number" || !options.onStatusMenu || !props.editor.isEditable) return false;
+          options.onStatusMenu(pos, box.getBoundingClientRect());
+          return true;
+        };
+        // A right click leaves the selection alone (no toolbar over the menu).
+        label.addEventListener("mousedown", (event) => {
+          if (event.button !== 0 && options.onStatusMenu && props.editor.isEditable) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        });
+        label.addEventListener("contextmenu", (event) => {
+          // A long press opened it already (Android fires both).
+          if (Date.now() - pressed < 800 || open()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        });
+        const stop = () => {
+          if (timer) clearTimeout(timer);
+          timer = null;
+        };
+        label.addEventListener(
+          "touchstart",
+          () => {
+            stop();
+            timer = setTimeout(() => {
+              timer = null;
+              if (open()) pressed = Date.now();
+            }, 500);
+          },
+          { passive: true },
+        );
+        label.addEventListener("touchmove", stop, { passive: true });
+        label.addEventListener("touchend", stop);
+        label.addEventListener("touchcancel", stop);
+        // The tap that ends a long press does not tick the task.
+        label.addEventListener(
+          "click",
+          (event) => {
+            if (Date.now() - pressed < 800) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          },
+          true,
+        );
+      }
+      const update = view.update;
+      if (update)
+        view.update = (node, ...rest) => {
+          const kept = update(node, ...rest);
+          if (kept) describe(node);
+          return kept;
+        };
+      return view as ReturnType<typeof parent>;
+    };
   },
   // Enter at the very start of a task adds an empty task above it; the task
   // itself keeps its date and its carried-over mark (splitting would hand
@@ -364,6 +473,13 @@ export const FlowTaskItem = TaskItem.extend({
         }
         return parent.Enter ? parent.Enter(props) : false;
       },
+      // Ctrl/Cmd+L (#201): a line becomes a task, a task goes to its next
+      // state. Taken while editing, so the browser's address bar keeps out.
+      "Mod-l": () => {
+        if (!this.editor.isEditable) return false;
+        cycleTaskStatus(this.editor.state, this.editor.view.dispatch);
+        return true;
+      },
     };
   },
   addAttributes() {
@@ -379,6 +495,29 @@ export const FlowTaskItem = TaskItem.extend({
           attributes.journalSince
             ? { "data-journal-since": attributes.journalSince }
             : {},
+      },
+      // In progress, cancelled or deferred (lib/task-status.ts); null: open
+      // or done as `checked` says. Rendered from the state it gives with
+      // `checked`, so an older client's tick never shows two states.
+      status: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-status");
+          return isStoredStatus(value) ? value : null;
+        },
+        renderHTML: (attributes) => statusHtmlAttrs(attributes),
+      },
+      // An Obsidian symbol Flowplan has no state for ("[?]", "[!]"): the
+      // task is open and is written back with it (rendered with `status`).
+      symbol: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-symbol");
+          return isTaskSymbol(value) ? value : null;
+        },
+        renderHTML: () => ({}),
       },
       // Due date of the task (YYYY-MM-DD), shown as a chip in the editor.
       // A new task made with Enter starts without one.

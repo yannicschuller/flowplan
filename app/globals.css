@@ -1454,6 +1454,140 @@ kbd,
     text-decoration-color: transparent;
   }
 }
+/* The further states of a task (#201, lib/task-status.ts): in progress a
+   half-filled box, cancelled a grey box with ×, deferred a box with →, an
+   unknown Obsidian symbol ("[?]") small in an open box. The same boxes in
+   the state menu and "My tasks" (.task-status-icon). Long presses open the
+   menu, not the system's callout. */
+.document-editor ul[data-type="taskList"] li > label {
+  position: relative;
+  -webkit-touch-callout: none;
+}
+.document-editor ul[data-type="taskList"] li:is([data-status], [data-symbol]) > label input[type="checkbox"],
+.task-status-icon {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--blue);
+  border-radius: 4px;
+  background: var(--bg);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+/* Where the browser's own box sits (its margin), so the text stays in line. */
+.document-editor ul[data-type="taskList"] li:is([data-status], [data-symbol]) > label input[type="checkbox"] {
+  margin: 3px 3px 3px 4px;
+}
+.document-editor ul[data-type="taskList"] li[data-symbol] > label input[type="checkbox"],
+.task-status-icon[data-status="open"] {
+  border-color: var(--muted);
+}
+.document-editor ul[data-type="taskList"] li[data-status="progress"] > label input[type="checkbox"],
+.task-status-icon[data-status="progress"] {
+  background: linear-gradient(90deg, var(--blue) 50%, var(--bg) 50%);
+}
+.task-status-icon[data-status="done"] {
+  background: var(--blue) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.2l2.6 2.6L12 5.4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+.document-editor ul[data-type="taskList"] li[data-status="cancelled"] > label input[type="checkbox"],
+.task-status-icon[data-status="cancelled"] {
+  border-color: var(--muted);
+}
+.document-editor ul[data-type="taskList"] li:is([data-status="cancelled"], [data-status="deferred"]) > label::after,
+.document-editor ul[data-type="taskList"] li[data-symbol]::before,
+.task-status-icon:is([data-status="cancelled"], [data-status="deferred"])::after {
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font: 700 13px/1 var(--font-sans, system-ui), sans-serif;
+  z-index: 1;
+  pointer-events: none;
+}
+.document-editor ul[data-type="taskList"] li:is([data-status="cancelled"], [data-status="deferred"]) > label::after {
+  top: 3px;
+  inset-inline-start: 4px;
+}
+.document-editor ul[data-type="taskList"] li[data-status="cancelled"] > label::after,
+.task-status-icon[data-status="cancelled"]::after {
+  content: "×";
+  color: var(--muted);
+  font-size: 15px;
+}
+.document-editor ul[data-type="taskList"] li[data-status="deferred"] > label::after,
+.task-status-icon[data-status="deferred"]::after {
+  content: "→";
+  color: var(--blue);
+  font-size: 11px;
+}
+.document-editor ul[data-type="taskList"] li[data-symbol] {
+  position: relative;
+}
+.document-editor ul[data-type="taskList"] li[data-symbol]::before {
+  content: attr(data-symbol);
+  top: 6px;
+  inset-inline-start: 4px;
+  color: var(--secondary);
+  font-size: 10px;
+}
+.task-status-icon {
+  position: relative;
+  flex-shrink: 0;
+}
+/* Over the whole box, its border included. */
+.task-status-icon[data-status]::after {
+  top: -1.5px;
+  inset-inline-start: -1.5px;
+}
+/* Cancelled: closed like done, greyer, its box not the accent colour. */
+.document-editor ul[data-type="taskList"] li[data-status="cancelled"] > div > :not(ul, ol) {
+  text-decoration-color: var(--muted);
+  opacity: 0.8;
+}
+/* The state menu: a zero-size anchor on the box, the items with their box. */
+.task-status-anchor {
+  position: fixed;
+  pointer-events: none;
+}
+.task-status-menu {
+  min-width: 190px;
+}
+.task-status-item {
+  position: relative;
+}
+.task-status-name {
+  flex: 1;
+}
+.task-status-symbol {
+  font: 11px/1 var(--font-mono, ui-monospace), monospace;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.task-status-check {
+  display: flex;
+  color: var(--blue);
+}
+.task-status-item:not([data-state="checked"])::after {
+  content: "";
+  width: 14px;
+}
+.task-status-hint {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
 .document-editor table {
   border-collapse: collapse;
   table-layout: fixed;
@@ -15651,6 +15785,23 @@ label.task-due {
   height: 17px;
   accent-color: var(--blue);
 }
+/* The state of a task in progress, deferred or cancelled (#201). */
+.my-task-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.my-task-status .task-status-icon {
+  width: 13px;
+  height: 13px;
+}
+.my-task-status .task-status-icon::after {
+  width: 13px;
+  height: 13px;
+}
 .my-task-page {
   display: inline-flex;
   align-items: center;
@@ -15676,9 +15827,16 @@ label.task-due {
   width: 100%;
   cursor: pointer;
 }
+/* A task with its state (#201): one more column, after the text. */
+.my-tasks-group li:has(> .my-task-status) {
+  grid-template-columns: auto 1fr auto auto auto 24px;
+}
 @container main (max-width: 700px) {
   .my-tasks-group li {
     grid-template-columns: auto 1fr auto 24px;
+  }
+  .my-tasks-group li:has(> .my-task-status) {
+    grid-template-columns: auto 1fr auto auto 24px;
   }
   .my-task-page {
     grid-column: 2 / -1;

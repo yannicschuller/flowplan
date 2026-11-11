@@ -8,6 +8,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { all, audit, id, lockFor, one, refuseKeeping, run, nowText, sql } from "./db";
 import { documentSchema } from "./document-schema";
+import { taskStatusOf } from "./task-status";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
 import { HttpError } from "./auth";
@@ -160,7 +161,7 @@ function resetTasks(doc: PMNode): PMNode {
     node.forEach((child) => children.push(walk(child)));
     const attrs =
       node.type.name === "taskItem"
-        ? { ...node.attrs, checked: false, journalSince: null }
+        ? { ...node.attrs, checked: false, status: null, symbol: null, journalSince: null }
         : node.attrs;
     return node.type.create(attrs, children, node.marks);
   };
@@ -422,7 +423,8 @@ export async function journalReview(journal: Page, from: string, to: string) {
     doc.descendants((node) => {
       if (node.type.name !== "taskItem") return true;
       const text = node.firstChild?.textContent.trim() || node.textContent.trim();
-      if (node.attrs.checked && text) done.push({ text, date, dayId: day.id });
+      // Done, not cancelled (#201): cancelled tasks are closed without being done.
+      if (taskStatusOf(node.attrs) === "done" && text) done.push({ text, date, dayId: day.id });
       return !node.attrs.checked;
     });
     if (date === days.at(-1)?.journal_date)
