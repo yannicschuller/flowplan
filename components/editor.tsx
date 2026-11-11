@@ -13,7 +13,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { journalDayQuery, localDate as todayLocal } from "@/lib/journal-links";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
-import { atOpensMention } from "@/lib/mention-trigger";
+import { atOpensMention, typedMenu } from "@/lib/mention-trigger";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
@@ -409,6 +409,9 @@ export default function DocumentEditor({
   // The mention dialog was opened by typing "@" (not from the "/" menu):
   // Escape, or Enter without a hit, types the "@" and the search instead.
   const referenceByAt = useRef(false);
+  // The key of the last keydown: Android's on-screen keyboards report
+  // "Unidentified", so "@" and "/" open their menus from the text (#207).
+  const lastKey = useRef("");
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
   const [voice, setVoice] = useState(false);
@@ -864,12 +867,43 @@ export default function DocumentEditor({
           return true;
         },
         // Double-clicking a photo opens it for marking up.
+        // "@" and "/" typed without a key that names them – Android's
+        // on-screen keyboards, also inside an IME composition (#207): the
+        // menus open as for the key. The "@" goes into the text first (the
+        // keyboard has put it there) and comes out again once the
+        // composition is over, as if the dialog had caught the key.
+        handleTextInput: (view, from, to, text) => {
+          const menu = editable ? typedMenu(view.state, from, to, text, lastKey.current) : null;
+          lastKey.current = "";
+          if (menu === "slash") {
+            setSlash({ from, mode: "inline", query: "" });
+            setSlashActive(0);
+            setSlashRecents(readSlashRecents());
+          } else if (menu === "mention") {
+            referenceByAt.current = true;
+            setReferences(true);
+            const drop = (attempt: number) =>
+              window.setTimeout(() => {
+                if (view.isDestroyed) return;
+                if (view.composing && attempt < 40) return drop(attempt + 1);
+                const { selection, doc: content } = view.state;
+                const head = selection.from;
+                if (selection.empty && head > 0 && content.textBetween(head - 1, head) === "@")
+                  view.dispatch(view.state.tr.delete(head - 1, head));
+                // Not found: Escape must not type a second "@".
+                else referenceByAt.current = false;
+              }, attempt ? 50 : 0);
+            drop(0);
+          }
+          return false;
+        },
         handleDoubleClickOn: (_view, pos, node) => {
           if (!editable || node.type.name !== "image") return false;
           setAnnotate({ pos, src: node.attrs.src, original: node.attrs.original, annotations: node.attrs.annotations });
           return true;
         },
         handleKeyDown: (_view, event) => {
+          lastKey.current = event.key;
           // ⌘J / Ctrl+J: the writing assistant for the selection or line.
           if (
             (event.metaKey || event.ctrlKey) &&
