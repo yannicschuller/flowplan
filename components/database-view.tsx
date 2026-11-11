@@ -795,8 +795,9 @@ export default function DatabaseView({
         related,
         data.relatedSchemas,
         new Date(filterNow),
+        { members, sprints: data.database.settings?.sprints },
       ),
-    [data, fields, view, query, filterNow],
+    [data, fields, view, query, filterNow, members],
   );
   const selected = data.rows.find((r) => r.id === rowId);
   // A related record on top of another view (#192): it closes with its

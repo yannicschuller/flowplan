@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { all, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
-import { requirePage } from "./permissions";
+import { isGuest, requirePage } from "./permissions";
+import { databaseSettings } from "./database-settings";
 import { assertRowAccess } from "./row-access";
 import { relatedData } from "./related-data";
 import { queryRows } from "./database";
@@ -159,6 +160,18 @@ export async function moveRow(
         "",
         related.related,
         related.relatedSchemas,
+        new Date(),
+        // People and sprints by name, as the view showed them (guests know
+        // only their own name, as in bootstrap).
+        {
+          members: (await isGuest(user, page.workspace_id))
+            ? [{ id: user.id, name: user.name }]
+            : await all<{ id: string; name: string }>(
+                "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
+                page.workspace_id,
+              ),
+          sprints: (await databaseSettings(pageId)).sprints,
+        },
       ).map((r) => r.id)
     : orderedRowIds(rows, view);
   let columns: { key: string; ids: string[] }[] | undefined,

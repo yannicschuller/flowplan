@@ -152,6 +152,11 @@ export function computedCellsDetailed(
     });
   return { cells: result, diagnostics };
 }
+export type QueryLabels = {
+  members?: readonly { id: string; name: string }[];
+  sprints?: readonly { id: string; name: string }[];
+};
+const personTypes = new Set<Field["type"]>(["person", "created_by", "updated_by"]);
 export function queryRows(
   rows: Row[],
   fields: Field[],
@@ -160,12 +165,42 @@ export function queryRows(
   related: Record<string, Row[]> = {},
   schemas: Record<string, Field[]> = {},
   now: Date = new Date(),
+  // Names for people and sprints, so they sort and are found by name.
+  labels: QueryLabels = {},
 ) {
   const ranks = rowOrderRanks(view.rowOrder),
     filters = effectiveFilterGroup(view);
   // Search and sorting read formatted text (#126) as plain text.
   const formatted = new Set(fields.filter((f) => isFormattedText(f, fields)).map((f) => f.id));
   const textOf = (id: string, v: unknown) => (formatted.has(id) ? toPlain(cellText(v)) : cellText(v));
+  // People, related records and sprints by the names the table shows
+  // (lib/database-groups.ts); undefined for other properties.
+  const members = new Map(labels.members?.map((m) => [m.id, m.name])),
+    sprints = new Map(labels.sprints?.map((m) => [m.id, m.name])),
+    byId = new Map(fields.map((f) => [f.id, f]));
+  const titles = new Map<string, Map<string, string>>();
+  const relatedTitles = (page: string) => {
+    if (!titles.has(page)) {
+      const key = schemas[page]?.[0]?.id || "title";
+      titles.set(page, new Map((related[page] || []).map((r) => [r.id, toPlain(cellText(r.cells[key]))])));
+    }
+    return titles.get(page)!;
+  };
+  const labelOf = (id: string, v: unknown): string | undefined => {
+    const f = byId.get(id);
+    const names =
+      f?.type === "relation"
+        ? relatedTitles(f.relationPage || "")
+        : f && personTypes.has(f.type) && labels.members
+          ? members
+          : f?.type === "sprint" && labels.sprints
+            ? sprints
+            : undefined;
+    if (!names) return undefined;
+    const ids = Array.isArray(v) ? v : v === null || v === undefined || v === "" ? [] : [v];
+    return ids.map((x) => names.get(String(x)) ?? "").filter(Boolean).join(", ");
+  };
+  const sortText = (id: string, v: unknown) => labelOf(id, v) ?? textOf(id, v);
   return rows
     .map((r) => ({
       ...r,
@@ -177,19 +212,8 @@ export function queryRows(
         (!query ||
           r.preview?.text.toLowerCase().includes(query.toLowerCase()) ||
           Object.entries(r.cells).some(([id, v]) =>
-            textOf(id, v).toLowerCase().includes(query.toLowerCase()),
-          ) ||
-          fields.some(
-            (f) =>
-              f.type === "relation" &&
-              Array.isArray(r.cells[f.id]) &&
-              (related[f.relationPage || ""] || []).some(
-                (target) =>
-                  (r.cells[f.id] as unknown[]).includes(target.id) &&
-                  cellText(target.cells.title)
-                    .toLowerCase()
-                    .includes(query.toLowerCase()),
-              ),
+            textOf(id, v).toLowerCase().includes(query.toLowerCase()) ||
+            !!labelOf(id, v)?.toLowerCase().includes(query.toLowerCase()),
           )),
     )
     .sort((a, b) => {
@@ -199,7 +223,7 @@ export function queryRows(
         const n =
           typeof av === "number" && typeof bv === "number"
             ? av - bv
-            : textOf(s.field, av).localeCompare(textOf(s.field, bv), "de", { numeric: true });
+            : sortText(s.field, av).localeCompare(sortText(s.field, bv), "de", { numeric: true });
         if (n) return s.direction === "asc" ? n : -n;
       }
       return (
