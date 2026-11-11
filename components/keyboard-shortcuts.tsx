@@ -7,7 +7,7 @@
 // the page tree, the editor, presentations and the split view are fixed and
 // listed for reference.
 import { useEffect, useRef, useState } from "react";
-import { ArrowCounterClockwise, PencilSimple, Warning, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, MagnifyingGlass, PencilSimple, Warning, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, reportError } from "./ui";
 import {
@@ -25,8 +25,12 @@ import {
   type KeymapOverrides,
   type ShortcutAction,
 } from "@/lib/keymap";
+import { shortcutMatches } from "@/lib/shortcut-search";
 
 type T = (de: string, en: string) => string;
+// The German and English names as well, for the search (#204).
+const inGerman: T = (de) => de;
+const inEnglish: T = (_de, en) => en;
 
 export function actionLabel(action: ShortcutAction, t: T): string {
   switch (action) {
@@ -221,7 +225,9 @@ export function KeyboardShortcuts({
     // A recorded combination that another action already uses.
     [pending, setPending] = useState<{ action: ShortcutAction; combo: string; others: ShortcutAction[] } | null>(null),
     [saving, setSaving] = useState(false),
-    [announce, setAnnounce] = useState("");
+    [announce, setAnnounce] = useState(""),
+    [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const recordRef = useRef(recording);
   recordRef.current = recording;
   useEffect(() => setMac(isMacPlatform()), []);
@@ -229,6 +235,7 @@ export function KeyboardShortcuts({
     if (!open) {
       setRecording(null);
       setPending(null);
+      setQuery("");
     }
   }, [open]);
   const map = resolveKeymap(overrides);
@@ -278,18 +285,93 @@ export function KeyboardShortcuts({
   }, [recording, mac, overrides]);
   const editable = !!onSave;
   const changed = SHORTCUT_ACTIONS.some((a) => overrides[a] !== undefined);
+  // The search (#204): by name in the UI language, German and English, or
+  // by keys – the own combinations included (map).
+  const searching = query.trim() !== "";
+  const actions = SHORTCUT_ACTIONS.filter(
+    (action) =>
+      !searching ||
+      action === recording ||
+      action === pending?.action ||
+      shortcutMatches(query, {
+        labels: [
+          actionLabel(action, t),
+          actionLabel(action, inGerman),
+          actionLabel(action, inEnglish),
+          ...(overrides[action] !== undefined ? [t("eigene", "custom")] : []),
+        ],
+        keys: map[action].flatMap((c) => [formatCombo(c, mac), c]),
+      }),
+  );
+  const fixedGroups = fixedShortcutGroups(t, ai, mac),
+    germanGroups = searching ? fixedShortcutGroups(inGerman, ai, mac) : fixedGroups,
+    englishGroups = searching ? fixedShortcutGroups(inEnglish, ai, mac) : fixedGroups;
+  const groups = fixedGroups
+    .map((group, g) => ({
+      ...group,
+      items: group.items.filter(
+        (item, i) =>
+          !searching ||
+          shortcutMatches(query, {
+            labels: [item.label, germanGroups[g]?.items[i]?.label ?? "", englishGroups[g]?.items[i]?.label ?? ""],
+            keys: item.keys,
+          }),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+  const nothing = searching && actions.length === 0 && groups.length === 0;
   return (
-    <Modal open={open} onClose={onClose} title={t("Tastenkürzel", "Keyboard shortcuts")} className="shortcuts-dialog" wide>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("Tastenkürzel", "Keyboard shortcuts")}
+      className="shortcuts-dialog"
+      wide
+      onOpenAutoFocus={(e) => {
+        // The search field on desktops; on touch screens the close button as
+        // before, so the on-screen keyboard does not pop up.
+        if (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) return;
+        e.preventDefault();
+        searchRef.current?.focus();
+      }}
+      onEscapeKeyDown={(e) => {
+        // Escape first empties the search field, the next one closes.
+        if (query && document.activeElement === searchRef.current) {
+          e.preventDefault();
+          setQuery("");
+        }
+      }}
+    >
+      <div className="shortcut-search">
+        <MagnifyingGlass size={15} aria-hidden="true" />
+        <input
+          ref={searchRef}
+          type="search"
+          aria-label={t("Tastenkürzel durchsuchen", "Search keyboard shortcuts")}
+          placeholder={t("Aktion oder Tasten suchen …", "Search actions or keys …")}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </div>
+      <div className="shortcuts-body">
+      {nothing && (
+        <p className="muted shortcut-empty" role="status">
+          {t("Keine Tastenkürzel gefunden", "No keyboard shortcuts found")}
+        </p>
+      )}
       <div className="shortcut-groups">
+        {(actions.length > 0 || !searching) && (
         <section className="shortcut-group shortcut-group-editable" aria-label={t("Überall", "Everywhere")}>
           <h3>{t("Überall", "Everywhere")}</h3>
-          {editable && (
+          {editable && !searching && (
             <p className="muted small shortcut-intro">
               {t("Mit „Ändern“ legst du eine eigene Kombination fest – sie gilt für dein Konto auf allen Geräten.", "With “Change” you set a combination of your own – it applies to your account on all devices.")}
             </p>
           )}
           <dl>
-            {SHORTCUT_ACTIONS.map((action) => {
+            {actions.map((action) => {
               const conflicts = conflictsOf(map, action, mac);
               const own = overrides[action] !== undefined;
               const isRecording = recording === action;
@@ -396,7 +478,7 @@ export function KeyboardShortcuts({
               );
             })}
           </dl>
-          {editable && changed && (
+          {editable && changed && !searching && (
             <button
               type="button"
               className="button compact shortcut-reset-all"
@@ -408,7 +490,8 @@ export function KeyboardShortcuts({
             </button>
           )}
         </section>
-        {fixedShortcutGroups(t, ai, mac).map((group) => (
+        )}
+        {groups.map((group) => (
           <section key={group.title} className="shortcut-group" aria-label={group.title}>
             <h3>
               {group.title} <span className="shortcut-fixed">{t("fest", "fixed")}</span>
@@ -434,6 +517,7 @@ export function KeyboardShortcuts({
           ? t("Angezeigt für Apple-Tastaturen: ⌘ Befehl, ⌥ Wahl, ⇧ Umschalt, ⌃ Control.", "Shown for Apple keyboards: ⌘ Command, ⌥ Option, ⇧ Shift, ⌃ Control.")
           : t("Auf dem Mac gilt ⌘ statt Ctrl (Strg) und ⌥ statt Alt.", "On a Mac ⌘ applies instead of Ctrl and ⌥ instead of Alt.")}
       </p>
+      </div>
     </Modal>
   );
 }
