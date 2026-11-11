@@ -4590,8 +4590,24 @@ mark[data-color] {
 }
 mark[data-color] {
   border-radius: 3px;
-  padding: 0 1px;
+  /* Room around the letters, also for raised ones (a²), on every line of
+     a highlight that wraps. */
+  padding: 0.12em 0.18em 0.05em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
+/* Dark theme: the light tints glared as bright boxes with dark letters.
+   Each palette colour (lib/text-marks.ts) gets a muted, see-through
+   counterpart with the theme's light text; the stored colour stays the same. */
+[data-theme="dark"] mark[data-color="#e2e1dd"] { background-color: rgba(190, 186, 178, 0.26) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#efd9c7"] { background-color: rgba(180, 120, 80, 0.32) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#ffd8a8"] { background-color: rgba(240, 140, 30, 0.3) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#ffec99"] { background-color: rgba(230, 190, 20, 0.3) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#c3eecb"] { background-color: rgba(60, 170, 90, 0.3) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#c5e0fa"] { background-color: rgba(60, 140, 230, 0.32) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#e3d3fa"] { background-color: rgba(150, 100, 230, 0.32) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#fcc9dc"] { background-color: rgba(230, 80, 140, 0.3) !important; color: var(--text) !important; }
+[data-theme="dark"] mark[data-color="#ffcaca"] { background-color: rgba(230, 70, 70, 0.3) !important; color: var(--text) !important; }
 /* Resizable images in the editor. */
 .document-editor [data-resize-container] {
   max-width: 100%;
