@@ -17,6 +17,7 @@ import { ensureRowDocument, requireRow } from "./row-documents";
 import { journalLocked } from "./journal-extras";
 import { notificationOn } from "./notification-kinds";
 import { rememberTaskTarget } from "./notification-targets";
+import { mayHear } from "./comment-recipients";
 import type { Identity, Page, Row } from "./types";
 import { filterAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
@@ -125,10 +126,9 @@ export async function syncDocTasks(
         !known.has(`${assignee}\u0000${task.text}`) &&
         !notified.has(assignee)
       ) {
-        const person = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", assignee);
-        if (!person) continue;
-        const groups = (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", assignee)).map((g) => g.group_id);
-        if (!(await pageRole({ ...person, groups, isAdmin: false }, page))) continue;
+        // Only who may read the page and, in a record, the record (a
+        // private record stays private): like My tasks and mentions.
+        if (!(await mayHear(assignee, page, rowId))) continue;
         notified.add(assignee);
         await run(
           "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
@@ -301,6 +301,7 @@ export async function processDueTasks(today = localToday()) {
      LIMIT 500`,
     today,
   );
+  let sent = 0;
   for (const task of due) {
     await run(
       "INSERT INTO task_reminders(user_id,page_id,text,due) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
@@ -309,6 +310,11 @@ export async function processDueTasks(today = localToday()) {
       task.text,
       today,
     );
+    // Nobody hears of a task they may not read (a page they cannot open, a
+    // private record): the same check as My tasks and the assignment notice.
+    const page = await one<Page>("SELECT * FROM pages WHERE id=?", task.page_id);
+    if (!page || !(await mayHear(task.assignee, page, task.row_id || null))) continue;
+    sent++;
     const notificationId = id();
     await run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
@@ -321,7 +327,7 @@ export async function processDueTasks(today = localToday()) {
     // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
     await rememberTaskTarget(notificationId, { type: "doc", pageId: task.page_id, rowId: task.row_id || null, key: taskKey(task.text) });
   }
-  return due.length;
+  return sent;
 }
 function localToday() {
   const d = new Date();
