@@ -34155,6 +34155,9 @@ html.native-app body {
 .ink-shape-bar {
   transform: translateX(-50%);
   flex-wrap: nowrap;
+  /* The fill swatches open above the bar (.ink-shape-fills): the selection
+     bar's scrolling would clip them, and a click went to the shape below. */
+  overflow: visible;
 }
 .ink-shape-bar .ink-swatch {
   width: 22px;
