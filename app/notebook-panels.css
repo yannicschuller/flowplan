@@ -818,7 +818,8 @@
   justify-content: flex-end;
   gap: 9px;
   margin: 18px calc(-1 * var(--pd-x)) 0;
-  padding: 14px var(--pd-x);
+  /* Less below: the dialog's thick bottom border adds the rest (#205). */
+  padding: 14px var(--pd-x) calc(14px - var(--modal-edge, 0px));
   border-top: 1px solid var(--border);
   background: var(--modal-bg, var(--bg));
 }

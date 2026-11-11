@@ -17,7 +17,14 @@
     width: 100%;
     max-width: none;
     max-height: min(92dvh, calc(100dvh - var(--safe-top) - 12px));
+    /* The plain border, not the dialog's thick one (globals.css, #205): the
+       grab handle sits right at the top edge, and phones show scrollbars
+       only while scrolling, over the content. */
+    --modal-edge: 0px;
+    border-color: var(--border);
+    border-top-width: 1px;
     border-bottom-width: 0;
+    outline: none;
     border-radius: 16px 16px 0 0;
     --modal-pad-top: 0px;
     padding: 0 calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));

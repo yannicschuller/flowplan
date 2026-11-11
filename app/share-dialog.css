@@ -671,13 +671,15 @@ button.sh-value:hover {
 /* Footer: stays at the dialog's bottom edge. */
 .sh-footer {
   position: sticky;
-  bottom: calc(-1 * var(--sh-pad));
+  /* Down to the dialog's scroll edge, above its thick bottom border
+     (--modal-edge, app/globals.css .modal, #205). */
+  bottom: calc(var(--modal-edge, 0px) - var(--sh-pad));
   z-index: 5;
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin: 20px calc(-1 * var(--sh-pad)) calc(-1 * var(--sh-pad));
-  padding: 12px var(--sh-pad) var(--sh-pad);
+  margin: 20px calc(-1 * var(--sh-pad)) calc(var(--modal-edge, 0px) - var(--sh-pad));
+  padding: 12px var(--sh-pad) calc(var(--sh-pad) - var(--modal-edge, 0px));
   background: var(--bg);
   border-top: 1px solid var(--border);
 }

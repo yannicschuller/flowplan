@@ -3517,9 +3517,14 @@ tr:hover .row-open,
    dialog's scrolled content instead of the window (#75). The variants
    (side panel, full page, bottom sheets) reset inset and margin.
    --modal-pad-top follows the top padding of each variant: the sticky
-   heading reaches up through it (#139). */
+   heading reaches up through it (#139). --modal-pad is the room between
+   the box's edge and its content, --modal-edge the part of it above and
+   below the scroll area that belongs to the box's border (see below). */
 .modal {
-  --modal-pad-top: 23px;
+  --modal-pad: 23px;
+  --modal-edge: 0px;
+  --modal-pad-top: calc(var(--modal-pad) - var(--modal-edge));
+  --modal-pad-bottom: calc(var(--modal-pad) - var(--modal-edge));
   --modal-bg: var(--bg);
   position: fixed;
   z-index: 51;
@@ -3532,11 +3537,32 @@ tr:hover .row-open,
   border-radius: 12px;
   background: var(--modal-bg);
   border: 1px solid var(--border);
-  padding: 23px;
+  padding: var(--modal-pad);
   padding-top: var(--modal-pad-top);
+  padding-bottom: var(--modal-pad-bottom);
   box-shadow: var(--shadow);
   animation: fade-in 0.12s ease;
   outline: none;
+}
+/* All four corners stay round while the dialog scrolls (#205). The box is
+   its own scroll container (the sticky heading, the sheet drag, sticky
+   parts of records and fixed menus inside rely on that), and Chromium
+   paints a classic scrollbar (Windows, Linux) square over the rounded
+   corners of its own scroll container. The scrollbar runs between the top
+   and bottom border, so those are as thick as the radius (transparent,
+   showing the dialog's colour) and the padding gives that room back: the
+   content stays where it was. The outline draws the 1px line along the
+   rounded edge instead of the border. No clip-path: it would also cut off
+   the fixed menus and views inside (text menu, a meeting in full view).
+   Full pages and side panels have square corners; the bottom sheets on
+   phones (mobile-ux.css) and the shortcuts dialog (own scrolling list)
+   keep the plain border. */
+.modal:not(.modal-full, .modal-side, .drawio-dialog, .shortcuts-dialog) {
+  --modal-edge: 11px;
+  border-color: transparent;
+  border-block-width: calc(1px + var(--modal-edge));
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
 }
 .modal-wide {
   width: min(760px, calc(100% - 32px));
@@ -6500,9 +6526,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     font-size: 12px;
   }
   .modal {
-    --modal-pad-top: 20px;
-    padding: 20px;
-    padding-top: var(--modal-pad-top);
+    --modal-pad: 20px;
     max-height: 90dvh;
     width: calc(100% - 24px);
   }
@@ -6922,10 +6946,14 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
    box comes from components/document-outline.tsx (--dialog-*). Phones keep
    the card above the bottom edge. */
 @media (min-width: 901px) {
+  /* --dialog-top and -bottom are the edges of the scroll area: less the
+     dialog's thick top and bottom border (--modal-edge, #205). */
   .modal .document-outline {
-    top: calc(var(--dialog-top, 0px) + 110px);
+    top: calc(var(--dialog-top, 0px) - var(--modal-edge, 0px) + 110px);
     right: calc(var(--dialog-right, 0px) + 20px);
-    max-height: calc(100dvh - var(--dialog-top, 0px) - var(--dialog-bottom, 0px) - 130px);
+    max-height: calc(
+      100dvh - var(--dialog-top, 0px) - var(--dialog-bottom, 0px) + 2 * var(--modal-edge, 0px) - 130px
+    );
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--bg);

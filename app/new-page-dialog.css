@@ -232,10 +232,12 @@
 /* The buttons stick to the bottom edge of the dialog. */
 .np-footer {
   position: sticky;
-  bottom: calc(-1 * var(--np-pad));
+  /* Down to the dialog's scroll edge, above its thick bottom border
+     (--modal-edge, app/globals.css .modal, #205). */
+  bottom: calc(var(--modal-edge, 0px) - var(--np-pad));
   z-index: 5;
-  margin: auto calc(-1 * var(--np-pad)) calc(-1 * var(--np-pad));
-  padding: 12px var(--np-pad) var(--np-pad);
+  margin: auto calc(-1 * var(--np-pad)) calc(var(--modal-edge, 0px) - var(--np-pad));
+  padding: 12px var(--np-pad) calc(var(--np-pad) - var(--modal-edge, 0px));
   background: var(--modal-bg, var(--bg));
   border-top: 1px solid var(--border);
 }
