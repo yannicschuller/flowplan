@@ -24,7 +24,7 @@ import { auditAsync } from "./audit";
 const d = () => db.dialect;
 import { isEncryptedPage } from "./e2ee-server";
 import { isGuest, memberRole, pageRole, requireMember, requirePage, spaceRole } from "./permissions";
-import { lockedPageIds } from "./journal-extras";
+import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { validDateValue } from "./date-values";
 import {
   cleanName,
@@ -494,6 +494,9 @@ export async function pagePropertiesCommand(user: Identity, action: string, inpu
       const b = z.object({ workspaceId: uuid, pageIds: z.array(uuid).min(1).max(500), addTags: tagRefs.optional(), removeTags: tagRefs.optional() }).parse(input);
       await requireMember(user, b.workspaceId);
       const pages = await mapAsync(b.pageIds, async (pid) => await requirePage(user, pid, true));
+      // Like one page at a time (the command's write check): not behind a
+      // journal PIN the person has not entered.
+      for (const page of pages) await requireUnlocked(user, page);
       if (pages.some((p) => p.workspace_id !== b.workspaceId)) throw new HttpError(400, "Seiten aus einem anderen Arbeitsbereich.");
       if (pages.some((p) => p.locked)) throw new HttpError(409, "Diese Seite ist gesperrt.");
       for (const page of pages) {
@@ -810,6 +813,9 @@ export async function applyPortableMeta(
   if (!meta || await isEncryptedPage(page)) return;
   const scope = scopeOf(page);
   const mayCreateTags = options.createTags ?? (user ? (await canCreateTags(user, page.workspace_id, page.space_id)) : true);
+  // Tags for the whole workspace ("marked" archives) only from who may
+  // create them (owners); everyone else gets them in the page's space.
+  const workspaceTags = options.definitionsScope === "marked" && (!user || (await canCreateTags(user, page.workspace_id, null)));
   const tagIds: string[] = [...(await pageMeta(page.id)).tags];
   for (const tag of meta.tags || []) {
     const name = cleanTagName(tag.name);
@@ -823,7 +829,7 @@ export async function applyPortableMeta(
       ))?.id ?? null;
     if (!tagId && mayCreateTags)
       try {
-        tagId = await resolveTag(null, options.definitionsScope === "marked" && !tag.space ? { ...scope, spaceId: null } : scope, name, tag.color);
+        tagId = await resolveTag(null, workspaceTags && !tag.space ? { ...scope, spaceId: null } : scope, name, tag.color);
       } catch {
         tagId = null;
       }
@@ -1111,10 +1117,13 @@ export async function importTaxonomy(
   // A space's own ones go to the space it was restored as (#136); without
   // that space they are left out (its pages bring the ones they use).
   const scopeFor = (spaceId: string | undefined) => (spaceId ? (spaceMap?.get(spaceId) ?? undefined) : null);
+  // Tags for the whole workspace only from its owners; the pages of the
+  // others bring theirs into their space (applyPortableMeta).
+  const workspaceTags = await canCreateTags(user, workspaceId, null);
   if (await canCreateTags(user, workspaceId))
     for (const tag of taxonomy.tags) {
       const spaceId = scopeFor(tag.spaceId);
-      if (spaceId === undefined || await scopeClash("page_tags", workspaceId, spaceId, cleanTagName(tag.name))) continue;
+      if (spaceId === undefined || (spaceId === null && !workspaceTags) || await scopeClash("page_tags", workspaceId, spaceId, cleanTagName(tag.name))) continue;
       try {
         await resolveTag(null, { workspaceId, spaceId }, tag.name, tag.color);
       } catch {
