@@ -333,7 +333,7 @@ function LookPreview({ theme, fonts, mode, label }: { theme: WorkspaceTheme; fon
         <span className="look-preview-title">{t("Frühjahrsplanung", "Spring planning")}</span>
         <p>{t("Nächste Schritte und Termine", "Next steps and dates")}</p>
         <span className="look-preview-link">{t("Zur Roadmap", "Open the roadmap")}</span>
-        <code>status = &quot;bereit&quot;</code>
+        <code>{"const ready = true;"}</code>
         <span className="look-preview-actions">
           <span className="look-preview-button">{t("Teilen", "Share")}</span>
           <span className="look-preview-tag">{t("In Arbeit", "In progress")}</span>
