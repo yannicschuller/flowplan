@@ -32,7 +32,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useEditorEditable } from "./editor-editable";
 import { Meeting } from "@/lib/meeting-schema";
 import { MEETING_PRESETS, MEETING_PRESET_LABELS, circled, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";
-import { MeetingRecorder, getJson, postJson, systemAudioSupport, uploadMeetingFiles, type RecorderState } from "@/lib/meeting-recorder";
+import { MeetingRecorder, activeRecorder, getJson, postJson, systemAudioSupport, uploadMeetingFiles, type RecorderState } from "@/lib/meeting-recorder";
 import { formatTimestamp } from "@/lib/transcript";
 import { streamAiFrom } from "@/lib/ai/client";
 import type { User } from "@/lib/types";
@@ -99,6 +99,8 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
   const [answer, setAnswer] = useState<{ text: string; sids: string[] } | null>(null);
   const [asking, setAsking] = useState(false);
   const [guest, setGuest] = useState("");
+  const [focus, setFocus] = useState("");
+  const focusTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const root = useRef<HTMLDivElement>(null);
   const audio = useRef<HTMLAudioElement>(null);
   const files = useRef<HTMLInputElement>(null);
@@ -132,7 +134,13 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     const timer = setInterval(() => void load(), 3000);
     return () => clearInterval(timer);
   }, [status, load]);
-  useEffect(() => () => recorder?.cancel(), [recorder]);
+  // A recording that runs on while this view is drawn again.
+  useEffect(() => {
+    const running = recorder || activeRecorder(meetingId);
+    if (!running) return;
+    if (!recorder) setRecorder(running);
+    return running.subscribe(setRecording);
+  }, [recorder, meetingId]);
 
   // ---- Citation chips: hover and click (they are document content) ----
   const segmentElement = useCallback((sid: string) => root.current?.querySelector<HTMLElement>(`[data-meeting-part="transcript"] [data-segment="${CSS.escape(sid)}"]`) || null, []);
@@ -143,8 +151,10 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
         const el = segmentElement(sid);
         if (!el) return;
         el.scrollIntoView({ block: "center", behavior: "smooth" });
-        el.classList.add("meeting-segment-flash");
-        setTimeout(() => el.classList.remove("meeting-segment-flash"), 2400);
+        // Highlighted by a rule, not a class: the editor owns the passage's DOM.
+        setFocus(sid);
+        clearTimeout(focusTimer.current);
+        focusTimer.current = setTimeout(() => setFocus(""), 2600);
         // Kept audio plays from there.
         const session = Number(el.getAttribute("data-session")) || 1;
         const track = (el.getAttribute("data-track") || "me") as MeetingTrack;
@@ -224,7 +234,6 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       rowId: context.rowId,
       consent,
       system: system.supported,
-      onState: setRecording,
       onError: context.onError,
     });
     try {
@@ -586,7 +595,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
             </span>
           ) : upload !== null ? (
             <span className="muted meeting-record-state">{t(`Wird hochgeladen … ${Math.round(upload * 100)} %`, `Uploading … ${Math.round(upload * 100)} %`)}</span>
-          ) : canEdit && transcription ? (
+          ) : panel === "consent" ? null : canEdit && transcription ? (
             <>
               <button type="button" className="button primary meeting-start" onClick={() => void begin()}>
                 <Microphone size={14} /> {recorded ? t("Weiter aufnehmen", "Continue recording") : t("Aufnahme starten", "Start recording")}
@@ -646,6 +655,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
         {tab === "transcript" && transcriptEmpty && <p className="muted meeting-empty">{t("Noch kein Transkript.", "No transcript yet.")}</p>}
         {tab === "agenda" && <p className="muted meeting-agenda-hint">{t("Eigene Notizen und Agenda – vor, während und nach der Besprechung; sie fließen in die Zusammenfassung ein.", "Your own notes and agenda – before, during and after the meeting; they go into the summary.")}</p>}
       </div>
+      {focus && <style>{`.meeting-block [data-segment="${CSS.escape(focus)}"]{background:color-mix(in srgb,var(--blue) 14%,var(--bg))}`}</style>}
       <NodeViewContent className="meeting-content" />
       {hover && (
         <div className="meeting-cite-popover" contentEditable={false} style={{ left: hover.x, top: hover.y }} role="tooltip">

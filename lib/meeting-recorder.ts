@@ -78,6 +78,11 @@ async function systemStream(): Promise<{ stream: MediaStream | null; reason?: st
   return { stream: new MediaStream([audio]) };
 }
 
+// Running recordings by meeting: the block's view may be drawn again (the
+// editor rebuilt, the page opened again) while the recording goes on.
+const active = new Map<string, MeetingRecorder>();
+export const activeRecorder = (meetingId: string) => active.get(meetingId) || null;
+
 type Piece = { track: MeetingTrack; index: number; blob: Blob };
 export type RecorderState = { phase: "starting" | "recording" | "paused" | "stopping" | "uploading" | "done"; elapsedMs: number; pending: number; offline: boolean };
 
@@ -105,13 +110,25 @@ export class MeetingRecorder {
       rowId?: string | null;
       consent: boolean;
       system: boolean;
-      onState: (state: RecorderState) => void;
+      onState?: (state: RecorderState) => void;
       onError: (message: string) => void;
     },
   ) {}
 
+  private listeners = new Set<(state: RecorderState) => void>();
+  // The view that shows this recording now; answers a function to stop listening.
+  subscribe(listener: (state: RecorderState) => void) {
+    this.listeners.add(listener);
+    listener(this.state());
+    return () => void this.listeners.delete(listener);
+  }
+  state(): RecorderState {
+    return { phase: this.phase, elapsedMs: this.elapsed(), pending: this.queue.length, offline: this.offline };
+  }
   private emit() {
-    this.options.onState({ phase: this.phase, elapsedMs: this.elapsed(), pending: this.queue.length, offline: this.offline });
+    const state = this.state();
+    this.options.onState?.(state);
+    for (const listener of this.listeners) listener(state);
   }
   elapsed() {
     if (!this.startedAt) return 0;
@@ -166,6 +183,7 @@ export class MeetingRecorder {
     this.startedAt = Date.now();
     for (const recorder of this.recorders.values()) recorder.start(MEETING_CHUNK_SECONDS * 1000);
     this.phase = "recording";
+    active.set(this.options.meetingId, this);
     window.addEventListener("online", this.online);
     this.timer = setInterval(() => this.emit(), 500);
     this.emit();
@@ -256,10 +274,12 @@ export class MeetingRecorder {
     if (Object.values(parts).some((n) => !n)) throw new Error(serverMessage("In der Aufnahme ist nichts angekommen."));
     const status = await postJson(`/api/meetings/${this.options.meetingId}/finish`, { session: this.session, parts, durationMs, language });
     this.phase = "done";
+    active.delete(this.options.meetingId);
     this.emit();
     return status;
   }
   cancel() {
+    active.delete(this.options.meetingId);
     for (const r of this.recorders.values()) if (r.state !== "inactive") r.stop();
     this.release();
     clearInterval(this.timer);

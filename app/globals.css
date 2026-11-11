@@ -23156,6 +23156,8 @@ h3 .block-reactions {
 }
 .api-token-form label.api-token-ai {
   display: flex;
+  flex-direction: row;
+  align-self: center;
   align-items: center;
   gap: 6px;
   min-height: 34px;
@@ -34807,11 +34809,19 @@ html.native-app body {
   flex-wrap: wrap;
   gap: 6px;
 }
-.meeting-consent-check {
+.meeting-block .meeting-consent .meeting-consent-check {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 0;
   font-weight: 550;
+  text-align: start;
+}
+.meeting-block .meeting-consent .meeting-consent-check input {
+  width: auto;
+  margin: 0;
 }
 .meeting-record {
   display: flex;

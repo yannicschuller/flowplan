@@ -390,3 +390,24 @@ test("Markdown export carries the meeting with chips and transcript", async () =
   assert.match(markdown, /Punkt ①/);
   assert.match(markdown, /`01:05` \*\*Ada:\*\* Hallo/);
 });
+
+test("guests read a meeting only on a page shared with them; private spaces stay private", async () => {
+  const guest = await person("Gina");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "viewer");
+  await run("INSERT INTO workspace_guests VALUES(?,?)", wid, guest.id);
+  const { pageId, meetingId } = await pageWithMeeting("Geteilt");
+  await meetings.startMeetingSession(ada, { meetingId, pageId, tracks: ["me"] });
+  await assert.rejects(() => meetings.meetingStatus(guest, meetingId), /Berechtigung|nicht gefunden/);
+  await run("INSERT INTO grants(resource_id,user_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,?)", pageId, guest.id, "viewer", "page", wid);
+  assert.equal((await meetings.meetingStatus(guest, meetingId)).status, "recording");
+  await assert.rejects(() => meetings.startMeetingSession(guest, { meetingId, pageId, tracks: ["me"] }), /Berechtigung/);
+  // A meeting in Ada's private space: Ben, a member, sees nothing.
+  const privateSpace = id();
+  await run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", ada.id);
+  const secret = await createPage(wid, privateSpace, ada.id, "Personalgespräch");
+  const secretMeeting = id();
+  const html = meetingHtml({ meetingId: secretMeeting, title: "1:1" });
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), secret);
+  await meetings.startMeetingSession(ada, { meetingId: secretMeeting, pageId: secret, tracks: ["me"] });
+  await assert.rejects(() => meetings.meetingStatus(ben, secretMeeting), /Berechtigung|nicht gefunden/);
+});
