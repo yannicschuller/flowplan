@@ -1713,7 +1713,14 @@ async function runCommand(
       }
       case "page.delete": {
         const p = await write();
-        const subtree = await descendants(p.id);
+        // Sub-pages already in the trash stay there with their own date, so
+        // restoring this page does not bring them back (lib/trash.ts).
+        const trashed = new Set((await all<{ id: string }>(
+          "WITH RECURSIVE tree(id) AS (SELECT id FROM pages WHERE id=? UNION ALL SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id) SELECT p.id FROM pages p JOIN tree t ON t.id=p.id WHERE p.deleted_at IS NOT NULL",
+          p.id,
+        )).map((r) => r.id));
+        const subtree = (await descendants(p.id)).filter((child) => !trashed.has(child));
+        const deletedAt = nowText();
         // Every page that goes along: editable, and behind no journal PIN
         // the person has not entered (a journal further down).
         await forEachAsync(subtree, async (child) => await requireUnlocked(user, await requirePage(user, child, true, true)));
@@ -1728,7 +1735,7 @@ async function runCommand(
           await run("DELETE FROM share_links WHERE root_id=?", child);
           await run("DELETE FROM share_link_pages WHERE page_id=?", child);
           await run(
-            "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
+            "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", deletedAt,
             child,
           );
         }
