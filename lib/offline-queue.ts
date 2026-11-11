@@ -136,6 +136,17 @@ export function mergeChange(
     ? { send, version: current.version }
     : { skip: true };
 }
+// Answers after which a waiting change stays in the queue for the next
+// flush instead of being discarded: the proxy while the app restarts (502,
+// 503, 504 – what api() in components/ui.tsx calls transient and queues the
+// change for), a timeout and a rate limit. 423 (the instance moves) is a
+// final answer (lib/auth.ts checkOrigin).
+const RETRY_STATUSES = new Set([408, 429, 502, 503, 504]);
+export const retryLater = (status: number) => RETRY_STATUSES.has(status);
+// The conflicts once one is resolved, from the list as it is now: a flush
+// may have added others while resolving waited for the server.
+export const withoutConflict = (list: Conflict[], resolved: Conflict) =>
+  list.filter((c) => c.change.id !== resolved.change.id);
 export function queueKey(userId: string) {
   return `flowplan-offline-queue:${userId}`;
 }

@@ -7,6 +7,8 @@ import {
   mergeChange,
   queueKey,
   queueableActions,
+  retryLater,
+  withoutConflict,
   type Conflict,
   type QueuedChange,
 } from "@/lib/offline-queue";
@@ -40,12 +42,15 @@ async function post(body: Record<string, unknown>, key: string) {
     endedSession("/api/command", 401);
     throw new NotYet();
   }
+  // The server briefly unreachable: sent again later, not discarded.
+  if (retryLater(response.status)) throw new NotYet();
   if (!response.ok)
     throw new HttpFailure(serverMessage(result.error) || tr("Fehler", "Error"), response.status);
   return result;
 }
 async function currentRows(pageId: string): Promise<Row[]> {
   const response = await fetch(`/api/pages/${pageId}`, { cache: "no-store" });
+  if (retryLater(response.status)) throw new NotYet();
   if (!response.ok) throw new HttpFailure(tr("Seite fehlt.", "Page missing."), response.status);
   return (await response.json()).rows || [];
 }
@@ -257,7 +262,6 @@ export function useOfflineQueue({
   }, [flush]);
   const resolve = useCallback(
     async (conflict: Conflict, keepMine: boolean) => {
-      const rest = conflicts.filter((c) => c.change.id !== conflict.change.id);
       if (keepMine) {
         const { change } = conflict;
         const current = (await currentRows(change.pageId)).find(
@@ -280,10 +284,11 @@ export function useOfflineQueue({
             templateId: null,
           }, newIdempotencyKey());
       }
-      storeConflicts(rest);
+      // From the list as it is now: a flush may have added conflicts.
+      storeConflicts((current) => withoutConflict(current, conflict));
       await onSynced();
     },
-    [conflicts, storeConflicts, onSynced],
+    [storeConflicts, onSynced],
   );
   return { queue, conflicts, syncing, enqueue, flush, resolve };
 }
