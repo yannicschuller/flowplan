@@ -2,6 +2,48 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.9.3 – 2026-11-11
+
+- Ink ends at the edge of the page ([9b54ba6](https://github.com/yannicschuller/flowplan/commit/9b54ba63cbcc44ce2e44fe0c031b1b6926e29929))
+- Tests: whole-megabyte quota in the template quota test ([5df9652](https://github.com/yannicschuller/flowplan/commit/5df96522e1f6e6aee40117f460b5351ba4b2268e))
+- Help docs: restyle existing notebook text ([8bfe3ec](https://github.com/yannicschuller/flowplan/commit/8bfe3ec3374c406740effb15f580b625b7ac43b8))
+- Notebook text: edit the look of existing text boxes ([a75a402](https://github.com/yannicschuller/flowplan/commit/a75a40242ad1d903011a9724026af6c2ffa99e61))
+- Due date pill: emoji and date side by side again where the pill is a label ([65fed36](https://github.com/yannicschuller/flowplan/commit/65fed36aca8fbe862b45e96c649b994bc093c3eb))
+- Notebook dialogs: radio groups as choice buttons, captions left above their field ([1309fb1](https://github.com/yannicschuller/flowplan/commit/1309fb1941514fe005cd371ed6931e3d7c9a4d03))
+- Help docs: notebook tools, shapes, lasso, pictures, audio, overview and presenting ([6b13559](https://github.com/yannicschuller/flowplan/commit/6b135593bbc1c188833b739019b58ee6376d6f3c))
+- French: formal address and "par ex." in the new notebook texts; account merge covers sticker, template and sheet-trash owners ([d0a2cb0](https://github.com/yannicschuller/flowplan/commit/d0a2cb0c35d591538d5f026fcb132156ca95aecc))
+- Slash menu on iPhones: placed in the visible area, scrolls by touch ([dcb7323](https://github.com/yannicschuller/flowplan/commit/dcb73234be0e06ae34a8949c0019b2fc9ffc62a3))
+- Ask AI: name the journal-day column with AS, PostgreSQL refuses a bare "day" ([ae98ef4](https://github.com/yannicschuller/flowplan/commit/ae98ef43728c0fa5375345eabc1c02882c4da503))
+- Notebooks: own template layout as a segmented control in the paper dialog ([6bb1c6b](https://github.com/yannicschuller/flowplan/commit/6bb1c6b53eafcbd64b9dc851abb0b2b86a27f046))
+- Workflows: picking a placeholder no longer takes the builder down in newer Chromium (#182) ([976d124](https://github.com/yannicschuller/flowplan/commit/976d124610c5995fc9238963282d2250a55fe1f9))
+- Notebooks: pictures, stickers and own paper templates ([bc7d380](https://github.com/yannicschuller/flowplan/commit/bc7d380e41d8421872d07826f282dfd828070a76))
+- Notebook audio: record while writing, play back in step with the ink ([93987cf](https://github.com/yannicschuller/flowplan/commit/93987cf6816b6e2cc0388b94b0dcae5e72057fa7))
+- Help docs: notebook PDF insert, zoom, pen, fonts, GoodNotes import, AI, widget ([6bb5f29](https://github.com/yannicschuller/flowplan/commit/6bb5f29bd439a25694d5067d86e7c3b46f37c54f))
+- Ink README: notebook organising commands ([d594c95](https://github.com/yannicschuller/flowplan/commit/d594c9553754f16bf465cbaf7fd53d05455e2c1a))
+- Notebooks: page overview, contents, links and presenting with follow mode ([94e9119](https://github.com/yannicschuller/flowplan/commit/94e91199e1d700158e7931876a8253cd92b1945d))
+- Notebook ink: editable shapes, shape tool, ruler, set square and compass ([e60dc59](https://github.com/yannicschuller/flowplan/commit/e60dc59273f5e45b93d275bea34ec7f6afcbc49e))
+- Notebooks: sheet titles, bookmarks, links, contents, trash and transfer (server) ([d7244ef](https://github.com/yannicschuller/flowplan/commit/d7244eff28b9d51bedd036b209fbaf90e460339b))
+- Notebook: redesigned paper dialog and tool panels, favourite pens, eraser modes ([c24e2ba](https://github.com/yannicschuller/flowplan/commit/c24e2bae92b0a7098609ae3c2894bb38cc692b82))
+- Notebook lasso: tap select, corner scale, rotate, style, cut/paste across sheets, AI handwriting to text ([e2db2d3](https://github.com/yannicschuller/flowplan/commit/e2db2d3864aa2fbbf041501732703cb355532d18))
+- Web Push without the legacy url.parse() (#195) ([ab1e75b](https://github.com/yannicschuller/flowplan/commit/ab1e75bc8b419d540d026fd5033feef6f51315a3))
+- Server: one Yjs instance, no localStorage warning on Node.js 25+ (#194) ([5213ea4](https://github.com/yannicschuller/flowplan/commit/5213ea4d9c60fe843707c83c111acdb7aeed7315))
+- Server log: the version first, the setup link without the token (#194) ([9e5afd6](https://github.com/yannicschuller/flowplan/commit/9e5afd64186623b45f489c16b9e2fc515c16d5d2))
+- Records from databases: hidden properties stay out of the list ([b5c601c](https://github.com/yannicschuller/flowplan/commit/b5c601cd2d452c9ff2878d1dc6618b66462a2ee2))
+- My tasks: redesign records from databases; centred due pills; no overflow on board cards ([7e7bf7c](https://github.com/yannicschuller/flowplan/commit/7e7bf7c27c3bd5a01edfb496b666691214381c10))
+- Help docs: regenerated (moving from GoodNotes) ([61c8944](https://github.com/yannicschuller/flowplan/commit/61c8944501804c40ef4e3d93b72fde3b7ba89de9))
+- GoodNotes import: PDF exports become notebooks, .goodnotes refused with what to do ([62b1296](https://github.com/yannicschuller/flowplan/commit/62b1296c54dc7881839aa5fe9c5909473fe569ee))
+- Tasks widget: "My tasks" includes the records I am assigned to ([660ff5b](https://github.com/yannicschuller/flowplan/commit/660ff5be80421fc17ee9c282a3390fbc29b1ec93))
+- Notebook ink: free pen width, own colours, text size and typeface ([dd032e2](https://github.com/yannicschuller/flowplan/commit/dd032e2b60c029f63e06fda4f8854aff069e910e))
+- Ask AI: newest journal days for "the last …"; handwriting and file text reach the AI ([84ad86c](https://github.com/yannicschuller/flowplan/commit/84ad86cc403d2488364228d498a41bec2c614509))
+- Notebooks: smooth two-finger pinch zoom anchored at the fingers, two-finger pan ([0e3f258](https://github.com/yannicschuller/flowplan/commit/0e3f258c6a009ffc61837502fb000a421e4aba9d))
+- Toast in dark mode: a raised dark card, the shortcut in the toast's colour ([4750c13](https://github.com/yannicschuller/flowplan/commit/4750c13fcd325cd13abaeabc43bee9e5185c00c1))
+- Docker: PUID/PGID without user:, like linuxserver.io (#193) ([9970c6a](https://github.com/yannicschuller/flowplan/commit/9970c6a0e1975217003fa7c06fee995444d525ae))
+- Notebooks: insert a PDF before the first sheet, after any sheet or at the end ([c2ba950](https://github.com/yannicschuller/flowplan/commit/c2ba9508aab7d7bf07e22cc5eb7159f716ec1df3))
+- Help docs: PUID/PGID and user: for the data folder (#193) ([be434a2](https://github.com/yannicschuller/flowplan/commit/be434a22c36829810da0d0aeb87945c4298376d3))
+- Docker: run as any UID/GID, or as PUID/PGID when started as root (#193) ([72ceab2](https://github.com/yannicschuller/flowplan/commit/72ceab2b1526230d87eaf2bb50c0b93eda8488f3))
+- Keyboard: the filled strip below the docked toolbar takes the taps ([35b57d9](https://github.com/yannicschuller/flowplan/commit/35b57d9c59aaf4d0eae841e881e0c31d1ade8303))
+- Fill the strip between the docked toolbar and the keyboard ([a50d76f](https://github.com/yannicschuller/flowplan/commit/a50d76f2f5e465ac84389645309055853a4c7060))
+
 ## v0.9.2 – 2026-11-10
 
 - Visual baselines from ubuntu-latest ([89eb007](https://github.com/yannicschuller/flowplan/commit/89eb0071bd690ded43e178c3e3bbcca3d35b4cb3))
