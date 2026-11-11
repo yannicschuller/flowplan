@@ -96,6 +96,7 @@ const editorLabels: Record<string, [string, string]> = {
   ai: ["KI-Schreibassistent", "AI writing assistant"],
   foldSection: ["Abschnitt (in der Überschrift) oder aufklappbaren Block ein- oder ausklappen", "Collapse or expand the section (in the heading) or the toggle"],
   blockLink: ["Link zum Block kopieren", "Copy link to block"],
+  taskStatus: ["Aufgabe anlegen oder ihren Status wechseln", "Make a task or change its status"],
 };
 function conflictText(conflict: Conflict, t: T) {
   if (conflict.kind === "action")
@@ -139,6 +140,7 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Text zentrieren", "Centre the text"), keys: [k("Mod+Shift+E")] },
         { label: t("Fußnote", "Footnote"), keys: [k("Mod+Alt+F")] },
         { label: t("Textkommentar", "Text comment"), keys: [k("Mod+Alt+M")] },
+        { label: t("Zeile zur Aufgabe machen, dann Status wechseln: offen → in Arbeit → erledigt", "Turn the line into a task, then change its status: open → in progress → done"), keys: [k("Mod+L")] },
         { label: t("Block verschieben", "Move the block"), keys: [k("Mod+Shift+ArrowUp"), k("Mod+Shift+ArrowDown")] },
         { label: t("Abschnitt (in der Überschrift) oder aufklappbaren Block ein- oder ausklappen", "Collapse or expand the section (in the heading) or the toggle"), keys: [k("Mod+Alt+Enter")] },
         { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Shift+Z")] },

@@ -391,9 +391,19 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
           options.onStatusMenu(pos, box.getBoundingClientRect());
           return true;
         };
+        // A right click leaves the selection alone (no toolbar over the menu).
+        label.addEventListener("mousedown", (event) => {
+          if (event.button !== 0 && options.onStatusMenu && props.editor.isEditable) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        });
         label.addEventListener("contextmenu", (event) => {
           // A long press opened it already (Android fires both).
-          if (Date.now() - pressed < 800 || open()) event.preventDefault();
+          if (Date.now() - pressed < 800 || open()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
         });
         const stop = () => {
           if (timer) clearTimeout(timer);
