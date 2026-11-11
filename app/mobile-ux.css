@@ -293,7 +293,8 @@ label.hit-check {
   .collection-nav-menu {
     width: 44px;
     height: 44px;
-  }  /* The page bar: 44 px per tool; the saving state keeps its icon. */
+  }
+  /* The page bar: 44 px per tool; the saving state keeps its icon. */
   .page-top-actions {
     gap: 0;
   }
