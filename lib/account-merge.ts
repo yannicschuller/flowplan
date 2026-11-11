@@ -121,6 +121,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "notebook_sheet_trash.deleted_by": "move",
   "notebook_stickers.user_id": "move",
   "notebook_templates.created_by": "move",
+  // Faces uploaded for a workspace's look (lib/workspace-fonts.ts).
+  "workspace_fonts.created_by": "move",
   "page_tags.created_by": "move",
   "page_property_defs.created_by": "move",
   "document_authors.user_id": "move",

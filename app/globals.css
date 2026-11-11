@@ -15,6 +15,12 @@
   --blue-light: #ecebfc;
   --accent-strong: #2c2fb5;
   --on-accent: #ffffff;
+  /* Focus of fields and the selected table cells: from the accent too, so
+     a workspace's own accent (#196, lib/workspace-theme.ts) changes them. */
+  --focus-border: #8ab4f4;
+  --focus-ring: #3b3fd81a;
+  --cell-selection: #3b3fd81f;
+  --primary-hover: #2468cf;
   --signal: #f0663a;
   --shadow: 0 12px 40px #1d1a1414;
   --radius: 10px;
@@ -25,6 +31,8 @@
     "Noto Serif SC", serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, "PingFang SC",
     monospace;
+  /* Pages set in "Serif"; a workspace's heading face takes its place. */
+  --font-page-serif: Georgia, serif;
   font-family: var(--font-ui);
   font-feature-settings: "ss01", "cv05";
   color-scheme: light;
@@ -164,8 +172,8 @@ input:focus,
 textarea:focus,
 :is(select, .fp-select):focus,
 .fp-select:focus-within {
-  border-color: #8ab4f4;
-  box-shadow: 0 0 0 3px #3b3fd81a;
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 input[type="checkbox"] {
   accent-color: var(--blue);
@@ -278,7 +286,7 @@ kbd,
   border-color: var(--blue);
 }
 .button.primary:hover {
-  background: #2468cf;
+  background: var(--primary-hover);
 }
 .button.compact {
   padding: 6px 10px;
@@ -1229,7 +1237,7 @@ kbd,
 }
 .font-serif .document-editor,
 .font-serif .page-title {
-  font-family: Georgia, serif;
+  font-family: var(--font-page-serif);
 }
 .font-mono .document-editor {
   font-family: var(--font-mono);
@@ -1465,7 +1473,7 @@ kbd,
   font-weight: 600;
 }
 .document-editor .selectedCell:after {
-  background: #3b3fd81f;
+  background: var(--cell-selection);
   position: absolute;
   inset: 0;
   content: "";
@@ -7064,8 +7072,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 }
 .rich-text-input:focus,
 .rich-text-input.ProseMirror-focused {
-  border-color: #8ab4f4;
-  box-shadow: 0 0 0 3px #3b3fd81a;
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 .rich-text-input.loading {
   color: var(--secondary);
@@ -21122,7 +21130,7 @@ h3 .block-reactions {
   color: var(--accent-strong);
 }
 .record-toggle:has(input:focus-visible) {
-  box-shadow: 0 0 0 3px #3b3fd81a;
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 .record-toggle input {
   width: 15px;

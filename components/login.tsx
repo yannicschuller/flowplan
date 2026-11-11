@@ -358,7 +358,7 @@ export default function Login({
   const lastUsedHint = (way: SignInWay) =>
     lastUsed(way) && (
       <p id={lastHint} className="login-last-used">
-        {t("Zuletzt verwendet", "Last used")}
+        {t("Zuletzt verwendet", "Last used||sign-in way")}
       </p>
     );
   // Only the main way is the filled button – unless the form is open,

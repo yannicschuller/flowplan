@@ -5,6 +5,12 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // A workspace's look and its own fonts (#196, lib/workspace-fonts.ts).
+  "Höchstens 5 MB pro Schrift.": "At most 5 MB per font.",
+  "Bitte eine Schriftdatei wählen (WOFF2, WOFF, TTF oder OTF).": "Please choose a font file (WOFF2, WOFF, TTF or OTF).",
+  "Unbekannte Schrift.": "Unknown font.",
+  "Schrift nicht gefunden.": "Font not found.",
+  "Schrift nicht verfügbar.": "Font not available.",
   // Notebook audio recordings (lib/notebook-audio.ts).
   "Der Speicher reicht für diese Aufnahme nicht.": "The storage is not enough for this recording.",
   "Dieses Audioformat wird nicht unterstützt.": "This audio format is not supported.",
@@ -1313,6 +1319,7 @@ const patterns: [RegExp, string][] = [
   [/^Höchstens (\d+) eigene Sticker\.$/, "At most $1 stickers of your own."],
   [/^Maximal (\d+) MB pro Vorlage\.$/, "At most $1 MB per template."],
   [/^Dieser Arbeitsbereich hat schon (\d+) Papiervorlagen\.$/, "This workspace already has $1 paper templates."],
+  [/^Dieser Arbeitsbereich hat schon (\d+) eigene Schriften\.$/, "This workspace already has $1 fonts of its own."],
   // Workflows (#168, lib/workflows).
   [/^Anfrage fehlgeschlagen: (.+)$/, "Request failed: $1"],
   [/^Der Host (.+) ist auf dieser Instanz nicht erlaubt\.$/, "The host $1 is not allowed on this instance."],

@@ -47,7 +47,9 @@ export const userBytes = async (userId: string) =>
   Number((await one<{ n: number | null }>("SELECT SUM(size) n FROM files WHERE created_by=?", userId))?.n || 0) +
   // Own stickers and paper templates of notebooks (lib/notebook-library.ts).
   Number((await one<{ n: number | null }>("SELECT SUM(COALESCE(length(data),0)) n FROM notebook_stickers WHERE user_id=?", userId))?.n || 0) +
-  Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM notebook_templates WHERE created_by=?", userId))?.n || 0);
+  Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM notebook_templates WHERE created_by=?", userId))?.n || 0) +
+  // Faces uploaded for a workspace's look (lib/workspace-fonts.ts).
+  Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM workspace_fonts WHERE created_by=?", userId))?.n || 0);
 export const ownedWorkspaces = async (userId: string) => Number((await one<{ n: number }>("SELECT count(*) n FROM members WHERE user_id=? AND role='owner'", userId))?.n || 0);
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
 const limited = (user: Pick<Identity, "id" | "isAdmin">) => !user.isAdmin;

@@ -1,6 +1,7 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
-// light or dark (this device), the related pages and backlinks below pages
+// light or dark (this device), the workspace's look or Flowplan's own (#196,
+// profile, all devices), the related pages and backlinks below pages
 // and records (this device), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
@@ -10,7 +11,7 @@ import { CircleHalf, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
 import { Select } from "../../select";
-import { CONTROL, SaveState, SettingGroup, SettingRow, SwitchRow, useSaveState } from "../../settings-ui";
+import { CONTROL, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSaveState } from "../../settings-ui";
 import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
 import { setBlockHandlesAlways, useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 import { setDiscoveryPanelsShown, useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
@@ -23,6 +24,7 @@ export default function AppearanceSection() {
   const keyHints = useKeyboardHints();
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
+  const [lookStatus, runLook] = useSaveState();
   const lineNumbers = useLineNumbersByDefault();
   const handlesAlways = useBlockHandlesAlways();
   const discoveryPanels = useDiscoveryPanelsShown();
@@ -70,6 +72,21 @@ export default function AppearanceSection() {
               <Moon size={15} aria-hidden /> {t("Dunkel", "Dark")}
             </label>
           </div>
+        </SettingRow>
+        <SettingRow
+          anchor="workspace-look"
+          label={t("Darstellung des Arbeitsbereichs verwenden", "Use the workspace's appearance")}
+          description={t(
+            "Akzentfarbe, Hintergrund und Schriften, die Eigentümer für ihren Arbeitsbereich gewählt haben. Aus: Flowplans eigene Darstellung in allen Arbeitsbereichen. Gilt auf allen Geräten.",
+            "The accent colour, background and typefaces owners chose for their workspace. Off: Flowplan's own look in every workspace. Applies on all devices.",
+          )}
+        >
+          <SaveState status={lookStatus} />
+          <Switch
+            checked={!boot.plainLook}
+            label={t("Darstellung des Arbeitsbereichs verwenden", "Use the workspace's appearance")}
+            onChange={(on) => void runLook(async () => await mutate({ action: "profile.plainLook", plain: !on }))}
+          />
         </SettingRow>
         <SwitchRow
           label={t("Verwandte Seiten und Rückverweise anzeigen", "Show related pages and backlinks")}
