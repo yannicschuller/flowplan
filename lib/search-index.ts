@@ -277,11 +277,14 @@ export async function termMatches(
   const long = terms.filter((t) => !isShortTerm(t)),
     short = terms.filter(isShortTerm).slice(0, SHORT_TERMS);
   const match = textMatch(long);
+  // Equal ranks (entries with the same text, as weekly journal days often
+  // have): the newer day, then the newer edit first – not the order of the
+  // random ids, which decided before which of them the AI got to read.
   const rows = long.length
     ? (await all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND ${scope}
-         ORDER BY ${options.journalDays ? `${JOURNAL_DAY_SQL} DESC,` : ""}${match.rank}${entryOrder()} LIMIT ${options.limit}`,
+         ORDER BY ${options.journalDays ? `${JOURNAL_DAY_SQL} DESC,` : ""}${match.rank},COALESCE(${JOURNAL_DAY_SQL},'') DESC,p.updated_at DESC${entryOrder()} LIMIT ${options.limit}`,
         ...match.whereArgs,
         ...scopeArgs,
         ...match.rankArgs,
