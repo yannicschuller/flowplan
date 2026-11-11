@@ -29,6 +29,34 @@ const computed = [
   "progress",
   "time",
 ];
+// Imported records (rows.import): numbers, checkboxes and dates must fit
+// their property as in validateCellPatch; empty values may be null. Options
+// not (yet) in a select property stay allowed, as imports have relied on.
+export function validateImportedCells(fields: Field[], cells: Record<string, unknown>) {
+  for (const f of fields) {
+    const value = cells[f.id];
+    if (value === undefined) continue;
+    const fits =
+      f.type === "number"
+        ? value === null || (() => {
+            try {
+              numberCell(f, value);
+              return true;
+            } catch {
+              return false;
+            }
+          })()
+        : f.type === "checkbox"
+          ? typeof value === "boolean"
+          : f.type === "date"
+            ? value === null || value === "" || validDateValue(value)
+            : true;
+    if (!fits) {
+      const shown = typeof value === "string" ? value : JSON.stringify(value);
+      throw new HttpError(400, `„${String(shown).slice(0, 80)}“ passt nicht in die Eigenschaft „${f.name}“.`);
+    }
+  }
+}
 export async function validateCellPatch(
   user: Identity,
   page: Page,

@@ -8,8 +8,7 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
-import { csvImportText } from "@/lib/cell-text";
-import { type CsvContext, csvImporter, databaseCsv, viewCsvFields } from "@/lib/database-csv";
+import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "@/lib/database-csv";
 import { recordsClipboard } from "@/lib/database-clipboard";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
@@ -193,7 +192,6 @@ import {
   ArrowLeft,
   ArrowRight,
 } from "@phosphor-icons/react";
-import Papa from "papaparse";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
@@ -4146,21 +4144,14 @@ export default function DatabaseView({
             e.target.value = "";
             return;
           }
-          const result = Papa.parse<Record<string, string>>(await f.text(), {
-            header: true,
-            skipEmptyLines: true,
-            // The apostrophes the CSV export puts before formula-like text
-            // (in names and values) come off again.
-            transformHeader: csvImportText,
-            transform: csvImportText,
-          });
-          if (result.errors.length) {
+          const result = parseCsvFile(await f.text());
+          if (result.unreadable) {
             onError(t("CSV konnte nicht gelesen werden.", "The CSV could not be read."));
             return;
           }
           // Properties with a column in the file; names become ids again.
-          const columns = new Set(result.meta.fields || []);
-          const imported = result.data.map(
+          const columns = new Set(result.columns);
+          const imported = result.rows.map(
             csvImporter(
               fields.filter((f) => !computedTypes.includes(f.type) && columns.has(f.name)),
               fields,

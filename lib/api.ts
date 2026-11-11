@@ -199,6 +199,7 @@ import {
   databaseSnapshot,
   autoDatabaseSnapshot,
   validateCellPatch,
+  validateImportedCells,
 } from "./database-operations";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
@@ -2451,6 +2452,7 @@ async function runCommand(
           new Set(imported.flatMap((cells) => Object.keys(cells))),
         );
         const importFields = (await database(pid())).fields;
+        for (const cells of imported) validateImportedCells(importFields, cells);
         await forEachAsync(imported, async (cells, i) =>
           await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
