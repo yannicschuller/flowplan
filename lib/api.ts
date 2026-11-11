@@ -2945,6 +2945,7 @@ async function runCommand(
       case "sprint.delete":
       case "sprint.points": {
         const p = await write();
+        if (p.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
         await autoDatabaseSnapshot(user, p);
         result = await sprintCommand(user, p, action, b);
         break;
