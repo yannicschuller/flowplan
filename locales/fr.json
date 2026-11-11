@@ -447,6 +447,7 @@
   "{0} replied to a comment in “{1}”": "{0} a répondu à un commentaire dans « {1} »",
   "{0} reports an error": "{0} signale une erreur",
   "{0} requests": "{0} requêtes",
+  "{0} reset the PIN of “{1}”": "{0} a réinitialisé le code PIN de « {1} »",
   "{0} reset.": "{0} réinitialisé.",
   "{0} results": "{0} résultats",
   "{0} running · {1} started in total": "{0} en cours · {1} démarrées au total",

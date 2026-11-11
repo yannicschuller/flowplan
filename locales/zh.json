@@ -447,6 +447,7 @@
   "{0} replied to a comment in “{1}”": "{0} 回复了“{1}”中的一条评论",
   "{0} reports an error": "{0} 报告了一个错误",
   "{0} requests": "{0} 个请求",
+  "{0} reset the PIN of “{1}”": "{0} 重置了“{1}”的 PIN",
   "{0} reset.": "{0} 已重置。",
   "{0} results": "{0} 个结果",
   "{0} running · {1} started in total": "{0} 正在运行 · 总共启动了 {1} 次",

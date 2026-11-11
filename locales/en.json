@@ -447,6 +447,7 @@
   "{0} replied to a comment in “{1}”": "{0} replied to a comment in “{1}”",
   "{0} reports an error": "{0} reports an error",
   "{0} requests": "{0} requests",
+  "{0} reset the PIN of “{1}”": "{0} reset the PIN of “{1}”",
   "{0} reset.": "{0} reset.",
   "{0} results": "{0} results",
   "{0} running · {1} started in total": "{0} running · {1} started in total",
