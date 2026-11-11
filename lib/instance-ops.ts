@@ -36,7 +36,9 @@ export async function workspaceBytes(workspaceId: string) {
     ) +
     // Notebook stickers and paper templates (lib/notebook-library.ts).
     Number((await one<{ n: number | null }>("SELECT SUM(COALESCE(length(data),0)) n FROM notebook_stickers WHERE workspace_id=?", workspaceId))?.n || 0) +
-    Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM notebook_templates WHERE workspace_id=?", workspaceId))?.n || 0)
+    Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM notebook_templates WHERE workspace_id=?", workspaceId))?.n || 0) +
+    // Faces uploaded for the workspace's look (lib/workspace-fonts.ts).
+    Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM workspace_fonts WHERE workspace_id=?", workspaceId))?.n || 0)
   );
 }
 export async function workspaceQuotaMb(workspaceId: string) {

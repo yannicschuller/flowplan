@@ -5,6 +5,7 @@
 // described by hand from the route handlers in app/api. Served at
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
+import { workspaceThemeSchema } from "./workspace-theme";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
@@ -53,7 +54,8 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 // API tokens and therefore not listed.
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
-  "profile.onboarded", "profile.language", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "workspace.look", "workspace.theme", "workspace.font.rename", "workspace.font.delete",
+  "profile.onboarded", "profile.language", "profile.plainLook", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -132,6 +134,25 @@ export const commandActions: ActionDoc[] = [
     summary: "Create a workspace",
     input: z.object({ action: z.literal("workspace.create"), name: str }),
     result: idResult,
+  },
+  {
+    action: "workspace.theme",
+    summary: "Set the workspace's appearance",
+    description:
+      "Needs the owner role. The look every member, guest, publication and form of the workspace shows: `accent` (#rrggbb; its light and dark palette is derived, its lightness adjusted for WCAG AA contrast), `background` (a preset) and `fonts` per slot (`ui`, `display`, `mono`): a bundled face id or `custom:<id>` of a face uploaded with POST /api/workspace-fonts. Values equal to the default are dropped; `theme: null` restores Flowplan's own look. No custom CSS. Answers the look with every uploaded face.",
+    input: z.object({
+      action: z.literal("workspace.theme"),
+      workspaceId: uuid,
+      theme: workspaceThemeSchema.nullable(),
+    }),
+    result: z.object({ theme: workspaceThemeSchema.nullable(), fonts: z.array(z.object({ id: uuid, name: str, format: z.enum(["woff2", "woff", "truetype", "opentype"]), variable: z.boolean() })) }),
+  },
+  {
+    action: "profile.plainLook",
+    summary: "Use Flowplan's own look instead of the workspaces' appearance",
+    description: "For the caller, in every workspace and on all devices; light or dark stays a choice per device.",
+    input: z.object({ action: z.literal("profile.plainLook"), plain: z.boolean() }),
+    result: z.object({ plainLook: z.boolean() }),
   },
   {
     action: "space.create",
@@ -1558,6 +1579,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/upload", method: "post", op: { id: "uploadFile", tag: "Files", summary: "Upload a file to a page", description: "The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, purpose: { type: "string", enum: ["cover", "e2ee"] } }, required: ["pageId", "file"] }, required: true }, ok: { schema: ref("FileInfo"), description: "The stored file" }, errors: [400, 401, 403, 404, 409, 413] } },
   { path: "/api/files/placeholders", method: "get", op: { id: "imagePlaceholders", tag: "Files", summary: "Placeholders of images", description: "Size and ThumbHash of uploaded images, for showing a blurred preview in the right proportions while the image loads. `ids` lists up to 100 file IDs and `avatar:<user ID>` entries. Only files you may download and profile pictures you may see are answered; anything else is left out, as are files without a placeholder. Placeholders of older files are computed on the first request.", params: [q("ids", "Comma-separated file IDs and `avatar:<user ID>` entries", { type: "string" }, true)], ok: { schema: { type: "object", properties: { placeholders: { type: "object", additionalProperties: ref("ImagePlaceholder") } }, required: ["placeholders"] }, description: "Placeholders by ID" }, errors: [400, 401] } },
   { path: "/api/notebook-library", method: "post", op: { id: "createNotebookTemplate", tag: "Files", summary: "Add an own paper template for notebooks", description: "Needs editor rights in the workspace of the notebook page `pageId` (not guests). `file` is a picture (PNG, JPEG, WebP) or a PDF; of a PDF only page `pdfPage` (default 1) is kept. `fit` is stretch (default) or tile. Checked like uploads (type from the content, no photo location) and counted against the workspace quota and the person's storage; at most 20 MB and 200 templates per workspace. Choose it for sheets with `paper.image = {template, fit?}` in notebook.paper, notebook.sheet.paper or notebook.sheet.add: the template is copied onto the page. Listed with notebook.templates, changed with notebook.template.update and notebook.template.delete.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, name: { type: "string", maxLength: 120 }, fit: { type: "string", enum: ["stretch", "tile"] }, pdfPage: { type: "integer", minimum: 1 } }, required: ["pageId", "file"] }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "The new template" }, errors: [400, 401, 403, 404, 409, 413] } },
+  { path: "/api/workspace-fonts", method: "post", op: { id: "uploadWorkspaceFont", tag: "Files", summary: "Upload a font for the workspace's appearance", description: "Needs the owner role in `workspaceId`. `file` is WOFF2, WOFF, TrueType or OpenType (checked by its content), at most 5 MB and 20 per workspace, counted against the workspace quota and the caller's storage. Choose it with `custom:<id>` in workspace.theme; delete it with workspace.font.delete.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { workspaceId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, name: { type: "string", maxLength: 60 } }, required: ["workspaceId", "file"] }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "The new font" }, errors: [400, 401, 403, 409, 413] } },
+  { path: "/api/workspace-fonts/{fontId}", method: "get", op: { id: "workspaceFontFile", tag: "Files", summary: "A font uploaded for a workspace's appearance", description: "For members and guests of its workspace (publications and forms serve it under their own token).", params: [p("fontId", "Font ID")], ok: { content: "application/octet-stream", description: "The font file (font/woff2, font/woff, font/ttf or font/otf)" }, errors: [401, 404] } },
   { path: "/api/notebook-library/{assetId}", method: "get", op: { id: "notebookLibraryFile", tag: "Files", summary: "Picture of an own sticker or paper template", description: "Stickers only for the person they belong to, paper templates for members of their workspace.", params: [p("assetId", "Sticker or template ID")], ok: { content: "application/octet-stream", description: "The picture or PDF page" }, errors: [401, 403, 404] } },
   { path: "/api/avatars/{userId}", method: "get", op: { id: "avatar", tag: "Files", summary: "Profile picture of a person you share a workspace with", params: [p("userId", "User ID")], ok: { content: "image/*", description: "The picture" }, errors: [401, 404] } },
   // Import and export
@@ -1666,6 +1689,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",
   "app/api/calendar-sync/[...path]/route.ts": "Browser OAuth connection to Google and Microsoft 365 calendars",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
+  "app/api/forms/[token]/fonts/[fontId]/route.ts": "Public forms with their own link token",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
   "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token: registration with push relay token and encryption key, Live Activity relay tokens; the administrators' widget summary only for instance administrators)",
   "app/api/mobile/notifications/route.ts": "Buttons on the mobile apps' push notifications, only with the device token",
@@ -1680,6 +1704,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/files/[fileId]/ink/route.ts": "Share links with their own token",
   "app/api/share/[token]/ink/route.ts": "Share links with their own token",
   "app/api/share/[token]/live/route.ts": "Share links with their own token",
+  "app/api/share/[token]/fonts/[fontId]/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",
   "app/api/transcribe/[...path]/route.ts": "Voice notes of the browser app (chunked upload to the transcription service)",

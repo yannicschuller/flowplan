@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 101;
+export const SCHEMA_VERSION = 102;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1313,11 +1313,27 @@ function migrate(d: DatabaseSync) {
   // An older version would keep the files as plain attachments.
   d.exec(`CREATE TABLE IF NOT EXISTS notebook_recordings(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,id TEXT NOT NULL,file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,name TEXT NOT NULL,duration_ms INTEGER NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,transcript TEXT,PRIMARY KEY(page_id,id));
     CREATE INDEX IF NOT EXISTS notebook_recordings_file ON notebook_recordings(file_id);`);
+  // Schema 102 – a workspace's own look (#196, lib/workspace-theme.ts).
+  migrateWorkspaceTheme(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 102 – a workspace's look (#196): workspaces.theme (JSON, NULL =
+// Flowplan's own: accent, background tint, typefaces; lib/workspace-theme.ts),
+// the faces its owners uploaded (blobs like notebook_templates, counted in
+// workspaceBytes and removed with the workspace; lib/workspace-fonts.ts)
+// and per person users.plain_look (1 = Flowplan's own look everywhere).
+// An older version would ignore the look, hence the new number.
+function migrateWorkspaceTheme(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "theme"))
+    d.exec("ALTER TABLE workspaces ADD COLUMN theme TEXT");
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "plain_look"))
+    d.exec("ALTER TABLE users ADD COLUMN plain_look INTEGER NOT NULL DEFAULT 0");
+  d.exec(`CREATE TABLE IF NOT EXISTS workspace_fonts(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,format TEXT NOT NULL CHECK(format IN ('woff2','woff','truetype','opentype')),variable INTEGER NOT NULL DEFAULT 0,data BLOB NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS workspace_fonts_workspace ON workspace_fonts(workspace_id);`);
 }
 // A person's stickers per workspace (a picture, or ink items) and a
 // workspace's paper templates (a picture or one PDF page), as blobs like

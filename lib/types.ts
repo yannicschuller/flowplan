@@ -278,6 +278,11 @@ export type Bootstrap = {
   ldapAccount?: boolean;
   workspaces: Workspace[];
   workspace: Workspace;
+  // The workspace's look (#196, lib/workspace-theme.ts): accent, background
+  // tint, typefaces and the uploaded faces it uses; plainLook: this person
+  // chose Flowplan's own look instead.
+  look?: import("./workspace-theme").WorkspaceLook;
+  plainLook?: boolean;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).

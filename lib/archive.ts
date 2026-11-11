@@ -1,4 +1,5 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
+import { exportLook, FONT_LIMITS, importLook } from "./workspace-fonts";
 import { importWorkflow, workflowArchive, workflowArchiveSchema } from "./workflows/archive";
 import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
@@ -222,6 +223,18 @@ export const archiveSchema = z.object({
     .optional(),
   // The exporter's start page of the workspace (lib/home-layout-schema.ts).
   home: z.unknown().optional(),
+  // The workspace's look (#196, lib/workspace-fonts.ts): its theme and the
+  // faces its owners uploaded (fonts/<id>). Taken over on import by an owner
+  // into a workspace with Flowplan's own look.
+  look: z
+    .object({
+      theme: z.unknown(),
+      fonts: z
+        .array(z.object({ id: uid, name: z.string().max(200), size: z.number().int().min(0).max(FONT_LIMITS.bytes), sha256: z.string().regex(/^[a-f0-9]{64}$/) }))
+        .max(FONT_LIMITS.perWorkspace)
+        .default([]),
+    })
+    .optional(),
   templates: z
     .array(
       z.object({
@@ -452,6 +465,23 @@ async function snapshotFor(user: Identity, wid: string) {
           },
         }),
     ...(await exportHomeLayout(user.id, wid)),
+    // The look, for members (guests export only what their pages carry).
+    ...((await isGuest(user, wid))
+      ? {}
+      : await (async () => {
+          const look = await exportLook(wid);
+          if (!look.theme && !look.fonts.length) return {};
+          return {
+            look: {
+              theme: look.theme,
+              fonts: look.fonts.map((f) => {
+                bytes += f.data.length;
+                binaries.set(`fonts/${f.id}`, f.data);
+                return { id: f.id, name: f.name, size: f.data.length, sha256: digest(f.data) };
+              }),
+            },
+          };
+        })()),
     favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
@@ -785,7 +815,7 @@ export async function readZip(
             entry.isEncrypted() ||
             result.has(entry.fileName) ||
             (!options.foreign &&
-              !/^flowplan\.json$|^(?:files|template-files)\/[a-f0-9-]{36}$/.test(
+              !/^flowplan\.json$|^(?:files|template-files|fonts)\/[a-f0-9-]{36}$/.test(
                 entry.fileName,
               ))
           ) {
@@ -908,7 +938,7 @@ export async function readArchiveFile(
             count > MAX_ARCHIVE_FILES + 1 ||
             entry.isEncrypted() ||
             result.has(entry.fileName) ||
-            !/^flowplan\.json$|^(?:files|template-files)\/[a-f0-9-]{36}$/.test(
+            !/^flowplan\.json$|^(?:files|template-files|fonts)\/[a-f0-9-]{36}$/.test(
               entry.fileName,
             )
           ) {
@@ -1067,7 +1097,13 @@ function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
       templateFileCount++;
     }
   }
-  if (files.size !== data.files.length + templateFileCount + 1)
+  for (const f of data.look?.fonts ?? []) {
+    check(f.id);
+    const bytes = files.get(`fonts/${f.id}`);
+    if (!bytes || entrySize(bytes) !== f.size || entryHash(bytes) !== f.sha256)
+      throw new HttpError(400, "Datei fehlt oder Prüfsumme stimmt nicht.");
+  }
+  if (files.size !== data.files.length + templateFileCount + (data.look?.fonts.length ?? 0) + 1)
     throw new HttpError(400, "Archiv enthält nicht zugeordnete Dateien.");
   return data;
 }
@@ -1689,6 +1725,13 @@ async function importEntries(
       for (const pair of remapPairs(data.relationPairs))
         await insertRelationPair(pair);
       await importHomeLayout(user.id, wid, data.home, { pages: pageMap, rows: rowMap, spaces: spaceMap, rewriteUrl });
+      // The workspace's look, when an owner imports into a workspace that
+      // has none yet (lib/workspace-fonts.ts importLook).
+      if (data.look)
+        await importLook(user, wid, {
+          theme: data.look.theme,
+          fonts: data.look.fonts.map((f) => ({ id: f.id, name: f.name, data: entryBytes(entries.get(`fonts/${f.id}`)!) })),
+        });
       await audit(
         user.id,
         "workspace.archive.import",

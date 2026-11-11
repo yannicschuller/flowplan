@@ -1,4 +1,5 @@
 import { withReadMemo } from "./read-memo";
+import { deleteWorkspaceFont, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -299,16 +300,18 @@ export async function publicRows(pid: string): Promise<Row[]> {
 // (lib/about.ts).
 export async function bootstrap(user: Identity, wid?: string, agent?: string | null) {
   if (!user.demo && !user.apiScope) await acceptPendingInvites(user.id);
-  const workspaces = await all<{
+  const workspaces = (await all<{
     id: string;
     name: string;
     icon: string;
     role: string;
     guest: number;
+    theme?: string | null;
   }>(
     "SELECT w.*,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
     user.id,
-  );
+    // The look comes once, parsed, for the open workspace (`look` below).
+  )).map(({ theme: _theme, ...w }) => w);
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
@@ -331,6 +334,10 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     ldapAccount: await isLdapAccount(user.id),
     workspaces,
     workspace,
+    // The workspace's look (#196, lib/workspace-theme.ts) and whether this
+    // person chose Flowplan's own look instead.
+    look: await workspaceLook(workspace.id),
+    plainLook: await plainLook(user.id),
     pages,
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
@@ -849,6 +856,25 @@ async function runCommand(
         break;
       case "home.default":
         result = await setTeamDefault(user, b);
+        break;
+      // Flowplan's own look instead of the workspaces' (#196).
+      case "profile.plainLook":
+        result = await setPlainLook(user, b.plain);
+        break;
+      // A workspace's look: read by its members (the settings list every
+      // uploaded face), changed by its owners (lib/workspace-fonts.ts).
+      case "workspace.look":
+        await requireMember(user, wid());
+        result = await workspaceLook(wid(), true);
+        break;
+      case "workspace.theme":
+        result = await saveWorkspaceTheme(user, wid(), b.theme);
+        break;
+      case "workspace.font.rename":
+        result = await renameWorkspaceFont(user, wid(), b.fontId, b.name);
+        break;
+      case "workspace.font.delete":
+        result = await deleteWorkspaceFont(user, wid(), b.fontId);
         break;
       case "profile.language":
         result = { language: await setFixedLanguage(user.id, b.language) };

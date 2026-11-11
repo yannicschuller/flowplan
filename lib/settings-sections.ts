@@ -96,6 +96,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Sprache", en: "Language" } },
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
+      { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
       { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },
       { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
       { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },
@@ -212,6 +213,23 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "E-Mail-Eingang", en: "Inbound e-mail" }, keywords: { de: "weiterleiten mailgun postmark", en: "forward mailgun postmark" }, anchor: "inbound-mail" },
       { title: { de: "Arbeitsbereich verlassen", en: "Leave workspace" }, anchor: "danger" },
       { title: { de: "Arbeitsbereich löschen", en: "Delete workspace" }, anchor: "danger" },
+    ],
+  },
+  {
+    id: "look",
+    area: "settings",
+    group: "workspace",
+    icon: "PaintBrush",
+    title: { de: "Erscheinungsbild", en: "Appearance" },
+    description: { de: "Akzentfarbe, Hintergrund und Schriften für alle im Arbeitsbereich.", en: "Accent colour, background and typefaces for everyone in the workspace." },
+    keywords: {
+      de: "erscheinungsbild design aussehen farbe akzentfarbe hintergrund schrift schriftart font eigene schrift hochladen branding corporate design",
+      en: "appearance design look colour color accent background font typeface own font upload branding corporate design",
+    },
+    entries: [
+      { title: { de: "Akzentfarbe", en: "Accent colour" }, keywords: { de: "farbe", en: "color" }, anchor: "look-colours" },
+      { title: { de: "Schriften", en: "Typefaces" }, keywords: { de: "schriftart font", en: "font" }, anchor: "look-fonts" },
+      { title: { de: "Eigene Schriften", en: "Own fonts" }, keywords: { de: "hochladen woff2 ttf otf", en: "upload woff2 ttf otf" }, anchor: "look-uploads" },
     ],
   },
   {

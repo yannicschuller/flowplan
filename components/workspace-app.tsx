@@ -270,6 +270,7 @@ import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } 
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
 import { CalendarX, Compass, LockKey } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
+import { WorkspaceThemeStyle } from "./workspace-theme-style";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -2992,6 +2993,8 @@ export default function WorkspaceApp({
       aria-busy={switching}
     >
       <ActivityPing />
+      {/* The workspace's look (#196), unless this person chose Flowplan's own. */}
+      <WorkspaceThemeStyle look={boot.plainLook ? null : boot.look} />
       {focusMode && screen === "page" && data && (
         <FocusBar
           pageId={data.page.id}

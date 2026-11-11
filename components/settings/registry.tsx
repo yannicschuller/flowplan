@@ -21,6 +21,7 @@ import {
   ListChecks,
   LockKey,
   Megaphone,
+  PaintBrush,
   Palette,
   PlugsConnected,
   Pulse,
@@ -49,6 +50,7 @@ import WebhooksSection from "./user/webhooks";
 import ConnectionsSection from "./user/connections";
 import ClipperSection from "./user/clipper";
 import WorkspaceSection from "./user/workspace";
+import WorkspaceLookSection from "./user/workspace-look";
 import MembersSection from "./user/members";
 import GroupsSection from "./user/groups";
 import SpacesSection from "./user/spaces";
@@ -93,6 +95,7 @@ export const ICONS: Record<string, Icon> = {
   ListChecks,
   LockKey,
   Megaphone,
+  PaintBrush,
   Palette,
   PlugsConnected,
   Pulse,
@@ -121,6 +124,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   connections: ConnectionsSection,
   clipper: ClipperSection,
   workspace: WorkspaceSection,
+  look: WorkspaceLookSection,
   members: MembersSection,
   groups: GroupsSection,
   spaces: SpacesSection,
