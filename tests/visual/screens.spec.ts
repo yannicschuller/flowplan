@@ -95,7 +95,9 @@ test.describe("before any page is opened", () => {
     test("sign-in", async ({ page }) => {
       await page.clock.setFixedTime(FIXED_TIME);
       await page.goto(`${visualState().origin}/login`);
-      await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
+      // A first visit: the fastest way first, e-mail and password a tap away.
+      await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible();
+      await expect(page.locator(".login-ways:not([data-pending])")).toBeVisible();
       await settle(page);
       await shot(page, "sign-in");
     });

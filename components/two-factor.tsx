@@ -17,6 +17,7 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 import { BrandMark } from "./brand-mark";
+import { AuthLayout } from "./auth-layout";
 import { AppProfilesLink } from "./app-profiles-link";
 import { useT } from "./i18n";
 import { SettingRow, StatusBadge } from "./settings-ui";
@@ -491,7 +492,7 @@ export function TwoFactorRequired({
     }
   };
   return (
-    <main className="login" data-signed-out="">
+    <AuthLayout instanceName={instanceName} signedOut>
       <div className="login-brand">
         <BrandMark size={32} />
         flowplan
@@ -534,6 +535,6 @@ export function TwoFactorRequired({
         </button>
         <AppProfilesLink />
       </section>
-    </main>
+    </AuthLayout>
   );
 }

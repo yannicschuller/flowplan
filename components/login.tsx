@@ -3,9 +3,14 @@ import { serverMessage } from "@/lib/i18n-errors";
 // Sign-in page: e-mail and password, passkeys, single sign-on (OIDC) – as
 // far as the instance offers them. Also creating an account (the first
 // account sets the instance up) and asking for a password reset link.
+//
+// Signing in shows the fastest way first (lib/sign-in-ways.ts): one large
+// button for the way last used on this device, the other ways below it,
+// "Mit E-Mail und Passwort" opens the form in place – on phones at the
+// bottom, in reach of the thumb.
 import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
-import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { PlainHttpNote, SetupTokenNote } from "./plain-http-note";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
@@ -18,6 +23,34 @@ import { AppProfilesLink } from "./app-profiles-link";
 import { startAppSignIn } from "@/lib/app-sign-in";
 import { appDeviceKey, desktopPasskeysInWindow } from "@/lib/native-app";
 import { SetupRestore } from "./setup-restore";
+import { AuthLayout } from "./auth-layout";
+import {
+  availableSignInWays,
+  chooseSignInWays,
+  isSignInWay,
+  readLastSignIn,
+  writeLastSignIn,
+  type SignInWay,
+} from "@/lib/sign-in-ways";
+
+// SSO and the app's hand-offs leave the page: the way is noted when they
+// start, and the one before it comes back when the sign-in returns with an
+// error (or the app could not open it).
+const BEFORE_KEY = "flowplan:sign-in-before";
+function noteAttempt(way: SignInWay) {
+  try {
+    sessionStorage.setItem(BEFORE_KEY, readLastSignIn() || "");
+  } catch {}
+  writeLastSignIn(way);
+}
+function undoAttempt() {
+  try {
+    const before = sessionStorage.getItem(BEFORE_KEY);
+    if (before === null) return;
+    sessionStorage.removeItem(BEFORE_KEY);
+    writeLastSignIn(isSignInWay(before) ? before : null);
+  } catch {}
+}
 
 // "confirm": registered, waiting for the link from the e-mail.
 // "totp": the password was right, a code from the authenticator app follows.
@@ -106,6 +139,17 @@ export default function Login({
   const [desktopRequest, setDesktopRequest] = useState("");
   // The app's sign-in being handed over (#109): its button shows a spinner.
   const [handingOff, setHandingOff] = useState<"" | "sso" | "passkey" | "browser">("");
+  // Known in the page only (storage, passkeys, the app): until then the
+  // ways stay invisible, so the large button does not change under a finger.
+  const [ready, setReady] = useState(false);
+  const [lastWay, setLastWay] = useState<SignInWay | null>(null);
+  // "Mit E-Mail und Passwort": the form opened in place.
+  const [formOpen, setFormOpen] = useState(false);
+  const usedWay = useRef<SignInWay | null>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const focusEmail = useRef(false);
+  const lastHint = useId();
+  const passwordId = useId();
   // One line: "Stay signed in" on the left, "Forgot password?" on the right.
   const rememberBox = rememberAvailable && (!desktopApp || (passwordForm && !appKey)) && (
     <label className="login-remember" title={t("Nur auf eigenen Geräten. Die Anmeldung bleibt bestehen, solange du Flowplan nutzt.", "Only on your own devices. You stay signed in while you use Flowplan.")}>
@@ -132,13 +176,31 @@ export default function Login({
     update();
     setPasskeys(browserSupportsWebAuthn());
     setPasskeyInApp(desktopPasskeysInWindow() && browserSupportsWebAuthn());
+    // Back from SSO with an error: the way before it comes first again.
+    if (error) undoAttempt();
+    else
+      try {
+        sessionStorage.removeItem(BEFORE_KEY);
+      } catch {}
+    setLastWay(readLastSignIn());
+    setReady(true);
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The form opened with "Mit E-Mail und Passwort": the cursor in the address.
+  useEffect(() => {
+    if (formOpen && focusEmail.current) {
+      focusEmail.current = false;
+      emailRef.current?.focus();
+    }
+  }, [formOpen]);
   // Signed in: back to where the visitor wanted to go. A new account keeps
   // the invitation link it came with: signed in, the page takes the
   // invitation over (app/page.tsx), as the address is not confirmed yet.
   const done = (registered = false) => {
+    // The way that signed in comes first next time on this device.
+    if (usedWay.current) writeLastSignIn(usedWay.current);
     if (desktopRequest) return void location.assign(desktopRequest);
     const path = loginReturnPath(`/${location.hash}`);
     const invite = registered && new URLSearchParams(location.search).get("invite");
@@ -161,6 +223,7 @@ export default function Login({
     const form = new FormData(event.currentTarget);
     if (mode === "signin")
       void run("password", async () => {
+        usedWay.current = "password";
         const result = await post("password", { email: field(form, "email"), password: field(form, "password"), remember: stay });
         if (result?.twoFactor) {
           setBusy("");
@@ -177,6 +240,7 @@ export default function Login({
       });
     else if (mode === "register")
       void run("register", async () => {
+        usedWay.current = "password";
         const query = new URLSearchParams(location.search);
         const invite = query.get("invite") || undefined,
           setup = query.get("setup") || undefined;
@@ -211,6 +275,7 @@ export default function Login({
       throw new Error(t("Anmeldung mit Passkey abgebrochen.", "Passkey sign-in was cancelled."));
     }
     const result = await post("passkey", { ...response, remember: stay });
+    usedWay.current = "passkey";
     // Only if the person asked for a code after the passkey as well.
     if (result?.twoFactor) {
       setBusy("");
@@ -242,9 +307,11 @@ export default function Login({
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     setMessage("");
     setHandingOff(kind);
+    noteAttempt(kind === "browser" ? "password" : kind);
     const how = startAppSignIn(kind === "sso" ? "sso" : null, (failure) => {
       setHandingOff("");
       if (!failure) return;
+      undoAttempt();
       setMessage(
         failure.reason === "failed"
           ? `${t("Die App konnte die Anmeldung nicht öffnen", "The app could not open the sign-in")} (${failure.error || failure.stage}).`
@@ -261,6 +328,19 @@ export default function Login({
     setMessage("");
     setNotice("");
   };
+  // The ways this instance and this browser offer, the fastest first.
+  const passkeyButton = localLogin && passkeys && (!desktopApp || passkeyInApp);
+  const choice = chooseSignInWays(
+    availableSignInWays({ sso: configured, passkey: localLogin && (passkeyHandOff || passkeyButton), password: passwordForm }),
+    lastWay,
+  );
+  const signingIn = mode === "signin" && !restoring;
+  // The form shows by itself when e-mail and password are the main way.
+  const formShown = !signingIn || choice.main === "password" || formOpen;
+  const openForm = () => {
+    focusEmail.current = true;
+    setFormOpen(true);
+  };
   const title = restoring
     ? [t("Aus einer Sicherung", "Restore from"), t("wiederherstellen.", "a backup.")]
     : mode === "register"
@@ -270,309 +350,355 @@ export default function Login({
       : mode === "confirm" || mode === "totp"
         ? [t("Fast", "Almost"), t("geschafft.", "there.")]
         : mode === "forgot"
-        ? [t("Passwort", "Forgot your"), t("vergessen?", "password?")]
-        : [t("Raum für deine", "Room for your"), t("nächste große Idee.", "next big idea.")];
-  return (
-    // data-signed-out: the offline service worker (public/sw.js) does not
-    // store this page as the app, so an expired session keeps the offline copy.
-    <main className="login" data-signed-out="">
-      <div className="login-brand">
-        <BrandMark size={32} />
-        flowplan
-        {instanceName && <span className="muted"> · {instanceName}</span>}
-      </div>
-      <section className="login-card">
-        <div className="login-mark">
-          <BrandMark size={48} />
-        </div>
-        <h1>
-          {title[0]}
-          <br />
-          {title[1]}
-        </h1>
-        {restoring ? (
-          <SetupRestore onCancel={() => setRestoring(false)} />
-        ) : mode === "register" && firstAccount ? (
-          <p>
-            {t(
-              "Lege das erste Konto an. Es verwaltet die Instanz und kann weitere Personen einladen.",
-              "Create the first account. It administers the instance and can invite others.",
-            )}
-          </p>
-        ) : mode === "confirm" ? (
-          <div className="login-confirm">
-            <EnvelopeSimple size={30} aria-hidden />
-            <p>
-              {t("Wir haben einen Bestätigungslink an", "We sent a confirmation link to")} <strong>{pendingEmail}</strong>{" "}
-              {t(
-                "geschickt. Öffne ihn, um dein Konto zu bestätigen – danach bist du direkt angemeldet.",
-                ". Open it to confirm your account – you are signed in right away.",
-              )}
-            </p>
-            <small className="muted">{t("Nichts angekommen? Schau auch im Spam-Ordner nach.", "Nothing arrived? Also check the spam folder.")}</small>
-            <button
-              type="button"
-              className="button wide"
-              disabled={!!busy}
-              onClick={() =>
-                void run("resend", async () => {
-                  await post("verify-resend", { email: pendingEmail });
-                  setBusy("");
-                  setNotice(t("Der Link ist erneut unterwegs.", "The link is on its way again."));
-                })
-              }
-            >
-              {busy === "resend" ? <SpinnerGap className="spin" /> : <EnvelopeSimple size={18} />}
-              {t("Link erneut senden", "Send the link again")}
-            </button>
-          </div>
-        ) : mode === "forgot" ? (
-          <p>{t("Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.", "We send you a link to set a new password.")}</p>
-        ) : mode === "totp" ? (
-          <p>
-            {recovery
-              ? t("Gib einen deiner Wiederherstellungscodes ein. Jeder funktioniert einmal.", "Enter one of your recovery codes. Each works once.")
-              : t("Gib den sechsstelligen Code aus deiner Authenticator-App ein.", "Enter the six-digit code from your authenticator app.")}
-          </p>
-        ) : (
-          <p>
-            {t("Deine Notizen, Projekte und dein Team.", "Your notes, projects and team.")}
-            <br />
-            {t("Alles an einem Ort.", "All in one place.")}
-          </p>
-        )}
-        {message && (
-          <div role="alert" className="error">
-            {message}
-          </div>
-        )}
-        {desktopRequest && !notice && (
-          <div role="status" className="login-notice">
-            {t("Melde dich an, um die Flowplan-App mit deinem Konto zu verbinden.", "Sign in to connect the Flowplan app to your account.")}
-          </div>
-        )}
-        {notice && (
-          <div role="status" className="login-notice">
-            {notice}
-          </div>
-        )}
-        {passwordForm && mode === "totp" && (
-          <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
-            <label>
-              {recovery ? t("Wiederherstellungscode", "Recovery code") : t("Code aus der App", "Code from the app")}
-              <input
-                key={recovery ? "recovery" : "code"}
-                name="code"
-                required
-                autoFocus
-                autoComplete={recovery ? "off" : "one-time-code"}
-                inputMode={recovery ? "text" : "numeric"}
-                pattern={recovery ? undefined : "[0-9 ]{6,7}"}
-                maxLength={recovery ? 20 : 7}
-                placeholder={recovery ? "xxxxx-xxxxx" : "123456"}
-              />
-            </label>
-            <button className="button primary wide" disabled={!!busy}>
-              {busy === "totp" ? <SpinnerGap className="spin" /> : null}
-              {t("Bestätigen", "Confirm")}
-            </button>
-            <div className="login-options">
-              <button type="button" className="text-button" onClick={() => setRecovery(!recovery)}>
-                {recovery ? t("Code aus der App verwenden", "Use a code from the app") : t("Wiederherstellungscode verwenden", "Use a recovery code")}
-              </button>
-              <button type="button" className="text-button" onClick={() => switchTo("signin")}>
-                {t("Zurück", "Back")}
-              </button>
-            </div>
-          </form>
-        )}
-        {passwordForm && mode !== "confirm" && mode !== "totp" && !restoring && (
-          <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
-            {mode === "register" && (
-              <label>
-                {t("Name", "Name")}
-                <input name="name" autoComplete="name" required maxLength={80} />
-              </label>
-            )}
-            <label>
-              {ldap && mode === "signin" ? t("E-Mail-Adresse oder Benutzername", "E-mail address or user name") : t("E-Mail-Adresse", "E-mail address")}
-              {/* An invitation link: the new account is created for the
-                  address it is for (the invitation is taken over with it). */}
-              <input
-                key={mode === "register" && invitedEmail ? "invited" : "email"}
-                name="email"
-                type={ldap && mode === "signin" ? "text" : "email"}
-                autoComplete={mode === "signin" ? "username webauthn" : "email"}
-                defaultValue={mode === "register" && invitedEmail ? invitedEmail : undefined}
-                readOnly={mode === "register" && !!invitedEmail}
-                required
-                maxLength={200}
-              />
-              {mode === "register" && invitedEmail && <small>{t("Die Einladung gilt für diese Adresse.", "The invitation is for this address.")}</small>}
-            </label>
-            {mode !== "forgot" && (
-              <label>
-                {t("Passwort", "Password")}
-                <input
-                  name="password"
-                  type="password"
-                  autoComplete={mode === "register" ? "new-password" : "current-password"}
-                  required
-                  minLength={mode === "register" ? 10 : undefined}
-                  maxLength={200}
-                />
-                {mode === "register" && <small>{t("Mindestens 10 Zeichen.", "At least 10 characters.")}</small>}
-              </label>
-            )}
-            {mode === "signin" && (rememberBox || mail) && (
-              <div className="login-options">
-                {rememberBox}
-                {mail && localLogin && (
-                  <button type="button" className="text-button login-forgot" onClick={() => switchTo("forgot")}>
-                    {t("Passwort vergessen?", "Forgot password?")}
-                  </button>
-                )}
-              </div>
-            )}
-            <button className="button primary wide" disabled={!!busy}>
-              {busy && busy !== "passkey" && busy !== "demo" ? <SpinnerGap className="spin" /> : null}
-              {mode === "register"
-                ? t("Konto erstellen", "Create account")
-                : mode === "forgot"
-                  ? t("Link senden", "Send link")
-                  : t("Anmelden", "Sign in")}
-            </button>
-          </form>
-        )}
-        {/* In the app, password managers offer nothing: iOS AutoFill only
-            matches the app's own domains, never a self-hosted instance
-            (flowplan-app#5). The system browser's sign-in sheet shows this
-            page with password and code, where they fill in both. */}
-        {passwordForm && (mode === "signin" || mode === "totp") && desktopApp && (
-          <p className="login-browser">
-            {t("Passwort-Manager füllt nichts aus?", "Password manager not filling in?")}{" "}
-            <a
-              href="/api/auth/desktop"
-              onClick={handOff("browser")}
-              aria-busy={handingOff === "browser" || undefined}
-              title={t(
-                "Öffnet die Anmeldung im Browser – dort füllt dein Passwort-Manager Passwort und Code aus",
-                "Opens the sign-in in your browser, where your password manager fills in the password and code",
-              )}
-            >
-              {t("Im Browser anmelden", "Sign in in the browser")}
-              {handingOff === "browser" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
-            </a>
-          </p>
-        )}
-        {localLogin && mode === "signin" && passkeyHandOff && (
+          ? [t("Passwort", "Forgot your"), t("vergessen?", "password?")]
+          : [t("Willkommen zurück.", "Welcome back.")];
+  // "Zuletzt verwendet": under the large button, read with it.
+  const lastUsed = (way: SignInWay) => choice.lastUsed && choice.main === way;
+  const describedBy = (way: SignInWay) => (lastUsed(way) ? lastHint : undefined);
+  const lastUsedHint = (way: SignInWay) =>
+    lastUsed(way) && (
+      <p id={lastHint} className="login-last-used">
+        {t("Zuletzt verwendet", "Last used")}
+      </p>
+    );
+  // Only the main way is the filled button – unless the form is open,
+  // whose "Anmelden" then is.
+  const wayClass = (way: SignInWay) => `button wide login-way${choice.main === way && !formOpen ? " primary" : ""}`;
+  const ssoWay = configured && (
+    <>
+      <a
+        className={wayClass("sso")}
+        href={desktopApp ? "/api/auth/desktop?via=sso" : stay ? `${loginUrl}&remember=1` : loginUrl}
+        title={desktopApp ? t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser") : undefined}
+        onClick={desktopApp ? handOff("sso") : () => noteAttempt("sso")}
+        aria-busy={handingOff === "sso" || undefined}
+        aria-describedby={describedBy("sso")}
+      >
+        {handingOff === "sso" ? <SpinnerGap size={19} className="spin" /> : <ShieldCheck size={19} />}
+        {t("Mit SSO anmelden", "Sign in with SSO")}
+        {desktopApp && <ArrowSquareOut size={16} />}
+      </a>
+      {lastUsedHint("sso")}
+    </>
+  );
+  const passkeyWay = localLogin && (
+    <>
+      {passkeyHandOff && (
+        <a
+          className={wayClass("passkey")}
+          href="/api/auth/desktop"
+          onClick={handOff("passkey")}
+          aria-busy={handingOff === "passkey" || undefined}
+          aria-describedby={describedBy("passkey")}
+          title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}
+        >
+          {handingOff === "passkey" ? <SpinnerGap size={19} className="spin" /> : <Fingerprint size={19} />}
+          {t("Mit Passkey anmelden", "Sign in with a passkey")}
+          <ArrowSquareOut size={16} />
+        </a>
+      )}
+      {passkeyButton && (
+        <button className={wayClass("passkey")} onClick={passkey} disabled={!!busy} aria-describedby={describedBy("passkey")}>
+          {busy === "passkey" ? <SpinnerGap className="spin" /> : <Fingerprint size={19} />}
+          {t("Mit Passkey anmelden", "Sign in with a passkey")}
+        </button>
+      )}
+      {lastUsedHint("passkey")}
+      {passkeyInApp && passkeyFallback && (
+        <p className="login-browser" data-passkey-fallback="">
+          {t("Passkey hat nicht geklappt?", "Passkey didn't work?")}{" "}
           <a
-            className="button wide"
             href="/api/auth/desktop"
             onClick={handOff("passkey")}
             aria-busy={handingOff === "passkey" || undefined}
-            title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}
+            title={t(
+              "Öffnet die Anmeldung im Browser – dort kannst du deinen Passkey verwenden",
+              "Opens the sign-in in your browser, where you can use your passkey",
+            )}
           >
-            {handingOff === "passkey" ? <SpinnerGap size={19} className="spin" /> : <Fingerprint size={19} />}
-            {t("Mit Passkey anmelden", "Sign in with a passkey")}
-            <ArrowSquareOut size={16} />
+            {t("Im Browser anmelden", "Sign in in the browser")}
+            {handingOff === "passkey" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
           </a>
+        </p>
+      )}
+    </>
+  );
+  const way = (which: SignInWay | null) => (which === "sso" ? ssoWay : which === "passkey" ? passkeyWay : null);
+  // In the app, password managers offer nothing: iOS AutoFill only matches
+  // the app's own domains, never a self-hosted instance (flowplan-app#5).
+  // The system browser's sign-in sheet shows this page with password and
+  // code, where they fill in both.
+  const browserLink = (
+    <p className="login-browser">
+      {t("Passwort-Manager füllt nichts aus?", "Password manager not filling in?")}{" "}
+      <a
+        href="/api/auth/desktop"
+        onClick={handOff("browser")}
+        aria-busy={handingOff === "browser" || undefined}
+        title={t(
+          "Öffnet die Anmeldung im Browser – dort füllt dein Passwort-Manager Passwort und Code aus",
+          "Opens the sign-in in your browser, where your password manager fills in the password and code",
         )}
-        {localLogin && mode === "signin" && passkeys && (!desktopApp || passkeyInApp) && (
-          <button className="button wide" onClick={passkey} disabled={!!busy}>
-            {busy === "passkey" ? <SpinnerGap className="spin" /> : <Fingerprint size={19} />}
-            {t("Mit Passkey anmelden", "Sign in with a passkey")}
-          </button>
+      >
+        {t("Im Browser anmelden", "Sign in in the browser")}
+        {handingOff === "browser" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
+      </a>
+    </p>
+  );
+  // E-mail and password (also signing up and the reset link). While closed
+  // the form stays in the page – password managers that look for it when the
+  // page loads find it – but hidden and inert; opened, it is the same form.
+  const passwordFormBlock = passwordForm && mode !== "confirm" && mode !== "totp" && !restoring && (
+    <div className="login-password" data-collapsed={formShown ? undefined : ""} inert={!formShown}>
+      <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
+        {mode === "register" && (
+          <label>
+            {t("Name", "Name")}
+            <input name="name" autoComplete="name" required maxLength={80} />
+          </label>
         )}
-        {localLogin && mode === "signin" && passkeyInApp && passkeyFallback && (
-          <p className="login-browser" data-passkey-fallback="">
-            {t("Passkey hat nicht geklappt?", "Passkey didn't work?")}{" "}
-            <a
-              href="/api/auth/desktop"
-              onClick={handOff("passkey")}
-              aria-busy={handingOff === "passkey" || undefined}
-              title={t(
-                "Öffnet die Anmeldung im Browser – dort kannst du deinen Passkey verwenden",
-                "Opens the sign-in in your browser, where you can use your passkey",
+        <label>
+          {ldap && mode === "signin" ? t("E-Mail-Adresse oder Benutzername", "E-mail address or user name") : t("E-Mail-Adresse", "E-mail address")}
+          {/* An invitation link: the new account is created for the
+              address it is for (the invitation is taken over with it). */}
+          <input
+            ref={emailRef}
+            key={mode === "register" && invitedEmail ? "invited" : "email"}
+            name="email"
+            type={ldap && mode === "signin" ? "text" : "email"}
+            autoComplete={mode === "signin" ? "username webauthn" : "email"}
+            defaultValue={mode === "register" && invitedEmail ? invitedEmail : undefined}
+            readOnly={mode === "register" && !!invitedEmail}
+            required
+            maxLength={200}
+          />
+          {mode === "register" && invitedEmail && <small>{t("Die Einladung gilt für diese Adresse.", "The invitation is for this address.")}</small>}
+        </label>
+        {mode !== "forgot" && (
+          <div className="login-field">
+            {/* "Vergessen?" next to the label, outside it: not part of the field's name. */}
+            <div className="login-label-row">
+              <label htmlFor={passwordId}>{t("Passwort", "Password")}</label>
+              {mode === "signin" && mail && localLogin && (
+                <button
+                  type="button"
+                  className="text-button login-forgot"
+                  aria-label={t("Passwort vergessen?", "Forgot password?")}
+                  onClick={() => switchTo("forgot")}
+                >
+                  {t("Vergessen?", "Forgot?")}
+                </button>
               )}
-            >
-              {t("Im Browser anmelden", "Sign in in the browser")}
-              {handingOff === "passkey" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
-            </a>
-          </p>
-        )}
-        {configured && mode === "signin" && (
-          <>
-            {passwordForm && <div className="login-or">{t("oder", "or")}</div>}
-            {!passwordForm && rememberBox && <div className="login-options">{rememberBox}</div>}
-            <a
-              className={`button wide${passwordForm ? "" : " primary"}`}
-              href={desktopApp ? "/api/auth/desktop?via=sso" : stay ? `${loginUrl}&remember=1` : loginUrl}
-              title={desktopApp ? t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser") : undefined}
-              onClick={desktopApp ? handOff("sso") : undefined}
-              aria-busy={handingOff === "sso" || undefined}
-            >
-              {handingOff === "sso" ? <SpinnerGap size={19} className="spin" /> : <ShieldCheck size={19} />}
-              {t("Mit SSO anmelden", "Sign in with SSO")}
-              {desktopApp ? <ArrowSquareOut size={16} /> : <ArrowRight size={18} />}
-            </a>
-          </>
-        )}
-        {!configured && !passwordForm && (
-          <div className="callout">
-            {t(
-              "Die Anmeldung wird über deinen OIDC-Anbieter eingerichtet. Wie das geht, steht in der Dokumentation unter „Anmeldung mit OIDC“.",
-              "Sign-in is set up with your OIDC provider. The documentation explains how under “Sign-in with OIDC”.",
-            )}{" "}
-            <a href="https://docs.flowplan.org/sign-in">docs.flowplan.org/sign-in</a>
+            </div>
+            <input
+              id={passwordId}
+              name="password"
+              type="password"
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
+              required
+              minLength={mode === "register" ? 10 : undefined}
+              maxLength={200}
+            />
+            {mode === "register" && <small>{t("Mindestens 10 Zeichen.", "At least 10 characters.")}</small>}
           </div>
         )}
-        {demo && mode === "signin" && (
-          <button className="button wide" onClick={devWorkspace} disabled={!!busy}>
-            {busy === "demo" ? <SpinnerGap className="spin" /> : <ArrowRight />}
-            {t("Lokalen Arbeitsbereich öffnen", "Open local workspace")}
-          </button>
-        )}
-        {mode === "register" && firstAccount && !restoring && (
-          <p className="login-switch">
-            {t("Umzug oder Neuinstallation?", "Moving or reinstalling?")}{" "}
-            <button type="button" className="text-button" onClick={() => setRestoring(true)}>
-              {t("Aus Sicherung wiederherstellen", "Restore from a backup")}
-            </button>
-          </p>
-        )}
-        {localLogin && !restoring && (
-          <p className="login-switch">
-            {mode === "signin" ? (
-              signupOpen && (
-                <>
-                  {t("Noch kein Konto?", "No account yet?")}{" "}
-                  <button type="button" className="text-button" onClick={() => switchTo("register")}>
-                    {t("Konto erstellen", "Create one")}
-                  </button>
-                </>
-              )
-            ) : mode !== "totp" && (!firstAccount || mode === "forgot" || mode === "confirm") ? (
+        <button className="button primary wide" disabled={!!busy} aria-describedby={signingIn ? describedBy("password") : undefined}>
+          {busy && busy !== "passkey" && busy !== "demo" ? <SpinnerGap className="spin" /> : null}
+          {mode === "register" ? t("Konto erstellen", "Create account") : mode === "forgot" ? t("Link senden", "Send link") : t("Anmelden", "Sign in")}
+        </button>
+        {signingIn && lastUsedHint("password")}
+      </form>
+      {mode === "signin" && desktopApp && browserLink}
+    </div>
+  );
+  return (
+    <AuthLayout instanceName={instanceName} signedOut>
+      <div className="login-column" data-mode={restoring ? "restore" : mode}>
+        <header className="login-head">
+          <span className="login-head-mark">
+            <BrandMark size={72} />
+          </span>
+          <h1>
+            {title[0]}
+            {title[1] && (
               <>
+                <br />
+                {title[1]}
+              </>
+            )}
+          </h1>
+          {instanceName && <p className="login-instance">{instanceName}</p>}
+          {restoring ? null : mode === "register" && firstAccount ? (
+            <p>
+              {t(
+                "Lege das erste Konto an. Es verwaltet die Instanz und kann weitere Personen einladen.",
+                "Create the first account. It administers the instance and can invite others.",
+              )}
+            </p>
+          ) : mode === "forgot" ? (
+            <p>{t("Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.", "We send you a link to set a new password.")}</p>
+          ) : mode === "totp" ? (
+            <p>
+              {recovery
+                ? t("Gib einen deiner Wiederherstellungscodes ein. Jeder funktioniert einmal.", "Enter one of your recovery codes. Each works once.")
+                : t("Gib den sechsstelligen Code aus deiner Authenticator-App ein.", "Enter the six-digit code from your authenticator app.")}
+            </p>
+          ) : null}
+        </header>
+        <div className="login-body">
+          {message && (
+            <div role="alert" className="error">
+              {message}
+            </div>
+          )}
+          {desktopRequest && !notice && (
+            <div role="status" className="login-notice">
+              {t("Melde dich an, um die Flowplan-App mit deinem Konto zu verbinden.", "Sign in to connect the Flowplan app to your account.")}
+            </div>
+          )}
+          {notice && (
+            <div role="status" className="login-notice">
+              {notice}
+            </div>
+          )}
+          {restoring && <SetupRestore onCancel={() => setRestoring(false)} />}
+          {mode === "confirm" && (
+            <div className="login-confirm">
+              <EnvelopeSimple size={30} aria-hidden />
+              <p>
+                {t("Wir haben einen Bestätigungslink an", "We sent a confirmation link to")} <strong>{pendingEmail}</strong>{" "}
+                {t(
+                  "geschickt. Öffne ihn, um dein Konto zu bestätigen – danach bist du direkt angemeldet.",
+                  ". Open it to confirm your account – you are signed in right away.",
+                )}
+              </p>
+              <small className="muted">{t("Nichts angekommen? Schau auch im Spam-Ordner nach.", "Nothing arrived? Also check the spam folder.")}</small>
+              <button
+                type="button"
+                className="button wide"
+                disabled={!!busy}
+                onClick={() =>
+                  void run("resend", async () => {
+                    await post("verify-resend", { email: pendingEmail });
+                    setBusy("");
+                    setNotice(t("Der Link ist erneut unterwegs.", "The link is on its way again."));
+                  })
+                }
+              >
+                {busy === "resend" ? <SpinnerGap className="spin" /> : <EnvelopeSimple size={18} />}
+                {t("Link erneut senden", "Send the link again")}
+              </button>
+            </div>
+          )}
+          {passwordForm && mode === "totp" && (
+            <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
+              <label>
+                {recovery ? t("Wiederherstellungscode", "Recovery code") : t("Code aus der App", "Code from the app")}
+                <input
+                  key={recovery ? "recovery" : "code"}
+                  name="code"
+                  required
+                  autoFocus
+                  autoComplete={recovery ? "off" : "one-time-code"}
+                  inputMode={recovery ? "text" : "numeric"}
+                  pattern={recovery ? undefined : "[0-9 ]{6,7}"}
+                  maxLength={recovery ? 20 : 7}
+                  placeholder={recovery ? "xxxxx-xxxxx" : "123456"}
+                />
+              </label>
+              <button className="button primary wide" disabled={!!busy}>
+                {busy === "totp" ? <SpinnerGap className="spin" /> : null}
+                {t("Bestätigen", "Confirm")}
+              </button>
+              <div className="login-options">
+                <button type="button" className="text-button" onClick={() => setRecovery(!recovery)}>
+                  {recovery ? t("Code aus der App verwenden", "Use a code from the app") : t("Wiederherstellungscode verwenden", "Use a recovery code")}
+                </button>
+                <button type="button" className="text-button" onClick={() => switchTo("signin")}>
+                  {t("Zurück", "Back")}
+                </button>
+              </div>
+            </form>
+          )}
+          {passwordForm && mode === "totp" && desktopApp && browserLink}
+          {signingIn ? (
+            // Signing in: the main way, the others below, then the form.
+            <div className="login-ways" data-pending={ready ? undefined : ""}>
+              {choice.main === "password" ? passwordFormBlock : way(choice.main)}
+              {choice.secondary.map((other) => (
+                <div key={other} className="login-way-group">
+                  {way(other)}
+                </div>
+              ))}
+              {choice.passwordLink && (
+                <>
+                  {!formShown && (
+                    <button type="button" className="text-button login-password-link" onClick={openForm}>
+                      <EnvelopeSimple size={18} aria-hidden />
+                      {t("Mit E-Mail und Passwort", "With e-mail and password")}
+                    </button>
+                  )}
+                  {passwordFormBlock}
+                </>
+              )}
+              {!configured && !passwordForm && (
+                <div className="callout">
+                  {t(
+                    "Die Anmeldung wird über deinen OIDC-Anbieter eingerichtet. Wie das geht, steht in der Dokumentation unter „Anmeldung mit OIDC“.",
+                    "Sign-in is set up with your OIDC provider. The documentation explains how under “Sign-in with OIDC”.",
+                  )}{" "}
+                  <a href="https://docs.flowplan.org/sign-in">docs.flowplan.org/sign-in</a>
+                </div>
+              )}
+              {demo && (
+                <button className="button wide login-way" onClick={devWorkspace} disabled={!!busy}>
+                  {busy === "demo" ? <SpinnerGap className="spin" /> : <ArrowRight />}
+                  {t("Lokalen Arbeitsbereich öffnen", "Open local workspace")}
+                </button>
+              )}
+              {rememberBox && <div className="login-options">{rememberBox}</div>}
+            </div>
+          ) : (
+            passwordFormBlock
+          )}
+        </div>
+        {/* One quiet line: creating an account, another server (in the app). */}
+        {signingIn ? (
+          <p className="login-more">
+            {localLogin && signupOpen && (
+              <button type="button" className="text-button" onClick={() => switchTo("register")}>
+                {t("Konto erstellen", "Create account")}
+              </button>
+            )}
+            {/* In the mobile app: back to its profiles (another instance, #69). */}
+            <AppProfilesLink inline />
+          </p>
+        ) : (
+          <>
+            {mode === "register" && firstAccount && !restoring && (
+              <p className="login-switch">
+                {t("Umzug oder Neuinstallation?", "Moving or reinstalling?")}{" "}
+                <button type="button" className="text-button" onClick={() => setRestoring(true)}>
+                  {t("Aus Sicherung wiederherstellen", "Restore from a backup")}
+                </button>
+              </p>
+            )}
+            {localLogin && !restoring && mode !== "totp" && (!firstAccount || mode === "forgot" || mode === "confirm") && (
+              <p className="login-switch">
                 {t("Schon ein Konto?", "Already have an account?")}{" "}
                 <button type="button" className="text-button" onClick={() => switchTo("signin")}>
                   {t("Anmelden", "Sign in")}
                 </button>
-              </>
-            ) : null}
-          </p>
+              </p>
+            )}
+            <AppProfilesLink />
+          </>
         )}
         {firstAccount && unprotectedSetup && <SetupTokenNote />}
         {plainHttp && <PlainHttpNote />}
-        {/* In the mobile app: back to its profiles (another instance, #69). */}
-        <AppProfilesLink />
-        <small>{t("Dein Wissen. Dein Workflow. Dein Flowplan.", "Your knowledge. Your workflow. Your Flowplan.")}</small>
-      </section>
-      {/* One quiet line: the tagline on the left, legal links and language on the right. */}
+      </div>
+      {/* One quiet line: legal links and the language. */}
       <footer className="login-footer">
-        <span>
-          Flowplan · {t("Ein Zuhause für gute Zusammenarbeit.", "A home for good collaboration.")}
-        </span>
         <div className="login-footer-links">
           {legal && <LegalFooter links={legal} locale={useLocale()} />}
           {/* AGPL-3.0: the licence and the source of what runs here. */}
@@ -587,6 +713,6 @@ export default function Login({
           <LanguageSwitch className="language-switch" />
         </div>
       </footer>
-    </main>
+    </AuthLayout>
   );
 }
