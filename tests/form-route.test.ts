@@ -121,3 +121,18 @@ test("signed-in uploads count against the personal storage limit, named and anon
   assert.equal(await userBytes(viewer.user.id), 600_000);
   assert.equal(await anonymousRows(), 1);
 });
+
+test("a required property that later gets a write rule is no longer asked nor required", async () => {
+  const { saveFormSubmission } = await import("../lib/forms");
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: sid, kind: "database", title: "Feedback" })).id as string;
+  let db = await database(pageId);
+  const title = db.fields[0].id;
+  await act({ action: "database.update", pageId, version: db.version, fields: [...db.fields, { id: "note", name: "Interne Notiz", type: "text" }], views: db.views });
+  await act({ action: "form.update", pageId, enabled: true, internal: false, anonymous: true, config: { requiredFields: ["note"] } });
+  await assert.rejects(async () => await saveFormSubmission(pageId, null, { [title]: "ohne Notiz" }), (e: { status?: number }) => e.status === 400);
+  db = await database(pageId);
+  await act({ action: "database.update", pageId, version: db.version, fields: db.fields.map((f) => (f.id === "note" ? { ...f, access: { write: "owners" } } : f)), views: db.views });
+  await saveFormSubmission(pageId, null, { [title]: "hallo" });
+  // The restricted property itself stays closed to the form.
+  await assert.rejects(async () => await saveFormSubmission(pageId, null, { [title]: "hallo", note: "x" }), (e: { status?: number }) => e.status === 403);
+});

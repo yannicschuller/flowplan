@@ -43,8 +43,11 @@ export const journalDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine(
-    (value) =>
-      new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value,
+    (value) => {
+      // zod runs the refine even after the regex failed: no toISOString on an invalid date.
+      const d = new Date(`${value}T00:00:00Z`);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+    },
     "Ungültiges Datum.",
   );
 export const dayTitle = (date: string) => localDayTitle(date, contentLocale());

@@ -1,5 +1,6 @@
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
+import { claimTicketPrefix } from "./ticket-refs";
 import { z } from "zod";
 import { all, one, run, id, nowText, lockMembership } from "./db";
 import { removePages } from "./search-store";
@@ -200,6 +201,9 @@ export async function manageSpace(user: Identity, input: Record<string, unknown>
       space.id,
       space.id,
     );
+    // Prefixes taken meanwhile by another database: new ones (WEB2).
+    for (const p of await all<{ page_id: string }>("SELECT page_id FROM space_trash_pages WHERE space_id=?", space.id))
+      await claimTicketPrefix(p.page_id);
     await run("DELETE FROM space_trash_pages WHERE space_id=?", space.id);
   } else if (input.action === "space.purge") {
     if (!space.deleted_at)

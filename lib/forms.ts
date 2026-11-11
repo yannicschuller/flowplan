@@ -145,7 +145,20 @@ export async function saveFormSubmission(
     if (f && !publicWritable(f, fields))
       throw new HttpError(403, fieldWriteMessage(f));
   }
-  const result = validateFormValues(fields, config, values, internal);
+  // A property that got a read or write rule is no longer asked, so it is
+  // no longer required either.
+  const result = validateFormValues(
+    fields,
+    {
+      ...config,
+      requiredFields: config.requiredFields.filter((key) => {
+        const f = fields.find((f) => f.id === key);
+        return !f || publicWritable(f, fields);
+      }),
+    },
+    values,
+    internal,
+  );
   if (Object.keys(result.errors).length)
     throw new HttpError(400, Object.values(result.errors).join(" "));
   const page = (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;

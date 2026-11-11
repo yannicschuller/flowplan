@@ -9,6 +9,7 @@ import { expireTrashedFiles, listFileTrash, purgeFiles } from "./file-trash";
 import { canManageSpace, purgePages, purgeSpace } from "./workspace-lifecycle";
 import type { Identity, Page, Space } from "./types";
 import { filterAsync } from "./each-async";
+import { claimTicketPrefix } from "./ticket-refs";
 
 // The trash (#123): pages, spaces, records (lib/row-trash.ts), files
 // (lib/file-trash.ts, #164) and saved templates stay there for `trashDays()`
@@ -43,7 +44,8 @@ async function trashedTree(user: Identity, root: Page) {
 // edit (as trashedTree) and that lie behind no journal PIN they have not
 // entered. A sub-page left out stays in the trash with everything below it.
 // A page that is not in the trash brings back nothing below it (sub-pages
-// moved to the trash on their own stay there).
+// moved to the trash on their own stay there, also those trashed before it:
+// they carry an earlier date).
 export async function restoreTrashedPage(user: Identity, input: Record<string, unknown>) {
   const page = await requirePage(user, uuid.parse(input.pageId), true, true);
   await requireUnlocked(user, page);
@@ -57,8 +59,9 @@ export async function restoreTrashedPage(user: Identity, input: Record<string, u
   let level = [page.id];
   while (level.length) {
     const children = await all<Page>(
-      `SELECT * FROM pages WHERE parent_id IN (${level.map(() => "?").join(",")}) AND deleted_at IS NOT NULL`,
+      `SELECT * FROM pages WHERE parent_id IN (${level.map(() => "?").join(",")}) AND deleted_at IS NOT NULL AND deleted_at>=?`,
       ...level,
+      page.deleted_at,
     );
     level = (await filterAsync(
       children.filter((p) => !restored.has(p.id)),
@@ -67,6 +70,8 @@ export async function restoreTrashedPage(user: Identity, input: Record<string, u
     for (const id of level) restored.add(id);
   }
   for (const id of restored) await run("UPDATE pages SET deleted_at=NULL WHERE id=?", id);
+  // A prefix taken meanwhile by another database: a new one (WEB2).
+  for (const id of restored) await claimTicketPrefix(id);
   return { ok: true };
 }
 

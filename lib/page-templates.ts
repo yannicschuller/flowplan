@@ -31,6 +31,7 @@ import { formConfigSchema } from "./form-settings";
 import { importNotebook, notebookArchiveSchema } from "./notebook";
 import type { Identity, Page, Field, Space } from "./types";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
+import { claimTicketPrefix } from "./ticket-refs";
 
 export const savedRowTemplateSchema = z.object({
   name: z.string().min(1).max(500),
@@ -339,6 +340,8 @@ export async function applyPageTemplate(
       ),
       page.id,
     );
+    // A prefix another database already uses: a free one (WEB2).
+    await claimTicketPrefix(page.id);
     for (const row of rows) {
       const rid = rowMap.get(row.id)!;
       await run(

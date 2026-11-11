@@ -94,7 +94,7 @@ export function SurveyResults({ survey, fields, rows }: { survey: Survey; fields
               <li key={i.label}>
                 <span>{i.label}</span>
                 <span className="muted">
-                  {t("Ø Platz", "Avg. place")} {i.average.toLocaleString(tag)}
+                  {t("Ø Platz", "Avg. place")} {num(i.average)}
                 </span>
               </li>
             ))}

@@ -87,3 +87,9 @@ test("a sprint is renamed and rescheduled; deleting it moves its records back to
   const next = await act({ action: "sprint.create", pageId });
   await assert.rejects(async () => await command(viewer, { action: "sprint.delete", pageId, sprintId: next.id }), (e: { status?: number }) => e.status === 403);
 });
+
+test("sprint actions on a page that is not a database answer 400", async () => {
+  const docId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "document", title: "Notes" })).id as string;
+  for (const action of ["sprint.create", "sprint.setup"])
+    await assert.rejects(async () => await act({ action, pageId: docId }), (e: { status?: number }) => e.status === 400);
+});

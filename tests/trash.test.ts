@@ -244,3 +244,21 @@ test("templates: deleted for good one by one, by emptying the template trash, an
   assert.equal(await one("SELECT 1 FROM templates WHERE id=?", b), undefined);
   assert.ok(await one("SELECT 1 FROM templates WHERE id=?", hidden));
 });
+
+test("a sub-page trashed before its parent keeps its date and stays in the trash when the parent is restored", async () => {
+  const f = await fixture();
+  const parent = await f.page("Parent"),
+    early = await f.page("Early", parent),
+    along = await f.page("Along", parent);
+  await command(f.owner, { action: "page.delete", pageId: early });
+  const earlier = nowText(Date.now() - 3_600_000);
+  await run("UPDATE pages SET deleted_at=? WHERE id=?", earlier, early);
+  await command(f.owner, { action: "page.delete", pageId: parent });
+  const deletedAt = async (pageId: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!.deleted_at;
+  assert.equal(await deletedAt(early), earlier);
+  assert.ok(await deletedAt(along));
+  await command(f.owner, { action: "page.restore", pageId: parent });
+  assert.equal(await deletedAt(parent), null);
+  assert.equal(await deletedAt(along), null);
+  assert.equal(await deletedAt(early), earlier);
+});

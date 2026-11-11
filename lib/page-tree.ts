@@ -19,6 +19,7 @@ import { relationPairs, insertRelationPair } from "./relation-sync";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { copyNotebook } from "./notebook";
 import { copyPageInk } from "./page-ink-store";
+import { claimTicketPrefix } from "./ticket-refs";
 import { copyPageMeta } from "./page-properties-server";
 import { readableTemplateCells } from "./row-documents";
 import type { Identity, Page, Field, Row } from "./types";
@@ -37,7 +38,20 @@ export async function duplicatePageTree(user: Identity, root: Page) {
     root.space_id,
     root,
   );
-  return { id: copied.pageIds.get(root.id)!, pages: tree.length };
+  const copy = copied.pageIds.get(root.id)!;
+  // The copy goes right after its source; renumbered as page.move does, so
+  // several copies of one page do not tie.
+  const siblings = (await all<{ id: string }>(
+    "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
+    root.space_id,
+    root.parent_id,
+    copy,
+  )).map((x) => x.id);
+  siblings.splice(siblings.indexOf(root.id) + 1, 0, copy);
+  await forEachAsync(siblings, async (sibling, i) =>
+    await run("UPDATE pages SET position=? WHERE id=?", i, sibling),
+  );
+  return { id: copy, pages: tree.length };
 }
 // All roots share one reference map, so links and relations between roots also copy.
 // The caller owns the destination and SQL transaction; every source is read-checked.
@@ -247,6 +261,8 @@ export async function duplicatePages(
           ),
           target,
         );
+        // The copy gets a prefix of its own (WEB → WEB2).
+        await claimTicketPrefix(target);
         for (const r of sourceRows.get(p.id) || []) {
           await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
