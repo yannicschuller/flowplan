@@ -52,7 +52,7 @@ async function setup(page: Page) {
   return { boot, command, create };
 }
 const sheet = (page: Page, n: number) => page.locator(".notebook-sheet").nth(n);
-const strokes = (scope: ReturnType<Page["locator"]>) => scope.locator(".ink-strokes > path:not(.ink-draft):not(.ink-lasso)");
+const strokes = (scope: ReturnType<Page["locator"]>) => scope.locator(".ink-strokes > g[clip-path] > path:not(.ink-draft):not(.ink-lasso)");
 async function openNotebook(page: Page, id: string, sheets = 1) {
   await page.goto(`/#page=${id}`);
   await expect(page.locator(".notebook-sheet")).toHaveCount(sheets, { timeout: 30_000 });

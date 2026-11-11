@@ -14,7 +14,7 @@
 // while the pen draws. Holding the pen still at the end of a stroke snaps it
 // to an editable shape (lib/ink/shapes.ts); the shape tool draws them; the
 // ruler, set square and compass (ink-ruler.tsx) guide strokes along them.
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
 import {
@@ -294,6 +294,10 @@ export function InkLayer({
   const textBar = useRef<HTMLDivElement>(null);
   const barTouched = useRef(0);
   const [laser, setLaser] = useState<(XY & { t: number })[]>([]);
+  // Ink ends at the edge of the page, as on paper. The layer itself shows
+  // beyond it (selection handles near the edge), so the ink is clipped.
+  const clipId = `ink-clip-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const clip = `url(#${clipId})`;
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const locale = useLocale();
@@ -895,8 +899,15 @@ export function InkLayer({
       onContextMenu={active ? (e) => e.preventDefault() : undefined}
     >
       <svg className="ink-highlights" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-        <InkItems items={visible} layer="highlight" src={imageSrc} playback={playback} />
-        <path ref={draftHighlight} className="ink-draft" fill="none" strokeOpacity={HIGHLIGHTER_OPACITY} strokeLinecap="round" strokeLinejoin="round" />
+        <defs>
+          <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+            <rect x={0} y={0} width={size.width} height={size.height} />
+          </clipPath>
+        </defs>
+        <g clipPath={clip}>
+          <InkItems items={visible} layer="highlight" src={imageSrc} playback={playback} />
+          <path ref={draftHighlight} className="ink-draft" fill="none" strokeOpacity={HIGHLIGHTER_OPACITY} strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
       <svg
         className="ink-strokes"
@@ -906,8 +917,10 @@ export function InkLayer({
         aria-label={label || t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
         data-count={visible.length}
       >
-        <InkItems items={visible} layer="ink" src={imageSrc} playback={playback} />
-        <path ref={draftInk} className="ink-draft" strokeLinecap="round" strokeLinejoin="round" />
+        <g clipPath={clip}>
+          <InkItems items={visible} layer="ink" src={imageSrc} playback={playback} />
+          <path ref={draftInk} className="ink-draft" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
         <path ref={lassoPath} className="ink-lasso" fill="none" vectorEffect="non-scaling-stroke" />
         {laser.length > 0 && (
           <path

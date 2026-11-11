@@ -82,7 +82,7 @@ async function openViewer(page: Page, pageId: string) {
   await expect.poll(() => viewer.locator("canvas.pdf-page").first().evaluate((c: HTMLCanvasElement) => c.width), { timeout: 15_000 }).toBeGreaterThan(300);
   return viewer;
 }
-const strokes = (page: Page, n: number) => page.locator(`.pdf-page-wrap[data-page="${n}"] .ink-strokes > path:not(.ink-draft):not(.ink-lasso)`);
+const strokes = (page: Page, n: number) => page.locator(`.pdf-page-wrap[data-page="${n}"] .ink-strokes > g[clip-path] > path:not(.ink-draft):not(.ink-lasso)`);
 
 test("write on a PDF with the pen, fingers scroll, save, reload, download with annotations", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "One run covers pen and touch.");
@@ -129,13 +129,13 @@ test("write on a PDF with the pen, fingers scroll, save, reload, download with a
   await tools.getByRole("radio", { name: "Textmarker" }).click();
   const second = (await page.locator('.pdf-page-wrap[data-page="2"]').boundingBox())!;
   await pen(cdp, path({ x: second.x + 60, y: second.y + 90 }, { x: second.x + 300, y: second.y + 90 }));
-  await expect(page.locator('.pdf-page-wrap[data-page="2"] .ink-highlights > path:not(.ink-draft)')).toHaveCount(1);
+  await expect(page.locator('.pdf-page-wrap[data-page="2"] .ink-highlights > g[clip-path] > path:not(.ink-draft)')).toHaveCount(1);
   await expect(strokes(page, 2)).toHaveCount(0);
   // Undo and redo.
   await tools.getByRole("button", { name: "Rückgängig" }).click();
-  await expect(page.locator('.pdf-page-wrap[data-page="2"] .ink-highlights > path:not(.ink-draft)')).toHaveCount(0);
+  await expect(page.locator('.pdf-page-wrap[data-page="2"] .ink-highlights > g[clip-path] > path:not(.ink-draft)')).toHaveCount(0);
   await tools.getByRole("button", { name: "Wiederholen" }).click();
-  await expect(page.locator('.pdf-page-wrap[data-page="2"] .ink-highlights > path:not(.ink-draft)')).toHaveCount(1);
+  await expect(page.locator('.pdf-page-wrap[data-page="2"] .ink-highlights > g[clip-path] > path:not(.ink-draft)')).toHaveCount(1);
 
   // Apple Pencil double-tap (iPad app) switches to the eraser and back.
   const tap = () => page.evaluate(() => window.dispatchEvent(new CustomEvent("flowplan:pencil", { detail: { gesture: "tap", preferred: "switchEraser" } })));
