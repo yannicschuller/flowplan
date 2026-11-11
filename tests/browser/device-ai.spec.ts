@@ -70,6 +70,8 @@ async function setup(page: Page, mode: Mode) {
     return response.json();
   };
   await command({ action: "profile.onboarded" });
+  // No AI on the server, whatever specs before this one switched on.
+  await command({ action: "admin.ai", settings: { enabled: false } });
   const id = (await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Wochenplan ${Date.now()}`, kind: "document" })).id as string;
   // Nothing of the page may go to the server's AI.
   const aiRequests: string[] = [];

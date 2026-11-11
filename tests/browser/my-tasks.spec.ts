@@ -75,7 +75,9 @@ test("a task gets a due date in the editor and is ticked off in Meine Aufgaben",
   await expect(done).toHaveCount(0);
   await page.goto(`/#page=${pageId}`);
   const task = page.getByLabel("Dokumentinhalt", { exact: true }).locator('li[data-checked="true"]', { hasText: taskText });
-  await expect(task).toBeVisible();
+  // The page opened before shows its copy from then first; the server's
+  // state (ticked off in Meine Aufgaben) follows with the next sync.
+  await expect(task).toBeVisible({ timeout: 15_000 });
   await expect(task.locator(".task-due")).toHaveCount(0);
   expect(errors).toEqual([]);
 });

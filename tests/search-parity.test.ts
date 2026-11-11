@@ -131,3 +131,15 @@ test("short queries ignore the case of letters beyond ASCII", async () => {
   await refreshSearchIndex();
   for (const q of ["Öl", "öl", "ÖL"]) assert.deepEqual(await titles(q), ["Speisekammer"], q);
 });
+
+// The spellings of a short query (every mix of lower and upper case) are
+// built for short queries only: built for a long one they doubled with
+// every letter, and a query of 30 letters ran the server out of memory.
+test("a long query is not spelt out in every case", async () => {
+  await page("Haustechnik", "<p>Heizungsüberprüfung im Kellerraum.</p>");
+  await refreshSearchIndex();
+  const started = Date.now();
+  assert.deepEqual(await titles("UBERPRUFUNG im kellerraum abcdefghijklmnop"), []);
+  assert.deepEqual(await titles("Heizungsüberprüfung im Kellerraum"), ["Haustechnik"]);
+  assert.ok(Date.now() - started < 5000);
+});

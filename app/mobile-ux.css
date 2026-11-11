@@ -293,6 +293,14 @@ label.hit-check {
   .collection-nav-empty {
     min-height: 44px;
   }
+  /* Saved collections in the drawer: the row and its menu. */
+  .collection-nav > .favorite-nav {
+    min-height: 44px;
+  }
+  .collection-nav-menu {
+    width: 44px;
+    height: 44px;
+  }
   /* The page bar: 44 px per tool; the saving state keeps its icon. */
   .page-top-actions {
     gap: 0;

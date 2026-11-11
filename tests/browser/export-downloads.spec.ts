@@ -17,8 +17,11 @@ test("Word, EPUB and print exports of a page, its sub-pages and a space; others 
   };
   const { htmlState } = await import("../../lib/document-server");
   const tag = `${Date.now()}`;
+  // A space of its own: the demo account's first space collects the pages of
+  // every spec and soon holds more than one export may take (413).
+  const spaceId = (await command({ action: "space.create", workspaceId: boot.workspace.id, name: `Export ${tag}` })).id as string;
   const create = async (title: string, html: string, parentId?: string) => {
-    const { id } = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, parentId });
+    const { id } = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId, title, parentId });
     const data = await (await page.request.get(`/api/pages/${id}`)).json();
     await command({ action: "document.sync", pageId: id, generation: data.generation, update: Buffer.from(htmlState(html)).toString("base64") });
     return id as string;
@@ -61,12 +64,12 @@ test("Word, EPUB and print exports of a page, its sub-pages and a space; others 
   expect(html).not.toContain("<script");
   const withoutChildren = await (await get(page.request, `/api/export/pdf?page=${root}`)).text();
   expect(withoutChildren).not.toContain(`Unterseite mit Gürteltier ${tag}`);
-  const space = await get(page.request, `/api/export/pdf?space=${boot.spaces[0].id}`);
+  const space = await get(page.request, `/api/export/pdf?space=${spaceId}`);
   expect(space.status()).toBe(200);
   expect(await space.text()).toContain(`Hauptteil mit Okapi ${tag}`);
 
   // Wrong selections.
-  for (const query of ["", `page=${root}&space=${boot.spaces[0].id}`, "page=kein-uuid"]) {
+  for (const query of ["", `page=${root}&space=${spaceId}`, "page=kein-uuid"]) {
     const refused = await get(page.request, `/api/export/epub?${query}`);
     expect(refused.status(), query).toBe(400);
     expect((await refused.json()).error).toBeTruthy();
@@ -79,7 +82,7 @@ test("Word, EPUB and print exports of a page, its sub-pages and a space; others 
     const other = await browser.newContext();
     await other.request.post("/api/auth/password", { headers: { origin }, data: { email: process.env.TEST_OTHER_EMAIL, password: process.env.TEST_OTHER_PASSWORD } });
     for (const kind of ["docx", "epub", "pdf"]) expect([403, 404], kind).toContain((await get(other.request, `/api/export/${kind}?page=${root}`)).status());
-    expect([403, 404]).toContain((await get(other.request, `/api/export/pdf?space=${boot.spaces[0].id}`)).status());
+    expect([403, 404]).toContain((await get(other.request, `/api/export/pdf?space=${spaceId}`)).status());
     await other.close();
   }
 });

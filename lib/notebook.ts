@@ -344,8 +344,10 @@ export const notebookArchiveSchema = z.object({
     )
     .max(MAX_SHEETS),
   // Audio recordings (lib/notebook-audio.ts): the file ids refer to the
-  // archive's files. Older archives have none.
-  recordings: recordingsArchiveSchema.optional(),
+  // archive's files. Older archives have none. Lazy: notebook-audio imports
+  // this module indirectly (e2ee-server → … → page-tree), so where it loads
+  // first its schema does not exist yet while this one is built.
+  recordings: z.lazy(() => recordingsArchiveSchema).optional(),
   // The table of contents, sheets by their index ("_0").
   outline: z.unknown().optional(),
 });

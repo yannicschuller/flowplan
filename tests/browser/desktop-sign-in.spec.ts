@@ -42,9 +42,12 @@ test("the desktop app signs in through the browser", async ({ browser }, testInf
   expect((await redeem({ code, verifier })).status()).toBe(400);
 
   // A fresh code with the right verifier signs the app in, once.
-  await page.goto(`${origin}/api/auth/desktop?challenge=${challenge}`);
-  await page.getByRole("button", { name: "In der App anmelden" }).click();
-  const second = new URL(String(await page.getByRole("link", { name: "Flowplan-App öffnen" }).getAttribute("href")));
+  // The app opens the browser again – a new tab. (In the tab that tried
+  // to open flowplan:// Chromium ignores the next click on the form.)
+  const again = await web.newPage();
+  await again.goto(`${origin}/api/auth/desktop?challenge=${challenge}`);
+  await again.getByRole("button", { name: "In der App anmelden" }).click();
+  const second = new URL(String(await again.getByRole("link", { name: "Flowplan-App öffnen" }).getAttribute("href")));
   expect((await redeem({ code: second.searchParams.get("code"), verifier })).ok()).toBe(true);
   expect((await appPage.request.get(`${origin}/api/bootstrap`)).ok()).toBe(true);
   expect((await redeem({ code: second.searchParams.get("code"), verifier })).status()).toBe(400);

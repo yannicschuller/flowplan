@@ -46,6 +46,8 @@ test("a new status becomes its own board column; a due date can be removed", asy
   const dated = data.rows.find((r: { cells: Record<string, unknown> }) => r.cells.date);
   await page.locator(".database-tabs").getByText(data.database.views[0].name, { exact: true }).click();
   await page.getByText(String(dated.cells.title)).first().click();
+  // On a phone a record's properties start folded (record-properties-fold.spec.ts).
+  if (info.project.name === "mobile") await page.getByRole("button", { name: /^Eigenschaften ausklappen/ }).click();
   const remove = page.getByRole("button", { name: `Datum entfernen: ${due.name}` }).first();
   await expect(remove).toBeVisible();
   await remove.click();

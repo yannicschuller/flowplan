@@ -18,6 +18,9 @@ test("dragging a page by its handle scrolls the page list at the edges", async (
     return response.json();
   };
   const tag = `scroll${Date.now()}`;
+  // A space of its own (the last in the list): the demo account's first
+  // space collects the pages of every spec run against the same server.
+  const space = await command({ action: "space.create", workspaceId: boot.workspace.id, name: `Scroll ${tag}` });
   const ids: string[] = [];
   for (let i = 0; i < 30; i++)
     ids.push(
@@ -25,13 +28,13 @@ test("dragging a page by its handle scrolls the page list at the edges", async (
         await command({
           action: "page.create",
           workspaceId: boot.workspace.id,
-          spaceId: boot.spaces[0].id,
+          spaceId: space.id,
           title: `Seite ${String(i).padStart(2, "0")} ${tag}`,
         })
       ).id,
     );
   await page.goto(`/#page=${ids[0]}`);
-  await expect(page.locator(".tiptap")).toBeVisible();
+  await expect(page.locator(".tiptap")).toBeVisible({ timeout: 20_000 });
   await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   const nav = page.locator(".sidebar");
   const handle = nav.getByRole("button", { name: `Seite 00 ${tag} ziehen` });

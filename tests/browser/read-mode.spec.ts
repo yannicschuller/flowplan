@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { toggleReadingMode } from "./page-top-bar";
 
 // A document can be opened for reading: no editing until switched back,
 // remembered for this page on this device.
@@ -15,12 +16,13 @@ test("documents switch between reading and editing", async ({ page }) => {
   await page.goto(`/#page=${pageId}`);
   const content = page.getByLabel("Dokumentinhalt", { exact: true });
   await expect(content).toHaveAttribute("contenteditable", "true");
-  await page.getByRole("button", { name: "Lesemodus" }).click();
+  // A button in the top bar; on phones an item of the ⋯ menu.
+  await toggleReadingMode(page, "Lesemodus");
   await expect(content).toHaveAttribute("contenteditable", "false");
   // Remembered after a reload.
   await page.reload();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "false");
-  await page.getByRole("button", { name: "Bearbeiten" }).click();
+  await toggleReadingMode(page, "Bearbeiten");
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "true");
   await page.request.post("/api/command", { headers: { origin }, data: { action: "page.delete", pageId } });
 });

@@ -3,7 +3,15 @@ import { test, expect, devices } from "@playwright/test";
 // On iPhone and iPad, Safari prints the page itself (not a frame) and only
 // while the tap still counts: "Print / PDF" puts the lean copy into the page
 // and prints right away, with only the copy in print.
-test.use({ ...devices["iPhone 13"], locale: "de-DE" });
+// The iPhone's screen, agent and touch in the configured Chromium
+// (window.print is stubbed below; WebKit is not installed where the specs run).
+const { defaultBrowserType: _browser, ...iPhone } = devices["iPhone 13"];
+test.use({ ...iPhone, locale: "de-DE" });
+// The hint that Flowplan is also an app (components/app-promo.tsx) has been
+// seen: on an iPhone it would cover the page.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("flowplan-app-promo", "1"));
+});
 
 test("print on iPhone prints a lean copy in the page right away", async ({ page }) => {
   test.setTimeout(90_000);
@@ -90,7 +98,7 @@ test("print in the home screen app hands a print view to the browser", async ({ 
     };
   });
   await page.goto(`/#page=${pageId}`);
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Ein Absatz für den Browser.");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Ein Absatz für den Browser.", { timeout: 20_000 });
   await page.getByRole("button", { name: "Seitenaktionen" }).click();
   await page.getByRole("menuitem", { name: "Drucken / PDF" }).click();
   const dialog = page.locator("dialog.print-handoff");

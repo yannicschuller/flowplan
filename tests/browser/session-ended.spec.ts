@@ -25,7 +25,9 @@ test("an ended session leads to the sign-in page", async ({ page, context }) => 
   const banner = page.getByRole("alert").filter({ hasText: "Du wurdest abgemeldet" });
   await expect(banner).toBeVisible({ timeout: 15_000 });
   await banner.getByRole("link", { name: "Anmelden" }).click();
-  await expect(page.locator("input[type=password], a[href^='/api/auth/login']").first()).toBeVisible({ timeout: 15_000 });
+  // The sign-in page: its ways to sign in (the password form may wait
+  // behind "Mit E-Mail und Passwort", tests/browser/sign-in-form.ts).
+  await expect(page.locator(".login-ways:not([data-pending])")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Bitte melde dich an.")).toHaveCount(0);
   expect(page.url()).toContain(`#page=${pageId}`);
 });
