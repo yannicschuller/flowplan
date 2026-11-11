@@ -189,7 +189,7 @@ test("speaker names come from the tracks", () => {
 test("two tracks: transcript with Ada and Andere, echo removed, summary with tasks in My tasks", async () => {
   const { pageId, meetingId } = await pageWithMeeting();
   await record(ada, pageId, meetingId, ["me", "others"]);
-  const status = await meetings.meetingStatus(ada, meetingId, { content: true });
+  const status = await meetings.meetingDetails(ada, meetingId);
   assert.equal(status.status, "done", String(status.error));
   assert.ok(whisperCalls.some((n) => n.includes("-me.")) && whisperCalls.some((n) => n.includes("-others.")));
   const speakers = status.transcript.map((s) => `${s.speaker}@${s.start}`);
@@ -216,7 +216,7 @@ test("continue later appends to the same transcript after the earlier session", 
   const second = await record(ada, pageId, meetingId, ["mixed"], { durationMs: 20_000 });
   assert.equal(second.session, 2);
   assert.equal(second.offsetMs, 20_000);
-  const status = await meetings.meetingStatus(ada, meetingId, { content: true });
+  const status = await meetings.meetingDetails(ada, meetingId);
   assert.deepEqual(status.transcript.map((s) => [s.session, s.start]), [
     [1, 0],
     [2, 20],
@@ -337,7 +337,7 @@ test("POST /api/meetings: a record in a meetings database with date, attendees, 
   assert.ok(created.rowId);
   assert.equal(created.statusUrl, `/api/meetings/${created.id}`);
   await meetings.meetingJob(created.id);
-  const status = await meetings.meetingStatus(token, created.id, { content: true });
+  const status = await meetings.meetingDetails(token, created.id);
   assert.equal(status.status, "done", String(status.error));
   assert.equal(status.title, "Kundentermin");
   const row = (await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", created.rowId))!;
@@ -358,7 +358,7 @@ test("MCP: create_meeting_note only for tokens with the AI permission", async ()
   assert.ok(mcpToolNames(withAi).includes("create_meeting_note"));
   const { pageId } = await pageWithMeeting("MCP");
   const call = async (user: Identity, args: Record<string, unknown>) =>
-    (await handleMcpMessage(user, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_meeting_note", arguments: args } })) as {
+    (await handleMcpMessage(user, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_meeting_note", arguments: args } })) as unknown as {
       result: { content: { text: string }[]; isError?: boolean };
     };
   const refused = await call(plain, { pageId, transcript: "Ada: Hallo" });
@@ -372,7 +372,7 @@ test("MCP: create_meeting_note only for tokens with the AI permission", async ()
   assert.equal(ok.result.isError, undefined, ok.result.content[0].text);
   const created = JSON.parse(ok.result.content[0].text) as { id: string };
   await meetings.meetingJob(created.id);
-  const status = await meetings.meetingStatus(withAi, created.id, { content: true });
+  const status = await meetings.meetingDetails(withAi, created.id);
   assert.equal(status.status, "done", String(status.error));
   assert.deepEqual(status.transcript.map((s) => s.speaker), ["Ada", "Ben"]);
   assert.match(status.summary, /Angebot/);

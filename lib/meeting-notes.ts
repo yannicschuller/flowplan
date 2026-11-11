@@ -6,8 +6,10 @@
 // whose e-mail belongs to a member –, agenda, notes and a task list. Tasks
 // with @person there show up in "Meine Aufgaben" right away. The note is
 // remembered per journal and appointment, so the day shows "Notiz öffnen"
-// afterwards.
-import { createHash } from "node:crypto";
+// afterwards. At the end a meeting block (#199, lib/meeting-schema.ts) with
+// the appointment's title, date and attendees, ready to record.
+import { createHash, randomUUID } from "node:crypto";
+import { meetingHtml } from "./meeting-schema";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
 import { all, one, run } from "./db";
@@ -171,7 +173,12 @@ export async function createMeetingNote(user: Identity, input: unknown) {
     const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", existing.page_id);
     if (page && await pageRole(user, page)) return { id: page.id, existing: true };
   }
-  const html = meetingNoteHtml({ when: whenText(start, end, timed, date, zone), attendees: await people(journal.workspace_id, attendees, userIds), link });
+  const persons = await people(journal.workspace_id, attendees, userIds);
+  // The meeting block (#199) at the end, ready to record: title, date and
+  // attendees of the appointment.
+  const html =
+    meetingNoteHtml({ when: whenText(start, end, timed, date, zone), attendees: persons, link }) +
+    meetingHtml({ meetingId: randomUUID(), title: title || ct("Besprechung", "Meeting"), date, attendees: persons.map((p) => (p.userId ? { id: p.userId, name: p.name } : { name: p.name || p.email || "" })), event: key });
   const created = await createPage(journal.workspace_id, journal.space_id, user.id, noteTitle(title, date).slice(0, 500), "document", journal.id);
   await run("UPDATE pages SET icon=? WHERE id=?", "📝", created);
   await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);

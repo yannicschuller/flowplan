@@ -308,6 +308,22 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     ],
   },
   {
+    id: "meetings",
+    area: "settings",
+    group: "workspace",
+    icon: "Microphone",
+    title: { de: "Besprechungen", en: "Meetings" },
+    description: { de: "Anweisungen für Zusammenfassungen, Aufbewahrung des Audios und Einwilligung.", en: "Instructions for summaries, keeping the audio and consent." },
+    keywords: {
+      de: "besprechung meeting protokoll aufnahme transkript zusammenfassung audio aufbewahren löschen einwilligung zustimmung dsgvo",
+      en: "meeting minutes recording transcript summary audio retention delete consent gdpr",
+    },
+    entries: [
+      { title: { de: "Einwilligung erforderlich", en: "Consent required" }, anchor: "consent" },
+      { title: { de: "Audio aufbewahren", en: "Keep audio" }, anchor: "audio" },
+    ],
+  },
+  {
     id: "time",
     area: "settings",
     group: "workspace",

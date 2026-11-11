@@ -344,6 +344,15 @@ export async function meetingStatus(user: Identity, meetingId: string, options: 
   };
 }
 
+export type MeetingDetails = Awaited<ReturnType<typeof meetingStatus>> & {
+  title: string;
+  summary: string;
+  agenda: string;
+  transcript: { id: string; start: number; end: number; speaker: string; track: MeetingTrack; session: number; text: string }[];
+};
+// The status with the summary (Markdown), agenda and transcript.
+export const meetingDetails = async (user: Identity, meetingId: string) => (await meetingStatus(user, meetingId, { content: true })) as MeetingDetails;
+
 // ---- Recording ----
 
 const startInput = z.object({
