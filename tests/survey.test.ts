@@ -232,3 +232,17 @@ test("survey.save keeps follow-up settings it was not sent", async () => {
   assert.deepEqual((await formSettings(pageId))!.config.notifyMembers, [owner.id]);
   assert.equal((await formSettings(pageId))!.config.redirectUrl, "https://example.com/{x}");
 });
+
+test("a ranking option added after answers comes last, without an average", () => {
+  const ranking = q("ranking");
+  const survey = surveySchema.parse({ enabled: true, items: [{ ...ranking.question, field: "r" }] });
+  const fields = [{ id: "r", name: "Rang", type: "multiselect" as const, options: ["A", "B", "Neu", "C"] }];
+  const answers = [["A", "B", "C"], ["B", "A", "C"]].map((r) => ({ cells: { r } })) as unknown as Parameters<typeof surveyResults>[2];
+  const result = surveyResults(survey, fields, answers).questions[0];
+  assert.deepEqual(result.kind === "ranking" && result.items, [
+    { label: "A", average: 1.5 },
+    { label: "B", average: 1.5 },
+    { label: "C", average: 3 },
+    { label: "Neu", average: null },
+  ]);
+});
