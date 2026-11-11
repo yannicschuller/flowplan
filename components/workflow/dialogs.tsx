@@ -66,7 +66,7 @@ export function ActivateDialog({
   onClose: () => void;
   onDone: () => void;
   onPick: (nodeId: string) => void;
-  onError: (e: unknown) => void;
+  onError: (e: unknown, retry?: () => void) => void;
 }) {
   const t = useStableT();
   const locale = useLocale();
@@ -74,10 +74,17 @@ export function ActivateDialog({
   const [issues, setIssues] = useState<Issue[] | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // A failed check (#209) does not leave the dialog at "Checking …": the
+  // message offers to try again, which runs the check once more (`attempt`).
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (open) setNote("");
+  }, [open, pageId]);
   useEffect(() => {
     if (!open) return;
     setIssues(null);
-    setNote("");
+    setFailed(false);
     let live = true;
     void (async () => {
       try {
@@ -85,14 +92,16 @@ export function ActivateDialog({
         const r = await api<{ issues: Issue[] }>("/api/command", { action: "workflow.validate", pageId });
         if (live) setIssues(r.issues);
       } catch (e) {
-        if (live) onError(e);
+        if (!live) return;
+        setFailed(true);
+        onError(e, () => setAttempt((n) => n + 1));
       }
     })();
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, pageId]);
+  }, [open, pageId, attempt]);
   const ctx = useMemo(() => displayContext(graph, locale, ws), [graph, locale, ws]);
   const labels = new Map(graph.nodes.map((n) => [n.id, n.label]));
   const triggers = graph.nodes.filter((n) => isTrigger(n.type) && !n.disabled);
@@ -102,7 +111,7 @@ export function ActivateDialog({
   return (
     <Modal open={open} onClose={onClose} title={t("Workflow aktivieren", "Activate the workflow")} wide>
       <div className="wf-dialog">
-        {issues === null ? (
+        {issues === null && failed ? null : issues === null ? (
           <p className="muted" role="status">
             {t("Wird geprüft …", "Checking …")}
           </p>

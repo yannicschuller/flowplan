@@ -117,6 +117,42 @@ test("the issue's example: built on the canvas, tested, activated, a new sub-pag
   expect(errors).toEqual([]);
 });
 
+// #209: the check in "Workflow aktivieren" did not reach the server (the
+// desktop app on Windows) – the dialog stayed at "Wird geprüft …" with
+// "Aktivieren" off and no way on but closing it. The message now offers to
+// try again, and the check runs once more.
+test("a failed check in the activate dialog can be run again", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Editing is for tablets and computers.");
+  test.setTimeout(120_000);
+  const { command, workflow, overview } = await setup(page, "Check");
+  const trigger = { id: "n_trigger1", type: "trigger.page.created", typeVersion: 1, label: "Neue Seite", note: "", position: { x: 0, y: 0 }, disabled: false, config: { scope: { kind: "below", pageId: overview, depth: "children" } } };
+  const append = { id: "n_append01", type: "action.page.append", typeVersion: 1, label: "Verlinken", note: "", position: { x: 300, y: 0 }, disabled: false, config: { page: "{{n_trigger1.page.parent}}", blocks: [{ type: "bullet", text: "{{n_trigger1.page.link}}" }] } };
+  await command({ action: "workflow.draft", pageId: workflow, graph: { nodes: [trigger, append], edges: [{ id: "e_1", from: { node: trigger.id, port: "out" }, to: { node: append.id, port: "in" } }] } });
+  await open(page, workflow);
+  // The dialog's own check (without a graph) fails once at the network level.
+  let failures = 0;
+  await page.route("**/api/command", (route) => {
+    const body = route.request().postData() || "";
+    if (failures === 0 && body.includes('"workflow.validate"') && !body.includes('"graph"')) {
+      failures++;
+      return route.abort("failed");
+    }
+    return route.continue();
+  });
+  await page.getByRole("button", { name: "Aktivieren", exact: true }).click();
+  const activate = page.getByRole("dialog", { name: "Workflow aktivieren" });
+  await expect(activate.getByRole("alert")).toContainText("Keine Verbindung");
+  await expect(activate.getByText("Wird geprüft …")).toHaveCount(0);
+  await expect(activate.getByRole("button", { name: "Aktivieren", exact: true })).toBeDisabled();
+  await activate.getByRole("button", { name: "Erneut versuchen" }).click();
+  await expect(activate.getByText(/Läuft als du/)).toBeVisible();
+  await expect(activate.getByRole("alert")).toHaveCount(0);
+  expect(failures).toBe(1);
+  await activate.getByRole("button", { name: "Aktivieren", exact: true }).click();
+  await expect(activate).toBeHidden();
+  await expect(page.locator(".wf-head .status-badge")).toHaveText("Aktiv");
+});
+
 test("phones: the flow as a list, the switch and the runs, no editor", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "The phone view.");
   test.setTimeout(120_000);

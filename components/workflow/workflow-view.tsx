@@ -62,7 +62,8 @@ export type WorkflowViewProps = {
   members: Person[];
   me: Person;
   onReload: () => void;
-  onError: (error: unknown) => void;
+  // `retry`: the message offers to try again (reportError in components/ui.tsx).
+  onError: (error: unknown, retry?: () => void) => void;
 };
 
 function useMedia(query: string) {
