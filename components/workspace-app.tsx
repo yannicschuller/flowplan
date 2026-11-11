@@ -60,7 +60,7 @@ import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
 import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
-import { SidebarMore, SidebarToolRow, type SidebarTool } from "./sidebar-tools";
+import { SidebarMore, SidebarToolRow, type SidebarAccountItem, type SidebarTool } from "./sidebar-tools";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { ShareDialog } from "./share-dialog";
 import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
@@ -2978,6 +2978,22 @@ export default function WorkspaceApp({
       ? [{ id: "admin", label: t("Administration", "Administration"), icon: ShieldCheck, selected: screen === "admin", onSelect: () => go("admin") }]
       : []),
   ];
+  const signOut = async () => {
+    await disableOffline().catch(() => undefined);
+    clearAppCache();
+    await fetch("/api/auth/logout", { method: "POST" });
+    location.href = "/";
+  };
+  // The account menu's entries in the phone's "Mehr" sheet (#197), in the
+  // order of the "⋯" menu; signing out comes last, set apart.
+  const legal = boot.instance?.legal;
+  const accountItems: SidebarAccountItem[] = [
+    { id: "theme", label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), icon: dark ? Sun : Moon, keepOpen: true, onSelect: toggleTheme },
+    { id: "about", label: t("Über Flowplan", "About Flowplan"), icon: InfoIcon, href: "#settings/about" },
+    ...(legal?.imprint ? [{ id: "imprint", label: t("Impressum", "Legal notice"), icon: Scales, href: legal.imprint, external: true }] : []),
+    ...(legal?.privacy ? [{ id: "privacy", label: t("Datenschutz", "Privacy"), icon: ShieldCheck, href: legal.privacy, external: true }] : []),
+  ];
+  const signOutItem: SidebarAccountItem = { id: "sign-out", label: t("Abmelden", "Sign out"), icon: SignOut, onSelect: () => void signOut() };
   return (
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
@@ -3450,9 +3466,11 @@ export default function WorkspaceApp({
               {boot.user.name}
               <small>{online ? t("Arbeitsbereich verbunden", "Workspace connected") : t("Offline", "Offline")}</small>
             </span>
-            <SidebarMore tools={sidebarTools} />
+            {/* On phones the account menu's entries are part of "Mehr"
+                (#197); wider windows keep the "⋯" menu. */}
+            <SidebarMore tools={sidebarTools} account={accountItems} signOut={signOutItem} />
             <Dropdown.Root>
-              <Dropdown.Trigger className="icon-button" aria-label={t("Kontomenü", "Account menu")}>
+              <Dropdown.Trigger className="icon-button profile-account-menu" aria-label={t("Kontomenü", "Account menu")}>
                 <DotsThree size={22} />
               </Dropdown.Trigger>
               <Dropdown.Portal>
@@ -3466,15 +3484,7 @@ export default function WorkspaceApp({
                     {dark ? <Sun /> : <Moon />}
                     {dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme")}
                   </Dropdown.Item>
-                  <Dropdown.Item
-                    className="dropdown-item"
-                    onSelect={async () => {
-                      await disableOffline().catch(() => undefined);
-                      clearAppCache();
-                      await fetch("/api/auth/logout", { method: "POST" });
-                      location.href = "/";
-                    }}
-                  >
+                  <Dropdown.Item className="dropdown-item" onSelect={() => void signOut()}>
                     <SignOut />
                     {t("Abmelden", "Sign out")}
                   </Dropdown.Item>
