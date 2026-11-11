@@ -3418,7 +3418,8 @@ export default function Whiteboard({
                 onClick={() => pickPanelItem(a)}
               >
                 {a.icon}
-                <span>{a.label}</span>
+                {/* A line may break after a slash ("Mermaid/PlantUML"). */}
+                <span>{tiles ? a.label.replace(/\//g, "/​") : a.label}</span>
                 {!tiles && a.shortcut && <kbd aria-hidden>{a.shortcut}</kbd>}
               </button>
             ))}

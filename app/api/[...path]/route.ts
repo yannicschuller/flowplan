@@ -62,6 +62,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
 import { createTemplate, libraryFile } from "@/lib/notebook-library";
+import { FONT_LIMITS, fontResponse, storedTheme, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
 import {
   requireUser,
   checkOrigin,
@@ -122,6 +123,7 @@ import { deleteBoardTemplate, listBoardTemplates, saveBoardTemplate } from "@/li
 import { deleteRackTemplate, listRackTemplates, netboxImport, saveRackTemplate } from "@/lib/whiteboard-rack-server";
 import { whiteboardRowCards } from "@/lib/whiteboard-cards";
 import { transcribe } from "@/lib/transcribe";
+import { requireTokenAi } from "@/lib/ai/token-access";
 import { journalDate } from "@/lib/journal";
 import { dayOrDraft, emptyJournalDays, journalDraftPage } from "@/lib/journal-days";
 import {
@@ -1124,6 +1126,8 @@ async function handleGET(
       if (ids.length > MAX_PLACEHOLDER_IDS) throw new HttpError(400, "Ungültige Eingabe.");
       return NextResponse.json({ placeholders: await placeholdersFor(user, ids) }, { headers: { "Cache-Control": "private, no-store" } });
     }
+    // A face uploaded for a workspace's look (#196): for its members and guests.
+    if (path.length === 2 && path[0] === "workspace-fonts") return fontResponse(await workspaceFontFile(path[1], { user }));
     // Pictures of own stickers and paper templates of notebooks.
     if (path.length === 2 && path[0] === "notebook-library") {
       const asset = await libraryFile(user, path[1]);
@@ -1166,7 +1170,8 @@ async function handleGET(
         {
           format: "flowplan-1",
           exportedAt: new Date().toISOString(),
-          workspace: await one("SELECT name,icon FROM workspaces WHERE id=?", wid),
+          // Name, icon and look (#196; uploaded faces only in the ZIP archive).
+          workspace: { ...(await one<{ name: string; icon: string }>("SELECT name,icon FROM workspaces WHERE id=?", wid)), theme: await storedTheme(wid) },
           pages: await mapAsync(pages, async (p) => ({
             ...p,
             data:
@@ -1389,8 +1394,9 @@ async function handlePOST(
     }
     // Voice notes: the recording goes to the local Whisper service.
     if (path.length === 1 && path[0] === "transcribe") {
-      if (user.demo || user.apiScope)
-        throw new HttpError(403, "Hier nicht verfügbar.");
+      if (user.demo) throw new HttpError(403, "Hier nicht verfügbar.");
+      // API tokens only with "KI und Transkription" (#199).
+      await requireTokenAi(user);
       const data = await req.formData();
       // The recording would reach the transcription service as plaintext.
       await requirePlaintext(await requirePage(user, z.uuid().parse(data.get("pageId")), true));
@@ -1669,6 +1675,17 @@ async function handlePOST(
       const result = await endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
       if (result.current) jar.delete(cookieName);
       return NextResponse.json(result);
+    }
+    // A face for the workspace's look (owners; lib/workspace-fonts.ts).
+    if (path.length === 1 && path[0] === "workspace-fonts") {
+      if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
+      requireBodySize(req, FONT_LIMITS.bytes + 100_000, "Höchstens 5 MB pro Schrift.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const workspaceId = z.uuid().parse(data.get("workspaceId"));
+      return NextResponse.json(await transaction(async () => await uploadWorkspaceFont(user, workspaceId, { name: data.get("name"), file: { name: file.name, bytes } }), user));
     }
     // A new own paper template of notebooks (lib/notebook-library.ts).
     if (path.length === 1 && path[0] === "notebook-library") {

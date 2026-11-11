@@ -55,6 +55,28 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   }
   await expect(sheet(page).getByRole("button", { name: "Administration" })).toHaveCount(0);
 
+  // The account menu is part of the sheet (#197): no "⋯" in the profile
+  // row; design and about below a line, signing out last and apart.
+  await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeHidden();
+  const account = sheet(page).getByRole("group", { name: "Konto" });
+  await expect(account.locator("button, a")).toHaveText(["Dunkles Design", "Über Flowplan", "Abmelden"]);
+  for (const entry of await account.locator("button, a").all()) expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // (Measured at one moment: the sheet may still be sliding in.)
+  const gaps = await account.evaluate((group) => {
+    const box = (el: Element | null) => el!.getBoundingClientRect();
+    const places = box(group.previousElementSibling),
+      list = box(group.querySelector("ul")),
+      signOut = box(group.querySelector(".sidebar-more-sign-out"));
+    return { line: box(group).top - places.bottom, signOut: signOut.top - list.bottom, last: signOut.top >= list.bottom };
+  });
+  expect(gaps.line).toBeGreaterThanOrEqual(0);
+  expect(gaps.signOut).toBeGreaterThanOrEqual(16);
+  // The design switches with the sheet left open.
+  await account.getByRole("button", { name: "Dunkles Design" }).tap();
+  await expect(account.getByRole("button", { name: "Helles Design" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await account.getByRole("button", { name: "Helles Design" }).tap();
+
   // Escape closes it, the focus goes back to "Mehr".
   await page.keyboard.press("Escape");
   await expect(sheet(page)).toBeHidden();
@@ -78,6 +100,16 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await sheet(page).getByRole("button", { name: "Vorlagen", exact: true }).tap();
   await expect(page.getByRole("dialog", { name: "Vorlagen", exact: true })).toBeVisible();
   await expect(sheet(page)).toBeHidden();
+
+  // "Über Flowplan" opens the settings' about page.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Vorlagen", exact: true })).toBeHidden();
+  // (The drawer stays open behind a dialog.)
+  await expect(page.locator(".nav-open .sidebar")).toBeVisible();
+  await more(page).tap();
+  await sheet(page).getByRole("link", { name: "Über Flowplan" }).tap();
+  await expect(page).toHaveURL(/#settings\/about$/);
+  await expect(sheet(page)).toBeHidden();
   } finally {
     await context.close();
   }
@@ -90,6 +122,8 @@ test("wider windows keep the row of symbols", async ({ page }, info) => {
   const row = sidebar(page).locator(".sidebar-tools");
   await expect(row).toBeVisible();
   await expect(more(page)).toBeHidden();
+  // … and the account menu "⋯" (#197).
+  await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeVisible();
   for (const name of PLACES) await expect(row.getByRole("button", { name, exact: true })).toBeVisible();
   await row.getByRole("button", { name: "Medien", exact: true }).click();
   await expect(row.getByRole("button", { name: "Medien", exact: true })).toHaveClass(/selected/);

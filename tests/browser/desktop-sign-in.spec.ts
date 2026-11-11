@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
+import { openPasswordForm } from "./sign-in-form";
 
 // The desktop app signs in through the browser: a one-time code that only
 // the holder of the verifier can redeem, once.
@@ -87,7 +88,7 @@ test("the Windows desktop app signs in with passkeys in its window", async ({ br
   await expect(page.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveCount(0);
   await expect(page.locator("[data-passkey-fallback]")).toHaveCount(0);
   await page.getByRole("button", { name: "Mit Passkey anmelden" }).click();
-  await expect(page.locator(".login-card [role=alert]")).toHaveText("Anmeldung mit Passkey abgebrochen.");
+  await expect(page.locator(".login-column .error[role=alert]")).toHaveText("Anmeldung mit Passkey abgebrochen.");
   expect(await page.evaluate(() => (window as unknown as { asked: number }).asked)).toBe(1);
   const fallback = page.locator("[data-passkey-fallback] a");
   await expect(fallback).toHaveText("Im Browser anmelden");
@@ -121,13 +122,19 @@ test("the mobile app signs in with passkeys and SSO through the browser", async 
   await page.goto(origin + "/");
   await expect(page.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
   // Password managers fill in nothing in the app's web view (flowplan-app#5):
-  // the same hand-off shows the password form in the system browser.
+  // the same hand-off shows the password form in the system browser – a
+  // link under the form, once "Mit E-Mail und Passwort" opened it.
+  await expect(page.getByRole("link", { name: "Im Browser anmelden" })).toBeHidden();
+  await openPasswordForm(page);
   await expect(page.getByRole("link", { name: "Im Browser anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  await expect(page.getByRole("link", { name: "Im Browser anmelden" })).toBeVisible();
   await app.close();
   // In a browser the page signs in itself.
   const web = await browser.newContext();
   const plain = await web.newPage();
   await plain.goto(origin + "/");
+  await expect(plain.getByRole("button", { name: "Mit Passkey anmelden" })).toBeVisible();
+  await openPasswordForm(plain);
   await expect(plain.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
   await expect(plain.getByRole("link", { name: "Im Browser anmelden" })).toHaveCount(0);
   await web.close();
@@ -185,7 +192,9 @@ test("the mobile app signs in with password and two-factor code through the brow
   const page = await sheet.newPage();
   await page.goto(`${origin}/api/auth/desktop?challenge=${challenge}`);
   await expect(page).toHaveURL(new RegExp(`desktop=${challenge}`));
+  // The form is in the page (for password managers) before it is opened.
   await expect(page.locator("input[name=email]")).toHaveAttribute("autocomplete", "username webauthn");
+  await openPasswordForm(page);
   await expect(page.locator("input[name=password]")).toHaveAttribute("autocomplete", "current-password");
   await page.locator("input[name=email]").fill(account.email);
   await page.locator("input[name=password]").fill(account.password);

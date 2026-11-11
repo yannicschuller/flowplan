@@ -18,6 +18,8 @@ type Token = {
   created_at: number;
   last_used_at: number | null;
   expires_at: number | null;
+  // "KI und Transkription" (#199): 1 when the token was created with it.
+  ai?: number;
 };
 type McpClient = "claude-code" | "claude-desktop" | "chatgpt" | "other";
 // How Claude, ChatGPT and other AI clients connect (lib/mcp.ts, app/api/mcp).
@@ -148,6 +150,8 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
   const [tokens, setTokens] = useState<Token[] | null>(null),
     [tokenName, setTokenName] = useState(""),
     [scope, setScope] = useState<"read" | "write" | "clipper">("read"),
+    // Off unless chosen (#199): AI, transcription and meeting notes.
+    [ai, setAi] = useState(false),
     [fresh, setFresh] = useState<{ label: string; value: string } | null>(null),
     [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
@@ -208,7 +212,13 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
                       </span>
                     ),
                   },
-                  { key: "scope", header: t("Rechte", "Permissions"), render: (token) => <StatusBadge tone={scopes[token.scope].tone}>{scopes[token.scope].label}</StatusBadge> },
+                  { key: "scope", header: t("Rechte", "Permissions"), render: (token) => (
+                      <span className="api-token-badges">
+                        <StatusBadge tone={scopes[token.scope].tone}>{scopes[token.scope].label}</StatusBadge>
+                        {!!token.ai && <StatusBadge tone="info">{t("KI und Transkription", "AI and transcription")}</StatusBadge>}
+                      </span>
+                    ),
+                  },
                   { key: "used", header: t("Zuletzt benutzt", "Last used"), render: (token) => when(token.last_used_at) },
                   { key: "created", header: t("Angelegt", "Created"), hideOnPhone: true, render: (token) => when(token.created_at) },
                   {
@@ -233,9 +243,10 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
             e.preventDefault();
             setBusy(true);
             try {
-              const r = await api<{ token: string }>("/api/command", { action: "token.create", name: tokenName, scope });
+              const r = await api<{ token: string }>("/api/command", { action: "token.create", name: tokenName, scope, ai: ai && scope !== "clipper" });
               setFresh({ label: t(`Token „${tokenName}“`, `Token “${tokenName}”`), value: r.token });
               setTokenName("");
+              setAi(false);
               await load();
             } catch (error) {
               onError((error as Error).message);
@@ -255,6 +266,10 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
               <option value="write">{t("Lesen und schreiben", "Read and write")}</option>
               <option value="clipper">{t("Nur Browser-Erweiterung (Web-Clipper)", "Browser extension only (web clipper)")}</option>
             </Select>
+          </label>
+          <label className="api-token-ai" title={t("KI-Funktionen, Transkription und Besprechungsnotizen – zählen gegen dieselben KI-Grenzen wie die Oberfläche", "AI features, transcription and meeting notes – count against the same AI limits as the interface")}>
+            <input type="checkbox" checked={ai && scope !== "clipper"} disabled={scope === "clipper"} onChange={(e) => setAi(e.target.checked)} />
+            {t("KI und Transkription", "AI and transcription")}
           </label>
           <button className="button primary" disabled={busy}>
             {t("Token erstellen", "Create token")}

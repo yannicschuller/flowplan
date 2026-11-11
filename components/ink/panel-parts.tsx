@@ -6,18 +6,22 @@ import { useRef } from "react";
 import { Switch } from "../settings-ui";
 
 // Radio buttons in a row (role radiogroup): one tab stop, arrow keys move.
+// `iconOnly`: the icons alone show, the names stay for screen readers and
+// as tooltips (choices whose names would not fit in every language).
 export function Segmented<V extends string | number>({
   label,
   value,
   options,
   onChange,
   className = "",
+  iconOnly = false,
 }: {
   label: string;
   value: V | null;
   options: { value: V; label: string; icon?: React.ReactNode }[];
   onChange: (value: V) => void;
   className?: string;
+  iconOnly?: boolean;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const chosen = options.findIndex((o) => o.value === value);
@@ -42,11 +46,12 @@ export function Segmented<V extends string | number>({
           aria-checked={i === chosen}
           tabIndex={i === chosen || (chosen < 0 && i === 0) ? 0 : -1}
           className={i === chosen ? "active" : ""}
+          title={iconOnly ? o.label : undefined}
           onClick={() => onChange(o.value)}
           onKeyDown={(e) => onKey(e, i)}
         >
           {o.icon}
-          <span>{o.label}</span>
+          <span className={iconOnly ? "sr-only" : undefined}>{o.label}</span>
         </button>
       ))}
     </div>

@@ -63,7 +63,7 @@ async function setup(page: Page) {
 }
 const seen = (page: Page) => page.evaluate(() => (window as unknown as { __vt: Seen[] }).__vt);
 const forget = (page: Page) => page.evaluate(() => ((window as unknown as { __vt: Seen[] }).__vt.length = 0));
-const pageTitle = (page: Page) => page.locator(".split-primary input.page-title");
+const pageTitle = (page: Page) => page.locator(".split-primary textarea.page-title");
 
 async function dismissWelcome(page: Page) {
   const welcome = page.getByRole("dialog", { name: /Willkommen bei Flowplan/ });
@@ -116,7 +116,7 @@ test("opening a page from the tree: the pane cross-fades, icon and title fly to 
     // Old view: the tree entry's icon and title; new view: the page header's.
     expect(transition.old).toEqual(expect.arrayContaining([expect.stringMatching(/^fp-page-title:span\.page-nav-label/), expect.stringMatching(/^fp-page-icon:/)]));
     await expect.poll(async () => (await seen(page))[0].fresh).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^fp-page-title:input\.page-title/), expect.stringMatching(/^fp-page-icon:button\.large-page-icon/)]),
+      expect.arrayContaining([expect.stringMatching(/^fp-page-title:textarea\.page-title/), expect.stringMatching(/^fp-page-icon:button\.large-page-icon/)]),
     );
     expect((await seen(page))[0].fresh!.some((name) => name.includes("page-nav-label"))).toBe(false);
     // Afterwards nothing stays named.

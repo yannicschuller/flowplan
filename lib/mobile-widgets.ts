@@ -335,8 +335,10 @@ const dueFilter = (filter: "today" | "overdue" | "open", today: string) => (due:
 // records of others, databases behind a journal PIN and end-to-end encrypted
 // spaces (lockedPageIds) stay out, and so does a person, date or done
 // property hidden from them. Checking one off sets the database's "done"
-// state (task.complete).
-async function myRecordTasks(user: Identity, keep: (due: string | null) => boolean) {
+// state (task.complete). The one definition of "my records" for every task
+// list of the apps: this widget, the calendar widget, the overview's summary
+// (lib/mobile-devices.ts) and Spotlight (lib/mobile-capture.ts).
+export async function myRecordTasks(user: Identity, keep: (due: string | null) => boolean) {
   const out: (WidgetTask & { order: OrderedTask })[] = [];
   // Cells hold user ids; the LIKE only narrows, assignedTo() decides.
   const like = `%${user.id}%`;
@@ -624,6 +626,12 @@ async function calendarData(ctx: Context, config: WidgetConfig<"calendar">) {
     const last = days[days.length - 1];
     for (const t of (await openTasksEverywhere(ctx.user)).filter((t) => t.due && t.due >= ctx.today && t.due <= last && (t.assigned || t.journal || t.due)))
       items.push({ type: "task", title: clip(t.text), day: t.due, start: t.due, end: t.due, timed: false, calendar: clip(t.title || untitled(), 40), url: url(t.pageId, t.rowId) });
+    // Records assigned to the person, due in the range, as in the Tasks
+    // widget; one a chosen calendar already shows on that day stays an event.
+    const shown = new Set(events.map((e) => `${e.rowId}:${e.day}`));
+    for (const t of await myRecordTasks(ctx.user, (due) => !!due && due >= ctx.today && due <= last))
+      if (!shown.has(`${t.rowId}:${t.due}`))
+        items.push({ type: "task", title: clip(t.text), day: t.due, start: t.due, end: t.due, timed: false, calendar: clip(t.page, 40), url: t.url });
     items.sort((a, b) => String(a.day).localeCompare(String(b.day)) || Number(b.type === "event") - Number(a.type === "event"));
   }
   return {

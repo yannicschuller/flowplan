@@ -182,6 +182,85 @@ function flowplanDays(nodes: Map<string, Node>, text: (path: string) => string) 
   return days;
 }
 
+// Flowplan's own Markdown export (lib/markdown-export.ts; README.txt and
+// index.md at the top). A page export: index.md is the page, pages/ holds
+// every page below it side by side, with "## Unterseiten" lists naming each
+// page's children; a database is pages/<title>-<id>.md plus tables/<id>.csv
+// and its record documents records/<id>/*.md. A space export holds one such
+// folder (<title>-<id>/) per top-level page and an index.md listing them.
+// Returns each page's parent and title from that structure, the records of
+// each database, and leaves out what is no page (the space's list, comments
+// and versions of the history option).
+const SUBPAGES = /\n+## (?:Unterseiten|Sub-pages)\n([\s\S]*)$/;
+function flowplanLayout(entries: Map<string, Buffer>, nodes: Map<string, Node>, text: (path: string) => string) {
+  if (!entries.has("index.md") || !/^﻿?Flowplan Markdown/.test(entries.get("README.txt")?.toString("utf8") || "")) return null;
+  const units = [...nodes.keys()].filter((key) => /^[^/]+\/index$/.test(key)).map((key) => key.slice(0, -"index".length));
+  // A space export: the space's own list is no page.
+  if (units.length) nodes.delete("index");
+  else units.push("");
+  const unitOf = (key: string) => units.find((unit) => key.startsWith(unit));
+  const parents = new Map<string, string>(),
+    records = new Map<string, string[]>(),
+    recordTitles = new Map<string, string>(),
+    databases = new Map<string, string>();
+  const heading = (path: string | null) => (path ? /^#\s+([^\n]+)/m.exec(splitFrontmatter(text(path)).body)?.[1]?.trim() : undefined);
+  // A database's own Markdown file once its CSV took its place.
+  const markdownOf = (node: Node) => (/\.md$/i.test(node.path) ? node.path : entries.has(`${node.key}.md`) ? `${node.key}.md` : null);
+  for (const node of [...nodes.values()]) {
+    const unit = unitOf(node.key);
+    if (unit === undefined || /\.comments$|\.versions\//.test(node.key)) {
+      if (unit !== undefined) nodes.delete(node.key);
+      continue;
+    }
+    const rest = node.key.slice(unit.length);
+    // tables/<id>.csv: the database of pages/<title>-<id>.md, or of index.md.
+    const table = /^tables\/([0-9a-f-]{36})$/.exec(rest);
+    if (table && node.kind === "database") {
+      nodes.delete(node.key);
+      const page = [...nodes.values()].find((n) => n.kind === "document" && n.key.startsWith(`${unit}pages/`) && n.key.endsWith(`-${table[1]}`)) || nodes.get(`${unit}index`);
+      if (page && !databases.has(page.key)) {
+        Object.assign(page, { kind: "database", path: node.path });
+        databases.set(page.key, table[1]);
+      }
+      continue;
+    }
+    const record = /^records\/([0-9a-f-]{36})\/[^/]+$/.exec(rest);
+    if (record && node.kind === "document") {
+      nodes.delete(node.key);
+      const list = records.get(`${unit}\u0000${record[1]}`) || [];
+      list.push(node.key);
+      records.set(`${unit}\u0000${record[1]}`, list);
+      const data = splitFrontmatter(text(node.path)).data as Record<string, unknown>;
+      recordTitles.set(node.key, typeof data.title === "string" ? data.title : heading(node.path) || "");
+      continue;
+    }
+    const title = heading(markdownOf(node));
+    if (title) node.title = title.slice(0, 500);
+    else if (rest.startsWith("pages/")) node.title = node.title.replace(/-[0-9a-f-]{36}$/, "") || node.title;
+  }
+  // Parents from the "## Unterseiten" lists.
+  const ancestor = (key: string, of: string) => {
+    for (let at: string | undefined = key; at; at = parents.get(at)) if (at === of) return true;
+    return false;
+  };
+  for (const node of nodes.values()) {
+    const markdown = markdownOf(node);
+    const list = (markdown && SUBPAGES.exec(text(markdown))?.[1]) || "";
+    for (const link of list.matchAll(/^- \[[^\n]*\]\(<?([^>\n)]+\.md)>?\)$/gm)) {
+      let target: string;
+      try {
+        target = nodeKey(posix.normalize(posix.join(posix.dirname(node.key), decodeURIComponent(link[1]))));
+      } catch {
+        continue;
+      }
+      if (target !== node.key && nodes.has(target) && !parents.has(target) && !ancestor(node.key, target)) parents.set(target, node.key);
+    }
+  }
+  const rowPages = new Map<string, string[]>();
+  for (const [key, dbId] of databases) rowPages.set(key, records.get(`${unitOf(key)}\u0000${dbId}`) || []);
+  return { parents, rowPages, recordTitles };
+}
+
 export async function importZip(
   user: Identity,
   workspaceId: string,
@@ -228,8 +307,11 @@ export async function importZip(
       depth: key.split("/").length,
     });
   }
+  const text = (path: string) =>
+    entries.get(path)!.toString("utf8").replace(/^﻿/, "");
+  const layout = flowplanLayout(entries, nodes, text);
   // Markdown pages inside a database folder are its records.
-  const rowPages = new Map<string, string[]>();
+  const rowPages = new Map<string, string[]>(layout?.rowPages);
   for (const node of [...nodes.values()]) {
     const parent = nodes.get(posix.dirname(node.key));
     if (node.kind === "document" && parent?.kind === "database") {
@@ -244,12 +326,19 @@ export async function importZip(
     );
   // The same page limit as the other importers (#82).
   if (nodes.size > maxImportPages()) throw new HttpError(413, tooManyPages(nodes.size));
-  const text = (path: string) =>
-    entries.get(path)!.toString("utf8").replace(/^﻿/, "");
   // Journals of a Flowplan export (#49): days at <journal folder>/2026/10/
   // 2026-10-27.md become the days of that journal again, one per date.
   const days = flowplanDays(nodes, text);
   for (const [key, day] of days) if (day.skip) nodes.delete(key);
+  // A page's parent: a journal for its days, in a Flowplan export the page
+  // whose list names it, otherwise the page of its folder.
+  const parentKey = (key: string) => days.get(key)?.journal ?? layout?.parents.get(key) ?? posix.dirname(key);
+  if (layout)
+    for (const node of nodes.values()) {
+      node.depth = 1;
+      for (let at = parentKey(node.key); nodes.has(at) && node.depth <= nodes.size; at = parentKey(at)) node.depth++;
+    }
+  const withSubpages = new Set(layout ? [...nodes.keys()].map(parentKey) : []);
   // Drawings are read before anything is written; one that cannot be read
   // becomes a board with a note saying why.
   const boards = new Map<string, ImportedBoard>();
@@ -274,7 +363,7 @@ export async function importZip(
     );
     for (const node of ordered) {
       const day = days.get(node.key);
-      const parent = (day ? pageIds.get(day.journal) : pageIds.get(posix.dirname(node.key))) || null;
+      const parent = pageIds.get(parentKey(node.key)) || null;
       const created = await createPage(
         workspaceId,
         spaceId,
@@ -389,7 +478,8 @@ export async function importZip(
         // The first heading repeats the page title.
         let body = (onlyAliases ? rest.replace(/^\s*\n/, "") : text(node.path)).replace(/^#\s+[^\n]*\n?/, "");
         // A journal lists its days below; they are its days again.
-        if (journals.has(node.key)) body = body.replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "\n");
+        // So does a page of a Flowplan export its subpages.
+        if (journals.has(node.key) || withSubpages.has(node.key)) body = body.replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "\n");
         // Stored once all documents are read (block links, #88).
         const converted = documentAnchors(await markdownToHtmlAsync(body, resolver(node.path, pid, pid)), node.title, false);
         anchors.set(pid, converted.anchors);
@@ -425,7 +515,7 @@ export async function importZip(
       // Record pages are matched by title in order of appearance.
       const pagesByTitle = new Map<string, string[]>();
       for (const key of rowPages.get(node.key) || []) {
-        const title = exportTitle(posix.basename(key));
+        const title = layout?.recordTitles.get(key) ?? exportTitle(posix.basename(key));
         pagesByTitle.set(title, [...(pagesByTitle.get(title) || []), key]);
       }
       await forEachAsync(records, async (record, i) => {
@@ -434,7 +524,13 @@ export async function importZip(
         );
         const title = String(cells.title || "");
         const pageKey = pagesByTitle.get(title)?.shift();
-        const markdown = pageKey ? rowBody(text(`${pageKey}.md`)) : "";
+        // Flowplan's record documents: properties in the frontmatter (and
+        // the CSV), the text below the heading.
+        const markdown = !pageKey
+          ? ""
+          : layout
+            ? splitFrontmatter(text(`${pageKey}.md`)).body.replace(/^\s*#\s[^\n]*\n?/, "").trim()
+            : rowBody(text(`${pageKey}.md`));
         const html = markdown
           ? await markdownToHtmlAsync(markdown, resolver(`${pageKey}.md`, pid))
           : "";
@@ -465,7 +561,7 @@ export async function importZip(
     }
     return {
       rootIds: ordered
-        .filter((n) => !pageIds.has(posix.dirname(n.key)))
+        .filter((n) => !pageIds.has(parentKey(n.key)))
         .map((n) => pageIds.get(n.key)!),
       pages: ordered.length,
       rows: rowCount,

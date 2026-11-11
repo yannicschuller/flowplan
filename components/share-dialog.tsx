@@ -21,6 +21,8 @@ import { Modal } from "./ui";
 type Tab = "people" | "links" | "web";
 export type SharePublication = {
   includeChildren: boolean;
+  // Sub-pages added later join by themselves (lib/publication.ts).
+  autoChildren?: boolean;
   count: number;
   allowCopy?: boolean;
   password?: boolean;
@@ -111,18 +113,22 @@ export function ShareDialog({
       onError(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
     }
   };
-  const publish = (patch: { enabled: boolean; includeChildren?: boolean; allowCopy?: boolean }) =>
-    act({
+  const publish = (patch: { enabled: boolean; includeChildren?: boolean; autoChildren?: boolean; allowCopy?: boolean }) => {
+    const includeChildren = patch.includeChildren ?? !!publication?.includeChildren;
+    return act({
       action: "page.publish",
       pageId,
       ...(patch.enabled
         ? {
             enabled: true,
-            includeChildren: patch.includeChildren ?? !!publication?.includeChildren,
+            includeChildren,
+            // Only together with the sub-pages; off when they are.
+            autoChildren: includeChildren && (patch.autoChildren ?? !!publication?.autoChildren),
             allowCopy: patch.allowCopy ?? publication?.allowCopy !== false,
           }
         : { enabled: false }),
     });
+  };
   const [now] = useState(() => Date.now());
   const expiresAt = publication?.expiresAt ?? null;
   const expiry = expiresAt ? (expiresAt <= now ? t("abgelaufen", "expired") : formatExpiry(expiresAt)) : t("Nie", "Never");
@@ -272,7 +278,29 @@ export function ShareDialog({
                         <span />
                       </button>
                     </div>
-                    {publication?.includeChildren && editable && (
+                    <div className="sh-opt">
+                      <span className="sh-opt-label">
+                        <span id={`${id}-auto-children`}>{t("Neue Unterseiten automatisch veröffentlichen", "Publish new sub-pages automatically")}</span>
+                        <Hint
+                          text={t(
+                            "Auch Seiten, die andere später unter dieser Seite anlegen oder hierher verschieben, werden dann öffentlich – mit Passwort, Ablauf und Aussehen dieser Veröffentlichung.",
+                            "Pages that others later create under this page or move here become public too – with this publication's password, expiry and look.",
+                          )}
+                        />
+                      </span>
+                      <button
+                        type="button"
+                        role="switch"
+                        className="switch"
+                        aria-checked={!!publication?.includeChildren && !!publication?.autoChildren}
+                        aria-labelledby={`${id}-auto-children`}
+                        disabled={!editable || !publication?.includeChildren}
+                        onClick={() => void publish({ enabled: true, autoChildren: !publication?.autoChildren })}
+                      >
+                        <span />
+                      </button>
+                    </div>
+                    {publication?.includeChildren && !publication?.autoChildren && editable && (
                       <div className="sh-opt-panel">
                         <button type="button" className="button compact" onClick={() => void publish({ enabled: true, includeChildren: true })}>
                           {t("Auswahl um neue Unterseiten ergänzen", "Add new sub-pages to the selection")}

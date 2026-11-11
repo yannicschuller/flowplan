@@ -640,6 +640,8 @@ export type ApiToken = {
   created_at: number;
   last_used_at?: number | null;
   expires_at?: number | null;
+  /** 1: the token has the permission “AI and transcription” (AI features, transcription, meeting notes) */
+  ai?: 0 | 1;
 };
 
 /** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`. */
@@ -853,7 +855,7 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.config" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "table.toDatabase" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "journal.aiSummary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "notebook.pictures" | "notebook.stickers" | "notebook.sticker.save" | "notebook.sticker.rename" | "notebook.sticker.delete" | "notebook.sticker.insert" | "notebook.templates" | "notebook.template.update" | "notebook.template.delete" | "notebook.sheet.meta" | "notebook.sheet.links" | "notebook.outline" | "notebook.outline.add" | "notebook.sheets.duplicate" | "notebook.sheets.delete" | "notebook.trash.restore" | "notebook.sheets.transfer" | "search.save" | "search.delete" | "collection.delete" | "collection.restore" | "collection.duplicate" | "collection.reorder" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "git.token" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title" | "workflow.sync" | "workflow.draft" | "workflow.validate" | "workflow.activate" | "workflow.pause" | "workflow.test" | "workflow.run" | "workflow.run.cancel" | "workflow.restore" | "workflow.fromRule" | "workflow.run.retry" | "workflow.approve" | "workflow.hook" | "workflow.credential.set" | "workflow.credential.remove" | "workflow.import";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "workspace.look" | "workspace.font.rename" | "workspace.font.delete" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.config" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "table.toDatabase" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "journal.aiSummary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "notebook.pictures" | "notebook.stickers" | "notebook.sticker.save" | "notebook.sticker.rename" | "notebook.sticker.delete" | "notebook.sticker.insert" | "notebook.templates" | "notebook.template.update" | "notebook.template.delete" | "notebook.sheet.meta" | "notebook.sheet.links" | "notebook.outline" | "notebook.outline.add" | "notebook.sheets.duplicate" | "notebook.sheets.delete" | "notebook.trash.restore" | "notebook.sheets.transfer" | "search.save" | "search.delete" | "collection.delete" | "collection.restore" | "collection.duplicate" | "collection.reorder" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "git.token" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title" | "workflow.sync" | "workflow.draft" | "workflow.validate" | "workflow.activate" | "workflow.pause" | "workflow.test" | "workflow.run" | "workflow.run.cancel" | "workflow.restore" | "workflow.fromRule" | "workflow.run.retry" | "workflow.approve" | "workflow.hook" | "workflow.credential.set" | "workflow.credential.remove" | "workflow.import";
   [key: string]: unknown;
 };
 
@@ -1053,6 +1055,59 @@ export type CommandWorkspaceCreate = {
 
 export type CommandWorkspaceCreateResult = {
   id: string;
+};
+
+/** Set the workspace's appearance. Needs the owner role. The look every member, guest, publication and form of the workspace shows: `accent` (#rrggbb; its light and dark palette is derived, its lightness adjusted for WCAG AA contrast), `background` (a preset) and `fonts` per slot (`ui`, `display`, `mono`): a bundled face id or `custom:<id>` of a face uploaded with POST /api/workspace-fonts. Values equal to the default are dropped; `theme: null` restores Flowplan's own look. No custom CSS. Answers the look with every uploaded face. */
+export type CommandWorkspaceTheme = {
+  action: "workspace.theme";
+  workspaceId: string;
+  theme: {
+    accent?: string | null;
+    background?: "standard" | "neutral" | "cool" | "sepia";
+    fonts?: {
+      ui?: string;
+      display?: string;
+      mono?: string;
+    };
+  } | null;
+};
+
+export type CommandWorkspaceThemeResult = {
+  theme: {
+    accent?: string | null;
+    background?: "standard" | "neutral" | "cool" | "sepia";
+    fonts?: {
+      ui?: string;
+      display?: string;
+      mono?: string;
+    };
+  } | null;
+  fonts: ({
+    id: string;
+    name: string;
+    format: "woff2" | "woff" | "truetype" | "opentype";
+    variable: boolean;
+  })[];
+};
+
+/** Use Flowplan's own look instead of the workspaces' appearance. For the caller, in every workspace and on all devices; light or dark stays a choice per device. */
+export type CommandProfilePlainLook = {
+  action: "profile.plainLook";
+  plain: boolean;
+};
+
+export type CommandProfilePlainLookResult = {
+  plainLook: boolean;
+};
+
+/** When selecting text shows the text menu. For the caller, on all devices: always, only for a selection made with a mouse, trackpad or keyboard (computer, the default), or never. A right click opens the menu in every case. */
+export type CommandProfileTextMenu = {
+  action: "profile.textMenu";
+  textMenu: "always" | "computer" | "never";
+};
+
+export type CommandProfileTextMenuResult = {
+  textMenu: "always" | "computer" | "never";
 };
 
 /** Create a space in a workspace */
@@ -2032,7 +2087,7 @@ export type CommandWhiteboardToRecordsResult = {
   }[];
 };
 
-/** Add several records at once */
+/** Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added. */
 export type CommandRowsImport = {
   action: "rows.import";
   pageId: string;
@@ -2040,7 +2095,12 @@ export type CommandRowsImport = {
 };
 
 export type CommandRowsImportResult = {
-  ok: true;
+  imported: number;
+  newOptions: {
+    id: string;
+    name: string;
+    options: string[];
+  }[];
 };
 
 /** Comment on a page or record */
@@ -2587,10 +2647,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandWorkspaceTheme | CommandProfilePlainLook | CommandProfileTextMenu | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -3347,6 +3407,57 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/whiteboards/${encodeURIComponent(pageId)}/cards`, { query }, options);
   }
 
+  /** Create a meeting note from audio or a transcript — Creates a meeting block (title, date, attendees, summary, agenda, transcript) at the end of the document `pageId`, or a new record in the database `databaseId` with the block as its document (its date, attendees (person), duration (number, minutes) and status properties are filled when present). `audio` is one file with everyone; `me` and `others` are the microphone and the call as separate tracks (with loudspeakers, echoes of the call in `me` are dropped). M4A, MP3, WAV, AAC, OGG and WebM; each track at most WHISPER_MAX_MB (default 200 MB). Alternatively `transcript` as text (one passage per line, optionally `Name: text`). Transcription (the instance's Whisper service) and the summary (the instance's AI: action items with owner and due date as tasks – owners who are members become mentions and see them in My tasks –, topics and open points, each with numbered citations of transcript segments; at least one minute of audio) run in the background: answers 202 with the meeting's id; poll `statusUrl`. Needs a write token with the permission “AI and transcription”; `consent: true` when the workspace requires consent (428 otherwise). The audio is deleted after the transcript unless the workspace keeps it. (POST /api/meetings) */
+  async createMeeting(form: {
+    pageId?: string;
+    databaseId?: string;
+    title?: string;
+    date?: string;
+    attendees?: string;
+    instructions?: "auto" | "status" | "oneonone" | "workshop" | "customer" | "custom";
+    prompt?: string;
+    audio?: Blob;
+    me?: Blob;
+    others?: Blob;
+    transcript?: string;
+    consent?: boolean;
+    language?: "de" | "en" | "fr" | "zh";
+  }, options?: RequestOptions): Promise<{
+    id: string;
+    pageId?: string;
+    rowId?: string | null;
+    status: string;
+    statusUrl: string;
+  }> {
+    return this.json<{
+    id: string;
+    pageId?: string;
+    rowId?: string | null;
+    status: string;
+    statusUrl: string;
+  }>("POST", `/api/meetings`, { form }, options);
+  }
+
+  /** Status of a meeting note — `status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary). With `content=1` also `title`, `summary` and `agenda` as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session). Needs read access to the page; kept audio is listed as file URLs. Answered with `Cache-Control: no-store`. (GET /api/meetings/{meetingId}) */
+  async getMeeting(meetingId: string, query?: { content?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/meetings/${encodeURIComponent(meetingId)}`, { query }, options);
+  }
+
+  /** Write the summary again — With other instructions, without transcribing again. Needs edit rights and “AI and transcription” for tokens. (POST /api/meetings/{meetingId}/summarize) */
+  async regenerateMeetingSummary(meetingId: string, body: {
+    instructions?: "auto" | "status" | "oneonone" | "workshop" | "customer" | "custom";
+    prompt?: string;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/meetings/${encodeURIComponent(meetingId)}/summarize`, { json: body }, options);
+  }
+
+  /** Ask a question about one meeting — Answered from the meeting's transcript and agenda only, as a text stream; `[S12]` names the transcript segment (header `X-Flowplan-Segments`: base64 JSON list of segment ids, S1 first). (POST /api/meetings/{meetingId}/ask) */
+  async askMeeting(meetingId: string, body: {
+    question: string;
+  }, options?: RequestOptions): Promise<Response> {
+    return this.request("POST", `/api/meetings/${encodeURIComponent(meetingId)}/ask`, { json: body }, options);
+  }
+
   /** Review of a period (GET /api/journals/{journalId}/review) */
   async journalReview(journalId: string, query: { from: string; to: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/journals/${encodeURIComponent(journalId)}/review`, { query }, options);
@@ -3414,6 +3525,20 @@ export class FlowplanClient {
     pdfPage?: number;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("POST", `/api/notebook-library`, { form }, options);
+  }
+
+  /** Upload a font for the workspace's appearance — Needs the owner role in `workspaceId`. `file` is WOFF2, WOFF, TrueType or OpenType (checked by its content), at most 5 MB and 20 per workspace, counted against the workspace quota and the caller's storage. Choose it with `custom:<id>` in workspace.theme; delete it with workspace.font.delete. (POST /api/workspace-fonts) */
+  async uploadWorkspaceFont(form: {
+    workspaceId: string;
+    file: Blob;
+    name?: string;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/workspace-fonts`, { form }, options);
+  }
+
+  /** A font uploaded for a workspace's appearance — For members and guests of its workspace (publications and forms serve it under their own token). (GET /api/workspace-fonts/{fontId}) */
+  async workspaceFontFile(fontId: string, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/workspace-fonts/${encodeURIComponent(fontId)}`, {}, options);
   }
 
   /** Picture of an own sticker or paper template — Stickers only for the person they belong to, paper templates for members of their workspace. (GET /api/notebook-library/{assetId}) */

@@ -24,6 +24,8 @@ import {
   SuggestChanges,
 } from "@/lib/suggestions";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
+import { meetingNode, type MeetingContext } from "./meeting-block";
+import { MeetingAgenda, MeetingCite, MeetingSegmentNode, MeetingSummary, MeetingTranscript } from "@/lib/meeting-schema";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
 import { TableTools } from "./table-tools";
@@ -127,6 +129,7 @@ import {
   TextUnderline,
   TextStrikethrough,
   Highlighter,
+  ChatCircle,
   Palette,
   TextSubscript,
   TextSuperscript,
@@ -583,6 +586,17 @@ export default function DocumentEditor({
   captionsNumbered.current = numberCaptions;
   const syncedContext = useRef<SyncedContext>(null!);
   syncedContext.current = { userId, pages, members, editable, onError };
+  // The meeting block (#199, components/meeting-block.tsx).
+  const meetingContext = useRef<MeetingContext>(null!);
+  meetingContext.current = {
+    userId,
+    pageId,
+    rowId,
+    workspaceId: pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id || "",
+    members,
+    editable,
+    onError,
+  };
   function insertSynced(id: string) {
     editor
       ?.chain()
@@ -755,6 +769,12 @@ export default function DocumentEditor({
         LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
         syncedBlockNode(() => syncedContext.current),
+        meetingNode(() => meetingContext.current),
+        MeetingSummary,
+        MeetingAgenda,
+        MeetingTranscript,
+        MeetingSegmentNode,
+        MeetingCite,
         whiteboardEmbedNode(),
         // Handwriting; the ink is stored per page (not in record documents).
         drawBlockNode({ pageId, enabled: !rowId }),
@@ -1858,6 +1878,29 @@ export default function DocumentEditor({
       },
     },
     {
+      // A meeting with recording, transcript and AI notes (#199).
+      id: "meet",
+      group: "media",
+      name: t("Besprechung", "Meeting"),
+      keywords: ["meet", "besprechung", "meeting", "protokoll", "minutes", "transkript", "transcript", "aufnahme", "notes", "réunion", "会议"],
+      description: t("Aufnehmen, transkribieren und automatisch zusammenfassen", "Record, transcribe and summarise automatically"),
+      icon: UsersThree,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "meeting",
+            attrs: { meetingId: crypto.randomUUID(), title: "", date: todayLocal(), attendees: JSON.stringify([{ id: userId, name: memberNames.current.get(userId) || "" }].filter((a) => a.name)) },
+            content: [
+              { type: "meetingSummary", content: [{ type: "paragraph" }] },
+              { type: "meetingAgenda", content: [{ type: "paragraph" }] },
+              { type: "meetingTranscript" },
+            ],
+          })
+          .run(),
+    },
+    {
       id: "voice",
       group: "media",
       name: t("Sprachnotiz", "Voice note"),
@@ -2519,6 +2562,16 @@ export default function DocumentEditor({
             >
               <Highlighter />
             </button>
+            {/* Comment on the selection or the current block (#200): on a
+                phone this toolbar, docked on the keyboard, is where it is
+                reachable while selecting shows no text menu. */}
+            <button
+              title={t("Kommentieren", "Comment") + keyHints.suffix("Mod+Alt+M")}
+              aria-label={t("Kommentieren", "Comment")}
+              onClick={() => editor?.view.dom.dispatchEvent(new CustomEvent("comment-create"))}
+            >
+              <ChatCircle />
+            </button>
             <Dropdown.Root
               onOpenChange={(open) => {
                 // The menu takes focus; colours apply to the remembered text.
@@ -2911,6 +2964,14 @@ export default function DocumentEditor({
           sections={slashSectionList}
           active={Math.min(slashActive, Math.max(0, slashMatches.length - 1))}
           anchor={slashAnchor}
+          measureAnchor={() => {
+            if (!editor || editor.isDestroyed) return null;
+            try {
+              return editor.view.coordsAtPos(Math.min(slash.from, editor.state.doc.content.size));
+            } catch {
+              return null;
+            }
+          }}
           search={slash.mode === "button" ? slash.query : undefined}
           parent={slashParent}
           onBack={() => slashBack.current()}

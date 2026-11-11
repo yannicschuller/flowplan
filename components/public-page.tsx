@@ -17,6 +17,8 @@ import { one } from "@/lib/db";
 import { database, publicRows as rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile, publishedLinkPages, publicationNotice } from "@/lib/publication";
 import { renderedTheme } from "@/lib/custom-domains";
+import { workspaceLook } from "@/lib/workspace-fonts";
+import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { publicPluginIds } from "@/lib/plugins";
 import { cleanHtml } from "@/lib/document-server";
 import { withPublicEmbeds } from "@/lib/public-embeds";
@@ -230,6 +232,8 @@ async function renderPublishedPage({
       className={`public-page ${page.full_width ? "public-wide" : ""} ${theme?.accent ? "public-themed" : ""}`}
       style={theme?.accent ? ({ "--blue": theme.accent, "--accent-strong": theme.accent } as React.CSSProperties) : undefined}
     >
+      {/* The look of the workspace (#196); the publication's own accent above wins. */}
+      <WorkspaceThemeStyle look={await workspaceLook(root.workspace_id)} fontUrl={(id) => `/api/share/${token}/fonts/${id}`} />
       {theme?.logo ? (
         <a href={href(root.id)} className="public-brand public-logo">
           {/* eslint-disable-next-line @next/next/no-img-element */}

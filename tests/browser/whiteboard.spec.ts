@@ -580,6 +580,18 @@ test("phones get one tool bar, a tool sheet and one actions menu, nothing clippe
   await expect(sheet.getByRole("heading", { name: "Einfügen" })).toBeVisible();
   await expect(sheet.getByRole("heading", { name: "Vorlagen & Bibliothek" })).toBeVisible();
   expect((await fits(".wb-sheet")).inside).toBe(true);
+  // Long names ("Verbindungslinie", "Mermaid/PlantUML importieren …") stay
+  // inside their tiles.
+  const overflowing = await sheet.locator(".wb-sheet-grid button").evaluateAll((tiles) =>
+    tiles
+      .filter((tile) => {
+        const outer = tile.getBoundingClientRect(),
+          label = tile.querySelector("span")!.getBoundingClientRect();
+        return label.left < outer.left - 0.5 || label.right > outer.right + 0.5;
+      })
+      .map((tile) => tile.textContent),
+  );
+  expect(overflowing).toEqual([]);
   // Not focused by itself (no keyboard over the sheet), filters by name.
   await expect(sheet.getByRole("searchbox")).not.toBeFocused();
   await sheet.getByRole("searchbox").fill("rahm");

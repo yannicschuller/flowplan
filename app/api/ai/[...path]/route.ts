@@ -1,7 +1,11 @@
 // AI: running prompts for features, the person's AI settings, and the
 // administration's connection tests and model downloads (lib/ai). Every
-// route needs a browser session; API tokens and demo accounts are refused,
-// changes also need the origin check. Keys never appear in an answer.
+// route needs a browser session; demo accounts are refused, changes also
+// need the origin check. Keys never appear in an answer. API tokens reach
+// only the features that answer with text (run, ask, write, summarize) and
+// only with the permission "KI und Transkription" (#199,
+// lib/ai/token-access.ts); settings and everything that changes content
+// stay with the browser.
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -17,6 +21,7 @@ import { aiStreamResponse, AI_LIMITS } from "@/lib/ai/run";
 import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
 import { adminAiView, assertSettingsCaller, instanceAiSettings, userAiSettings, userKeyInfo } from "@/lib/ai/settings";
 import { redactSecrets } from "@/lib/ai/redact";
+import { requireTokenAi } from "@/lib/ai/token-access";
 import { askInput, prepareAsk, NOTHING_FOUND } from "@/lib/ai/ask";
 import { suggestPageEdits } from "@/lib/ai/page-edit";
 import { resolveLinkTitles } from "@/lib/ai/link-candidates";
@@ -51,6 +56,18 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 async function signedIn() {
   const user = await requireUser();
   assertSettingsCaller(user);
+  return user;
+}
+// Feature endpoints that only answer with text: API tokens with "KI und
+// Transkription" as well (the AI gate in lib/ai/resolve.ts checks again).
+const TOKEN_AI_PATHS = new Set(["run", "ask", "write", "summarize"]);
+async function caller(path: string[]) {
+  const user = await requireUser();
+  if (!user.apiScope || path.length !== 1 || !TOKEN_AI_PATHS.has(path[0])) {
+    assertSettingsCaller(user);
+    return user;
+  }
+  await requireTokenAi(user);
   return user;
 }
 // A small JSON body, read with a limit.
@@ -140,7 +157,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
   try {
     await checkOrigin(req);
     const { path } = await params;
-    const user = await signedIn();
+    const user = await caller(path);
     // A prompt for a feature, answered as a text stream. The text is the
     // caller's own: the server loads nothing here. With pageId (and rowId)
     // the page's read rights and the AI's rules are checked (lib/ai/run.ts

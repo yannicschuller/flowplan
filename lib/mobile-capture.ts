@@ -29,7 +29,7 @@ import { visibleFields } from "./field-access";
 import { enforceQuota } from "./instance-ops";
 import { lockedPageIds } from "./journal-extras";
 import { captureTarget, subPage, type UploadFile } from "./mobile-widget-actions";
-import { captureTargetList, pageAccess, writerOf } from "./mobile-widgets";
+import { captureTargetList, myRecordTasks, pageAccess, writerOf } from "./mobile-widgets";
 import { recordPageEdit } from "./page-activity";
 import { pageLocationHash } from "./page-location";
 import { MAX_PDF_TEXT } from "./pdf-text";
@@ -314,10 +314,18 @@ export async function spotlightItems(user: Identity) {
   }
   pages.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
   const spaceOf = new Map<string, string>();
-  const tasks = (await filterAsync(await openTasksEverywhere(user), async (task) => {
+  const documentTasks = (await filterAsync(await openTasksEverywhere(user), async (task) => {
       if (!spaceOf.has(task.pageId)) spaceOf.set(task.pageId, (await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", task.pageId))?.space_id || "");
       return !encryptedSpaces.has(spaceOf.get(task.pageId)!);
-    }))
+    })).map((t) => ({ id: `${t.pageId}:${t.rowId || ""}:${t.index}`, text: t.text, page: t.title || "", due: t.due, url: url(t.pageId, t.rowId) }));
+  // And the open records assigned to the person, as in the Tasks widget
+  // (myRecordTasks keeps out encrypted spaces and databases behind a PIN).
+  const recordTasks = (await myRecordTasks(user, () => true)).map((t) => ({ id: `${t.pageId}:${t.rowId}:row`, text: t.text, page: t.page, due: t.due, url: t.url }));
+  // Both share the room: dated ones first, the soonest first.
+  const tasks = [...documentTasks, ...recordTasks]
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => (a.t.due ? 0 : 1) - (b.t.due ? 0 : 1) || (a.t.due || "").localeCompare(b.t.due || "") || a.i - b.i)
+    .map(({ t }) => t)
     .slice(0, MAX_SPOTLIGHT_TASKS);
   return {
     pages: pages.slice(0, MAX_SPOTLIGHT_PAGES).map((p) => ({
@@ -330,13 +338,7 @@ export async function spotlightItems(user: Identity) {
       updatedAt: p.updated_at,
       url: url(p.id),
     })),
-    tasks: tasks.map((t) => ({
-      id: `${t.pageId}:${t.rowId || ""}:${t.index}`,
-      text: t.text.slice(0, 200),
-      page: (t.title || "").slice(0, 120),
-      due: t.due,
-      url: url(t.pageId, t.rowId),
-    })),
+    tasks: tasks.map((t) => ({ ...t, text: t.text.slice(0, 200), page: t.page.slice(0, 120) })),
     at: Date.now(),
   };
 }

@@ -160,9 +160,88 @@ test("records can be favourited per person", async () => {
     viewer,
   );
   assert.deepEqual((await bootstrap(viewer, wid)).favoriteRows, [
-    { pageId: page, rowId: row, title: "Stern" },
+    { pageId: page, rowId: row, icon: "", title: "Stern" },
   ]);
   assert.deepEqual((await bootstrap(owner, wid)).favoriteRows, []);
   await act({ action: "row.delete", pageId: page, rowId: row });
   assert.deepEqual((await bootstrap(viewer, wid)).favoriteRows, []);
+});
+
+test("a record restores although a record it was linked to two-way is gone; the dead link is dropped", async () => {
+  const projects = await db("Zweiweg-Projekte"),
+    tasks = await db("Zweiweg-Aufgaben");
+  const d = await database(projects);
+  await command(owner, {
+    action: "database.update",
+    pageId: projects,
+    version: d.version,
+    views: d.views,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "links", name: "Aufgaben", type: "relation", relationPage: tasks },
+    ],
+  });
+  const t1 = (await act({ action: "row.create", pageId: tasks, cells: { title: "T1" } })).id,
+    t2 = (await act({ action: "row.create", pageId: tasks, cells: { title: "T2" } })).id;
+  const p = (await act({ action: "row.create", pageId: projects, cells: { title: "P", links: [t1, t2] } })).id;
+  const d2 = await database(projects);
+  await command(owner, {
+    action: "database.update",
+    pageId: projects,
+    version: d2.version,
+    views: d2.views,
+    fields: d2.fields,
+    relation: { fieldId: "links", enabled: true, name: "Projekte", targetVersion: (await database(tasks)).version },
+  });
+  await act({ action: "row.delete", pageId: projects, rowId: p });
+  await act({ action: "row.delete", pageId: tasks, rowId: t1 });
+  await act({ action: "row.trash.restore", trashId: p });
+  const [project] = await rows(projects);
+  assert.deepEqual(project.cells.links, [t2]);
+  const back = (await database(tasks)).fields.find((f) => f.type === "relation")!;
+  assert.deepEqual((await rows(tasks)).find((r) => r.id === t2)!.cells[back.id], [p]);
+  // The task restores too, without the link.
+  await act({ action: "row.trash.restore", trashId: t1 });
+  assert.deepEqual((await rows(projects))[0].cells.links, [t2]);
+});
+
+test("a restored record keeps its versions, visitor comments and comment reactions", async () => {
+  const page = await db("Verlauf");
+  const rid = (await act({ action: "row.create", pageId: page, cells: { title: "Mit Verlauf" } })).id;
+  await replaceRowDocument(rid, "<p>Erste Fassung</p>", owner.id);
+  await act({ action: "row.snapshot", pageId: page, rowId: rid });
+  await run(
+    "INSERT INTO shared_comments(id,page_id,row_id,name,body) VALUES(?,?,?,?,?)",
+    id(), page, rid, "Gast", "Von außen",
+  );
+  await act({ action: "comment.create", pageId: page, rowId: rid, body: "Intern" });
+  const comment = (await one<{ id: string }>("SELECT id FROM comments WHERE row_id=?", rid))!.id;
+  await act({ action: "comment.react", pageId: page, commentId: comment, emoji: "👍" });
+  const counts = async () => ({
+    snapshots: (await one<{ n: number }>("SELECT COUNT(*) n FROM row_snapshots WHERE row_id=?", rid))!.n,
+    shared: (await one<{ n: number }>("SELECT COUNT(*) n FROM shared_comments WHERE row_id=?", rid))!.n,
+    reactions: (await one<{ n: number }>("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=?", comment))!.n,
+  });
+  const before = await counts();
+  assert.ok(Number(before.snapshots) >= 1);
+  assert.deepEqual([Number(before.shared), Number(before.reactions)], [1, 1]);
+  await act({ action: "row.delete", pageId: page, rowId: rid });
+  await act({ action: "row.trash.restore", trashId: rid });
+  assert.deepEqual(await counts(), before);
+  assert.match(
+    (await one<{ html: string }>("SELECT html FROM row_snapshots WHERE row_id=? ORDER BY created_at LIMIT 1", rid))!.html,
+    /Erste Fassung/,
+  );
+});
+
+test("a favourite record carries its own icon to the sidebar (#198)", async () => {
+  const notes = await db("Notizen mit Symbol");
+  const [withIcon, plain] = await mapAsync(["Mit Symbol", "Ohne Symbol"], async (title) =>
+    (await act({ action: "row.create", pageId: notes, cells: { title } })).id,
+  );
+  await run("UPDATE rows SET icon=? WHERE id=?", "🚀", withIcon);
+  for (const rowId of [withIcon, plain]) await act({ action: "favorite.row", pageId: notes, rowId, value: true });
+  const favourites = (await bootstrap(owner, wid)).favoriteRows || [];
+  assert.equal(favourites.find((f) => f.rowId === withIcon)?.icon, "🚀");
+  assert.equal(favourites.find((f) => f.rowId === plain)?.icon, "");
 });

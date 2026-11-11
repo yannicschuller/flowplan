@@ -27,6 +27,10 @@ export type Identity = User & {
   demo?: boolean;
   // Set when the request came with a personal API token.
   apiScope?: "read" | "write" | "clipper";
+  // The token carries the "KI und Transkription" permission (#199,
+  // lib/api-tokens.ts); whether it counts also depends on the
+  // administration (lib/ai/token-access.ts).
+  apiAi?: boolean;
   // Signed in, but the instance requires a second factor this account has
   // not set up yet: only setting it up is possible (lib/two-factor-policy.ts).
   twoFactorSetup?: boolean;
@@ -278,6 +282,13 @@ export type Bootstrap = {
   ldapAccount?: boolean;
   workspaces: Workspace[];
   workspace: Workspace;
+  // The workspace's look (#196, lib/workspace-theme.ts): accent, background
+  // tint, typefaces and the uploaded faces it uses; plainLook: this person
+  // chose Flowplan's own look instead.
+  look?: import("./workspace-theme").WorkspaceLook;
+  plainLook?: boolean;
+  // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
+  textMenu?: import("./text-menu-pref").TextMenuPref;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).
@@ -291,7 +302,7 @@ export type Bootstrap = {
   // Journals whose days show differently in the page tree (lib/journal-nav.ts).
   journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
   favorites: string[];
-  favoriteRows?: { pageId: string; rowId: string; title: string }[];
+  favoriteRows?: { pageId: string; rowId: string; title: string; icon?: string }[];
   collections?: import("./collections").CollectionInfo[];
   // Tags and property definitions of pages, the tags of the pages shown
   // (lib/page-properties-server.ts workspaceTaxonomy).

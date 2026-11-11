@@ -21,6 +21,8 @@ import {
   ListChecks,
   LockKey,
   Megaphone,
+  Microphone,
+  PaintBrush,
   Palette,
   PlugsConnected,
   Pulse,
@@ -49,6 +51,7 @@ import WebhooksSection from "./user/webhooks";
 import ConnectionsSection from "./user/connections";
 import ClipperSection from "./user/clipper";
 import WorkspaceSection from "./user/workspace";
+import WorkspaceLookSection from "./user/workspace-look";
 import MembersSection from "./user/members";
 import GroupsSection from "./user/groups";
 import SpacesSection from "./user/spaces";
@@ -56,6 +59,7 @@ import TagsSection from "./user/tags";
 import ExtensionsSection from "./user/extensions";
 import DataSection from "./user/data";
 import TimeSection from "./user/time";
+import MeetingsSection from "./user/meetings";
 import AboutSection from "./user/about";
 import UsersSection from "./admin/users";
 import SigninSection from "./admin/signin";
@@ -93,6 +97,8 @@ export const ICONS: Record<string, Icon> = {
   ListChecks,
   LockKey,
   Megaphone,
+  Microphone,
+  PaintBrush,
   Palette,
   PlugsConnected,
   Pulse,
@@ -121,6 +127,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   connections: ConnectionsSection,
   clipper: ClipperSection,
   workspace: WorkspaceSection,
+  look: WorkspaceLookSection,
   members: MembersSection,
   groups: GroupsSection,
   spaces: SpacesSection,
@@ -128,6 +135,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   extensions: ExtensionsSection,
   data: DataSection,
   time: TimeSection,
+  meetings: MeetingsSection,
   about: AboutSection,
 };
 

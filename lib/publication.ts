@@ -14,26 +14,41 @@ import { mapAsync } from "./each-async";
 export async function publicationSettings(pageId: string) {
   const row = await one<{
     include_children: number;
+    auto_children: number;
     allow_copy: number;
     published_at: string | null;
     password: number;
     expires_at: number | null;
   }>(
-    "SELECT include_children,allow_copy,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
+    "SELECT include_children,auto_children,allow_copy,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
     pageId,
   );
+  const autoChildren = !!row?.include_children && !!row.auto_children;
   return {
     includeChildren: !!row?.include_children,
+    autoChildren,
     allowCopy: row ? !!row.allow_copy : true,
     publishedAt: row?.published_at || null,
     password: !!row?.password,
     expiresAt: row?.expires_at ?? null,
-    count:
-      (await one<{ count: number }>(
-        "SELECT count(*) count FROM publication_pages WHERE root_id=?",
-        pageId,
-      ))?.count || 0,
+    // With new sub-pages joining by themselves, the pages visitors reach
+    // right now (the stored list alone would miss them).
+    count: autoChildren
+      ? await publishedCount(pageId)
+      : (await one<{ count: number }>(
+          "SELECT count(*) count FROM publication_pages WHERE root_id=?",
+          pageId,
+        ))?.count || 0,
   };
+}
+async function publishedCount(pageId: string) {
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
+  if (!page?.public_token) return 0;
+  try {
+    return (await resolveTree(page.public_token, false)).pages.length;
+  } catch {
+    return 0;
+  }
 }
 // What a published page shows under its title: when it was published, and
 // whether it is offered for copying – never behind a password. allow_copy is
@@ -52,6 +67,8 @@ export async function publishPage(
   enabled: boolean,
   includeChildren: boolean,
   allowCopy = true,
+  // New sub-pages join by themselves (only together with the sub-pages).
+  autoChildren = false,
 ) {
   // A journal with a PIN is never published (setting the PIN ended its
   // publications, lib/journal-extras.ts); below a published page it stays
@@ -64,7 +81,7 @@ export async function publishPage(
     ? (await all<Page>(
         `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree`,
         page.id,
-      )).filter((p) => !pinned.has(p.id) && p.kind !== "workflow")
+      )).filter((p) => !neverPublished(p, pinned))
     : [page];
   if (enabled) {
     // Like share links: nothing below a journal whose PIN the person has not entered.
@@ -88,9 +105,9 @@ export async function publishPage(
   );
   if (enabled) {
     await run(
-      "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,?,?,?,?,?)",
+      "INSERT INTO publications(page_id,include_children,auto_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,?,?,?,?,?,?)",
       page.id,
-      includeChildren ? 1 : 0, nowText(),
+      includeChildren ? 1 : 0, includeChildren && autoChildren ? 1 : 0, nowText(),
       user.id,
       allowCopy ? 1 : 0,
       kept?.password_hash ?? null,
@@ -104,7 +121,50 @@ export async function publishPage(
       );
   }
 }
+// Never part of a publication, also not as a sub-page: workflow pages
+// (#168) and every page of a journal with a PIN.
+function neverPublished(p: Page, pinned: Set<string>) {
+  return pinned.has(p.id) || p.kind === "workflow";
+}
+// "Neue Unterseiten automatisch veröffentlichen" (publications.auto_children):
+// the sub-pages below the published page that are not in its stored list –
+// created, duplicated, moved or restored there after it was published – join
+// it as long as they are below it, with its settings (password, end date,
+// copying, look: all kept per publication). Only what publishing them by hand
+// would allow: the person who published it may still edit the page (so no
+// private space or page grant they lack), it is no workflow, in no journal
+// with a PIN and in no encrypted space. Checked on every visit, so a page
+// moved out leaves the publication, and one this person may no longer edit
+// (or a publisher who left) stops being published; the stored list – what
+// was chosen by hand – stays as it is.
+async function joinedSubPages(root: Page, publishedBy: string | null, descendants: Page[], selected: Set<string>, pinned: Set<string>) {
+  const candidates = descendants.filter((p) => !selected.has(p.id) && !neverPublished(p, pinned));
+  if (!candidates.length || !publishedBy) return [];
+  const account = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", publishedBy);
+  if (!account) return [];
+  const publisher: Identity = {
+    ...account,
+    groups: (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", publishedBy)).map((g) => g.group_id),
+    isAdmin: false,
+  };
+  const locked = await lockedPageIds(publisher, root.workspace_id);
+  const joined: string[] = [];
+  for (const p of candidates) {
+    if (locked.has(p.id)) continue;
+    try {
+      await requirePage(publisher, p.id, true);
+      joined.push(p.id);
+    } catch {
+      // Not theirs to publish: stays private.
+    }
+  }
+  return joined;
+}
 export async function publicTree(token: string) {
+  return await resolveTree(token, true);
+}
+// protect=false only for the owner's count in the share dialog.
+async function resolveTree(token: string, protect: boolean) {
   const link = await one<{
     root_id: string;
     role: "viewer" | "commenter" | "editor";
@@ -125,14 +185,13 @@ export async function publicTree(token: string) {
   if (!root || await inPinJournal(root)) throw new HttpError(404, "Veröffentlichung nicht gefunden.");
   // End date and password (lib/share-access.ts) hold for everything served
   // through the link: pages, records, files, live updates and guest edits.
-  checkShareProtection(
-    token,
-    link ||
-      await one<{ password_hash: string | null; expires_at: number | null }>(
-        "SELECT password_hash,expires_at FROM publications WHERE page_id=?",
+  const publication = link
+    ? undefined
+    : await one<{ password_hash: string | null; expires_at: number | null; include_children: number; auto_children: number; published_by: string | null }>(
+        "SELECT password_hash,expires_at,include_children,auto_children,published_by FROM publications WHERE page_id=?",
         root.id,
-      ) || { password_hash: null, expires_at: null },
-  );
+      );
+  if (protect) checkShareProtection(token, link || publication || { password_hash: null, expires_at: null });
   // The explicit publication set is intersected with the current tree. Moving a page out revokes inherited publication.
   const descendants = await all<Page>(
     `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree ORDER BY position`,
@@ -147,7 +206,10 @@ export async function publicTree(token: string) {
     )).map((p) => p.page_id),
   );
   selected.add(root.id); // Existing single-page links remain valid after migration.
-  for (const id of await pinJournalPageIds(root.workspace_id)) selected.delete(id);
+  const pinned = await pinJournalPageIds(root.workspace_id);
+  for (const id of pinned) selected.delete(id);
+  if (publication?.include_children && publication.auto_children)
+    for (const id of await joinedSubPages(root, publication.published_by, descendants, selected, pinned)) selected.add(id);
   const accessible = new Set([root.id]);
   let changed = true;
   while (changed) {

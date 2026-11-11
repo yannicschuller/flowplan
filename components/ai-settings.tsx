@@ -43,6 +43,8 @@ type InstanceAi = {
   semanticSearch?: boolean;
   // Apple's on-device model in the apps (on unless switched off).
   device?: boolean;
+  // API tokens with the "KI und Transkription" permission (on unless switched off).
+  tokens?: boolean;
 };
 type AdminView = {
   settings: InstanceAi;
@@ -498,6 +500,15 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
           description={t("Unabhängig vom Anbieter der Instanz: Personen nutzen dann auch ihr eigenes Konto bei einem Anbieter. Eigene Anbieter erreichen nur öffentliche https-Adressen.", "Independent of the instance provider: people can use their own account with a provider. Own providers only reach public https addresses.")}
           checked={draft.userProviders}
           onChange={(userProviders) => set({ userProviders })}
+        />
+        <SwitchRow
+          label={t("API-Tokens mit „KI und Transkription“", "API tokens with “AI and transcription”")}
+          description={t(
+            "Tokens, bei deren Erstellung diese Berechtigung gewählt wurde, dürfen KI-Funktionen, Transkription und Besprechungsnotizen nutzen – mit denselben Grenzen wie die Oberfläche. Ausgeschaltet gilt die Berechtigung bei keinem Token.",
+            "Tokens created with this permission may use AI features, transcription and meeting notes – with the same limits as the interface. When off, no token gets this permission.",
+          )}
+          checked={draft.tokens !== false}
+          onChange={(tokens) => set({ tokens })}
         />
       </SettingGroup>
 

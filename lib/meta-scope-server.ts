@@ -21,7 +21,8 @@ import { z } from "zod";
 import { HttpError } from "./auth";
 import { all, audit, id, one, run, sql } from "./db";
 import { isEncryptedPage } from "./e2ee-server";
-import { requireMember, spaceRole } from "./permissions";
+import { pageRole, requireMember, spaceRole } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import {
   asDef,
   asTag,
@@ -323,7 +324,9 @@ export type ScopeUsage = { spaceId: string; spaceName: string; pages: number; re
 // Where an item is used outside `target` (null: nowhere – the whole
 // workspace sees it): pages with it, and for tags records of databases with
 // the tags as options. Pages in the trash count too (restored, they keep it).
-export async function usageOutside(item: ScopeItem, target: string | null): Promise<ScopeUsage[]> {
+// Titles only of pages `reader` may open (an owner manages every scope but
+// does not read other people's private spaces or journals behind a PIN).
+export async function usageOutside(item: ScopeItem, target: string | null, reader?: Identity): Promise<ScopeUsage[]> {
   if (!target) return [];
   const bySpace = new Map<string, ScopeUsage>();
   const entry = async (spaceId: string) => {
@@ -331,17 +334,17 @@ export async function usageOutside(item: ScopeItem, target: string | null): Prom
     if (!usage) bySpace.set(spaceId, (usage = { spaceId, spaceName: await spaceName(spaceId), pages: 0, records: 0, titles: [] }));
     return usage;
   };
-  const pages = await all<{ id: string; title: string; space_id: string }>(
+  const pages = await all<Page>(
     item.kind === "tag"
-      ? "SELECT p.id,p.title,p.space_id FROM page_tag_links l JOIN pages p ON p.id=l.page_id WHERE l.tag_id=? AND p.space_id<>?"
-      : "SELECT p.id,p.title,p.space_id FROM page_property_values v JOIN pages p ON p.id=v.page_id WHERE v.property_id=? AND p.space_id<>?",
+      ? "SELECT p.* FROM page_tag_links l JOIN pages p ON p.id=l.page_id WHERE l.tag_id=? AND p.space_id<>?"
+      : "SELECT p.* FROM page_property_values v JOIN pages p ON p.id=v.page_id WHERE v.property_id=? AND p.space_id<>?",
     item.id,
     target,
   );
   for (const p of pages) {
     const usage = await entry(p.space_id);
     usage.pages++;
-    if (usage.titles.length < 5) usage.titles.push(p.title);
+    if (usage.titles.length < 5 && (!reader || ((await pageRole(reader, p)) && !(await journalLocked(reader, p))))) usage.titles.push(p.title);
   }
   if (item.kind === "tag") {
     const dbs = (await all<{ id: string; space_id: string }>("SELECT id,space_id FROM pages WHERE workspace_id=? AND space_id<>?", item.workspace_id, target)).map((p) => p.id);
@@ -368,7 +371,7 @@ export async function metaUsage(user: Identity, input: Record<string, unknown>) 
   if (!(await canManageTaxonomy(user, b.workspaceId))) throw new HttpError(403, "Den Geltungsbereich ändern nur Eigentümer des Arbeitsbereichs.");
   const item = await scopeItem(b.kind, b.workspaceId, b.id);
   return {
-    usage: await usageOutside(item, b.spaceId),
+    usage: await usageOutside(item, b.spaceId, user),
     clashes: await mapAsync(await clashesIn(item, b.spaceId), async (c) => ({ id: c.id, spaceId: c.space_id, spaceName: await spaceName(c.space_id), type: (c as DefRow).type })),
   };
 }

@@ -535,6 +535,11 @@ label.hit-check {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* The account menu's entries are in the "Mehr" sheet (#197): one button,
+     the name and status keep the room. */
+  .sidebar-bottom .profile-account-menu {
+    display: none;
+  }
   .sidebar-more {
     display: inline-flex;
     align-items: center;
@@ -554,7 +559,8 @@ label.hit-check {
     background: var(--hover);
   }
 }
-.sidebar-more-list {
+.sidebar-more-list,
+.sidebar-more-account-list {
   list-style: none;
   /* The symbols in line with the sheet's title. */
   margin: 0 -12px;
@@ -562,7 +568,8 @@ label.hit-check {
   display: grid;
   gap: 2px;
 }
-.sidebar-more-list button {
+.sidebar-more-list button,
+.sidebar-more-account :is(button, a) {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -575,15 +582,35 @@ label.hit-check {
   font-size: 16px;
   text-align: start;
 }
-.sidebar-more-list button > svg {
+.sidebar-more-list button > svg,
+.sidebar-more-account :is(button, a) > svg {
   flex-shrink: 0;
   color: var(--secondary);
 }
 .sidebar-more-list button.selected > svg {
   color: inherit;
 }
-.sidebar-more-list button:focus-visible {
+.sidebar-more-list button:focus-visible,
+.sidebar-more-account :is(button, a):focus-visible {
   outline-offset: -2px;
+}
+/* The account part (#197): below a line, signing out last and apart. */
+.sidebar-more-account {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-more-account a {
+  text-decoration: none;
+}
+.sidebar-more-account .sidebar-more-sign-out {
+  margin-top: 18px;
+  justify-content: center;
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.sidebar-more-account .sidebar-more-sign-out > svg {
+  color: inherit;
 }
 
 /* ===== Nothing widens the page sideways on phones (#98). The panes below
@@ -595,5 +622,100 @@ label.hit-check {
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .main-scroll > * {
     overflow-x: clip;
+  }
+}
+
+/* ===== A page's title wraps on phones instead of being cut off: a journal
+   day's "Dienstag, 10. November 2026" is wider than the screen
+   (components/page-title-field.tsx grows the field with its lines). ===== */
+@media (max-width: 767px) {
+  .page-title {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ===== A database calendar's month on phones: a day is about 90 px wide.
+   The entry's time and title take the chip's first line, the drag handle
+   and the date button a line below it – beside them only "09:…" was left. ===== */
+@media (max-width: 767px) {
+  .calendar-day .calendar-chip {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .calendar-day .calendar-chip .calendar-event {
+    flex-basis: 100%;
+  }
+}
+
+/* ===== The page's top bar on phones (components/workspace-app.tsx): the
+   sidebar button, the title and ⋯. Follow, favourite, share and reading
+   mode are at the top of the ⋯ menu; comments show only when there are
+   open ones (with their count, else "Kommentare" in the menu); the saving
+   cloud only when there is something to report – while all is saved it
+   stays for screen readers alone. Wider screens keep the full bar. ===== */
+.page-menu-quick,
+.comments-count {
+  display: none;
+}
+@media (max-width: 767px) {
+  .page-top-actions > .topbar-phone-hidden {
+    display: none;
+  }
+  .page-top-actions > .save-status-quiet {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .page-top-actions > .comments-button.has-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: auto;
+    padding: 0 6px;
+  }
+  .comments-count {
+    display: inline;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--secondary);
+  }
+  .page-menu-quick {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .page-menu-quick-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 44px;
+    min-height: 58px;
+    padding: 8px 4px;
+    border-radius: 7px;
+    font-size: 11.5px;
+    line-height: 1.2;
+    text-align: center;
+    color: var(--secondary);
+    cursor: pointer;
+    outline: none;
+  }
+  .page-menu-quick-item[data-highlighted] {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .page-menu-quick-item.favourite[data-state="checked"] svg {
+    color: #dcac49;
+  }
+  .page-menu-quick-item.follow[data-state="checked"] {
+    color: var(--blue);
   }
 }

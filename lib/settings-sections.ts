@@ -96,6 +96,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Sprache", en: "Language" } },
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
+      { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
+      {
+        title: { de: "Menü bei Textauswahl", en: "Menu on text selection" },
+        keywords: { de: "textmenü markieren auswahl popup reaktionen formatieren handy tablet", en: "text menu select selection popup reactions formatting phone tablet" },
+        anchor: "text-menu",
+      },
       { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },
       { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
       { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },
@@ -215,6 +221,23 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     ],
   },
   {
+    id: "look",
+    area: "settings",
+    group: "workspace",
+    icon: "PaintBrush",
+    title: { de: "Erscheinungsbild", en: "Appearance" },
+    description: { de: "Akzentfarbe, Hintergrund und Schriften für alle im Arbeitsbereich.", en: "Accent colour, background and typefaces for everyone in the workspace." },
+    keywords: {
+      de: "erscheinungsbild design aussehen farbe akzentfarbe hintergrund schrift schriftart font eigene schrift hochladen branding corporate design",
+      en: "appearance design look colour color accent background font typeface own font upload branding corporate design",
+    },
+    entries: [
+      { title: { de: "Akzentfarbe", en: "Accent colour" }, keywords: { de: "farbe", en: "color" }, anchor: "look-colours" },
+      { title: { de: "Schriften", en: "Typefaces" }, keywords: { de: "schriftart font", en: "font" }, anchor: "look-fonts" },
+      { title: { de: "Eigene Schriften", en: "Own fonts" }, keywords: { de: "hochladen woff2 ttf otf", en: "upload woff2 ttf otf" }, anchor: "look-uploads" },
+    ],
+  },
+  {
     id: "members",
     area: "settings",
     group: "workspace",
@@ -287,6 +310,22 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Bereich als Markdown exportieren", en: "Export space as Markdown" }, keywords: { de: "pdf epub e-book", en: "pdf epub e-book" }, anchor: "export" },
       { title: { de: "Flowplan-Archiv wiederherstellen", en: "Restore a Flowplan archive" }, keywords: { de: "backup importieren sicherung", en: "import backup" }, anchor: "backups" },
       { title: { de: "Papierkorb & Aufbewahrung", en: "Trash & retention" }, anchor: "trash" },
+    ],
+  },
+  {
+    id: "meetings",
+    area: "settings",
+    group: "workspace",
+    icon: "Microphone",
+    title: { de: "Besprechungen", en: "Meetings" },
+    description: { de: "Anweisungen für Zusammenfassungen, Aufbewahrung des Audios und Einwilligung.", en: "Instructions for summaries, keeping the audio and consent." },
+    keywords: {
+      de: "besprechung meeting protokoll aufnahme transkript zusammenfassung audio aufbewahren löschen einwilligung zustimmung dsgvo",
+      en: "meeting minutes recording transcript summary audio retention delete consent gdpr",
+    },
+    entries: [
+      { title: { de: "Einwilligung erforderlich", en: "Consent required" }, anchor: "consent" },
+      { title: { de: "Audio aufbewahren", en: "Keep audio" }, anchor: "audio" },
     ],
   },
   {

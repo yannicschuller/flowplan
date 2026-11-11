@@ -1,0 +1,245 @@
+/* Settings → Workspace → Appearance (#196,
+   components/settings/user/workspace-look.tsx). */
+.look-preview-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 4px 22px 18px;
+}
+@container main (max-width: 700px) {
+  .look-preview-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .look-preview-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* The card sets its own variables (light or dark, the draft's look). */
+.look-preview {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  min-height: 168px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.look-preview figcaption {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.look-preview-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 6px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+}
+.look-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.look-preview-item.active {
+  background: var(--blue-light);
+  color: var(--blue);
+  font-weight: 600;
+}
+.look-preview-page {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px 14px 26px;
+}
+.look-preview-title {
+  font-family: var(--font-display);
+  font-size: 23px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.look-preview-page p {
+  margin: 0;
+}
+.look-preview-link {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.look-preview-page code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface);
+  font: 12px var(--font-mono);
+}
+.look-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.look-preview-button {
+  padding: 4px 11px;
+  border-radius: 6px;
+  background: var(--blue);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+.look-preview-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--blue-light);
+  color: var(--blue);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.look-accent {
+  display: grid;
+  gap: 12px;
+}
+.look-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.look-swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--swatch) !important;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px #0002;
+}
+.look-swatch.active {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* "Default": Flowplan's own accent, half light and half dark. */
+.look-swatch-default {
+  background: linear-gradient(135deg, #3b3fd8 50%, #959bff 50%) !important;
+}
+.look-custom.active {
+  border-color: var(--blue);
+}
+.look-custom code {
+  font-size: 12px;
+}
+.look-picker {
+  width: min(280px, 100%);
+}
+.look-adjusted {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.look-adjusted > svg {
+  margin-top: 2px;
+  color: var(--blue);
+}
+.look-adjusted code {
+  font-size: 12px;
+}
+.look-adjusted-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  white-space: nowrap;
+}
+.look-chip-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px #0003;
+}
+
+.look-backgrounds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.look-background {
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.look-background.active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+.look-background-sample {
+  display: grid;
+  grid-template-columns: 14px 34px 14px 34px;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #0002;
+}
+.look-background-sample > span:nth-child(2n) {
+  border-left: 1px solid;
+}
+
+.look-uploads,
+.look-uploads-empty {
+  margin: 0;
+  padding: 4px 22px 16px;
+}
+.look-uploads {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+}
+.look-uploads li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.look-uploads li:first-child {
+  border-top: 0;
+}
+.look-upload-name {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

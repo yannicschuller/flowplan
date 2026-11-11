@@ -17,6 +17,9 @@ type Choice = {
   label: string;
   disabled: boolean;
   group?: string;
+  // <option data-font="…">: shown in that typeface (the font choices of a
+  // workspace's look, #196).
+  font?: string;
 };
 // Drop-in replacement for <select> with a styled list. The native element
 // stays in place (invisible) as the form control: it keeps the value,
@@ -46,6 +49,7 @@ export function Select({
     [choices, setChoices] = useState<Choice[]>([]),
     [active, setActive] = useState(0),
     [label, setLabel] = useState(""),
+    [labelFont, setLabelFont] = useState<string | undefined>(undefined),
     [place, setPlace] = useState<{
       host: HTMLElement;
       top: number;
@@ -67,6 +71,7 @@ export function Select({
     const el = native.current;
     const option = el?.options[el.selectedIndex];
     setLabel(option ? option.label || option.text : "");
+    setLabelFont(option?.dataset.font || undefined);
   }, []);
   // When the person last chose: owners that save first (a request, then
   // the new value) get a moment before a choice they did not take goes back.
@@ -100,6 +105,7 @@ export function Select({
       value: o.value,
       label: o.label || o.text,
       disabled: o.disabled,
+      font: o.dataset.font || undefined,
       group:
         o.parentElement instanceof HTMLOptGroupElement
           ? o.parentElement.label
@@ -113,6 +119,7 @@ export function Select({
     const sync = () => {
       const option = el.options[el.selectedIndex];
       setLabel(option ? option.label || option.text : "");
+    setLabelFont(option?.dataset.font || undefined);
     };
     sync();
     el.addEventListener("change", sync);
@@ -300,7 +307,7 @@ export function Select({
           if (!list.current?.contains(e.relatedTarget as Node)) setOpen(false);
         }}
       />
-      <span className="fp-select-value" aria-hidden="true">
+      <span className="fp-select-value" aria-hidden="true" style={labelFont ? { fontFamily: labelFont } : undefined}>
         {label || " "}
       </span>
       <CaretDown className="fp-select-caret" size={13} aria-hidden="true" />
@@ -329,7 +336,7 @@ export function Select({
                   onPointerEnter={() => !c.disabled && setActive(i)}
                   onClick={() => choose(i)}
                 >
-                  <span>{c.label || " "}</span>
+                  <span style={c.font ? { fontFamily: c.font } : undefined}>{c.label || " "}</span>
                   {native.current?.selectedIndex === i && <Check size={14} />}
                 </div>
               </div>

@@ -40,9 +40,9 @@ export function customHostRoute(state: HostState, pathname: string, method: stri
   if (pathname === `/share/${token}`) return { kind: "redirect", path: "/" };
   const shared = new RegExp(`^/share/${token}/(${ID})$`, "i").exec(pathname);
   if (shared) return { kind: "redirect", path: `/${shared[1]}` };
-  // The publication's own read endpoints (files, live updates, plugin
+  // The publication's own read endpoints (files, faces of the look, live updates, plugin
   // blocks); unlocking a password is not one of them.
-  const api = new RegExp(`^/api/share/${token}(/(files/${ID}|live|plugins/${ID}))?$`, "i").exec(pathname);
+  const api = new RegExp(`^/api/share/${token}(/(files/${ID}|fonts/${ID}|live|plugins/${ID}))?$`, "i").exec(pathname);
   if (api) return { kind: "next" };
   return { kind: "notFound" };
 }

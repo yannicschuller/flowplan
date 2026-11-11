@@ -5,6 +5,8 @@ import { getForm } from "@/lib/forms";
 import FormClient from "@/components/form-client";
 import { surveyClosed } from "@/lib/survey";
 import { one } from "@/lib/db";
+import { workspaceLook } from "@/lib/workspace-fonts";
+import { WorkspaceThemeStyle } from "@/components/workspace-theme-style";
 export const dynamic = "force-dynamic";
 export default async function FormPage({
   params,
@@ -19,6 +21,8 @@ export default async function FormPage({
     const state = survey ? surveyClosed(survey, (await one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token))?.n || 0) : null;
     return (
       <>
+      {/* The look of the form's workspace (#196). */}
+      <WorkspaceThemeStyle look={await workspaceLook(form.workspace_id)} fontUrl={(id) => `/api/forms/${token}/fonts/${id}`} />
       <FormClient
         closed={state === "full" ? t("Diese Umfrage hat genug Antworten – danke für dein Interesse.", "This survey has enough answers – thank you for your interest.") : state ? t("Diese Umfrage ist geschlossen.", "This survey is closed.") : ""}
         token={token}

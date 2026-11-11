@@ -35,8 +35,7 @@ import { HttpError } from "./auth";
 import { isGuest, memberRole } from "./permissions";
 import { pinnedLookup, privateAddress } from "./safe-fetch";
 import { openSecret, sealSecret } from "./secret-box";
-import { exportMarkdown } from "./markdown-export";
-import { readZip } from "./archive";
+import { exportMarkdown, readMarkdownExport } from "./markdown-export";
 import { withContentLocale } from "./content-locale";
 import { userLocale } from "./user-locale";
 import { commitAndPush, prepareRepo, type GitTarget } from "./git-export";
@@ -341,7 +340,7 @@ async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
     const { bytes } = await withContentLocale(await userLocale(found.owner.id), () =>
       exportMarkdown(found.owner, { spaceId: row.space_id, format: "zip", includeSubpages: true, history: !!row.history }),
     );
-    const entries = await readZip(bytes as Buffer, { foreign: true, maxEntries: 20000 });
+    const entries = await readMarkdownExport(bytes as Buffer);
     const { options, remote } = await prepareRepo(target);
     // Removed first (symbolic links themselves, never what they point to),
     // then written anew: pages that left the space disappear from Git.

@@ -20,6 +20,11 @@ type Payload = {
   document: { state: string; html: string; generation: string } | null;
   comments: Record<string, unknown>[];
   grants?: RowGrant[];
+  // Removed with the record by the foreign keys; kept so a restore is
+  // lossless (entries trashed before have none).
+  snapshots?: { id: string; state: string; html: string; created_by: string | null; created_at: string; kind: string }[];
+  sharedComments?: Record<string, unknown>[];
+  reactions?: Record<string, unknown>[];
 };
 export const trashedRole = async (user: Identity, page: Page, payload: Payload) =>
   await roleWithGrants(
@@ -65,6 +70,20 @@ export async function trashRow(user: Identity, page: Page, rowId: string) {
       rowId,
     ),
     grants: await rowGrants(rowId),
+    snapshots: (await all<{ id: string; state: Uint8Array; html: string; created_by: string | null; created_at: string; kind: string }>(
+      "SELECT id,state,html,created_by,created_at,kind FROM row_snapshots WHERE row_id=?",
+      rowId,
+    )).map((s) => ({ ...s, state: Buffer.from(s.state).toString("base64") })),
+    sharedComments: await all(
+      "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id=?",
+      page.id,
+      rowId,
+    ),
+    reactions: await all(
+      "SELECT r.comment_id,r.user_id,r.emoji,r.created_at FROM comment_reactions r JOIN comments c ON c.id=r.comment_id WHERE c.page_id=? AND c.row_id=?",
+      page.id,
+      rowId,
+    ),
   };
   await run(
     "INSERT INTO row_trash(id,page_id,workspace_id,title,payload,deleted_by) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET page_id=excluded.page_id,workspace_id=excluded.workspace_id,title=excluded.title,payload=excluded.payload,deleted_by=excluded.deleted_by,deleted_at=excluded.deleted_at",
@@ -136,12 +155,32 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
       "Ein Eintrag mit dieser Kennung existiert bereits.",
     );
   const r = payload.row;
+  // Two-way relations sync the other side on insert, which fails for a
+  // linked record deleted meanwhile: that link is dropped, as the other
+  // side already dropped it when this record was deleted.
+  const cells = JSON.parse(String(r.cells)) as Record<string, unknown>;
+  const twoWay = new Set(
+    (await all<{ field_id: string }>("SELECT field_id FROM relation_endpoints WHERE page_id=?", page.id)).map((e) => e.field_id),
+  );
+  const fields = JSON.parse(
+    (await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]",
+  ) as Field[];
+  for (const f of fields) {
+    if (f.type !== "relation" || !twoWay.has(f.id) || !Array.isArray(cells[f.id])) continue;
+    cells[f.id] = await filterAsync(
+      cells[f.id] as unknown[],
+      async (target) =>
+        typeof target === "string" &&
+        ((f.relationPage === page.id && target === trashId) ||
+          !!(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", target, f.relationPage || ""))),
+    );
+  }
   await run(
     // The ticket number comes back too (unless another record took it).
     "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     trashId,
     page.id,
-    String(r.cells),
+    JSON.stringify(cells),
     Number(r.position) || 0,
     String(r.created_at || ""), nowText(),
     (r.created_by as string | null) ?? null,
@@ -184,6 +223,39 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
       String(c.body),
       Number(c.resolved) || 0,
       String(c.created_at || ""),
+    );
+  for (const c of payload.reactions || [])
+    await run(
+      // Not for people deleted meanwhile.
+      "INSERT INTO comment_reactions(comment_id,user_id,emoji,created_at) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=?) AND EXISTS(SELECT 1 FROM comments WHERE id=?) ON CONFLICT DO NOTHING",
+      String(c.comment_id),
+      String(c.user_id),
+      String(c.emoji),
+      Number(c.created_at) || Date.now(),
+      String(c.user_id),
+      String(c.comment_id),
+    );
+  for (const c of payload.sharedComments || [])
+    await run(
+      "INSERT INTO shared_comments(id,page_id,row_id,name,body,resolved,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+      String(c.id),
+      page.id,
+      trashId,
+      String(c.name),
+      String(c.body),
+      Number(c.resolved) || 0,
+      String(c.created_at || ""),
+    );
+  for (const s of payload.snapshots || [])
+    await run(
+      "INSERT INTO row_snapshots(id,row_id,state,html,created_by,created_at,kind) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+      s.id,
+      trashId,
+      Buffer.from(s.state, "base64"),
+      s.html,
+      s.created_by ?? null,
+      s.created_at,
+      s.kind || "auto",
     );
   await run("DELETE FROM row_trash WHERE id=?", trashId);
   await maintainRowOrders(page.id);

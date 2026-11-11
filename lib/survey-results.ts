@@ -8,7 +8,7 @@ export type Bar = { label: string; count: number; share: number };
 export type QuestionResult =
   | { kind: "choice"; q: SurveyQuestion; answered: number; bars: Bar[]; others: string[] }
   | { kind: "number"; q: SurveyQuestion; answered: number; average: number | null; min: number | null; max: number | null; bars: Bar[]; nps?: { score: number; promoters: number; passives: number; detractors: number } }
-  | { kind: "ranking"; q: SurveyQuestion; answered: number; items: { label: string; average: number }[] }
+  | { kind: "ranking"; q: SurveyQuestion; answered: number; items: { label: string; average: number | null }[] }
   | { kind: "matrix"; q: SurveyQuestion; answered: number; rows: { label: string; counts: number[]; average: number | null }[]; columns: string[] }
   | { kind: "text"; q: SurveyQuestion; answered: number; answers: string[] }
   | { kind: "files"; q: SurveyQuestion; answered: number };
@@ -53,9 +53,10 @@ export function surveyResults(survey: Survey, fields: Field[], rows: Row[]) {
       const items = options
         .map((o) => {
           const places = values.map((v) => (Array.isArray(v) ? v.indexOf(o) : -1)).filter((i) => i >= 0);
-          return { label: o, average: places.length ? round(places.reduce((a, b) => a + b + 1, 0) / places.length) : 0 };
+          return { label: o, average: places.length ? round(places.reduce((a, b) => a + b + 1, 0) / places.length) : null };
         })
-        .sort((a, b) => a.average - b.average);
+        // Options nobody placed (added later) come last, without an average.
+        .sort((a, b) => (a.average === null ? 1 : 0) - (b.average === null ? 1 : 0) || (a.average ?? 0) - (b.average ?? 0));
       results.push({ kind: "ranking", q, answered: values.length, items });
       continue;
     }

@@ -43,7 +43,17 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # The browser itself comes from Playwright's CDN. Its system packages
+        # come from Ubuntu, whose hosts GitHub's runners sometimes cannot
+        # resolve for hours (Nov 2026: azure.archive, archive and security
+        # .ubuntu.com all "Temporary failure resolving"). The runner image
+        # already has the libraries; only extra fonts were missing then. So
+        # the packages are tried once, bounded in time, and a failure is a
+        # warning; missing fonts would then show up as screenshot differences.
+        run: |
+          npx playwright install chromium
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null
+          timeout 300 npx playwright install-deps chromium || echo "::warning::Chromium's Ubuntu packages could not be installed (Ubuntu mirrors unreachable?); using what the runner image has"
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

@@ -8,6 +8,8 @@ import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import { requirePage } from "@/lib/permissions";
+import { requireTokenAi } from "@/lib/ai/token-access";
+import { requirePlaintext } from "@/lib/e2ee-server";
 import { finishTranscribeUpload, storeTranscribeChunk, TRANSCRIBE_CHUNK_BYTES, transcriptionEnabled } from "@/lib/transcribe";
 
 export const runtime = "nodejs";
@@ -20,12 +22,18 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     await checkOrigin(req);
     const { path } = await params;
     const user = await requireUser();
-    if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+    if (user.demo) throw new HttpError(403, "Hier nicht verfügbar.");
+    // API tokens only with "KI und Transkription" (#199); read tokens never
+    // (like POST /api/transcribe).
+    if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+    await requireTokenAi(user);
     if (!transcriptionEnabled()) throw new HttpError(501, "Transkription ist auf diesem Server nicht eingerichtet.");
     if (path.length === 1 && path[0] === "chunk") {
       const url = new URL(req.url);
       const pageId = uuid.parse(url.searchParams.get("page"));
-      await requirePage(user, pageId, true);
+      // The recording would reach the transcription service as plaintext
+      // (as for short recordings, app/api/[...path]/route.ts).
+      await requirePlaintext(await requirePage(user, pageId, true));
       if (Number(req.headers.get("content-length") || 0) > TRANSCRIBE_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
       const bytes = new Uint8Array(await req.arrayBuffer());
       return NextResponse.json(
@@ -42,7 +50,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
           type: z.string().regex(/^audio\/[\w.+-]+$/),
         })
         .parse(await req.json());
-      await requirePage(user, b.pageId, true);
+      await requirePlaintext(await requirePage(user, b.pageId, true));
       return NextResponse.json(await finishTranscribeUpload(user, { uploadId: b.upload, pageId: b.pageId, parts: b.parts, name: b.name, type: b.type }));
     }
     throw new HttpError(404, "Nicht gefunden.");

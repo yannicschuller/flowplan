@@ -469,6 +469,7 @@ ApiToken = TypedDict("ApiToken", {
     "created_at": Required[int],  # Milliseconds since 1970
     "last_used_at": Optional[int],
     "expires_at": Optional[int],
+    "ai": Literal[0, 1],  # 1: the token has the permission “AI and transcription” (AI features, transcription, meeting notes)
 }, total=False)
 
 # row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`.
@@ -594,7 +595,7 @@ CommandResult = dict[str, Any]
 
 # Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source.
 CommandOther = TypedDict("CommandOther", {
-    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.config", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "notebook.pictures", "notebook.stickers", "notebook.sticker.save", "notebook.sticker.rename", "notebook.sticker.delete", "notebook.sticker.insert", "notebook.templates", "notebook.template.update", "notebook.template.delete", "notebook.sheet.meta", "notebook.sheet.links", "notebook.outline", "notebook.outline.add", "notebook.sheets.duplicate", "notebook.sheets.delete", "notebook.trash.restore", "notebook.sheets.transfer", "search.save", "search.delete", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "git.token", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title", "workflow.sync", "workflow.draft", "workflow.validate", "workflow.activate", "workflow.pause", "workflow.test", "workflow.run", "workflow.run.cancel", "workflow.restore", "workflow.fromRule", "workflow.run.retry", "workflow.approve", "workflow.hook", "workflow.credential.set", "workflow.credential.remove", "workflow.import"]],
+    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "workspace.look", "workspace.font.rename", "workspace.font.delete", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.config", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "notebook.pictures", "notebook.stickers", "notebook.sticker.save", "notebook.sticker.rename", "notebook.sticker.delete", "notebook.sticker.insert", "notebook.templates", "notebook.template.update", "notebook.template.delete", "notebook.sheet.meta", "notebook.sheet.links", "notebook.outline", "notebook.outline.add", "notebook.sheets.duplicate", "notebook.sheets.delete", "notebook.trash.restore", "notebook.sheets.transfer", "search.save", "search.delete", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "git.token", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title", "workflow.sync", "workflow.draft", "workflow.validate", "workflow.activate", "workflow.pause", "workflow.test", "workflow.run", "workflow.run.cancel", "workflow.restore", "workflow.fromRule", "workflow.run.retry", "workflow.approve", "workflow.hook", "workflow.credential.set", "workflow.credential.remove", "workflow.import"]],
 }, total=False)
 
 # A node: `type` from the catalogue (GET /api/workflows/catalog), `config` per its schema; ids n_ + 6–12 of [a-z0-9]; labels unique, without . | { } [ ].
@@ -736,6 +737,38 @@ CommandWorkspaceCreate = TypedDict("CommandWorkspaceCreate", {
 
 CommandWorkspaceCreateResult = TypedDict("CommandWorkspaceCreateResult", {
     "id": Required[str],
+}, total=False)
+
+# Set the workspace's appearance. Needs the owner role. The look every member, guest, publication and form of the workspace shows: `accent` (#rrggbb; its light and dark palette is derived, its lightness adjusted for WCAG AA contrast), `background` (a preset) and `fonts` per slot (`ui`, `display`, `mono`): a bundled face id or `custom:<id>` of a face uploaded with POST /api/workspace-fonts. Values equal to the default are dropped; `theme: null` restores Flowplan's own look. No custom CSS. Answers the look with every uploaded face.
+CommandWorkspaceTheme = TypedDict("CommandWorkspaceTheme", {
+    "action": Required[Literal["workspace.theme"]],
+    "workspaceId": Required[str],
+    "theme": Required[Optional[dict[str, Any]]],
+}, total=False)
+
+CommandWorkspaceThemeResult = TypedDict("CommandWorkspaceThemeResult", {
+    "theme": Required[Optional[dict[str, Any]]],
+    "fonts": Required[list[dict[str, Any]]],
+}, total=False)
+
+# Use Flowplan's own look instead of the workspaces' appearance. For the caller, in every workspace and on all devices; light or dark stays a choice per device.
+CommandProfilePlainLook = TypedDict("CommandProfilePlainLook", {
+    "action": Required[Literal["profile.plainLook"]],
+    "plain": Required[bool],
+}, total=False)
+
+CommandProfilePlainLookResult = TypedDict("CommandProfilePlainLookResult", {
+    "plainLook": Required[bool],
+}, total=False)
+
+# When selecting text shows the text menu. For the caller, on all devices: always, only for a selection made with a mouse, trackpad or keyboard (computer, the default), or never. A right click opens the menu in every case.
+CommandProfileTextMenu = TypedDict("CommandProfileTextMenu", {
+    "action": Required[Literal["profile.textMenu"]],
+    "textMenu": Required[Literal["always", "computer", "never"]],
+}, total=False)
+
+CommandProfileTextMenuResult = TypedDict("CommandProfileTextMenuResult", {
+    "textMenu": Required[Literal["always", "computer", "never"]],
 }, total=False)
 
 # Create a space in a workspace
@@ -1314,7 +1347,7 @@ CommandWhiteboardToRecordsResult = TypedDict("CommandWhiteboardToRecordsResult",
     "records": Required[list[dict[str, Any]]],
 }, total=False)
 
-# Add several records at once
+# Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added.
 CommandRowsImport = TypedDict("CommandRowsImport", {
     "action": Required[Literal["rows.import"]],
     "pageId": Required[str],
@@ -1322,7 +1355,8 @@ CommandRowsImport = TypedDict("CommandRowsImport", {
 }, total=False)
 
 CommandRowsImportResult = TypedDict("CommandRowsImportResult", {
-    "ok": Required[Literal[True]],
+    "imported": Required[int],
+    "newOptions": Required[list[dict[str, Any]]],
 }, total=False)
 
 # Comment on a page or record
@@ -1591,7 +1625,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1826,6 +1860,26 @@ WhiteboardCardsQuery = TypedDict("WhiteboardCardsQuery", {
     "rows": Required[str],  # Comma-separated `pageId:rowId` pairs, at most 200
 }, total=False)
 
+CreateMeetingForm = TypedDict("CreateMeetingForm", {
+    "pageId": str,
+    "databaseId": str,
+    "title": str,
+    "date": str,
+    "attendees": str,
+    "instructions": Literal["auto", "status", "oneonone", "workshop", "customer", "custom"],
+    "prompt": str,
+    "audio": FormFile,
+    "me": FormFile,
+    "others": FormFile,
+    "transcript": str,
+    "consent": bool,
+    "language": Literal["de", "en", "fr", "zh"],
+}, total=False)
+
+GetMeetingQuery = TypedDict("GetMeetingQuery", {
+    "content": str,  # 1: with summary, agenda and transcript
+}, total=False)
+
 JournalReviewQuery = TypedDict("JournalReviewQuery", {
     "from": Required[str],  # YYYY-MM-DD
     "to": Required[str],  # YYYY-MM-DD
@@ -1860,6 +1914,12 @@ CreateNotebookTemplateForm = TypedDict("CreateNotebookTemplateForm", {
     "name": str,
     "fit": Literal["stretch", "tile"],
     "pdfPage": int,
+}, total=False)
+
+UploadWorkspaceFontForm = TypedDict("UploadWorkspaceFontForm", {
+    "workspaceId": Required[str],
+    "file": Required[FormFile],
+    "name": str,
 }, total=False)
 
 ExportDocxQuery = TypedDict("ExportDocxQuery", {
@@ -2397,6 +2457,22 @@ class FlowplanClient:
         """Live data of records shown as cards on a whiteboard (GET /api/whiteboards/{pageId}/cards)"""
         return self._json("GET", "/api/whiteboards/" + _p(page_id) + "/cards", query=dict(query) if query else None, headers=headers)
 
+    def create_meeting(self, form: "CreateMeetingForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Create a meeting note from audio or a transcript — Creates a meeting block (title, date, attendees, summary, agenda, transcript) at the end of the document `pageId`, or a new record in the database `databaseId` with the block as its document (its date, attendees (person), duration (number, minutes) and status properties are filled when present). `audio` is one file with everyone; `me` and `others` are the microphone and the call as separate tracks (with loudspeakers, echoes of the call in `me` are dropped). M4A, MP3, WAV, AAC, OGG and WebM; each track at most WHISPER_MAX_MB (default 200 MB). Alternatively `transcript` as text (one passage per line, optionally `Name: text`). Transcription (the instance's Whisper service) and the summary (the instance's AI: action items with owner and due date as tasks – owners who are members become mentions and see them in My tasks –, topics and open points, each with numbered citations of transcript segments; at least one minute of audio) run in the background: answers 202 with the meeting's id; poll `statusUrl`. Needs a write token with the permission “AI and transcription”; `consent: true` when the workspace requires consent (428 otherwise). The audio is deleted after the transcript unless the workspace keeps it. (POST /api/meetings)"""
+        return self._json("POST", "/api/meetings", form=dict(form), headers=headers)
+
+    def get_meeting(self, meeting_id: str, query: Optional["GetMeetingQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Status of a meeting note — `status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary). With `content=1` also `title`, `summary` and `agenda` as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session). Needs read access to the page; kept audio is listed as file URLs. Answered with `Cache-Control: no-store`. (GET /api/meetings/{meetingId})"""
+        return self._json("GET", "/api/meetings/" + _p(meeting_id), query=dict(query) if query else None, headers=headers)
+
+    def regenerate_meeting_summary(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Write the summary again — With other instructions, without transcribing again. Needs edit rights and “AI and transcription” for tokens. (POST /api/meetings/{meetingId}/summarize)"""
+        return self._json("POST", "/api/meetings/" + _p(meeting_id) + "/summarize", json_body=body, headers=headers)
+
+    def ask_meeting(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> bytes:
+        """Ask a question about one meeting — Answered from the meeting's transcript and agenda only, as a text stream; `[S12]` names the transcript segment (header `X-Flowplan-Segments`: base64 JSON list of segment ids, S1 first). (POST /api/meetings/{meetingId}/ask)"""
+        return self._bytes("POST", "/api/meetings/" + _p(meeting_id) + "/ask", json_body=body, headers=headers)
+
     def journal_review(self, journal_id: str, query: "JournalReviewQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Review of a period (GET /api/journals/{journalId}/review)"""
         return self._json("GET", "/api/journals/" + _p(journal_id) + "/review", query=dict(query) if query else None, headers=headers)
@@ -2440,6 +2516,14 @@ class FlowplanClient:
     def create_notebook_template(self, form: "CreateNotebookTemplateForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Add an own paper template for notebooks — Needs editor rights in the workspace of the notebook page `pageId` (not guests). `file` is a picture (PNG, JPEG, WebP) or a PDF; of a PDF only page `pdfPage` (default 1) is kept. `fit` is stretch (default) or tile. Checked like uploads (type from the content, no photo location) and counted against the workspace quota and the person's storage; at most 20 MB and 200 templates per workspace. Choose it for sheets with `paper.image = {template, fit?}` in notebook.paper, notebook.sheet.paper or notebook.sheet.add: the template is copied onto the page. Listed with notebook.templates, changed with notebook.template.update and notebook.template.delete. (POST /api/notebook-library)"""
         return self._json("POST", "/api/notebook-library", form=dict(form), headers=headers)
+
+    def upload_workspace_font(self, form: "UploadWorkspaceFontForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Upload a font for the workspace's appearance — Needs the owner role in `workspaceId`. `file` is WOFF2, WOFF, TrueType or OpenType (checked by its content), at most 5 MB and 20 per workspace, counted against the workspace quota and the caller's storage. Choose it with `custom:<id>` in workspace.theme; delete it with workspace.font.delete. (POST /api/workspace-fonts)"""
+        return self._json("POST", "/api/workspace-fonts", form=dict(form), headers=headers)
+
+    def workspace_font_file(self, font_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
+        """A font uploaded for a workspace's appearance — For members and guests of its workspace (publications and forms serve it under their own token). (GET /api/workspace-fonts/{fontId})"""
+        return self._bytes("GET", "/api/workspace-fonts/" + _p(font_id), headers=headers)
 
     def notebook_library_file(self, asset_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
         """Picture of an own sticker or paper template — Stickers only for the person they belong to, paper templates for members of their workspace. (GET /api/notebook-library/{assetId})"""

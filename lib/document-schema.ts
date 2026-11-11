@@ -30,6 +30,7 @@ import { PluginBlock } from "./plugin-node";
 import { WorkflowButton } from "./workflow-button-node";
 import { FlowCodeBlock } from "./code-block";
 import { Bibliography, Citation } from "./citation-nodes";
+import { meetingExtensions } from "./meeting-schema";
 import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
 import { ListTidy } from "./list-tidy";
@@ -841,4 +842,4 @@ export const LinkCard = Node.create({
     ];
   },
 });
-documentExtensions.push(Mention, Columns, Column, Media, LinkCard, Citation, Bibliography);
+documentExtensions.push(Mention, Columns, Column, Media, LinkCard, Citation, Bibliography, ...meetingExtensions);

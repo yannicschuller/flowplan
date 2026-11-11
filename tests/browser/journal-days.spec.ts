@@ -178,3 +178,67 @@ test("the graph offers journal days hidden, per month or each", async ({ page },
   await command({ action: "page.delete", pageId: journal.id });
   await command({ action: "page.delete", pageId: target.id });
 });
+
+// A day's title ("Dienstag, 10. November 2026") is longer than a phone is
+// wide: it wraps onto a second line instead of being cut off; wider windows
+// keep the one-line title. Enter adds no line break, the title stays one line
+// of text.
+test("long page titles wrap on phones instead of being cut off", async ({ page }, info) => {
+  const { boot, command, read } = await setup(page);
+  // The title of a journal day, as a page of its own (the same field).
+  const name = "Dienstag, 10. November 2026";
+  const { id: pageId } = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: name, kind: "document" });
+  await page.goto(`/#page=${pageId}`);
+  const title = page.getByLabel("Seitentitel", { exact: true });
+  await expect(title).toHaveValue(name, { timeout: 30000 });
+  const fit = () => title.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, sh: el.scrollHeight, ch: el.clientHeight, line: parseFloat(getComputedStyle(el).lineHeight) }));
+  const box = await fit();
+  // Nothing hidden sideways or below.
+  expect(box.sw).toBeLessThanOrEqual(box.cw);
+  expect(box.sh).toBeLessThanOrEqual(box.ch + 1);
+  if (info.project.name === "mobile") expect(box.ch).toBeGreaterThan(box.line * 1.5);
+  else expect(box.ch).toBeLessThan(box.line * 1.5);
+
+  // Enter adds no line break; the new title is saved as one line.
+  await title.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Notizen");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(" mehr");
+  await expect(title).toHaveValue(`${name} Notizen mehr`);
+  await title.blur();
+  await expect.poll(async () => (await read(pageId)).page.title).toBe(`${name} Notizen mehr`);
+});
+
+// The day bar (trackers, place, the day's appointments) stays inside its box
+// on a phone: a long appointment row wraps instead of widening the bar past
+// the screen's edge, where it was cut off.
+test("the day bar fits a phone's width", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The phone's width.");
+  const { boot, command, read } = await setup(page);
+  const journal = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: `Tagesleiste ${Date.now()}`, kind: "journal" });
+  const { dayId } = await command({ action: "journal.roll", pageId: journal.id, date: localDay(new Date()), write: true });
+  // An appointment with a long title and source, from a calendar database.
+  const db = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: "Produkt-Roadmap für das ganze Team", kind: "database" });
+  await command({
+    action: "database.update",
+    pageId: db.id,
+    version: (await read(db.id)).database.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "start", name: "Datum", type: "date" },
+    ],
+    views: [{ id: "calendar", name: "Kalender", type: "calendar", filters: [], sorts: [], dateField: "start" }],
+  });
+  await command({ action: "row.create", pageId: db.id, cells: { title: "Designsystem dokumentieren und abstimmen", start: localDay(new Date()) } });
+  await page.goto(`/#page=${dayId}`);
+  const bar = page.locator(".journal-daybar");
+  await expect(bar.getByText("Designsystem dokumentieren und abstimmen").first()).toBeVisible({ timeout: 30000 });
+  const outside = await bar.evaluate((el) => {
+    const right = el.getBoundingClientRect().right;
+    return [...el.querySelectorAll("*")]
+      .filter((child) => child.getBoundingClientRect().width && child.getBoundingClientRect().right > right + 0.5)
+      .map((child) => `${child.tagName}.${child.className}`);
+  });
+  expect(outside).toEqual([]);
+});

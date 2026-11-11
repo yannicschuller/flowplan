@@ -1,6 +1,7 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
-// light or dark (this device), the related pages and backlinks below pages
+// light or dark (this device), the workspace's look or Flowplan's own (#196,
+// profile, all devices), the related pages and backlinks below pages
 // and records (this device), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
@@ -10,23 +11,40 @@ import { CircleHalf, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
 import { Select } from "../../select";
-import { CONTROL, SaveState, SettingGroup, SettingRow, SwitchRow, useSaveState } from "../../settings-ui";
+import { CONTROL, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSaveState } from "../../settings-ui";
 import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
 import { setBlockHandlesAlways, useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 import { setDiscoveryPanelsShown, useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
 import { useUserSettings } from "../user-context";
 import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
+import type { TextMenuPref } from "@/lib/text-menu-pref";
+import { setTextMenuPrefLocal, textMenuPref, useTextMenuPref } from "@/lib/text-menu-pref-client";
 
 export default function AppearanceSection() {
   const t = useT();
   const keyHints = useKeyboardHints();
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
+  const [lookStatus, runLook] = useSaveState();
   const lineNumbers = useLineNumbersByDefault();
   const handlesAlways = useBlockHandlesAlways();
   const discoveryPanels = useDiscoveryPanelsShown();
   const drawio = useDrawioPrefs();
+  const textMenu = useTextMenuPref();
+  const [textMenuStatus, runTextMenu] = useSaveState();
+  const chooseTextMenu = (value: TextMenuPref) => {
+    const before = textMenuPref();
+    setTextMenuPrefLocal(value);
+    void runTextMenu(async () => {
+      try {
+        await mutate({ action: "profile.textMenu", textMenu: value });
+      } catch (e) {
+        setTextMenuPrefLocal(before);
+        throw e;
+      }
+    });
+  };
   return (
     <>
       <SettingGroup id="language" title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
@@ -71,6 +89,21 @@ export default function AppearanceSection() {
             </label>
           </div>
         </SettingRow>
+        <SettingRow
+          anchor="workspace-look"
+          label={t("Darstellung des Arbeitsbereichs verwenden", "Use the workspace's appearance")}
+          description={t(
+            "Akzentfarbe, Hintergrund und Schriften, die Eigentümer für ihren Arbeitsbereich gewählt haben. Aus: Flowplans eigene Darstellung in allen Arbeitsbereichen. Gilt auf allen Geräten.",
+            "The accent colour, background and typefaces owners chose for their workspace. Off: Flowplan's own look in every workspace. Applies on all devices.",
+          )}
+        >
+          <SaveState status={lookStatus} />
+          <Switch
+            checked={!boot.plainLook}
+            label={t("Darstellung des Arbeitsbereichs verwenden", "Use the workspace's appearance")}
+            onChange={(on) => void runLook(async () => await mutate({ action: "profile.plainLook", plain: !on }))}
+          />
+        </SettingRow>
         <SwitchRow
           label={t("Verwandte Seiten und Rückverweise anzeigen", "Show related pages and backlinks")}
           description={t(
@@ -82,6 +115,29 @@ export default function AppearanceSection() {
         />
       </SettingGroup>
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
+        <SettingRow
+          anchor="text-menu"
+          label={t("Menü bei Textauswahl", "Menu on text selection")}
+          description={t(
+            "Das Menü mit Reaktionen, Formatierung und Kommentieren über markiertem Text. Nur am Computer: beim Markieren mit Maus, Trackpad oder Tastatur, nicht mit dem Finger. Ein Rechtsklick öffnet es immer. Gilt auf allen Geräten.",
+            "The menu with reactions, formatting and comments above selected text. Only on a computer: when selecting with a mouse, trackpad or keyboard, not with a finger. A right click always opens it. Applies on all devices.",
+          )}
+        >
+          <SaveState status={textMenuStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Menü bei Textauswahl", "Menu on text selection")}>
+            {(
+              [
+                ["always", t("Immer", "Always")],
+                ["computer", t("Nur am Computer", "Only on a computer")],
+                ["never", t("Nie", "Never")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={textMenu === value}>
+                <input type="radio" name="text-menu" checked={textMenu === value} onChange={() => chooseTextMenu(value)} /> {label}
+              </label>
+            ))}
+          </div>
+        </SettingRow>
         <SwitchRow
           label={t("Griffe immer anzeigen", "Always show block handles")}
           description={t(

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { latexToExpression, mathActions, normalize, plotVectors, trailingExpression, vectorValue } from "../lib/math-solve";
+import { latexToExpression, mathActionResult, mathActions, normalize, plotVectors, trailingExpression, vectorValue } from "../lib/math-solve";
 
 const texts = (s: string, locale: "de" | "en" = "de") => mathActions(s, locale).map((a) => `${a.kind}: ${a.text}`);
 
@@ -144,4 +144,14 @@ test("vectors to draw: each written vector and the result", () => {
   assert.equal(plotVectors("(1; 2) · (3; 4)", "de"), null);
   assert.equal(plotVectors("3 + 4", "de"), null);
   assert.deepEqual(vectorValue("(1, 2) + (3, 1)", "en"), [4, 3]);
+});
+
+test("Ergebnis kopieren copies a result as the text menu shows it: Unicode, without the inserted = or ⇒", () => {
+  const copies = (s: string) => mathActions(s, "de").map((a) => `${a.kind}: ${mathActionResult(a)}`);
+  assert.deepEqual(copies("(y-8)^2"), ["expand: y² − 16y + 64"]);
+  assert.deepEqual(copies("y² − 16y + 64"), ["factor: (y − 8)²"]);
+  assert.deepEqual(copies("3/4 + 1/6"), ["result: 11/12", "decimal: ≈ 0,916667"]);
+  assert.equal(mathActionResult({ text: "⇒ x = 4" }), "x = 4", "an equation keeps its own =");
+  assert.equal(mathActionResult({ text: "=  2/3" }), "2/3");
+  assert.equal(mathActionResult({ text: "a⃗ + b⃗ = (4; 3)" }), "a⃗ + b⃗ = (4; 3)");
 });

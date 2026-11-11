@@ -1,4 +1,6 @@
 import { withReadMemo } from "./read-memo";
+import { setUserTextMenu, userTextMenu } from "./user-text-menu";
+import { deleteWorkspaceFont, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -199,6 +201,8 @@ import {
   databaseSnapshot,
   autoDatabaseSnapshot,
   validateCellPatch,
+  validateImportedCells,
+  addImportedOptions,
 } from "./database-operations";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
@@ -299,16 +303,18 @@ export async function publicRows(pid: string): Promise<Row[]> {
 // (lib/about.ts).
 export async function bootstrap(user: Identity, wid?: string, agent?: string | null) {
   if (!user.demo && !user.apiScope) await acceptPendingInvites(user.id);
-  const workspaces = await all<{
+  const workspaces = (await all<{
     id: string;
     name: string;
     icon: string;
     role: string;
     guest: number;
+    theme?: string | null;
   }>(
     "SELECT w.*,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
     user.id,
-  );
+    // The look comes once, parsed, for the open workspace (`look` below).
+  )).map(({ theme: _theme, ...w }) => w);
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
@@ -331,6 +337,12 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     ldapAccount: await isLdapAccount(user.id),
     workspaces,
     workspace,
+    // The workspace's look (#196, lib/workspace-theme.ts) and whether this
+    // person chose Flowplan's own look instead.
+    look: await workspaceLook(workspace.id),
+    plainLook: await plainLook(user.id),
+    // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
+    textMenu: await userTextMenu(user.id),
     pages,
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
@@ -394,8 +406,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // New accounts see the introduction once (components/onboarding.tsx).
     onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
     // Favourite records of readable databases in this workspace.
-    favoriteRows: (await filterAsync(await all<Page & { row_id: string; cells: string; fields: string }>(
-      `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
+    favoriteRows: (await filterAsync(await all<Page & { row_id: string; row_icon: string | null; cells: string; fields: string }>(
+      `SELECT p.*,r.id row_id,r.icon row_icon,r.cells,d.fields FROM row_favorites f
        JOIN rows r ON r.id=f.row_id JOIN pages p ON p.id=f.page_id
        JOIN databases d ON d.page_id=p.id
        WHERE f.user_id=? AND p.workspace_id=? AND p.deleted_at IS NULL`,
@@ -405,6 +417,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       .map((p) => ({
         pageId: p.id,
         rowId: p.row_id,
+        // The record's own icon (the sidebar shows the file icon without one).
+        icon: p.row_icon || "",
         title:
           cellText(
             JSON.parse(p.cells)[
@@ -849,6 +863,29 @@ async function runCommand(
         break;
       case "home.default":
         result = await setTeamDefault(user, b);
+        break;
+      // Flowplan's own look instead of the workspaces' (#196).
+      case "profile.plainLook":
+        result = await setPlainLook(user, b.plain);
+        break;
+      // The text menu on selecting text (#200, lib/text-menu-pref.ts).
+      case "profile.textMenu":
+        result = await setUserTextMenu(user, b.textMenu);
+        break;
+      // A workspace's look: read by its members (the settings list every
+      // uploaded face), changed by its owners (lib/workspace-fonts.ts).
+      case "workspace.look":
+        await requireMember(user, wid());
+        result = await workspaceLook(wid(), true);
+        break;
+      case "workspace.theme":
+        result = await saveWorkspaceTheme(user, wid(), b.theme);
+        break;
+      case "workspace.font.rename":
+        result = await renameWorkspaceFont(user, wid(), b.fontId, b.name);
+        break;
+      case "workspace.font.delete":
+        result = await deleteWorkspaceFont(user, wid(), b.fontId);
         break;
       case "profile.language":
         result = { language: await setFixedLanguage(user.id, b.language) };
@@ -1713,7 +1750,14 @@ async function runCommand(
       }
       case "page.delete": {
         const p = await write();
-        const subtree = await descendants(p.id);
+        // Sub-pages already in the trash stay there with their own date, so
+        // restoring this page does not bring them back (lib/trash.ts).
+        const trashed = new Set((await all<{ id: string }>(
+          "WITH RECURSIVE tree(id) AS (SELECT id FROM pages WHERE id=? UNION ALL SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id) SELECT p.id FROM pages p JOIN tree t ON t.id=p.id WHERE p.deleted_at IS NOT NULL",
+          p.id,
+        )).map((r) => r.id));
+        const subtree = (await descendants(p.id)).filter((child) => !trashed.has(child));
+        const deletedAt = nowText();
         // Every page that goes along: editable, and behind no journal PIN
         // the person has not entered (a journal further down).
         await forEachAsync(subtree, async (child) => await requireUnlocked(user, await requirePage(user, child, true, true)));
@@ -1728,7 +1772,7 @@ async function runCommand(
           await run("DELETE FROM share_links WHERE root_id=?", child);
           await run("DELETE FROM share_link_pages WHERE page_id=?", child);
           await run(
-            "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
+            "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", deletedAt,
             child,
           );
         }
@@ -2450,7 +2494,20 @@ async function runCommand(
           (await database(pid())).fields,
           new Set(imported.flatMap((cells) => Object.keys(cells))),
         );
-        const importFields = (await database(pid())).fields;
+        // Values missing from select properties become options (and a
+        // different letter case takes the option's spelling).
+        const options = addImportedOptions((await database(pid())).fields, imported);
+        const importFields = options.fields;
+        for (const cells of imported) validateImportedCells(importFields, cells);
+        if (options.added.length) {
+          await autoDatabaseSnapshot(user, await write());
+          await run(
+            "UPDATE databases SET fields=?,version=version+1 WHERE page_id=?",
+            JSON.stringify(importFields),
+            pid(),
+          );
+        }
+        result = { imported: imported.length, newOptions: options.added };
         await forEachAsync(imported, async (cells, i) =>
           await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
@@ -2886,8 +2943,9 @@ async function runCommand(
           enabled,
           z.boolean().optional().parse(b.includeChildren) ?? false,
           z.boolean().optional().parse(b.allowCopy) ?? true,
+          z.boolean().optional().parse(b.autoChildren) ?? false,
         );
-        if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? " with subpages" : ""}` });
+        if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? (b.autoChildren === true ? " with subpages, new ones automatically" : " with subpages") : ""}` });
         break;
       }
       case "publication.copy":
@@ -2945,6 +3003,7 @@ async function runCommand(
       case "sprint.delete":
       case "sprint.points": {
         const p = await write();
+        if (p.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
         await autoDatabaseSnapshot(user, p);
         result = await sprintCommand(user, p, action, b);
         break;
