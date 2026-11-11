@@ -22,6 +22,7 @@
 import { Fragment, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { validBlockId } from "../block-ids";
+import { markdownSymbol } from "../task-status";
 import type { SuggestionAttrs } from "../suggestions";
 
 // Inline objects (mentions, formulas, footnotes) in a block's text.
@@ -115,7 +116,7 @@ export function pageOutline(doc: PMNode, maxChars: number) {
       const start = Number(node.attrs.start) || 1;
       node.forEach((item, offset, i) => {
         const bullet = type === "orderedList" ? `${start + i}. ` : "- ";
-        const box = item.type.name === "taskItem" ? (item.attrs.checked ? "[x] " : "[ ] ") : "";
+        const box = item.type.name === "taskItem" ? `[${markdownSymbol(item.attrs)}] ` : "";
         item.forEach((child, childOffset, j) =>
           visit(child, pos + 1 + offset + 1 + childOffset, j === 0 ? indent : indent + "  ", j === 0 ? `${marker}${bullet}${box}` : ""),
         );

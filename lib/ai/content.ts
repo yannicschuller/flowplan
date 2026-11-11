@@ -9,6 +9,7 @@ import { exportMarkdown, computedTypes } from "../markdown-export";
 import { database, rows as databaseRows } from "../api";
 import { visibleRows } from "../row-access";
 import { cellText } from "../cell-text";
+import { markdownSymbol } from "../task-status";
 import type { Field, Identity, Page, Row } from "../types";
 import { aiFilter, requireAiRead } from "./access";
 
@@ -33,8 +34,11 @@ export async function aiPageMarkdown(user: Identity, page: Page, rowId?: string 
 export function htmlText(html: string) {
   return html
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
-    .replace(/<li[^>]*data-checked="true"[^>]*>/gi, "\n- [x] ")
-    .replace(/<li[^>]*data-checked="false"[^>]*>/gi, "\n- [ ] ")
+    // Tasks with their state as in Markdown: [ ] [/] [x] [-] [>] (#201).
+    .replace(/<li[^>]*data-checked="(true|false)"[^>]*>/gi, (tag: string, checked: string) => {
+      const attr = (name: string) => new RegExp(`${name}="([^"]*)"`, "i").exec(tag)?.[1].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+      return `\n- [${markdownSymbol({ checked: checked === "true", status: attr("data-status"), symbol: attr("data-symbol") })}] `;
+    })
     .replace(/<li[^>]*>/gi, "\n- ")
     .replace(/<\/(p|h[1-6]|div|blockquote|pre|tr|aside|details)>|<br\s*\/?>/gi, "\n")
     .replace(/<\/t[dh]>/gi, " | ")

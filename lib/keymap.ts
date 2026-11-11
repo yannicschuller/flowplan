@@ -105,6 +105,9 @@ export const EDITOR_SHORTCUTS: { combo: string; id: string }[] = [
   // The link of the block with the cursor (#88). Was "align left" in
   // TipTap; the default alignment needs no shortcut.
   { combo: "Mod+Shift+L", id: "blockLink" },
+  // A line becomes a task, a task goes to its next state (#201, as in
+  // Obsidian). The editor takes it from the browser's address bar.
+  { combo: "Mod+L", id: "taskStatus" },
 ];
 // Combinations the browser keeps for itself (tabs, windows): a page cannot
 // reliably use them.

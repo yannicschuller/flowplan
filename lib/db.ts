@@ -1315,6 +1315,12 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS notebook_recordings_file ON notebook_recordings(file_id);`);
   // Schema 102 – a workspace's own look (#196, lib/workspace-theme.ts).
   migrateWorkspaceTheme(d);
+  // The state of a document task (#201, lib/task-status.ts): 'progress',
+  // 'cancelled' or 'deferred', NULL for open and done (`checked` says
+  // which; cancelled counts as checked). An older version writes NULL and
+  // reads `checked` as before, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(doc_tasks)").all() as { name: string }[]).some((c) => c.name === "status"))
+    d.exec("ALTER TABLE doc_tasks ADD COLUMN status TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

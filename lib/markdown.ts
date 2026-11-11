@@ -9,6 +9,7 @@ import { ct as tr } from "./content-locale";
 import { captionText } from "./block-captions";
 import { fenceMeta, type CodeBlockOptions } from "./code-block-options";
 import { fenceLanguage } from "./code-languages";
+import { markdownSymbol } from "./task-status";
 // Captions (lib/block-captions.ts) in Markdown: an image's as its title,
 // ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
 // "Table: Caption" right below; a code block's likewise "Listing: Caption".
@@ -442,10 +443,13 @@ export function htmlToMarkdown(
             node.type.name === "orderedList"
               ? `${(Number(node.attrs.start) || 1) + index}. `
               : node.type.name === "taskList"
-                ? `- [${item.attrs.checked ? "x" : " "}] `
+                ? `- [${markdownSymbol(item.attrs)}] `
                 : "- ";
           lose(item);
           const content = children(item, inTable).split("\n");
+          // An empty first line with subitems below stays empty: the
+          // subitems are not the item's own text.
+          if (item.firstChild?.type.name === "paragraph" && !item.firstChild.content.size && item.childCount > 1) content.unshift("");
           // Due dates as in Obsidian Tasks: "- [ ] Call 📅 2026-05-04".
           if (node.type.name === "taskList" && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || "")))
             content[0] += ` 📅 ${item.attrs.due}`;

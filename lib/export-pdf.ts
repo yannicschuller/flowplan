@@ -64,6 +64,7 @@ body { margin: 0; background: #fff; }
 .print-book ul.task-list { list-style: none; padding-left: 1.2em; }
 .print-book .task-box { font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif; }
 .print-book .task.done > p { color: #666; }
+.print-book .task.cancelled > p { text-decoration: line-through; }
 .print-book .due { font-size: 9pt; color: #666; }
 .print-book mark { background: #fff3a3; }
 .print-book hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }

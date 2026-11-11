@@ -58,6 +58,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "style",
         "data-type",
         "data-checked",
+        "data-status",
+        "data-symbol",
         "data-journal-since",
         "data-due",
         "data-reactions",

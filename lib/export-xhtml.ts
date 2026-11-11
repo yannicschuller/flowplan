@@ -4,6 +4,7 @@
 // no scripts, no app classes, pictures where the context allows them.
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
+import { STATUS_BOX, taskStatusOf, taskSymbolOf } from "./task-status";
 import { CALLOUT_COLORS, calloutColor, calloutFill, calloutIcon } from "./callout-types";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
 import { ct } from "./content-locale";
@@ -208,19 +209,21 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       case "listItem":
         return `<li>${children(node)}</li>`;
       case "taskItem": {
-        const done = !!node.attrs.checked;
+        const status = taskStatusOf(node.attrs),
+          done = status === "done" || status === "cancelled",
+          box = STATUS_BOX[status] + (taskSymbolOf(node.attrs) ? ` [${xml(taskSymbolOf(node.attrs)!)}]` : "");
         const due = /^\d{4}-\d{2}-\d{2}$/.test(String(node.attrs.due || "")) ? ` <span class="due">📅 ${node.attrs.due}</span>` : "";
         // The box goes in front of the first paragraph's text.
         let first = true,
           body = "";
         node.forEach((child) => {
           if (first && child.type.name === "paragraph") {
-            body += `<p${blockAttrs(child)}><span class="task-box">${done ? "☑" : "☐"}</span> ${inline(child)}${due}</p>`;
+            body += `<p${blockAttrs(child)}><span class="task-box">${box}</span> ${inline(child)}${due}</p>`;
             first = false;
           } else body += block(child);
         });
-        if (first) body = `<p><span class="task-box">${done ? "☑" : "☐"}</span>${due}</p>${body}`;
-        return `<li class="task${done ? " done" : ""}">${body}</li>`;
+        if (first) body = `<p><span class="task-box">${box}</span>${due}</p>${body}`;
+        return `<li class="task${done ? " done" : ""}${status === "done" || status === "open" ? "" : ` ${status}`}">${body}</li>`;
       }
       case "blockquote":
         return `<blockquote${blockAttrs(node)}>${children(node)}</blockquote>`;
