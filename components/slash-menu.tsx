@@ -6,6 +6,7 @@ import { CaretLeft, CaretRight, ClockCounterClockwise } from "@phosphor-icons/re
 import type { SlashCommand, SlashGroup, SlashSection } from "@/lib/slash-commands";
 import { placeAtCaret, visibleArea, type Area, type Placement } from "@/lib/caret-popover";
 import { safeInsets } from "./safe-area";
+import { onKeyboardMove, remeasureKeyboard } from "./mobile-tab-bar";
 
 export type SlashItem = SlashCommand & {
   id: string;
@@ -48,6 +49,11 @@ export function popoverArea(menu?: Element | null): Area {
     if (!rect.height || rect.top <= (full.top + full.bottom) / 2 || rect.top >= full.bottom) continue;
     toolbarTop = Math.min(toolbarTop ?? Infinity, rect.top);
   }
+  // Where the shell last measured the keyboard's top edge (mobile-tab-bar.tsx):
+  // also the measurements iOS delivers late, without a viewport event.
+  const docked = document.documentElement.classList.contains("keyboard-docked");
+  const keyboardEnd = docked ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--keyboard-visible-end")) : NaN;
+  if (Number.isFinite(keyboardEnd) && keyboardEnd > 0) toolbarTop = Math.min(toolbarTop ?? Infinity, keyboardEnd);
   const area = visibleArea(viewport, { safeTop: safe.top, toolbarTop });
   // Without a bar the home indicator keeps its room.
   return toolbarTop == null && !document.documentElement.classList.contains("keyboard-docked") ? { ...area, bottom: area.bottom - safe.bottom } : area;
@@ -115,16 +121,24 @@ export function SlashMenu({
   // should anything still shift the menu, it is measured and moved back.
   const [place, setPlace] = useState<Placement | null>(null);
   const [, setViewportTick] = useState(0);
-  // The keyboard coming up or iOS moving the visible area re-places it.
+  // The keyboard coming up or iOS moving the visible area re-places it. iOS
+  // reports the keyboard's size late – on a new, empty page the "/" can open
+  // the menu while the keyboard is still coming up, and the final size often
+  // arrives without a resize event: the shell's keyboard measurements (which
+  // follow up for about a second) and a few timed checks re-place it too.
   useEffect(() => {
     const vv = window.visualViewport;
-    if (!vv) return;
     const again = () => setViewportTick((n) => n + 1);
-    vv.addEventListener("resize", again);
-    vv.addEventListener("scroll", again);
+    vv?.addEventListener("resize", again);
+    vv?.addEventListener("scroll", again);
+    const stop = onKeyboardMove(again);
+    remeasureKeyboard();
+    const timers = [80, 200, 400, 700, 1100].map((ms) => setTimeout(again, ms));
     return () => {
-      vv.removeEventListener("resize", again);
-      vv.removeEventListener("scroll", again);
+      vv?.removeEventListener("resize", again);
+      vv?.removeEventListener("scroll", again);
+      stop();
+      for (const t of timers) clearTimeout(t);
     };
   }, []);
   useLayoutEffect(() => {
