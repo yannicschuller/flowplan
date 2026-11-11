@@ -28,7 +28,7 @@ async function personalData(user: Identity) {
   const at = Date.now();
   await run("INSERT INTO members VALUES(?,?,?)", wid, user.id, "editor");
   await run("INSERT INTO row_grants(row_id,user_id,group_id,role) VALUES(?,?,'','editor')", row, user.id);
-  await run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end) VALUES(?,?,?,?,?,?,?)", id(), table, row, "f", user.id, at - 60_000, at);
+  await run(`INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end") VALUES(?,?,?,?,?,?,?)`, id(), table, row, "f", user.id, at - 60_000, at);
   await run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start) VALUES(?,?,?,?,?,?)", id(), table, row, "f", user.id, at - 1000);
   await run("INSERT INTO whiteboard_presence(page_id,user_id,name,x,y,seen) VALUES(?,?,?,?,?,?)", table, user.id, user.name, 0, 0, at);
   const connection = id();
@@ -65,7 +65,7 @@ test("an account kept as a shell for what it wrote loses all personal data", asy
   assert.deepEqual(await leftovers(ben.id), []);
   // No calendar sync for the account any more, and no running timer.
   assert.deepEqual(await all("SELECT id FROM calendar_sync_mappings WHERE user_id=?", ben.id), []);
-  const times = await all<{ end: number | null }>("SELECT end FROM time_entries WHERE user_id=?", ben.id);
+  const times = await all<{ end: number | null }>(`SELECT "end" FROM time_entries WHERE user_id=?`, ben.id);
   assert.equal(times.length, 2, "tracked time stays with the record");
   assert.ok(times.every((t) => t.end !== null));
 });
