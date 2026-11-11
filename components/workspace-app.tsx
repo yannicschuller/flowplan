@@ -14,6 +14,7 @@ import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
+import { saveStatusOf } from "@/lib/save-status";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
@@ -415,6 +416,9 @@ export default function WorkspaceApp({
   const shortcutRef = useRef((_action: ShortcutAction) => {});
   const t = useT();
   const statusLabel = useStatusLabel();
+  // Phones (≤ 767 px, app/globals.css): the page's top bar keeps the title;
+  // follow, favourite, share and reading mode move into its ⋯ menu.
+  const phone = useMedia("(max-width: 767px)");
   const locale = useLocale();
   // Related pages, backlinks and unlinked mentions below pages (#191).
   const discoveryPanels = useDiscoveryPanelsShown();
@@ -1627,6 +1631,9 @@ export default function WorkspaceApp({
     setReadPages(toggleReadMode(data.page.id));
   };
   toggleReadingRef.current = toggleReading;
+  // Open page comments (not those of database rows), counted on the comments
+  // button that phones show only then.
+  const openComments = data ? data.comments.filter((c) => !c.row_id && !c.resolved).length : 0;
   // The open document as slides (components/presentation.tsx).
   const startPresentation = () => {
     const d = dataRef.current;
@@ -3623,15 +3630,21 @@ export default function WorkspaceApp({
             </span>
           ) : screen === "page" && data ? (
             <div className="page-top-actions">
-              {/* Saving and offline states cross-fade instead of switching hard. */}
-              <CrossFade className="save-status" value={`${online}:${statusLabel(status)}`}>
+              {/* Saving and offline states cross-fade instead of switching hard.
+                  On phones the cloud shows only when there is something to
+                  report – offline, changes on their way, an error – not while all is
+                  saved (nor while a page that just opened checks in). */}
+              <CrossFade
+                className={`save-status${online && ["saved", "changes-saved", "loading", "syncing"].includes(saveStatusOf(status) || "") ? " save-status-quiet" : ""}`}
+                value={`${online}:${statusLabel(status)}`}
+              >
                 {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
                 <span>{statusLabel(status)}</span>
               </CrossFade>
               <PresenceAvatars users={data.present.filter((u) => u.id !== boot.user.id).slice(0, 3)} />
               {canRead && (
                 <button
-                  className={`icon-button read-mode-toggle${reading ? " active" : ""}`}
+                  className={`icon-button read-mode-toggle topbar-phone-hidden${reading ? " active" : ""}`}
                   title={(reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")) + hint("readMode")}
                   aria-label={reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
                   aria-pressed={reading}
@@ -3640,13 +3653,17 @@ export default function WorkspaceApp({
                   {reading ? <PencilSimple size={20} /> : <BookOpen size={20} />}
                 </button>
               )}
+              {/* On phones only with open comments (and their count);
+                  otherwise in the ⋯ menu. */}
               {!data.encrypted && (
                 <button
                   title={t("Kommentare", "Comments")}
-                  className={`icon-button ${comments ? "active" : ""}`}
+                  aria-label={openComments ? t(`Kommentare (${openComments})`, `Comments (${openComments})`) : t("Kommentare", "Comments")}
+                  className={`icon-button comments-button${comments ? " active" : ""}${openComments ? " has-count" : comments ? "" : " topbar-phone-hidden"}`}
                   onClick={() => setComments(!comments)}
                 >
                   <ChatCircle size={20} />
+                  {openComments > 0 && <small className="comments-count">{openComments}</small>}
                 </button>
               )}
               {data.encrypted && (
@@ -3657,6 +3674,7 @@ export default function WorkspaceApp({
               <ReadersButton readers={data.readers || []} />
               {data.following !== undefined && (
                 <FollowButton
+                  className="topbar-phone-hidden"
                   following={data.following}
                   followers={data.followers || 0}
                   onToggle={(follow) =>
@@ -3665,7 +3683,7 @@ export default function WorkspaceApp({
                 />
               )}
               <button
-                className={`icon-button ${boot.favorites.includes(data.page.id) ? "starred" : ""}`}
+                className={`icon-button topbar-phone-hidden ${boot.favorites.includes(data.page.id) ? "starred" : ""}`}
                 title={t("Favorit", "Favourite")}
                 onClick={() =>
                   act({
@@ -3683,13 +3701,13 @@ export default function WorkspaceApp({
                 />
               </button>
               {data.encrypted ? (
-                <button className="button compact share-button" onClick={() => setSpaceKeys(data.encrypted!.spaceId)}>
+                <button className="button compact share-button topbar-phone-hidden" onClick={() => setSpaceKeys(data.encrypted!.spaceId)}>
                   <LockKey size={15} />
                   {t("Mitglieder", "Members")}
                 </button>
               ) : (
                 <button
-                  className="button compact share-button"
+                  className="button compact share-button topbar-phone-hidden"
                   onClick={() => setShare(true)}
                 >
                   <ShareNetwork size={15} />
@@ -3705,6 +3723,64 @@ export default function WorkspaceApp({
                 </Dropdown.Trigger>
                 <Dropdown.Portal>
                   <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
+                    {phone && (
+                      <>
+                        {/* Phones: what the top bar leaves out. Menu items
+                            (a menu takes no Tab stops), their state as
+                            aria-checked; follow and favourite keep the menu
+                            open so the change shows. */}
+                        <Dropdown.Group className="page-menu-quick">
+                          {data.following !== undefined && (
+                            <Dropdown.CheckboxItem
+                              className="page-menu-quick-item follow"
+                              checked={data.following}
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                void act({ action: "page.follow", pageId: data.page.id, follow: !data.following });
+                              }}
+                            >
+                              <Bell size={22} weight={data.following ? "fill" : "regular"} />
+                              <span>{t("Folgen", "Follow")}</span>
+                            </Dropdown.CheckboxItem>
+                          )}
+                          <Dropdown.CheckboxItem
+                            className="page-menu-quick-item favourite"
+                            checked={boot.favorites.includes(data.page.id)}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void act({ action: "favorite", pageId: data.page.id, value: !boot.favorites.includes(data.page.id) });
+                            }}
+                          >
+                            <Star size={22} weight={boot.favorites.includes(data.page.id) ? "fill" : "regular"} />
+                            <span>{t("Favorit", "Favourite")}</span>
+                          </Dropdown.CheckboxItem>
+                          {data.encrypted ? (
+                            <Dropdown.Item className="page-menu-quick-item" onSelect={() => setSpaceKeys(data.encrypted!.spaceId)}>
+                              <LockKey size={22} />
+                              <span>{t("Mitglieder", "Members")}</span>
+                            </Dropdown.Item>
+                          ) : (
+                            <Dropdown.Item className="page-menu-quick-item" onSelect={() => setShare(true)}>
+                              <ShareNetwork size={22} />
+                              <span>{t("Teilen", "Share")}</span>
+                            </Dropdown.Item>
+                          )}
+                        </Dropdown.Group>
+                        {!data.encrypted && !openComments && !comments && (
+                          <Dropdown.Item className="dropdown-item" onSelect={() => setComments(true)}>
+                            <ChatCircle />
+                            {t("Kommentare", "Comments")}
+                          </Dropdown.Item>
+                        )}
+                        {canRead && (
+                          <Dropdown.Item className="dropdown-item" onSelect={toggleReading}>
+                            {reading ? <PencilSimple /> : <BookOpen />}
+                            {reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
+                          </Dropdown.Item>
+                        )}
+                        <Dropdown.Separator className="dropdown-separator" />
+                      </>
+                    )}
                     {/* The desktop app: from a browser on a computer, the page
                         opens there (flowplan://open); inside the app, in a
                         window of its own. */}

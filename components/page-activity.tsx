@@ -46,10 +46,12 @@ export function FollowButton({
   following,
   followers,
   onToggle,
+  className = "",
 }: {
   following: boolean;
   followers: number;
   onToggle: (follow: boolean) => void;
+  className?: string;
 }) {
   const t = useT();
   const label = following
@@ -58,7 +60,7 @@ export function FollowButton({
   return (
     <button
       type="button"
-      className={`icon-button follow-button ${following ? "active" : ""}`}
+      className={`icon-button follow-button ${following ? "active" : ""}${className ? ` ${className}` : ""}`}
       title={`${label}${followers ? ` (${followers} ${followers === 1 ? "folgt" : "folgen"})` : ""}`}
       aria-label={following ? t("Nicht mehr folgen", "Unfollow") : t("Seite folgen", "Follow page")}
       aria-pressed={following}

@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { toggleReadingMode } from "./page-top-bar";
 
 // Blurred placeholders of uploaded images (components/image-placeholder.ts,
 // lib/image-placeholders.ts): while an image loads, its box already has the
@@ -121,7 +122,7 @@ test("a document image holds its size with the blurred placeholder, then fades i
     await page.emulateMedia({ colorScheme: "light" });
   }
   // Reading mode keeps the image as it is.
-  await page.getByRole("button", { name: "Lesemodus", exact: true }).click();
+  await toggleReadingMode(page);
   const framed = editor.locator('img[alt="Landschaft"]');
   await expect(framed).toBeVisible();
   await expect.poll(() => framed.evaluate((img) => getComputedStyle(img).opacity)).toBe("1");
