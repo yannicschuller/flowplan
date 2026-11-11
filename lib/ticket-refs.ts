@@ -1,7 +1,7 @@
 // Ticket numbers on the server: one ID property per database, prefixes are
 // unique in a workspace, and "WEB-123" resolves to its record for whoever
 // may read it (links in text, Git commits).
-import { all, one } from "./db";
+import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -17,9 +17,37 @@ export async function validateTicketPrefix(page: Page, fields: Field[]) {
   const prefix = ids[0]?.prefix;
   if (!ids.length) return;
   if (!prefix) throw new HttpError(400, "Die ID-Eigenschaft braucht ein Präfix, z. B. WEB.");
+  // An unchanged prefix stays editable, even if another database shares it.
+  const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id);
+  if (stored && (JSON.parse(stored.fields) as Field[]).some((f) => f.type === "id" && f.prefix === prefix)) return;
   for (const other of await prefixes(page.workspace_id))
     if (other.prefix === prefix && other.pageId !== page.id)
       throw new HttpError(409, `Das Präfix ${prefix} nutzt schon „${other.title}“.`);
+}
+
+// A copied or restored database whose prefix another live database already
+// uses gets a free one (WEB → WEB2, WEB3, …), so prefixes stay unique.
+export async function claimTicketPrefix(pageId: string) {
+  const page = await one<{ workspace_id: string; fields: string }>(
+    "SELECT p.workspace_id,d.fields FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.id=? AND p.deleted_at IS NULL",
+    pageId,
+  );
+  if (!page) return;
+  const fields = JSON.parse(page.fields) as Field[];
+  const field = fields.find((f) => f.type === "id" && f.prefix);
+  if (!field) return;
+  const taken = new Set((await prefixes(page.workspace_id)).filter((p) => p.pageId !== pageId).map((p) => p.prefix));
+  if (!taken.has(field.prefix!)) return;
+  const base = field.prefix!.replace(/\d+$/, "");
+  let n = 2,
+    prefix = "";
+  do prefix = base.slice(0, 10 - String(n).length) + n++;
+  while (taken.has(prefix));
+  await run(
+    "UPDATE databases SET fields=?,version=version+1 WHERE page_id=?",
+    JSON.stringify(fields.map((f) => (f === field ? { ...f, prefix } : f))),
+    pageId,
+  );
 }
 
 // Databases with an ID property in a workspace.

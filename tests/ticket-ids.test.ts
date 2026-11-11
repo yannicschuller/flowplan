@@ -66,3 +66,40 @@ test("prefixes are required and unique in the workspace", async () => {
   assert.equal(suggestedPrefix("Website Relaunch"), "WR");
   assert.equal(suggestedPrefix("Marketing"), "MARK");
 });
+
+test("a copied or restored database gets a free prefix; the original stays editable", async () => {
+  const prefixOf = async (pageId: string) => (await database(pageId)).fields.find((f) => f.type === "id")!.prefix;
+  const app = await db("App");
+  await withId(app, "APP");
+  const copy = (await act({ action: "page.duplicate", pageId: app })).id as string;
+  assert.equal(await prefixOf(copy), "APP2");
+  const again = (await act({ action: "page.duplicate", pageId: app })).id as string;
+  assert.equal(await prefixOf(again), "APP3");
+  // Schema edits on the original still work.
+  const d = await database(app);
+  await act({ action: "database.update", pageId: app, version: d.version, fields: d.fields.map((f) => (f.type === "id" ? { ...f, name: "Nummer" } : f)), views: d.views });
+  assert.equal((await resolveTicket(owner, wid, "APP2-1")), null);
+  // Trashed, its prefix taken meanwhile, restored: a new one.
+  const old = await db("Old");
+  await withId(old, "OLD");
+  await act({ action: "page.delete", pageId: old });
+  const newer = await db("Newer");
+  await withId(newer, "OLD");
+  await act({ action: "page.restore", pageId: old });
+  assert.equal(await prefixOf(old), "OLD2");
+  assert.equal(await prefixOf(newer), "OLD");
+  // Two databases that already share a prefix (older data) stay editable.
+  const shared = (await database(old)).fields.map((f) => (f.type === "id" ? { ...f, prefix: "OLD" } : f));
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(shared), old);
+  const o = await database(old);
+  await act({ action: "database.update", pageId: old, version: o.version, fields: o.fields.map((f) => (f.type === "id" ? { ...f, name: "Nr." } : f)), views: o.views });
+  await assert.rejects(async () => await withId(app, "OLD"), /OLD nutzt schon/);
+});
+
+test("a database created from a template of a ticket database gets a free prefix", async () => {
+  const bugs = await db("Bugs");
+  await withId(bugs, "BUG");
+  const template = (await act({ action: "template.save", pageId: bugs, name: "Bug-Tracker", spaceId: null })).id as string;
+  const made = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Bugs 2", templateId: template })).id as string;
+  assert.equal((await database(made)).fields.find((f) => f.type === "id")!.prefix, "BUG2");
+});

@@ -19,6 +19,7 @@ import { relationPairs, insertRelationPair } from "./relation-sync";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { copyNotebook } from "./notebook";
 import { copyPageInk } from "./page-ink-store";
+import { claimTicketPrefix } from "./ticket-refs";
 import { copyPageMeta } from "./page-properties-server";
 import { readableTemplateCells } from "./row-documents";
 import type { Identity, Page, Field, Row } from "./types";
@@ -260,6 +261,8 @@ export async function duplicatePages(
           ),
           target,
         );
+        // The copy gets a prefix of its own (WEB → WEB2).
+        await claimTicketPrefix(target);
         for (const r of sourceRows.get(p.id) || []) {
           await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",

@@ -9,6 +9,7 @@ import { expireTrashedFiles, listFileTrash, purgeFiles } from "./file-trash";
 import { canManageSpace, purgePages, purgeSpace } from "./workspace-lifecycle";
 import type { Identity, Page, Space } from "./types";
 import { filterAsync } from "./each-async";
+import { claimTicketPrefix } from "./ticket-refs";
 
 // The trash (#123): pages, spaces, records (lib/row-trash.ts), files
 // (lib/file-trash.ts, #164) and saved templates stay there for `trashDays()`
@@ -69,6 +70,8 @@ export async function restoreTrashedPage(user: Identity, input: Record<string, u
     for (const id of level) restored.add(id);
   }
   for (const id of restored) await run("UPDATE pages SET deleted_at=NULL WHERE id=?", id);
+  // A prefix taken meanwhile by another database: a new one (WEB2).
+  for (const id of restored) await claimTicketPrefix(id);
   return { ok: true };
 }
 
