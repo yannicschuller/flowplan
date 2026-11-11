@@ -556,6 +556,8 @@ Task = TypedDict("Task", {
     "text": str,
     "done": bool,
     "due": Optional[str],
+    "own": bool,  # In your own task page (My tasks)
+    "fresh": bool,  # Given to you by someone else since you last opened My tasks
 }, total=False)
 
 McpRequest = TypedDict("McpRequest", {
@@ -1279,6 +1281,34 @@ CommandSidebarStateResult = TypedDict("CommandSidebarStateResult", {
     "updatedAt": Required[int],
 }, total=False)
 
+# Add a task to your own task page ("Add a task" in My tasks). Writes an open task into your own page "Aufgaben"/"Tasks" of the workspace, a normal document made on first use in your first private space (a new private space when you have none; not an encrypted one). The page is remembered by id; when it was deleted or you can no longer edit it, the next task makes a new one. The shorthand of quick capture applies to `text`: a date ("tomorrow", "Friday", "24.12." – relative to `today`, read in `locale`) becomes the due date, `@name` gives the task to that member only when they may open the page (otherwise the name stays in the text and `unassigned` names them). `due` wins over a date in the text. Needs full membership with edit rights (not guests or readers).
+CommandTaskAdd = TypedDict("CommandTaskAdd", {
+    "action": Required[Literal["task.add"]],
+    "workspaceId": Required[str],
+    "text": Required[str],
+    "today": Required[str],
+    "locale": Literal["de", "en", "fr"],
+    "due": Optional[str],
+}, total=False)
+
+CommandTaskAddResult = TypedDict("CommandTaskAddResult", {
+    "pageId": Required[str],
+    "title": Required[str],
+    "created": Required[bool],  # Whether the page was made now
+    "spaceCreated": Required[bool],  # Whether a private space was made for it
+    "task": Required[dict[str, Any]],
+    "unassigned": Required[Optional[str]],  # The member `@name` named who cannot open the page: the task is not given to them, the name stays in the text
+}, total=False)
+
+# Mark My tasks as seen: tasks given to you until now are no longer new. The bootstrap's `newTasks` counts open tasks given to you by others since then; GET /api/tasks marks them `fresh`.
+CommandTasksSeen = TypedDict("CommandTasksSeen", {
+    "action": Required[Literal["tasks.seen"]],
+}, total=False)
+
+CommandTasksSeenResult = TypedDict("CommandTasksSeenResult", {
+    "seenAt": Required[int],
+}, total=False)
+
 # Add a page to or remove it from the favourites
 CommandFavorite = TypedDict("CommandFavorite", {
     "action": Required[Literal["favorite"]],
@@ -1636,7 +1666,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -2229,7 +2259,7 @@ class FlowplanClient:
         return self._json("GET", "/api/notifications", query=dict(query) if query else None, headers=headers)
 
     def tasks(self, query: "TasksQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """My tasks — Tasks in documents assigned to you (`tasks`) and the ones you wrote for others (`others`). (GET /api/tasks)"""
+        """My tasks — Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task) and whether you may add tasks here. (GET /api/tasks)"""
         return self._json("GET", "/api/tasks", query=dict(query) if query else None, headers=headers)
 
     def records(self, query: "RecordsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
@@ -2493,7 +2523,7 @@ class FlowplanClient:
         return self._json("GET", "/api/journals/" + _p(day_id) + "/events", query=dict(query) if query else None, headers=headers)
 
     def journal_completed(self, day_id: str, query: Optional["JournalCompletedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Records completed on a journal day — Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. With `mine=1` ("Only mine") only the caller's: records they made done themselves (an automation counts for the person who set it up) and records a person property assigns to them, whoever completed them; changes recorded before Flowplan knew who made them count only by the assignment. Without `mine` the caller's choice for the journal (command `journal.completedMine`), `1` until they made one. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed)"""
+        """Records and tasks completed on a journal day — Tasks ticked off in documents that day (`kind: "task"`; any page you may read, your own task page included, not the day page itself; while still done; with `mine=1` those you ticked off or that are given to you) and database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. With `mine=1` ("Only mine") only the caller's: records they made done themselves (an automation counts for the person who set it up) and records a person property assigns to them, whoever completed them; changes recorded before Flowplan knew who made them count only by the assignment. Without `mine` the caller's choice for the journal (command `journal.completedMine`), `1` until they made one. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed)"""
         return self._json("GET", "/api/journals/" + _p(day_id) + "/completed", query=dict(query) if query else None, headers=headers)
 
     def e2ee_identity(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

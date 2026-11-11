@@ -20,7 +20,7 @@ const MAX_RECIPIENTS = 50;
 
 // Recipients: ids, "@actor", "@creator", "@runner", "field:<id>" of the
 // triggering record, or placeholders on people.
-async function recipients(ctx: NodeRun, to: string[], cells: Record<string, unknown>, createdBy: string | null) {
+export async function recipients(ctx: NodeRun, to: string[], cells: Record<string, unknown>, createdBy: string | null) {
   const out: string[] = [];
   for (const entry of to) {
     if (entry === "@creator") createdBy && out.push(createdBy);

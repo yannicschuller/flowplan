@@ -312,6 +312,8 @@ export type Bootstrap = {
   recentVisits?: { pageId: string; seenAt: number }[];
   // Open tasks given to the person that are due today or overdue.
   dueTasks?: number;
+  // Open tasks given to the person by others since they last opened My tasks (#208).
+  newTasks?: number;
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
   // Administrators: from which severity incidents of the instance arrive.
   incidentThreshold?: import("./notification-kinds").IncidentThreshold;

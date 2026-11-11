@@ -1,5 +1,6 @@
 // "An diesem Tag erledigt" (#169): the database records that became done on
-// a journal day, computed from the status log the sprint charts use
+// a journal day – and the document tasks ticked off that day (#208, from any
+// page, the own task page of My tasks included; completedTasks below) – computed from the status log the sprint charts use
 // (row_status_log, written by lib/automations.ts recordStatusChange) –
 // nothing is copied into the day. A record counts on the day of its latest
 // change to done, and only while it is still done by its database's done
@@ -19,7 +20,7 @@ import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { journalSettings, lockedPageIds, requireUnlocked } from "./journal-extras";
 import { dayOrDraft } from "./journal-days";
-import { visibleRows } from "./row-access";
+import { hiddenRowIds, visibleRows } from "./row-access";
 import { databaseSettings } from "./database-settings";
 import { doneRule, isDone } from "./database-settings-schema";
 import { cellText } from "./cell-text";
@@ -27,7 +28,10 @@ import { Temporal, validZone } from "./date-values";
 import type { Field, Identity, Page } from "./types";
 
 export type CompletedRecord = {
+  // A database record, or a task ticked off in a document (#208).
+  kind?: "record" | "task";
   pageId: string;
+  // A task in a page: "" (one in a record's document: the record).
   rowId: string;
   // "" when the record has no title (the client says "Ohne Titel").
   title: string;
@@ -88,8 +92,9 @@ export async function completedOn(
     start,
     end,
   );
-  if (!entries.length) return { items: [], more: 0, mine, all: 0 };
   const locked = await lockedPageIds(user, workspaceId);
+  const tasks = await completedTasks(user, workspaceId, start, end, locked, dayId);
+  if (!entries.length && !tasks.length) return { items: [], more: 0, mine, all: 0 };
   const byPage = new Map<string, Map<string, { at: number; by: string | null }>>();
   for (const e of entries) {
     const rows = byPage.get(e.page_id) || new Map<string, { at: number; by: string | null }>();
@@ -131,8 +136,59 @@ export async function completedOn(
       });
     }
   }
+  for (const task of tasks) {
+    everything++;
+    if (mine && !task.mine) continue;
+    items.push(task.item);
+  }
   items.sort((a, b) => a.at - b.at);
   return { items: items.slice(0, COMPLETED_LIMIT), more: Math.max(0, items.length - COMPLETED_LIMIT), mine, all: everything };
+}
+
+// Tasks ticked off in documents that day (task_done_log, written by
+// syncDocTasks in lib/doc-tasks.ts) – from any page the reader may open,
+// the own task page of My tasks included – while they are still done.
+// Mine: ticked off by the reader, or given to them. Tasks of the day page
+// itself show in the day already; journals behind a PIN and encrypted
+// spaces stay out, as do private records of others.
+async function completedTasks(user: Identity, workspaceId: string, start: number, end: number, locked: Set<string>, dayId?: string) {
+  const entries = await all<{ page_id: string; row_id: string; text: string; user_id: string | null; at: number }>(
+    `SELECT l.page_id,l.row_id,l.text,l.user_id,l.at FROM task_done_log l JOIN pages p ON p.id=l.page_id
+     WHERE l.workspace_id=? AND p.deleted_at IS NULL AND l.at>=? AND l.at<?
+       AND EXISTS(SELECT 1 FROM doc_tasks t WHERE t.page_id=l.page_id AND t.row_id=l.row_id AND t.text=l.text AND t.checked=1 AND t.status IS NULL)
+     ORDER BY l.at LIMIT 2000`,
+    workspaceId,
+    start,
+    end,
+  );
+  // The latest time a task was ticked off counts (ticked, unticked, ticked).
+  const latest = new Map<string, (typeof entries)[number]>();
+  for (const e of entries) latest.set(`${e.page_id}\u0000${e.row_id}\u0000${e.text}`, e);
+  const pages = new Map<string, (Page & { hidden: Set<string> }) | null>();
+  const out: { item: CompletedRecord; mine: boolean }[] = [];
+  for (const e of latest.values()) {
+    if (locked.has(e.page_id) || e.page_id === dayId) continue;
+    if (!pages.has(e.page_id)) {
+      const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", e.page_id);
+      const readable = !!page && !!(await pageRole(user, page));
+      pages.set(e.page_id, readable ? { ...page!, hidden: page!.kind === "database" ? await hiddenRowIds(user, page!) : new Set() } : null);
+    }
+    const page = pages.get(e.page_id);
+    if (!page || (e.row_id && page.hidden.has(e.row_id))) continue;
+    if (e.row_id && !(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", e.row_id, e.page_id))) continue;
+    const assigned = !!(await one(
+      "SELECT 1 FROM doc_tasks WHERE page_id=? AND row_id=? AND text=? AND assignee=?",
+      e.page_id,
+      e.row_id,
+      e.text,
+      user.id,
+    ));
+    out.push({
+      mine: e.user_id === user.id || assigned,
+      item: { kind: "task", pageId: e.page_id, rowId: e.row_id, title: e.text.slice(0, 200), database: page.title, icon: page.icon, at: Number(e.at) },
+    });
+  }
+  return out;
 }
 
 // The reader's choice "Alle / Nur meine" for a journal (null: never chosen).

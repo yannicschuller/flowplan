@@ -112,6 +112,7 @@ import { pagePreview } from "@/lib/page-preview";
 import { blockPreview, searchBlocks } from "@/lib/block-links";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
+import { canAddPersonalTask, personalTaskPage } from "@/lib/personal-tasks";
 import { homeAction, homeData, homeOptions } from "@/lib/home-widgets";
 import { localAccountInfo, localLoginEnabled } from "@/lib/local-auth";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
@@ -528,7 +529,13 @@ async function handleGET(
       await requireMember(user, wid);
       const done = url.searchParams.get("done") === "1";
       return NextResponse.json(
-        { tasks: await myTasks(user, wid, done), others: await otherWorkspaceTasks(user, wid, done) },
+        {
+          tasks: await myTasks(user, wid, done),
+          others: await otherWorkspaceTasks(user, wid, done),
+          // The own task page ("Aufgabe hinzufügen", #208): its id once made,
+          // and whether the person may add tasks here (not guests, readers).
+          personal: { pageId: (await personalTaskPage(user, wid))?.id ?? null, canAdd: await canAddPersonalTask(user, wid) },
+        },
         { headers: { "Cache-Control": "no-store" } },
       );
     }

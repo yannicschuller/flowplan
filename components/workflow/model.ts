@@ -283,6 +283,11 @@ export function nodeSummary(node: WorkflowNode, ws: Workspace, ctx: DisplayConte
     case "action.page.move":
     case "action.page.tag":
       return refText(c.page, ws, ctx, t);
+    case "action.task.create": {
+      const text = showText(String(c.text || ""), ctx).slice(0, 50) || t("Text schreiben", "Write the text");
+      if (c.target === "personal") return t(`„${text}“ in die eigene Aufgabenseite`, `“${text}” into the own task page`);
+      return c.page ? t(`„${text}“ in „${refText(c.page, ws, ctx, t)}“`, `“${text}” into “${refText(c.page, ws, ctx, t)}”`) : t("Seite wählen", "Choose a page");
+    }
     case "notify.person": {
       const to = (c.to as string[]) || [];
       return to.length ? to.map((r) => recipientName(r, ws, ctx, t)).join(", ") : t("Empfänger wählen", "Choose recipients");

@@ -52,7 +52,8 @@ import { commentRecipients, commentTextMentions } from "./comment-recipients";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { propertiesCollapsed, recordPropertiesCollapsed, setPropertiesCollapsed, setRecordPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
-import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
+import { changeDocTask, indexPageTasks, markTasksSeen, reindexRowTasks, syncDocTasks, taskBadges } from "./doc-tasks";
+import { addPersonalTask } from "./personal-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention } from "./page-graph";
 import { followRename } from "./link-titles";
@@ -377,7 +378,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // (lib/page-properties-server.ts).
     taxonomy: await workspaceTaxonomy(user, workspace.id, pages),
     recentVisits: await recentVisits(user, workspace.id, 8),
-    dueTasks: await dueTaskCount(user, workspace.id),
+    ...(await taskBadges(user, workspace.id).then((b) => ({ dueTasks: b.due, newTasks: b.fresh }))),
     notificationPrefs: await notificationPrefs(user),
     ...(user.isAdmin ? { incidentThreshold: await incidentThreshold(user.id) } : {}),
     weeklyDigest: await weeklyDigestPrefs(user),
@@ -1541,6 +1542,14 @@ async function runCommand(
         if (typeof b.pageId === "string") await recordPageEdit(user, b.pageId);
         break;
       }
+      // "Aufgabe hinzufügen" in My tasks (#208, lib/personal-tasks.ts).
+      case "task.add":
+        result = await addPersonalTask(user, b, afterCommit);
+        break;
+      // My tasks opened: what was new is seen (#208).
+      case "tasks.seen":
+        result = await markTasksSeen(user);
+        break;
       case "synced.create": {
         // The content of a new synced block: a document under the page that
         // first shows it (and so with its permissions). On a journal day

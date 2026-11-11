@@ -5,6 +5,13 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // The workflow node "Aufgabe erstellen" (#208, lib/workflows/nodes/pages.ts).
+  "Die Aufgabe hat keinen Text.": "The task has no text.",
+  "Eine Aufgabe bekommt höchstens eine Person.": "A task gets one person at most.",
+  "Die Person ist kein Mitglied dieses Arbeitsbereichs.": "The person is not a member of this workspace.",
+  "Die eigene Aufgabenseite ist privat: Der Workflow schreibt nur in die der Person, als die er läuft. Wähle für andere eine Seite, die sie öffnen können.":
+    "The own task page is private: the workflow only writes into the one of the person it runs as. For others, choose a page they can open.",
+  "Die Seite liegt in einem verschlüsselten Bereich, dort kann der Server nichts schreiben.": "The page is in an encrypted space, where the server cannot write anything.",
   // Automatic link rules of a workspace (#202, lib/auto-link-rules.ts).
   "Das Muster fehlt.": "The pattern is missing.",
   "Das Muster ist länger als 200 Zeichen.": "The pattern is longer than 200 characters.",
@@ -1354,6 +1361,7 @@ const patterns: [RegExp, string][] = [
   [/^Dieser Arbeitsbereich hat schon (\d+) eigene Schriften\.$/, "This workspace already has $1 fonts of its own."],
   // Workflows (#168, lib/workflows).
   [/^Anfrage fehlgeschlagen: (.+)$/, "Request failed: $1"],
+  [/^(.+) kann die Seite „(.+)“ nicht öffnen\.$/, "$1 cannot open the page “$2”."],
   [/^Der Host (.+) ist auf dieser Instanz nicht erlaubt\.$/, "The host $1 is not allowed on this instance."],
   [/^Diese Zugangsdaten gelten nur für (.+)\.$/, "This credential only applies to $1."],
   [/^Höchstens (\d+) Empfänger je Schritt\.$/, "At most $1 recipients per step."],

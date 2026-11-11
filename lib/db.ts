@@ -1338,6 +1338,22 @@ function migrate(d: DatabaseSync) {
   // column (nothing is linked automatically), so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "link_rules"))
     d.exec("ALTER TABLE workspaces ADD COLUMN link_rules TEXT");
+  // Personal tasks (#208, lib/personal-tasks.ts): the person's own task
+  // page per workspace ("Aufgabe hinzufügen" in My tasks), when a task was
+  // given to someone by another person (doc_tasks.assigned_at, NULL for
+  // tasks from before and the person's own), when the person last opened
+  // My tasks (users.tasks_seen_at; the badge counts what came since) and
+  // which document tasks were ticked off when and by whom (task_done_log,
+  // "An diesem Tag erledigt" below a journal day). New tables and columns
+  // only – an older version leaves them alone – so the schema number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS personal_task_pages(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
+    CREATE INDEX IF NOT EXISTS personal_task_pages_page ON personal_task_pages(page_id);
+    CREATE TABLE IF NOT EXISTS task_done_log(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL DEFAULT '',text TEXT NOT NULL,user_id TEXT,workspace_id TEXT NOT NULL,at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS task_done_log_at ON task_done_log(workspace_id,at);`);
+  if (!(d.prepare("PRAGMA table_info(doc_tasks)").all() as { name: string }[]).some((c) => c.name === "assigned_at"))
+    d.exec("ALTER TABLE doc_tasks ADD COLUMN assigned_at INTEGER");
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "tasks_seen_at"))
+    d.exec("ALTER TABLE users ADD COLUMN tasks_seen_at INTEGER");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

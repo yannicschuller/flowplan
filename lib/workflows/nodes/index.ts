@@ -1,7 +1,7 @@
 // The executions of the node types (lib/workflows/catalog.ts describes them).
 import { logicApproval, logicForeach, logicIf, logicSet, logicStop, logicSwitch, logicWait } from "./logic";
 import { notifyChat, notifyEmail, notifyPerson } from "./notify";
-import { pageAppend, pageCreate, pageMove, pageTag } from "./pages";
+import { pageAppend, pageCreate, pageMove, pageTag, taskCreate } from "./pages";
 import { recordCreate, recordFind, recordTemplate, recordUpdate } from "./records";
 import { aiClassify, aiExtract, aiPrompt, aiSummarize } from "./ai";
 import { httpRequest } from "./http";
@@ -23,6 +23,7 @@ export const NODE_IMPLS: Record<string, NodeImpl> = {
   "action.page.append": pageAppend,
   "action.page.tag": pageTag,
   "action.page.move": pageMove,
+  "action.task.create": taskCreate,
   "notify.person": notifyPerson,
   "notify.email": notifyEmail,
   "notify.chat": notifyChat,

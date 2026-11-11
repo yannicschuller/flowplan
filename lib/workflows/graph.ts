@@ -289,6 +289,8 @@ const ISSUE_TEXT: Record<string, [string, string]> = {
   page_not_writable: ["Diese Seite darf die ausführende Person nicht bearbeiten.", "The person running it may not edit this page."],
   unknown_template: ["Die Vorlage gibt es nicht (mehr).", "The template does not exist (any more)."],
   unknown_person: ["Die Person ist kein Mitglied.", "The person is not a member."],
+  no_target_page: ["Eine Zielseite wählen – oder die eigene Aufgabenseite.", "Choose a target page – or the own task page."],
+  no_task_text: ["Die Aufgabe braucht einen Text.", "The task needs a text."],
   encrypted: ["Ende-zu-Ende-verschlüsselte Bereiche sind für Workflows gesperrt.", "End-to-end encrypted spaces are closed to workflows."],
   inline_target: ["Im Sofortteil nur auf dem auslösenden Eintrag.", "In the immediate part only on the triggering record."],
   no_record_trigger: ["Ohne Eintragsauslöser braucht es einen Eintrag.", "Without a record trigger a record is needed."],
