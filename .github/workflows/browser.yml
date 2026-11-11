@@ -1,12 +1,11 @@
 # The browser specs (tests/browser, Playwright) against the dev server, on
-# every push to main and on demand. A workflow of its own, apart from CI:
-# a few specs still fail or flake against `next dev` (listed in the commit
-# that moved them here), and until they are fixed they should not turn CI red.
+# demand (Actions → Browser specs → Run workflow). Not on every push: the
+# 8 runners take up to an hour each, and a few specs still fail or flake
+# against `next dev` (see the commit that moved them here). Apart from CI so
+# they do not turn the required run red.
 name: Browser specs
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
