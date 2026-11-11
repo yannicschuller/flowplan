@@ -1166,7 +1166,8 @@ export type CommandPageCreate = {
   action: "page.create";
   workspaceId: string;
   spaceId: string;
-  title: string;
+  /** Required unless `templateId` or `starterTemplate` is given: from a template the given title wins, without one the page takes the template's name */
+  title?: string;
   /** Default: document */
   kind?: "document" | "database" | "whiteboard" | "journal" | "dashboard" | "notebook" | "workflow";
   /** Parent page in the same space */

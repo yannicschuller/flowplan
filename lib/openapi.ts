@@ -208,7 +208,7 @@ export const commandActions: ActionDoc[] = [
       action: z.literal("page.create"),
       workspaceId: uuid,
       spaceId: uuid,
-      title: str,
+      title: str.optional().describe("Required unless `templateId` or `starterTemplate` is given: from a template the given title wins, without one the page takes the template's name"),
       kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"]).optional().describe("Default: document"),
       parentId: uuid.optional().describe("Parent page in the same space"),
       databaseKind: z.enum(["tasks", "documents", "contacts", "empty"]).optional(),
