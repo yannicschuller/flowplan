@@ -297,6 +297,10 @@ const NODE_TEXT: Record<string, { name: [string, string]; description: [string, 
     name: ["Seite verschieben", "Move page"],
     description: ["Verschiebt eine Seite unter eine neue Elternseite.", "Moves a page below a new parent."],
   },
+  "action.task.create": {
+    name: ["Aufgabe erstellen", "Create task"],
+    description: ["Schreibt eine Aufgabe in eine Seite, auf Wunsch mit Person und Fälligkeit.", "Writes a task into a page, with a person and a due date if you like."],
+  },
   "notify.person": {
     name: ["Person benachrichtigen", "Notify person"],
     description: ["Benachrichtigung in der App, per Push, E-Mail oder Chat-App.", "A notification in the app, by push, email or chat app."],
@@ -360,6 +364,9 @@ const OUT: Record<string, [string, string]> = {
   sent: ["Gesendet", "Sent"],
   item: ["Element", "Item"],
   index: ["Index", "Index"],
+  task: ["Aufgabe", "Task"],
+  due: ["Fällig am", "Due on"],
+  assignee: ["Zuständig", "Assignee"],
 };
 
 // Typed fields that an AI answer fills (ai.extract, ai.prompt as JSON).
@@ -815,6 +822,41 @@ export const NODE_TYPES: NodeSpec[] = [
     config: z.object({ page: shortTmpl, parent: shortTmpl, position: z.enum(["start", "end"]).default("end") }),
     ports: out,
     outputs: [pageOut()],
+  }),
+  // A task in a page (#208): a chosen page, or the own task page of the
+  // person it runs as (My tasks, lib/personal-tasks.ts).
+  spec({
+    type: "action.task.create",
+    category: "pages",
+    icon: "CheckSquare",
+    inline: false,
+    config: z.object({
+      target: z.enum(["page", "personal"]).default("page"),
+      // target "page": the page (id or placeholder).
+      page: shortTmpl.default(""),
+      // Empty is caught by the check (lib/workflows/validate.ts, "no_task_text").
+      text: shortTmpl.default(""),
+      // One person: an id, "@actor", "@creator", "@runner", "field:<id>" or a placeholder.
+      assignee: recipients.max(1).default([]),
+      // A date or a placeholder on one; empty: none.
+      due: shortTmpl.default(""),
+      // Below the heading with this text (made at the end when missing); empty: the end.
+      heading: z.string().max(200).default(""),
+    }),
+    ports: out,
+    outputs: [
+      pageOut(),
+      {
+        key: "task",
+        label: OUT.task,
+        type: "object",
+        children: [
+          { key: "text", label: OUT.text, type: "text" },
+          { key: "due", label: OUT.due, type: "date" },
+          { key: "assignee", label: OUT.assignee, type: "person", children: person },
+        ],
+      },
+    ],
   }),
   /* ---------- Notify ---------- */
   spec({

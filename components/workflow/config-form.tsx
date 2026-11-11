@@ -57,6 +57,7 @@ export function initialConfig(type: string, context: { database?: string } = {})
   if (type === "action.page.create") Object.assign(out, { parent: "", title: "" });
   if (type === "action.page.move") Object.assign(out, { page: "", parent: "" });
   if (type === "action.page.tag") Object.assign(out, { page: "", tags: [] });
+  if (type === "action.task.create") Object.assign(out, { page: "", text: "", assignee: [] });
   if (type === "logic.if") out.condition = { kind: "group", join: "and", rules: [{ kind: "condition", left: "", op: "eq", value: "" }] };
   if (type === "action.record.find") out.filter = { kind: "group", join: "and", rules: [] };
   if (type === "logic.switch") out.cases = [{ id: newCaseId(), label: "", op: "eq", value: "" }];
@@ -161,6 +162,9 @@ const KEY_TEXT: Record<string, [string, string]> = {
   address: ["E-Mail-Adresse", "E-mail address"],
   senders: ["Absender", "Senders"],
   journal: ["Journal", "Journal"],
+  target: ["Wohin", "Where"],
+  assignee: ["Person", "Person"],
+  due: ["Fällig am (Datum oder Platzhalter)", "Due on (date or placeholder)"],
 };
 // Names that mean something else in another node.
 // i18n-table: 1 – [German, English] pairs (names per node type)
@@ -177,6 +181,8 @@ const TYPE_KEY_TEXT: Record<string, [string, string]> = {
   "trigger.mail.received:address": ["E-Mail-Eingang", "Inbound address"],
   "notify.email:to": ["An", "To"],
   "notify.person:to": ["Empfänger", "Recipients"],
+  "action.task.create:text": ["Aufgabe", "Task"],
+  "action.task.create:heading": ["Unter der Überschrift (optional)", "Below the heading (optional)"],
 };
 // i18n-table: 1 – [German, English] pairs (choices)
 const ENUM_TEXT: Record<string, [string, string]> = {
@@ -259,6 +265,8 @@ const ENUM_TEXT: Record<string, [string, string]> = {
   "senders.verified": ["Nur geprüfte Absender (SPF/DKIM/DMARC bestanden)", "Verified senders only (SPF/DKIM/DMARC passed)"],
   "senders.not_failed": ["Alle außer durchgefallenen", "All but failed ones"],
   "senders.any": ["Alle erlaubten Absender", "All allowed senders"],
+  "target.page": ["In eine Seite", "Into a page"],
+  "target.personal": ["In die eigene Aufgabenseite (Meine Aufgaben)", "Into the own task page (My tasks)"],
 };
 // i18n-table: 1 – [German, English] pairs (page types)
 const KIND_TEXT: Record<string, [string, string]> = {
@@ -332,6 +340,7 @@ function visible(type: string, key: string, c: Record<string, unknown>) {
     if (key === "weekdays") return c.mode === "next";
   }
   if (type === "logic.foreach" && key === "parallel") return c.mode === "parallel";
+  if (type === "action.task.create" && key === "page") return c.target !== "personal";
   if (type === "logic.approval" && key === "onTimeout") return !!c.deadline;
   if (type === "ai.summarize" && key === "languageCode") return c.language === "fixed";
   if (type === "ai.classify") {
@@ -405,6 +414,9 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
     return <ValuesEditor label={label} value={(value as Record<string, unknown>) || {}} fields={info?.fields || []} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "blocks") return <BlocksEditor label={label} value={(value as Block[]) || []} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "to" && type === "notify.person") return <Recipients label={label} value={(value as string[]) || []} ctx={ctx} fields={info?.fields || []} onChange={onChange} t={t} />;
+  // One person at most (#208).
+  if (name === "assignee" && type === "action.task.create")
+    return <Recipients label={label} value={(value as string[]) || []} ctx={ctx} fields={info?.fields || []} onChange={onChange} t={t} single />;
   if ((name === "page" || name === "parent") && typeOf(schema) === "string")
     return <PageRef label={label} value={String(value ?? "")} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "where" && type === "action.page.append") {
@@ -853,7 +865,9 @@ function BlocksEditor({ label, value, ctx, onChange, t }: { label: string; value
   );
 }
 
-function Recipients({ label, value, ctx, fields, onChange, t, addresses = false }: { label: string; value: string[]; ctx: FormContext; fields: Field[]; onChange: (v: string[]) => void; t: T; addresses?: boolean; noActor?: boolean }) {
+function Recipients({ label, value, ctx, fields, onChange, t, addresses = false, single = false }: { label: string; value: string[]; ctx: FormContext; fields: Field[]; onChange: (v: string[]) => void; t: T; addresses?: boolean; noActor?: boolean; single?: boolean }) {
+  // `single`: one person (a task's assignee); remove it to choose another.
+  const adding = !ctx.disabled && !(single && value.length >= 1);
   const locale = useLocale();
   const [free, setFree] = useState("");
   const freeId = useId();
@@ -880,13 +894,13 @@ function Recipients({ label, value, ctx, fields, onChange, t, addresses = false 
           </li>
         ))}
       </ul>
-      {!ctx.disabled && (
-        <Select aria-label={t("Empfänger hinzufügen", "Add a recipient")} value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])}>
-          <option value="">{t("+ Empfänger …", "+ Recipient …")}</option>
+      {adding && (
+        <Select aria-label={single ? t("Person wählen", "Choose a person") : t("Empfänger hinzufügen", "Add a recipient")} value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])}>
+          <option value="">{single ? t("+ Person …", "+ Person …") : t("+ Empfänger …", "+ Recipient …")}</option>
           {options.filter((o) => !value.includes(o[0])).map((o) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
         </Select>
       )}
-      {!ctx.disabled && (
+      {adding && (
         // An address (e-mail) or a placeholder on people or addresses.
         <div className="wf-inline">
           <TemplateInput

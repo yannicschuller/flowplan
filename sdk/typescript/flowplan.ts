@@ -804,6 +804,10 @@ export type Task = {
   text?: string;
   done?: boolean;
   due?: string | null;
+  /** In your own task page (My tasks) */
+  own?: boolean;
+  /** Given to you by someone else since you last opened My tasks */
+  fresh?: boolean;
   [key: string]: unknown;
 };
 
@@ -1824,6 +1828,41 @@ export type CommandSidebarStateResult = {
   updatedAt: number;
 };
 
+/** Add a task to your own task page ("Add a task" in My tasks). Writes an open task into your own page "Aufgaben"/"Tasks" of the workspace, a normal document made on first use in your first private space (a new private space when you have none; not an encrypted one). The page is remembered by id; when it was deleted or you can no longer edit it, the next task makes a new one. The shorthand of quick capture applies to `text`: a date ("tomorrow", "Friday", "24.12." – relative to `today`, read in `locale`) becomes the due date, `@name` gives the task to that member only when they may open the page (otherwise the name stays in the text and `unassigned` names them). `due` wins over a date in the text. Needs full membership with edit rights (not guests or readers). */
+export type CommandTaskAdd = {
+  action: "task.add";
+  workspaceId: string;
+  text: string;
+  today: string;
+  locale?: "de" | "en" | "fr";
+  due?: string | null;
+};
+
+export type CommandTaskAddResult = {
+  pageId: string;
+  title: string;
+  /** Whether the page was made now */
+  created: boolean;
+  /** Whether a private space was made for it */
+  spaceCreated: boolean;
+  task: {
+    text: string;
+    due: string | null;
+    assignee: string | null;
+  };
+  /** The member `@name` named who cannot open the page: the task is not given to them, the name stays in the text */
+  unassigned: string | null;
+};
+
+/** Mark My tasks as seen: tasks given to you until now are no longer new. The bootstrap's `newTasks` counts open tasks given to you by others since then; GET /api/tasks marks them `fresh`. */
+export type CommandTasksSeen = {
+  action: "tasks.seen";
+};
+
+export type CommandTasksSeenResult = {
+  seenAt: number;
+};
+
 /** Add a page to or remove it from the favourites */
 export type CommandFavorite = {
   action: "favorite";
@@ -2670,10 +2709,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandWorkspaceTheme | CommandWorkspaceLinkRules | CommandProfilePlainLook | CommandProfileTextMenu | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandWorkspaceTheme | CommandWorkspaceLinkRules | CommandProfilePlainLook | CommandProfileTextMenu | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandTaskAdd | CommandTasksSeen | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "workspace.linkRules" } ? CommandWorkspaceLinkRulesResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "workspace.linkRules" } ? CommandWorkspaceLinkRulesResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "task.add" } ? CommandTaskAddResult : A extends { action: "tasks.seen" } ? CommandTasksSeenResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -2870,14 +2909,22 @@ export class FlowplanClient {
   }>("GET", `/api/notifications`, { query }, options);
   }
 
-  /** My tasks — Tasks in documents assigned to you (`tasks`) and the ones you wrote for others (`others`). (GET /api/tasks) */
+  /** My tasks — Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task) and whether you may add tasks here. (GET /api/tasks) */
   async tasks(query: { workspace: string; done?: "0" | "1" }, options?: RequestOptions): Promise<{
     tasks: Task[];
     others: Task[];
+    personal?: {
+      pageId?: string | null;
+      canAdd?: boolean;
+    };
   }> {
     return this.json<{
     tasks: Task[];
     others: Task[];
+    personal?: {
+      pageId?: string | null;
+      canAdd?: boolean;
+    };
   }>("GET", `/api/tasks`, { query }, options);
   }
 
@@ -3491,7 +3538,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/journals/${encodeURIComponent(dayId)}/events`, { query }, options);
   }
 
-  /** Records completed on a journal day — Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. With `mine=1` ("Only mine") only the caller's: records they made done themselves (an automation counts for the person who set it up) and records a person property assigns to them, whoever completed them; changes recorded before Flowplan knew who made them count only by the assignment. Without `mine` the caller's choice for the journal (command `journal.completedMine`), `1` until they made one. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed) */
+  /** Records and tasks completed on a journal day — Tasks ticked off in documents that day (`kind: "task"`; any page you may read, your own task page included, not the day page itself; while still done; with `mine=1` those you ticked off or that are given to you) and database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. With `mine=1` ("Only mine") only the caller's: records they made done themselves (an automation counts for the person who set it up) and records a person property assigns to them, whoever completed them; changes recorded before Flowplan knew who made them count only by the assignment. Without `mine` the caller's choice for the journal (command `journal.completedMine`), `1` until they made one. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed) */
   async journalCompleted(dayId: string, query?: { zone?: string; mine?: "0" | "1" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/journals/${encodeURIComponent(dayId)}/completed`, { query }, options);
   }

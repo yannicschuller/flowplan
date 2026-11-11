@@ -292,9 +292,13 @@ export function MobileTabBar({
   onNew,
   onInbox,
   onMenu,
+  newTasks = 0,
 }: {
   active: "home" | "inbox" | null;
   unread: number;
+  // Tasks given to the person since they last opened My tasks (#208): a
+  // badge on "Navigation", where My tasks is.
+  newTasks?: number;
   menuOpen: boolean;
   hidden: boolean;
   onHome: () => void;
@@ -359,10 +363,19 @@ export function MobileTabBar({
         type="button"
         className="mobile-tab"
         aria-expanded={menuOpen}
-        aria-label={menuOpen ? t("Navigation schließen", "Close navigation") : t("Navigation öffnen", "Open navigation")}
+        aria-label={
+          menuOpen
+            ? t("Navigation schließen", "Close navigation")
+            : newTasks > 0
+              ? t(`Navigation öffnen, ${newTasks} neue Aufgaben`, `Open navigation, ${newTasks} new tasks`)
+              : t("Navigation öffnen", "Open navigation")
+        }
         onClick={onMenu}
       >
-        {menuOpen ? <X size={22} aria-hidden="true" /> : <List size={22} aria-hidden="true" />}
+        <span className="mobile-tab-icon" aria-hidden="true">
+          {menuOpen ? <X size={22} /> : <List size={22} />}
+          {newTasks > 0 && !menuOpen && <span className="mobile-tab-badge">{newTasks > 99 ? "99+" : newTasks}</span>}
+        </span>
         {/* Part of the name ("Navigation öffnen"), as WCAG 2.5.3 asks of a visible label. */}
         <span aria-hidden="true">{t("Navigation", "Navigation")}</span>
       </button>

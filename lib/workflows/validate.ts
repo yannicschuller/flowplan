@@ -20,7 +20,7 @@ import { workflowLimits } from "./limits";
 import { resolveAi } from "../ai/resolve";
 import { workflowChatHooks } from "../webhooks";
 
-const WRITE_TYPES = new Set(["action.record.create", "action.record.update", "action.record.template", "action.page.create", "action.page.append", "action.page.tag", "action.page.move"]);
+const WRITE_TYPES = new Set(["action.record.create", "action.record.update", "action.record.template", "action.page.create", "action.page.append", "action.page.tag", "action.page.move", "action.task.create"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function validateGraph(graph: WorkflowGraph, ctx: { workspaceId: string; runner: Identity | null; pageId?: string }): Promise<GraphIssue[]> {
@@ -106,6 +106,13 @@ export async function validateGraph(graph: WorkflowGraph, ctx: { workspaceId: st
       };
       await walk(c.condition as never);
     }
+    if (n.type === "action.task.create" && (c.target || "page") === "page" && !String(c.page || "").trim())
+      issues.push({ level: "error", code: "no_target_page", nodeId: n.id });
+    if (n.type === "action.task.create" && !String(c.text || "").trim()) issues.push({ level: "error", code: "no_task_text", nodeId: n.id });
+    if (n.type === "action.task.create")
+      for (const to of (c.assignee as string[]) || [])
+        if (UUID.test(to) && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", ctx.workspaceId, to)))
+          issues.push({ level: "error", code: "unknown_person", nodeId: n.id });
     if (n.type === "notify.person")
       for (const to of (c.to as string[]) || [])
         if (UUID.test(to) && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", ctx.workspaceId, to)))
@@ -129,6 +136,7 @@ const AI_TARGETS: Record<string, [string[], string]> = {
   "action.page.create": [["parent"], "target"],
   "action.page.move": [["page", "parent"], "target"],
   "action.page.tag": [["page"], "target"],
+  "action.task.create": [["page"], "target"],
   "action.record.update": [["record"], "target"],
 };
 const WHAT: Record<string, string> = { recipients: "ai_to_recipients", approvers: "ai_to_recipients", url: "ai_to_url", target: "ai_to_target" };

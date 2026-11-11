@@ -100,39 +100,66 @@ export async function syncDocTasks(
   notify = true,
 ) {
   const tasks = extractTasks(yDocToProsemirrorJSON(ydoc, "default") as JsonNode);
-  const previous = await all<{ text: string; assignee: string | null }>(
-    "SELECT text,assignee FROM doc_tasks WHERE page_id=? AND row_id=?",
+  const previous = await all<{ text: string; assignee: string | null; checked: number; status: string | null; assigned_at: number | null }>(
+    "SELECT text,assignee,checked,status,assigned_at FROM doc_tasks WHERE page_id=? AND row_id=?",
     page.id,
     rowId || "",
   );
-  const known = new Set(previous.map((t) => `${t.assignee}\u0000${t.text}`));
+  // When each task was given to its person (kept while it stays, #208).
+  const known = new Map(previous.map((t) => [`${t.assignee}\u0000${t.text}`, t.assigned_at === null || t.assigned_at === undefined ? null : Number(t.assigned_at)]));
+  // Tasks that were there and not done: ticked off now when they are done.
+  const wasOpen = new Set(previous.filter((t) => !(Number(t.checked) && !t.status)).map((t) => t.text));
+  const wasDone = new Set(previous.filter((t) => Number(t.checked) && !t.status).map((t) => t.text));
   await run("DELETE FROM doc_tasks WHERE page_id=? AND row_id=?", page.id, rowId || "");
   const notified = new Set<string>();
+  const logged = new Set<string>();
   const assignees = new Set(tasks.flatMap((task) => task.assignees));
+  const now = Date.now();
   for (const task of tasks.slice(0, 2000)) {
     const people = task.assignees.length ? task.assignees : [null];
-    for (const assignee of people) {
+    const text = task.text.slice(0, TASK_TEXT_MAX);
+    // Ticked off in this change (not a task moved or written already done):
+    // "An diesem Tag erledigt" below a journal day (lib/journal-completed.ts).
+    if (notify && task.status === "done" && text && wasOpen.has(text) && !wasDone.has(text) && !logged.has(text)) {
+      logged.add(text);
       await run(
-        "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO task_done_log(id,page_id,row_id,text,user_id,workspace_id,at) VALUES(?,?,?,?,?,?,?)",
+        id(),
+        page.id,
+        rowId || "",
+        text,
+        user.id,
+        page.workspace_id,
+        now,
+      );
+    }
+    for (const assignee of people) {
+      const key = `${assignee}\u0000${task.text}`;
+      // New for its person when someone else gave it to them now (as the
+      // notice below); "Neu" in My tasks until they open it.
+      const assignedAt = known.has(key) ? known.get(key)! : notify && assignee && assignee !== user.id && !task.checked ? now : null;
+      await run(
+        "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at,assigned_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         id(),
         page.id,
         rowId || "",
         task.index,
-        task.text.slice(0, TASK_TEXT_MAX),
+        text,
         task.checked ? 1 : 0,
         storedStatus(task.status),
         assignee,
         task.due,
         page.workspace_id,
         user.id,
-        Date.now(),
+        now,
+        assignedAt,
       );
       if (
         notify &&
         assignee &&
         assignee !== user.id &&
         !task.checked &&
-        !known.has(`${assignee}\u0000${task.text}`) &&
+        !known.has(key) &&
         !notified.has(assignee)
       ) {
         // Only who may read the page and, in a record, the record (a
@@ -171,28 +198,35 @@ type TaskRow = {
   icon: string;
   workspace_id: string;
   journal: number;
+  own: number;
+  assigned_at: number | null;
 };
 async function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
   const rows = await all<TaskRow>(
-    `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.status,t.assignee,t.due,t.updated_at,p.title,p.icon,t.workspace_id,
-       (j.id IS NOT NULL) AS journal
+    `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.status,t.assignee,t.due,t.updated_at,t.assigned_at,p.title,p.icon,t.workspace_id,
+       (j.id IS NOT NULL) AS journal,(o.page_id IS NOT NULL) AS own
      FROM doc_tasks t JOIN pages p ON p.id=t.page_id
      LEFT JOIN pages j ON j.id=p.parent_id AND j.kind='journal' AND p.journal_date IS NOT NULL
        AND t.row_id='' AND (j.created_by=? OR p.created_by=?)
+     LEFT JOIN personal_task_pages o ON o.page_id=t.page_id AND o.user_id=? AND t.row_id=''
      WHERE ${workspaceId ? "t.workspace_id=?" : "t.workspace_id IN (SELECT workspace_id FROM members WHERE user_id=?)"}
        AND p.deleted_at IS NULL
        AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id))
        AND (t.assignee=?
          OR (t.assignee IS NULL AND p.created_by=? AND t.due IS NOT NULL)
-         OR (t.assignee IS NULL AND j.id IS NOT NULL))
+         OR (t.assignee IS NULL AND j.id IS NOT NULL)
+         OR (t.assignee IS NULL AND o.page_id IS NOT NULL))
      ${includeDone ? "" : "AND t.checked=0"}
      ORDER BY CASE WHEN t.due IS NULL THEN 1 ELSE 0 END, t.due, t.updated_at DESC LIMIT 1000`,
+    user.id,
     user.id,
     user.id,
     workspaceId || user.id,
     user.id,
     user.id,
   );
+  // Given to the person by someone else since they last opened My tasks (#208).
+  const seen = Number((await one<{ tasks_seen_at: number | null }>("SELECT tasks_seen_at FROM users WHERE id=?", user.id))?.tasks_seen_at || 0);
   const allowed = new Map<string, boolean>(),
     hidden = new Map<string, Set<string>>();
   return (await filterAsync(rows, async (row) => {
@@ -214,6 +248,10 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
       due: row.due,
       assigned: row.assignee === user.id,
       journal: !!row.journal,
+      // In the person's own task page (#208): "Eigene" in My tasks.
+      own: !!Number(row.own),
+      // Given by someone else since My tasks was last opened: "Neu".
+      fresh: row.assignee === user.id && !row.checked && !!row.assigned_at && Number(row.assigned_at) > seen,
       title: row.title,
       icon: row.icon,
       workspaceId: row.workspace_id,
@@ -461,5 +499,19 @@ export async function startTaskWorker(onFired: () => void) {
 // Badge in the sidebar: open tasks given to the person or in their journal,
 // due today or earlier.
 export async function dueTaskCount(user: Identity, workspaceId: string, today = localToday()) {
-  return (await myTasks(user, workspaceId)).filter((task) => (task.assigned || task.journal) && task.due && task.due <= today).length;
+  return (await taskBadges(user, workspaceId, today)).due;
+}
+// Both numbers of the sidebar entry at once: due (today or earlier) and new
+// (given to the person by others since they last opened My tasks, #208).
+export async function taskBadges(user: Identity, workspaceId: string, today = localToday()) {
+  const tasks = await myTasks(user, workspaceId);
+  return {
+    due: tasks.filter((task) => (task.assigned || task.journal || task.own) && task.due && task.due <= today).length,
+    fresh: tasks.filter((task) => task.fresh).length,
+  };
+}
+// Opening My tasks: what was new is seen now (the badge and "Neu" go).
+export async function markTasksSeen(user: Identity, at = Date.now()) {
+  await run("UPDATE users SET tasks_seen_at=? WHERE id=?", at, user.id);
+  return { seenAt: at };
 }

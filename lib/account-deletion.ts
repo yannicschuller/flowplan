@@ -71,6 +71,8 @@ const PERSONAL = [
   "page_follows",
   "page_visits",
   "page_view_prefs",
+  // The own task page per workspace (#208); the page itself stays a page.
+  "personal_task_pages",
   "presence",
   "editor_presence",
   "record_views",

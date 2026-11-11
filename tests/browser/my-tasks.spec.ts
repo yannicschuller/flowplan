@@ -115,3 +115,38 @@ test("tasks of other workspaces follow in their own section", async ({ page }, i
   await group.locator("li", { hasText: text }).getByRole("button", { name: "Umzug" }).click();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(text);
 });
+
+test("Aufgabe hinzufügen: Enter writes into the own page, the filter narrows to it (#208)", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  // Past the introduction, which would take the focus.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
+  await page.goto("/#tasks");
+  const field = page.getByRole("textbox", { name: "Aufgabe hinzufügen" });
+  await expect(field).toBeVisible();
+  const text = `Zahnarzt anrufen ${info.project.name} ${Date.now()}`;
+  await field.fill(`${text} morgen`);
+  await field.press("Enter");
+  // Added with tomorrow as its date, the shorthand gone from the text.
+  const item = page.locator(".my-tasks-group li", { hasText: text });
+  await expect(item).toBeVisible();
+  await expect(item.locator(".my-task-text")).toHaveText(text);
+  await expect(field).toHaveValue("");
+  // "Eigene" keeps it, "Aus Dokumenten & Datenbanken" does not; the choice stays.
+  await page.locator(".my-tasks-filter label", { hasText: "Eigene" }).click();
+  await expect(item).toBeVisible();
+  await page.locator(".my-tasks-filter label", { hasText: "Aus Dokumenten & Datenbanken" }).click();
+  await expect(item).toHaveCount(0);
+  await page.locator(".my-tasks-filter label", { hasText: "Eigene" }).click();
+  await page.reload();
+  await expect(page.locator('.my-tasks-filter label[data-active="true"]')).toHaveText("Eigene");
+  await expect(page.locator(".my-tasks-group li", { hasText: text })).toBeVisible();
+  // The page is a normal page: it opens from My tasks.
+  await page.getByRole("button", { name: "Seite „Aufgaben“ öffnen" }).click();
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(text);
+  await page.goto("/#tasks");
+  await page.locator(".my-tasks-filter label", { hasText: "Alle" }).click();
+  expect(errors).toEqual([]);
+});

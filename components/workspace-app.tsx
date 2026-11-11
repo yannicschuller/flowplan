@@ -1267,6 +1267,8 @@ export default function WorkspaceApp({
   // "Zuletzt angesehen" on the start page follows along without a reload.
   const shownPage = data?.page.id;
   // A page just created from the dialog: the caret goes into its title.
+  // My tasks opened (#208): the badge of new tasks goes at once.
+  const markTasksSeen = useCallback(() => setBoot((b) => (b.newTasks ? { ...b, newTasks: 0 } : b)), []);
   const focusTitleOf = useRef<string | null>(null);
   useEffect(() => {
     if (!shownPage || focusTitleOf.current !== shownPage) return;
@@ -3159,6 +3161,16 @@ export default function WorkspaceApp({
             >
               <CheckSquare size={19} />
               {t("Meine Aufgaben", "My tasks")}
+              {/* Given to me by others since I last opened My tasks (#208). */}
+              {!!boot.newTasks && screen !== "tasks" && (
+                <span
+                  className="notification-count new-tasks"
+                  title={boot.newTasks === 1 ? t("1 neue Aufgabe für dich", "1 new task for you") : t(`${boot.newTasks} neue Aufgaben für dich`, `${boot.newTasks} new tasks for you`)}
+                  aria-label={boot.newTasks === 1 ? t("1 neue Aufgabe für dich", "1 new task for you") : t(`${boot.newTasks} neue Aufgaben für dich`, `${boot.newTasks} new tasks for you`)}
+                >
+                  {boot.newTasks > 99 ? "99+" : boot.newTasks}
+                </span>
+              )}
               {!!boot.dueTasks && (
                 <span className="notification-count" title={t("Heute fällig oder überfällig", "Due today or overdue")}>
                   {boot.dueTasks}
@@ -4581,6 +4593,7 @@ export default function WorkspaceApp({
               }}
               onError={notifyError}
               onChanged={() => void refresh()}
+              onSeen={markTasksSeen}
             />
           )}
           {screen === "inbox" && (
@@ -6077,6 +6090,7 @@ export default function WorkspaceApp({
       <MobileTabBar
         active={mobile ? null : screen === "home" ? "home" : screen === "inbox" ? "inbox" : null}
         unread={boot.notifications.filter((n) => !n.read_at).length}
+        newTasks={screen === "tasks" ? 0 : boot.newTasks || 0}
         menuOpen={mobile}
         hidden={keyboardOpen || (focusMode && screen === "page")}
         onHome={() => go("home")}

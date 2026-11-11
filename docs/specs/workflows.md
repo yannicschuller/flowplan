@@ -632,6 +632,7 @@ Benachrichtigungen. Kein Direktschreiben an `rows`/`documents` vorbei.
 | `action.page.append` | Zielseite; Position: Ende / Anfang / unter Überschrift „…“ (erste passende, sonst Ende); Blöcke: Absatz, Überschrift, Aufzählung, Aufgabe, Link-Karte, Trennlinie; „nicht doppelt“ (überspringen, wenn ein Link auf dieselbe Seite schon da ist) | `page`, `appended` (Anzahl) | nein |
 | `action.page.tag` | Seite, hinzufügen/entfernen, Tags | `page` | nein |
 | `action.page.move` | Seite, neue Elternseite, Position (Anfang/Ende) | `page` | nein |
+| `action.task.create` (#208) | Ziel: eine Seite (ID/Platzhalter) oder die eigene Aufgabenseite der ausführenden Person (`lib/personal-tasks.ts`, beim ersten Mal angelegt); Text (Platzhalter), Person (eine; nur wer die Zielseite öffnen kann – die eigene Seite nur für die ausführende Person selbst), Fälligkeit (Datum/Platzhalter), Überschrift (darunter anhängen, fehlt sie: am Ende angelegt). Gesperrte Seiten, Journale mit PIN und verschlüsselte Bereiche werden abgelehnt; ein Probelauf ändert nichts und legt keine Seite an | `page`, `task` (`text`, `due`, `assignee`) | nein |
 
 `action.page.append` ist der Kern des Issues. Er schreibt über den
 Yjs-Pfad der Dokumente (wie `append_to_page` in `lib/mcp.ts` / `htmlState`

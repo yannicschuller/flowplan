@@ -91,6 +91,9 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "ticket_messages.author_id": "move",
   "doc_tasks.assignee": "move",
   "doc_tasks.updated_by": "move",
+  // The own task page per workspace (#208): the target's stays when it has one.
+  "personal_task_pages.user_id": "move",
+  "task_done_log.user_id": "move",
   "rows.created_by": "move",
   "rows.updated_by": "move",
   "row_snapshots.created_by": "move",
