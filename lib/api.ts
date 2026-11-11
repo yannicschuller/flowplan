@@ -1,5 +1,6 @@
 import { withReadMemo } from "./read-memo";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
+import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { requireDocumentSize } from "./document-size";
@@ -350,6 +351,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     linkRules: await workspaceLinkRules(workspace.id),
     // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
     textMenu: await userTextMenu(user.id),
+    // "Seitensymbol" (#214, lib/page-icon-pref.ts).
+    pageIcon: await userPageIcon(user.id),
     pages,
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
@@ -878,6 +881,10 @@ async function runCommand(
       // The text menu on selecting text (#200, lib/text-menu-pref.ts).
       case "profile.textMenu":
         result = await setUserTextMenu(user, b.textMenu);
+        break;
+      // Where the page icon sits in the page header (#214, lib/page-icon-pref.ts).
+      case "profile.pageIcon":
+        result = await setUserPageIcon(user, b.pageIcon);
         break;
       // A workspace's look: read by its members (the settings list every
       // uploaded face), changed by its owners (lib/workspace-fonts.ts).

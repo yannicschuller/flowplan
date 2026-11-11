@@ -291,6 +291,8 @@ export type Bootstrap = {
   linkRules?: import("./auto-link").AutoLinkRule[];
   // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
   textMenu?: import("./text-menu-pref").TextMenuPref;
+  // "Seitensymbol" (#214, lib/page-icon-pref.ts).
+  pageIcon?: import("./page-icon-pref").PageIconPref;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).

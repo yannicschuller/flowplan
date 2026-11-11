@@ -275,6 +275,7 @@ import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { setAutoLinkRules } from "@/lib/auto-link-plugin";
 import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
+import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -550,6 +551,9 @@ export default function WorkspaceApp({
   setAutoLinkRules(boot.linkRules);
   // "Menü bei Textauswahl" (#200): the editors' text menus read it.
   useEffect(() => setTextMenuPrefLocal(boot.textMenu), [boot.textMenu]);
+  // "Seitensymbol" (#214): the page header reads it.
+  useEffect(() => setPageIconPrefLocal(boot.pageIcon), [boot.pageIcon]);
+  const pageIconPlace = usePageIconPref();
   // The draw.io editor the documents' blocks open (lib/drawio-prefs.ts).
   setDrawioEditor(boot.instance?.drawio);
   const data = useMemo(
@@ -4188,7 +4192,9 @@ export default function WorkspaceApp({
                       onToday={() => void openJournalToday(data.journalDay!.journalId)}
                     />
                   )}
-                  <div className="document-header">
+                  {/* "Seitensymbol" (#214, app/page-icon-inline.css): the large
+                      icon above the title, or small on the title's first line. */}
+                  <div className={`document-header${pageIconPlace === "inline" ? " icon-inline" : ""}`}>
                     <button
                       className="large-page-icon"
                       title={t("Seiten-Icon ändern", "Change page icon")}
