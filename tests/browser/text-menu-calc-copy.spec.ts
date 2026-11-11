@@ -36,6 +36,8 @@ test("a calculation's result is copied with the button at the end of its row; th
   await expect(row).toContainText("y² − 16y + 64");
   const copy = menu.getByRole("menuitem", { name: "Ergebnis kopieren" });
   await expect(copy).toHaveCount(1);
+  // Measured once the opening animation (a scale) has ended.
+  await menu.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
   const box = (await copy.boundingBox())!;
   expect(box.width).toBeGreaterThanOrEqual(phone ? 44 : 32);
   expect(box.height).toBeGreaterThanOrEqual(phone ? 44 : 32);

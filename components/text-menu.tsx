@@ -1,13 +1,15 @@
 "use client";
-// The menu for text: selecting text shows it above the selection, a right
-// click opens it at the pointer (Shift + right click keeps the browser's
+// The menu for text: selecting text shows it above the selection – below it
+// where above would cover the formatting toolbar or another bar at the top
+// (#210, lib/text-menu-placement.ts) – a right click opens it at the pointer (Shift + right click keeps the browser's
 // own menu). Whether selecting shows it is the person's "Menü bei
 // Textauswahl" (#200, lib/text-menu-pref.ts): by default only for a
 // selection made with a mouse, trackpad or keyboard – on a phone or tablet
 // the system's selection menu and the toolbar docked on the keyboard
 // (formatting, comment) take over. The right click (a long press where the
 // browser reports it as one, e.g. Android) opens it in every mode.
-// Reactions for the paragraph, formatting, calculating a selected
+// Reactions for the paragraph, quick formatting (bold, italic, code, link –
+// the toolbar has all of it), calculating a selected
 // expression (insert or copy the result), a comment, copying. "Umwandeln in" changes the type
 // of the line (text, heading, list, quote, code) and keeps its text; it is
 // offered on right-click, so the menu over a selection stays small. In the
@@ -56,9 +58,43 @@ import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-react
 import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
 import { mathActionResult, type MathAction } from "@/lib/math-solve";
 import { showToast } from "./toast";
+import { textMenuMarks, textMenuSide, type MenuRect } from "@/lib/text-menu-placement";
 
 const reactions = ["👍", "❤️", "🎉", "😄", "👀", "✅", "🙏", "🔥"];
-type Place = { x: number; y: number; mode: "selection" | "context" };
+// For a selection: x its middle, y its top, bottom its bottom.
+type Place = { x: number; y: number; bottom?: number; mode: "selection" | "context" };
+// The space between a selection and the menu.
+const GAP = 10;
+
+// The editor's formatting toolbar, if it is shown (focus mode hides it).
+function toolbarOf(editor: Editor): HTMLElement | null {
+  const bar = editor.view.dom.closest(".editor-wrapper")?.querySelector<HTMLElement>(".editor-toolbar");
+  if (!bar) return null;
+  const r = bar.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? bar : null;
+}
+const rectOf = (el: Element): MenuRect => {
+  const r = el.getBoundingClientRect();
+  return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+};
+// What a menu above the selection must not cover: the top of the visible
+// area (the scrolled dialog or page, the keyboard-shifted view), the
+// toolbar and the bars that stay at the top while the text scrolls.
+function surroundings(editor: Editor) {
+  let minTop = -Infinity;
+  for (let el = editor.view.dom.parentElement; el && el !== document.body; el = el.parentElement) {
+    const overflow = getComputedStyle(el).overflowY;
+    if (overflow === "auto" || overflow === "scroll") {
+      minTop = el.getBoundingClientRect().top;
+      break;
+    }
+  }
+  const bars = [...document.querySelectorAll(".topbar, .modal-heading")]
+    .map(rectOf)
+    .filter((r) => r.right > r.left && r.bottom > r.top);
+  const bar = toolbarOf(editor);
+  return { minTop, toolbar: bar ? rectOf(bar) : null, bars };
+}
 // A misspelled word under the pointer and what the spell checker suggests.
 type Spelling = { word: string; from: number; to: number; suggestions: string[] };
 
@@ -118,7 +154,7 @@ export function TextMenu({
       if (!editor.state.doc.textBetween(from, to, " ").trim()) return;
       const start = editor.view.coordsAtPos(from);
       const end = editor.view.coordsAtPos(to);
-      setPlace({ x: (start.left + end.right) / 2, y: Math.min(start.top, end.top), mode: "selection" });
+      setPlace({ x: (start.left + end.right) / 2, y: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom), mode: "selection" });
     };
     // The browser reports a new selection shortly after the mouse or key is
     // released; the editor knows it only then.
@@ -239,7 +275,9 @@ export function TextMenu({
       const end = editor.view.coordsAtPos(to);
       const y = Math.min(start.top, end.top);
       const x = (start.left + end.right) / 2;
-      if (Math.abs(y - place.y) > 1 || Math.abs(x - place.x) > 1) setPlace({ x, y, mode: "selection" });
+      const bottom = Math.max(start.bottom, end.bottom);
+      if (Math.abs(y - place.y) > 1 || Math.abs(x - place.x) > 1 || Math.abs(bottom - (place.bottom ?? bottom)) > 1)
+        setPlace({ x, y, bottom, mode: "selection" });
     };
     window.addEventListener("scroll", moved, true);
     window.addEventListener("resize", close);
@@ -289,20 +327,36 @@ export function TextMenu({
       // opening animation scales it, so its on-screen box would mislead.
       const rect = { width: el.offsetWidth, height: el.offsetHeight };
       const left = place.mode === "selection" ? place.x - rect.width / 2 : place.x + 2;
-      const top = place.mode === "selection" ? place.y - rect.height - 10 : place.y + 2;
+      const top = place.mode === "selection" ? place.y - rect.height - GAP : place.y + 2;
       const vv = window.visualViewport;
       const minY = (vv?.offsetTop ?? 0) + 8;
       const maxX = (vv?.width ?? window.innerWidth) - 8;
-      const maxY = (vv ? vv.offsetTop + vv.height : window.innerHeight) - 8;
+      let maxY = (vv ? vv.offsetTop + vv.height : window.innerHeight) - 8;
       const x = left < 8 || rect.width > maxX - 8 ? 8 - left : left + rect.width > maxX ? maxX - left - rect.width : 0;
-      const y =
-        top < minY
-          ? place.mode === "selection"
-            ? rect.height + 44
-            : minY - top
-          : top + rect.height > maxY
-          ? maxY - top - rect.height
-          : 0;
+      if (place.mode !== "selection" || !editor || editor.isDestroyed) {
+        const y = top < minY ? minY - top : top + rect.height > maxY ? maxY - top - rect.height : 0;
+        if (x !== shiftRef.current.x || y !== shiftRef.current.y) setShift({ x, y });
+        return;
+      }
+      // Above the selection, or below it where above would cover the
+      // toolbar, a bar at the top or leave the visible area (#210).
+      const around = surroundings(editor);
+      const bottom = place.bottom ?? place.y;
+      // A toolbar docked at the bottom (on the phone's keyboard) ends the
+      // room below.
+      if (around.toolbar && around.toolbar.top >= bottom) maxY = Math.min(maxY, around.toolbar.top - 8);
+      const side = textMenuSide({
+        selection: { top: place.y, bottom },
+        menu: { left: left + x, width: rect.width, height: rect.height },
+        gap: GAP,
+        minTop: Math.max(minY, around.minTop),
+        toolbar: around.toolbar,
+        bars: around.bars,
+      });
+      const at = side === "above" ? top : bottom + GAP;
+      // Below and too tall for the room left: moved up as far as needed.
+      const fit = side === "below" && at + rect.height > maxY ? Math.max(maxY - at - rect.height, minY - at) : 0;
+      const y = at - top + fit;
       if (x !== shiftRef.current.x || y !== shiftRef.current.y) setShift({ x, y });
     };
     measure();
@@ -313,7 +367,7 @@ export function TextMenu({
       observer?.disconnect();
       window.visualViewport?.removeEventListener("resize", measure);
     };
-  }, [place]);
+  }, [place, editor]);
   if (!editor || !place) return null;
   const { from, to, empty } = editor.state.selection;
   const block = reactionBlockAt(editor.state.doc, from);
@@ -324,6 +378,9 @@ export function TextMenu({
       .map(([emoji]) => emoji),
   );
   const task = editable ? taskAtSelection(editor.view) : null;
+  // Underline, strikethrough and highlight only where the toolbar is not
+  // shown (#210): it has them, and they keep their shortcuts.
+  const marks = new Set(textMenuMarks(!!toolbarOf(editor)));
   const run = (fn: () => void) => () => {
     fn();
     close();
@@ -407,9 +464,12 @@ export function TextMenu({
         <div className="text-menu-format" role="group" aria-label={t("Formatieren", "Format")}>
           {mark("bold", t("Fett", "Bold"), <TextB size={16} />, () => editor.chain().focus().toggleBold().run())}
           {mark("italic", t("Kursiv", "Italic"), <TextItalic size={16} />, () => editor.chain().focus().toggleItalic().run())}
-          {mark("underline", t("Unterstrichen", "Underline"), <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
-          {mark("strike", t("Durchgestrichen", "Strikethrough"), <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
-          {mark("highlight", t("Markieren", "Highlight"), <HighlighterCircle size={16} />, () => editor.chain().focus().toggleHighlight().run())}
+          {marks.has("underline") &&
+            mark("underline", t("Unterstrichen", "Underline"), <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
+          {marks.has("strike") &&
+            mark("strike", t("Durchgestrichen", "Strikethrough"), <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
+          {marks.has("highlight") &&
+            mark("highlight", t("Markieren", "Highlight"), <HighlighterCircle size={16} />, () => editor.chain().focus().toggleHighlight().run())}
           {mark("code", "Code", <Code size={16} />, () => editor.chain().focus().toggleCode().run())}
           <button type="button" aria-label="Link" title="Link" onClick={run(onLink)}>
             <LinkSimple size={16} />
