@@ -125,7 +125,7 @@ export class MeetingRecorder {
 
   async start() {
     const mime = recorderMime();
-    if (!mime || !navigator.mediaDevices?.getUserMedia) throw new Error("Dieser Browser kann keine Aufnahmen machen.");
+    if (!mime || !navigator.mediaDevices?.getUserMedia) throw new Error(serverMessage("Dieser Browser kann keine Aufnahmen machen."));
     const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     this.streams.push(mic);
     let system: MediaStream | null = null;
@@ -253,7 +253,7 @@ export class MeetingRecorder {
     }
     window.removeEventListener("online", this.online);
     const parts = Object.fromEntries(this.tracks.map((t) => [t, this.counts.get(t) || 0]));
-    if (Object.values(parts).some((n) => !n)) throw new Error("In der Aufnahme ist nichts angekommen.");
+    if (Object.values(parts).some((n) => !n)) throw new Error(serverMessage("In der Aufnahme ist nichts angekommen."));
     const status = await postJson(`/api/meetings/${this.options.meetingId}/finish`, { session: this.session, parts, durationMs, language });
     this.phase = "done";
     this.emit();

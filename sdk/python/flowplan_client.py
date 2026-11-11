@@ -469,6 +469,7 @@ ApiToken = TypedDict("ApiToken", {
     "created_at": Required[int],  # Milliseconds since 1970
     "last_used_at": Optional[int],
     "expires_at": Optional[int],
+    "ai": Literal[0, 1],  # 1: the token has the permission “AI and transcription” (AI features, transcription, meeting notes)
 }, total=False)
 
 # row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`.
@@ -1849,6 +1850,26 @@ WhiteboardCardsQuery = TypedDict("WhiteboardCardsQuery", {
     "rows": Required[str],  # Comma-separated `pageId:rowId` pairs, at most 200
 }, total=False)
 
+CreateMeetingForm = TypedDict("CreateMeetingForm", {
+    "pageId": str,
+    "databaseId": str,
+    "title": str,
+    "date": str,
+    "attendees": str,
+    "instructions": Literal["auto", "status", "oneonone", "workshop", "customer", "custom"],
+    "prompt": str,
+    "audio": FormFile,
+    "me": FormFile,
+    "others": FormFile,
+    "transcript": str,
+    "consent": bool,
+    "language": Literal["de", "en", "fr", "zh"],
+}, total=False)
+
+GetMeetingQuery = TypedDict("GetMeetingQuery", {
+    "content": str,  # 1: with summary, agenda and transcript
+}, total=False)
+
 JournalReviewQuery = TypedDict("JournalReviewQuery", {
     "from": Required[str],  # YYYY-MM-DD
     "to": Required[str],  # YYYY-MM-DD
@@ -2425,6 +2446,22 @@ class FlowplanClient:
     def whiteboard_cards(self, page_id: str, query: "WhiteboardCardsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Live data of records shown as cards on a whiteboard (GET /api/whiteboards/{pageId}/cards)"""
         return self._json("GET", "/api/whiteboards/" + _p(page_id) + "/cards", query=dict(query) if query else None, headers=headers)
+
+    def create_meeting(self, form: "CreateMeetingForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Create a meeting note from audio or a transcript — Creates a meeting block (title, date, attendees, summary, agenda, transcript) at the end of the document `pageId`, or a new record in the database `databaseId` with the block as its document (its date, attendees (person), duration (number, minutes) and status properties are filled when present). `audio` is one file with everyone; `me` and `others` are the microphone and the call as separate tracks (with loudspeakers, echoes of the call in `me` are dropped). M4A, MP3, WAV, AAC, OGG and WebM; each track at most WHISPER_MAX_MB (default 200 MB). Alternatively `transcript` as text (one passage per line, optionally `Name: text`). Transcription (the instance's Whisper service) and the summary (the instance's AI: action items with owner and due date as tasks – owners who are members become mentions and see them in My tasks –, topics and open points, each with numbered citations of transcript segments; at least one minute of audio) run in the background: answers 202 with the meeting's id; poll `statusUrl`. Needs a write token with the permission “AI and transcription”; `consent: true` when the workspace requires consent (428 otherwise). The audio is deleted after the transcript unless the workspace keeps it. (POST /api/meetings)"""
+        return self._json("POST", "/api/meetings", form=dict(form), headers=headers)
+
+    def get_meeting(self, meeting_id: str, query: Optional["GetMeetingQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Status of a meeting note — `status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary). With `content=1` also `title`, `summary` and `agenda` as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session). Needs read access to the page; kept audio is listed as file URLs. Answered with `Cache-Control: no-store`. (GET /api/meetings/{meetingId})"""
+        return self._json("GET", "/api/meetings/" + _p(meeting_id), query=dict(query) if query else None, headers=headers)
+
+    def regenerate_meeting_summary(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Write the summary again — With other instructions, without transcribing again. Needs edit rights and “AI and transcription” for tokens. (POST /api/meetings/{meetingId}/summarize)"""
+        return self._json("POST", "/api/meetings/" + _p(meeting_id) + "/summarize", json_body=body, headers=headers)
+
+    def ask_meeting(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> bytes:
+        """Ask a question about one meeting — Answered from the meeting's transcript and agenda only, as a text stream; `[S12]` names the transcript segment (header `X-Flowplan-Segments`: base64 JSON list of segment ids, S1 first). (POST /api/meetings/{meetingId}/ask)"""
+        return self._bytes("POST", "/api/meetings/" + _p(meeting_id) + "/ask", json_body=body, headers=headers)
 
     def journal_review(self, journal_id: str, query: "JournalReviewQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Review of a period (GET /api/journals/{journalId}/review)"""

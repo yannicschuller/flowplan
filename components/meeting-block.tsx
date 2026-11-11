@@ -28,6 +28,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useLocale, useT } from "./i18n";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useEditorEditable } from "./editor-editable";
 import { Meeting } from "@/lib/meeting-schema";
 import { MEETING_PRESETS, MEETING_PRESET_LABELS, circled, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";
@@ -601,7 +602,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
             <span className="muted">{t("Transkription ist auf diesem Server nicht eingerichtet.", "Transcription is not set up on this server.")}</span>
           ) : null}
         </div>
-        {(notice || status?.error) && !live && <p className="meeting-notice">{notice || status?.error}</p>}
+        {(notice || status?.error) && !live && <p className="meeting-notice">{notice || serverMessage(status?.error || "")}</p>}
         {notice && live && <p className="meeting-notice">{notice}</p>}
         <div className="meeting-tabs" role="tablist">
           {(
