@@ -24,6 +24,8 @@ test("changed cells show immediately on a slow connection", async ({ page }, inf
   await page.goto(`/#page=${p.id}`);
   await page.getByText("Angebot schreiben").click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  // On a phone a record's properties start folded (record-properties-fold.spec.ts).
+  if (info.project.name === "mobile") await entry.getByRole("button", { name: /^Eigenschaften ausklappen/ }).click();
   const status = entry.getByLabel("Status", { exact: true });
   await expect(status).toHaveValue("Nicht begonnen");
 
