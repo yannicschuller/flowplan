@@ -29,14 +29,18 @@ import { loadPdf, renderPage, type PdfDocument } from "./pdf-viewer";
 import { convertSelection } from "./ink/convert";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { recognitionAvailable, recognitionId, recognitionRequest, recognizeInk } from "@/lib/ink/recognition";
+import { stepZoom } from "@/lib/pinch-zoom";
+import { usePinchZoom } from "./notebook/use-pinch-zoom";
+
+// Zoom of the pages, relative to the window width: buttons and keys step,
+// two fingers and trackpads zoom freely (as in notebooks).
+const ZOOMS = { min: 0.5, max: 3, step: 0.25 };
 
 // What the pages need to show ink and, while annotating, to take it.
 type PageInk = {
   editor: InkEditor;
   editing: boolean;
   show: boolean;
-  onPan: (dx: number, dy: number) => void;
-  onZoom: (factor: number) => void;
   // The size of a page once known (recognition needs it).
   onSize: (page: string, size: PageSize) => void;
   // "Convert to text" where the device recognises handwriting.
@@ -56,7 +60,24 @@ function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: num
     return () => io.disconnect();
   }, [visible]);
   useEffect(() => {
-    if (visible && canvas.current) renderPage(doc, number, canvas.current, width).catch(() => {});
+    if (!visible || !canvas.current) return;
+    let alive = true;
+    // Drawn aside and copied over when done: after a zoom the page shown
+    // before stays (stretched) until the sharp one is there, no blank flash.
+    const aside = document.createElement("canvas");
+    renderPage(doc, number, aside, width)
+      .then(() => {
+        const el = canvas.current;
+        if (!alive || !el || !aside.width) return;
+        el.width = aside.width;
+        el.height = aside.height;
+        el.getContext("2d")?.drawImage(aside, 0, 0);
+        aside.width = aside.height = 0;
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [doc, number, width, visible]);
   // The page size (for the ink) once the page comes near: large PDFs do
   // not load every page up front.
@@ -86,8 +107,6 @@ function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: num
           size={size}
           editor={ink.editor}
           editing={ink.editing}
-          onPan={ink.onPan}
-          onZoom={ink.onZoom}
           onConvert={ink.convert ? () => ink.convert!(size) : undefined}
         />
       )}
@@ -262,11 +281,11 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
       }
       if ((event.metaKey || event.ctrlKey) && (event.key === "+" || event.key === "=")) {
         event.preventDefault();
-        setZoom((z) => Math.min(3, z + 0.25));
+        setZoom((z) => stepZoom(z, 1, ZOOMS.step, ZOOMS));
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "-") {
         event.preventDefault();
-        setZoom((z) => Math.max(0.5, z - 0.25));
+        setZoom((z) => stepZoom(z, -1, ZOOMS.step, ZOOMS));
       }
     };
     document.addEventListener("keydown", key);
@@ -301,12 +320,14 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
     const page = pages.findLast((p) => p.offsetTop <= middle);
     setCurrent(Number(page?.dataset.page || 1));
   }, []);
-  const onPan = useCallback((dx: number, dy: number) => scroller.current?.scrollBy(dx, dy), []);
-  const onZoom = useCallback((factor: number) => setZoom((z) => Math.min(3, Math.max(0.5, Math.round(z * factor * 4) / 4))), []);
+  // Two fingers (also while the pen draws, pen-only or not) and trackpads
+  // zoom anchored where they pinch, and two fingers pan (use-pinch-zoom.ts).
+  const pagesBox = useRef<HTMLDivElement>(null);
+  usePinchZoom({ scroller, content: pagesBox, sheetSelector: ".pdf-page-wrap", zoom, setZoom, limits: ZOOMS });
   const width = Math.round(fitWidth * zoom);
   const annotated = hasInk(editor.doc);
   const onSize = useCallback((page: string, size: PageSize) => void sizes.current.set(page, size), []);
-  const pageInk: PageInk = { editor, editing: annotating, show: !!ink, onPan, onZoom, onSize, convert: annotating && canRecognize ? (size) => void convert(size) : undefined };
+  const pageInk: PageInk = { editor, editing: annotating, show: !!ink, onSize, convert: annotating && canRecognize ? (size) => void convert(size) : undefined };
   return (
     <div className={`pdf-viewer${annotating ? " is-annotating" : ""}`} role="dialog" aria-modal="true" aria-label={title || "PDF"}>
       <header className="pdf-viewer-bar">
@@ -324,11 +345,11 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
               <span>{t("Anmerken", "Annotate")}</span>
             </button>
           )}
-          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out")} onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
+          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out")} onClick={() => setZoom((z) => stepZoom(z, -1, ZOOMS.step, ZOOMS))}>
             <MagnifyingGlassMinus size={18} />
           </button>
           <span className="pdf-viewer-zoom">{Math.round(zoom * 100)} %</span>
-          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in")} onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
+          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in")} onClick={() => setZoom((z) => stepZoom(z, 1, ZOOMS.step, ZOOMS))}>
             <MagnifyingGlassPlus size={18} />
           </button>
           <button type="button" className="icon-button pdf-viewer-fit" aria-label={t("An Breite anpassen", "Fit to width")} title={t("An Breite anpassen", "Fit to width")} onClick={() => setZoom(1)}>
@@ -404,7 +425,11 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
             {t("PDF wird geladen …", "Loading PDF …")}
           </p>
         ) : (
-          Array.from({ length: doc.numPages }, (_, i) => <ViewerPage key={i} doc={doc} number={i + 1} width={width} ink={pageInk} />)
+          <div className="pdf-viewer-sheets" ref={pagesBox}>
+            {Array.from({ length: doc.numPages }, (_, i) => (
+              <ViewerPage key={i} doc={doc} number={i + 1} width={width} ink={pageInk} />
+            ))}
+          </div>
         )}
       </div>
     </div>

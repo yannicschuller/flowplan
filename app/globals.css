@@ -18858,8 +18858,21 @@ h3 .block-reactions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
   padding: 20px 16px 40px;
+  /* Fingers scroll; pinching zooms the pages (use-pinch-zoom.ts), not the
+     whole page – also over the ink layer, whose touch-action is narrowed by
+     this one. */
+  touch-action: pan-x pan-y;
+}
+/* The pages, scaled as one while a pinch runs. Auto margins centre them
+   and, wider than the window, keep their left edge reachable. */
+.pdf-viewer-sheets {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 16px;
+  margin: 0 auto;
 }
 .pdf-page {
   display: block;
