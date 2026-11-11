@@ -48,6 +48,8 @@ type Tool = {
   description: string;
   input: z.ZodObject;
   write: boolean;
+  // Needs the token's "KI und Transkription" permission (#199).
+  ai?: boolean;
   run: (user: Identity, args: never) => unknown;
 };
 
@@ -661,14 +663,64 @@ const tools: Tool[] = [
     write: true,
     run: updateRecord as Tool["run"],
   },
+  {
+    name: "create_meeting_note",
+    title: "Create a meeting note",
+    description:
+      "Creates a meeting block (title, date, attendees, summary, agenda, transcript) at the end of a document page, or as a new record of a database (e.g. a \"Meetings\" database; its date, attendees, duration and status properties are filled when present). Give the recording as base64 audio (one file with everyone in `audio`, or the microphone and the call as separate tracks `me` and `others`; webm, ogg, m4a, mp3, wav, aac) or an existing transcript as text (`transcript`, one passage per line, optionally \"Name: text\"). Transcription and the summary (action items with owner and due date as tasks, topics, open points, each with numbered citations of the transcript) run in the background: poll get_meeting_note with the returned id. Needs a token with the permission \"AI and transcription\".",
+    input: z.object({
+      pageId: id("Document page to append the meeting to").optional(),
+      databaseId: id("Database to create the meeting as a record in").optional(),
+      title: z.string().max(300).optional(),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD, default today"),
+      attendees: z.array(z.string().max(200)).max(100).optional().describe("Names or e-mail addresses; members become mentions"),
+      instructions: z.enum(["auto", "status", "oneonone", "workshop", "customer", "custom"]).optional(),
+      prompt: z.string().max(4000).optional().describe("Own instructions for the summary (with instructions \"custom\")"),
+      audio: z.string().max(40_000_000).optional().describe("Base64 audio with everyone"),
+      me: z.string().max(40_000_000).optional().describe("Base64 audio of the microphone track"),
+      others: z.string().max(40_000_000).optional().describe("Base64 audio of the call (system sound) track"),
+      mime: z.string().max(100).optional().describe("Audio type, e.g. audio/webm or audio/mpeg"),
+      transcript: z.string().max(MAX_TEXT).optional(),
+      consent: z.boolean().optional().describe("Everyone recorded agreed (required when the workspace asks for consent)"),
+    }),
+    write: true,
+    ai: true,
+    run: createMeetingNote as Tool["run"],
+  },
+  {
+    name: "get_meeting_note",
+    title: "Status of a meeting note",
+    description: "The processing status of a meeting created with create_meeting_note, and once done its summary (Markdown), agenda and transcript.",
+    input: z.object({ meetingId: id("Meeting ID from create_meeting_note") }),
+    write: false,
+    ai: true,
+    run: (async (user: Identity, args: { meetingId: string }) => {
+      const { meetingStatus } = await import("./meetings");
+      return await meetingStatus(user, args.meetingId, { content: true });
+    }) as Tool["run"],
+  },
   // Workflows (#168, lib/workflows/mcp-tools.ts): no activation, no approvals.
   ...workflowTools,
 ];
 
+async function createMeetingNote(
+  user: Identity,
+  args: { pageId?: string; databaseId?: string; title?: string; date?: string; attendees?: string[]; instructions?: string; prompt?: string; audio?: string; me?: string; others?: string; mime?: string; transcript?: string; consent?: boolean },
+) {
+  const { audioMime, createMeetingFromUpload } = await import("./meetings");
+  const tracks = (["audio", "me", "others"] as const).filter((t) => args[t]);
+  const mime = tracks.length ? audioMime(args.mime || "audio/webm", "") : null;
+  if (tracks.length && !mime) throw new HttpError(415, "Dieses Audioformat wird nicht unterstützt.");
+  const audio = Object.fromEntries(
+    tracks.map((t) => [t === "audio" ? "mixed" : t, { data: new Uint8Array(Buffer.from(args[t]!, "base64")), mime: mime!, name: `${t}.webm` }]),
+  );
+  return await createMeetingFromUpload(user, { ...args, audio });
+}
+
 // ---- Protocol ----
 
 type Message = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
-const may = (user: Identity, tool: Tool) => !tool.write || user.apiScope === "write";
+const may = (user: Identity, tool: Tool) => (!tool.write || user.apiScope === "write") && (!tool.ai || (!!user.apiAi && user.apiScope !== "clipper"));
 const message = (e: unknown) =>
   e instanceof z.ZodError
     ? `Invalid arguments: ${e.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}`
@@ -680,7 +732,18 @@ async function callTool(user: Identity, name: unknown, args: unknown): Promise<T
   const tool = tools.find((t) => t.name === name);
   if (!tool) throw new RpcError(-32602, `Unknown tool: ${String(name)}`);
   if (!may(user, tool))
-    return { isError: true, content: [{ type: "text", text: "This token may only read. Create a write token in Flowplan to change content." }] };
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text:
+            tool.ai && !user.apiAi
+              ? "This token has no permission for AI and transcription. Create a token with “AI and transcription” in Flowplan."
+              : "This token may only read. Create a write token in Flowplan to change content.",
+        },
+      ],
+    };
   try {
     const value = await tool.run(user, tool.input.parse(args ?? {}) as never);
     return { content: [{ type: "text", text: typeof value === "string" ? clip(value) : json(value) }] };

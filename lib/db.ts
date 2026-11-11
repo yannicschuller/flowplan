@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 102;
+export const SCHEMA_VERSION = 103;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1315,6 +1315,8 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS notebook_recordings_file ON notebook_recordings(file_id);`);
   // Schema 102 – a workspace's own look (#196, lib/workspace-theme.ts).
   migrateWorkspaceTheme(d);
+  // Schema 103 – meeting notes (#199, lib/meetings.ts).
+  migrateMeetings(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1334,6 +1336,32 @@ function migrateWorkspaceTheme(d: DatabaseSync) {
     d.exec("ALTER TABLE users ADD COLUMN plain_look INTEGER NOT NULL DEFAULT 0");
   d.exec(`CREATE TABLE IF NOT EXISTS workspace_fonts(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,format TEXT NOT NULL CHECK(format IN ('woff2','woff','truetype','opentype')),variable INTEGER NOT NULL DEFAULT 0,data BLOB NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS workspace_fonts_workspace ON workspace_fonts(workspace_id);`);
+}
+// Schema 103 – meeting notes (#199, lib/meetings.ts): the "/meet" block
+// keeps its title, attendees, agenda, summary and transcript in the
+// document itself (lib/meeting-schema.ts) – so versions, exports, archives
+// and share links carry them. meetings holds what the document cannot: the
+// state of the recording and its processing, the sessions ("continue
+// later") with their offsets and tracks, the audio kept as files of the
+// page (removed after the workspace's retention, audio_until) and who
+// confirmed the consent; meeting_reminders the reminder when the block's
+// calendar event starts. workspaces.meeting_settings (JSON, NULL = the
+// defaults): instructions, retention, consent. api_tokens.ai: the token's
+// "KI und Transkription" permission (off unless chosen). An older version
+// would not know the block, hence the new number.
+function migrateMeetings(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS meetings(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,status TEXT NOT NULL DEFAULT 'new',error TEXT,sessions TEXT NOT NULL DEFAULT '[]',duration_ms INTEGER NOT NULL DEFAULT 0,audio TEXT NOT NULL DEFAULT '[]',audio_until INTEGER,consent_by TEXT REFERENCES users(id) ON DELETE SET NULL,consent_at INTEGER,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,summarized_at INTEGER);
+    CREATE INDEX IF NOT EXISTS meetings_page ON meetings(page_id);
+    CREATE INDEX IF NOT EXISTS meetings_audio_until ON meetings(audio_until);`);
+  if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "meeting_settings"))
+    d.exec("ALTER TABLE workspaces ADD COLUMN meeting_settings TEXT");
+  if (!(d.prepare("PRAGMA table_info(api_tokens)").all() as { name: string }[]).some((c) => c.name === "ai"))
+    d.exec("ALTER TABLE api_tokens ADD COLUMN ai INTEGER NOT NULL DEFAULT 0");
+  // The reminder when the calendar event of a meeting block starts
+  // (lib/meeting-reminders.ts): one per block, for whoever linked the event;
+  // fired_at makes it fire once per event occurrence (event_key names it).
+  d.exec(`CREATE TABLE IF NOT EXISTS meeting_reminders(meeting_id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT,event_key TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',remind_at INTEGER NOT NULL,fired_at INTEGER,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS meeting_reminders_due ON meeting_reminders(fired_at,remind_at);`);
 }
 // A person's stickers per workspace (a picture, or ink items) and a
 // workspace's paper templates (a picture or one PDF page), as blobs like

@@ -123,6 +123,7 @@ import { deleteBoardTemplate, listBoardTemplates, saveBoardTemplate } from "@/li
 import { deleteRackTemplate, listRackTemplates, netboxImport, saveRackTemplate } from "@/lib/whiteboard-rack-server";
 import { whiteboardRowCards } from "@/lib/whiteboard-cards";
 import { transcribe } from "@/lib/transcribe";
+import { requireTokenAi } from "@/lib/ai/token-access";
 import { journalDate } from "@/lib/journal";
 import { dayOrDraft, emptyJournalDays, journalDraftPage } from "@/lib/journal-days";
 import {
@@ -1393,8 +1394,9 @@ async function handlePOST(
     }
     // Voice notes: the recording goes to the local Whisper service.
     if (path.length === 1 && path[0] === "transcribe") {
-      if (user.demo || user.apiScope)
-        throw new HttpError(403, "Hier nicht verfügbar.");
+      if (user.demo) throw new HttpError(403, "Hier nicht verfügbar.");
+      // API tokens only with "KI und Transkription" (#199).
+      await requireTokenAi(user);
       const data = await req.formData();
       // The recording would reach the transcription service as plaintext.
       await requirePlaintext(await requirePage(user, z.uuid().parse(data.get("pageId")), true));

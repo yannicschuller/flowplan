@@ -68,8 +68,10 @@ export function notificationUrl(notification: {
     // "security", "Sicherheit: …"): the administration's security page.
     if (notification.kind === "security" && notification.body?.startsWith("Sicherheit: ")) return "/#admin/threats";
   }
+  // A block of the page (a meeting's reminder, lib/meeting-reminders.ts): "block:<id>".
+  const block = notification.page_id && typeof notification.link === "string" ? /^block:([\w-]{1,64})$/.exec(notification.link)?.[1] : undefined;
   return notification.page_id
-    ? `/${pageLocationHash({ pageId: notification.page_id, rowId: notification.row_id || undefined, threadId: notification.thread_id || undefined })}`
+    ? `/${pageLocationHash({ pageId: notification.page_id, rowId: notification.row_id || undefined, threadId: notification.thread_id || undefined, ...(block ? { blockId: block } : {}) })}`
     : "/#inbox";
 }
 

@@ -9,6 +9,8 @@ import { ct as tr } from "./content-locale";
 import { captionText } from "./block-captions";
 import { fenceMeta, type CodeBlockOptions } from "./code-block-options";
 import { fenceLanguage } from "./code-languages";
+import { circled } from "./meeting-core";
+import { formatTimestamp } from "./transcript";
 // Captions (lib/block-captions.ts) in Markdown: an image's as its title,
 // ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
 // "Table: Caption" right below; a code block's likewise "Listing: Caption".
@@ -202,6 +204,7 @@ const blockLabels: Record<string, () => string> = {
   pluginBlock: () => tr("Erweiterung", "Extension"),
   workflowButton: () => tr("Workflow-Knopf", "Workflow button"),
   columns: () => tr("Spalten", "Columns"),
+  meeting: () => tr("Besprechung", "Meeting"),
   table: () => tr("Tabelle", "Table"),
   image: () => tr("Bild", "Image"),
 };
@@ -308,6 +311,8 @@ export function htmlToMarkdown(
     }
     if (node.type.name === "mention")
       return markdownText("@" + String(node.attrs.label || ""));
+    // A citation chip of a meeting summary (#199): its number.
+    if (node.type.name === "meetingCite") return circled(Number(node.attrs.n));
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");
       return inTable && htmlCodeInTable(value)
@@ -484,6 +489,22 @@ export function htmlToMarkdown(
       }
       case "toggle":
         return `<details>\n<summary>${htmlText(String(node.attrs.title || "Details")).replaceAll("|", "&#124;")}</summary>\n\n${children(node, inTable)}\n\n</details>`;
+      // The meeting block (#199): title, then its three parts.
+      case "meeting":
+        return [`### ${markdownText(String(node.attrs.title || ct("Besprechung", "Meeting")))}`, children(node, inTable)].filter(Boolean).join("\n\n");
+      case "meetingSummary":
+      case "meetingAgenda":
+      case "meetingTranscript": {
+        const body = children(node, inTable).trim();
+        if (!body) return "";
+        const label =
+          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Agenda", "Agenda") : ct("Transkript", "Transcript");
+        return `**${label}**\n\n${body}`;
+      }
+      case "meetingSegment": {
+        const speaker = String(node.attrs.speaker || "");
+        return `\`${formatTimestamp(Number(node.attrs.start) || 0)}\`${speaker ? ` **${markdownText(speaker)}:**` : ""} ${markdownText(node.textContent)}`;
+      }
       case "columns": {
         const columns: string[] = [];
         node.forEach((column, _offset, index) =>

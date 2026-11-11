@@ -11,6 +11,8 @@ import { footnoteText, URL_PATTERN } from "./footnotes";
 import { documentNode } from "./export-content";
 import { captionCounter, captionText } from "./block-captions";
 import { sanitizeDrawioSvg } from "./drawio-svg";
+import { circled } from "./meeting-core";
+import { formatTimestamp } from "./transcript";
 
 export type XhtmlContext = {
   // The address a link may keep (absolute, or relative within the export),
@@ -92,6 +94,7 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       return `<sup class="footnote-ref" id="${prefix}fnref-${number}"><a href="#${prefix}fn-${number}">${number}</a></sup>`;
     }
     if (node.type.name === "mention") return `<span class="mention">@${xml(String(node.attrs.label || ""))}</span>`;
+    if (node.type.name === "meetingCite") return `<sup class="meeting-cite">${xml(circled(Number(node.attrs.n)))}</sup>`;
     if (node.type.name === "mathInline") return `<code class="math">${xml(String(node.attrs.expression || ""))}</code>`;
     if (!node.isText) {
       let result = "";
@@ -234,6 +237,22 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       }
       case "toggle":
         return `<section class="toggle"><p class="toggle-title">${xml(String(node.attrs.title || "Details"))}</p>${children(node)}</section>`;
+      // The meeting block (#199): title and its three parts.
+      case "meeting":
+        return `<section class="meeting"><p class="meeting-title"><strong>${xml(String(node.attrs.title || ct("Besprechung", "Meeting")))}</strong></p>${children(node)}</section>`;
+      case "meetingSummary":
+      case "meetingAgenda":
+      case "meetingTranscript": {
+        const body = children(node);
+        if (!node.textContent.trim()) return "";
+        const label =
+          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Agenda", "Agenda") : ct("Transkript", "Transcript");
+        return `<p class="meeting-part-title"><strong>${xml(label)}</strong></p>${body}`;
+      }
+      case "meetingSegment": {
+        const speaker = String(node.attrs.speaker || "");
+        return `<p class="meeting-segment"><code>${formatTimestamp(Number(node.attrs.start) || 0)}</code>${speaker ? ` <strong>${xml(speaker)}:</strong>` : ""} ${xml(node.textContent)}</p>`;
+      }
       case "columns": {
         let result = "";
         node.forEach((column) => (result += `<div class="column">${children(column)}</div>`));

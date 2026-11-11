@@ -490,6 +490,12 @@ test("meeting notes from a synced record and from an ICS event", async () => {
   assert.ok(html.includes("Extern &lt;extern@example.test&gt;"));
   assert.ok(html.includes(`href="/#page=${pageId}&amp;row=${rowId}"`));
   for (const heading of ["Teilnehmende", "Agenda", "Notizen", "Aufgaben"]) assert.ok(html.includes(`<h2>${heading}</h2>`), heading);
+  // A meeting block for the appointment (#199), and a reminder 5 minutes
+  // before it starts for whoever created the note.
+  assert.match(html, /data-meeting="[0-9a-f-]{36}"[^>]*data-meeting-start="[^"]*T08:00Z"/);
+  const reminder = (await one<{ user_id: string; remind_at: number; page_id: string }>("SELECT user_id,remind_at,page_id FROM meeting_reminders WHERE page_id=?", note.id))!;
+  assert.equal(reminder.user_id, owner.id);
+  assert.equal(reminder.remind_at, Date.parse(`${date}T08:00Z`) - 5 * 60_000);
   // Asked again: the same note.
   assert.deepEqual(await act({ action: "meeting.note", pageId: dayId, event: { start: date, pageId, rowId } }), { id: note.id, existing: true });
   // The day lists the note next to the appointment.

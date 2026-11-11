@@ -24,6 +24,8 @@ import {
   SuggestChanges,
 } from "@/lib/suggestions";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
+import { meetingNode, type MeetingContext } from "./meeting-block";
+import { MeetingAgenda, MeetingCite, MeetingSegmentNode, MeetingSummary, MeetingTranscript } from "@/lib/meeting-schema";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
 import { TableTools } from "./table-tools";
@@ -583,6 +585,17 @@ export default function DocumentEditor({
   captionsNumbered.current = numberCaptions;
   const syncedContext = useRef<SyncedContext>(null!);
   syncedContext.current = { userId, pages, members, editable, onError };
+  // The meeting block (#199, components/meeting-block.tsx).
+  const meetingContext = useRef<MeetingContext>(null!);
+  meetingContext.current = {
+    userId,
+    pageId,
+    rowId,
+    workspaceId: pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id || "",
+    members,
+    editable,
+    onError,
+  };
   function insertSynced(id: string) {
     editor
       ?.chain()
@@ -755,6 +768,12 @@ export default function DocumentEditor({
         LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
         syncedBlockNode(() => syncedContext.current),
+        meetingNode(() => meetingContext.current),
+        MeetingSummary,
+        MeetingAgenda,
+        MeetingTranscript,
+        MeetingSegmentNode,
+        MeetingCite,
         whiteboardEmbedNode(),
         // Handwriting; the ink is stored per page (not in record documents).
         drawBlockNode({ pageId, enabled: !rowId }),
@@ -1856,6 +1875,29 @@ export default function DocumentEditor({
         setBoardSearch("");
         setBoardPicker(true);
       },
+    },
+    {
+      // A meeting with recording, transcript and AI notes (#199).
+      id: "meet",
+      group: "media",
+      name: t("Besprechung", "Meeting"),
+      keywords: ["meet", "besprechung", "meeting", "protokoll", "minutes", "transkript", "transcript", "aufnahme", "notes", "réunion", "会议"],
+      description: t("Aufnehmen, transkribieren und automatisch zusammenfassen", "Record, transcribe and summarise automatically"),
+      icon: UsersThree,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "meeting",
+            attrs: { meetingId: crypto.randomUUID(), title: "", date: todayLocal(), attendees: JSON.stringify([{ id: userId, name: memberNames.current.get(userId) || "" }].filter((a) => a.name)) },
+            content: [
+              { type: "meetingSummary", content: [{ type: "paragraph" }] },
+              { type: "meetingAgenda", content: [{ type: "paragraph" }] },
+              { type: "meetingTranscript" },
+            ],
+          })
+          .run(),
     },
     {
       id: "voice",

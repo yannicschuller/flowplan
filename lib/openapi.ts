@@ -1271,6 +1271,7 @@ const schemas: Record<string, Json> = {
       created_at: { type: "integer", description: "Milliseconds since 1970" },
       last_used_at: { type: ["integer", "null"] },
       expires_at: { type: ["integer", "null"] },
+      ai: { type: "integer", enum: [0, 1], description: "1: the token has the permission “AI and transcription” (AI features, transcription, meeting notes)" },
     },
     required: ["id", "name", "scope", "prefix", "created_at"],
   },
@@ -1490,7 +1491,10 @@ const errorText: Record<number, string> = {
   413: "Request too large",
   422: "The Idempotency-Key was already used for a different request",
   423: "Locked: the instance is read-only for an instance move, or has moved (the message names the new address)",
+  415: "Unsupported file type",
+  428: "Consent required: the workspace asks to confirm that everyone recorded agreed (`consent: true`)",
   429: "Too many requests; wait for `Retry-After` seconds (MCP) or try again later",
+  501: "Not set up on this instance (e.g. no transcription service)",
   503: "Not healthy",
 };
 const p = (name: string, description: string, schema: Json = { type: "string", format: "uuid" }): Param => ({ name, in: "path", required: true, description, schema });
@@ -1570,6 +1574,11 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/git-config", method: "get", op: { id: "gitConfig", tag: "Records", summary: "Git integration of a database", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Settings" }, errors: [400, 401, 403, 404] } },
   { path: "/api/git-links", method: "get", op: { id: "gitLinks", tag: "Records", summary: "Branches and pull requests linked to a record", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true), q("row", "Record ID", { type: "string", format: "uuid" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Links" }, errors: [400, 401, 403, 404] } },
   { path: "/api/whiteboards/{pageId}/cards", method: "get", op: { id: "whiteboardCards", tag: "Pages", summary: "Live data of records shown as cards on a whiteboard", params: [p("pageId", "Page ID of the whiteboard"), q("rows", "Comma-separated `pageId:rowId` pairs, at most 200", { type: "string" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Cards" }, errors: [400, 401, 403, 404] } },
+  // Meeting notes (#199): the /meet block, its recording, transcript and summary
+  { path: "/api/meetings", method: "post", op: { id: "createMeeting", tag: "Meetings", summary: "Create a meeting note from audio or a transcript", description: "Creates a meeting block (title, date, attendees, summary, agenda, transcript) at the end of the document `pageId`, or a new record in the database `databaseId` with the block as its document (its date, attendees (person), duration (number, minutes) and status properties are filled when present). `audio` is one file with everyone; `me` and `others` are the microphone and the call as separate tracks (with loudspeakers, echoes of the call in `me` are dropped). M4A, MP3, WAV, AAC, OGG and WebM; each track at most WHISPER_MAX_MB (default 200 MB). Alternatively `transcript` as text (one passage per line, optionally `Name: text`). Transcription (the instance's Whisper service) and the summary (the instance's AI: action items with owner and due date as tasks – owners who are members become mentions and see them in My tasks –, topics and open points, each with numbered citations of transcript segments; at least one minute of audio) run in the background: answers 202 with the meeting's id; poll `statusUrl`. Needs a write token with the permission “AI and transcription”; `consent: true` when the workspace requires consent (428 otherwise). The audio is deleted after the transcript unless the workspace keeps it.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, databaseId: { type: "string", format: "uuid" }, title: { type: "string", maxLength: 300 }, date: { type: "string", format: "date" }, attendees: { type: "string", description: "JSON array or comma-separated names or e-mail addresses" }, instructions: { type: "string", enum: ["auto", "status", "oneonone", "workshop", "customer", "custom"] }, prompt: { type: "string", maxLength: 4000 }, audio: { type: "string", format: "binary" }, me: { type: "string", format: "binary" }, others: { type: "string", format: "binary" }, transcript: { type: "string" }, consent: { type: "boolean" }, language: { type: "string", enum: ["de", "en", "fr", "zh"] } } }, required: true }, ok: { status: 202, schema: { type: "object", properties: { id: { type: "string", format: "uuid" }, pageId: { type: "string" }, rowId: { type: ["string", "null"] }, status: { type: "string" }, statusUrl: { type: "string" } }, required: ["id", "status", "statusUrl"] }, description: "The meeting, processing in the background" }, errors: [400, 401, 403, 404, 409, 413, 415, 428, 501] } },
+  { path: "/api/meetings/{meetingId}", method: "get", op: { id: "getMeeting", tag: "Meetings", summary: "Status of a meeting note", description: "`status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary). With `content=1` also `title`, `summary` and `agenda` as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session). Needs read access to the page; kept audio is listed as file URLs. " + noStore, params: [p("meetingId", "Meeting ID"), q("content", "1: with summary, agenda and transcript")], ok: { schema: { type: "object", additionalProperties: true }, description: "The meeting" }, errors: [401, 403, 404] } },
+  { path: "/api/meetings/{meetingId}/summarize", method: "post", op: { id: "regenerateMeetingSummary", tag: "Meetings", summary: "Write the summary again", description: "With other instructions, without transcribing again. Needs edit rights and “AI and transcription” for tokens.", write: true, params: [p("meetingId", "Meeting ID")], body: { content: "application/json", schema: { type: "object", properties: { instructions: { type: "string", enum: ["auto", "status", "oneonone", "workshop", "customer", "custom"] }, prompt: { type: "string", maxLength: 4000 } } }, required: false }, ok: { schema: { type: "object", additionalProperties: true }, description: "The meeting" }, errors: [400, 401, 403, 404, 409] } },
+  { path: "/api/meetings/{meetingId}/ask", method: "post", op: { id: "askMeeting", tag: "Meetings", summary: "Ask a question about one meeting", description: "Answered from the meeting's transcript and agenda only, as a text stream; `[S12]` names the transcript segment (header `X-Flowplan-Segments`: base64 JSON list of segment ids, S1 first).", write: true, params: [p("meetingId", "Meeting ID")], body: { content: "application/json", schema: { type: "object", properties: { question: { type: "string", maxLength: 2000 } }, required: ["question"] }, required: true }, ok: { content: "text/plain", description: "The answer" }, errors: [400, 401, 403, 404, 409, 429] } },
   // Journal
   { path: "/api/journals/{journalId}/review", method: "get", op: { id: "journalReview", tag: "Journal", summary: "Review of a period", params: [p("journalId", "Page ID of the journal"), q("from", "YYYY-MM-DD", { type: "string", format: "date" }, true), q("to", "YYYY-MM-DD", { type: "string", format: "date" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Days, trackers and entries" }, errors: [400, 401, 403, 404] } },
   { path: "/api/journals/{dayId}/events", method: "get", op: { id: "journalEvents", tag: "Journal", summary: "Appointments of a journal day", params: [p("dayId", "Page ID of the day page"), q("zone", "IANA time zone, default UTC")], ok: { schema: { type: "object", additionalProperties: true }, description: "Events" }, errors: [400, 401, 403, 404] } },
@@ -1690,7 +1699,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/admin/messengers/route.ts": "Administration only; tokens never administer",
   "app/api/messengers/route.ts": "Chat-app connections with their credentials: the browser's settings only, never API tokens",
   "app/api/scim/v2/[...path]/route.ts": "SCIM 2.0 (RFC 7643/7644) is its own standard with its own bearer tokens; discovery at /api/scim/v2/ServiceProviderConfig",
-  "app/api/ai/[...path]/route.ts": "AI features refuse API tokens",
+  "app/api/ai/[...path]/route.ts": "AI features of the browser app (settings and actions refuse API tokens; run, ask, write and summarize accept tokens with the permission “AI and transcription”)",
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",
   "app/api/calendar-sync/[...path]/route.ts": "Browser OAuth connection to Google and Microsoft 365 calendars",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
@@ -1712,7 +1721,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/fonts/[fontId]/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",
-  "app/api/transcribe/[...path]/route.ts": "Voice notes of the browser app (chunked upload to the transcription service)",
+  "app/api/transcribe/[...path]/route.ts": "Voice notes of the browser app (chunked upload to the transcription service; tokens need “AI and transcription”)",
   "app/api/whiteboards/[id]/facilitation/route.ts": "Workshop facilitation on whiteboards (private mode, planning poker, gathering everyone) of the browser app",
   "app/api/webhooks/slack/[id]/route.ts": "Slack Event Subscriptions of a Slack webhook, signed with its signing secret",
 };
@@ -1793,6 +1802,7 @@ export function openApiDocument(options: { exactVersion?: boolean } = {}): Json 
     { name: "Pages", description: "Documents, databases, whiteboards and journals." },
     { name: "Records", description: "Records of databases and what belongs to them." },
     { name: "Journal", description: "Journals and their days." },
+    { name: "Meetings", description: "Meeting notes: recording, transcript and AI summary of the /meet block. Tokens need the permission “AI and transcription”." },
     { name: "Files", description: "Uploads and downloads." },
     { name: "Encryption", description: "End-to-end encrypted spaces: keys and ciphertext, never content." },
     { name: "Import and export", description: "Markdown, ZIP archives, backups and the Git export." },
@@ -1829,7 +1839,7 @@ export function openApiDocument(options: { exactVersion?: boolean } = {}): Json 
     paths,
     components: {
       securitySchemes: {
-        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "fp_…", description: "A personal API token with read, write or clipper scope." },
+        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "fp_…", description: "A personal API token with read, write or clipper scope. AI features, transcription and meeting notes additionally need the token permission “AI and transcription” (chosen when the token is created, off by default; the administration can switch it off for the instance). Such requests count against the same AI limits as the interface." },
         metricsToken: { type: "http", scheme: "bearer", description: "`FLOWPLAN_METRICS_TOKEN` of the instance (Prometheus, and the details of the health check)." },
         deviceToken: { type: "http", scheme: "bearer", bearerFormat: "fpd_…", description: "The device token of a mobile app installation (POST /api/mobile/register from the signed-in app). Lives as long as the session it was registered with; using it keeps a remembered session alive, and signing in again in the app moves it to the new session." },
       },

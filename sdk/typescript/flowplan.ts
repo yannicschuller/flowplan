@@ -640,6 +640,8 @@ export type ApiToken = {
   created_at: number;
   last_used_at?: number | null;
   expires_at?: number | null;
+  /** 1: the token has the permission “AI and transcription” (AI features, transcription, meeting notes) */
+  ai?: 0 | 1;
 };
 
 /** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`. */
@@ -3393,6 +3395,57 @@ export class FlowplanClient {
   /** Live data of records shown as cards on a whiteboard (GET /api/whiteboards/{pageId}/cards) */
   async whiteboardCards(pageId: string, query: { rows: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/whiteboards/${encodeURIComponent(pageId)}/cards`, { query }, options);
+  }
+
+  /** Create a meeting note from audio or a transcript — Creates a meeting block (title, date, attendees, summary, agenda, transcript) at the end of the document `pageId`, or a new record in the database `databaseId` with the block as its document (its date, attendees (person), duration (number, minutes) and status properties are filled when present). `audio` is one file with everyone; `me` and `others` are the microphone and the call as separate tracks (with loudspeakers, echoes of the call in `me` are dropped). M4A, MP3, WAV, AAC, OGG and WebM; each track at most WHISPER_MAX_MB (default 200 MB). Alternatively `transcript` as text (one passage per line, optionally `Name: text`). Transcription (the instance's Whisper service) and the summary (the instance's AI: action items with owner and due date as tasks – owners who are members become mentions and see them in My tasks –, topics and open points, each with numbered citations of transcript segments; at least one minute of audio) run in the background: answers 202 with the meeting's id; poll `statusUrl`. Needs a write token with the permission “AI and transcription”; `consent: true` when the workspace requires consent (428 otherwise). The audio is deleted after the transcript unless the workspace keeps it. (POST /api/meetings) */
+  async createMeeting(form: {
+    pageId?: string;
+    databaseId?: string;
+    title?: string;
+    date?: string;
+    attendees?: string;
+    instructions?: "auto" | "status" | "oneonone" | "workshop" | "customer" | "custom";
+    prompt?: string;
+    audio?: Blob;
+    me?: Blob;
+    others?: Blob;
+    transcript?: string;
+    consent?: boolean;
+    language?: "de" | "en" | "fr" | "zh";
+  }, options?: RequestOptions): Promise<{
+    id: string;
+    pageId?: string;
+    rowId?: string | null;
+    status: string;
+    statusUrl: string;
+  }> {
+    return this.json<{
+    id: string;
+    pageId?: string;
+    rowId?: string | null;
+    status: string;
+    statusUrl: string;
+  }>("POST", `/api/meetings`, { form }, options);
+  }
+
+  /** Status of a meeting note — `status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary). With `content=1` also `title`, `summary` and `agenda` as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session). Needs read access to the page; kept audio is listed as file URLs. Answered with `Cache-Control: no-store`. (GET /api/meetings/{meetingId}) */
+  async getMeeting(meetingId: string, query?: { content?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/meetings/${encodeURIComponent(meetingId)}`, { query }, options);
+  }
+
+  /** Write the summary again — With other instructions, without transcribing again. Needs edit rights and “AI and transcription” for tokens. (POST /api/meetings/{meetingId}/summarize) */
+  async regenerateMeetingSummary(meetingId: string, body: {
+    instructions?: "auto" | "status" | "oneonone" | "workshop" | "customer" | "custom";
+    prompt?: string;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/meetings/${encodeURIComponent(meetingId)}/summarize`, { json: body }, options);
+  }
+
+  /** Ask a question about one meeting — Answered from the meeting's transcript and agenda only, as a text stream; `[S12]` names the transcript segment (header `X-Flowplan-Segments`: base64 JSON list of segment ids, S1 first). (POST /api/meetings/{meetingId}/ask) */
+  async askMeeting(meetingId: string, body: {
+    question: string;
+  }, options?: RequestOptions): Promise<Response> {
+    return this.request("POST", `/api/meetings/${encodeURIComponent(meetingId)}/ask`, { json: body }, options);
   }
 
   /** Review of a period (GET /api/journals/{journalId}/review) */

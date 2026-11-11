@@ -242,7 +242,7 @@ test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrade
   legacy.migrateFile(old);
   const version = (old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
   assert.equal(version, legacy.SCHEMA_VERSION);
-  assert.equal(legacy.SCHEMA_VERSION, 102);
+  assert.equal(legacy.SCHEMA_VERSION, 103);
   for (const table of [...legacy.SEQ_TABLES, "pages"])
     assert.ok((old.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"), table);
   // Existing rows get their order, new ones one from the trigger.

@@ -21,6 +21,7 @@ import {
   ListChecks,
   LockKey,
   Megaphone,
+  Microphone,
   PaintBrush,
   Palette,
   PlugsConnected,
@@ -58,6 +59,7 @@ import TagsSection from "./user/tags";
 import ExtensionsSection from "./user/extensions";
 import DataSection from "./user/data";
 import TimeSection from "./user/time";
+import MeetingsSection from "./user/meetings";
 import AboutSection from "./user/about";
 import UsersSection from "./admin/users";
 import SigninSection from "./admin/signin";
@@ -95,6 +97,7 @@ export const ICONS: Record<string, Icon> = {
   ListChecks,
   LockKey,
   Megaphone,
+  Microphone,
   PaintBrush,
   Palette,
   PlugsConnected,
@@ -132,6 +135,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   extensions: ExtensionsSection,
   data: DataSection,
   time: TimeSection,
+  meetings: MeetingsSection,
   about: AboutSection,
 };
 

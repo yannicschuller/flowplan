@@ -77,6 +77,12 @@ export async function register() {
     // AI properties (automatic updates, queued values) and the semantic index.
     const { startAiWorker } = await import("./lib/ai/database");
     startAiWorker();
+    // Meeting notes (#199): kept audio past the workspace's retention.
+    const { startMeetingWorker } = await import("./lib/meetings");
+    startMeetingWorker();
+    // … and the reminder when a meeting block's calendar event starts.
+    const { startMeetingReminderWorker } = await import("./lib/meeting-reminders");
+    startMeetingReminderWorker(() => void dispatchPush());
     // E-mail inbound capture over IMAP (INBOUND_IMAP_*), every two minutes.
     const { startInboundMailWorker } = await import("./lib/inbound-mail");
     startInboundMailWorker();

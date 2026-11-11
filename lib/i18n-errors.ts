@@ -5,6 +5,26 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Meeting notes and the tokens' AI permission (#199, lib/meetings.ts, lib/ai/token-access.ts).
+  "Dieses API-Token hat keine Berechtigung „KI und Transkription“.": "This API token has no permission for “AI and transcription”.",
+  "KI und Transkription sind für API-Tokens auf dieser Instanz ausgeschaltet.": "AI and transcription are switched off for API tokens on this instance.",
+  "Dieser Besprechungsblock ist eine Kopie und bekommt eine eigene Aufnahme.": "This meeting block is a copy and gets a recording of its own.",
+  "Besprechungsnotizen sind in verschlüsselten Bereichen nicht verfügbar.": "Meeting notes are not available in encrypted spaces.",
+  "Besprechung nicht gefunden.": "Meeting not found.",
+  "Bitte bestätige zuerst, dass alle Teilnehmenden der Aufnahme zugestimmt haben.": "Please first confirm that everyone taking part agreed to the recording.",
+  "Die Besprechung wird gerade verarbeitet.": "The meeting is being processed.",
+  "Die Besprechung hat die Höchstlänge erreicht.": "The meeting has reached its maximum length.",
+  "Diese Aufnahme ist bereits abgeschlossen.": "This recording is already finished.",
+  "Der Speicherplatz reicht für diese Aufnahme nicht aus.": "There is not enough storage for this recording.",
+  "Die Transkription ist fehlgeschlagen.": "Transcription failed.",
+  "Der Besprechungsblock wurde aus der Seite entfernt.": "The meeting block was removed from the page.",
+  "Die Zusammenfassung ist fehlgeschlagen.": "The summary failed.",
+  "Entweder Audio oder ein Transkript.": "Either audio or a transcript.",
+  "Bitte genau eine Seite oder Datenbank angeben.": "Please name exactly one page or database.",
+  "Alle Spuren brauchen dasselbe Format.": "All tracks need the same format.",
+  "Die Anfrage ist fehlgeschlagen.": "The request failed.",
+  "Dieser Browser kann keine Aufnahmen machen.": "This browser cannot record.",
+  "In der Aufnahme ist nichts angekommen.": "Nothing of the recording arrived.",
   // A workspace's look and its own fonts (#196, lib/workspace-fonts.ts).
   "Höchstens 5 MB pro Schrift.": "At most 5 MB per font.",
   "Bitte eine Schriftdatei wählen (WOFF2, WOFF, TTF oder OTF).": "Please choose a font file (WOFF2, WOFF, TTF or OTF).",
@@ -1443,6 +1463,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
+  [/^Die Besprechung „(.+)“ beginnt gleich\.$/, "The meeting “$1” starts soon."],
   // A chat app the instance turned off (lib/messengers.ts).
   [/^Chat-App (.+) ausgeschaltet: wiederholt abgewiesen \((.+)\)\. Bitte unter Einstellungen → Benachrichtigungen prüfen und wieder einschalten\.$/, "Chat app $1 switched off: refused repeatedly ($2). Please check it under Settings → Notifications and switch it on again."],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],

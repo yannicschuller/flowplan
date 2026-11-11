@@ -4,6 +4,12 @@
 // (the browser extension, lib/clipper.ts) only reach the clipper endpoints:
 // everywhere else they count as no token at all. Only a hash is stored,
 // the token is shown once.
+//
+// "KI und Transkription" (#199, column `ai`): only a token created with this
+// permission reaches the AI features, transcription and meeting notes – off
+// unless chosen, and the administration can switch it off for the whole
+// instance (Administration → KI, `tokens`). Such requests count against
+// the same AI limits as the interface.
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { id, lockFor, one, run } from "./db";
@@ -27,6 +33,8 @@ export async function createApiToken(user: Identity, input: unknown) {
       name: z.string().trim().min(1).max(80),
       scope: z.enum(["read", "write", "clipper"]),
       days: z.number().int().min(1).max(3650).nullable().optional(),
+      // The "KI und Transkription" permission (never for clipper tokens).
+      ai: z.boolean().optional(),
     })
     .parse(input);
   // In the command's transaction: a person's new tokens are counted one at a time.
@@ -36,7 +44,7 @@ export async function createApiToken(user: Identity, input: unknown) {
   const token = `fp_${randomBytes(30).toString("base64url")}`;
   const tokenId = id();
   await run(
-    "INSERT INTO api_tokens(id,user_id,name,scope,token_hash,prefix,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)",
+    "INSERT INTO api_tokens(id,user_id,name,scope,token_hash,prefix,created_at,expires_at,ai) VALUES(?,?,?,?,?,?,?,?,?)",
     tokenId,
     user.id,
     b.name,
@@ -45,8 +53,9 @@ export async function createApiToken(user: Identity, input: unknown) {
     token.slice(0, 10),
     Date.now(),
     b.days ? Date.now() + b.days * 86400_000 : null,
+    b.ai && b.scope !== "clipper" ? 1 : 0,
   );
-  securityEvent("account.token_created", { actorId: user.id, detail: `${b.scope} ${token.slice(0, 10)} ${b.name}` });
+  securityEvent("account.token_created", { actorId: user.id, detail: `${b.scope}${b.ai && b.scope !== "clipper" ? "+ai" : ""} ${token.slice(0, 10)} ${b.name}` });
   return { id: tokenId, token };
 }
 
@@ -59,8 +68,9 @@ export async function listApiTokens(user: Identity) {
     created_at: number;
     last_used_at: number | null;
     expires_at: number | null;
+    ai: number;
   }>(
-    "SELECT id,name,scope,prefix,created_at,last_used_at,expires_at FROM api_tokens WHERE user_id=? ORDER BY created_at DESC",
+    "SELECT id,name,scope,prefix,created_at,last_used_at,expires_at,ai FROM api_tokens WHERE user_id=? ORDER BY created_at DESC",
     user.id,
   );
 }
@@ -76,8 +86,8 @@ export async function revokeApiToken(user: Identity, tokenId: unknown) {
 export async function identityFromApiToken(header: string | null, options: { clipper?: boolean } = {}): Promise<Identity | null> {
   const match = header?.match(/^Bearer\s+(fp_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
-  const row = await db.one<User & { token_id: string; scope: ApiScope; last_used_at: number | null }>(
-    `SELECT u.*,t.id token_id,t.scope,t.last_used_at FROM api_tokens t JOIN users u ON u.id=t.user_id
+  const row = await db.one<User & { token_id: string; scope: ApiScope; last_used_at: number | null; token_ai: number }>(
+    `SELECT u.*,t.id token_id,t.scope,t.last_used_at,t.ai token_ai FROM api_tokens t JOIN users u ON u.id=t.user_id
      WHERE t.token_hash=? AND (t.expires_at IS NULL OR t.expires_at>?) AND u.disabled=0 AND u.demo_until IS NULL`,
     hashToken(match[1]),
     Date.now(),
@@ -100,5 +110,6 @@ export async function identityFromApiToken(header: string | null, options: { cli
     groups: [],
     isAdmin: false,
     apiScope: row.scope,
+    ...(row.token_ai && row.scope !== "clipper" ? { apiAi: true } : {}),
   };
 }
