@@ -668,8 +668,13 @@ export const commandActions: ActionDoc[] = [
   {
     action: "rows.import",
     summary: "Add several records at once",
+    description:
+      "Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added.",
     input: z.object({ action: z.literal("rows.import"), pageId: uuid, rows: z.array(cells).max(5000) }),
-    result: okResult,
+    result: z.object({
+      imported: z.number().int(),
+      newOptions: z.array(z.object({ id: z.string(), name: z.string(), options: z.array(z.string()) })),
+    }),
   },
   {
     action: "comment.create",

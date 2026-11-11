@@ -200,6 +200,7 @@ import {
   autoDatabaseSnapshot,
   validateCellPatch,
   validateImportedCells,
+  addImportedOptions,
 } from "./database-operations";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
@@ -2451,8 +2452,20 @@ async function runCommand(
           (await database(pid())).fields,
           new Set(imported.flatMap((cells) => Object.keys(cells))),
         );
-        const importFields = (await database(pid())).fields;
+        // Values missing from select properties become options (and a
+        // different letter case takes the option's spelling).
+        const options = addImportedOptions((await database(pid())).fields, imported);
+        const importFields = options.fields;
         for (const cells of imported) validateImportedCells(importFields, cells);
+        if (options.added.length) {
+          await autoDatabaseSnapshot(user, await write());
+          await run(
+            "UPDATE databases SET fields=?,version=version+1 WHERE page_id=?",
+            JSON.stringify(importFields),
+            pid(),
+          );
+        }
+        result = { imported: imported.length, newOptions: options.added };
         await forEachAsync(imported, async (cells, i) =>
           await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",

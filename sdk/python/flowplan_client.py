@@ -1314,7 +1314,7 @@ CommandWhiteboardToRecordsResult = TypedDict("CommandWhiteboardToRecordsResult",
     "records": Required[list[dict[str, Any]]],
 }, total=False)
 
-# Add several records at once
+# Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added.
 CommandRowsImport = TypedDict("CommandRowsImport", {
     "action": Required[Literal["rows.import"]],
     "pageId": Required[str],
@@ -1322,7 +1322,8 @@ CommandRowsImport = TypedDict("CommandRowsImport", {
 }, total=False)
 
 CommandRowsImportResult = TypedDict("CommandRowsImportResult", {
-    "ok": Required[Literal[True]],
+    "imported": Required[int],
+    "newOptions": Required[list[dict[str, Any]]],
 }, total=False)
 
 # Comment on a page or record

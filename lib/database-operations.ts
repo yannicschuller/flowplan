@@ -29,9 +29,58 @@ const computed = [
   "progress",
   "time",
 ];
+// Most new options one import may add to select properties – a column of
+// free text matched to a select property would otherwise make thousands.
+export const IMPORT_NEW_OPTIONS_LIMIT = 100;
+const OPTIONS_MAX = 1000;
+const fold = (v: string) => v.normalize("NFKC").trim().toLocaleLowerCase();
+
+// Imported records (rows.import): values of select and multi-select
+// properties that are not options yet become options, as typing a new value
+// in a cell does; a value that differs from an option only in letter case
+// takes the option's spelling. Changes `rows` in place and returns the
+// updated properties and the names added per property (empty: nothing
+// new). Tag-backed properties are left alone (they create tags, #79).
+export function addImportedOptions(fields: Field[], rows: Record<string, unknown>[]) {
+  const added = new Map<string, string[]>();
+  const next = fields.map((f) => {
+    if ((f.type !== "select" && f.type !== "multiselect") || isTagField(f)) return f;
+    const options = [...(f.options || [])];
+    const known = new Map(options.map((o) => [fold(o), o]));
+    const take = (value: unknown) => {
+      if (typeof value !== "string") return value;
+      const name = value.trim();
+      if (!name) return value;
+      const hit = known.get(fold(name));
+      if (hit) return hit;
+      const short = name.slice(0, 100);
+      known.set(fold(short), short);
+      options.push(short);
+      added.set(f.id, [...(added.get(f.id) || []), short]);
+      return short;
+    };
+    for (const cells of rows) {
+      if (!(f.id in cells)) continue;
+      const value = cells[f.id];
+      cells[f.id] = Array.isArray(value) ? [...new Set(value.map(take))] : take(value);
+    }
+    return added.has(f.id) ? { ...f, options } : f;
+  });
+  const total = [...added.values()].reduce((n, names) => n + names.length, 0);
+  if (total > IMPORT_NEW_OPTIONS_LIMIT)
+    throw new HttpError(
+      400,
+      `Der Import würde ${total} neue Auswahl-Optionen anlegen (höchstens ${IMPORT_NEW_OPTIONS_LIMIT}). Passt die Spalte zur Eigenschaft?`,
+    );
+  for (const f of next)
+    if (added.has(f.id) && (f.options?.length || 0) > OPTIONS_MAX)
+      throw new HttpError(400, `„${f.name}“ hätte mehr als ${OPTIONS_MAX} Optionen.`);
+  return { fields: next, added: fields.filter((f) => added.has(f.id)).map((f) => ({ id: f.id, name: f.name, options: added.get(f.id)! })) };
+}
+
 // Imported records (rows.import): numbers, checkboxes and dates must fit
 // their property as in validateCellPatch; empty values may be null. Options
-// not (yet) in a select property stay allowed, as imports have relied on.
+// missing from a select property are added first (addImportedOptions).
 export function validateImportedCells(fields: Field[], cells: Record<string, unknown>) {
   for (const f of fields) {
     const value = cells[f.id];

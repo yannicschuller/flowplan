@@ -4158,8 +4158,22 @@ export default function DatabaseView({
               csvContext(),
             ),
           );
-          await act({ action: "rows.import", rows: imported });
+          const done = (await act({ action: "rows.import", rows: imported })) as
+            | { newOptions?: { name: string; options: string[] }[] }
+            | null;
           e.target.value = "";
+          // Values that were not options yet were added as options: say where.
+          const added = done?.newOptions || [];
+          if (added.length)
+            showToast({
+              text: added
+                .map((f) =>
+                  f.options.length === 1
+                    ? t(`Neue Option „${f.options[0]}“ in „${f.name}“ angelegt.`, `New option “${f.options[0]}” added to “${f.name}”.`)
+                    : t(`${f.options.length} neue Optionen in „${f.name}“ angelegt.`, `${f.options.length} new options added to “${f.name}”.`),
+                )
+                .join(" "),
+            });
         }}
       />
       {markdownFiles && (
