@@ -760,6 +760,16 @@ CommandProfilePlainLookResult = TypedDict("CommandProfilePlainLookResult", {
     "plainLook": Required[bool],
 }, total=False)
 
+# When selecting text shows the text menu. For the caller, on all devices: always, only for a selection made with a mouse, trackpad or keyboard (computer, the default), or never. A right click opens the menu in every case.
+CommandProfileTextMenu = TypedDict("CommandProfileTextMenu", {
+    "action": Required[Literal["profile.textMenu"]],
+    "textMenu": Required[Literal["always", "computer", "never"]],
+}, total=False)
+
+CommandProfileTextMenuResult = TypedDict("CommandProfileTextMenuResult", {
+    "textMenu": Required[Literal["always", "computer", "never"]],
+}, total=False)
+
 # Create a space in a workspace
 CommandSpaceCreate = TypedDict("CommandSpaceCreate", {
     "action": Required[Literal["space.create"]],
@@ -1614,7 +1624,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandProfilePlainLook", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

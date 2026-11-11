@@ -283,6 +283,8 @@ export type Bootstrap = {
   // chose Flowplan's own look instead.
   look?: import("./workspace-theme").WorkspaceLook;
   plainLook?: boolean;
+  // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
+  textMenu?: import("./text-menu-pref").TextMenuPref;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).

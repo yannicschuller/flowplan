@@ -1315,6 +1315,11 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS notebook_recordings_file ON notebook_recordings(file_id);`);
   // Schema 102 – a workspace's own look (#196, lib/workspace-theme.ts).
   migrateWorkspaceTheme(d);
+  // "Menü bei Textauswahl" per person (#200, lib/text-menu-pref.ts):
+  // users.text_menu, NULL = the default. An older version ignores the
+  // column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "text_menu"))
+    d.exec("ALTER TABLE users ADD COLUMN text_menu TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

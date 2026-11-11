@@ -1,14 +1,22 @@
 "use client";
 // The menu for text: selecting text shows it above the selection, a right
 // click opens it at the pointer (Shift + right click keeps the browser's
-// own menu). Reactions for the paragraph, formatting, calculating a
-// selected expression, a comment, copying. "Umwandeln in" changes the type
+// own menu). Whether selecting shows it is the person's "Menü bei
+// Textauswahl" (#200, lib/text-menu-pref.ts): by default only for a
+// selection made with a mouse, trackpad or keyboard – on a phone or tablet
+// the system's selection menu and the toolbar docked on the keyboard
+// (formatting, comment) take over. The right click (a long press where the
+// browser reports it as one, e.g. Android) opens it in every mode.
+// Reactions for the paragraph, formatting, calculating a selected
+// expression, a comment, copying. "Umwandeln in" changes the type
 // of the line (text, heading, list, quote, code) and keeps its text; it is
 // offered on right-click, so the menu over a selection stays small. In the
 // desktop app a right click on a misspelled word adds the spell checker's
 // suggestions at the top (the app's own menu does not appear over this one).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { desktopApp } from "@/lib/native-app";
+import { pointerInput, showsMenuOnSelection, type SelectionInput } from "@/lib/text-menu-pref";
+import { textMenuPref } from "@/lib/text-menu-pref-client";
 import { wordAt } from "@/lib/spelling-word";
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -94,8 +102,16 @@ export function TextMenu({
     // After selecting with the mouse or keyboard: above the selection.
     // The view exists only while the editor is mounted.
     const mounted = () => !editor.isDestroyed;
+    // The input of the latest press or Shift + arrow (lib/text-menu-pref.ts
+    // decides with it whether selecting shows the menu).
+    const coarse = !!window.matchMedia?.("(pointer: coarse)").matches;
+    let lastInput: SelectionInput = pointerInput(null, coarse);
+    const onPointerDown = (event: PointerEvent) => {
+      lastInput = pointerInput(event.pointerType, coarse);
+    };
     const showForSelection = () => {
       if (!mounted()) return;
+      if (!showsMenuOnSelection(textMenuPref(), lastInput)) return;
       const { empty, from, to } = editor.state.selection;
       if (empty || !editor.view.hasFocus()) return;
       if (!editor.state.doc.textBetween(from, to, " ").trim()) return;
@@ -126,7 +142,10 @@ export function TextMenu({
       later();
     };
     const onKeyUp = (event: KeyboardEvent) => {
-      if (inEditor(event) && event.shiftKey && event.key.startsWith("Arrow")) later();
+      if (inEditor(event) && event.shiftKey && event.key.startsWith("Arrow")) {
+        lastInput = "keyboard";
+        later();
+      }
     };
     // The desktop app's spell checker: the word at a position, if misspelled.
     const misspelledAt = (pos: number): Spelling | null => {
@@ -166,7 +185,6 @@ export function TextMenu({
     // Touch: selecting by long press or dragging the handles sends no
     // mouseup; follow the document's selection once it settles.
     // Only a selection that changed: after an action the same one stays.
-    const coarse = window.matchMedia?.("(pointer: coarse)").matches;
     let shown = "";
     const onSelectionChange = () => {
       const sel = document.getSelection();
@@ -182,6 +200,7 @@ export function TextMenu({
     };
     if (coarse) document.addEventListener("selectionchange", onSelectionChange);
     // On the document: layers over the text (block handles) may take the event.
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("mouseup", onMouseUp);
     document.addEventListener("keyup", onKeyUp);
@@ -189,6 +208,7 @@ export function TextMenu({
     editor.on("selectionUpdate", onSelection);
     return () => {
       clearTimeout(timer);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("keyup", onKeyUp);

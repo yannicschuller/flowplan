@@ -127,6 +127,7 @@ import {
   TextUnderline,
   TextStrikethrough,
   Highlighter,
+  ChatCircle,
   Palette,
   TextSubscript,
   TextSuperscript,
@@ -2518,6 +2519,16 @@ export default function DocumentEditor({
               onClick={() => editor?.chain().focus().toggleHighlight().run()}
             >
               <Highlighter />
+            </button>
+            {/* Comment on the selection or the current block (#200): on a
+                phone this toolbar, docked on the keyboard, is where it is
+                reachable while selecting shows no text menu. */}
+            <button
+              title={t("Kommentieren", "Comment") + keyHints.suffix("Mod+Alt+M")}
+              aria-label={t("Kommentieren", "Comment")}
+              onClick={() => editor?.view.dom.dispatchEvent(new CustomEvent("comment-create"))}
+            >
+              <ChatCircle />
             </button>
             <Dropdown.Root
               onOpenChange={(open) => {
