@@ -17,6 +17,9 @@
 //                                       instance's embedding model
 //   FLOWPLAN_AI_DEVICE=off              no on-device AI in the apps (Apple's
 //                                       model; on unless switched off)
+//   FLOWPLAN_AI_TOKENS=off              API tokens never reach AI and
+//                                       transcription, even with the
+//                                       "KI und Transkription" permission
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { HttpError } from "../auth";
@@ -49,6 +52,10 @@ const instanceSchema = z.object({
   // device.ts): independent of the switch above – nothing reaches this
   // server or a provider. On unless switched off.
   device: z.boolean().default(true),
+  // API tokens with the "KI und Transkription" permission (#199,
+  // lib/api-tokens.ts) may use AI, transcription and meeting notes. On
+  // unless switched off; each token still needs the permission.
+  tokens: z.boolean().default(true),
 });
 export type AiInstanceSettings = z.infer<typeof instanceSchema>;
 const userSchema = z.object({
@@ -104,6 +111,7 @@ function envDefaults(): AiInstanceSettings {
     userProviders: on(process.env.FLOWPLAN_AI_USER_PROVIDERS),
     semanticSearch: on(process.env.FLOWPLAN_AI_SEMANTIC_SEARCH),
     device: !/^(0|off|false|no)$/i.test(process.env.FLOWPLAN_AI_DEVICE?.trim() || ""),
+    tokens: !/^(0|off|false|no)$/i.test(process.env.FLOWPLAN_AI_TOKENS?.trim() || ""),
     features: Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, features.includes(id)])) as Record<AiFeature, boolean>,
   };
 }

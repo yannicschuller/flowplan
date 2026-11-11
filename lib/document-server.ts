@@ -117,6 +117,23 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-bibliography",
         "data-bibliography-title",
         "data-footnote",
+        // The meeting block (#199, lib/meeting-schema.ts).
+        "data-meeting",
+        "data-meeting-title",
+        "data-meeting-date",
+        "data-meeting-attendees",
+        "data-meeting-event",
+        "data-meeting-instructions",
+        "data-meeting-prompt",
+        "data-meeting-part",
+        "data-segment",
+        "data-start",
+        "data-end",
+        "data-speaker",
+        "data-track",
+        "data-session",
+        "data-meeting-cite",
+        "data-n",
       ],
       // Text direction of blocks (lib/text-direction.ts), only its values.
       ...Object.fromEntries(

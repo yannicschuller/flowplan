@@ -23154,6 +23154,18 @@ h3 .block-reactions {
   color: var(--secondary);
   font-size: 13px;
 }
+.api-token-form label.api-token-ai {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  color: var(--text);
+}
+.api-token-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .api-token-name {
   display: grid;
   gap: 2px;

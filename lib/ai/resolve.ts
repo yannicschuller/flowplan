@@ -13,6 +13,7 @@ import { featureAllowed, instanceAiSettings, instanceKey, userAiSettings, userAl
 import { privateAddress } from "../safe-fetch";
 import { isIP } from "node:net";
 import { mapAsync } from "../each-async";
+import { tokenAiAllowed } from "./token-access";
 
 export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user" } | { ok: false; reason: AiReason };
 type Options = {
@@ -35,8 +36,10 @@ async function guestHere(user: Identity, workspaceId?: string) {
 async function gate(user: Identity, feature: string, options: Options): Promise<AiReason | null> {
   if (!isAiFeature(feature)) return "unknown-feature";
   if (user.demo) return "demo";
-  if (user.apiScope) return "api-token";
   const instance = await instanceAiSettings();
+  // API tokens only with the "KI und Transkription" permission, while the
+  // administration allows it (lib/ai/token-access.ts).
+  if (user.apiScope && !tokenAiAllowed(user, instance)) return "api-token";
   if (!instance.enabled) return "off";
   if (!featureAllowed(instance, feature)) return "feature-off";
   if (!(await userAllowedByPolicy(user.id, instance))) return "not-allowed";

@@ -27,6 +27,10 @@ export type Identity = User & {
   demo?: boolean;
   // Set when the request came with a personal API token.
   apiScope?: "read" | "write" | "clipper";
+  // The token carries the "KI und Transkription" permission (#199,
+  // lib/api-tokens.ts); whether it counts also depends on the
+  // administration (lib/ai/token-access.ts).
+  apiAi?: boolean;
   // Signed in, but the instance requires a second factor this account has
   // not set up yet: only setting it up is possible (lib/two-factor-policy.ts).
   twoFactorSetup?: boolean;
