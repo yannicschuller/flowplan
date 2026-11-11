@@ -1479,6 +1479,11 @@ const patterns: [RegExp, string][] = [
   // A chat app the instance turned off (lib/messengers.ts).
   [/^Chat-App (.+) ausgeschaltet: wiederholt abgewiesen \((.+)\)\. Bitte unter Einstellungen → Benachrichtigungen prüfen und wieder einschalten\.$/, "Chat app $1 switched off: refused repeatedly ($2). Please check it under Settings → Notifications and switch it on again."],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],
+  // A sign-in from a new device (lib/security-detect.ts newDevice).
+  [
+    /^Neue Anmeldung bei deinem Konto: (.+)\. Warst du das nicht\? Ändere dein Passwort und melde unter Einstellungen → Konto → Geräte alle anderen Geräte ab\.$/s,
+    "New sign-in to your account: $1. Wasn't you? Change your password and sign out all other devices under Settings → Account → Devices.",
+  ],
   [/^„(.+)“ ist nur für bestimmte Personen bearbeitbar\.$/, "“$1” can only be edited by certain people."],
   [/^Absender abgelehnt: (.+)$/, "Sender rejected: $1"],
   [/^Der Git-Anbieter antwortet mit HTTP (\d+)\.$/, "The Git provider answers with HTTP $1."],

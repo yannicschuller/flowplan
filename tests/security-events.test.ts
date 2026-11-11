@@ -132,6 +132,11 @@ test("a new device is told to the person; two countries in two hours are impossi
   const notice = await one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND kind='security'", ben.id);
   assert.match(notice?.body || "", /Neue Anmeldung/);
   assert.match(notice?.body || "", /iPhone/);
+  // The inbox shows it in the person's language (#206).
+  const { englishMessage, localizedMessage } = await import("../lib/i18n-errors");
+  const english = englishMessage(notice!.body);
+  assert.match(english, /^New sign-in to your account: .*iPhone.*\. Wasn't you\?/);
+  assert.match(localizedMessage(notice!.body, "fr"), /^Nouvelle connexion à votre compte : .*iPhone/);
   delete process.env.FLOWPLAN_COUNTRY_HEADER;
 });
 
