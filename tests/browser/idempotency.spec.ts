@@ -45,7 +45,8 @@ test("the same comment sent twice at once with one key: one comment, the same an
 test("double submit in the comment form posts the comment once", async ({ page }, testInfo) => {
   const created = await setup(page.request, `Doppelt ${testInfo.project.name} ${Date.now()}`);
   await page.goto(`/#page=${created.id}`);
-  await page.getByRole("button", { name: /Kommentare/ }).first().click();
+  // The page's own button (pages of other specs may be called "Kommentare …").
+  await page.getByRole("button", { name: "Kommentare", exact: true }).click();
   const field = page.getByPlaceholder("Schreibe einen Kommentar …");
   await field.fill("Doppelklick");
   // Ctrl+Enter and the button right after each other, before the answer.
