@@ -66,7 +66,9 @@ test("toggles collapse and expand in edit mode, keep their content and their tit
 
   if (info.project.name === "desktop") {
     // Keyboard: ⌘⌥↵ inside closes, the caret goes to the title; the same
-    // keys there open it; ↵ in the title goes into the content.
+    // keys there open it; ↓ in the title goes into the content (↵ at the
+    // end of a closed toggle's title makes the next toggle, #230 –
+    // tests/browser/toggle-shortcuts.spec.ts).
     await editor.getByText("Zweite Zeile", { exact: true }).click();
     await page.keyboard.press("ControlOrMeta+Alt+Enter");
     await expect.poll(isOpen).toBe(false);
@@ -75,7 +77,7 @@ test("toggles collapse and expand in edit mode, keep their content and their tit
     await expect.poll(isOpen).toBe(true);
     await page.keyboard.press("ControlOrMeta+Alt+Enter");
     await expect.poll(isOpen).toBe(false);
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("ArrowDown");
     await expect.poll(isOpen).toBe(true);
     await page.keyboard.type("Neu: ");
     await expect(details.locator("p").first()).toHaveText("Neu: Geheim");

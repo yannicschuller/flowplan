@@ -91,6 +91,10 @@ import { readTable, tableTitle } from "@/lib/table-read";
 import { TABLE_DATABASE_LIMITS } from "@/lib/table-database";
 import { registerDocumentFlush } from "@/lib/document-flush";
 import { HeadingFolds } from "@/lib/heading-folds-plugin";
+import { togglesAround, withTitleFocus } from "@/lib/toggle-view";
+import { toggleDocumentKey } from "@/lib/toggle-memory";
+import { ShortcutBlockquote } from "@/lib/quote-shortcut";
+import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
   commentMarkedNodeView,
@@ -393,10 +397,8 @@ export default function DocumentEditor({
     [math, setMath] = useState<MathTarget | null>(null),
     // The image being marked up (position and its attributes).
     [annotate, setAnnotate] = useState<{ pos: number; src: string; original: string | null; annotations: string | null } | null>(null),
-    [toggle, setToggle] = useState(false),
     // The note being written: an existing one (pos) or a new one at `at`.
-    [footnote, setFootnote] = useState<{ pos: number | null; note: string; at: number; original: string } | null>(null),
-    [toggleTitle, setToggleTitle] = useState("");
+    [footnote, setFootnote] = useState<{ pos: number | null; note: string; at: number; original: string } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   // The table of contents: beside the text, or a popover where the text
   // column is too narrow for both (components/document-outline.tsx).
@@ -682,12 +684,16 @@ export default function DocumentEditor({
       extensions: [
         StarterKit.configure({
           codeBlock: false,
+          // Below, with its typing shortcuts: "> " makes a toggle or a
+          // quote, as the person chose (#230).
+          blockquote: false,
           undoRedo: false,
           link: {
             openOnClick: false,
             HTMLAttributes: { rel: "noopener noreferrer" },
           },
         }),
+        ShortcutBlockquote.configure({ creates: quoteShortcut }),
         EditableCodeBlock,
         BlockShortcuts,
         PlainNewLine,
@@ -765,7 +771,9 @@ export default function DocumentEditor({
         // A new page in print, PDF and Word (#216).
         PageBreak,
         Callout,
-        Toggle,
+        // Closed toggles stay closed after a reload, per person and device
+        // (#230; not in an embedded view of another document).
+        Toggle.configure({ storageKey: embedded || !pageId ? null : toggleDocumentKey(userId, pageId, rowId) }),
         ...mathNodeViews(setMath),
         mermaidNodeView(setDiagram),
         drawioNodeView(setDrawio),
@@ -1730,7 +1738,19 @@ export default function DocumentEditor({
       keywords: ["toggle", "details", "aufklappen"],
       description: t("Details ein- und ausblenden", "Show and hide details"),
       icon: CaretRight,
-      run: () => setToggle(true),
+      // Inserted right away (#230): the caret in its empty title.
+      run: () => {
+        if (!editor) return;
+        const inserted = editor
+          .chain()
+          .focus()
+          .insertContent({ type: "toggle", attrs: { title: "", blockId: newBlockId() }, content: [{ type: "paragraph" }] })
+          .run();
+        if (!inserted) return;
+        const { state } = editor;
+        const inner = togglesAround(state.doc, state.selection.from).at(-1);
+        if (inner) editor.view.dispatch(withTitleFocus(state.tr, inner.pos));
+      },
     },
     {
       id: "code",
@@ -3577,41 +3597,6 @@ export default function DocumentEditor({
             )}
             <button className="button primary">{footnote?.pos === null ? t("Einfügen", "Insert") : t("Speichern", "Save")}</button>
           </div>
-        </form>
-      </Modal>
-      <Modal
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          editor?.commands.focus();
-        }}
-        open={toggle}
-        onClose={() => setToggle(false)}
-        title={t("Aufklappbarer Block", "Toggle")}
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            editor
-              ?.chain()
-              .focus()
-              .insertContent({
-                type: "toggle",
-                attrs: { title: toggleTitle || t("Details", "Details") },
-                content: [{ type: "paragraph" }],
-              })
-              .run();
-            setToggle(false);
-          }}
-        >
-          <label>
-            {t("Titel", "Title")}
-            <input
-              autoFocus
-              value={toggleTitle}
-              onChange={(e) => setToggleTitle(e.target.value)}
-            />
-          </label>
-          <button className="button primary">{t("Einfügen", "Insert")}</button>
         </form>
       </Modal>
     </div>

@@ -2,6 +2,7 @@ import { withReadMemo } from "./read-memo";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
+import { setUserQuoteShortcut, userQuoteShortcut } from "./user-quote-shortcut";
 import { recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
@@ -364,6 +365,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     pageIcon: await userPageIcon(user.id),
     // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).
     externalLinkIcon: await userExternalLinkIcon(user.id),
+    // "`>` erzeugt" (#230, lib/quote-shortcut-pref.ts).
+    quoteShortcut: await userQuoteShortcut(user.id),
     // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts): the level
     // and, once after an update, the release notes to show.
     updateNotes: await userUpdateNotes(user),
@@ -905,6 +908,11 @@ async function runCommand(
       // The arrow after links to the web (#217, lib/external-link-icon-pref.ts).
       case "profile.externalLinkIcon":
         result = await setUserExternalLinkIcon(user, b.externalLinkIcon);
+        break;
+      // What "> " typed at the start of a line creates (#230,
+      // lib/quote-shortcut-pref.ts).
+      case "profile.quoteShortcut":
+        result = await setUserQuoteShortcut(user, b.quoteShortcut);
         break;
       // "Neuigkeiten nach Updates" and the dialog closed (#223,
       // lib/user-update-notes.ts).

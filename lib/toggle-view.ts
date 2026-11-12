@@ -13,14 +13,21 @@
 // editing at the same time, exports and published pages are not affected
 // (they show toggles as before). A toggle is known by its block id (it
 // travels with the block through moves and Yjs), by its position without
-// one. What is closed opens again when the caret gets into it.
+// one. What is closed opens again when the caret gets into it. Closed
+// toggles with a block id are remembered per person and device (#230,
+// lib/toggle-memory.ts), so they stay closed after a reload.
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView, type NodeView, type ViewMutationRecord } from "@tiptap/pm/view";
 import { tr } from "./locale-tag";
+import { browserStorage, readClosedToggles, writeClosedToggles } from "./toggle-memory";
+import { emptyTitleToParagraph, toggleAfter } from "./toggle-commands";
 
-type ToggleState = { closed: ReadonlySet<string>; focusTitle: number | null; decorations: DecorationSet };
-type ToggleMeta = { toggle: number; focusTitle?: boolean } | { open: number[] };
+// `restoring`: remembered closed toggles not seen in the document yet (it
+// arrives through Yjs after the editor started).
+type ToggleState = { closed: ReadonlySet<string>; restoring: ReadonlySet<string>; focusTitle: number | null; decorations: DecorationSet };
+// `title`: the caret goes into the title of the (new) toggle at that position.
+type ToggleMeta = { toggle: number; focusTitle?: boolean } | { open: number[] } | { title: number };
 export const toggleKey = new PluginKey<ToggleState>("toggleBlocks");
 
 // How a toggle is known: its block id, or its position ("@12").
@@ -60,6 +67,9 @@ export function toggleOpen(view: EditorView, pos: number, focusTitle = false) {
 export function openToggles(view: EditorView, positions: number[]) {
   view.dispatch(view.state.tr.setMeta(toggleKey, { open: positions } satisfies ToggleMeta));
 }
+// Marks a transaction so the caret goes into the title of the toggle at
+// `pos` once it is applied (a toggle just inserted, #230).
+export const withTitleFocus = (trn: Transaction, pos: number) => trn.setMeta(toggleKey, { title: pos } satisfies ToggleMeta);
 
 // Positional identities follow their toggle through changes.
 function mapClosed(closed: ReadonlySet<string>, trn: Transaction) {
@@ -75,13 +85,50 @@ function mapClosed(closed: ReadonlySet<string>, trn: Transaction) {
   return next;
 }
 
-export function toggleBlocksPlugin() {
+// The toggles of a document by identity.
+function presentIds(doc: PMNode) {
+  const ids = new Set<string>();
+  doc.descendants((node, pos) => {
+    if (node.type.name === "toggle") ids.add(toggleIdentity(node, pos));
+    return !node.isTextblock;
+  });
+  return ids;
+}
+
+// `storageKey` names the person's document in the device's storage
+// (lib/toggle-memory.ts); without one nothing is remembered.
+export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string | null } = {}) {
   return new Plugin<ToggleState>({
     key: toggleKey,
     state: {
-      init: () => ({ closed: new Set(), focusTitle: null, decorations: DecorationSet.empty }),
+      init: (_config, state) => {
+        const stored = storageKey ? readClosedToggles(browserStorage(), storageKey) : [];
+        const closed = new Set(stored);
+        const present = stored.length ? presentIds(state.doc) : new Set<string>();
+        return {
+          closed,
+          restoring: new Set(stored.filter((id) => !present.has(id))),
+          focusTitle: null,
+          decorations: buildDecorations(state.doc, closed),
+        };
+      },
       apply: (trn, value, _old, state) => {
         let closed = trn.docChanged ? mapClosed(value.closed, trn) : value.closed;
+        // A change from elsewhere (Yjs: the document arriving, others'
+        // edits, undo) replaces the whole document, which mapping would
+        // lose the closed toggles' decorations through: drawn anew.
+        const sync = trn.getMeta("y-sync$") as { isChangeOrigin?: boolean; isUndoRedoOperation?: boolean } | undefined;
+        const remote = !!sync?.isChangeOrigin;
+        let rebuild = trn.docChanged && remote && closed.size > 0;
+        // Remembered toggles showing up (the document loading): drawn closed.
+        let restoring = value.restoring;
+        if (trn.docChanged && restoring.size) {
+          const present = presentIds(trn.doc);
+          if ([...restoring].some((id) => present.has(id))) {
+            restoring = new Set([...restoring].filter((id) => !present.has(id)));
+            rebuild = true;
+          }
+        }
         // Kept through the transaction appended right after (the caret
         // leaving), so the view sees it.
         let focusTitle: number | null =
@@ -99,6 +146,8 @@ export function toggleBlocksPlugin() {
             }
             closed = next;
           }
+        } else if (meta && "title" in meta) {
+          focusTitle = meta.title;
         } else if (meta && "open" in meta) {
           const next = new Set(closed);
           for (const pos of meta.open) {
@@ -108,7 +157,10 @@ export function toggleBlocksPlugin() {
           closed = next;
         }
         // The caret never stays in a closed toggle: what it got into opens.
-        if (trn.selectionSet && !meta && closed.size) {
+        // Not when the document itself arrives or others change it (Yjs):
+        // a remembered toggle stays closed when the page loads. Undo does
+        // open what the caret lands in.
+        if (trn.selectionSet && !meta && (!remote || sync?.isUndoRedoOperation) && closed.size) {
           const sel = state.selection;
           const around = [sel.from, sel.to].flatMap((pos) => togglesAround(trn.doc, pos)).filter(({ node, pos }) => {
             // A selected toggle itself is not inside it.
@@ -124,9 +176,11 @@ export function toggleBlocksPlugin() {
         if (closed === value.closed && !trn.docChanged && focusTitle === value.focusTitle) return value;
         return {
           closed,
+          restoring,
           focusTitle,
-          decorations:
-            closed === value.closed && trn.docChanged
+          decorations: rebuild
+            ? buildDecorations(trn.doc, closed)
+            : closed === value.closed && trn.docChanged
               ? value.decorations.map(trn.mapping, trn.doc)
               : closed === value.closed
                 ? value.decorations
@@ -155,20 +209,37 @@ export function toggleBlocksPlugin() {
     props: {
       decorations: (state) => toggleKey.getState(state)?.decorations,
     },
-    view: () => {
-      let handled: ToggleState | undefined;
+    view: (initial) => {
+      let handled: ToggleState | undefined = toggleKey.getState(initial.state);
+      let saved = handled?.closed;
       return {
-      // Closed by keyboard from inside: the caret goes to the title.
-      update: (view) => {
-        const value = toggleKey.getState(view.state);
-        if (!value || value === handled) return;
-        handled = value;
-        const pos = value.focusTitle;
-        if (typeof pos !== "number") return;
-        const dom = view.nodeDOM(pos);
-        const title = dom instanceof HTMLElement ? dom.querySelector<HTMLElement>(":scope > summary .toggle-title") : null;
-        if (title) focusEnd(title);
-      },
+        update: (view) => {
+          const value = toggleKey.getState(view.state);
+          if (!value || value === handled) return;
+          handled = value;
+          // Remembered: the closed toggles that have a block id, those of
+          // the document and those not loaded yet.
+          if (storageKey && value.closed !== saved) {
+            saved = value.closed;
+            const present = presentIds(view.state.doc);
+            writeClosedToggles(
+              browserStorage(),
+              storageKey,
+              [...value.closed].filter((id) => !id.startsWith("@") && (present.has(id) || value.restoring.has(id))),
+            );
+          }
+          // Closed by keyboard from inside, or just inserted: the caret goes
+          // to the title – again after a focus of the editor still to come
+          // (Tiptap focuses in the next frame).
+          const pos = value.focusTitle;
+          if (typeof pos !== "number") return;
+          const title = titleElement(view, pos);
+          if (!title) return;
+          focusEnd(title);
+          requestAnimationFrame(() => {
+            if (title.isConnected && title.ownerDocument.activeElement !== title) focusEnd(title);
+          });
+        },
       };
     },
   });
@@ -183,6 +254,18 @@ function focusEnd(el: HTMLElement) {
   range.collapse(false);
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+// Whether the caret is at the end of an element's text.
+function caretAtEnd(el: HTMLElement) {
+  const selection = el.ownerDocument.getSelection();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.endContainer)) return false;
+  const rest = el.ownerDocument.createRange();
+  rest.selectNodeContents(el);
+  rest.setStart(range.endContainer, range.endOffset);
+  return rest.toString() === "";
 }
 
 // The caret at the start of the toggle's content (opening it).
@@ -207,9 +290,12 @@ export function titleAbove(state: EditorState): number | null {
   const first = Selection.findFrom(state.doc.resolve(inner.pos + 1), 1, true);
   return first && first.from === sel.from ? inner.pos : null;
 }
-export function focusToggleTitle(view: EditorView, pos: number) {
+function titleElement(view: EditorView, pos: number) {
   const dom = view.nodeDOM(pos);
-  const title = dom instanceof HTMLElement ? dom.querySelector<HTMLElement>(":scope > summary .toggle-title") : null;
+  return dom instanceof HTMLElement ? dom.querySelector<HTMLElement>(":scope > summary .toggle-title") : null;
+}
+export function focusToggleTitle(view: EditorView, pos: number) {
+  const title = titleElement(view, pos);
   if (!title?.isContentEditable) return false;
   focusEnd(title);
   return true;
@@ -262,7 +348,8 @@ export function toggleNodeView({
   title.spellcheck = true;
   title.setAttribute("role", "textbox");
   title.setAttribute("aria-label", tr("Titel des aufklappbaren Blocks", "Toggle title"));
-  title.dataset.placeholder = tr("Titel", "Title");
+  // An empty title (a toggle just inserted, #230) says what it is.
+  title.dataset.placeholder = tr("Aufklappbarer Block", "Toggle");
   title.textContent = String(node.attrs.title ?? "");
   summary.append(arrow, title);
   const content = document.createElement("div");
@@ -370,6 +457,26 @@ export function toggleNodeView({
       e.preventDefault();
       commit();
       view.focus();
+      return;
+    }
+    // ↵ in an empty title (#230): the toggle becomes a paragraph, its
+    // content stays after it.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && editable() && !(title.textContent || "").trim()) {
+      e.preventDefault();
+      const trn = emptyTitleToParagraph(view.state, pos);
+      if (!trn) return;
+      view.focus();
+      view.dispatch(trn.scrollIntoView());
+      return;
+    }
+    // ↵ at the end of a closed toggle's title (#230): a new closed toggle
+    // right after it, the caret in its title – a list of toggles.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && editable() && !open && caretAtEnd(title)) {
+      e.preventDefault();
+      commit();
+      const made = toggleAfter(view.state, pos);
+      if (!made) return;
+      view.dispatch(made.tr.setMeta(toggleKey, { toggle: made.pos, focusTitle: true } satisfies ToggleMeta).scrollIntoView());
       return;
     }
     // ↵ or ↓: into the content (opening it).

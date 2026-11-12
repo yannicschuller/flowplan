@@ -11,6 +11,7 @@ import { textMenuPrefSchema } from "./text-menu-pref";
 import { printOptionsSchema, printPresetSchema, printPresetsSchema } from "./print-options";
 import { pageIconPrefSchema } from "./page-icon-pref";
 import { externalLinkIconSchema } from "./external-link-icon-pref";
+import { quoteShortcutSchema } from "./quote-shortcut-pref";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { releaseNoteItemSchema } from "./release-notes";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
@@ -62,7 +63,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -218,6 +219,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: whether links to the web show a small outward arrow after them (true, the default) or only their colour and underline (false). Only how the caller sees pages, comments and records; published pages keep the default, and the arrow is never printed.",
     input: z.object({ action: z.literal("profile.externalLinkIcon"), externalLinkIcon: externalLinkIconSchema }),
     result: z.object({ externalLinkIcon: externalLinkIconSchema }),
+  },
+  {
+    action: "profile.quoteShortcut",
+    summary: "Choose what typing \"> \" creates",
+    description: "For the caller, on all devices: what typing \"> \" at the start of an empty line in the editor creates – a toggle (\"toggle\", the default) or a quote as in Markdown (\"quote\"). Only that typing shortcut: pasted and imported Markdown \"> text\" stays a quote, and documents and exports do not change.",
+    input: z.object({ action: z.literal("profile.quoteShortcut"), quoteShortcut: quoteShortcutSchema }),
+    result: z.object({ quoteShortcut: quoteShortcutSchema }),
   },
   {
     action: "profile.updateNotes",

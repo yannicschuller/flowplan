@@ -496,8 +496,9 @@ export function htmlToMarkdown(
           .map((line) => "> " + line)
           .join("\n");
       }
+      // An empty title stays empty (#230), so it comes back empty.
       case "toggle":
-        return `<details>\n<summary>${htmlText(String(node.attrs.title || "Details")).replaceAll("|", "&#124;")}</summary>\n\n${children(node, inTable)}\n\n</details>`;
+        return `<details>\n<summary>${htmlText(String(node.attrs.title ?? "")).replaceAll("|", "&#124;")}</summary>\n\n${children(node, inTable)}\n\n</details>`;
       // The meeting block (#199): title, then its three parts.
       case "meeting":
         return [`### ${markdownText(String(node.attrs.title || ct("Besprechung", "Meeting")))}`, children(node, inTable)].filter(Boolean).join("\n\n");

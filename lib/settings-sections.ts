@@ -112,6 +112,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         keywords: { de: "textmenü markieren auswahl popup reaktionen formatieren handy tablet", en: "text menu select selection popup reactions formatting phone tablet" },
         anchor: "text-menu",
       },
+      {
+        title: { de: "„>“ erzeugt", en: "“>” creates" },
+        keywords: { de: "zitat aufklappbarer block toggle markdown kürzel tippen größer-zeichen", en: "quote blockquote toggle markdown shortcut typing greater-than" },
+        anchor: "quote-shortcut",
+      },
       { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },
       { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
       { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },
