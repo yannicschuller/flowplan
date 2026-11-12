@@ -16,6 +16,7 @@ import { DEFAULT_PRINT_OPTIONS, printOptionsCss, type PrintFontStacks, type Prin
 import { workspaceLook } from "./workspace-fonts";
 import { appFontUrl, themeFontFaces } from "./workspace-theme";
 import { DEFAULT_FONTS, customFontId, fontStack } from "./theme-fonts";
+import { listLevelCss } from "./list-levels";
 import type { Identity } from "./types";
 
 export const PDF_MAX_PAGES = 200;
@@ -65,6 +66,9 @@ body { margin: 0; background: #fff; }
 .print-book th { background: #f0f0ee; font-family: Helvetica, Arial, sans-serif; }
 .print-book tr { break-inside: avoid; page-break-inside: avoid; }
 .print-book th > p, .print-book td > p { margin: 0; }
+.print-book :is(ul, ol) { padding-left: 1.6em; }
+.print-book li > p { margin: 0.15em 0; }
+${listLevelCss(".print-book")}
 .print-book ul.task-list { list-style: none; padding-left: 1.2em; }
 .print-book .task-box { font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif; }
 .print-book .task.done > p { color: #666; }

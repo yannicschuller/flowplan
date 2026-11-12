@@ -1,6 +1,6 @@
 "use client";
 // Settings → Arbeitsbereich → Import & Export, in four groups:
-// Import (a target space for all imports; files, Notion/AppFlowy ZIPs,
+// Import (a target space for all imports; files, Notion (Markdown or HTML)/AppFlowy ZIPs,
 // Jira/Trello, AFFiNE/Confluence/Evernote/Google Docs/Obsidian with a
 // preview),
 // Export (the workspace as ZIP or JSON, a space as Markdown, PDF or EPUB),
@@ -95,8 +95,8 @@ export default function DataSection() {
         <SettingRow
           label={t("Notion, AppFlowy oder Markdown-Export (ZIP)", "Notion, AppFlowy or Markdown export (ZIP)")}
           description={t(
-            "Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Maximal 100 MB, 10.000 Seiten (vom Betreiber einstellbar) und 5.000 Einträge je Tabelle.",
-            "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.",
+            "Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Notions HTML-Export (Exportieren → HTML) behält auch Toggles, Callouts und Farben. Maximal 100 MB, 10.000 Seiten (vom Betreiber einstellbar) und 5.000 Einträge je Tabelle.",
+            "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. Notion's HTML export (Export → HTML) also keeps toggles, callouts and colours. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.",
           )}
         >
           <Stack>

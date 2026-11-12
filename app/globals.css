@@ -1356,6 +1356,46 @@ kbd,
 .document-editor li :is(ul, ol) > li:last-child {
   margin-bottom: 0;
 }
+/* Nested lists (#234): the markers change per level – 1. → a. → i. and
+   • → ◦ → ▪, again from the fourth level – and the level counts every list
+   item around, of any kind (a numbered list below a bullet or a task on
+   level 2 counts a., b.). Written with :where() so lists that hide their
+   markers keep doing so. The same rules for the combined print view and
+   e-books come from lib/list-levels.ts (tests/list-levels.test.ts keeps
+   both alike). */
+.document-editor :where(ol) { list-style-type: decimal; }
+.document-editor :where(li) :where(ol) { list-style-type: lower-alpha; }
+.document-editor :where(li) :where(li) :where(ol) { list-style-type: lower-roman; }
+.document-editor :where(li) :where(li) :where(li) :where(ol) { list-style-type: decimal; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(ol) { list-style-type: lower-alpha; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(ol) { list-style-type: lower-roman; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(ol) { list-style-type: decimal; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(ol) { list-style-type: lower-alpha; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(ol) { list-style-type: lower-roman; }
+.document-editor :where(ul) { list-style-type: disc; }
+.document-editor :where(li) :where(ul) { list-style-type: circle; }
+.document-editor :where(li) :where(li) :where(ul) { list-style-type: square; }
+.document-editor :where(li) :where(li) :where(li) :where(ul) { list-style-type: disc; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(ul) { list-style-type: circle; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(ul) { list-style-type: square; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(ul) { list-style-type: disc; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(ul) { list-style-type: circle; }
+.document-editor :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(li) :where(ul) { list-style-type: square; }
+/* A readable rhythm (#234): the lines of one item closer together than the
+   items themselves. The marker hangs in the 25 px gutter, so wrapped lines
+   start under the text, not under the number. Tasks keep their own rows. */
+.document-editor :is(ol, ul:not([data-type="taskList"])) > li {
+  padding: 3px 0;
+  line-height: 1.6;
+}
+/* The end of a nested list adds no space of its own: after a deep branch
+   the next item follows at the usual distance. */
+.document-editor li :is(ol, ul:not([data-type="taskList"])) > li:last-child {
+  padding-bottom: 0;
+}
+.document-editor ol > li::marker {
+  font-variant-numeric: tabular-nums;
+}
 .document-editor blockquote {
   border-left: 3px solid #b9ccec;
   margin: 22px 0;
