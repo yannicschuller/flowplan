@@ -99,6 +99,8 @@ import { dropSpace, moveSpaceBy } from "@/lib/space-moves";
 import { useSidebarFolds } from "./sidebar-folds-state";
 import { setLinkTargetPages } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
+import { structuralPath } from "@/lib/page-path";
+import { PageBreadcrumb } from "./page-breadcrumb";
 import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/lib/sidebar-folds";
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
@@ -1817,7 +1819,7 @@ export default function WorkspaceApp({
       const page = target ? titledPages.find((p) => p.id === target.pageId) : undefined;
       const pageTitle = page ? page.title || t("Ohne Titel", "Untitled") : "";
       if (target?.rowId) {
-        const open = document.querySelector<HTMLTextAreaElement>(".modal.record-dialog .row-title-input");
+        const open = document.querySelector<HTMLTextAreaElement>(":is(.modal.record-dialog, .record-page) .row-title-input");
         const now = parsePageLocation(location.hash);
         const title = (now?.rowId === target.rowId && open?.value.trim()) || "";
         return {
@@ -1894,6 +1896,11 @@ export default function WorkspaceApp({
   }, [shownPlace]);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
+  // The record open in the database page (components/database-view.tsx,
+  // #231): the breadcrumb's last segment; "full": shown as a page of its
+  // own, in place of the database's title and actions.
+  const [recordView, setRecordView] = useState<{ rowId: string; title: string; icon: string; full: boolean } | null>(null);
+  const recordFull = screen === "page" && data?.page.kind === "database" && !!recordView?.full;
   const e2eeState = useE2ee();
   const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at), [titledPages]),
     // The tree's levels in one pass: sub pages per parent, top-level pages
@@ -3293,19 +3300,24 @@ export default function WorkspaceApp({
                   <span>{p.title}</span>
                 </button>
               ))}
-              {boot.favoriteRows?.map((f) => (
-                <button
-                  className="favorite-nav"
-                  key={f.rowId}
-                  aria-label={t(`Eintrag ${f.title}`, `Record ${f.title}`)}
-                  onClick={() =>
-                    openPage(f.pageId, { pageId: f.pageId, rowId: f.rowId })
-                  }
-                >
-                  <PageIcon name={shownPageIcon(f.icon, "document")} />
-                  <span>{f.title}</span>
-                </button>
-              ))}
+              {/* Favourite records open as pages of their own (#231), by
+                  a real link: ⌘/Ctrl or the middle button open a new tab. */}
+              {boot.favoriteRows?.map((f) => {
+                const target = { pageId: f.pageId, rowId: f.rowId, full: true };
+                return (
+                  <a
+                    className={`favorite-nav${recordView?.full && recordView.rowId === f.rowId && pageId === f.pageId && screen === "page" ? " selected" : ""}`}
+                    key={f.rowId}
+                    href={pageLocationHash(target)}
+                    aria-label={t(`Eintrag ${f.title}`, `Record ${f.title}`)}
+                    // The address opens it (the hash route); the drawer closes.
+                    onClick={() => setMobile(false)}
+                  >
+                    <PageIcon name={shownPageIcon(f.icon, "document")} />
+                    <span>{f.title}</span>
+                  </a>
+                );
+              })}
               </div>
               ) : null}
               </Collapse>
@@ -3687,13 +3699,17 @@ export default function WorkspaceApp({
               forwardHint={keyHints.visible ? preferredCombo("forward", mac) : ""}
               describe={describeStep}
             />
-            <span className="breadcrumb-workspace">{boot.workspace.name}</span>
+            <a className="breadcrumb-workspace" href="#home">{boot.workspace.name}</a>
             <span className="breadcrumb-divider">/</span>
             {screen === "page" && data ? (
-              <>
-                <PageIcon name={data.page.icon} size={16} />
-                <span>{titledPages.find((p) => p.id === data.page.id)?.title ?? data.page.title}</span>
-              </>
+              <PageBreadcrumb
+                segments={structuralPath(
+                  titledPages,
+                  { ...data.page, title: titledPages.find((p) => p.id === data.page.id)?.title ?? data.page.title },
+                  data.page.kind === "database" ? recordView : null,
+                )}
+                room={phone ? 2 : 4}
+              />
             ) : (
               <span>
                 {
@@ -3733,6 +3749,9 @@ export default function WorkspaceApp({
                 <span>{statusLabel(status)}</span>
               </CrossFade>
               <PresenceAvatars users={data.present.filter((u) => u.id !== boot.user.id).slice(0, 3)} />
+              {/* A record as a page (#231) has its own actions above it;
+                  these belong to the database. */}
+              {!recordFull && (<>
               {canRead && (
                 <button
                   className={`icon-button read-mode-toggle topbar-phone-hidden${reading ? " active" : ""}`}
@@ -4125,6 +4144,7 @@ export default function WorkspaceApp({
                   </Dropdown.Content>
                 </Dropdown.Portal>
               </Dropdown.Root>
+              </>)}
             </div>
           ) : (
             <span className="topbar-note">
@@ -4208,11 +4228,13 @@ export default function WorkspaceApp({
           ) : (
             screen === "page" &&
             data && (
-              <div className={`page-layout ${comments ? "with-comments" : ""}`}>
+              <div className={`page-layout ${comments && !recordFull ? "with-comments" : ""}`}>
                 <article
                   data-revalidating={revalidating ? "true" : undefined}
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${data.page.full_width ? "full-width" : ""}${recordFull ? " record-full-page" : ""} font-${data.page.font}`}
                 >
+                  {/* A record as a page of its own (#231): only the record. */}
+                  {!recordFull && (<>
                   {data.page.cover && (
                     <CoverFrame
                       className="page-cover"
@@ -4319,12 +4341,13 @@ export default function WorkspaceApp({
                       }
                     />
                   )}
+                  </>)}
                   {/* A part that fails (offline, not in the copy) shows a
                       message instead of taking the app down (#47). */}
                   <ViewBoundary key={`view-${data.page.id}`}>
                   {data.page.kind === "database" ? (
                     <>
-                      {offlineQueue.queue.some(
+                      {!recordFull && offlineQueue.queue.some(
                         (c) => c.pageId === data.page.id,
                       ) && (
                         <p className="offline-pending" role="status">
@@ -4360,6 +4383,7 @@ export default function WorkspaceApp({
                         favoriteRows={boot.favoriteRows}
                         mutate={mutate}
                         onError={notifyError}
+                        onRecordView={setRecordView}
                       />
                     </>
                   ) : data.locked ? (
@@ -4478,7 +4502,7 @@ export default function WorkspaceApp({
                     </>
                   )}
                   </ViewBoundary>
-                  {!data.draft && (<>
+                  {!data.draft && !recordFull && (<>
                   {discoveryPanels && (
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
@@ -4555,7 +4579,7 @@ export default function WorkspaceApp({
                 {aiSummary?.pageId === data.page.id && !comments && (
                   <AiSummaryPanel target={aiSummary} onClose={() => setAiSummary(null)} />
                 )}
-                {comments && (
+                {comments && !recordFull && (
                   <aside className="comments-panel">
                     <header>
                       <h3>{t("Kommentare", "Comments")}</h3>

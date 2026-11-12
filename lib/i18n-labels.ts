@@ -25,8 +25,8 @@ const labels: Record<string, string> = {
   "Letzte N Tage (inkl. heute)": "Last N days (incl. today)",
   "Nächste N Tage (inkl. heute)": "Next N days (incl. today)",
   // record layout and access
-  Dialog: "Dialog",
-  Seitenleiste: "Side panel",
+  Mittig: "Centred",
+  Seitenleiste: "Side peek",
   "Ganze Seite": "Full page",
   "Wie die Datenbank": "Same as the database",
   "Nur lesen (Ausnahmen unten)": "Read only (exceptions below)",

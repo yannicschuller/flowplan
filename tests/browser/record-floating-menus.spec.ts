@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // Issue #75: in a scrolled record (centred dialog or bottom sheet, side
-// panel, full page) the "/" menu, the text menu and the table of contents
+// panel; "Ganze Seite" is a page of its own since #231, as any page) the "/" menu, the text menu and the table of contents
 // sit next to the text, as on a page – the dialog is no containing block
 // for its fixed children.
 test("menus and outline stay at the text in a scrolled record", async ({ page }, info) => {
@@ -33,7 +33,7 @@ test("menus and outline stay at the text in a scrolled record", async ({ page },
   // A touch selection on a phone shows the text menu only with "Immer" (#200).
   if (phone) await command({ action: "profile.textMenu", textMenu: "always" });
 
-  for (const mode of ["center", "side", "full"]) {
+  for (const mode of ["center", "side"]) {
     const current = await (await page.request.get(`/api/pages/${db.id}`)).json();
     await command({
       action: "database.update",
@@ -59,7 +59,7 @@ test("menus and outline stay at the text in a scrolled record", async ({ page },
       }, html);
     }
     await expect.poll(() => editor.locator("p").count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(36);
-    await expect(dialog).toHaveClass(mode === "side" ? /modal-side/ : mode === "full" ? /modal-full/ : /record-dialog/);
+    await expect(dialog).toHaveClass(mode === "side" ? /modal-side/ : /record-dialog/);
     // Nothing between the text and the window captures fixed elements.
     await page.waitForTimeout(400); // the opening animation
     expect(await captors(page)).toEqual([]);

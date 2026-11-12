@@ -108,7 +108,8 @@ test("a page moves into a database; records and databases export from their menu
   await page.screenshot({ path: "test-results/page-to-record.png" });
   await dialog.getByRole("button", { name: "Verschieben" }).click();
   await expect(page).toHaveURL(new RegExp(`page=${database}&row=`));
-  const record = page.getByRole("dialog", { name: "Eintrag" });
+  // A documents database opens its records as pages of their own (#231).
+  const record = page.locator(".record-page");
   await expect(record).toContainText("Schritt eins.");
 
   // The record's menu exports it as Markdown with frontmatter.
@@ -121,7 +122,8 @@ test("a page moves into a database; records and databases export from their menu
   expect(text).toMatch(new RegExp(`^---\\ntitle: Anleitung ${stamp}\\n`));
   expect(text).toContain("Schritt eins.");
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
+  // Back to the database by the path in the top bar.
+  await page.locator(".topbar .breadcrumb-path").getByRole("link", { name: `Wissen ${stamp}` }).click();
 
   // The database toolbar has one export menu with CSV and Markdown.
   await page.getByRole("button", { name: "Exportieren", exact: true }).click();

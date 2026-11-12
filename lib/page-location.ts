@@ -7,28 +7,33 @@ export type PageLocation = {
   itemId?: string;
   // A block of the document (block links, lib/block-ids.ts).
   blockId?: string;
+  // A record shown as a page of its own in the main area instead of a
+  // dialog over its database (#231): "&full=1". Only with a record.
+  full?: boolean;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parsePageLocation(hash: string): PageLocation | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   if (
-    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block"].includes(key))
+    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block", "full"].includes(key))
   )
     return null;
-  if (["page", "row", "thread", "item", "block"].some((key) => params.getAll(key).length > 1))
+  if (["page", "row", "thread", "item", "block", "full"].some((key) => params.getAll(key).length > 1))
     return null;
   const pageId = params.get("page"),
     rowId = params.get("row"),
     threadId = params.get("thread"),
     itemId = params.get("item"),
-    blockId = params.get("block");
+    blockId = params.get("block"),
+    full = params.get("full");
   if (
     !pageId ||
     !uuid.test(pageId) ||
     (itemId !== null && !/^[\w-]{1,64}$/.test(itemId)) ||
     (blockId !== null && !/^[\w-]{1,64}$/.test(blockId)) ||
     (rowId !== null && !uuid.test(rowId)) ||
-    (threadId !== null && !uuid.test(threadId))
+    (threadId !== null && !uuid.test(threadId)) ||
+    (full !== null && (full !== "1" || rowId === null))
   )
     return null;
   return {
@@ -37,6 +42,7 @@ export function parsePageLocation(hash: string): PageLocation | null {
     ...(threadId ? { threadId } : {}),
     ...(itemId ? { itemId } : {}),
     ...(blockId ? { blockId } : {}),
+    ...(full ? { full: true } : {}),
   };
 }
 export function pageLocationHash(target: PageLocation): string {
@@ -45,6 +51,7 @@ export function pageLocationHash(target: PageLocation): string {
   if (target.threadId) params.set("thread", target.threadId);
   if (target.itemId) params.set("item", target.itemId);
   if (target.blockId) params.set("block", target.blockId);
+  if (target.full && target.rowId) params.set("full", "1");
   const hash = `#${params}`;
   return parsePageLocation(hash) ? hash : "#inbox";
 }

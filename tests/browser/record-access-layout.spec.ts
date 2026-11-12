@@ -101,10 +101,12 @@ test("record pages get their own permissions and layout options", async ({
       hideEmpty: true,
       hidden: ["intern"],
     });
-  // "Als Seite öffnen" widens this record until it closes.
-  await entry.getByRole("button", { name: "Als Seite öffnen", exact: true }).click();
-  await expect(entry).toHaveClass(/modal-full/);
-  await entry.getByRole("button", { name: "Zurück zur Ansicht „Seitenleiste“", exact: true }).click();
+  // "Als Seite öffnen" shows this record as a page of its own (#231);
+  // back to the side panel it came from.
+  await entry.getByRole("link", { name: "Als Seite öffnen", exact: true }).click();
+  await expect(page.locator(".record-page")).toBeVisible();
+  await expect(entry).toHaveCount(0);
+  await page.locator(".record-page").getByRole("button", { name: "Zurück zur Ansicht „Seitenleiste“", exact: true }).click();
   await expect(entry).toHaveClass(/modal-side/);
   // A view may open its records differently from the database default.
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();

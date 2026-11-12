@@ -2,10 +2,14 @@ import { z } from "zod";
 
 // Layout of record pages, set per database: how records open, where the
 // properties sit and which of them are shown.
-export const recordOpenModes = ["center", "side", "full"] as const;
+// "full" shows the record as a page of its own in the main area, in place
+// of the database (#231); where it is opened on top of something else (a
+// linked database in a page, a related record) it is a dialog across the
+// whole window with "Als Seite öffnen" leading to that page.
+export const recordOpenModes = ["side", "center", "full"] as const;
 export type RecordOpenMode = (typeof recordOpenModes)[number];
 export const recordOpenLabels: Record<RecordOpenMode, string> = {
-  center: "Dialog",
+  center: "Mittig",
   side: "Seitenleiste",
   full: "Ganze Seite",
 };
