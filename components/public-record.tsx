@@ -3,6 +3,7 @@
 // no database, no views, no other records. The path above starts at the
 // record itself; links inside its document to other pages and records are
 // removed (publishedHtml with the share's pages, none yet).
+import { coloredChoices } from "./option-chips";
 import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
@@ -165,6 +166,8 @@ export async function renderPublicRecord(scope: RecordScope) {
   );
 }
 function propertyValue(f: Field, value: unknown, fields: Field[]) {
+  const chips = coloredChoices(f, value);
+  if (chips) return chips;
   if (!isFormattedText(f, fields)) return displayText(f, value, "UTC");
   if (typeof value !== "string" || !value.trim()) return "";
   return <InlineText value={value} links oneLine={false} />;

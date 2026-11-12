@@ -307,6 +307,7 @@ export type Field = {
   type: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "url" | "email" | "phone" | "checklist" | "person" | "relation" | "rollup" | "formula" | "created_at" | "updated_at" | "created_by" | "updated_by" | "files" | "id" | "progress" | "time" | "sprint" | "aliases";
   options?: string[];
   tagOptions?: boolean;
+  optionColors?: Record<string, "gray" | "blue" | "green" | "red" | "yellow" | "orange" | "purple" | "pink" | "teal">;
   formula?: string;
   relationPage?: string;
   relationField?: string;
@@ -2076,7 +2077,7 @@ export type CommandFavoriteResult = {
   ok: true;
 };
 
-/** Change the properties and views of a database. `version` must be the database's current version (optimistic locking, 409 otherwise). A multiselect with `tagOptions: true` offers the workspace's tags as its options (its `options` are set by the server); cells keep the tag names, and a new name creates the tag (members with edit rights, not guests). Switching an existing multiselect to `tagOptions` maps its options to tags (missing ones are created) and keeps the values; switching back makes the tags in use its own options. Not in end-to-end encrypted spaces (409). `optionRenames` renames options of select and multiselect properties (not tag-backed ones): `from` must be one of the property's current options and missing from the new `options`, `to` one of the new `options`. Records, record templates, records in the trash, the views' filters and groups, the done rule, workflow, automations, form conditions and the issue sync's status mapping follow; a `to` that already was an option merges the two. Without `optionRenames`, changed options leave the records' values as they are. */
+/** Change the properties and views of a database. `version` must be the database's current version (optimistic locking, 409 otherwise). A multiselect with `tagOptions: true` offers the workspace's tags as its options (its `options` are set by the server); cells keep the tag names, and a new name creates the tag (members with edit rights, not guests). Switching an existing multiselect to `tagOptions` maps its options to tags (missing ones are created) and keeps the values; switching back makes the tags in use its own options. Not in end-to-end encrypted spaces (409). `optionRenames` renames options of select and multiselect properties (not tag-backed ones): `from` must be one of the property's current options and missing from the new `options`, `to` one of the new `options`. Records, record templates, records in the trash, the views' filters and groups, the done rule, workflow, automations, form conditions and the issue sync's status mapping follow; a `to` that already was an option merges the two. Without `optionRenames`, changed options leave the records' values as they are. `optionColors` gives options of select and multiselect properties a colour (gray, blue, green, red, yellow, orange, purple, pink, teal): options new to the property without one get the next colour in turn, options without a colour keep the default look, a renamed option keeps its colour, colours of removed options are dropped. A property sent without `optionColors` keeps its stored colours; `{}` removes them. Tag-backed properties use the tags' colours. */
 export type CommandDatabaseUpdate = {
   action: "database.update";
   pageId: string;
@@ -2087,6 +2088,7 @@ export type CommandDatabaseUpdate = {
     type: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "url" | "email" | "phone" | "checklist" | "person" | "relation" | "rollup" | "formula" | "created_at" | "updated_at" | "created_by" | "updated_by" | "files" | "id" | "progress" | "time" | "sprint" | "aliases";
     options?: string[];
     tagOptions?: boolean;
+    optionColors?: Record<string, "gray" | "blue" | "green" | "red" | "yellow" | "orange" | "purple" | "pink" | "teal">;
     formula?: string;
     relationPage?: string;
     relationField?: string;

@@ -2,7 +2,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { safeInsets } from "./safe-area";
 
-export type ContextMenuItem = { icon: ReactNode; label: string; run: () => void; danger?: boolean; disabled?: boolean } | "separator";
+// `checked`: one of a choice (a colour), as a radio item.
+export type ContextMenuItem = { icon: ReactNode; label: string; run: () => void; danger?: boolean; disabled?: boolean; checked?: boolean } | "separator";
 
 // A small menu at the pointer (right-click): arrow keys move, Escape,
 // scrolling or a click elsewhere close it.
@@ -21,7 +22,7 @@ export function ContextMenu({ x, y, label, items, onClose }: { x: number; y: num
     document.addEventListener("keydown", key);
     window.addEventListener("scroll", scrolled, true);
     window.addEventListener("resize", shut);
-    menu.current?.querySelector<HTMLElement>("[role=menuitem]:not(:disabled)")?.focus();
+    menu.current?.querySelector<HTMLElement>("[role^=menuitem]:not(:disabled)")?.focus();
     return () => {
       document.removeEventListener("mousedown", away, true);
       document.removeEventListener("keydown", key);
@@ -43,7 +44,8 @@ export function ContextMenu({ x, y, label, items, onClose }: { x: number; y: num
           <button
             key={index}
             type="button"
-            role="menuitem"
+            role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+            aria-checked={item.checked}
             disabled={item.disabled}
             className={`dropdown-item${item.danger ? " danger" : ""}`}
             onClick={() => {
@@ -51,7 +53,7 @@ export function ContextMenu({ x, y, label, items, onClose }: { x: number; y: num
               item.run();
             }}
             onKeyDown={(e) => {
-              const all = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not(:disabled)") || [])];
+              const all = [...(menu.current?.querySelectorAll<HTMLElement>("[role^=menuitem]:not(:disabled)") || [])];
               const i = all.indexOf(e.currentTarget);
               if (e.key === "ArrowDown") (e.preventDefault(), all[(i + 1) % all.length]?.focus());
               if (e.key === "ArrowUp") (e.preventDefault(), all[(i - 1 + all.length) % all.length]?.focus());

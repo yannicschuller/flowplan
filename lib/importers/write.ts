@@ -3,6 +3,8 @@
 // records carry title, tags, dates, folder and source link. Checks rights,
 // the page limit and the storage quotas before anything is written; files
 // are stored only when a page refers to them.
+import { tagColorFrom } from "../page-properties";
+import { colorOptions } from "../option-colors";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, id, one, onTransactionRollback, run, transaction, nowText } from "../db";
@@ -385,6 +387,10 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
         ...(folders.length ? [{ id: "imp_folder", name: ct("Ordner", "Folder"), type: "select", options: folders } as Field] : []),
         ...(notes.some(({ page }) => page.url) ? [{ id: "imp_url", name: ct("Quelle", "Source"), type: "url" } as Field] : []),
       ];
+      // Tags keep the colours of the source, the rest get them in turn (#242).
+      const tagColors = Object.fromEntries(tags.flatMap((name) => (tree.tagColors?.[name] ? [[name, tagColorFrom(tree.tagColors[name])]] : [])));
+      if (Object.keys(tagColors).length) fields[1].optionColors = tagColors;
+      colorOptions(fields);
       await run(
         "UPDATE databases SET fields=?,views=? WHERE page_id=?",
         JSON.stringify(fields),
@@ -447,6 +453,7 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
         }
         if (page.kind === "database" && page.database) {
           const { fields, views, rows: rowsOf } = page.database;
+          colorOptions(fields);
           await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
           await forEachAsync(rowsOf.slice(0, MAX_IMPORT_ROWS), async (record, i) => {
             const own = record.key ? records.get(record.key) : undefined;

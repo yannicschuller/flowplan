@@ -34,6 +34,7 @@ import { DatabaseSprints } from "./database-sprints";
 import { tagByName, useTagOptions } from "./tag-options-context";
 import { isTagField } from "@/lib/page-properties";
 import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRename } from "@/lib/option-renames";
+import { OPTION_COLORS, carryColors, choiceChipClass, colorOptions, hasOwnOptions, legacyOptionColor, optionColor, type OptionColor } from "@/lib/option-colors";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
@@ -222,7 +223,10 @@ import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape } from "./skeleton";
-import { showToast, toastSerial, undoShownSince } from "./toast";
+import { showToast, showUndo, toastSerial, undoShownSince } from "./toast";
+import { colorLabel } from "./settings/user/tags";
+import { OptionColorList } from "./option-color-list";
+import { FieldTypeIcon } from "./field-type-icon";
 const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
@@ -547,6 +551,8 @@ export default function DatabaseView({
   const [recordMenu, setRecordMenu] = useState<{ x: number; y: number; rowIds: string[] } | null>(null);
   // View tabs: right-click menu, renaming in place, reordering by dragging.
   const [viewMenu, setViewMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  // The menu of an option's chip (right-click): its colour (#242).
+  const [optionMenu, setOptionMenu] = useState<{ x: number; y: number; field: string; option: string } | null>(null);
   const [renamingView, setRenamingView] = useState<string | null>(null);
   const [draggedView, setDraggedView] = useState<string | null>(null);
   const [viewDrop, setViewDrop] = useState<{ id: string; after: boolean } | null>(null);
@@ -683,6 +689,9 @@ export default function DatabaseView({
     lastMovedId = useRef<string | null>(null);
   const [orderStatus, setOrderStatus] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
+  // The database as it is now, for "Undo" after it changed (#242).
+  const databaseRef = useRef(data.database);
+  databaseRef.current = data.database;
   const view =
       data.database.views.find((v) => v.id === viewId) ||
       data.database.views[0],
@@ -2043,8 +2052,36 @@ export default function DatabaseView({
     return result.url as string;
   }
   // Chips of options; the workspace's tags with their colours (#79).
+  // Own options with their colours (#242), others as before.
   function chipClass(f: Field | undefined, value: string) {
-    return f && isTagField(f) ? `tag tag-from-tags page-tag-${tagByName(tagOptions.tags, value).color}` : `tag tag-${tagColor(value)}`;
+    return choiceChipClass(f, value, (name) => tagByName(tagOptions.tags, name).color);
+  }
+  // A chip whose colour its menu changes (right-click, #242).
+  const optionsEditable = editable && allowFieldChanges;
+  function optionData(f: Field | undefined, value: string) {
+    return optionsEditable && hasOwnOptions(f) && f!.options?.includes(value) ? { "data-option-field": f!.id, "data-option": value } : {};
+  }
+  function openFieldSettings(f: Field) {
+    setFieldDraft({
+      ...f,
+      ...(f.formula ? { formula: rewriteFormulaReferences(f.formula, fields, "display") } : {}),
+    });
+    setFieldVersion(data.database.version);
+    setFieldError("");
+    setNewField(true);
+  }
+  // One option's colour, saved at once; "Undo" puts the previous one back.
+  async function setOptionColor(fieldId: string, option: string, color: OptionColor) {
+    const f = fields.find((x) => x.id === fieldId);
+    if (!f || optionColor(f, option) === color) return;
+    const previous = { ...(f.optionColors || {}) };
+    const withColors = (colors: Record<string, OptionColor>) => (list: Field[]) =>
+      list.map((x) => (x.id === fieldId ? { ...x, optionColors: colors } : x));
+    const saved = await updateSchema(withColors({ ...previous, [option]: color })(fields));
+    if (saved)
+      showUndo(t(`„${option}“ ist jetzt ${colorLabel(color, t)}.`, `“${option}” is now ${colorLabel(color, t).toLowerCase()}.`), () =>
+        updateSchema(withColors(previous)(databaseRef.current.fields), databaseRef.current.views, undefined, databaseRef.current.version),
+      );
   }
   // A value of the folded record properties (#186): a small chip, named
   // for screen readers.
@@ -2148,6 +2185,7 @@ export default function DatabaseView({
             <span
               key={String(s) + i}
               className={chipClass(f, String(s))}
+              {...optionData(f, String(s))}
             >
               {String(s)}
             </span>
@@ -3121,6 +3159,13 @@ export default function DatabaseView({
         // being edited keep the browser's.
         const target = e.target as HTMLElement;
         if (target.closest("input, textarea, select, [contenteditable=true], .modal, .ProseMirror")) return;
+        // An option's chip: its colour (#242).
+        const chip = target.closest<HTMLElement>("[data-option-field]");
+        if (chip && optionsEditable) {
+          e.preventDefault();
+          setOptionMenu({ x: e.clientX, y: e.clientY, field: chip.dataset.optionField!, option: chip.dataset.option! });
+          return;
+        }
         const record = target.closest<HTMLElement>("[data-row-id]");
         const rowId = record?.dataset.rowId;
         if (!rowId || !data.rows.some((r) => r.id === rowId)) return;
@@ -3514,36 +3559,10 @@ export default function DatabaseView({
                           ? t("Eigenschaften in der Quelldatenbank bearbeiten", "Edit properties in the source database")
                           : undefined
                       }
-                      onClick={() => {
-                        setFieldDraft({
-                          ...f,
-                          ...(f.formula
-                            ? {
-                                formula: rewriteFormulaReferences(
-                                  f.formula,
-                                  fields,
-                                  "display",
-                                ),
-                              }
-                            : {}),
-                        });
-                        setFieldVersion(data.database.version);
-                        setFieldError("");
-                        setNewField(true);
-                      }}
+                      onClick={() => openFieldSettings(f)}
                     >
                       <span className="property-type">
-                        {f.ai
-                          ? "✦"
-                          : f.type === "number"
-                          ? "#"
-                          : f.type === "date"
-                            ? "◷"
-                            : f.type === "text"
-                              ? "Aa"
-                              : f.type === "formula"
-                                ? "ƒ"
-                                : "≡"}
+                        <FieldTypeIcon field={f} />
                       </span>
                       {f.name}
                       <FieldLock field={f} groups={data.groups || []} />
@@ -3780,7 +3799,7 @@ export default function DatabaseView({
                     }}
                   />
                 </button>
-                <span className={g.value === null ? `tag tag-${tagColor(g.label)}` : chipClass(groupField, g.label)}>
+                <span className={g.value === null ? `tag tag-choice tag-${legacyOptionColor(g.label)}` : chipClass(groupField, g.label)} {...(g.value === null ? {} : optionData(groupField, g.label))}>
                   {g.label}
                 </span>
                 <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
@@ -3908,7 +3927,7 @@ export default function DatabaseView({
                     }}
                   />
                 </button>
-                <span className={g.value === null ? `tag tag-${tagColor(g.label)}` : chipClass(groupField, g.label)}>
+                <span className={g.value === null ? `tag tag-choice tag-${legacyOptionColor(g.label)}` : chipClass(groupField, g.label)} {...(g.value === null ? {} : optionData(groupField, g.label))}>
                   {g.label}
                 </span>
                 <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
@@ -4991,6 +5010,9 @@ export default function DatabaseView({
               if (stored && ["select", "multiselect"].includes(stored.type) && !stored.tagOptions)
                 renames = optionRenames(stored.options || [], draft.options).map((r) => ({ field: draft.id, ...r }));
               draft.options = cleanOptions(draft.options);
+              // Colours of the options left (#242); `{}` clears them.
+              if (draft.optionColors)
+                draft.optionColors = Object.fromEntries(Object.entries(draft.optionColors).filter(([o]) => draft.options!.includes(o)));
             }
             if (renames.length && carry === undefined) {
               setOptionConfirm(renames);
@@ -5144,10 +5166,11 @@ export default function DatabaseView({
                 value={fieldDraft.options?.join(", ") || ""}
                 onChange={(e) => {
                   setOptionConfirm(null);
-                  setFieldDraft((f) => ({
-                    ...f,
-                    options: e.target.value.split(",").map((s) => s.trim()),
-                  }));
+                  setFieldDraft((f) => {
+                    const options = e.target.value.split(",").map((s) => s.trim());
+                    // A renamed option keeps its colour while typing (#242).
+                    return { ...f, options, optionColors: carryColors(f.optionColors, optionRenames(f.options || [], options)) };
+                  });
                 }}
               />
               <small id="option-rename-hint" className="muted">
@@ -5158,6 +5181,21 @@ export default function DatabaseView({
               </small>
             </label>
           )}
+          {hasOwnOptions(fieldDraft) && (() => {
+            const options = cleanOptions(fieldDraft.options || []);
+            // The colours as saving stores them: new options with the
+            // colour they will get.
+            const stored = fields.find((f) => f.id === fieldDraft.id);
+            const preview = colorOptions([{ ...fieldDraft, options, optionColors: fieldDraft.optionColors ?? stored?.optionColors ?? {} }], stored ? [stored] : [])[0].optionColors;
+            return (
+              <OptionColorList
+                options={options}
+                colors={preview}
+                onChange={(option, color) => setFieldDraft((f) => ({ ...f, optionColors: { ...preview, ...f.optionColors, [option]: color } }))}
+                onReplace={(colors) => setFieldDraft((f) => ({ ...f, optionColors: colors }))}
+              />
+            );
+          })()}
           {(fieldDraft.type === "number" || fieldDraft.type === "formula") && (
             <label>
               {t("Format", "Format")}
@@ -6402,6 +6440,30 @@ export default function DatabaseView({
             />
           );
         })()}
+      {optionMenu &&
+        (() => {
+          const f = fields.find((x) => x.id === optionMenu.field);
+          if (!f) return null;
+          const current = optionColor(f, optionMenu.option);
+          return (
+            <ContextMenu
+              x={optionMenu.x}
+              y={optionMenu.y}
+              label={t(`Option ${optionMenu.option}`, `Option ${optionMenu.option}`)}
+              onClose={() => setOptionMenu(null)}
+              items={[
+                ...OPTION_COLORS.map((color) => ({
+                  icon: <span className={`option-swatch opt-${color}`} aria-hidden />,
+                  label: colorLabel(color, t),
+                  checked: current === color,
+                  run: () => void setOptionColor(f.id, optionMenu.option, color),
+                })),
+                "separator" as const,
+                { icon: <SlidersHorizontal />, label: t("Optionen bearbeiten …", "Edit options …"), run: () => openFieldSettings(f) },
+              ]}
+            />
+          );
+        })()}
       {recordMenu && (
         <RecordMenu
           x={recordMenu.x}
@@ -6526,13 +6588,6 @@ function MoreRows({
   );
 }
 
-function tagColor(s: string) {
-  if (["Erledigt", "Niedrig", "Done", "Low"].includes(s)) return "green";
-  if (["In Arbeit", "Design", "In progress"].includes(s)) return "blue";
-  if (["Hoch", "High"].includes(s)) return "red";
-  if (["Mittel", "Produkt", "Medium", "Product"].includes(s)) return "yellow";
-  return "gray";
-}
 // Files cells contain several controls; a <label> would forward every click
 // to the first one (the file chooser).
 // Title of a record, edited in place. Enter, leaving the field and closing

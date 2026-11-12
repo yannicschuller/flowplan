@@ -38,6 +38,7 @@
 // All text is escaped; links keep http, https and mailto only. Documents
 // are read one at a time (ADoc.load); a workspace with more pages than one
 // import may bring is only counted (#82).
+import { tagColorFrom } from "../page-properties";
 import { annotatedToInline, escapeInline } from "../inline-markdown";
 import { randomUUID } from "node:crypto";
 import { ct } from "../content-locale";
@@ -468,7 +469,13 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
       case "multi-select": {
         const names = options(column);
         const multi = column.type === "multi-select";
-        fields.push({ id: fid, name, type: multi ? "multiselect" : "select", options: [...new Set(names.values())].slice(0, 300) });
+        // AFFiNE's option colours ("var(--affine-tag-blue)") as ours (#242).
+        const colors = Object.fromEntries(
+          (Array.isArray(column.data?.options) ? column.data.options : []).flatMap((o: { value?: unknown; color?: unknown }) =>
+            o && typeof o.value === "string" && typeof o.color === "string" ? [[o.value.slice(0, 200), tagColorFrom(o.color)]] : [],
+          ),
+        );
+        fields.push({ id: fid, name, type: multi ? "multiselect" : "select", options: [...new Set(names.values())].slice(0, 300), ...(Object.keys(colors).length ? { optionColors: colors } : {}) });
         convert.set(column.id, (v) =>
           multi
             ? (Array.isArray(v) ? v : []).map((id) => names.get(id)).filter(Boolean)

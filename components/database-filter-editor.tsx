@@ -1,4 +1,5 @@
 "use client";
+import { choiceChipClass, optionColor } from "@/lib/option-colors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -235,7 +236,7 @@ export function FilterConditionFields({
                     })
                   }
                 />
-                {c.name}
+                {field && optionColor(field, c.value) ? <span className={choiceChipClass(field, c.value)}>{c.name}</span> : c.name}
               </label>
             ))}
             {!choices.length && <span className="muted">{t("Keine Werte", "No values")}</span>}

@@ -27,6 +27,7 @@ import { rowCreated } from "./automations";
 import { cellText } from "./cell-text";
 import type { Field, Identity, Page, Row } from "./types";
 import { filterAsync, mapAsync } from "./each-async";
+import { colorOptions, hasOwnOptions, optionColor } from "./option-colors";
 
 const input = z.object({
   rowIds: z.array(z.uuid()).min(1).max(500),
@@ -60,7 +61,7 @@ function compatible(from: Field["type"], to: Field["type"]) {
 // The value for the target property; options missing there are collected.
 // `formatted`: whether source and target are formatted text (#126) – the
 // text carries over, its formatting only between formatted properties.
-function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o: string) => void, formatted = { from: false, to: false }): unknown {
+function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o: string, from: Field) => void, formatted = { from: false, to: false }): unknown {
   if (value === undefined || value === null || value === "") return undefined;
   if (formatted.from && formatted.to) return value;
   if (formatted.from && typeof value === "string") value = toPlain(value);
@@ -68,7 +69,7 @@ function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o
     const text = from.type === "checkbox" ? (value ? "✓" : "") : cellText(value);
     return text ? escapeInline(text) : undefined;
   }
-  const options = (list: string[]) => list.forEach((o) => !to.options?.includes(o) && addOption(to, o));
+  const options = (list: string[]) => list.forEach((o) => !to.options?.includes(o) && addOption(to, o, from));
   switch (to.type) {
     case "select": {
       const v = Array.isArray(value) ? String(value[0] ?? "") : String(value);
@@ -143,6 +144,7 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
   if (target.locked || (b.mode === "move" && source.locked)) throw new HttpError(409, "Diese Seite ist gesperrt.");
   const sourceFields = await fieldsOf(source.id);
   const targetFields = await fieldsOf(target.id);
+  const targetBefore = structuredClone(targetFields);
   // Properties the target lacks, created on request.
   const created: string[] = [];
   const mapping = new Map<string, Field>();
@@ -155,8 +157,10 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
     if (NOT_COPIED.has(f.type) || f.parent || hidden.has(f.id)) return;
     let to = match(f, targetFields, i === 0);
     if (!to && b.addMissing && !["relation", "time"].includes(f.type) && targetFields.length < 80) {
-      to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(isTagField(f) ? { tagOptions: true } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}) };
+      to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(isTagField(f) ? { tagOptions: true } : {}), ...(f.optionColors ? { optionColors: { ...f.optionColors } } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}) };
       targetFields.push(to);
+      // A copy looks like its source: its options count as known (#242).
+      targetBefore.push(structuredClone(to));
       created.push(f.name);
     }
     if (to) mapping.set(f.id, to);
@@ -168,8 +172,12 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
     [...mapping.values()].map((f) => f.id),
   );
   let optionsAdded = false;
-  const addOption = (f: Field, o: string) => {
+  const addOption = (f: Field, o: string, from: Field) => {
     f.options = [...(f.options || []), o].slice(0, 100);
+    // The option keeps its colour from the source (#242); otherwise
+    // colorOptions gives it the next one.
+    const color = optionColor(from, o);
+    if (color && hasOwnOptions(f)) f.optionColors = { ...f.optionColors, [o]: color };
     optionsAdded = true;
   };
   const rows = await mapAsync(b.rowIds, async (rid) => {
@@ -242,6 +250,7 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
       results.push(row.id);
     }
   }
+  if (created.length || optionsAdded) colorOptions(targetFields, targetBefore);
   if (created.length || optionsAdded)
     await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(targetFields), target.id);
   if (targetFields.some(isTagField)) await syncTagFieldOptions(target.workspace_id);

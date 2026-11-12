@@ -1,4 +1,5 @@
 "use client";
+import { choiceChipClass, optionColor } from "@/lib/option-colors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState, useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
@@ -257,7 +258,8 @@ export function CellInput({
                 )
               }
             />
-            {o}
+            {/* A coloured option as its chip (#242). */}
+            {optionColor(f, o) ? <span className={choiceChipClass(f, o)}>{o}</span> : o}
           </label>
         ))}
       </div>

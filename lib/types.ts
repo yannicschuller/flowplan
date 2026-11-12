@@ -130,6 +130,9 @@ export type Field = {
   name: string;
   type: FieldType;
   options?: string[];
+  // Colour per option (#242, lib/option-colors.ts); options without one
+  // keep the look they had before.
+  optionColors?: Record<string, import("./option-colors").OptionColor>;
   formula?: string;
   relationPage?: string;
   relationField?: string;

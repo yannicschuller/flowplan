@@ -7,6 +7,7 @@
 // with `ai: { prompt, auto?, autoBy? }`. Its values are ordinary cell
 // values (filters, sorting, grouping, exports work as for any property);
 // when and with which model a value was computed is kept in ai_cell_meta.
+import { colorOptions } from "../option-colors";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { HttpError } from "../auth";
@@ -490,6 +491,8 @@ export async function applyDatabaseProposal(pageId: string, userId: string, raw:
     type: f.type,
     ...(f.options ? { options: f.options } : {}),
   }));
+  // The AI's options coloured in turn (#242).
+  colorOptions(fields);
   const select = fields.find((f) => f.type === "select");
   const views: View[] = [
     { id: "table", name: labels.all, type: "table", filters: [], sorts: [] },

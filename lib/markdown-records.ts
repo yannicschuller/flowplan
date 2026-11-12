@@ -2,6 +2,7 @@
 // Obsidian keeps notes): the title from "title:", the first heading or the
 // file name, properties from the frontmatter by name, the rest as the
 // record document. Missing properties can be created with a guessed type.
+import { colorOptions } from "./option-colors";
 import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable } from "./field-access";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
@@ -326,6 +327,8 @@ export async function importMarkdownRecords(
     });
     // Properties this person may not change (lib/field-access.ts).
     await assertFieldsWritable(user, page, next, new Set(rows.flatMap((r) => Object.keys(r.cells))));
+    // New options and properties get colours in turn (#242).
+    colorOptions(next, JSON.parse(raw.fields) as Field[]);
     if (JSON.stringify(next) !== raw.fields)
       await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(next), page.id);
     await syncTagFieldOptions(page.workspace_id);
