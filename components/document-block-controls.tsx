@@ -165,6 +165,8 @@ type Drag = {
   target?: number;
   // Dropping at the left or right edge of a block builds columns.
   column?: { pos: number; side: "left" | "right" };
+  // ⌥/Alt held: a copy is dropped, the blocks stay (#239).
+  copy?: boolean;
   clientX: number;
   clientY: number;
 };
@@ -397,7 +399,7 @@ export function DocumentBlockControls({
     if (window.matchMedia("(pointer: coarse)").matches) return;
     editor.commands.focus();
   }
-  function perform(action: "duplicate" | "delete" | "move", target?: number) {
+  function perform(action: "duplicate" | "delete" | "move" | "copy", target?: number) {
     if (!editor?.isEditable) {
       setError(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
       return;
@@ -405,7 +407,7 @@ export function DocumentBlockControls({
     try {
       const range = blockRange(editor.state.doc, selected.current);
       if (
-        action === "duplicate" &&
+        (action === "duplicate" || action === "copy") &&
         !allowLinkedCopies &&
         range.blocks.some((b) => hasLinkedBlocks(b.node))
       )
@@ -546,44 +548,79 @@ export function DocumentBlockControls({
         .sort((a, b) => Math.abs(y - a.y) - Math.abs(y - b.y))
         .slice(0, 12),
     ];
-    const valid = candidates.find(({ block, after }) => {
-      try {
-        changeBlocks(
-          editor.state,
-          drag.positions,
-          "move",
-          after ? block.end : block.pos,
-        );
+    // The boundary next to the pointer first (with the levels there, see
+    // below); when the blocks cannot go there (e.g. at the edge of a task
+    // list), the nearest one that works.
+    const place = (valid: { block: Positioned; after: boolean }) => {
+      const gap = valid.after ? valid.block.end : valid.block.pos;
+      // "After one block" and "before the next" are the same place: the line
+      // always sits in the middle of the gap between them, so it does not
+      // jump while the pointer crosses the gap.
+      const edge = valid.after
+        ? valid.block.top + valid.block.height
+        : valid.block.top;
+      const neighbour = geometry.current.find((b) =>
+        valid.after ? b.pos === valid.block.end : b.end === valid.block.pos,
+      );
+      const top = neighbour
+        ? valid.after
+          ? (edge + neighbour.top) / 2
+          : (neighbour.top + neighbour.height + edge) / 2
+        : edge;
+      // The level by the pointer's horizontal position (#239): every block
+      // that ends at this gap is a level (a nested list item, the item around
+      // its list, a toggle …), plus "inside" the innermost one when it takes
+      // children (a list item, an open toggle). Further right goes deeper,
+      // further left out to the parent's level; the line is indented to it.
+      const fits = (target: number) => {
+        try {
+          changeBlocks(editor.state, drag.positions, "move", target);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const doc = editor.state.doc;
+      const endsAt = (pos: number) => {
+        for (let p = pos; p < gap; ) {
+          const $p = doc.resolve(p);
+          if ($p.depth === 0 || p !== $p.end()) return false;
+          p = $p.after();
+        }
         return true;
-      } catch {
-        return false;
+      };
+      const right = Math.max(valid.block.left + valid.block.width, ...(neighbour ? [neighbour.left + neighbour.width] : []));
+      type Level = { target: number; line: number; min: number };
+      const levels: Level[] = [];
+      const ending = available
+        .filter((b) => !listContainers.includes(b.node.type.name) && b.end <= gap && endsAt(b.end))
+        .sort((a, b) => b.depth - a.depth);
+      const inner = ending[0];
+      if (inner && ["listItem", "taskItem", "toggle"].includes(inner.node.type.name) && inner.end - 1 !== gap) {
+        // Its children start where its text starts (a list item's bullet and
+        // a toggle's arrow come before).
+        const child = geometry.current.find((b) => b.parentPos === inner.pos || byPos.get(b.parentPos)?.parentPos === inner.pos);
+        const line = child ? child.left : inner.left + 26;
+        const open = inner.node.type.name !== "toggle" || !!editor.view.nodeDOM(inner.pos) && (editor.view.nodeDOM(inner.pos) as HTMLDetailsElement).open !== false;
+        if (open) levels.push({ target: inner.end - 1, line, min: line + 28 });
       }
-    });
-    if (!valid) {
-      drag.target = undefined;
-      setDrop(null);
+      // A level reaches left over its own handle: dragging by a handle keeps
+      // the level of its block until the pointer moves clearly further left.
+      for (const b of ending) levels.push({ target: b.end, line: b.left, min: b.left - 40 });
+      if (!levels.some((level) => level.target === gap)) levels.push({ target: gap, line: valid.block.left, min: -Infinity });
+      const usable = levels.filter((level) => fits(level.target));
+      const chosen = usable.find((level) => x >= level.min) || usable[usable.length - 1];
+      return chosen ? { target: chosen.target, top, left: chosen.line, width: Math.max(40, right - chosen.line) } : null;
+    };
+    for (const candidate of candidates) {
+      const placed = place(candidate);
+      if (!placed) continue;
+      drag.target = placed.target;
+      setDrop({ top: placed.top, left: placed.left, width: placed.width });
       return;
     }
-    drag.target = valid.after ? valid.block.end : valid.block.pos;
-    // "After one block" and "before the next" are the same place: the line
-    // always sits in the middle of the gap between them, so it does not
-    // jump while the pointer crosses the gap.
-    const edge = valid.after
-      ? valid.block.top + valid.block.height
-      : valid.block.top;
-    const neighbour = geometry.current.find((b) =>
-      valid.after ? b.pos === valid.block.end : b.end === valid.block.pos,
-    );
-    const top = neighbour
-      ? valid.after
-        ? (edge + neighbour.top) / 2
-        : (neighbour.top + neighbour.height + edge) / 2
-      : edge;
-    setDrop({
-      top,
-      left: valid.block.left,
-      width: valid.block.width,
-    });
+    drag.target = undefined;
+    setDrop(null);
   }
   function pointerDown(
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -624,11 +661,17 @@ export function DocumentBlockControls({
           })
         : null;
   }
+  // ⌥/Alt while dragging: the cursor shows a copy.
+  function copying(drag: Drag, alt: boolean) {
+    drag.copy = alt;
+    document.documentElement.classList.toggle("dragging-blocks-copy", alt && drag.active);
+  }
   function pointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = dragging.current;
     if (!drag || drag.pointer !== event.pointerId) return;
     drag.clientX = event.clientX;
     drag.clientY = event.clientY;
+    copying(drag, event.altKey);
     if (!drag.held) return;
     if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 5)
       drag.active = true;
@@ -637,6 +680,19 @@ export function DocumentBlockControls({
       locate(event.clientX, event.clientY);
     }
   }
+  useEffect(() => {
+    if (!pointerActive) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Alt" && dragging.current) copying(dragging.current, event.type === "keydown");
+    };
+    window.addEventListener("keydown", key);
+    window.addEventListener("keyup", key);
+    return () => {
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("keyup", key);
+      document.documentElement.classList.remove("dragging-blocks-copy");
+    };
+  }, [pointerActive]);
   useEffect(() => {
     if (!pointerActive) return;
     let frame = 0;
@@ -1924,9 +1980,10 @@ export function DocumentBlockControls({
                   setPointerActive(false);
                   setDrop(null);
                   event.currentTarget.releasePointerCapture(event.pointerId);
+                  document.documentElement.classList.remove("dragging-blocks-copy");
                   if (active) {
                     if (column) placeBeside(column.pos, column.side);
-                    else if (target !== undefined) perform("move", target);
+                    else if (target !== undefined) perform(event.altKey || drag.copy ? "copy" : "move", target);
                     else
                       setError(
                         t("An dieser Position kann der Block nicht abgelegt werden.", "The block cannot be dropped at this position."),

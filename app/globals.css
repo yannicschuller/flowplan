@@ -9698,15 +9698,27 @@ tr.order-drop-after > td {
 [data-theme="dark"] .document-block-marked {
   background: color-mix(in srgb, var(--blue) 24%, transparent);
 }
+/* The drop line (#239): 4 px, soft, indented to the level the blocks land
+   on; it glides between levels and gaps. */
 .document-block-drop {
   position: absolute;
-  height: 3px;
-  margin-top: -1.5px;
-  border-radius: 3px;
-  transition: top 0.08s ease-out;
-  background: var(--blue);
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  transition: top 0.08s ease-out, left 0.08s ease-out, width 0.08s ease-out;
+  background: color-mix(in srgb, var(--blue) 55%, transparent);
   z-index: 3;
   pointer-events: none;
+}
+/* ⌥ while dragging: a copy lands, the cursor says so. */
+.dragging-blocks-copy,
+.dragging-blocks-copy * {
+  cursor: copy !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-block-drop {
+    transition: none;
+  }
 }
 /* Block colours (#238, lib/block-colors.ts): a text or background colour
    for a whole block, by name, shaded by the theme. */

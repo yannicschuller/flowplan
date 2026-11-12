@@ -146,10 +146,18 @@ function finish(tr: Transaction, start: number, content?: Fragment) {
   );
   return tr.setMeta(BLOCK_SELECTION_META, positions).scrollIntoView();
 }
+// A place between blocks: before or after a block, or between the
+// children of a block that holds blocks (the end of a list item or a
+// toggle's content: a drop as its child, #239) – never inside text.
+export function blockBoundary(doc: Node, target: number) {
+  if (documentBlocks(doc).some((b) => b.pos === target || b.end === target)) return true;
+  const $target = doc.resolve(target);
+  return $target.depth > 0 && !$target.parent.inlineContent && $target.textOffset === 0;
+}
 export function changeBlocks(
   state: EditorState,
   positions: number[],
-  action: "duplicate" | "delete" | "move",
+  action: "duplicate" | "delete" | "move" | "copy",
   target?: number,
 ) {
   const range = blockRange(state.doc, positions);
@@ -172,10 +180,19 @@ export function changeBlocks(
   if (target >= range.from && target <= range.to)
     throw new Error("Der Zielort liegt innerhalb der Auswahl.");
   // Boundaries, not arbitrary text offsets, are valid destinations.
-  if (
-    !documentBlocks(state.doc).some((b) => b.pos === target || b.end === target)
-  )
+  if (!blockBoundary(state.doc, target))
     throw new Error("Das Ziel muss vor oder nach einem Block liegen.");
+  // A copy at the target (⌥ while dropping, #239): the blocks stay, the
+  // copy gets block ids of its own and adapts to where it lands.
+  if (action === "copy") {
+    const copy = withoutBlockIds(freshLinkedIds(new Slice(range.content, 0, 0))).content;
+    const $at = state.doc.resolve(target);
+    const $first = state.doc.resolve(range.from);
+    const kind = range.blocks.every((b) => LIST_ITEMS.includes(b.node.type.name)) ? $first.parent : null;
+    const content = fitBlocks($at.parent, $at.index(), copy, kind ? kind.type.create(kind.attrs) : null);
+    if (!content) throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
+    return finish(state.tr.insert(target, content), target, content);
+  }
   // List items moved out of their list keep it: the list they came from
   // (kind, attributes; a numbered item its number).
   const $from = state.doc.resolve(range.from);

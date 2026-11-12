@@ -272,3 +272,47 @@ test("a numbered item moved out of its list keeps its number and joins a neighbo
   assert.equal(s.doc.lastChild!.type.name, "taskList");
   assert.equal(s.doc.lastChild!.firstChild!.attrs.checked, true);
 });
+test("drops by level (#239): into the end of a list item as its child, and copies with ⌥ leave the blocks", () => {
+  // "Two" dropped into "One" (at the end of its item): a nested list.
+  const s = state(list("One", "Two", "Three"), p("After"));
+  const blocks = documentBlocks(s.doc);
+  const one = blocks.find((b) => b.node.type.name === "listItem" && b.node.textContent === "One")!;
+  const two = blocks.find((b) => b.node.type.name === "listItem" && b.node.textContent === "Two")!;
+  const nested = changeBlocks(s, [two.pos], "move", one.end - 1);
+  const ul = nested.doc.firstChild!;
+  assert.equal(ul.childCount, 2);
+  assert.equal(ul.firstChild!.childCount, 2, "One holds a nested list");
+  assert.equal(ul.firstChild!.child(1).type.name, "bulletList");
+  assert.equal(ul.firstChild!.child(1).textContent, "Two");
+  // A second item into the same item joins its nested list.
+  const s2 = EditorState.create({ schema, doc: nested.doc });
+  const b2 = documentBlocks(s2.doc);
+  const one2 = b2.find((b) => b.node.type.name === "listItem" && b.node.textContent.startsWith("One"))!;
+  const three = b2.find((b) => b.node.type.name === "listItem" && b.node.textContent === "Three")!;
+  const joined = changeBlocks(s2, [three.pos], "move", one2.end - 1);
+  assert.equal(joined.doc.firstChild!.firstChild!.child(1).childCount, 2, "Two and Three in one nested list");
+  // A paragraph dropped there stays a paragraph inside the item.
+  const para = blocks.find((b) => b.node.textContent === "After" && b.node.type.name === "paragraph")!;
+  const inside = changeBlocks(s, [para.pos], "move", one.end - 1);
+  assert.equal(inside.doc.firstChild!.firstChild!.child(1).type.name, "paragraph");
+  // Out of a nested list: after the item around it (one level up).
+  const s3 = EditorState.create({ schema, doc: nested.doc });
+  const b3 = documentBlocks(s3.doc);
+  const nestedTwo = b3.find((b) => b.node.type.name === "listItem" && b.node.textContent === "Two")!;
+  const outer = b3.find((b) => b.node.type.name === "listItem" && b.node.textContent.startsWith("One"))!;
+  const out = changeBlocks(s3, [nestedTwo.pos], "move", outer.end);
+  assert.deepEqual(
+    out.doc.firstChild!.content.content.map((item) => item.textContent),
+    ["One", "Two", "Three"],
+  );
+  // Never into text.
+  assert.throws(() => changeBlocks(s, [two.pos], "move", one.pos + 3), /vor oder nach einem Block/);
+  // A copy: the original stays, the copy lands at the target.
+  const copy = changeBlocks(s, [para.pos], "copy", 0);
+  assert.deepEqual(copy.doc.content.content.map((n) => n.type.name), ["paragraph", "bulletList", "paragraph"]);
+  assert.equal(copy.doc.firstChild!.textContent, "After");
+  assert.equal(copy.doc.lastChild!.textContent, "After");
+  const copiedItem = changeBlocks(s, [two.pos], "copy", s.doc.content.size);
+  assert.equal(copiedItem.doc.lastChild!.type.name, "bulletList", "a copied item stays an item of its kind");
+  assert.equal(copiedItem.doc.firstChild!.childCount, 3, "the original list keeps it");
+});
