@@ -120,10 +120,14 @@ type Phase = "loading" | "loaded" | "settled";
 
 /** For an <img> inside a box: the box shows the blurred picture until the
  *  image has faded in over it. `fit` and `position` follow the image's
- *  object-fit and object-position. */
+ *  object-fit and object-position. `fade: false` keeps the image visible
+ *  from the first paint (small images such as profile pictures): rendered
+ *  on the server, a cached image is then there at once instead of waiting
+ *  for hydration at opacity 0, and the placeholder only shows through
+ *  while the image has not arrived. */
 export function useImagePlaceholder(
   src: string | null | undefined,
-  { fit = "cover", position }: { fit?: "cover" | "contain" | "fill"; position?: string } = {},
+  { fit = "cover", position, fade = true }: { fit?: "cover" | "contain" | "fill"; position?: string; fade?: boolean } = {},
 ) {
   const entry = usePlaceholder(src);
   const key = placeholderKey(src);
@@ -160,8 +164,8 @@ export function useImagePlaceholder(
     imgProps: key
       ? {
           ref,
-          className: phase === "loading" ? "fp-fade" : "fp-fade is-loaded",
-          onLoad: (_event: SyntheticEvent<HTMLImageElement>) => set("loaded"),
+          className: fade ? (phase === "loading" ? "fp-fade" : "fp-fade is-loaded") : undefined,
+          onLoad: (_event: SyntheticEvent<HTMLImageElement>) => set(fade ? "loaded" : "settled"),
         }
       : {},
   };

@@ -3690,7 +3690,7 @@ export default function WorkspaceApp({
               "Mehr" by the profile): the page tree above keeps the height. */}
           <SidebarToolRow tools={sidebarTools} />
           <div className="profile">
-            <Avatar name={boot.user.name} userId={boot.user.id} />
+            <Avatar name={boot.user.name} userId={boot.user.id} eager />
             <span>
               {boot.user.name}
               <small>{online ? t("Arbeitsbereich verbunden", "Workspace connected") : t("Offline", "Offline")}</small>
