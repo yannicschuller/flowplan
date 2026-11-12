@@ -58,8 +58,10 @@ export function documentBlocks(doc: Node): DocumentBlock[] {
         node.type.name === "paragraph" &&
         ["listItem", "taskItem"].includes(parent.type.name);
       if (node.type.name !== "column" && !firstListParagraph) {
+        // A toggle by its title (its content may be closed).
         const text = String(
-          node.textContent ||
+          (node.type.name === "toggle" && node.attrs.title) ||
+            node.textContent ||
             node.attrs.title ||
             node.attrs.expression ||
             (["mermaidBlock", "drawioBlock"].includes(node.type.name) && heading

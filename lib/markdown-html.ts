@@ -11,6 +11,7 @@ import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
 import { taskList } from "./task-list-html";
 import { PAGE_BREAK_HTML } from "./page-break-node";
+import { BLOCK_COLOR_COMMENT, blockColor } from "./block-colors";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -325,7 +326,15 @@ export function markdownToRawHtml(
         if (kept && options.blocks) return options.blocks(Number(kept[1])) ?? "";
         // Toggles: <details><summary>Title</summary> … </details>
         const details = /^<details>\s*<summary>([\s\S]*?)<\/summary>\s*$/i.exec(text);
-        if (details) return `<details><summary>${escaped(decode(details[1].replace(/<[^>]*>/g, "")))}</summary><div>`;
+        if (details) {
+          // A toggle heading (#238): a heading inside <summary>.
+          const heading = /^\s*<h([1-4])>/i.exec(details[1]);
+          return `<details${heading ? ` data-heading="${heading[1]}"` : ""}><summary>${escaped(decode(details[1].replace(/<[^>]*>/g, "")))}</summary><div>`;
+        }
+        // A block colour (#238, lib/block-colors.ts): a marker the next
+        // block takes as its attribute below.
+        const color = BLOCK_COLOR_COMMENT.exec(text.trim());
+        if (color) return blockColor(color[1]) ? `<!--flowplan-color:${color[1]}-->` : "";
         if (/^<\/details>\s*$/i.test(text)) return "</div></details>";
         if (/^<\/?(?:u|mark|sup|sub|strong|em|s)>$|^<br\s*\/?>$/i.test(text)) return text;
         // A page break as lib/markdown.ts writes it (and Pandoc, Typora):
@@ -345,6 +354,14 @@ export function markdownToRawHtml(
     // editor keeps an empty paragraph in front of it).
     .replace(/<p>(<img [^>]*>)<\/p>/g, "$1")
     // Inline formulas: $`a^2`$
-    .replace(/\$<code>([^<]*)<\/code>\$/g, (_, expression: string) => `<span data-math="${expression}">${expression}</span>`);
+    .replace(/\$<code>([^<]*)<\/code>\$/g, (_, expression: string) => `<span data-math="${expression}">${expression}</span>`)
+    // Block colours (#238): the marker before a block (or at the start of
+    // a list item's text) becomes the block's attribute; others are dropped.
+    .replace(/<!--flowplan-color:([a-z-]+)-->\s*<(p|h[1-6]|blockquote|details)\b/g, (_, color: string, tag: string) => `<${tag} data-block-color="${color}"`)
+    .replace(
+      /<li\b([^>]*)>((?:(?!<\/?(?:li|ul|ol)\b)[\s\S])*?)\s*<!--flowplan-color:([a-z-]+)-->/g,
+      (_, attrs: string, before: string, color: string) => `<li${attrs} data-block-color="${color}">${before}`,
+    )
+    .replace(/<!--flowplan-color:[a-z-]+-->/g, "");
   return html;
 }

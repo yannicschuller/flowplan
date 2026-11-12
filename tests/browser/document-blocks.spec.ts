@@ -254,6 +254,8 @@ test("record and guest editors reorder blocks while guest duplication preserves 
   await entry
     .getByRole("button", { name: "Blockaktionen: Absatz · First", exact: true })
     .click();
+  // With a mouse, moving is in the "Verschieben" flyout (#238).
+  if (info.project.name !== "mobile") await page.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
   await page.getByRole("menuitem", { name: "Nach unten", exact: true }).click();
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect
@@ -300,6 +302,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
       name: "Blockaktionen: Absatz · First",
       exact: true,
     });
+    if (info.project.name !== "mobile") await guest.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
     await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
     await caret(guestFirst());
     await firstHandle.first().click();
@@ -315,6 +318,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
     await expect(
       guest.getByRole("menuitem", { name: "Duplizieren", exact: true }),
     ).toBeDisabled();
+    if (info.project.name !== "mobile") await guest.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
     await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
     await guest
       .getByRole("button", { name: "Änderungen speichern", exact: true })

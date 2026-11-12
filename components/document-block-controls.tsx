@@ -8,26 +8,34 @@ import {
   ArrowUp,
   ArrowBendDownRight,
   ArrowsClockwise,
+  ArrowsDownUp,
   ArrowsLeftRight,
   ArrowsOutLineHorizontal,
+  CaretCircleRight,
   CaretRight,
+  ChatCircle,
   Check,
   CheckCircle,
   CheckSquare,
   Code,
+  Columns,
   Copy,
   DotsThree,
+  FileText,
   Info,
   Link as LinkIcon,
   ListBullets,
+  MathOperations,
   Palette,
   Plus,
   Smiley,
   SmileyXEyes,
+  Sparkle,
   Subtitles,
   SubtitlesSlash,
   ListNumbers,
   Quotes,
+  TextHFour,
   TextHOne,
   TextHThree,
   TextHTwo,
@@ -44,7 +52,8 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { touchHold } from "./pointer-drag";
-import { turnIntoToggle } from "@/lib/toggle-commands";
+import { blockToMath, blockToToggle, blocksToColumns, colorable, setBlockColors, toggleToBlock, type TitleBlock } from "@/lib/block-turn";
+import { BLOCK_COLOR_NAMES, blockColor, blockColorLabels, type BlockColorName } from "@/lib/block-colors";
 import type { Editor } from "@tiptap/core";
 import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import {
@@ -56,6 +65,7 @@ import {
   columnBlocks,
   documentBlocks,
   hasLinkedBlocks,
+  MAX_COLUMNS,
   type DocumentBlock,
 } from "@/lib/document-blocks";
 import {
@@ -64,7 +74,7 @@ import {
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
-import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType } from "@/lib/document-schema";
+import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType, toggleHeading } from "@/lib/document-schema";
 import {
   CALLOUT_COLORS,
   CALLOUT_COLOR_NAMES,
@@ -76,7 +86,7 @@ import {
 import { Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
-import { BlockMenu, type BlockMenuItem, type BlockMenuView } from "./block-menu";
+import { BlockMenu, usePhone, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
 import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
@@ -159,14 +169,25 @@ export function DocumentBlockControls({
   children,
   allowLinkedCopies = true,
   onCopyLink,
+  onTurnIntoPage,
+  onAskAi,
+  comments = false,
 }: {
   editor: Editor | null;
   children: ReactNode;
   allowLinkedCopies?: boolean;
   // "Link zum Block kopieren" (#88), for the block at this position.
   onCopyLink?: (pos: number) => void;
+  // "Umwandeln in → Seite" (#238): the blocks become a sub-page, a link to
+  // it takes their place.
+  onTurnIntoPage?: (positions: number[]) => Promise<void>;
+  // "KI fragen" (#238) for the text from `from` to `to`.
+  onAskAi?: (from: number, to: number) => void;
+  // "Kommentieren" (#238): the editor has inline comments.
+  comments?: boolean;
 }) {
   const t = useT();
+  const phone = usePhone();
   const surface = useRef<HTMLDivElement>(null);
   const selected = useRef<number[]>([]);
   const bookmarks = useRef<Awaited<ReturnType<typeof captureBlockSelection>>>([]);
@@ -761,64 +782,193 @@ export function DocumentBlockControls({
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
   });
-  // "Turn into": the current block takes another form. Runs on a text
-  // selection inside the block, like the slash menu.
+  // "Turn into" (#238): the current block takes another form. Text blocks
+  // change through the editor's commands on a text selection inside the
+  // block, like the slash menu; toggles, equations, columns and pages
+  // through lib/block-turn.ts. Each entry finds its English name in the
+  // search as well.
   function turnItems(block: DocumentBlock): BlockMenuItem[] {
     if (!editor) return [];
     const name = block.node.type.name,
       parent = byPos.get(block.parentPos)?.node.type.name;
-    type Turn = [string, ReactNode, boolean, (c: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>];
-    const run = (selection: number | { from: number; to: number }, change: Turn[3]) => () => {
+    type Change = (c: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>;
+    type Turn = { label: string; en: string; icon: ReactNode; active?: boolean; change: Change; shortcut?: string };
+    const failed = () => setError(t("Dieser Block lässt sich nicht so umwandeln.", "This block cannot be turned into that."));
+    const run = (selection: number | { from: number; to: number }, change: Change) => () => {
       if (!editor.isEditable) return;
       if (change(editor.chain().setTextSelection(selection)).run()) focusEditor();
-      else setError(t("Dieser Block lässt sich nicht so umwandeln.", "This block cannot be turned into that."));
+      else failed();
     };
     const level = name === "heading" ? Number(block.node.attrs.level) : 0;
+    const toggleLevel = name === "toggle" ? toggleHeading(block.node.attrs.heading) : null;
+    const headingIcons = [<TextHOne key="i" />, <TextHTwo key="i" />, <TextHThree key="i" />, <TextHFour key="i" />];
+    const headingTurns = (change: (n: number) => Change, active: (n: number) => boolean): Turn[] =>
+      [1, 2, 3, 4].map((n) => ({
+        label: t(`Überschrift ${n}`, `Heading ${n}`),
+        en: `heading ${n} h${n} überschrift`,
+        icon: headingIcons[n - 1],
+        active: active(n),
+        change: change(n),
+        shortcut: `Mod+Alt+${n}`,
+      }));
+    const toggleTurns = (active: (n: number | null) => boolean): Turn[] => [
+      { label: t("Aufklappbarer Block", "Toggle"), en: "toggle list aufklappbar", icon: <CaretRight key="i" />, active: active(null), change: (c) => c.command(({ tr }) => blockToToggle(tr, block.pos, null)) },
+      ...[1, 2, 3, 4].map((n) => ({
+        label: t(`Aufklappbare Überschrift ${n}`, `Toggle heading ${n}`),
+        en: `toggle heading ${n} aufklappbar überschrift`,
+        icon: <CaretCircleRight key="i" />,
+        active: active(n),
+        change: ((c) => c.command(({ tr }) => blockToToggle(tr, block.pos, n))) as Change,
+      })),
+    ];
     let turns: Turn[] = [];
     let at: number | { from: number; to: number } = block.end - 1;
-    if ((name === "paragraph" || name === "heading" || name === "codeBlock") && !listItems.includes(parent || ""))
+    const textLike = name === "paragraph" || name === "heading" || name === "codeBlock";
+    if (textLike && !listItems.includes(parent || ""))
       turns = [
-        [t("Text", "Text"), <TextT key="i" />, name === "paragraph", (c) => c.setParagraph()],
-        [t("Überschrift 1", "Heading 1"), <TextHOne key="i" />, level === 1, (c) => c.setHeading({ level: 1 })],
-        [t("Überschrift 2", "Heading 2"), <TextHTwo key="i" />, level === 2, (c) => c.setHeading({ level: 2 })],
-        [t("Überschrift 3", "Heading 3"), <TextHThree key="i" />, level === 3, (c) => c.setHeading({ level: 3 })],
-        [t("Aufzählung", "Bulleted list"), <ListBullets key="i" />, false, (c) => c.setParagraph().toggleBulletList()],
-        [t("Nummerierte Liste", "Numbered list"), <ListNumbers key="i" />, false, (c) => c.setParagraph().toggleOrderedList()],
-        [t("Aufgabenliste", "Task list"), <CheckSquare key="i" />, false, (c) => c.setParagraph().toggleTaskList()],
-        [t("Zitat", "Quote"), <Quotes key="i" />, false, (c) => c.wrapIn("blockquote")],
-        [t("Hinweis", "Callout"), <Info key="i" />, false, (c) => c.wrapIn("callout", { type: "note" })],
+        { label: t("Text", "Text"), en: "text paragraph absatz", icon: <TextT key="i" />, active: name === "paragraph", change: (c) => c.setParagraph(), shortcut: "Mod+Alt+0" },
+        ...headingTurns((n) => (c) => c.setHeading({ level: n as 1 | 2 | 3 | 4 }), (n) => level === n),
+        { label: t("Aufzählung", "Bulleted list"), en: "bulleted list bullet", icon: <ListBullets key="i" />, change: (c) => c.setParagraph().toggleBulletList(), shortcut: "Mod+Shift+8" },
+        { label: t("Nummerierte Liste", "Numbered list"), en: "numbered list ordered", icon: <ListNumbers key="i" />, change: (c) => c.setParagraph().toggleOrderedList(), shortcut: "Mod+Shift+7" },
+        { label: t("Aufgabenliste", "Task list"), en: "task list todo checkbox", icon: <CheckSquare key="i" />, change: (c) => c.setParagraph().toggleTaskList(), shortcut: "Mod+Shift+9" },
         // Its text becomes the title (#230).
-        ...(name === "paragraph"
-          ? ([[t("Aufklappbarer Block", "Toggle"), <CaretRight key="i" />, false, (c) => c.command(({ tr }) => turnIntoToggle(tr, block.pos))]] as Turn[])
-          : []),
-        [t("Code", "Code"), <Code key="i" />, name === "codeBlock", (c) => c.setCodeBlock()],
+        ...(name !== "codeBlock" ? toggleTurns(() => false) : []),
+        { label: t("Zitat", "Quote"), en: "quote blockquote", icon: <Quotes key="i" />, change: (c) => c.wrapIn("blockquote"), shortcut: "Mod+Shift+B" },
+        { label: t("Hinweis", "Callout"), en: "callout note", icon: <Info key="i" />, change: (c) => c.wrapIn("callout", { type: "note" }) },
+        { label: t("Code", "Code"), en: "code", icon: <Code key="i" />, active: name === "codeBlock", change: (c) => c.setCodeBlock(), shortcut: "Mod+Alt+C" },
+        { label: t("Formel", "Block equation"), en: "block equation math formula latex", icon: <MathOperations key="i" />, change: (c) => c.command(({ tr }) => blockToMath(tr, block.pos)) },
       ];
     else if (listItems.includes(name)) {
       at = block.pos + 2;
       turns = [
-        [t("Aufzählung", "Bulleted list"), <ListBullets key="i" />, parent === "bulletList", (c) => c.toggleBulletList()],
-        [t("Nummerierte Liste", "Numbered list"), <ListNumbers key="i" />, parent === "orderedList", (c) => c.toggleOrderedList()],
-        [t("Aufgabenliste", "Task list"), <CheckSquare key="i" />, parent === "taskList", (c) => c.toggleTaskList()],
-        [t("Text", "Text"), <TextT key="i" />, false, (c) => c.liftListItem(name)],
+        { label: t("Text", "Text"), en: "text paragraph", icon: <TextT key="i" />, change: (c) => c.liftListItem(name) },
+        { label: t("Aufzählung", "Bulleted list"), en: "bulleted list bullet", icon: <ListBullets key="i" />, active: parent === "bulletList", change: (c) => c.toggleBulletList(), shortcut: "Mod+Shift+8" },
+        { label: t("Nummerierte Liste", "Numbered list"), en: "numbered list ordered", icon: <ListNumbers key="i" />, active: parent === "orderedList", change: (c) => c.toggleOrderedList(), shortcut: "Mod+Shift+7" },
+        { label: t("Aufgabenliste", "Task list"), en: "task list todo", icon: <CheckSquare key="i" />, active: parent === "taskList", change: (c) => c.toggleTaskList(), shortcut: "Mod+Shift+9" },
         // The item's text becomes the title, its sub-list the content (#230).
-        [t("Aufklappbarer Block", "Toggle"), <CaretRight key="i" />, false, (c) => c.command(({ tr }) => turnIntoToggle(tr, block.pos))],
+        ...toggleTurns(() => false),
       ];
     } else if (name === "blockquote" || name === "callout") {
       at = { from: block.pos + 2, to: block.end - 2 };
       turns = [
-        [t("Text", "Text"), <TextT key="i" />, false, (c) => c.lift(name)],
+        { label: t("Text", "Text"), en: "text paragraph", icon: <TextT key="i" />, change: (c) => c.lift(name) },
         name === "blockquote"
-          ? [t("Hinweis", "Callout"), <Info key="i" />, false, (c) => c.lift(name).wrapIn("callout", { type: "note" })]
-          : [t("Zitat", "Quote"), <Quotes key="i" />, false, (c) => c.lift(name).wrapIn("blockquote")],
+          ? { label: t("Hinweis", "Callout"), en: "callout note", icon: <Info key="i" />, change: (c) => c.lift(name).wrapIn("callout", { type: "note" }) }
+          : { label: t("Zitat", "Quote"), en: "quote blockquote", icon: <Quotes key="i" />, change: (c) => c.lift(name).wrapIn("blockquote") },
+      ];
+    } else if (name === "toggle") {
+      // A toggle into another block (#244): its title becomes the block's
+      // text, its content follows on the same level.
+      const into = (kind: TitleBlock): Change => (c) => c.command(({ tr }) => toggleToBlock(tr, block.pos, kind));
+      turns = [
+        { label: t("Text", "Text"), en: "text paragraph", icon: <TextT key="i" />, change: into({ type: "paragraph" }) },
+        ...headingTurns((n) => into({ type: "heading", level: n }), () => false).map((turn) => ({ ...turn, shortcut: undefined })),
+        { label: t("Aufzählung", "Bulleted list"), en: "bulleted list bullet", icon: <ListBullets key="i" />, change: into({ type: "bulletList" }) },
+        { label: t("Nummerierte Liste", "Numbered list"), en: "numbered list ordered", icon: <ListNumbers key="i" />, change: into({ type: "orderedList" }) },
+        { label: t("Aufgabenliste", "Task list"), en: "task list todo", icon: <CheckSquare key="i" />, change: into({ type: "taskList" }) },
+        ...toggleTurns((n) => n === toggleLevel),
+        { label: t("Zitat", "Quote"), en: "quote blockquote", icon: <Quotes key="i" />, change: into({ type: "blockquote" }) },
+        { label: t("Hinweis", "Callout"), en: "callout note", icon: <Info key="i" />, change: into({ type: "callout" }) },
+        { label: t("Code", "Code"), en: "code", icon: <Code key="i" />, change: into({ type: "codeBlock" }) },
+        { label: t("Formel", "Block equation"), en: "block equation math formula", icon: <MathOperations key="i" />, change: into({ type: "mathBlock" }) },
       ];
     }
-    return turns.map(([label, icon, active, change]) => ({
+    const items: BlockMenuItem[] = turns.map(({ label, en, icon, active, change, shortcut }) => ({
       label,
       icon,
-      checked: active,
-      disabled: active,
-      run: run(at, change),
+      keywords: en,
+      shortcut: active ? undefined : shortcut,
+      checked: !!active,
+      disabled: !!active,
+      // A toggle is changed by its position, not through a text selection.
+      run:
+        name === "toggle"
+          ? () => {
+              if (!editor.isEditable) return;
+              if (change(editor.chain()).run()) focusEditor();
+              else failed();
+            }
+          : run(at, change),
     }));
+    return items;
+  }
+  // "Turn into" for one or more blocks: a page and columns.
+  function wholeTurnItems(): BlockMenuItem[] {
+    if (!editor || !rangeValid) return [];
+    const items: BlockMenuItem[] = [];
+    const range = blockRange(editor.state.doc, selected.current);
+    if (onTurnIntoPage && !range.blocks.some((b) => hasLinkedBlocks(b.node)))
+      items.push({
+        icon: <FileText />,
+        label: t("Seite", "Page"),
+        keywords: "page sub-page subpage unterseite",
+        run: () => {
+          const positions = [...selected.current];
+          void onTurnIntoPage(positions).catch((e: Error) => setError(e.message));
+        },
+      });
+    const columnsFit = (count: number) => {
+      try {
+        return blocksToColumns(editor.state.tr, range.from, range.to, count);
+      } catch {
+        return false;
+      }
+    };
+    for (let count = 2; count <= MAX_COLUMNS; count++)
+      if (columnsFit(count))
+        items.push({
+          icon: <Columns />,
+          label: t(`${count} Spalten`, `${count} columns`),
+          keywords: `${count} columns spalten`,
+          run: () => {
+            if (!editor.isEditable) return;
+            const tr = editor.state.tr;
+            if (!blocksToColumns(tr, range.from, range.to, count))
+              return setError(t("Diese Blöcke lassen sich nicht in Spalten setzen.", "These blocks cannot be put into columns."));
+            applyBlockChange(editor, tr.scrollIntoView());
+            focusEditor();
+          },
+        });
+    return items;
+  }
+  // "Farbe" (#238): text or background colour of the blocks, ten each.
+  function colorItems(blocks: DocumentBlock[]): BlockMenuItem[] {
+    const labels = blockColorLabels(t);
+    const values = new Set<string | null>();
+    for (const b of blocks)
+      if (["bulletList", "orderedList", "taskList"].includes(b.node.type.name)) b.node.forEach((item) => values.add(blockColor(item.attrs.blockColor)));
+      else values.add(blockColor(b.node.attrs.blockColor));
+    const current = values.size === 1 ? [...values][0] : undefined;
+    const paint = (value: string | null) => () => {
+      if (!editor?.isEditable) return;
+      const tr = editor.state.tr;
+      if (!setBlockColors(tr, blocks.map((b) => b.pos), value)) return;
+      editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
+      setTick((n) => n + 1);
+    };
+    const entry = (value: string | null, background: boolean): BlockMenuItem => {
+      const name = value?.replace("-background", "") as BlockColorName | undefined;
+      return {
+        icon: (
+          <span className={`block-menu-color${background ? " background" : ""}`} data-block-color-swatch={name || "default"} aria-hidden>
+            A
+          </span>
+        ),
+        label: name ? labels[name] : t("Standard", "Default"),
+        ariaLabel: background ? (name ? t(`${labels[name]} (Hintergrund)`, `${labels[name]} background`) : t("Standardhintergrund", "Default background")) : undefined,
+        keywords: `${name || "default"} ${background ? "background hintergrund" : "text colour color farbe"}`,
+        checked: current === value,
+        run: paint(value),
+      };
+    };
+    return [
+      { heading: t("Textfarbe", "Text colour") },
+      entry(null, false),
+      ...BLOCK_COLOR_NAMES.map((name) => entry(name, false)),
+      { heading: t("Hintergrund", "Background") },
+      entry(null, true),
+      ...BLOCK_COLOR_NAMES.map((name) => entry(`${name}-background`, true)),
+    ];
   }
   // "Move below …": the headings of the page (and its start and end).
   function moveItems(): BlockMenuItem[] {
@@ -858,22 +1008,18 @@ export function DocumentBlockControls({
     if (!editor) return views;
     const only = selected.current.length === 1 ? byPos.get(selected.current[0]) : undefined;
     const many = selected.current.length > 1;
-    const items: BlockMenuItem[] = [
-      { icon: <ArrowUp />, label: t("Nach oben", "Move up"), disabled: !up, run: () => shift(-1) },
-      { icon: <ArrowDown />, label: t("Nach unten", "Move down"), disabled: !down, run: () => shift(1) },
-      { icon: <ArrowBendDownRight />, label: t("Verschieben unter …", "Move below …"), disabled: !rangeValid, view: "move" },
-      { icon: <Copy />, label: t("Duplizieren", "Duplicate"), disabled: !rangeValid || !copyAllowed, run: () => perform("duplicate") },
-    ];
-    views.move = {
-      title: t("Verschieben unter …", "Move below …"),
-      items: moveItems(),
-      note: t("Überschriften der Seite", "Headings of the page"),
-    };
-    if (!views.move.items.length) views.move.note = t("Keine andere Stelle möglich.", "No other place available.");
-    const turns = only ? turnItems(only) : [];
+    const chosenBlocks = all.filter((b) => selected.current.includes(b.pos));
+    const items: BlockMenuItem[] = [];
+    // "Turn into": the block types (one block), then a page and columns.
+    const turns = [...(only ? turnItems(only) : []), ...wholeTurnItems()];
     if (turns.length) {
-      items.push({ icon: <ArrowsClockwise />, label: t("Umwandeln in …", "Turn into …"), view: "turn" });
+      items.push({ icon: <ArrowsClockwise />, label: t("Umwandeln in …", "Turn into …"), keywords: "turn into convert umwandeln", view: "turn" });
       views.turn = { title: t("Umwandeln in …", "Turn into …"), items: turns };
+    }
+    // Block colours (#238): text and background, for the blocks that take one.
+    if (chosenBlocks.length && chosenBlocks.every((b) => colorable(b.node))) {
+      items.push({ icon: <Palette />, label: t("Farbe", "Colour"), keywords: "colour color farbe background hintergrund", view: "blockColor" });
+      views.blockColor = { title: t("Farbe", "Colour"), items: colorItems(chosenBlocks) };
     }
     if (only?.node.type.name === "callout") {
       const labels = calloutLabels(t);
@@ -986,13 +1132,61 @@ export function DocumentBlockControls({
         })),
       };
     }
+    // Moving: on phones on this level (no shortcuts there, dragging needs
+    // a hold); with a mouse in a flyout, next to their shortcuts (#238).
+    const moves: BlockMenuItem[] = [
+      { icon: <ArrowUp />, label: t("Nach oben", "Move up"), keywords: "move up", disabled: !up, run: () => shift(-1), shortcut: "Mod+Shift+ArrowUp" },
+      { icon: <ArrowDown />, label: t("Nach unten", "Move down"), keywords: "move down", disabled: !down, run: () => shift(1), shortcut: "Mod+Shift+ArrowDown" },
+      { icon: <ArrowBendDownRight />, label: t("Verschieben unter …", "Move below …"), keywords: "move below", disabled: !rangeValid, view: "move" },
+    ];
+    views.move = {
+      title: t("Verschieben unter …", "Move below …"),
+      items: moveItems(),
+      note: t("Überschriften der Seite", "Headings of the page"),
+    };
+    if (!views.move.items.length) views.move.note = t("Keine andere Stelle möglich.", "No other place available.");
+    items.push("separator");
+    items.push({
+      icon: <Copy />,
+      label: t("Duplizieren", "Duplicate"),
+      keywords: "duplicate copy",
+      disabled: !rangeValid || !copyAllowed,
+      run: () => perform("duplicate"),
+      shortcut: "Mod+D",
+    });
+    if (phone) items.push(...moves);
+    else {
+      items.push({ icon: <ArrowsDownUp />, label: t("Verschieben", "Move"), keywords: "move", view: "moveTo" });
+      views.moveTo = { title: t("Verschieben", "Move"), items: moves };
+    }
+    // Comment on the block and ask the AI about it (#238).
+    const target = only && editor.isEditable ? only : undefined;
+    if (target && comments)
+      items.push({
+        icon: <ChatCircle />,
+        label: t("Kommentieren", "Comment"),
+        keywords: "comment kommentar",
+        shortcut: "Mod+Alt+M",
+        run: () => commentOn(target),
+      });
+    if (target && onAskAi && target.node.textContent.trim())
+      items.push({
+        icon: <Sparkle />,
+        label: t("KI fragen", "Ask AI"),
+        keywords: "ask ai ki assistant",
+        shortcut: "Mod+J",
+        run: () => {
+          const { from, to } = textRange(target);
+          setTimeout(() => editor && !editor.isDestroyed && onAskAi(from, to), 60);
+        },
+      });
     items.push("separator");
     // The link of a block, for every kind of block (#88).
     if (only && onCopyLink)
-      items.push({ icon: <LinkIcon />, label: t("Link zum Block kopieren", "Copy link to block"), run: () => onCopyLink(only.pos) });
+      items.push({ icon: <LinkIcon />, label: t("Link zum Block kopieren", "Copy link to block"), keywords: "copy link", shortcut: "Mod+Shift+L", run: () => onCopyLink(only.pos) });
     if (!pickingRef.current)
-      items.push({ icon: <CheckCircle />, label: t("Mehrere auswählen", "Select several"), run: startPicking });
-    items.push({ icon: <Trash />, label: t("Löschen", "Delete"), danger: true, disabled: !rangeValid, run: () => perform("delete") });
+      items.push({ icon: <CheckCircle />, label: t("Mehrere auswählen", "Select several"), keywords: "select several multiple", run: startPicking });
+    items.push({ icon: <Trash />, label: t("Löschen", "Delete"), keywords: "delete remove", danger: true, disabled: !rangeValid, run: () => perform("delete") });
     views.main = {
       title: many
         ? t(`${selected.current.length} Blöcke`, `${selected.current.length} blocks`)
@@ -1003,6 +1197,39 @@ export function DocumentBlockControls({
         : undefined,
     };
     return views;
+  }
+  // The text of a block (its first text block), for comments and the AI.
+  function textRange(block: DocumentBlock) {
+    let from = block.pos + 1,
+      to = block.end - 1;
+    if (!block.node.isTextblock) {
+      let found = false;
+      block.node.descendants((node, offset) => {
+        if (found) return false;
+        if (node.isTextblock) {
+          found = true;
+          from = block.pos + 1 + offset + 1;
+          to = from + node.content.size;
+        }
+        return !found;
+      });
+    }
+    return { from, to };
+  }
+  // Comment on a block: its text (or the block itself) selected, then the
+  // editor's own "comment" (components/inline-comments.tsx).
+  function commentOn(block: DocumentBlock) {
+    if (!editor) return;
+    setTimeout(() => {
+      if (editor.isDestroyed) return;
+      const chain = editor.chain().focus();
+      const { from, to } = textRange(block);
+      if (block.node.textContent.trim() && to > from) chain.setTextSelection({ from, to });
+      else if (NodeSelection.isSelectable(block.node)) chain.setNodeSelection(block.pos);
+      else chain.setTextSelection(from);
+      chain.run();
+      editor.view.dom.dispatchEvent(new CustomEvent("comment-create"));
+    }, 60);
   }
   function setAttribute(block: DocumentBlock, attrs: Record<string, unknown>) {
     if (!editor?.isEditable) return;
@@ -1295,6 +1522,8 @@ export function DocumentBlockControls({
       {menu && editor && (
         <BlockMenu
           key={`${menu.view}-${menu.anchor.top}-${menu.anchor.left}`}
+          searchable={menu.view === "main"}
+          flyouts
           anchor={menu.anchor}
           views={menuViews()}
           initial={menu.view}

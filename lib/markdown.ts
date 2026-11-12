@@ -12,6 +12,8 @@ import { fenceLanguage } from "./code-languages";
 import { circled } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
 import { markdownSymbol } from "./task-status";
+import { blockColorComment } from "./block-colors";
+import { toggleHeading } from "./document-schema";
 // Captions (lib/block-captions.ts) in Markdown: an image's as its title,
 // ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
 // "Table: Caption" right below; a code block's likewise "Listing: Caption".
@@ -382,9 +384,12 @@ export function htmlToMarkdown(
   }
   function block(node: Node, inTable = false): string {
     const text = blockBody(node, inTable);
+    // A block colour (#238) as a comment before the block, which other
+    // Markdown tools do not show (lib/block-colors.ts); not in tables.
+    const color = inTable || !text ? "" : blockColorComment(node.attrs.blockColor);
     const id = node.type.name === "listItem" || node.type.name === "taskItem" ? "" : marker(node, inTable);
-    if (!id || !text) return text;
-    return LINE_MARKED.has(node.type.name) ? `${text} ^${id}` : `${text}\n\n^${id}`;
+    const marked = !id || !text ? text : LINE_MARKED.has(node.type.name) ? `${text} ^${id}` : `${text}\n\n^${id}`;
+    return color ? `${color}\n\n${marked}` : marked;
   }
   function blockBody(node: Node, inTable = false): string {
     const kept = placeholder(node);
@@ -460,6 +465,10 @@ export function htmlToMarkdown(
           // An empty first line with subitems below stays empty: the
           // subitems are not the item's own text.
           if (item.firstChild?.type.name === "paragraph" && !item.firstChild.content.size && item.childCount > 1) content.unshift("");
+          // An item's colour (#238) as an inline comment after its text
+          // (before a due date and an id, which have to end the line).
+          const itemColor = inTable ? "" : blockColorComment(item.attrs.blockColor);
+          if (itemColor) content[0] += ` ${itemColor}`;
           // Due dates as in Obsidian Tasks: "- [ ] Call 📅 2026-05-04".
           if (node.type.name === "taskList" && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || "")))
             content[0] += ` 📅 ${item.attrs.due}`;
@@ -497,8 +506,13 @@ export function htmlToMarkdown(
           .join("\n");
       }
       // An empty title stays empty (#230), so it comes back empty.
-      case "toggle":
-        return `<details>\n<summary>${htmlText(String(node.attrs.title ?? "")).replaceAll("|", "&#124;")}</summary>\n\n${children(node, inTable)}\n\n</details>`;
+      // A toggle heading (#238): its title as a heading inside <summary>,
+      // as GitHub renders it.
+      case "toggle": {
+        const title = htmlText(String(node.attrs.title ?? "")).replaceAll("|", "&#124;");
+        const level = toggleHeading(node.attrs.heading);
+        return `<details>\n<summary>${level ? `<h${level}>${title}</h${level}>` : title}</summary>\n\n${children(node, inTable)}\n\n</details>`;
+      }
       // The meeting block (#199): title, then its three parts.
       case "meeting":
         return [`### ${markdownText(String(node.attrs.title || ct("Besprechung", "Meeting")))}`, children(node, inTable)].filter(Boolean).join("\n\n");

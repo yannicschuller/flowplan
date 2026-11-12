@@ -38,6 +38,7 @@ import { Bibliography, Citation } from "./citation-nodes";
 import { meetingExtensions } from "./meeting-schema";
 import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
+import { BlockColorAttribute } from "./block-colors";
 import { ListTidy } from "./list-tidy";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { blockFigcaption, captionAttribute, captionText } from "./block-captions";
@@ -136,6 +137,11 @@ export const Callout = Node.create({
     0,
   ],
 });
+// The heading level of a toggle heading (1–4), or null.
+export function toggleHeading(value: unknown): number | null {
+  const level = Number(value);
+  return Number.isInteger(level) && level >= 1 && level <= 4 ? level : null;
+}
 // `storageKey`: where the editor remembers closed toggles on this device
 // (#230, lib/toggle-memory.ts); none on the server and in other editors.
 export const Toggle = Node.create<{ storageKey: string | null }>({
@@ -153,6 +159,17 @@ export const Toggle = Node.create<{ storageKey: string | null }>({
         parseHTML: (el) => {
           const summary = el.querySelector("summary");
           return summary ? (summary.textContent ?? "") : "Details";
+        },
+      },
+      // A toggle heading (#238, Notion's "Toggle heading 1–4"): the
+      // title is shown as a heading of this level. In Markdown its title is
+      // a heading inside <summary> (lib/markdown.ts).
+      heading: {
+        default: null,
+        parseHTML: (el) => toggleHeading(el.getAttribute("data-heading") ?? el.querySelector(":scope > summary > :is(h1, h2, h3, h4)")?.tagName.slice(1)),
+        renderHTML: (attributes) => {
+          const level = toggleHeading(attributes.heading);
+          return level ? { "data-heading": String(level) } : {};
         },
       },
     };
@@ -777,6 +794,7 @@ export const documentExtensions = [
   DrawBlock,
   Footnote,
   BlockDirectionExtension,
+  BlockColorAttribute,
 ];
 export const documentSchema = () => getSchema(documentExtensions);
 export const Mention = Node.create({

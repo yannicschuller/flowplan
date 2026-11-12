@@ -66,6 +66,8 @@ test("block handles show at the hovered block, the caret's block and with keyboa
   await expect.poll(() => opacity(page, "Absatz · Alpha")).toBe(1);
   expect(await alpha.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("solid");
   await page.keyboard.press("Enter");
+  // With a mouse, moving is in the "Verschieben" flyout (#238).
+  await page.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
   await page.getByRole("menuitem", { name: "Nach unten", exact: true }).click();
   await expect(editor.locator(":scope > p").filter({ hasText: /\S/ })).toHaveText(["Bravo", "Alpha", "Charlie"]);
   await page.screenshot({ path: "test-results/block-handles-desktop.png" });
