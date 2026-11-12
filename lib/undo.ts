@@ -33,13 +33,20 @@ export function placeOf(pages: Page[], pageId: string): Command | null {
   const page = pages.find((p) => p.id === pageId);
   if (!page) return null;
   const siblings = pages.filter(
-    (p) => p.space_id === page.space_id && (p.parent_id ?? null) === (page.parent_id ?? null) && !p.deleted_at,
+    (p) =>
+      p.space_id === page.space_id &&
+      (p.parent_id ?? null) === (page.parent_id ?? null) &&
+      (p.parent_row_id ?? null) === (page.parent_row_id ?? null) &&
+      !p.deleted_at,
   );
   const at = siblings.findIndex((p) => p.id === pageId);
   const before = siblings[at - 1],
     after = siblings[at + 1];
   if (before) return { action: "page.move", pageId, targetId: before.id, placement: "after", meta: "auto" };
   if (after) return { action: "page.move", pageId, targetId: after.id, placement: "before", meta: "auto" };
+  // Alone below a record (#231): back below it.
+  if (page.parent_id && page.parent_row_id)
+    return { action: "page.move", pageId, targetId: page.parent_id, placement: "inside", parentRowId: page.parent_row_id, meta: "auto" };
   return { action: "page.move", pageId, parentId: page.parent_id ?? null, spaceId: page.space_id, meta: "auto" };
 }
 

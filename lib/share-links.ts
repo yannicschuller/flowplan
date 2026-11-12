@@ -1,3 +1,4 @@
+import { privateRecordPageIds } from "./record-pages";
 import { z } from "zod";
 import { all, one, run, id, lockFor } from "./db";
 import { requirePage } from "./permissions";
@@ -80,6 +81,9 @@ export async function manageShareLink(
         pageId,
       )).filter((page) => !pinned.has(page.id))
     : [root];
+  // Not the pages below private records of a shared database (#231).
+  const belowPrivate = includeChildren ? await privateRecordPageIds((pages as Page[]).filter((p) => p.id !== pageId)) : new Set<string>();
+  if (belowPrivate.size) pages.splice(0, pages.length, ...pages.filter((p) => !belowPrivate.has(p.id)));
   const locked = await lockedPageIds(user, root.workspace_id);
   for (const page of pages) {
     await requirePage(user, page.id, true);

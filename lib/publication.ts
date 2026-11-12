@@ -10,7 +10,8 @@ import { cleanHtml, cleanHtmlAsync } from "./document-server";
 import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
-import { recordFile, recordScope } from "./record-share";
+import { recordFile, recordScope, recordSharePages, recordSubPage } from "./record-share";
+import { privateRecordPageIds } from "./record-pages";
 import { parsePageLocation } from "./page-location";
 
 export async function publicationSettings(pageId: string) {
@@ -85,6 +86,9 @@ export async function publishPage(
         page.id,
       )).filter((p) => !neverPublished(p, pinned))
     : [page];
+  // Not the pages below private records of a published database (#231).
+  const belowPrivate = includeChildren ? await privateRecordPageIds(pages.filter((p) => p.id !== page.id)) : new Set<string>();
+  if (belowPrivate.size) pages.splice(0, pages.length, ...pages.filter((p) => !belowPrivate.has(p.id)));
   if (enabled) {
     // Like share links: nothing below a journal whose PIN the person has not entered.
     const locked = await lockedPageIds(user, page.workspace_id);
@@ -212,6 +216,8 @@ async function resolveTree(token: string, protect: boolean) {
   for (const id of pinned) selected.delete(id);
   if (publication?.include_children && publication.auto_children)
     for (const id of await joinedSubPages(root, publication.published_by, descendants, selected, pinned)) selected.add(id);
+  // A record made private (or moved to the trash) takes its sub-pages out (#231).
+  for (const id of await privateRecordPageIds(descendants.filter((p) => p.id !== root.id))) selected.delete(id);
   const accessible = new Set([root.id]);
   let changed = true;
   while (changed) {
@@ -234,6 +240,10 @@ async function resolveTree(token: string, protect: boolean) {
   };
 }
 export async function publicPage(token: string, pageId?: string) {
+  // A shared record (#231): only its included sub-pages are pages of the
+  // share (the record itself has its own paths, lib/record-share.ts).
+  const record = await recordScope(token);
+  if (record) return await recordSubPage(record, pageId);
   const tree = await publicTree(token),
     page = tree.pages.find((p) => p.id === (pageId || tree.root.id));
   if (!page) throw new HttpError(404, "Seite nicht veröffentlicht.");
@@ -242,8 +252,16 @@ export async function publicPage(token: string, pageId?: string) {
 export async function publicFile(token: string, fileId: string) {
   // A shared record serves only the files it uses (lib/record-share.ts).
   const record = await recordScope(token);
-  if (record) return await recordFile(record, fileId);
-  const { pages } = await publicTree(token);
+  let pages: Page[];
+  if (record) {
+    try {
+      return await recordFile(record, fileId);
+    } catch (error) {
+      // Or one of the included sub-pages uses it (#231), as on a page link.
+      pages = await recordSharePages(record);
+      if (!pages.length) throw error;
+    }
+  } else pages = (await publicTree(token)).pages;
   const file = await one<{ id: string; page_id: string; name: string; mime: string }>(
     "SELECT * FROM files WHERE id=? AND deleted_at IS NULL",
     fileId,

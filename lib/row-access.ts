@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, one, run, audit } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
+import { memoized } from "./read-memo";
 import { rowAccessModes, type RowAccessMode } from "./row-access-modes";
 import { hiddenFieldsFor, stripCells } from "./field-access";
 import type { Identity, Page, Role } from "./types";
@@ -79,6 +80,27 @@ export async function roleWithGrants(
       (g) => g.user_id === user.id || (!!g.group_id && groups.has(g.group_id)),
     ),
   );
+}
+// The role on a page below a record (#231, pages.parent_row_id): the
+// record's role. A record in the trash counts with the access it had
+// (its sub-pages wait there with it); a record gone otherwise (replaced by
+// a template, an old database version) leaves its pages to the database.
+export async function subPageRecordRole(user: Identity, database: Page, rowId: string): Promise<Role | null> {
+  return await memoized(`record-role:${database.id}:${rowId}:${user.id}`, async () => {
+    const row = await one<AccessRow & { page_id: string }>("SELECT id,page_id,access,created_by FROM rows WHERE id=?", rowId);
+    if (row?.page_id === database.id) return await rowRole(user, database, row);
+    const trashed = await one<{ payload: string }>("SELECT payload FROM row_trash WHERE id=? AND page_id=?", rowId, database.id);
+    if (trashed) {
+      const payload = JSON.parse(trashed.payload) as { row: Record<string, unknown>; grants?: RowGrant[] };
+      return await roleWithGrants(
+        user,
+        database,
+        { id: rowId, access: String(payload.row.access || "inherit"), created_by: (payload.row.created_by as string | null) ?? null },
+        payload.grants || [],
+      );
+    }
+    return await pageRole(user, database);
+  });
 }
 export async function rowRole(user: Identity, page: Page, row: AccessRow) {
   return (await rowRoleResolver(user, page))(row);

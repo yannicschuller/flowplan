@@ -83,3 +83,22 @@ test("a long path folds its middle into one menu", () => {
   assert.deepEqual(collapsePath(path.slice(0, 4), 4).shown.map((s) => !isMore(s)), [true, true, true, true]);
   assert.deepEqual(collapsePath(path.slice(0, 5), 4).shown.map((s) => (isMore(s) ? s.more.length : 0)), [0, 1, 0, 0, 0]);
 });
+
+test("a page below a record shows the record between its database and the page (#231)", () => {
+  const db = page(3, 1, "database");
+  const sub = { ...page(4, 3), parent_row_id: row };
+  const deeper = page(5, 4);
+  const pages = [page(1, null), db, sub, deeper];
+  const records = [{ pageId: id(3), rowId: row, title: "U3a_Interface X", icon: "" }];
+  const path = structuralPath(pages, deeper, null, records);
+  assert.deepEqual(path.map((s) => s.title), ["Seite 1", "Seite 3", "U3a_Interface X", "Seite 4", "Seite 5"]);
+  assert.deepEqual(path.map((s) => s.kind), ["document", "database", "record", "document", "document"]);
+  // The record opens as a page of its own.
+  assert.equal(path[2].hash, `#page=${id(3)}&row=${row}&full=1`);
+  assert.equal(path[2].key, `${id(3)}:${row}`);
+  // A record the person cannot read ends the path there: nothing of it,
+  // its database or anything above.
+  const hidden = structuralPath(pages, deeper, null, []);
+  assert.deepEqual(hidden.map((s) => s.title), ["Seite 4", "Seite 5"]);
+  assert.ok(!JSON.stringify(hidden).includes(id(3)) && !JSON.stringify(hidden).includes(row));
+});

@@ -224,6 +224,7 @@ import { MetaResolveDialog, moveIntro, ScopeChoice } from "./meta-scope";
 import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { JournalDayNav, JournalTreeItem, monthLabel } from "./journal-nav";
+import { RecordTreeItem } from "./record-tree-item";
 import {
   allDaysKey,
   DEFAULT_SIDEBAR_MODE,
@@ -489,6 +490,7 @@ export default function WorkspaceApp({
     [customizeHome, setCustomizeHome] = useState(0),
     [toRecord, setToRecord] = useState(false),
     [parent, setParent] = useState<string | null>(null),
+    [parentRow, setParentRow] = useState<string | null>(null),
     [spaceId, setSpaceId] = useState(initial.spaces[0]?.id || ""),
     [templates, setTemplates] = useState(false),
     // Opened from the "New page" dialog (#112): where the page goes, and
@@ -1907,15 +1909,33 @@ export default function WorkspaceApp({
     // per space ("space:<id>") – no search through all pages per row.
     treeIndex = useMemo(() => {
       const ids = new Set(activePages.map((p) => p.id));
+      // Pages below a record (#231) sit below the record ("row:<db>:<row>"),
+      // when the record is readable; otherwise below the database.
+      const records = new Set((boot.recordParents || []).map((r) => `${r.pageId}:${r.rowId}`));
       const index = new Map<string, Page[]>();
       for (const p of activePages) {
-        const key = p.parent_id && ids.has(p.parent_id) ? p.parent_id : `space:${p.space_id}`;
+        const key =
+          p.parent_id && ids.has(p.parent_id)
+            ? p.parent_row_id && records.has(`${p.parent_id}:${p.parent_row_id}`)
+              ? `row:${p.parent_id}:${p.parent_row_id}`
+              : p.parent_id
+            : `space:${p.space_id}`;
         const list = index.get(key);
         if (list) list.push(p);
         else index.set(key, [p]);
       }
       return index;
-    }, [activePages]),
+    }, [activePages, boot.recordParents]),
+    // The records of a database that have sub-pages, by title.
+    recordItems = useMemo(() => {
+      const byDatabase = new Map<string, NonNullable<Bootstrap["recordParents"]>>();
+      for (const r of boot.recordParents || []) {
+        if (!treeIndex.has(`row:${r.pageId}:${r.rowId}`)) continue;
+        byDatabase.set(r.pageId, [...(byDatabase.get(r.pageId) || []), r]);
+      }
+      for (const list of byDatabase.values()) list.sort((a, b) => (a.title || "").localeCompare(b.title || "", LOCALE_TAG));
+      return byDatabase;
+    }, [boot.recordParents, treeIndex]),
     editable = mayEdit && !reading,
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
@@ -1970,6 +1990,32 @@ export default function WorkspaceApp({
     if (missing.length) setRevealed(new Set([...revealed, ...missing]));
   }
   const pageOpen = (id: string) => folds.has(`p:${id}`) || revealed.has(id);
+  // Records in the tree (#231, "<database>:<record>"): folded until
+  // unfolded, for this visit; the way to the open page unfolds its record.
+  const [recordFolds, setRecordFolds] = useState<{ open: ReadonlySet<string>; closed: ReadonlySet<string> }>(() => ({ open: new Set(), closed: new Set() })),
+    [recordDrop, setRecordDrop] = useState<string | null>(null);
+  const revealedRecords = useMemo(() => {
+    const out = new Set<string>();
+    if (screen !== "page" || !pageId) return out;
+    const byId = new Map(boot.pages.map((p) => [p.id, p]));
+    for (let at = byId.get(pageId), n = 0; at && n < 64; at = at.parent_id ? byId.get(at.parent_id) : undefined, n++)
+      if (at.parent_row_id && at.parent_id) out.add(`${at.parent_id}:${at.parent_row_id}`);
+    return out;
+  }, [boot.pages, screen, pageId]);
+  const recordOpen = (key: string) => recordFolds.open.has(key) || (revealedRecords.has(key) && !recordFolds.closed.has(key));
+  const foldRecord = (key: string, fold: boolean) =>
+    setRecordFolds((current) => {
+      const open = new Set(current.open),
+        closed = new Set(current.closed);
+      if (fold) {
+        open.delete(key);
+        closed.add(key);
+      } else {
+        open.add(key);
+        closed.delete(key);
+      }
+      return { open, closed };
+    });
   const foldPage = (id: string, fold: boolean) => {
     if (fold)
       setRevealed((current) => {
@@ -1999,7 +2045,10 @@ export default function WorkspaceApp({
     kind: PageKind = "document",
     parentId: string | null = null,
     sid?: string,
+    // Below this record of the parent database (#231).
+    rowId: string | null = null,
   ) {
+    setParentRow(rowId);
     if (!boot.spaces.length) {
       setNewSpace(true);
       return;
@@ -2157,7 +2206,11 @@ export default function WorkspaceApp({
       const ids = selectedPages;
       return movingChecked(
         ids,
-        destination.startsWith("page:") ? { pageId: destination.slice(5) } : { spaceId: destination.slice(6) },
+        destination.startsWith("page:")
+          ? { pageId: destination.slice(5) }
+          : destination.startsWith("record:")
+            ? { pageId: destination.split(":")[1] }
+            : { spaceId: destination.slice(6) },
         (plan) => bulkPages("move", destination, plan ?? ({} as MetaPlan)),
       );
     }
@@ -2172,7 +2225,9 @@ export default function WorkspaceApp({
         ...(meta && Object.keys(meta).length ? { meta } : {}),
         ...(destination?.startsWith("page:")
           ? { parentId: destination.slice(5) }
-          : destination?.startsWith("space:")
+          : destination?.startsWith("record:")
+            ? { parentId: destination.split(":")[1], parentRowId: destination.split(":")[2] }
+            : destination?.startsWith("space:")
             ? { spaceId: destination.slice(6) }
             : {}),
       });
@@ -2552,6 +2607,57 @@ export default function WorkspaceApp({
       </>
     );
   }
+  // The records of a database shown in the tree (#231): those with
+  // sub-pages in this space (while filtering, with a match below).
+  const recordsShown = (databaseId: string, sid: string) =>
+    (recordItems.get(databaseId) || []).filter((r) => treeLevel(`row:${databaseId}:${r.rowId}`, sid).length > 0);
+  function recordRow(database: Page, r: NonNullable<Bootstrap["recordParents"]>[number], sid: string, level: number, stop: string | null): React.ReactNode {
+    const key = `${database.id}:${r.rowId}`;
+    const open = !!filterMatches || recordOpen(key);
+    const moveHere = (source: string) =>
+      void movingChecked([source], { pageId: database.id }, (meta) => {
+        markTreeMove();
+        return act({ action: "page.move", pageId: source, targetId: database.id, placement: "inside", parentRowId: r.rowId, ...(meta ? { meta } : {}) });
+      });
+    return (
+      <RecordTreeItem
+        key={`record:${key}`}
+        id={`record:${key}`}
+        parentTree={database.id}
+        level={level}
+        stop={stop}
+        icon={shownPageIcon(r.icon, "document")}
+        label={r.title}
+        href={pageLocationHash({ pageId: database.id, rowId: r.rowId, full: true })}
+        selected={screen === "page" && pageId === database.id && recordView?.rowId === r.rowId}
+        open={open}
+        dropping={recordDrop === key}
+        onToggle={(next) => foldRecord(key, !next)}
+        onOpen={() => setMobile(false)}
+        onFocus={setTreeFocus}
+        onKey={treeNavKey}
+        onDragOver={(e) => {
+          if (!canCreate || !e.dataTransfer.types.includes("application/x-flowplan-page")) return;
+          e.preventDefault();
+          setRecordDrop(key);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setRecordDrop(null);
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.types.includes("application/x-flowplan-space")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setRecordDrop(null);
+          const source = e.dataTransfer.getData("application/x-flowplan-page");
+          if (source && source !== database.id) moveHere(source);
+        }}
+        onAdd={canCreate ? () => addPage("document", database.id, database.space_id, r.rowId) : undefined}
+      >
+        {treeLevel(`row:${database.id}:${r.rowId}`, sid).map((x) => treeRow(x, sid, level + 1, stop, { parentTree: `record:${key}` }))}
+      </RecordTreeItem>
+    );
+  }
   function treeRow(
     p: Page,
     sid: string,
@@ -2560,9 +2666,10 @@ export default function WorkspaceApp({
     place: { parentTree?: string; today?: boolean } = {},
   ): React.ReactNode {
         const journal = p.kind === "journal" && !filterMatches ? journalTree(p) : null;
+        const records = p.kind === "database" ? recordsShown(p.id, sid) : [];
         const children = journal
             ? journal.entries.length > 0 || journal.others.some((x) => x.space_id === sid)
-            : (treeIndex.get(p.id) || []).some((x) => !filterMatches || filterMatches.has(x.id)),
+            : records.length > 0 || (treeIndex.get(p.id) || []).some((x) => !filterMatches || filterMatches.has(x.id)),
           // While filtering, the way to every match stays open.
           closed = !filterMatches && !pageOpen(p.id);
         return (
@@ -2793,7 +2900,14 @@ export default function WorkspaceApp({
             <Collapse open={children && !closed} className="nav-children">
               {children && !closed ? (
                 <div role="group" id={`tree-group-${p.id}`}>
-                  {journal ? journalBranch(p, sid, level + 1, stop) : tree(p.id, sid, level + 1, stop)}
+                  {journal ? (
+                    journalBranch(p, sid, level + 1, stop)
+                  ) : (
+                    <>
+                      {records.map((r) => recordRow(p, r, sid, level + 1, stop))}
+                      {tree(p.id, sid, level + 1, stop)}
+                    </>
+                  )}
                 </div>
               ) : null}
             </Collapse>
@@ -3707,6 +3821,7 @@ export default function WorkspaceApp({
                   titledPages,
                   { ...data.page, title: titledPages.find((p) => p.id === data.page.id)?.title ?? data.page.title },
                   data.page.kind === "database" ? recordView : null,
+                  boot.recordParents,
                 )}
                 room={phone ? 2 : 4}
               />
@@ -4552,8 +4667,12 @@ export default function WorkspaceApp({
                   <div className="subpages">
                     {activePages
                       // Journal days are listed by the journal itself.
+                      // Pages below a record show with the record (#231).
                       .filter(
-                        (p) => p.parent_id === data.page.id && !p.journal_date,
+                        (p) =>
+                          p.parent_id === data.page.id &&
+                          !p.journal_date &&
+                          !(p.parent_row_id && boot.recordParents?.some((r) => r.pageId === data.page.id && r.rowId === p.parent_row_id)),
                       )
                       .map((p) => (
                         <button key={p.id} onClick={() => openPage(p.id)}>
@@ -4974,12 +5093,21 @@ export default function WorkspaceApp({
                             ancestorsOf(page.id).includes(sel),
                         ),
                     )
-                    .map(({ page, level }) => (
+                    .flatMap(({ page, level }) => [
                       <option key={page.id} value={`page:${page.id}`}>
                         {"\u00a0\u00a0".repeat(level + 1)}
                         {page.title}
-                      </option>
-                    ))}
+                      </option>,
+                      // Its records with sub-pages (#231); any record via "Verschieben nach …" of one page.
+                      ...(page.kind === "database"
+                        ? (recordItems.get(page.id) || []).map((r) => (
+                            <option key={`${page.id}:${r.rowId}`} value={`record:${page.id}:${r.rowId}`}>
+                              {"\u00a0\u00a0".repeat(level + 2)}
+                              {r.title || t("Ohne Titel", "Untitled")}
+                            </option>
+                          ))
+                        : []),
+                    ])}
                 </optgroup>
               ))}
             </Select>
@@ -5359,6 +5487,7 @@ export default function WorkspaceApp({
         onSpace={(id) => {
           setSpaceId(id);
           setParent(null);
+          setParentRow(null);
         }}
         onOpenDuplicate={(id, rowId) => {
           setCreate(false);
@@ -5378,6 +5507,7 @@ export default function WorkspaceApp({
             workspaceId: boot.workspace.id,
             spaceId,
             parentId: parent,
+            ...(parent && parentRow ? { parentRowId: parentRow } : {}),
             title: titleEncrypted ? ENCRYPTED_TITLE : newTitle.trim() || savedTemplate?.name || (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.name) || t("Ohne Titel", "Untitled"),
             kind: newKind,
             ...(savedTemplate
@@ -6174,13 +6304,14 @@ export default function WorkspaceApp({
         workspaces={boot.workspaces}
         currentWorkspace={boot.workspace.id}
         current={{ spaces: boot.spaces, pages: activePages }}
-        onMove={async ({ spaceId: target, parentId, workspaceId, meta }) => {
+        onMove={async ({ spaceId: target, parentId, parentRowId, workspaceId, meta }) => {
           const moved = pageId;
           const r = await act({
             action: "page.move",
             workspaceId: boot.workspace.id,
             pageId: moved,
             parentId,
+            ...(parentId && parentRowId ? { parentRowId } : {}),
             spaceId: target,
             // Tags and properties of the source space, as chosen (#136).
             ...(meta ? { meta } : {}),

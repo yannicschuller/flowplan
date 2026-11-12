@@ -277,6 +277,8 @@ export type Page = {
   workspace_id: string;
   space_id: string;
   parent_id: string | null;
+  /** Below this record of the parent database (parent_id) */
+  parent_row_id?: string | null;
   title: string;
   icon: string;
   cover: string;
@@ -1364,6 +1366,8 @@ export type CommandPageCreate = {
   kind?: "document" | "database" | "whiteboard" | "journal" | "dashboard" | "notebook" | "workflow";
   /** Parent page in the same space */
   parentId?: string;
+  /** A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record */
+  parentRowId?: string;
   databaseKind?: "tasks" | "documents" | "contacts" | "empty";
   /** A saved page template of the workspace */
   templateId?: string;
@@ -1818,6 +1822,8 @@ export type CommandPageMove = {
   placement?: "before" | "after" | "inside";
   /** New parent when there is no target */
   parentId?: string;
+  /** Below this record of the new parent database (with `parentId`, or `targetId` and placement `inside`). Next to a page (`before`/`after`) the page joins that page's record, if any */
+  parentRowId?: string;
   /** Move into another space */
   spaceId?: string;
   /** Into another space or workspace: what to do with the source space's tags and properties the pages carry (page.moveCheck lists them, by id): map to one of the destination, copy there, or remove. Without it such a move is refused with 409 – nothing is dropped silently. */

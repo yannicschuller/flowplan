@@ -123,8 +123,10 @@ export type SharedComment = {
 // visitors see.
 async function shareContext(token: string, pageId?: string, rowId?: string) {
   const record = await recordScope(token);
-  if (!record) return { ...(await publicPage(token, pageId)), record: undefined };
-  if (pageId !== record.page.id || rowId !== record.row.id) throw new HttpError(404, "Seite nicht veröffentlicht.");
+  // Not the record: a page of the share – for a record, one of its
+  // included sub-pages (#231, publicPage).
+  if (!record || pageId !== record.page.id) return { ...(await publicPage(token, pageId)), record: undefined };
+  if (rowId !== record.row.id) throw new HttpError(404, "Seite nicht veröffentlicht.");
   return { root: record.page, page: record.page, role: record.role, pages: await recordSharePages(record), record };
 }
 async function source(token: string, pageId?: string, rowId?: string) {

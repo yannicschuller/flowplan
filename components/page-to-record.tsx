@@ -93,8 +93,8 @@ export function PageToRecord({
           {plan.subpages > 0 && (
             <p className="muted small">
               {t(
-                `${plan.subpages} Unterseite(n) bleiben Seiten und rücken eine Ebene nach oben.`,
-                `${plan.subpages} sub-page(s) stay pages and move up one level.`,
+                `${plan.subpages} Unterseite(n) bleiben Seiten und werden Unterseiten des Eintrags – bei einer Datenbank in einem anderen Bereich rücken sie eine Ebene nach oben.`,
+                `${plan.subpages} sub-page(s) stay pages and become sub-pages of the record – with a database in another space they move up one level.`,
               )}
             </p>
           )}

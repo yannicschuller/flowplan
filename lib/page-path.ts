@@ -1,20 +1,24 @@
 // The breadcrumb of the top bar (#231): where the open page sits in the
 // structure – its ancestor pages (pages.parent_id), the database of an
 // open record and the record – whichever way it was reached (link, search,
-// sidebar, "My tasks"). Records will later carry sub-pages of their own
-// (#231, part 3): they then follow the record as further segments.
+// sidebar, "My tasks"). A page below a record (pages.parent_row_id, #231
+// part 3) shows the record between its database and the page; the record
+// opens as a full page from there.
 //
 // Permissions: the walk only uses pages the person may read – the list the
 // workspace sends (bootstrap, filtered by pageRole) – and stops at the
 // first parent that is not in it. A guest with a share on one page sees no
 // title (nor the existence) of the private pages above it; a readable page
 // above an unreadable one is not shown either, since reaching it would need
-// the hidden page's own parent.
+// the hidden page's own parent. The same for records: one that is not in
+// `records` (the bootstrap's recordParents, readable records only) ends
+// the path there.
 import { pageLocationHash } from "./page-location";
 
 export type PathPage = {
   id: string;
   parent_id: string | null;
+  parent_row_id?: string | null;
   title: string;
   icon: string;
   kind: string;
@@ -35,22 +39,15 @@ export type PathSegment = {
 // More than this many levels means a loop in broken data.
 const MAX_DEPTH = 64;
 
+export type PathRecordParent = { pageId: string; rowId: string; title: string; icon: string };
 export function structuralPath(
   readable: readonly PathPage[],
   current: PathPage,
   record?: PathRecord | null,
+  records: readonly PathRecordParent[] = [],
 ): PathSegment[] {
   const byId = new Map(readable.map((p) => [p.id, p]));
-  const ancestors: PathPage[] = [];
-  const seen = new Set([current.id]);
-  let parentId = current.parent_id;
-  while (parentId && ancestors.length < MAX_DEPTH && !seen.has(parentId)) {
-    const parent = byId.get(parentId);
-    if (!parent) break;
-    seen.add(parentId);
-    ancestors.unshift(parent);
-    parentId = parent.parent_id;
-  }
+  const recordOf = new Map(records.map((r) => [`${r.pageId}:${r.rowId}`, r]));
   const page = (p: PathPage): PathSegment => ({
     kind: p.kind,
     key: p.id,
@@ -58,7 +55,31 @@ export function structuralPath(
     icon: p.icon,
     hash: pageLocationHash({ pageId: p.id }),
   });
-  const segments = [...ancestors.map(page), page(current)];
+  const ancestors: PathSegment[] = [];
+  const seen = new Set([current.id]);
+  let child: PathPage = current;
+  let parentId = current.parent_id;
+  while (parentId && ancestors.length < MAX_DEPTH && !seen.has(parentId)) {
+    const parent = byId.get(parentId);
+    if (!parent) break;
+    // Below a record: the record first, then its database.
+    if (child.parent_row_id) {
+      const parentRecord = recordOf.get(`${parent.id}:${child.parent_row_id}`);
+      if (!parentRecord) break;
+      ancestors.unshift({
+        kind: "record",
+        key: `${parent.id}:${parentRecord.rowId}`,
+        title: parentRecord.title,
+        icon: parentRecord.icon,
+        hash: pageLocationHash({ pageId: parent.id, rowId: parentRecord.rowId, full: true }),
+      });
+    }
+    seen.add(parentId);
+    ancestors.unshift(page(parent));
+    child = parent;
+    parentId = parent.parent_id;
+  }
+  const segments = [...ancestors, page(current)];
   if (record)
     segments.push({
       kind: "record",

@@ -217,7 +217,7 @@ import { publishPage, publicationSettings, protectPublication } from "./publicat
 import { protectionChanges } from "./share-access";
 import { adminResetTwoFactor } from "./two-factor";
 import { manageShareLink, listShareLinks } from "./share-links";
-import { recordShareCommand, recordShares, revokeRecordSharesOfPage } from "./record-share";
+import { recordShareCommand, recordShares } from "./record-share";
 import { relatedData, validateDatabaseRelations } from "./related-data";
 import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
@@ -372,6 +372,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // and, once after an update, the release notes to show.
     updateNotes: await userUpdateNotes(user),
     pages,
+    // The records pages sit under (#231, lib/record-pages.ts): the sidebar
+    // shows them in their database, the breadcrumb and the record its pages.
+    recordParents: await recordParents(user, pages),
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
     journalSidebar: await journalSidebarModes(workspace.id),
@@ -725,12 +728,24 @@ async function moveDestination(user: Identity, p: Page, b: Record<string, unknow
     : null;
   // Not into a journal (or below one) behind a PIN the person has not entered.
   if (destinationParent) await requireUnlocked(user, destinationParent);
+  // Below a record of the destination database (#231): asked for with
+  // `parentRowId` (inside), or next to a page that sits below one.
+  const parentRow: string | null =
+    target && placement !== "inside"
+      ? (target.parent_row_id ?? null)
+      : b.parentRowId
+        ? uuid.parse(b.parentRowId)
+        : null;
+  if (parentRow) {
+    if (!destinationParent) throw new HttpError(400, "Ungültiges Verschieben.");
+    await requireRecordParent(user, destinationParent, parentRow);
+  }
   const sid: string =
     destinationParent?.space_id ||
     target?.space_id ||
     (b.spaceId ? uuid.parse(b.spaceId) : p.space_id);
   const destination = await one<Space>("SELECT * FROM spaces WHERE id=?", sid);
-  return { placement, target, parent, destinationParent, sid, destination };
+  return { placement, target, parent, parentRow, destinationParent, sid, destination };
 }
 async function descendants(pid: string): Promise<string[]> {
   return (await all<{ id: string }>(
@@ -1333,6 +1348,9 @@ async function runCommand(
         if (!s || !["editor", "owner"].includes(await spaceRole(user, s) || ""))
           throw new HttpError(403, "Kein Zugriff auf Bereich.");
         const parent = b.parentId ? uuid.parse(b.parentId) : null;
+        // Below a record of the parent database (#231, lib/record-pages.ts).
+        const parentRow = b.parentRowId ? uuid.parse(b.parentRowId) : null;
+        if (parentRow && !parent) throw new HttpError(400, "Die Datenbank des Eintrags fehlt.");
         if (parent) {
           const p = await requirePage(user, parent, true);
           // Nothing new below a journal behind a PIN not entered.
@@ -1342,6 +1360,7 @@ async function runCommand(
               400,
               "Übergeordnete Seite liegt in anderem Bereich.",
             );
+          if (parentRow) await requireRecordParent(user, p, parentRow);
         }
         const savedTemplate = b.templateId
           ? (await requireTemplate(user, b.templateId, wid()))
@@ -1369,6 +1388,7 @@ async function runCommand(
           parent,
           b.aiDatabase !== undefined ? "empty" : z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
         );
+        if (parentRow) await run("UPDATE pages SET parent_row_id=? WHERE id=?", parentRow, created);
         if (savedTemplate)
           await applyPageTemplate(
             user,
@@ -1502,7 +1522,7 @@ async function runCommand(
                     action: "page.move",
                     pageId: p.id,
                     ...(b.parentId
-                      ? { targetId: b.parentId, placement: "inside" }
+                      ? { targetId: b.parentId, placement: "inside", ...(b.parentRowId ? { parentRowId: b.parentRowId } : {}) }
                       : { spaceId: b.spaceId, parentId: null }),
                     ...(b.meta !== undefined ? { meta: b.meta } : {}),
                   },
@@ -1534,7 +1554,7 @@ async function runCommand(
         const p = await write(),
           subtree = await descendants(p.id);
         afterMove.push(async () => await pageMovedEvent(p.id, user.id, p.parent_id, (await one<Page>("SELECT parent_id FROM pages WHERE id=?", p.id))?.parent_id ?? null));
-        const { placement, target, parent, destinationParent, sid, destination } = await moveDestination(user, p, b);
+        const { placement, target, parent, parentRow, destinationParent, sid, destination } = await moveDestination(user, p, b);
         if (
           !destination ||
           destination.deleted_at ||
@@ -1570,14 +1590,15 @@ async function runCommand(
           await run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
         await applyMovePlan(user, subtree, foreignMeta, metaPlan, { workspaceId: destination.workspace_id, spaceId: sid });
         await run(
-          "UPDATE pages SET parent_id=?,updated_at=? WHERE id=?",
-          parent, nowText(),
+          "UPDATE pages SET parent_id=?,parent_row_id=?,updated_at=? WHERE id=?",
+          parent, parentRow, nowText(),
           p.id,
         );
         const siblings = (await all<{ id: string }>(
-          "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
+          "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND parent_row_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
           sid,
           parent,
+          parentRow,
           p.id,
         )).map((x) => x.id);
         const index =
@@ -1843,35 +1864,7 @@ async function runCommand(
       }
       case "page.delete": {
         const p = await write();
-        // Sub-pages already in the trash stay there with their own date, so
-        // restoring this page does not bring them back (lib/trash.ts).
-        const trashed = new Set((await all<{ id: string }>(
-          "WITH RECURSIVE tree(id) AS (SELECT id FROM pages WHERE id=? UNION ALL SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id) SELECT p.id FROM pages p JOIN tree t ON t.id=p.id WHERE p.deleted_at IS NOT NULL",
-          p.id,
-        )).map((r) => r.id));
-        const subtree = (await descendants(p.id)).filter((child) => !trashed.has(child));
-        const deletedAt = nowText();
-        // Every page that goes along: editable, and behind no journal PIN
-        // the person has not entered (a journal further down).
-        await forEachAsync(subtree, async (child) => await requireUnlocked(user, await requirePage(user, child, true, true)));
-        for (const child of subtree) {
-          await run(
-            "DELETE FROM publication_pages WHERE page_id=? OR root_id=?",
-            child,
-            child,
-          );
-          await run("DELETE FROM publications WHERE page_id=?", child);
-          await dropLiveProjectionsOfRoot(child);
-          await run("DELETE FROM share_links WHERE root_id=?", child);
-          await run("DELETE FROM share_link_pages WHERE page_id=?", child);
-          await revokeRecordSharesOfPage(child);
-          await run(
-            "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", deletedAt,
-            child,
-          );
-        }
-        // Workflow pages in the trash behave as paused (#168).
-        await trashWorkflows(subtree, user.id);
+        await trashPageTree(user, p.id);
         break;
       }
       case "page.restore":
@@ -3994,10 +3987,11 @@ import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { workflowCommand } from "./workflows/commands";
 import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
-import { assertWorkflowsEnabled, restoreVersion, trashWorkflows, workflowState } from "./workflows/store";
+import { assertWorkflowsEnabled, restoreVersion, workflowState } from "./workflows/store";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct, contentLocale } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";
 import { ensureBlockIds, linkedBlockIds } from "./block-links";
 import { filterAsync, forEachAsync, mapAsync } from "./each-async";
-import { dropLiveProjectionsOfRoot } from "./shared-live";
+import { trashPageTree } from "./page-trash";
+import { recordParents, requireRecordParent } from "./record-pages";

@@ -1,6 +1,7 @@
 // Moves a document page into a database: the page becomes a record with the
 // same content, files, comments and versions. Links to the page are
-// rewritten to the record, sub-pages move up to the page's parent, and
+// rewritten to the record, sub-pages become the record's sub-pages (#231;
+// in another space they move up to the page's parent), and
 // sharing that only applied to the page (grants, share links, publication)
 // ends; the record follows the database's permissions. The old page goes
 // to the trash, so nothing is lost if the move was a mistake.
@@ -153,7 +154,7 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
     // Favourites become record favourites.
     await run("INSERT INTO row_favorites(user_id,row_id,page_id) SELECT user_id,?,? FROM favorites WHERE page_id=? ON CONFLICT DO NOTHING", rid, database.id, page.id);
     await run("DELETE FROM favorites WHERE page_id=?", page.id);
-    // Sub-pages move up; synced blocks of the text go with it into the database.
+    // Sub-pages go along; synced blocks of the text go with it into the database.
     // Sharing set on the page kept applying to them: it stays theirs, so that
     // moving up neither opens them to more people nor closes them.
     for (const child of await all<{ id: string }>("SELECT id FROM pages WHERE parent_id=? AND synced=0", page.id))
@@ -166,7 +167,12 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
         page.workspace_id,
         child.id,
       );
-    await run("UPDATE pages SET parent_id=? WHERE parent_id=? AND synced=0", page.parent_id, page.id);
+    // In the database's space they stay below it – as the record's
+    // sub-pages (#231); elsewhere they move up to the page's parent.
+    if (database.space_id === page.space_id)
+      await run("UPDATE pages SET parent_id=?,parent_row_id=? WHERE parent_id=? AND synced=0", database.id, rid, page.id);
+    else
+      await run("UPDATE pages SET parent_id=?,parent_row_id=? WHERE parent_id=? AND synced=0", page.parent_id, page.parent_row_id ?? null, page.id);
     await run("UPDATE pages SET parent_id=? WHERE parent_id=? AND synced=1", database.id, page.id);
     // Sharing of the page ends; the record follows the database.
     await run("DELETE FROM grants WHERE resource_id=?", page.id);

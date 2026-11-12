@@ -23,15 +23,16 @@
 // (foreign key), moved to another database, made private, or its database
 // is deleted; a database in a journal with a PIN shares nothing.
 //
-// Sub-pages under records (wave 3 of #231) are not shared yet:
-// include_children stays 0 and recordSharePages() is the place where the
-// pages of a shared record will join (see the note there).
+// Sub-pages under records (#231, lib/record-pages.ts) join only with
+// "Unterseiten einbeziehen" (include_children, recordSharePages): visitors
+// then open them as pages of the share – nothing above or beside them.
 import { z } from "zod";
 import { all, audit, id, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
-import { inPinJournal, PIN_JOURNAL_NOT_SHARED, requireUnlocked } from "./journal-extras";
+import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED, requireUnlocked } from "./journal-extras";
+import { privateRecordPageIds, recordSubPageIds, recordSubTree } from "./record-pages";
 import { checkShareProtection, protectionChanges } from "./share-access";
 import { publicHiddenFieldIds, readRestricted, stripCells } from "./field-access";
 import { publicFieldIds } from "./shared-content";
@@ -145,13 +146,46 @@ export function recordCells(scope: RecordScope): Record<string, unknown> {
   const keep = [scope.titleField, ...scope.shown].filter((f): f is Field => !!f).map((f) => f.id);
   return Object.fromEntries(keep.filter((k) => Object.hasOwn(all, k)).map((k) => [k, all[k]]));
 }
-// Pages of the share besides the record: none yet. Wave 3 of #231 (pages
-// under records) adds the record's sub-pages here when the share includes
-// them (record_shares.include_children), the way resolveTree() does for
-// pages – the callers already pass this list wherever links and files of
-// pages are checked.
-export async function recordSharePages(_scope: RecordScope): Promise<Page[]> {
-  return [];
+// Pages of the share besides the record: with "Unterseiten einbeziehen"
+// (record_shares.include_children, #231) the record's sub-pages and
+// everything below them, as a page link with sub-pages has them – never a
+// workflow page, a journal with a PIN or what sits below a private record
+// further down; a page whose parent is left out stays out. Without it: none.
+// Visitors open them at /share/<token>/<page id> (publicPage in
+// lib/publication.ts), their files through publicFile.
+export async function recordSharePages(scope: RecordScope): Promise<Page[]> {
+  if (!scope.share.include_children) return [];
+  const tree = await recordSubTree(scope.page.id, scope.row.id);
+  if (!tree.length) return [];
+  const pinned = await pinJournalPageIds(scope.page.workspace_id);
+  const out = new Set([...pinned, ...(await privateRecordPageIds(tree))]);
+  for (const p of tree) if (p.kind === "workflow") out.add(p.id);
+  const shown = new Set<string>();
+  let grown = true;
+  while (grown) {
+    grown = false;
+    for (const p of tree)
+      if (
+        !shown.has(p.id) &&
+        !out.has(p.id) &&
+        ((p.parent_id === scope.page.id && p.parent_row_id === scope.row.id) || (!!p.parent_id && shown.has(p.parent_id)))
+      ) {
+        shown.add(p.id);
+        grown = true;
+      }
+  }
+  return tree.filter((p) => shown.has(p.id)).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+}
+// A sub-page of a shared record, for the page paths of a share (publicPage):
+// the record stands in as the share's root – its title, never the
+// database's – and a read-only record lets guest editors comment only.
+export async function recordSubPage(scope: RecordScope, pageId: string | undefined) {
+  const pages = await recordSharePages(scope);
+  const page = pages.find((p) => p.id === pageId);
+  if (!page) throw new HttpError(404, "Seite nicht veröffentlicht.");
+  const root: Page = { ...scope.page, title: recordTitle(scope), icon: scope.row.icon || "", cover: "", public_token: null };
+  const role: RecordShareRole = scope.row.access === "readonly" && scope.role === "editor" ? "commenter" : scope.role;
+  return { root, page, role, pages };
 }
 
 // A file the shared record uses. Its own database's other records, the
@@ -252,10 +286,13 @@ export type RecordShareLink = {
   role: RecordShareRole;
   password: boolean;
   expires_at: number | null;
+  includeChildren: boolean;
 };
 export type RecordShares = {
   links: RecordShareLink[];
-  publication: { token: string; password: boolean; expiresAt: number | null; publishedAt: number } | null;
+  publication: { token: string; password: boolean; expiresAt: number | null; publishedAt: number; includeChildren: boolean } | null;
+  // The record's sub-pages (#231): how many there are to include.
+  subPages: number;
   // Every property that can be shown, with whether visitors see it now.
   fields: { id: string; name: string; type: string; shown: boolean; byDefault: boolean }[];
   chosen: boolean;
@@ -279,6 +316,16 @@ async function requireRecordSharer(user: Identity, raw: unknown) {
   await assertRowAccess(user, page, row, true);
   return { page, row, b };
 }
+// Sharing the record with its sub-pages: the person may edit each of them
+// (as for a page link with sub-pages, lib/share-links.ts) and enters no
+// journal behind a PIN they have not opened.
+async function requireSubPagesShareable(user: Identity, page: Page, rowId: string) {
+  const locked = await lockedPageIds(user, page.workspace_id);
+  for (const p of await recordSubTree(page.id, rowId)) {
+    await requirePage(user, p.id, true);
+    if (locked.has(p.id)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
+  }
+}
 async function sharesOf(page: Page, rowId: string, access: string): Promise<RecordShares> {
   const list = await all<ShareRow>("SELECT * FROM record_shares WHERE row_id=? AND page_id=? ORDER BY created_at,token", rowId, page.id);
   const fields = await databaseFields(page.id);
@@ -288,10 +335,11 @@ async function sharesOf(page: Page, rowId: string, access: string): Promise<Reco
   return {
     links: list
       .filter((s) => s.kind === "link")
-      .map((s) => ({ token: s.token, name: s.name, role: s.role, password: !!s.password_hash, expires_at: s.expires_at })),
+      .map((s) => ({ token: s.token, name: s.name, role: s.role, password: !!s.password_hash, expires_at: s.expires_at, includeChildren: !!s.include_children })),
     publication: publication
-      ? { token: publication.token, password: !!publication.password_hash, expiresAt: publication.expires_at, publishedAt: publication.created_at }
+      ? { token: publication.token, password: !!publication.password_hash, expiresAt: publication.expires_at, publishedAt: publication.created_at, includeChildren: !!publication.include_children }
       : null,
+    subPages: (await recordSubPageIds(page.id, rowId)).length,
     fields: recordEligibleFields(fields).map((f) => ({ id: f.id, name: f.name, type: f.type, shown: shown.has(f.id), byDefault: recordDefaultField(f, fields) })),
     chosen: !!chosen,
     private: access === "private",
@@ -318,6 +366,8 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
       const protection = protectionChanges({ password: b.password, expiresAt: b.expiresAt });
       const role = z.enum(["viewer", "commenter", "editor"]).parse(b.role);
       const name = z.string().trim().min(1).max(100).parse(b.name);
+      const includeChildren = z.boolean().default(false).parse(b.includeChildren);
+      if (includeChildren) await requireSubPagesShareable(user, page, row.id);
       if (
         Number((await one<{ n: number }>("SELECT count(*) n FROM record_shares WHERE row_id=? AND kind='link'", row.id))?.n || 0) >=
         MAX_RECORD_LINKS
@@ -325,12 +375,13 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
         throw new HttpError(400, "Maximal 50 aktive Links pro Eintrag.");
       const token = id();
       await run(
-        "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,password_hash,expires_at,created_by,created_at) VALUES(?,?,?,'link',?,?,0,?,?,?,?)",
+        "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,password_hash,expires_at,created_by,created_at) VALUES(?,?,?,'link',?,?,?,?,?,?,?)",
         token,
         page.id,
         row.id,
         name,
         role,
+        includeChildren ? 1 : 0,
         protection.password_hash ?? null,
         protection.expires_at ?? null,
         user.id,
@@ -367,16 +418,24 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
         }
       } else {
         if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+        // "Unterseiten einbeziehen" (#231): kept unless given.
+        const includeChildren = z.boolean().optional().parse(b.includeChildren);
+        if (includeChildren) await requireSubPagesShareable(user, page, row.id);
         if (!existing) {
           await run(
-            "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,created_by,created_at) VALUES(?,?,?,'publication','','viewer',0,?,?)",
+            "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,created_by,created_at) VALUES(?,?,?,'publication','','viewer',?,?,?)",
             id(),
             page.id,
             row.id,
+            includeChildren ? 1 : 0,
             user.id,
             Date.now(),
           );
           securityEvent("share.public", { actorId: user.id, detail: `record ${row.id} of page ${page.id}` });
+        } else if (includeChildren !== undefined) {
+          await run("UPDATE record_shares SET include_children=? WHERE token=?", includeChildren ? 1 : 0, existing.token);
+          // Visitors with a page open lose it at once when sub-pages leave.
+          if (!includeChildren) await dropLiveProjections([existing.token]);
         }
       }
       return await sharesOf(page, row.id, row.access);

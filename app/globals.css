@@ -602,6 +602,14 @@ kbd,
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* A record in the tree (#231): its title is a link, laid out as the buttons. */
+.record-tree-item a.page-nav-title {
+  display: flex;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 5px;
+}
 .tree-toggle {
   width: 12px;
   padding: 0;
@@ -2091,6 +2099,40 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   font-size: 12px;
   color: var(--muted);
   margin-top: 9px;
+}
+/* A record's sub-pages (#231, components/record-sub-pages.tsx). */
+.record-subpages {
+  margin-top: 28px;
+  border-radius: 8px;
+}
+.record-subpages > h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.record-subpages .subpages {
+  margin-top: 0;
+}
+.record-subpages .record-subpage {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 9px 5px;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 6px;
+}
+.record-subpages .record-subpage:hover {
+  background: var(--hover);
+}
+.record-subpages .record-subpage > svg:last-child {
+  margin-left: auto;
+}
+.record-subpages.dropping {
+  outline: 2px dashed var(--blue);
+  outline-offset: 4px;
 }
 .comments-panel {
   width: 300px;

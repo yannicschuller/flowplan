@@ -114,6 +114,8 @@ async function listPages(
       kind: p.kind,
       spaceId: p.space_id,
       parentId: p.parent_id,
+      // Below this record of the parent database (#231).
+      parentRowId: p.parent_row_id || undefined,
       journalDate: p.journal_date || undefined,
       updatedAt: p.updated_at,
       url: pageLink(p.id),
@@ -391,7 +393,7 @@ export async function appendHtmlToPage(user: Identity, args: { pageId: string; h
 }
 async function createPage(
   user: Identity,
-  args: { workspaceId: string; spaceId: string; parentId?: string; title: string; kind?: string; markdown?: string },
+  args: { workspaceId: string; spaceId: string; parentId?: string; parentRowId?: string; title: string; kind?: string; markdown?: string },
 ) {
   const kind = args.kind || "document";
   if (args.markdown && kind !== "document") throw new HttpError(400, "Inhalt nur für Dokumente.");
@@ -400,6 +402,7 @@ async function createPage(
     workspaceId: args.workspaceId,
     spaceId: args.spaceId,
     parentId: args.parentId,
+    ...(args.parentRowId ? { parentRowId: args.parentRowId } : {}),
     title: args.title,
     kind,
   })) as { id: string };
@@ -610,11 +613,12 @@ const tools: Tool[] = [
     name: "create_page",
     title: "Create a page",
     description:
-      "Creates a page in a space, optionally below a parent page. Documents can start with Markdown content. Needs editor rights on the space.",
+      "Creates a page in a space, optionally below a parent page or below a record (parentId: its database, parentRowId: the record). Documents can start with Markdown content. Needs editor rights on the space (and on the record).",
     input: z.object({
       workspaceId: id("Workspace ID"),
       spaceId: id("Space ID from list_workspaces"),
       parentId: id("Parent page ID").optional(),
+      parentRowId: id("Record ID: the page goes below this record of the parent database (parentId)").optional(),
       title: z.string().trim().min(1).max(500),
       kind: z.enum(["document", "database", "whiteboard"]).optional().describe("Default: document"),
       markdown: z.string().max(1_000_000).optional().describe(`Initial content (documents only). ${CODE_FENCES}`),

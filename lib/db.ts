@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 103;
+export const SCHEMA_VERSION = 104;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1413,6 +1413,19 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS record_share_fields(row_id TEXT PRIMARY KEY REFERENCES rows(id) ON DELETE CASCADE,fields TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS record_share_requests(token TEXT NOT NULL REFERENCES record_shares(token) ON DELETE CASCADE,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS record_share_requests_token ON record_share_requests(token,created_at);`);
+  // Schema 104 – sub-pages under records (#231, part 3): a page whose
+  // parent is a database page may name one of its records in
+  // pages.parent_row_id; it then sits under that record (sidebar,
+  // breadcrumb, the record's "Unterseiten") and inherits the record's
+  // access (lib/permissions.ts). parent_id stays the database page, so
+  // every walk of the page tree (trash, moves, spaces, exports, sharing a
+  // database) still finds these pages below the database. No foreign key:
+  // a record in the trash is not in rows, its sub-pages wait in the trash
+  // with it (lib/row-trash.ts). An older version would show them as
+  // sub-pages of the database, hence the new number.
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "parent_row_id"))
+    d.exec("ALTER TABLE pages ADD COLUMN parent_row_id TEXT");
+  d.exec("CREATE INDEX IF NOT EXISTS pages_parent_row ON pages(parent_row_id) WHERE parent_row_id IS NOT NULL");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

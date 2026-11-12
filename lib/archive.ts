@@ -293,6 +293,8 @@ export const archiveSchema = z.object({
         id: uid,
         space_id: uid,
         parent_id: uid.nullable(),
+        // Below a record of the parent database (#231); archives before it have none.
+        parent_row_id: uid.nullable().optional(),
         title: str,
         icon: pageIconSchema,
         cover: coverSchema,
@@ -576,6 +578,7 @@ async function snapshotFor(user: Identity, wid: string) {
         id: p.id,
         space_id: p.space_id,
         parent_id: p.parent_id && pageIds.has(p.parent_id) ? p.parent_id : null,
+        ...(p.parent_row_id && p.parent_id && pageIds.has(p.parent_id) ? { parent_row_id: p.parent_row_id } : {}),
         title: p.title,
         icon: p.icon,
         cover: p.cover,
@@ -1396,8 +1399,13 @@ async function importEntries(
           );
         if (p.parent_id)
           await run(
-            "UPDATE pages SET parent_id=? WHERE id=?",
+            "UPDATE pages SET parent_id=?,parent_row_id=? WHERE id=?",
             pageMap.get(p.parent_id)!,
+            // The record it sits under, if the archive brought it.
+            (p.parent_row_id &&
+              data.pages.find((x) => x.id === p.parent_id)?.database?.rows.some((r) => r.id === p.parent_row_id) &&
+              rowMap.get(p.parent_row_id)) ||
+              null,
             pid,
           );
         if (p.database) {

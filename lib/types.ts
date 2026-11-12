@@ -66,6 +66,8 @@ export type Page = {
   workspace_id: string;
   space_id: string;
   parent_id: string | null;
+  // A record of the parent database the page sits under (#231, lib/db.ts schema 104).
+  parent_row_id?: string | null;
   title: string;
   icon: string;
   cover: string;
@@ -321,6 +323,8 @@ export type Bootstrap = {
   journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string; icon?: string }[];
+  // Records that readable pages sit under (#231, lib/record-pages.ts).
+  recordParents?: { pageId: string; rowId: string; title: string; icon: string }[];
   collections?: import("./collections").CollectionInfo[];
   // Tags and property definitions of pages, the tags of the pages shown
   // (lib/page-properties-server.ts workspaceTaxonomy).
