@@ -7,7 +7,7 @@
 // default for members who have not set up their own.
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
-import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   ArrowDown,
@@ -49,6 +49,7 @@ import {
 import { groupNames, widgetIcon, widgetMeta, widgetName, type WidgetGroup } from "./meta";
 import { WidgetBody, WidgetFrame } from "./widgets";
 import { touchHold } from "../pointer-drag";
+import { useMasonry } from "../use-masonry";
 import { GRADIENTS, headerStyle } from "./look";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), { ssr: false });
@@ -118,6 +119,19 @@ export default function HomeEditor({
   // of the one under the pointer; near the edges the page scrolls.
   const drag = useRef<{ id: string; pointer: number; scroller: HTMLElement | null } | null>(null);
   const grid = useRef<HTMLDivElement>(null);
+  // The same masonry as the start page (#218): what you arrange is what you get.
+  const masonry = useMasonry();
+  const gridRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      grid.current = el;
+      const stop = masonry(el);
+      return () => {
+        stop?.();
+        grid.current = null;
+      };
+    },
+    [masonry],
+  );
   // By touch only once held (#166): a swipe over a handle scrolls the page.
   const holding = useRef<(() => void) | null>(null);
   useEffect(() => () => holding.current?.(), []);
@@ -322,7 +336,7 @@ export default function HomeEditor({
         </div>
       )}
       <div className="home-grid-wrap">
-        <div className={`home-grid${dragging ? " dragging" : ""}`} ref={grid}>
+        <div className={`home-grid${dragging ? " dragging" : ""}`} ref={gridRef}>
           {widgets.map((w, i) => {
             const name = widgetName(w, t);
             const Icon = widgetIcon(w);

@@ -2,7 +2,8 @@
 // The start page: a grid of widgets each person arranges for themselves
 // ("Anpassen"), per workspace or as their default for all of them
 // (lib/home-layout.ts). The grid has one column on phones, two on tablets
-// and three or four on wide screens. Editing loads on demand
+// and three or four on wide screens; each column stacks upward, so short
+// widgets next to a tall one leave no gap (#218, components/use-masonry.ts). Editing loads on demand
 // (components/home/home-editor.tsx).
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
@@ -17,6 +18,7 @@ import { isServerKind, type HomeLayout } from "@/lib/home-layout-schema";
 import { HomeEnvContext, WidgetBody, WidgetFrame, widgetHidden, type HomeEnv, type WidgetResult } from "./widgets";
 import { localDay, localZone } from "./format";
 import { headerStyle } from "./look";
+import { useMasonry } from "../use-masonry";
 
 const HomeEditor = dynamic(() => loadView(() => import("./home-editor")), { ssr: false });
 
@@ -161,6 +163,8 @@ export default function HomeScreen(props: HomeProps) {
     setData({});
   }, [workspaceId]);
   const customizeButton = useRef<HTMLButtonElement>(null);
+  // Short widgets next to a tall one fill the gap below them (#218).
+  const gridRef = useMasonry();
   const finish = useCallback((home?: HomeState) => {
     if (home) onHome(home);
     setEditing(false);
@@ -231,7 +235,7 @@ export default function HomeScreen(props: HomeProps) {
               )}
               {!hasGreeting && <h1 className="sr-only">{t("Startseite", "Home")}</h1>}
               <div className="home-grid-wrap">
-                <div className="home-grid">
+                <div className="home-grid" ref={gridRef}>
                   {layout.widgets
                     .filter((w) => !widgetHidden(w, env))
                     .map((w) => (
