@@ -1,0 +1,172 @@
+{
+  "security": [
+    {
+      "de": "Aufgaben-Hinweise erreichen nur Zugewiesene, die die Aufgabe lesen dürfen.",
+      "en": "Task notices only reach assignees who may read the task."
+    },
+    {
+      "de": "Listen, wo Tags und Eigenschaften verwendet werden, zeigen nur Titel, die man lesen darf.",
+      "en": "Lists of where tags and properties are used only show titles you may read."
+    },
+    {
+      "de": "Arbeitsbereichs-Tags aus Archiven nur durch Eigentümer; Tags für mehrere Journaltage auf einmal verlangen die PIN.",
+      "en": "Workspace tags from archives only by owners; tagging several journal days at once needs the PIN."
+    },
+    {
+      "de": "Ein gelöschtes Konto hinterlässt keine Kalender-Tokens, Schlüssel, Freigaben oder Einstellungen.",
+      "en": "A deleted account leaves no calendar tokens, keys, grants or settings behind."
+    }
+  ],
+  "features": [
+    {
+      "de": "Neu in Flowplan: nach einem Update zeigt Flowplan einmal, was sich geändert hat – abschaltbar unter Darstellung & Sprache.",
+      "en": "What’s new: after an update Flowplan shows once what changed – can be turned off under Appearance & language.",
+      "issues": [223]
+    },
+    {
+      "de": "Besprechungsnotizen mit /meet: Aufnahme samt Systemton, Zusammenfassung mit Belegstellen, Aufgaben, API und MCP.",
+      "en": "Meeting notes with /meet: recording including system sound, a summary with citations, tasks, API and MCP.",
+      "issues": [199]
+    },
+    {
+      "de": "Meine Aufgaben: eigene Aufgaben ohne Dokument, Filter, Hinweis auf neue Aufgaben, erledigte Aufgaben im Journal und ein Workflow-Schritt „Aufgabe erstellen“.",
+      "en": "My tasks: your own tasks without a document, filters, a badge for new tasks, completed tasks in the journal and a “Create task” workflow step.",
+      "issues": [208]
+    },
+    {
+      "de": "Aufgaben haben fünf Zustände: offen, in Arbeit, erledigt, abgebrochen, zurückgestellt – per Rechtsklick oder langem Tippen.",
+      "en": "Tasks have five states: open, in progress, done, cancelled, deferred – pick one with a right click or long press.",
+      "issues": [201]
+    },
+    {
+      "de": "Automatische Links: Regeln des Arbeitsbereichs machen aus Ticket-Nummern beim Tippen und Einfügen Links.",
+      "en": "Automatic links: workspace rules turn ticket IDs into links while you type and paste.",
+      "issues": [202]
+    },
+    {
+      "de": "Darstellung des Arbeitsbereichs: Akzentfarbe, Hintergrundtönung und Schriften, auch hochgeladene.",
+      "en": "Workspace appearance: accent colour, background tint and typefaces, uploaded ones too.",
+      "issues": [196]
+    },
+    {
+      "de": "Seitensymbol wahlweise klein neben dem Titel.",
+      "en": "The page icon can sit small next to the title.",
+      "issues": [214]
+    },
+    {
+      "de": "Menü bei Textauswahl: neue Einstellung, standardmäßig nur am Computer; Rechenergebnisse mit einem Klick kopieren.",
+      "en": "Menu on text selection: a new setting, by default only on a computer; copy a calculation’s result with one click.",
+      "issues": [200]
+    },
+    {
+      "de": "Veröffentlichungen können neue Unterseiten automatisch mitveröffentlichen.",
+      "en": "Publications can publish new sub-pages automatically."
+    },
+    {
+      "de": "Tastenkürzel-Übersicht mit Suchfeld.",
+      "en": "The keyboard shortcuts overview has a search field.",
+      "issues": [204]
+    },
+    {
+      "de": "Apps: zugewiesene Datenbankeinträge in der Übersicht, im Kalender-Widget, in Spotlight und Siri.",
+      "en": "Apps: assigned database records in the overview, the calendar widget, Spotlight and Siri."
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Anmeldung zeigt den schnellsten Weg zuerst, auf breiten Bildschirmen zweigeteilt.",
+      "en": "Sign-in shows the fastest way first, split in two on wide screens."
+    },
+    {
+      "de": "Handys: ein „Mehr“-Blatt mit dem Konto, der ganze Seitentitel in der oberen Leiste, Folgen, Favorit und Teilen im ⋯-Menü.",
+      "en": "Phones: one “More” sheet with the account, the whole page title in the top bar, follow, favourite and share in the ⋯ menu.",
+      "issues": [197]
+    },
+    {
+      "de": "Favorisierte Datenbankeinträge zeigen ihr eigenes Symbol in der Seitenleiste.",
+      "en": "Favourite records show their own icon in the sidebar.",
+      "issues": [198]
+    },
+    {
+      "de": "Hinweise im Posteingang in der Sprache der Lesenden.",
+      "en": "Inbox notices in the reader’s language.",
+      "issues": [206]
+    },
+    {
+      "de": "Sicherungen enthalten Link-Regeln und Darstellung des Arbeitsbereichs.",
+      "en": "Backups keep the workspace’s link rules and appearance."
+    },
+    {
+      "de": "CSV-Import: fehlende Auswahloptionen werden angelegt, übliche Zahlen- und Datumsschreibweisen erkannt.",
+      "en": "CSV import adds missing select options and reads common number and date formats."
+    },
+    {
+      "de": "Flowplans eigener Markdown-ZIP-Export lässt sich mit Seitenbaum und Datenbanken wieder importieren; Git-Sync und ZIP-Import schaffen Dateien über 10 MB.",
+      "en": "Flowplan’s own Markdown ZIP imports again with its page tree and databases; Git sync and ZIP import handle files above 10 MB."
+    },
+    {
+      "de": "Suche findet Wörter mit Formatierung darin und kurze Suchbegriffe in jeder Schrift; Personen, Einträge und Sprints sortiert nach Namen.",
+      "en": "Search finds words with formatting inside and short queries in any script; people, records and sprints sort by name."
+    },
+    {
+      "de": "PDF-Ansicht: flüssiges Zoomen mit zwei Fingern.",
+      "en": "PDF viewer: smooth two-finger zoom."
+    }
+  ],
+  "fixes": [
+    {
+      "de": "„@“ und „/“ öffnen ihre Menüs auch mit Android-Tastaturen.",
+      "en": "“@” and “/” open their menus with Android keyboards too.",
+      "issues": [207]
+    },
+    {
+      "de": "Das Textmenü verdeckt die Formatierungsleiste nicht mehr.",
+      "en": "The text menu no longer covers the formatting toolbar.",
+      "issues": [210]
+    },
+    {
+      "de": "Workflows: eine fehlgeschlagene Prüfung beim Aktivieren lässt sich erneut ausführen.",
+      "en": "Workflows: a failed check when activating can be run again.",
+      "issues": [209]
+    },
+    {
+      "de": "Neue Seite aus einer Vorlage behält den eingegebenen Titel.",
+      "en": "A new page from a template keeps the title you typed.",
+      "issues": [213]
+    },
+    {
+      "de": "Dialoge behalten beim Scrollen alle vier runden Ecken.",
+      "en": "Dialogs keep all four rounded corners while they scroll.",
+      "issues": [205]
+    },
+    {
+      "de": "KI: keine Temperatur für Modelle, die nur den Standardwert annehmen.",
+      "en": "AI: no temperature for models that only accept the default.",
+      "issues": [222]
+    },
+    {
+      "de": "Offline-Änderungen überstehen einen kurz nicht erreichbaren Server.",
+      "en": "Offline edits survive a briefly unreachable server."
+    },
+    {
+      "de": "Wiederhergestellte Einträge behalten ihren Verlauf; eine wiederhergestellte Seite holt keine früher gelöschten Unterseiten zurück.",
+      "en": "Restored records keep their history; restoring a page no longer brings back sub-pages trashed before it."
+    },
+    {
+      "de": "Formulare nehmen wieder Antworten an, wenn eine Pflicht-Eigenschaft eine Zugriffsregel hat.",
+      "en": "Forms accept answers again when a required property has an access rule."
+    },
+    {
+      "de": "Eine sehr lange Suchanfrage bringt den Server nicht mehr an die Speichergrenze.",
+      "en": "A very long search query no longer runs the server out of memory."
+    },
+    {
+      "de": "Zeiten in Datumsfeldern als „08:30“; Füllfarben von Formen lassen sich wieder wählen.",
+      "en": "Times in date fields show as “08:30”; shape fill colours can be picked again."
+    },
+    {
+      "de": "Handys: Kalendereinträge zeigen Zeit und Titel, lange Seitentitel brechen um, die Journal-Tagesleiste bleibt im Bild.",
+      "en": "Phones: calendar entries show their time and title, long page titles wrap, the journal day bar stays on screen."
+    }
+  ]
+}

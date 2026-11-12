@@ -2,7 +2,8 @@
 # Raises the version in package.json (patch, minor or major) and the Helm
 # chart's appVersion, commits it on
 # main together with CHANGELOG.md, tags v1.2.3, creates the GitHub release
-# with the commits since the last release (scripts/release-notes.mjs) and
+# with the curated notes of release-notes/<version>.json and the commits
+# since the last release (scripts/release-notes.mjs) and
 # publishes the image as :latest, :1.2.3, :1.2 and :1 (docker.yml).
 # A version already raised on main but never tagged is released as it is.
 # Pushing to the protected main and creating the tag needs the deploy key
@@ -58,7 +59,16 @@ jobs:
           # The Helm chart deploys this release by default.
           sed -i "s/^appVersion: .*/appVersion: \"$version\"/" deploy/helm/flowplan/Chart.yaml
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Changelog from the commits since the last release
+      # The curated notes (release-notes/1.2.3.json, #223) lead the release
+      # and CHANGELOG.md, the commits follow folded away; without the file only
+      # the commits – a warning, the release still goes out.
+      - name: Curated release notes
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if [ ! -f "release-notes/$version.json" ]; then
+            echo "::warning title=No curated release notes::release-notes/$version.json is missing – the release lists the commits only, and \"Neu in Flowplan\" shows nothing for v$version."
+          fi
+      - name: Changelog from the curated notes and the commits since the last release
         run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" --changelog > "$RUNNER_TEMP/notes.md"
       - name: Contributors in the README (merged pull requests, no bots)
         env:
