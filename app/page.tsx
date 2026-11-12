@@ -14,6 +14,7 @@ import { readOnlyState } from "@/lib/instance-read-only";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { WORKSPACE_COOKIE, lastWorkspace } from "@/lib/last-workspace";
+import { LAYOUT_COOKIE, parseLayout } from "@/lib/layout-cookie";
 import { sourceUrl } from "@/lib/about";
 import { maintenanceNotice } from "@/lib/admin-ops";
 import { instanceSettings } from "@/lib/instance-settings";
@@ -61,7 +62,8 @@ export default async function Home({
   const invited = invite ? (await acceptInviteToken((await one<User>("SELECT * FROM users WHERE id=?", user.id))!, invite)) : null;
   // Otherwise the workspace last open on this device (#188); bootstrap
   // falls back to the first one when the person is no longer a member.
-  const remembered = lastWorkspace((await cookies()).get(WORKSPACE_COOKIE)?.value);
+  const jar = await cookies();
+  const remembered = lastWorkspace(jar.get(WORKSPACE_COOKIE)?.value);
   return (
     <>
       {/* A scheduled maintenance announced in Administration → Operations. */}
@@ -70,6 +72,9 @@ export default async function Home({
       <WorkspaceApp
         initial={(await bootstrap(user, invited || remembered, (await headers()).get("user-agent"))) as never}
         inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
+        // The sidebar and "KI fragen" widths kept on this device, so the
+        // first paint has them (lib/layout-cookie.ts).
+        layout={parseLayout(jar.get(LAYOUT_COOKIE)?.value)}
         useTemplate={
           useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))
             ? useTemplate

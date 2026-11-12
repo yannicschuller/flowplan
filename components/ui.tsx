@@ -470,16 +470,21 @@ export function Avatar({
   name,
   userId,
   small = false,
+  eager = false,
 }: {
   name: string;
   userId?: string | null;
   small?: boolean;
+  // Always in view (the account in the sidebar): loaded with the page, so
+  // a cached picture is in the first paint; lists keep loading lazily.
+  eager?: boolean;
 }) {
   const src =
     (userId && pictures.byId.get(userId)) || pictures.byName.get(name);
   const [broken, setBroken] = useState<string | null>(null);
-  // The picture's blurred placeholder until it has loaded.
-  const placeholder = useImagePlaceholder(src && broken !== src ? src : null);
+  // The picture's blurred placeholder until it has loaded; no fade-in, so
+  // a cached picture is there from the first paint (the server renders it).
+  const placeholder = useImagePlaceholder(src && broken !== src ? src : null, { fade: false });
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -499,7 +504,7 @@ export function Avatar({
     >
       {src && broken !== src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" loading="lazy" onError={() => setBroken(src)} {...placeholder.imgProps} />
+        <img src={src} alt="" loading={eager ? "eager" : "lazy"} onError={() => setBroken(src)} {...placeholder.imgProps} />
       ) : (
         initials
       )}
