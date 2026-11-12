@@ -176,13 +176,14 @@ export function circled(n: number) {
 // (`lists`: per item the segment ids it cites, in its own order), the
 // first appearance of a segment gives it the next number, later citations
 // of the same segment reuse it. Items keep their citations in that order,
-// without duplicates.
+// without duplicates, at most MAX_SOURCES each.
 export function numberCitations(lists: string[][]): { numbers: Map<string, number>; items: number[][] } {
   const numbers = new Map<string, number>();
   const items = lists.map((list) => {
     const seen: number[] = [];
     for (const sid of list) {
       if (!sid) continue;
+      if (seen.length >= MAX_SOURCES) break;
       if (!numbers.has(sid)) numbers.set(sid, numbers.size + 1);
       const n = numbers.get(sid)!;
       if (!seen.includes(n)) seen.push(n);
@@ -342,7 +343,14 @@ export function mergeLiveWindow<T extends Timed>(committed: T[], until: number, 
 
 // ---- The summary the model returns ----
 
-const cites = z.array(z.number().int().min(1).max(100_000)).max(20).catch([]);
+// The segments that best support an item (#199): at most three, the
+// strongest first. A longer list is cut, not dropped.
+export const MAX_SOURCES = 3;
+const cites = z
+  .array(z.number().int().min(1).max(100_000))
+  .max(100)
+  .catch([])
+  .transform((numbers) => [...new Set(numbers)].slice(0, MAX_SOURCES));
 const item = z.object({ text: z.string().trim().min(1).max(1000), sources: cites.optional().default([]) });
 const aside = z.string().trim().max(1000).nullable().optional().catch(null);
 export const meetingSummarySchema = z
@@ -408,7 +416,7 @@ export function meetingPrompt(input: {
     "- decisions: what was decided; reason: why, in one short sentence, only when it was said (otherwise null).",
     "- questions: questions and points left open; context: what they relate to or what is needed to answer them (otherwise null).",
     "- topics: a summary by topic – the subjects discussed, each with a short title and 1–6 concise points (facts, results). Do not repeat the action items, decisions and questions there.",
-    "- sources: the numbers of the transcript segments (S1, S2 …) an item is based on, as numbers. Every item cites at least one segment when the transcript supports it. Never invent segment numbers.",
+    `- sources: the numbers of the 1–${MAX_SOURCES} transcript segments (S1, S2 …) that best support the item, as numbers, the strongest first – not every segment it touches. Every item cites at least one segment when the transcript supports it. Never invent segment numbers.`,
     "- Do not invent anything that was not said or written. The transcript comes from speech recognition: correct obvious recognition errors silently, and ignore lines that are not part of the conversation (subtitle credits, 'Thanks for watching', a phrase repeated over and over).",
     "- The notes are written by the participants and count as reliable context; points that are only in the notes belong in the result as well.",
   ]

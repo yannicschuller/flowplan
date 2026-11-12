@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DotsThree } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { layerHost } from "./layer-host";
 import {
   COLLAPSED_LINE_CHOICES,
   collapsedLines,
@@ -122,6 +123,7 @@ export function CodeBlockMenu({
         createPortal(
           <div
             ref={panel}
+            data-layer=""
             id={`${id}-panel`}
             role="dialog"
             aria-label={t("Codeblock-Optionen", "Code block options")}
@@ -182,7 +184,8 @@ export function CodeBlockMenu({
               </select>
             </label>
           </div>,
-          document.body,
+          // In a record's dialog the panel stays in the dialog (#232).
+          layerHost(button.current),
         )}
     </>
   );

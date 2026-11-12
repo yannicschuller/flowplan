@@ -1406,29 +1406,31 @@ kbd,
   list-style: none;
   padding: 0;
 }
-.document-editor ul[data-type="taskList"] li {
+/* Only the task items themselves (">"): bullet or numbered items below a
+   task keep their blocks one below the other (#233). */
+.document-editor ul[data-type="taskList"] > li {
   display: flex;
   align-items: flex-start;
   gap: 9px;
   margin: 5px 0;
 }
-.document-editor ul[data-type="taskList"] li > label {
+.document-editor ul[data-type="taskList"] > li > label {
   margin: 3px 0 0;
 }
 /* What reacts to a click shows the pointer (#87): task checkboxes, and links
    and people in the text – inside editable text browsers otherwise keep the
    text cursor, though a click opens the page, the link or the card
    (components/link-preview.tsx). */
-.document-editor ul[data-type="taskList"] li > label,
-.document-editor ul[data-type="taskList"] li > label input[type="checkbox"],
+.document-editor ul[data-type="taskList"] > li > label,
+.document-editor ul[data-type="taskList"] > li > label input[type="checkbox"],
 [contenteditable="true"] a[href],
 [contenteditable="true"] span[data-mention] {
   cursor: pointer;
 }
-.document-editor ul[data-type="taskList"] li > label input[type="checkbox"]:disabled {
+.document-editor ul[data-type="taskList"] > li > label input[type="checkbox"]:disabled {
   cursor: default;
 }
-.document-editor ul[data-type="taskList"] li > div {
+.document-editor ul[data-type="taskList"] > li > div {
   flex: 1;
 }
 /* Only the done task's own text: its subtasks show their own state. An open
@@ -1436,16 +1438,16 @@ kbd,
    Edge paint the decorations of a word the spell checker marks in the text
    colour, which struck through misspelled words of open tasks. Ticking off
    fades it in once the drawn line (lib/motion.ts) has crossed the text. */
-.document-editor ul[data-type="taskList"] li > div > :not(ul, ol) {
+.document-editor ul[data-type="taskList"] > li > div > :not(ul, ol) {
   transition: color 0.2s ease;
 }
 .document-editor li[data-checked="true"] > div > :not(ul, ol),
-.document-editor ul[data-type="taskList"] li[data-checked="true"] > div > :not(ul, ol) {
+.document-editor ul[data-type="taskList"] > li[data-checked="true"] > div > :not(ul, ol) {
   color: var(--muted);
   text-decoration: line-through;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .document-editor ul[data-type="taskList"] li[data-checked="true"] > div > :not(ul, ol) {
+  .document-editor ul[data-type="taskList"] > li[data-checked="true"] > div > :not(ul, ol) {
     animation: strike-in 0.15s ease 0.2s backwards;
   }
 }
@@ -1459,11 +1461,11 @@ kbd,
    unknown Obsidian symbol ("[?]") small in an open box. The same boxes in
    the state menu and "My tasks" (.task-status-icon). Long presses open the
    menu, not the system's callout. */
-.document-editor ul[data-type="taskList"] li > label {
+.document-editor ul[data-type="taskList"] > li > label {
   position: relative;
   -webkit-touch-callout: none;
 }
-.document-editor ul[data-type="taskList"] li:is([data-status], [data-symbol]) > label input[type="checkbox"],
+.document-editor ul[data-type="taskList"] > li:is([data-status], [data-symbol]) > label input[type="checkbox"],
 .task-status-icon {
   -webkit-appearance: none;
   appearance: none;
@@ -1480,26 +1482,26 @@ kbd,
   -webkit-print-color-adjust: exact;
 }
 /* Where the browser's own box sits (its margin), so the text stays in line. */
-.document-editor ul[data-type="taskList"] li:is([data-status], [data-symbol]) > label input[type="checkbox"] {
+.document-editor ul[data-type="taskList"] > li:is([data-status], [data-symbol]) > label input[type="checkbox"] {
   margin: 3px 3px 3px 4px;
 }
-.document-editor ul[data-type="taskList"] li[data-symbol] > label input[type="checkbox"],
+.document-editor ul[data-type="taskList"] > li[data-symbol] > label input[type="checkbox"],
 .task-status-icon[data-status="open"] {
   border-color: var(--muted);
 }
-.document-editor ul[data-type="taskList"] li[data-status="progress"] > label input[type="checkbox"],
+.document-editor ul[data-type="taskList"] > li[data-status="progress"] > label input[type="checkbox"],
 .task-status-icon[data-status="progress"] {
   background: linear-gradient(90deg, var(--blue) 50%, var(--bg) 50%);
 }
 .task-status-icon[data-status="done"] {
   background: var(--blue) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.2l2.6 2.6L12 5.4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat;
 }
-.document-editor ul[data-type="taskList"] li[data-status="cancelled"] > label input[type="checkbox"],
+.document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > label input[type="checkbox"],
 .task-status-icon[data-status="cancelled"] {
   border-color: var(--muted);
 }
-.document-editor ul[data-type="taskList"] li:is([data-status="cancelled"], [data-status="deferred"]) > label::after,
-.document-editor ul[data-type="taskList"] li[data-symbol]::before,
+.document-editor ul[data-type="taskList"] > li:is([data-status="cancelled"], [data-status="deferred"]) > label::after,
+.document-editor ul[data-type="taskList"] > li[data-symbol]::before,
 .task-status-icon:is([data-status="cancelled"], [data-status="deferred"])::after {
   position: absolute;
   top: 0;
@@ -1512,26 +1514,26 @@ kbd,
   z-index: 1;
   pointer-events: none;
 }
-.document-editor ul[data-type="taskList"] li:is([data-status="cancelled"], [data-status="deferred"]) > label::after {
+.document-editor ul[data-type="taskList"] > li:is([data-status="cancelled"], [data-status="deferred"]) > label::after {
   top: 3px;
   inset-inline-start: 4px;
 }
-.document-editor ul[data-type="taskList"] li[data-status="cancelled"] > label::after,
+.document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > label::after,
 .task-status-icon[data-status="cancelled"]::after {
   content: "×";
   color: var(--muted);
   font-size: 15px;
 }
-.document-editor ul[data-type="taskList"] li[data-status="deferred"] > label::after,
+.document-editor ul[data-type="taskList"] > li[data-status="deferred"] > label::after,
 .task-status-icon[data-status="deferred"]::after {
   content: "→";
   color: var(--blue);
   font-size: 11px;
 }
-.document-editor ul[data-type="taskList"] li[data-symbol] {
+.document-editor ul[data-type="taskList"] > li[data-symbol] {
   position: relative;
 }
-.document-editor ul[data-type="taskList"] li[data-symbol]::before {
+.document-editor ul[data-type="taskList"] > li[data-symbol]::before {
   content: attr(data-symbol);
   top: 6px;
   inset-inline-start: 4px;
@@ -1548,7 +1550,7 @@ kbd,
   inset-inline-start: -1.5px;
 }
 /* Cancelled: closed like done, greyer, its box not the accent colour. */
-.document-editor ul[data-type="taskList"] li[data-status="cancelled"] > div > :not(ul, ol) {
+.document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > div > :not(ul, ol) {
   text-decoration-color: var(--muted);
   opacity: 0.8;
 }
@@ -11445,7 +11447,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .document-editor ul[data-type="taskList"] li > div > :not(ul, ol),
+  .document-editor ul[data-type="taskList"] > li > div > :not(ul, ol),
   .my-tasks-group li .my-task-text {
     transition: none;
   }
@@ -15757,7 +15759,7 @@ label.task-due {
   opacity: 1;
 }
 /* In the editor the chip sits at the right of the task's first line. */
-.document-editor ul[data-type="taskList"] li > div {
+.document-editor ul[data-type="taskList"] > li > div {
   position: relative;
 }
 .document-editor li > div > .task-due {

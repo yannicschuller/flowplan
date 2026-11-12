@@ -256,7 +256,21 @@ test("the summary prompt asks for the fixed order, never guessed owners, and rea
   assert.ok(order.every((i) => i > 0));
   assert.match(system, /never guess an owner/);
   assert.match(system, /subtitle credits/);
+  assert.match(system, /1–3 transcript segments \(S1, S2 …\) that best support the item/);
   assert.match(String(prompt.messages[0].content), /Notes:\nRaum klären/);
+});
+
+test("an item cites at most three segments (#199)", () => {
+  const summary = core.meetingSummarySchema.parse({
+    // A long list is cut to the first three (no duplicates), not dropped.
+    actions: [{ text: "Angebot schicken", sources: [4, 4, 2, 9, 1, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] }],
+    decisions: [{ text: "Budget bleibt", sources: [3] }],
+  });
+  assert.deepEqual(summary.actions[0].sources, [4, 2, 9]);
+  assert.deepEqual(summary.decisions[0].sources, [3]);
+  // Already stored lists are cut when numbered as well.
+  const { items } = core.numberCitations([["a", "b", "c", "d", "e"]]);
+  assert.deepEqual(items, [[1, 2, 3]]);
 });
 
 test("speaker names come from the tracks", () => {

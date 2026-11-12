@@ -211,7 +211,7 @@ label.hit-check {
       .home-customize,
       .inline-comment-tools > .button,
       .row-document-heading > :is(.icon-button, .button),
-      .document-editor ul[data-type="taskList"] li > label
+      .document-editor ul[data-type="taskList"] > li > label
     )::after {
     content: "";
     position: absolute;
@@ -222,15 +222,15 @@ label.hit-check {
       .home-customize,
       .inline-comment-tools > .button,
       .row-document-heading > :is(.icon-button, .button),
-      .document-editor ul[data-type="taskList"] li > label
+      .document-editor ul[data-type="taskList"] > li > label
     ) {
     position: relative;
   }
   /* Around a checkbox, not over it: the box itself stays the target. */
-  :where(.hit-check, .document-editor ul[data-type="taskList"] li > label) {
+  :where(.hit-check, .document-editor ul[data-type="taskList"] > li > label) {
     z-index: 0;
   }
-  :where(.hit-check, .document-editor ul[data-type="taskList"] li > label)::after {
+  :where(.hit-check, .document-editor ul[data-type="taskList"] > li > label)::after {
     z-index: -1;
   }
   /* Block handles reach out into the margin left of the text, not over it. */
@@ -383,10 +383,10 @@ label.hit-check {
   .document-editor li {
     min-height: 44px;
   }
-  .document-editor ul[data-type="taskList"] li {
+  .document-editor ul[data-type="taskList"] > li {
     gap: 20px;
   }
-  .document-editor ul[data-type="taskList"] li > label::after {
+  .document-editor ul[data-type="taskList"] > li > label::after {
     inset: -11px -22px -11px -11px;
   }
   /* A quote's handle and the one of the text in it stand side by side. */
