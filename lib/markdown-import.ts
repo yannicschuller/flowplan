@@ -3,14 +3,18 @@ import { parseDocument, DomUtils } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
 import { cleanHtml } from "./document-server";
 import { markdownToRawHtml, type MarkdownImportOptions } from "./markdown-html";
+import { withToggleIds } from "./block-ids";
 
 export type { MarkdownImportOptions } from "./markdown-html";
 
 // GitHub-flavoured Markdown to sanitized editor HTML (lib/markdown-html.ts
 // does the conversion). `resolve` maps link and image targets (e.g. files
 // inside an export) and may drop them by returning null.
+// Toggles get a block id of their own (lib/block-ids.ts, #230) – not in
+// the source view, whose round trip leaves a document as it was.
 export function markdownToHtml(...args: Parameters<typeof markdownToRawHtml>) {
-  return cleanHtml(blockMarkers(markdownToRawHtml(...args)));
+  const html = blockMarkers(markdownToRawHtml(...args));
+  return cleanHtml(args[2]?.source ? html : withToggleIds(html));
 }
 // The same with a link resolver and whiteboard lookup that read the
 // database (#127): answered ahead (lib/resolve-ahead.ts), the conversion

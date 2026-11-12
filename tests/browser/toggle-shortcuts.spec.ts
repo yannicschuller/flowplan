@@ -192,3 +192,35 @@ test("turn into toggle from the block menu, and closed toggles stay closed after
   await expect(toggles.nth(1)).toHaveAttribute("open", "");
   expect(errors).toEqual([]);
 });
+
+test("a toggle without block id (imported, API) gets one when closed and stays closed after a reload", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  // Written as the API and importers did: no data-block-id anywhere.
+  const f = await fixture(page, `Ohne Id ${Date.now()}`, "<p>Intro</p><details><summary>Ohne Id</summary><div><p>Innen</p></div></details><p>Ende</p>");
+  await page.goto(`/#page=${f.host.id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor.locator(":scope > p", { hasText: "Ende" })).toBeVisible({ timeout: 20_000 });
+  const toggle = editor.locator(":scope > details.toggle-block");
+  await expect(toggle).not.toHaveAttribute("data-block-id", /./);
+  await toggle.locator(".toggle-arrow").click();
+  await expect(toggle).not.toHaveAttribute("open", "");
+  // Named right away, and remembered under that name.
+  await expect(toggle).toHaveAttribute("data-block-id", /^[a-z0-9]{8}$/);
+  const id = (await toggle.getAttribute("data-block-id"))!;
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("flowplan.toggles") || "")).toContain(id);
+  // The id is part of the document (saved and synced).
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${f.host.id}`)).text()).includes(id), { timeout: 15_000 }).toBe(true);
+  // Closing is nothing to undo.
+  await editor.locator(":scope > p", { hasText: "Intro" }).click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toggle).toHaveAttribute("data-block-id", id);
+  await page.waitForTimeout(1000);
+  await page.reload();
+  await expect(editor.locator(":scope > p", { hasText: "Ende" })).toBeVisible({ timeout: 20_000 });
+  await expect(toggle).toHaveAttribute("data-block-id", id);
+  await expect(toggle).not.toHaveAttribute("open", "");
+  await expect(toggle.locator(":scope > div")).toBeHidden();
+  expect(errors).toEqual([]);
+});

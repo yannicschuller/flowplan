@@ -60,6 +60,15 @@ export function newBlockId() {
   return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
 }
 
+// Imported and written content (Markdown, the importers, the API and MCP)
+// comes mostly without ids. Toggles get theirs right away (#230): closed
+// toggles are remembered by block id (lib/toggle-memory.ts), also for
+// readers who cannot change the document. A <details> that already has one
+// keeps it; ids only need to be unique within their document.
+const DETAILS_WITHOUT_ID = /<details\b(?![^>]*\sdata-block-id=)/gi;
+export const withToggleIds = (html: string) =>
+  html.includes("<details") ? html.replace(DETAILS_WITHOUT_ID, (start) => `${start} data-block-id="${newBlockId()}"`) : html;
+
 // Schema part (server and editor): the attribute on every linkable block.
 // A block split in two (Enter) leaves the id with the first part.
 export const BlockIdAttribute = Extension.create({

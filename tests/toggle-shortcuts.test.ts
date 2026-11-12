@@ -46,7 +46,7 @@ async function typed(content: string, text: string, creates: "toggle" | "quote" 
   const element = win.document.createElement("div");
   win.document.body.appendChild(element);
   const extensions = [
-    StarterKit.configure({ codeBlock: false, undoRedo: false, blockquote: false }),
+    StarterKit.configure({ code: false, codeBlock: false, undoRedo: false, blockquote: false }),
     ShortcutBlockquote.configure({ creates: () => creates }),
     ...documentExtensions.slice(1),
   ];

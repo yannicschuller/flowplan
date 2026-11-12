@@ -1,4 +1,5 @@
 import { Mark } from "@tiptap/core";
+import Code from "@tiptap/extension-code";
 
 // Text colours strong enough to stand out on the light and the dark
 // background; highlight colours clearly tinted (the text on them stays
@@ -42,6 +43,13 @@ declare module "@tiptap/core" {
     subscript: { toggleSubscript: () => ReturnType };
   }
 }
+// Inline code that combines with other formatting (#241): Tiptap's code
+// mark excludes every other mark ("_"), so `**\`code\`**` from Markdown or
+// Notion lost its bold, and a link or comment on code was dropped. Code
+// still keeps its own input rule and shortcut; it is listed after
+// StarterKit (with `code: false`), so it renders inside bold, italic and
+// links (<strong><code>…</code></strong>).
+export const FlowCode = Code.extend({ excludes: "" });
 // Stored as <span style="color:#rrggbb">; only 6-digit hex colours.
 export const TextColor = Mark.create({
   name: "textColor",

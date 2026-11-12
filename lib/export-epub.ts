@@ -42,8 +42,8 @@ caption { caption-side: bottom; text-align: left; padding-top: 0.4em; }
 figure.listing { text-align: left; }
 .caption-label { font-weight: bold; }
 pre { white-space: pre-wrap; word-wrap: break-word; font-family: Menlo, Consolas, monospace; font-size: 0.85em; background: #f4f4f2; padding: 0.7em; border-radius: 4px; }
-code { font-family: Menlo, Consolas, monospace; font-size: 0.9em; background: #f4f4f2; padding: 0 0.2em; }
-pre code { background: none; padding: 0; font-size: inherit; }
+code { font-family: Menlo, Consolas, monospace; font-size: 85%; color: #bd2931; background: rgba(135, 131, 120, 0.15); padding: 0.2em 0.4em; border-radius: 4px; }
+pre code { color: inherit; background: none; padding: 0; border-radius: 0; font-size: inherit; }
 blockquote { margin: 1em 0; padding: 0 0 0 1em; border-left: 3px solid #ccc; color: #444; }
 .callout { margin: 1em 0; padding: 0.7em 1em; border-left: 4px solid #1a73e8; background: #eef3fd; }
 .callout-tip { border-color: #188038; background: #e6f4ea; }

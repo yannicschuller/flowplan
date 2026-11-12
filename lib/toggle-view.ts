@@ -14,14 +14,18 @@
 // (they show toggles as before). A toggle is known by its block id (it
 // travels with the block through moves and Yjs), by its position without
 // one. What is closed opens again when the caret gets into it. Closed
-// toggles with a block id are remembered per person and device (#230,
-// lib/toggle-memory.ts), so they stay closed after a reload.
+// toggles are remembered per person and device by their block id (#230,
+// lib/toggle-memory.ts), so they stay closed after a reload; a toggle
+// without one (imported, written through the API) gets its id the first
+// time it is closed – a document change like any other, synced and saved.
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView, type NodeView, type ViewMutationRecord } from "@tiptap/pm/view";
 import { tr } from "./locale-tag";
 import { browserStorage, readClosedToggles, writeClosedToggles } from "./toggle-memory";
 import { emptyTitleToParagraph, toggleAfter } from "./toggle-commands";
+import { linkableBlocks, newBlockId, validBlockId } from "./block-ids";
+import { blockIdsKey } from "./block-ids-plugin";
 
 // `restoring`: remembered closed toggles not seen in the document yet (it
 // arrives through Yjs after the editor started).
@@ -71,7 +75,8 @@ export function openToggles(view: EditorView, positions: number[]) {
 // `pos` once it is applied (a toggle just inserted, #230).
 export const withTitleFocus = (trn: Transaction, pos: number) => trn.setMeta(toggleKey, { title: pos } satisfies ToggleMeta);
 
-// Positional identities follow their toggle through changes.
+// Positional identities follow their toggle through changes; a toggle
+// that got a block id meanwhile is known by it from then on.
 function mapClosed(closed: ReadonlySet<string>, trn: Transaction) {
   if (![...closed].some((id) => id.startsWith("@"))) return closed;
   const next = new Set<string>();
@@ -79,10 +84,34 @@ function mapClosed(closed: ReadonlySet<string>, trn: Transaction) {
     if (!id.startsWith("@")) next.add(id);
     else {
       const result = trn.mapping.mapResult(Number(id.slice(1)), 1);
-      if (!result.deleted) next.add(`@${result.pos}`);
+      if (result.deleted) continue;
+      const node = trn.doc.nodeAt(result.pos);
+      next.add(node?.type.name === "toggle" ? toggleIdentity(node, result.pos) : `@${result.pos}`);
     }
   }
   return next;
+}
+
+// Block ids for closed toggles that have none (#230 follow-up), so they
+// can be remembered: one attribute step per toggle, unique in the
+// document, kept out of undo (closing is no edit to take back). Null when
+// every closed toggle has its id.
+export function closedToggleIdTransaction(state: EditorState, closed: ReadonlySet<string>): Transaction | null {
+  const positions = [...closed].filter((id) => id.startsWith("@")).map((id) => Number(id.slice(1)));
+  const missing = positions.filter((pos) => {
+    const node = state.doc.nodeAt(pos);
+    return node?.type.name === "toggle" && !validBlockId(node.attrs.blockId);
+  });
+  if (!missing.length) return null;
+  const taken = new Set(linkableBlocks(state.doc).map((b) => validBlockId(b.node.attrs.blockId)).filter(Boolean));
+  const change = state.tr;
+  for (const pos of missing) {
+    let id = newBlockId();
+    while (taken.has(id)) id = newBlockId();
+    taken.add(id);
+    change.setNodeAttribute(pos, "blockId", id);
+  }
+  return change.setMeta(blockIdsKey, true).setMeta("addToHistory", false);
 }
 
 // The toggles of a document by identity.
@@ -217,6 +246,15 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
           const value = toggleKey.getState(view.state);
           if (!value || value === handled) return;
           handled = value;
+          // A closed toggle without block id gets one, right after this
+          // update (the next one remembers it under that id).
+          if (storageKey && view.editable && value.closed !== saved && [...value.closed].some((id) => id.startsWith("@")))
+            setTimeout(() => {
+              if (view.isDestroyed || !view.editable) return;
+              const current = toggleKey.getState(view.state);
+              const ids = current && closedToggleIdTransaction(view.state, current.closed);
+              if (ids) view.dispatch(ids);
+            }, 0);
           // Remembered: the closed toggles that have a block id, those of
           // the document and those not loaded yet.
           if (storageKey && value.closed !== saved) {

@@ -222,9 +222,21 @@ export function mountCodePreview(element: HTMLElement, kind: PreviewKind, text: 
       break;
     }
     case "mermaid":
-      void import("./mermaid-render")
-        .then(({ renderDiagram }) => renderDiagram(text))
-        .then((url) => !cancelled && picture(element, url, tr("Mermaid-Diagramm", "Mermaid diagram"), done, isCancelled), fail);
+      // In the page's light or dark colours, drawn again on a switch (#241).
+      void import("./mermaid-render").then(({ renderDiagram, pageDiagramTheme, watchDiagramTheme }) => {
+        if (cancelled) return;
+        let drawn = 0;
+        const draw = (theme: ReturnType<typeof pageDiagramTheme>) => {
+          const run = ++drawn;
+          void renderDiagram(text, theme).then((url) => {
+            if (cancelled || run !== drawn) return;
+            element.dataset.diagramTheme = theme;
+            picture(element, url, tr("Mermaid-Diagramm", "Mermaid diagram"), done, isCancelled);
+          }, fail);
+        };
+        draw(pageDiagramTheme());
+        stop = watchDiagramTheme(draw);
+      }, fail);
       break;
     case "typst":
       void import("./typst-render")

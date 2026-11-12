@@ -41,9 +41,12 @@ export async function diagramPng(url: string) {
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/png");
 }
-export function openDiagramViewer(url: string) {
+// `exportUrl`: the picture for downloads when the one shown differs (a
+// Mermaid diagram drawn dark in dark mode is downloaded light, #241).
+export function openDiagramViewer(url: string, exportUrl: () => Promise<string> = () => Promise.resolve(url), theme: "light" | "dark" = "light") {
   const dialog = document.createElement("dialog");
   dialog.className = "diagram-viewer";
+  dialog.dataset.diagramTheme = theme;
   dialog.setAttribute("aria-label", "Diagramm vergrößert");
   const image = document.createElement("img");
   image.src = url;
@@ -77,11 +80,11 @@ export function openDiagramViewer(url: string) {
     smaller,
     label,
     larger,
-    button("Als SVG herunterladen", "SVG", () => download(url, "diagramm.svg")),
+    button("Als SVG herunterladen", "SVG", () => void exportUrl().then((svg) => download(svg, "diagramm.svg"))),
     button(
       "Als PNG herunterladen",
       "PNG",
-      () => void diagramPng(url).then((png) => download(png, "diagramm.png")),
+      () => void exportUrl().then(diagramPng).then((png) => download(png, "diagramm.png")),
     ),
     close,
   );
@@ -96,18 +99,18 @@ export function openDiagramViewer(url: string) {
   dialog.showModal();
   return dialog;
 }
-export function diagramToolbar(url: string) {
+export function diagramToolbar(url: string, exportUrl: () => Promise<string> = () => Promise.resolve(url), theme: "light" | "dark" = "light") {
   const tools = document.createElement("div");
   tools.className = "diagram-tools";
   tools.setAttribute("role", "toolbar");
   tools.setAttribute("aria-label", "Diagramm");
   tools.append(
-    button("Diagramm vergrößern", "⤢", () => openDiagramViewer(url)),
-    button("Als SVG herunterladen", "SVG", () => download(url, "diagramm.svg")),
+    button("Diagramm vergrößern", "⤢", () => openDiagramViewer(url, exportUrl, theme)),
+    button("Als SVG herunterladen", "SVG", () => void exportUrl().then((svg) => download(svg, "diagramm.svg"))),
     button(
       "Als PNG herunterladen",
       "PNG",
-      () => void diagramPng(url).then((png) => download(png, "diagramm.png")),
+      () => void exportUrl().then(diagramPng).then((png) => download(png, "diagramm.png")),
     ),
   );
   return tools;

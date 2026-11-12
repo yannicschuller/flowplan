@@ -3,9 +3,10 @@
 // lib/heading-folds.ts) this is a way of looking at the document, never part
 // of it – others, exports and published pages see toggles open, as before
 // (#137). Stored in localStorage under one key, one entry per person and
-// document, with block ids only (no document text; a toggle without a block
-// id is not remembered). Bounded: the documents changed last, and a limited
-// number of toggles per document.
+// document, with block ids only (no document text). A toggle without a
+// block id gets one when it is closed (lib/toggle-view.ts), imported ones on
+// import (lib/block-ids.ts withToggleIds). Bounded: the documents changed
+// last, and a limited number of toggles per document.
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type Store = Record<string, { ids: string[]; at: number }>;

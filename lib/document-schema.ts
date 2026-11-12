@@ -25,7 +25,7 @@ import {
 import Image from "@tiptap/extension-image";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import { Subscript, Superscript, TextColor } from "./text-marks";
+import { FlowCode, Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
 import { DrawioBlock } from "./drawio-node";
 import { FunctionPlot } from "./function-plot-node";
@@ -734,6 +734,7 @@ export const Indent = Extension.create({
 });
 export const documentExtensions = [
   StarterKit.configure({
+    code: false,
     codeBlock: false,
     undoRedo: false,
     link: {
@@ -741,6 +742,7 @@ export const documentExtensions = [
       HTMLAttributes: { rel: "noopener noreferrer" },
     },
   }),
+  FlowCode,
   FlowCodeBlock,
   MermaidBlock,
   DrawioBlock,

@@ -17,6 +17,7 @@ import { boardState, storeBoardImages } from "../whiteboard-import-server";
 import { writeWhiteboard } from "../whiteboard";
 import { importNotebook } from "../notebook";
 import { cleanHtml, htmlState } from "../document-server";
+import { withToggleIds } from "../block-ids";
 import { enforceQuota } from "../instance-ops";
 import { enforceUserStorage } from "../user-limits";
 import { sanitizeFileName, verifiedMime } from "../upload-safety";
@@ -334,9 +335,10 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       return record ? `/#page=${record.pageId}&row=${record.rowId}` : null;
     };
     // Embedded databases and whiteboards name their page by id.
+    // Toggles get a block id of their own (lib/block-ids.ts, #230).
     const resolveHtml = (html: string, files = fileUrls) =>
       cleanHtml(
-        html
+        withToggleIds(html)
           .replace(/(data-linked-source|data-whiteboard)="fp-import:\/\/page\/([^"]*)"/g, (_, name: string, key: string) =>
             pageIds.has(decodeKey(key)) ? `${name}="${pageIds.get(decodeKey(key))}"` : `${name}=""`,
           )
