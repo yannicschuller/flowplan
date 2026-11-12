@@ -92,3 +92,14 @@ test("tasks stored before block ids were kept: the position decides", async () =
   await write(pid, list(item("Rechnung schreiben und senden", true, "cccc3333")));
   assert.deepEqual(await completed(), ["Rechnung schreiben und senden"]);
 });
+
+test("the last letters typed and the tick in one save: logged with the whole text", async () => {
+  await run("DELETE FROM task_done_log");
+  const pid = await page("Schnell");
+  await write(pid, list(item("Angebot schreib", false, "dddd4444")));
+  await write(pid, list(item("Angebot schreiben", true, "dddd4444")));
+  assert.deepEqual(await completed(), ["Angebot schreiben"]);
+  // Written already done (a new task): not ticked off today.
+  await write(pid, list(item("Angebot schreiben", true, "dddd4444"), item("Schon erledigt", true, "eeee5555")));
+  assert.deepEqual(await completed(), ["Angebot schreiben"]);
+});
