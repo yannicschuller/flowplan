@@ -24,6 +24,17 @@
 // (lib/doc-tasks.ts). Afterwards the audio is deleted or kept per the
 // workspace's retention.
 //
+// While a recording goes on, its pieces are already transcribed in windows
+// (liveStep, lib/webm.ts): at the end only the last window and the summary
+// are left. Whenever that does not work (no WebM, the service failed), the
+// whole track is transcribed at the end as before – the pieces stay until
+// the transcript is there. A track's finished transcript is kept with the
+// pieces, so a retry only redoes the track that failed. Kept audio can be
+// transcribed again ("retranscribe"); passages people corrected stay.
+// Errors: `error` is the message people see, `error_detail` what went
+// wrong for administrators (timeout, refused connection, the service's
+// answer).
+//
 // Rights: reading the page reads the block (guests only when the page is
 // shared with them); recording, processing and settings need edit rights,
 // a page that is not locked, not encrypted end-to-end (the server would
@@ -49,7 +60,8 @@ import { rewriteDocument, rewriteSchema } from "./document-rewrite";
 import { syncDocTasks } from "./doc-tasks";
 import { mayHear } from "./comment-recipients";
 import { recordPageEdit } from "./page-activity";
-import { transcribe, transcribeMaxBytes, transcriptionEnabled, type TranscriptSegment } from "./transcribe";
+import { TranscribeError, transcribe, transcribeMaxBytes, transcriptionEnabled, whisperPrompt, type TranscriptSegment } from "./transcribe";
+import { webmClusters, webmHeader, webmWindow } from "./webm";
 import { speakerNumbers } from "./transcript";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
@@ -74,12 +86,17 @@ import {
   MEETING_MAX_SECONDS,
   MEETING_TEXT,
   MIN_SUMMARY_SECONDS,
+  isEdited,
   isMeetingPreset,
+  markHallucinations,
+  mergeLiveWindow,
   meetingLanguage,
   meetingPrompt,
   meetingSummarySchema,
+  overlapSeconds,
   presetPrompt,
   removeEchoes,
+  segmentHash,
   segmentId,
   segmentNodes,
   speakerLabel,
@@ -109,6 +126,9 @@ export const meetingSettingsSchema = z.object({
   // Recording only after confirming that everyone agreed.
   consentRequired: z.boolean().default(false),
   consentText: z.string().max(2000).default(""),
+  // Names, acronyms and terms of the workspace, one per line or separated
+  // by commas: the speech recognition's vocabulary (whisperPrompt).
+  glossary: z.string().max(2000).default(""),
 });
 export type MeetingSettings = z.infer<typeof meetingSettingsSchema>;
 
@@ -151,6 +171,12 @@ export type MeetingSession = {
   // "text": a transcript given as text (API, MCP) instead of audio.
   kind?: "audio" | "text";
   state: "recording" | "uploaded" | "done" | "failed";
+  // Transcribed in windows while recording (the recorder asks for it).
+  live?: boolean;
+  // Transcribed again from the kept audio (retranscribe); corrected
+  // passages stay unless `keepEdited` is false.
+  source?: "kept";
+  keepEdited?: boolean;
 };
 type KeptAudio = { session: number; track: MeetingTrack; fileId: string; mime: string };
 type MeetingRow = {
@@ -161,6 +187,7 @@ type MeetingRow = {
   created_by: string | null;
   status: string;
   error: string | null;
+  error_detail: string | null;
   sessions: string;
   duration_ms: number;
   audio: string;
@@ -263,6 +290,9 @@ export function segmentsOf(meeting: PMNode): MeetingSegment[] {
       speaker: String(s.attrs.speaker || ""),
       track: (TRACKS as readonly string[]).includes(s.attrs.track) ? s.attrs.track : "mixed",
       session: Number(s.attrs.session) || 1,
+      ...(s.attrs.hallucination ? { hallucination: true } : {}),
+      ...(s.attrs.edited ? { edited: true } : {}),
+      ...(s.attrs.hash ? { hash: String(s.attrs.hash) } : {}),
     }),
   );
   return list;
@@ -319,6 +349,7 @@ export async function meetingStatusOrNew(user: Identity, meetingId: string) {
     rowId: null,
     status: "new",
     error: null,
+    errorDetail: null,
     durationMs: 0,
     sessions: [],
     audio: [],
@@ -339,6 +370,8 @@ export async function meetingStatus(user: Identity, meetingId: string, options: 
     rowId: row.row_id,
     status: row.status,
     error: row.error,
+    // What went wrong, for the instance's administrators only.
+    errorDetail: user.isAdmin ? row.error_detail || null : null,
     durationMs: Number(row.duration_ms) || 0,
     sessions: sessions.map((s) => ({ n: s.n, offsetMs: s.offsetMs, durationMs: s.durationMs, tracks: s.tracks, state: s.state, by: s.by, byName: s.byName, at: s.at })),
     audio: audioOf(row).map((a) => ({ session: a.session, track: a.track, url: `/api/files/${a.fileId}`, mime: a.mime })),
@@ -362,7 +395,19 @@ export async function meetingStatus(user: Identity, meetingId: string, options: 
     title: found ? String(found.node.attrs.title || "") : "",
     summary: markdown(summary?.node),
     agenda: markdown(agenda?.node),
-    transcript: found ? segmentsOf(found.node).map((s) => ({ id: s.sid, start: s.start, end: s.end, speaker: s.speaker, track: s.track, session: s.session, text: s.text })) : [],
+    transcript: found
+      ? segmentsOf(found.node).map((s) => ({
+          id: s.sid,
+          start: s.start,
+          end: s.end,
+          speaker: s.speaker,
+          track: s.track,
+          session: s.session,
+          text: s.text,
+          hallucination: !!s.hallucination,
+          edited: isEdited(s),
+        }))
+      : [],
   };
 }
 
@@ -370,7 +415,7 @@ export type MeetingDetails = Awaited<ReturnType<typeof meetingStatus>> & {
   title: string;
   summary: string;
   agenda: string;
-  transcript: { id: string; start: number; end: number; speaker: string; track: MeetingTrack; session: number; text: string }[];
+  transcript: { id: string; start: number; end: number; speaker: string; track: MeetingTrack; session: number; text: string; hallucination: boolean; edited: boolean }[];
 };
 // The status with the summary (Markdown), agenda and transcript.
 export const meetingDetails = async (user: Identity, meetingId: string) => (await meetingStatus(user, meetingId, { content: true })) as MeetingDetails;
@@ -384,6 +429,8 @@ const startInput = z.object({
   tracks: z.array(trackSchema).min(1).max(2),
   mime: z.string().regex(/^(audio\/[\w.+-]+|text\/plain)$/).max(100).default("audio/webm"),
   consent: z.boolean().optional(),
+  // The recorder's 30-second pieces: transcribe them while recording.
+  live: z.boolean().optional(),
 });
 // A new recording session ("continue later" starts another one; its times
 // continue after the earlier ones).
@@ -405,10 +452,10 @@ export async function startMeetingSession(user: Identity, input: unknown, kind: 
     const offsetMs = sessions.reduce((sum, s) => sum + (s.state === "failed" && !s.durationMs ? 0 : s.durationMs), 0);
     if (offsetMs >= MEETING_MAX_SECONDS * 1000) throw new HttpError(413, "Die Besprechung hat die Höchstlänge erreicht.");
     const n = sessions.reduce((max, s) => Math.max(max, s.n), 0) + 1;
-    const session: MeetingSession = { n, offsetMs, durationMs: 0, tracks: b.tracks, parts: {}, mime: b.mime.split(";")[0], by: user.id, byName: user.name, at: Date.now(), kind, state: "recording" };
+    const session: MeetingSession = { n, offsetMs, durationMs: 0, tracks: b.tracks, parts: {}, mime: b.mime.split(";")[0], by: user.id, byName: user.name, at: Date.now(), kind, state: "recording", ...(b.live && kind === "audio" ? { live: true } : {}) };
     sessions.push(session);
     await run(
-      "UPDATE meetings SET sessions=?,status='recording',error=NULL,consent_by=COALESCE(?,consent_by),consent_at=COALESCE(?,consent_at),updated_at=? WHERE id=?",
+      "UPDATE meetings SET sessions=?,status='recording',error=NULL,error_detail=NULL,consent_by=COALESCE(?,consent_by),consent_at=COALESCE(?,consent_at),updated_at=? WHERE id=?",
       JSON.stringify(sessions),
       b.consent ? user.id : null,
       b.consent ? Date.now() : null,
@@ -470,6 +517,7 @@ export async function storeMeetingChunk(user: Identity, meetingId: string, input
   if (room !== null && staged + bytes.length > room) throw new HttpError(413, "Der Speicherplatz reicht für diese Aufnahme nicht aus.");
   await mkdir(trackDir(row.id, session.n, track), { recursive: true });
   await writeFile(resolve(trackDir(row.id, session.n, track), String(input.index)), bytes);
+  if (session.live && session.mime === "audio/webm" && liveEnabled()) scheduleLive(row.id, session.n, track, whisperPrompt((await meetingSettings(row.workspace_id)).glossary));
   return { ok: true, received: (await stagedParts(row.id, session.n, track)).length };
 }
 // Which pieces arrived (to resume after a lost connection).
@@ -509,7 +557,7 @@ export async function finishMeetingSession(user: Identity, meetingId: string, in
     own.durationMs = Math.round(Math.min(b.durationMs, MEETING_MAX_SECONDS * 1000 - own.offsetMs));
     own.state = "uploaded";
     await run(
-      "UPDATE meetings SET sessions=?,duration_ms=?,status='transcribing',error=NULL,updated_at=? WHERE id=?",
+      "UPDATE meetings SET sessions=?,duration_ms=?,status='transcribing',error=NULL,error_detail=NULL,updated_at=? WHERE id=?",
       JSON.stringify(sessions),
       sessions.reduce((sum, s) => sum + (s.state === "recording" ? 0 : s.durationMs), 0),
       Date.now(),
@@ -526,7 +574,7 @@ export async function retryMeeting(user: Identity, meetingId: string, language?:
   if (running().has(row.id)) return await meetingStatus(user, row.id);
   const sessions = sessionsOf(row);
   for (const s of sessions) if (s.state === "failed") s.state = "uploaded";
-  await run("UPDATE meetings SET sessions=?,status='transcribing',error=NULL,updated_at=? WHERE id=?", JSON.stringify(sessions), Date.now(), row.id);
+  await run("UPDATE meetings SET sessions=?,status='transcribing',error=NULL,error_detail=NULL,updated_at=? WHERE id=?", JSON.stringify(sessions), Date.now(), row.id);
   launchProcessing(user, row.id, meetingLanguage(language || languageOfLocale()));
   return await meetingStatus(user, row.id);
 }
@@ -546,8 +594,23 @@ function launchProcessing(user: Identity, meetingId: string, language: MeetingLa
 // Tests wait for the background work.
 export const meetingJob = (meetingId: string) => running().get(meetingId) ?? Promise.resolve();
 
-async function setStatus(meetingId: string, status: string, error: string | null = null) {
-  await run("UPDATE meetings SET status=?,error=?,updated_at=? WHERE id=?", status, error ? error.slice(0, 500) : null, Date.now(), meetingId);
+async function setStatus(meetingId: string, status: string, error: string | null = null, detail: string | null = null) {
+  await run(
+    "UPDATE meetings SET status=?,error=?,error_detail=?,updated_at=? WHERE id=?",
+    status,
+    error ? error.slice(0, 500) : null,
+    detail ? detail.slice(0, 1000) : null,
+    Date.now(),
+    meetingId,
+  );
+}
+// The message people see and the detail administrators see.
+function failure(error: unknown, fallback: string) {
+  const e = error as Error & { code?: string; cause?: { code?: string } };
+  if (error instanceof TranscribeError) return { message: error.message, detail: error.detail };
+  if (error instanceof HttpError) return { message: error.message, detail: null };
+  const code = e?.code || e?.cause?.code;
+  return { message: fallback, detail: `${code ? `${code}: ` : ""}${e?.message || String(error)}` };
 }
 async function saveSession(meetingId: string, n: number, change: (s: MeetingSession) => void) {
   await transaction(async () => {
@@ -593,17 +656,190 @@ async function editPart(actor: Identity, row: MeetingRow, partName: string, chan
   if (missing) throw new HttpError(404, "Der Besprechungsblock wurde aus der Seite entfernt.");
 }
 
-// One track of a session as audio, put together from its pieces.
-async function trackAudio(meetingId: string, session: MeetingSession, track: MeetingTrack) {
+// One track of a session as audio: put together from its pieces, or the
+// kept file when it is transcribed again.
+async function trackAudio(row: MeetingRow, session: MeetingSession, track: MeetingTrack) {
+  if (session.source === "kept") {
+    const kept = audioOf(row).find((a) => a.session === session.n && a.track === track);
+    if (!kept) throw new HttpError(409, "Für diese Besprechung ist kein Audio mehr gespeichert.");
+    const data = await readFile(resolve(dataDir(), "uploads", kept.fileId)).catch(() => {
+      throw new HttpError(409, "Für diese Besprechung ist kein Audio mehr gespeichert.");
+    });
+    return new Blob([new Uint8Array(data)], { type: kept.mime });
+  }
   const parts: Uint8Array[] = [];
-  for (let i = 0; i < (session.parts[track] || 0); i++) parts.push(new Uint8Array(await readFile(resolve(trackDir(meetingId, session.n, track), String(i)))));
+  for (let i = 0; i < (session.parts[track] || 0); i++) parts.push(new Uint8Array(await readFile(resolve(trackDir(row.id, session.n, track), String(i)))));
   return new Blob(parts as BlobPart[], { type: session.mime });
 }
 const extension = (mime: string) => ({ "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/aac": "aac", "audio/ogg": "ogg" })[mime] || "webm";
 
+// ---- Transcribing while recording ----
+
+// Per track of a session that records live: which clusters of the WebM
+// its pieces hold (lib/webm.ts), up to which piece it is transcribed, up to
+// which time the transcript is final, the final segments (times in the
+// track) – next to the pieces, so a restart goes on from there.
+type LiveState = {
+  header: number;
+  tick: number;
+  scanned: number;
+  clusters: { chunk: number; offset: number; time: number }[];
+  done: number;
+  until: number;
+  segments: TranscriptSegment[];
+  errors: number;
+  failed?: string;
+};
+export const liveEnabled = () => !/^(0|off|false|no)$/i.test(process.env.MEETING_LIVE_TRANSCRIPTION?.trim() || "");
+const liveFile = (meetingId: string, n: number, track: MeetingTrack) => resolve(stagingDir(meetingId, n), `${track}.live.json`);
+const transcriptFile = (meetingId: string, n: number, track: MeetingTrack) => resolve(stagingDir(meetingId, n), `${track}.transcript.json`);
+const liveRuntime = globalThis as typeof globalThis & { flowplanMeetingLive?: Map<string, { job: Promise<void>; again: boolean }> };
+const liveJobs = () => (liveRuntime.flowplanMeetingLive ??= new Map());
+
+// One live job per track at a time; pieces that arrive meanwhile make it
+// run once more.
+function scheduleLive(meetingId: string, n: number, track: MeetingTrack, prompt: string) {
+  const key = `${meetingId}:${n}:${track}`;
+  const current = liveJobs().get(key);
+  if (current) {
+    current.again = true;
+    return;
+  }
+  const entry = { again: false, job: Promise.resolve() };
+  entry.job = (async () => {
+    do {
+      entry.again = false;
+      await liveStep(meetingId, n, track, false, prompt).catch((error) => console.error("Besprechung: Live-Transkription fehlgeschlagen", (error as Error)?.message));
+    } while (entry.again);
+  })().finally(() => liveJobs().delete(key));
+  liveJobs().set(key, entry);
+}
+// Tests (and the processing) wait for the live work of a meeting.
+export async function meetingLiveJob(meetingId: string) {
+  await Promise.all([...liveJobs()].filter(([key]) => key.startsWith(`${meetingId}:`)).map(([, entry]) => entry.job));
+}
+
+// Transcribes the window from a little before `until` to the last piece
+// that arrived in order; `final` also takes the window's last segment.
+// Throws only when `final` (the caller then transcribes the whole track).
+async function liveStep(meetingId: string, n: number, track: MeetingTrack, final: boolean, prompt: string): Promise<LiveState> {
+  const file = liveFile(meetingId, n, track);
+  const state = parse<LiveState | null>(await readFile(file, "utf8").catch(() => ""), null) ?? {
+    header: 0,
+    tick: 0.001,
+    scanned: 0,
+    clusters: [],
+    done: -1,
+    until: 0,
+    segments: [],
+    errors: 0,
+  };
+  const save = async () => {
+    await mkdir(stagingDir(meetingId, n), { recursive: true });
+    await writeFile(file, JSON.stringify(state));
+  };
+  if (state.failed) {
+    if (final) throw new Error(state.failed);
+    return state;
+  }
+  const have = await stagedParts(meetingId, n, track);
+  let last = -1;
+  while (have[last + 1] === last + 1) last++;
+  if (last < 0 || (!final && last <= state.done)) {
+    if (final && last < 0) throw new Error("no pieces");
+    return state;
+  }
+  const piece = async (i: number) => new Uint8Array(await readFile(resolve(trackDir(meetingId, n, track), String(i))));
+  const first = await piece(0);
+  if (!state.header) {
+    const head = webmHeader(first);
+    if (!head) {
+      state.failed = "the first piece has no WebM header";
+      await save();
+      if (final) throw new Error(state.failed);
+      return state;
+    }
+    state.header = head.header.length;
+    state.tick = head.tick;
+    state.clusters = head.clusters.map((c) => ({ chunk: 0, ...c }));
+    state.scanned = 1;
+  }
+  for (let i = state.scanned; i <= last; i++) {
+    state.clusters.push(...webmClusters(await piece(i)).map((c) => ({ chunk: i, ...c })));
+    state.scanned = i + 1;
+  }
+  // The window starts at the last cluster at least two seconds before
+  // `until` (some context for the recogniser), at first at the start.
+  const before = state.clusters.filter((c) => c.chunk <= last && c.time * state.tick <= state.until - 2);
+  const start = state.until > 0 && before.length ? before[before.length - 1] : { chunk: 0, offset: state.header, time: 0 };
+  const pieces: Uint8Array[] = [];
+  for (let i = start.chunk; i <= last; i++) pieces.push(i === 0 ? first : await piece(i));
+  const offset = start.time * state.tick;
+  try {
+    const heard = await transcribe(webmWindow(first.subarray(0, state.header), pieces, start.offset, start.chunk === 0), `besprechung-${n}-${track}-live.webm`, { prompt });
+    const window = (heard.segments.length ? heard.segments : heard.text ? [{ start: 0, end: heard.duration ?? 0, text: heard.text }] : []).map((s) => ({
+      ...s,
+      start: s.start + offset,
+      end: Math.max(s.end, s.start) + offset,
+    }));
+    const merged = mergeLiveWindow(state.segments, state.until, window, final);
+    const quiet = !window.some((s) => s.start >= state.until - 0.3);
+    state.segments = merged.committed;
+    state.until = merged.until;
+    // Nothing said in the window: the next one need not go back further.
+    const lastCluster = state.clusters.filter((c) => c.chunk <= last).at(-1);
+    if (quiet && !final && lastCluster) state.until = Math.max(state.until, lastCluster.time * state.tick - 2);
+    state.done = last;
+    state.errors = 0;
+  } catch (error) {
+    state.errors++;
+    // A service that fails again and again: the whole track at the end.
+    if (state.errors >= 3) state.failed = (error as TranscribeError).detail || (error as Error).message;
+    await save();
+    if (final) throw error;
+    return state;
+  }
+  await save();
+  return state;
+}
+
+// ---- Transcribing a session ----
+
+type TrackResult = { segments: TranscriptSegment[]; duration?: number };
+// One track's transcript: kept from an earlier attempt, from the live
+// windows (their last one now), or the whole track.
+async function trackTranscript(row: MeetingRow, session: MeetingSession, track: MeetingTrack, prompt: string): Promise<TrackResult> {
+  const cached = parse<TrackResult | null>(await readFile(transcriptFile(row.id, session.n, track), "utf8").catch(() => ""), null);
+  if (cached && Array.isArray(cached.segments)) return cached;
+  let result: TrackResult | null = null;
+  if (session.live && !session.source && session.mime === "audio/webm" && liveEnabled()) {
+    await meetingLiveJob(row.id);
+    try {
+      result = { segments: (await liveStep(row.id, session.n, track, true, prompt)).segments };
+    } catch (error) {
+      console.error("Besprechung: Live-Transkription unvollständig, die ganze Spur wird transkribiert", (error as Error)?.message);
+    }
+  }
+  if (!result) {
+    const transcript = await transcribe(await trackAudio(row, session, track), `besprechung-${session.n}-${track}.${extension(session.mime)}`, { prompt });
+    result = {
+      // A service without segments: the text as one passage.
+      segments: transcript.segments.length
+        ? transcript.segments
+        : transcript.text
+          ? [{ start: 0, end: transcript.duration ?? session.durationMs / 1000, text: transcript.text }]
+          : [],
+      ...(transcript.duration !== undefined ? { duration: transcript.duration } : {}),
+    };
+  }
+  await mkdir(stagingDir(row.id, session.n), { recursive: true });
+  await writeFile(transcriptFile(row.id, session.n, track), JSON.stringify(result));
+  return result;
+}
+
 // The transcript of one session as meeting segments: speaker names from
-// the tracks, echoes of the call in the microphone dropped, times after
-// the earlier sessions.
+// the tracks, made-up lines marked, echoes of the call in the microphone
+// dropped, times after the earlier sessions.
 export function sessionSegments(
   session: Pick<MeetingSession, "n" | "offsetMs" | "tracks" | "byName">,
   results: Partial<Record<MeetingTrack, TranscriptSegment[]>>,
@@ -611,17 +847,21 @@ export function sessionSegments(
 ): { segments: MeetingSegment[]; echoes: number } {
   const split = session.tracks.includes("me") && session.tracks.includes("others");
   const offset = session.offsetMs / 1000;
-  let me = results.me || [];
+  let me = markHallucinations(results.me || []);
+  const others = markHallucinations(results.others || []);
   let echoes = 0;
-  if (split && results.others?.length) {
-    const cleaned = removeEchoes(results.others, me);
+  if (split && others.length) {
+    const cleaned = removeEchoes(
+      others.filter((s) => !s.hallucination),
+      me,
+    );
     me = cleaned.kept;
     echoes = cleaned.dropped;
   }
   const byTrack: [MeetingTrack, TranscriptSegment[]][] = [
     ["me", me],
-    ["others", results.others || []],
-    ["mixed", results.mixed || []],
+    ["others", others],
+    ["mixed", markHallucinations(results.mixed || [])],
   ];
   const segments: MeetingSegment[] = [];
   for (const [track, list] of byTrack) {
@@ -635,6 +875,8 @@ export function sessionSegments(
         speaker: speakerLabel(track, s.speaker, numbers, { me: session.byName, language, split }),
         track,
         session: session.n,
+        ...(s.hallucination ? { hallucination: true } : {}),
+        hash: segmentHash(s.text),
       }),
     );
   }
@@ -654,10 +896,29 @@ export function textSegments(text: string, session: number): MeetingSegment[] {
     });
 }
 
+// The segments of a session replace its earlier ones in the transcript;
+// with `keepEdited` passages people corrected stay, and new segments at
+// their time are left out.
+export function replaceSessionSegments(existing: MeetingSegment[], session: number, fresh: MeetingSegment[], keepEdited: boolean) {
+  const others = existing.filter((s) => s.session !== session);
+  const kept = keepEdited ? existing.filter((s) => s.session === session && isEdited(s)) : [];
+  const used = new Set(kept.map((s) => s.sid));
+  const added = fresh
+    .filter((s) => !kept.some((k) => overlapSeconds(k, s) > 0))
+    .map((s) => {
+      let sid = s.sid;
+      while (used.has(sid)) sid += "r";
+      used.add(sid);
+      return { ...s, sid };
+    });
+  return [...others, ...kept, ...added].sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 async function processMeeting(actor: Identity, meetingId: string, language: MeetingLanguage) {
   let row = await meetingRow(meetingId);
   if (!row) return;
   const settings = await meetingSettings(row.workspace_id);
+  const prompt = whisperPrompt(settings.glossary);
   for (const session of sessionsOf(row).filter((s) => s.state === "uploaded")) {
     let segments: MeetingSegment[];
     // Uploaded files come without a length: the transcript's counts.
@@ -667,44 +928,39 @@ async function processMeeting(actor: Identity, meetingId: string, language: Meet
         segments = textSegments(await readFile(resolve(trackDir(row.id, session.n, "mixed"), "0"), "utf8"), session.n);
       } else {
         const results: Partial<Record<MeetingTrack, TranscriptSegment[]>> = {};
+        // One track after the other; a finished one is kept when the next fails.
         for (const track of session.tracks) {
-          const audio = await trackAudio(row.id, session, track);
-          const transcript = await transcribe(audio, `besprechung-${session.n}-${track}.${extension(session.mime)}`);
+          const transcript = await trackTranscript(row, session, track, prompt);
           heardSeconds = Math.max(heardSeconds, transcript.duration ?? 0, ...transcript.segments.map((s) => s.end));
-          // A service without segments: the text as one passage.
-          results[track] = transcript.segments.length
-            ? transcript.segments
-            : transcript.text
-              ? [{ start: 0, end: transcript.duration ?? session.durationMs / 1000, text: transcript.text }]
-              : [];
+          results[track] = transcript.segments;
         }
         // The language of the speaker names: the transcript's own when clear.
         const spoken = Object.values(results)
           .flat()
+          .filter((s) => !s!.hallucination)
           .map((s) => s!.text)
           .join(" ")
           .slice(0, 5000);
         language = (guessLanguage(spoken) as MeetingLanguage | null) || language;
         segments = sessionSegments(session, results, language).segments;
       }
-      await editPart(actor, row, "meetingTranscript", (_meeting, part) => {
-        const kept: PMNode[] = [];
-        part.forEach((node) => {
-          if (Number(node.attrs.session) !== session.n) kept.push(node);
-        });
-        const added = segmentNodes(segments).map((json) => rewriteSchema().nodeFromJSON(json));
-        return [...kept, ...added].sort((a, b) => (Number(a.attrs.start) || 0) - (Number(b.attrs.start) || 0));
+      const keepEdited = session.source === "kept" && session.keepEdited !== false;
+      await editPart(actor, row, "meetingTranscript", (meeting) => {
+        const next = replaceSessionSegments(segmentsOf(meeting), session.n, segments, keepEdited);
+        return segmentNodes(next).map((json) => rewriteSchema().nodeFromJSON(json));
       });
     } catch (error) {
-      const message = error instanceof HttpError ? error.message : "Die Transkription ist fehlgeschlagen.";
-      if (!(error instanceof HttpError)) console.error("Besprechung: Transkription fehlgeschlagen", (error as Error)?.message);
+      const { message, detail } = failure(error, "Die Transkription ist fehlgeschlagen.");
+      if (!(error instanceof HttpError)) console.error("Besprechung: Transkription fehlgeschlagen", detail);
       await saveSession(row.id, session.n, (s) => (s.state = "failed"));
-      await setStatus(row.id, "failed", message);
+      await setStatus(row.id, "failed", message, detail);
       return;
     }
     await keepOrDropAudio(actor, row, session, settings);
     await saveSession(row.id, session.n, (s) => {
       s.state = "done";
+      delete s.source;
+      delete s.keepEdited;
       if (!s.durationMs && heardSeconds) s.durationMs = Math.round(Math.min(heardSeconds * 1000, MEETING_MAX_SECONDS * 1000 - s.offsetMs));
     });
   }
@@ -716,11 +972,11 @@ async function processMeeting(actor: Identity, meetingId: string, language: Meet
     await fillRecordProperties(actor, row);
     await setStatus(row.id, "done", result.note);
   } catch (error) {
-    const message = error instanceof HttpError ? error.message : "Die Zusammenfassung ist fehlgeschlagen.";
-    if (!(error instanceof HttpError)) console.error("Besprechung: Zusammenfassung fehlgeschlagen", (error as Error)?.message);
+    const { message, detail } = failure(error, "Die Zusammenfassung ist fehlgeschlagen.");
+    if (!(error instanceof HttpError)) console.error("Besprechung: Zusammenfassung fehlgeschlagen", detail);
     await fillRecordProperties(actor, row).catch(() => {});
     // The transcript is there; only the summary is missing (can be redone).
-    await setStatus(row.id, "done", message);
+    await setStatus(row.id, "done", message, detail);
   }
 }
 
@@ -728,11 +984,12 @@ async function processMeeting(actor: Identity, meetingId: string, language: Meet
 // file of the page, deleted after the workspace's number of days.
 async function keepOrDropAudio(actor: Identity, row: MeetingRow, session: MeetingSession, settings: MeetingSettings) {
   try {
-    if (settings.retention === "delete" || session.kind === "text") return;
+    // Transcribed again from the kept audio: it is kept already.
+    if (settings.retention === "delete" || session.kind === "text" || session.source === "kept") return;
     const page = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
     const kept: KeptAudio[] = [];
     for (const track of session.tracks) {
-      const audio = Buffer.from(await (await trackAudio(row.id, session, track)).arrayBuffer());
+      const audio = Buffer.from(await (await trackAudio(row, session, track)).arrayBuffer());
       const fid = newId();
       const dir = resolve(dataDir(), "uploads");
       mkdirSync(dir, { recursive: true });
@@ -788,14 +1045,16 @@ async function readers(page: Page, rowId: string | null): Promise<Person[]> {
 }
 const today = () => new Date().toISOString().slice(0, 10);
 
-// Writes the summary part from the transcript and the agenda; with fewer
+// Writes the summary part from the transcript and the notes as they are
+// now (people may add to them after the meeting); with fewer
 // than MIN_SUMMARY_SECONDS of audio it says so instead. `instructions`
 // overrides the block's own (re-generating with other instructions).
 async function writeSummary(actor: Identity, row: MeetingRow, options: { language: MeetingLanguage; instructions?: MeetingPreset; prompt?: string }) {
   const page = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
   const found = findMeeting(await readDocument(row.page_id, row.row_id), row.id);
   if (!found) throw new HttpError(404, "Der Besprechungsblock wurde aus der Seite entfernt.");
-  const segments = segmentsOf(found.node);
+  // What the recogniser made up is no part of the meeting.
+  const segments = segmentsOf(found.node).filter((s) => !s.hallucination);
   const sessions = sessionsOf(row);
   const textOnly = sessions.length > 0 && sessions.every((s) => s.kind === "text");
   const spoken = segments.map((s) => s.text).join(" ");
@@ -864,6 +1123,50 @@ export async function regenerateSummary(user: Identity, meetingId: string, input
   return await meetingStatus(user, row.id);
 }
 
+// Transcribes the kept audio again (another model, a better glossary) and
+// writes the summary anew; the earlier summary stays in the page's
+// versions. Passages people corrected stay (and new segments at their time
+// are left out) unless `force`. `dryRun` only counts them, so the editor
+// can ask first ("N corrected passages").
+const retranscribeInput = z.object({
+  force: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
+  language: z.enum(["de", "en", "fr", "zh"]).optional(),
+});
+export async function retranscribeMeeting(user: Identity, meetingId: string, input: unknown) {
+  await requireMeetingCaller(user);
+  const b = retranscribeInput.parse(input ?? {});
+  const { row, page } = await meetingFor(user, meetingId, true);
+  if (!transcriptionEnabled()) throw new HttpError(501, "Transkription ist auf diesem Server nicht eingerichtet.");
+  if (running().has(row.id) || ["recording", "transcribing", "summarizing"].includes(row.status)) throw new HttpError(409, "Die Besprechung wird gerade verarbeitet.");
+  const kept = audioOf(row);
+  const redo = sessionsOf(row).filter((s) => s.kind !== "text" && s.state === "done" && s.tracks.every((t) => kept.some((a) => a.session === s.n && a.track === t)));
+  if (!redo.length) throw new HttpError(409, "Für diese Besprechung ist kein Audio mehr gespeichert.");
+  const found = findMeeting(await readDocument(page.id, row.row_id), row.id);
+  if (!found) throw new HttpError(404, "Der Besprechungsblock wurde aus der Seite entfernt.");
+  const numbers = new Set(redo.map((s) => s.n));
+  const edited = segmentsOf(found.node).filter((s) => numbers.has(s.session) && isEdited(s)).length;
+  if (b.dryRun) return { ...(await meetingStatus(user, row.id)), edited, keepsEdited: !b.force, started: false };
+  await transaction(async () => {
+    await lockFor(`meeting:${row.id}`);
+    const current = (await meetingRow(row.id))!;
+    if (current.status === "transcribing" || current.status === "summarizing" || current.status === "recording") throw new HttpError(409, "Die Besprechung wird gerade verarbeitet.");
+    const sessions = sessionsOf(current);
+    for (const s of sessions)
+      if (numbers.has(s.n)) {
+        s.state = "uploaded";
+        s.source = "kept";
+        s.keepEdited = !b.force;
+      }
+    await run("UPDATE meetings SET sessions=?,status='transcribing',error=NULL,error_detail=NULL,updated_at=? WHERE id=?", JSON.stringify(sessions), Date.now(), row.id);
+    await audit(user.id, "meeting.retranscribe", page.id, row.id);
+  }, user);
+  // Nothing from an earlier attempt counts.
+  for (const n of numbers) for (const track of TRACKS) await rm(transcriptFile(row.id, n, track), { force: true }).catch(() => {});
+  launchProcessing(user, row.id, meetingLanguage(b.language || languageOfLocale()));
+  return { ...(await meetingStatus(user, row.id)), edited, keepsEdited: !b.force, started: true };
+}
+
 // "Frag diese Besprechung": a question about this block's transcript and
 // agenda, answered as a text stream (like /api/ai/ask) with [S12] for the
 // segments it relies on.
@@ -878,7 +1181,7 @@ export async function askMeeting(user: Identity, meetingId: string, input: unkno
   const { row, page } = await meetingFor(user, meetingId, false);
   const found = findMeeting(await readDocument(page.id, row.row_id), row.id);
   if (!found) throw new HttpError(404, "Besprechung nicht gefunden.");
-  const segments = segmentsOf(found.node);
+  const segments = segmentsOf(found.node).filter((s) => !s.hallucination);
   let size = 0;
   const used = segments.filter((s) => (size += s.text.length + 40) <= MAX_PROMPT_TRANSCRIPT);
   const agendaPart = partOf(found.node, "meetingAgenda");
