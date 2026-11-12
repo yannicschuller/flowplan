@@ -20,6 +20,24 @@ const docs = resolve(
   "docs",
 );
 const out = join(root, "lib", "ai", "help-docs.json");
+// Counts the docs fill in ({{facts.templates}}, lib/facts.ts there).
+let facts = {};
+try {
+  facts = JSON.parse(readFileSync(join(docs, "..", "facts.json"), "utf8"));
+} catch {}
+
+// The docs' own syntax (lib/markdown-blocks.ts and lib/reference.ts there)
+// before the Markdown: counts filled in, generated reference tables left out
+// (lookups, not help text), container lines dropped, a tab's label kept as
+// a line of its own, keys (++⌘ K++) as plain keys, callout markers gone.
+const docsSyntax = (markdown) =>
+  markdown
+    .replace(/\{\{facts\.([a-zA-Z]+)(?:\|[a-z]+)?\}\}/g, (all, key) => (key in facts ? String(facts[key]) : ""))
+    .replace(/^.*\{\{reference:[a-z]+\}\}.*$/gm, "")
+    .replace(/^\s*:::.*$/gm, "")
+    .replace(/^\s*==\s+(.+)$/gm, "$1:")
+    .replace(/\+\+(.+?)\+\+(?!\+)/g, "$1")
+    .replace(/^(\s*>\s*)\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|ADMIN|DESKTOP)\]\s*/gim, "$1");
 
 const headingId = (text) =>
   text
@@ -48,10 +66,10 @@ const inline = (text) =>
 
 function sections(slug, markdown) {
   // Front matter (`---` … `---`, e.g. keywords) is page metadata, not help text.
-  const lines = markdown
+  const body = markdown
     .replace(/\r/g, "")
-    .replace(/^---\n[\s\S]*?\n---\n/, "")
-    .split("\n");
+    .replace(/^---\n[\s\S]*?\n---\n/, "");
+  const lines = docsSyntax(body).split("\n");
   const title = inline(
     (lines.find((l) => l.startsWith("# ")) || `# ${slug}`).slice(2),
   );
