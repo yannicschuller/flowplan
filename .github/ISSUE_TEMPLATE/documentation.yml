@@ -1,5 +1,5 @@
 name: Documentation
-description: Something in the documentation or the in-app help is missing, wrong or unclear
+description: Something in the documentation or the in-app help is missing, wrong or unclear – or the docs site itself is broken
 labels: ["documentation", "status: triage"]
 body:
   - type: markdown
@@ -31,6 +31,7 @@ body:
         - Something is hard to understand
         - Typo or broken link
         - Translation (German / English / other language)
+        - The docs site itself is broken (layout, search, dark mode, a page that does not load)
     validations:
       required: true
   - type: textarea
