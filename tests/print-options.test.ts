@@ -60,7 +60,7 @@ test("options: cover, icon, tags and properties leave the copy of a page or reco
       '<article class="page-content"><div class="page-cover">C</div><div class="document-header"><button class="large-page-icon">I</button><div class="page-title">T</div></div>' +
       '<section class="page-properties"><div class="page-properties-tags">#tag</div><dl class="page-properties-list">Status</dl></section><div class="document-editor"><p>Text</p></div>' +
       '<div class="row-detail"><div class="row-cover">RC</div><h2><span class="row-title-icon">RI</span>Eintrag</h2><div class="row-properties">Felder</div></div></article>';
-    return doc.querySelector(".page-content")!;
+    return doc.querySelector(".page-content")! as unknown as Element;
   };
   let copy = page();
   P.applyPrintOptions(copy, P.DEFAULT_PRINT_OPTIONS);

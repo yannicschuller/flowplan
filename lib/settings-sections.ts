@@ -98,6 +98,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
       {
+        title: { de: "Seitensymbol", en: "Page icon" },
+        keywords: { de: "symbol icon emoji titel neben über klein groß cover kopf", en: "icon emoji title next to inline above small large cover header" },
+        anchor: "page-icon",
+      },
+      {
         title: { de: "Menü bei Textauswahl", en: "Menu on text selection" },
         keywords: { de: "textmenü markieren auswahl popup reaktionen formatieren handy tablet", en: "text menu select selection popup reactions formatting phone tablet" },
         anchor: "text-menu",

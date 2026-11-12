@@ -295,6 +295,8 @@ export type Bootstrap = {
   // and own presets; the workspace's presets.
   print?: import("./print-options").UserPrintSettings;
   printPresets?: import("./print-options").WorkspacePrintPresets;
+  // "Seitensymbol" (#214, lib/page-icon-pref.ts).
+  pageIcon?: import("./page-icon-pref").PageIconPref;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).

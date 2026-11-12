@@ -2,6 +2,7 @@
 // person, a due date can be set on it. They are collected per document on
 // every save, so "Meine Aufgaben" lists them across the workspace; ticking
 // one off there changes the document itself (live for open editors).
+import { TASK_TEXT_MAX } from "./task-text-max";
 import { createHash } from "node:crypto";
 import * as Y from "yjs";
 import { hiddenRowIds } from "./row-access";
@@ -60,7 +61,7 @@ function lineOf(item: JsonNode) {
   return { text: parts.join("").replace(/\s+/g, " ").trim(), assignees };
 }
 // The longest task text that is stored (and compared): longer lines are cut.
-export const TASK_TEXT_MAX = 500;
+export { TASK_TEXT_MAX };
 // A task's identity for clients that only show it shortened (the widgets of
 // the mobile apps): a hash of its stored text, checked together with its
 // position like the text itself.

@@ -9,6 +9,7 @@ import { workspaceThemeSchema } from "./workspace-theme";
 import { autoLinkRulesSchema } from "./auto-link";
 import { textMenuPrefSchema } from "./text-menu-pref";
 import { printOptionsSchema, printPresetSchema, printPresetsSchema } from "./print-options";
+import { pageIconPrefSchema } from "./page-icon-pref";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
@@ -58,7 +59,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -200,6 +201,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: always, only for a selection made with a mouse, trackpad or keyboard (computer, the default), or never. A right click opens the menu in every case.",
     input: z.object({ action: z.literal("profile.textMenu"), textMenu: textMenuPrefSchema }),
     result: z.object({ textMenu: textMenuPrefSchema }),
+  },
+  {
+    action: "profile.pageIcon",
+    summary: "Where the page icon sits in the page header",
+    description: "For the caller, on all devices: the large icon above the title (above, the default) or a small icon next to the title on its first line (inline). Only how the caller sees pages; published pages keep the default.",
+    input: z.object({ action: z.literal("profile.pageIcon"), pageIcon: pageIconPrefSchema }),
+    result: z.object({ pageIcon: pageIconPrefSchema }),
   },
   {
     action: "space.create",
