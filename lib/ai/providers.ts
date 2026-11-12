@@ -222,19 +222,41 @@ async function* pieces(config: AiConfig, body: AsyncIterable<Buffer>, usage: Tok
   }
 }
 
+// Models that accept only their default temperature (OpenAI's reasoning
+// models such as o3 or GPT-5/6 answer HTTP 400 "Unsupported value:
+// 'temperature' …"). Known names never get one; any other model that
+// refuses it is remembered per address and model, and the request is
+// sent once more without it.
+const FIXED_TEMPERATURE = /^(o\d|gpt-(5|6|7|8|9))/i;
+const noTemperature = new Set<string>();
+const temperatureKey = (config: AiConfig) => `${base(config)}\n${config.model}`;
+export const sendsTemperature = (config: AiConfig) =>
+  !(config.kind === "openai" && (FIXED_TEMPERATURE.test(config.model.replace(/^.*\//, "")) || noTemperature.has(temperatureKey(config))));
+const refusesTemperature = (text: string) => /temperature/i.test(text) && /unsupported|not support|only the default|does not support|invalid/i.test(text);
+
 export async function* streamChat(config: AiConfig, input: ChatInput): AsyncGenerator<string> {
   if (!config.model?.trim()) throw new AiError(400, "Für den KI-Anbieter ist kein Modell eingetragen.");
-  const { url, body } = chatRequest(config, input);
-  const response = await aiFetch(url, {
-    method: "POST",
-    headers: { ...headers(config), accept: config.kind === "ollama" ? "application/x-ndjson" : "text/event-stream" },
-    body: JSON.stringify(body),
-    signal: input.signal,
-    trusted: config.trusted,
-    // A local model may first have to be loaded.
-    headersTimeout: config.kind === "ollama" ? 300_000 : 120_000,
-    idleTimeout: 120_000,
-  });
+  const send = (chat: ChatInput) => {
+    const { url, body } = chatRequest(config, chat);
+    return aiFetch(url, {
+      method: "POST",
+      headers: { ...headers(config), accept: config.kind === "ollama" ? "application/x-ndjson" : "text/event-stream" },
+      body: JSON.stringify(body),
+      signal: input.signal,
+      trusted: config.trusted,
+      // A local model may first have to be loaded.
+      headersTimeout: config.kind === "ollama" ? 300_000 : 120_000,
+      idleTimeout: 120_000,
+    });
+  };
+  const withTemperature = input.temperature !== undefined && sendsTemperature(config);
+  let response = await send(withTemperature ? input : { ...input, temperature: undefined });
+  if (withTemperature && config.kind === "openai" && response.status === 400) {
+    const text = await response.text(64_000).catch(() => "");
+    if (!refusesTemperature(text)) await failure(config, { ...response, text: async () => text });
+    noTemperature.add(temperatureKey(config));
+    response = await send({ ...input, temperature: undefined });
+  }
   if (response.status < 200 || response.status >= 300) await failure(config, response);
   let size = 0;
   for await (const piece of pieces(config, response.body, input.usage)) {

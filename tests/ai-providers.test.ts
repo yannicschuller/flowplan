@@ -73,6 +73,10 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/x-ndjson" });
     return trickle(res, ['{"status":"pulling manifest"}\n', '{"status":"downloading","completed":50,"total":100}\n', '{"status":"success"}\n']);
   }
+  if (url === "/v1/chat/completions" && JSON.parse(body).model === "strict-temp" && "temperature" in JSON.parse(body)) {
+    res.writeHead(400, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ error: { message: "Unsupported value: 'temperature' does not support 0.2 with this model. Only the default (1) value is supported." } }));
+  }
   if (url === "/v1/chat/completions") {
     res.writeHead(200, { "content-type": "text/event-stream" });
     return trickle(res, [
@@ -164,6 +168,29 @@ test("OpenAI-compatible: SSE deltas, key only as a bearer header, embeddings in 
   const result = await testConnection(config);
   assert.equal(result.reply, "Hallo Welt");
   assert.ok(result.models.includes("gpt-test"));
+});
+
+test("OpenAI: models that accept only the default temperature get none (#222)", async () => {
+  const strict = { kind: "openai" as const, baseUrl: `${origin}/v1`, model: "strict-temp", apiKey: KEY, trusted: true };
+  const before = seen.length;
+  assert.equal(await complete(strict, { ...ask, temperature: 0.2 }), "Hallo Welt");
+  const sent = seen.slice(before).map((r) => JSON.parse(r.body));
+  assert.equal(sent.length, 2, "refused once, then sent again without it");
+  assert.equal(sent[0].temperature, 0.2);
+  assert.equal("temperature" in sent[1], false);
+  const after = seen.length;
+  assert.equal(await complete(strict, { ...ask, temperature: 0.3 }), "Hallo Welt");
+  assert.equal(seen.length - after, 1, "remembered: no second refusal");
+  assert.equal("temperature" in JSON.parse(seen.at(-1)!.body), false);
+  // Known reasoning models never get one; others keep theirs.
+  await complete({ ...strict, model: "gpt-6-luna" }, { ...ask, temperature: 0.2 });
+  assert.equal("temperature" in JSON.parse(seen.at(-1)!.body), false);
+  await complete({ ...strict, model: "o3-mini" }, { ...ask, temperature: 0.2 });
+  assert.equal("temperature" in JSON.parse(seen.at(-1)!.body), false);
+  await complete({ ...strict, model: "gpt-4.1" }, { ...ask, temperature: 0.2 });
+  assert.equal(JSON.parse(seen.at(-1)!.body).temperature, 0.2);
+  // Other 400 errors are still reported.
+  await assert.rejects(complete({ ...strict, baseUrl: `${origin}/bad-request/v1`, model: "x" }, { ...ask, temperature: 0.2 }), /model foo not found/);
 });
 
 test("Anthropic: message events, x-api-key and version header, no embeddings", async () => {
