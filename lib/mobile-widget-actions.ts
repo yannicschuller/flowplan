@@ -12,7 +12,8 @@ import { audit, id, one, onTransactionRollback, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { command } from "./api";
 import { ct } from "./content-locale";
-import { doneRule } from "./database-settings-schema";
+import { doneRule, writableDueField } from "./database-settings-schema";
+import { databaseSettings } from "./database-settings";
 import { cleanHtml, escaped, htmlState } from "./document-server";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
 import { indexPageTasks, syncDocTasks } from "./doc-tasks";
@@ -67,9 +68,13 @@ const textHtml = (text: string) =>
     .map((p) => `<p>${escaped(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
 
-// The first date property the person may write: where a due date goes.
+// Where a captured due date goes: the database's due date property (#248)
+// when the person may write it; none when it has "no due date". Otherwise
+// a writable date property named like a due date, else the first one.
 async function dueField(user: Identity, page: Page) {
-  return (await visibleFields(user, page, await fieldsOf(page.id))).find((f) => f.type === "date" && !f.access?.write);
+  const fields = await fieldsOf(page.id);
+  const writable = (await visibleFields(user, page, fields)).filter((f) => !f.access?.write);
+  return writableDueField(fields, await databaseSettings(page.id), writable);
 }
 
 // A sub page of a document with the given content (inside a transaction).

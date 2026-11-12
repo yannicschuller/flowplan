@@ -30,6 +30,7 @@ import { ct } from "./content-locale";
 import { cleanHtml, escaped, htmlJson } from "./document-server";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
 import { readableDatabase, readOnlyFieldIds, visibleFields } from "./field-access";
+import { writableDueField } from "./database-settings-schema";
 import { enforceQuota } from "./instance-ops";
 import { localToInstant, validZone } from "./date-values";
 import { markdownToHtml } from "./markdown-import";
@@ -56,13 +57,23 @@ const PROPERTY_TYPES = ["date", "select", "multiselect", "person", "url", "files
 
 // ---- Targets ----
 
-// The properties of a database the shorthand may fill: those the person may write.
+// The properties of a database the shorthand may fill: those the person may
+// write. A date goes into the database's due date (writableDueField(),
+// #248): date properties carry `due`, none of them true for "no due date"
+// or when the chosen property is hidden or read-only for the person.
 export async function captureProperties(user: Identity, page: Page): Promise<CaptureProperty[]> {
-  const fields = (await readableDatabase(user, page, await database(page.id))).fields;
+  const stored = await database(page.id);
+  const fields = (await readableDatabase(user, page, stored)).fields;
   const readOnly = new Set(await readOnlyFieldIds(user, page, fields));
-  return fields
-    .filter((f) => PROPERTY_TYPES.includes(f.type) && !readOnly.has(f.id) && !f.ai)
-    .map((f) => ({ id: f.id, name: f.name, type: f.type, ...(f.options ? { options: f.options.slice(0, 200) } : {}) }));
+  const writable = fields.filter((f) => PROPERTY_TYPES.includes(f.type) && !readOnly.has(f.id) && !f.ai);
+  const due = writableDueField(stored.fields, stored.settings, writable);
+  return writable.map((f) => ({
+    id: f.id,
+    name: f.name,
+    type: f.type,
+    ...(f.options ? { options: f.options.slice(0, 200) } : {}),
+    ...(f.type === "date" ? { due: f.id === due?.id } : {}),
+  }));
 }
 async function members(workspaceId: string): Promise<CaptureMember[]> {
   return await all<CaptureMember>(
@@ -87,7 +98,7 @@ export async function desktopCaptureTargets(user: Identity) {
     return {
       ...t,
       // What the shorthand can fill here (the chips say it per text).
-      fills: { date: named("date"), tags: properties.some((p) => p.type === "multiselect" || p.type === "select"), person: named("person") },
+      fills: { date: properties.find((p) => p.type === "date" && p.due)?.name || null, tags: properties.some((p) => p.type === "multiselect" || p.type === "select"), person: named("person") },
       templates: (await rowTemplates(t.id)).slice(0, 20).map((r) => ({ id: r.id, name: r.name, default: !!r.is_default })),
     };
   });

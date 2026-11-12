@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { doneRule, type DatabaseSettings } from "@/lib/database-settings-schema";
+import { doneRule, dueSetting, guessDueField, type DatabaseSettings } from "@/lib/database-settings-schema";
 import type { Field } from "@/lib/types";
 
 type Workflow = NonNullable<DatabaseSettings["workflow"]>;
@@ -25,6 +25,11 @@ export function DatabaseWorkflow({
   const doneFields = fields.filter((f) => (f.type === "select" && f.options?.length) || f.type === "checkbox");
   const detected = doneRule(fields, settings);
   const [done, setDone] = useState(settings.done || (detected ? { field: detected.field.id, values: detected.values } : undefined));
+  // The due date (#248): "auto" (guessed by name), "none" or a property id.
+  const dates = fields.filter((f) => f.type === "date");
+  const storedDue = dueSetting(fields, settings);
+  const [due, setDue] = useState(storedDue.mode === "field" ? storedDue.field.id : storedDue.mode);
+  const guessed = guessDueField(fields) || dates[0];
   const [flow, setFlow] = useState<Workflow | undefined>(settings.workflow);
   const [busy, setBusy] = useState(false);
   const doneField = fields.find((f) => f.id === done?.field);
@@ -49,7 +54,7 @@ export function DatabaseWorkflow({
         e.preventDefault();
         setBusy(true);
         try {
-          await save({ done: done ?? null, workflow: flow ?? null });
+          await save({ done: done ?? null, due: due === "auto" ? null : due === "none" ? { none: true } : { field: due }, workflow: flow ?? null });
         } finally {
           setBusy(false);
         }
@@ -93,6 +98,40 @@ export function DatabaseWorkflow({
           </div>
         )}
         {doneField?.type === "checkbox" && <p className="muted">{t("Erledigt, wenn abgehakt.", "Done when checked.")}</p>}
+      </fieldset>
+      <fieldset disabled={!editable}>
+        <legend>{t("Fälligkeitsdatum", "Due date")}</legend>
+        <p className="muted">
+          {t(
+            "Wann ein Eintrag fällig ist – für „Meine Aufgaben“, Erinnerungen an fällige Einträge und die Widgets der App.",
+            "When a record is due – for “My tasks”, reminders of due records and the app’s widgets.",
+          )}
+        </p>
+        <Select aria-label={t("Eigenschaft für das Fälligkeitsdatum", "Property for the due date")} value={due} onChange={(e) => setDue(e.target.value)}>
+          <option value="auto">{guessed ? t(`Automatisch (zurzeit „${guessed.name}“)`, `Automatic (currently “${guessed.name}”)`) : t("Automatisch", "Automatic")}</option>
+          {dates.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+          <option value="none">{t("Kein Fälligkeitsdatum", "No due date")}</option>
+        </Select>
+        {due === "auto" && (
+          <p className="muted">
+            {t(
+              "Automatisch nimmt eine Datums-Eigenschaft, die wie ein Fälligkeitsdatum heißt (etwa „Fällig“, „Deadline“, „Échéance“), sonst die erste.",
+              "Automatic takes a date property named like a due date (such as “Due”, “Deadline”, “Échéance”), otherwise the first one.",
+            )}
+          </p>
+        )}
+        {due === "none" && (
+          <p className="muted">
+            {t(
+              "Einträge erscheinen ohne Datum in „Meine Aufgaben“ und lösen keine Erinnerungen an Fälligkeiten aus.",
+              "Records show without a date in “My tasks” and trigger no due reminders.",
+            )}
+          </p>
+        )}
       </fieldset>
       <fieldset disabled={!editable}>
         <legend>{t("Status-Workflow", "Status workflow")}</legend>

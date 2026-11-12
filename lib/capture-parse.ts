@@ -9,10 +9,11 @@
 //   1. tokens(text, context)  – what the text says (a date, #tags, @names,
 //      !priority) with its place in the text;
 //   2. mapTokens(…)           – onto the properties the target database
-//      actually has (the first date property, a multi-select with that tag
+//      actually has (its due date property, a multi-select with that tag
 //      as an option, a person property, a select with priority options).
 // What the target cannot take stays in the text. A chip the person removed
 // (its id in `literal`) stays in the text as typed.
+import { guessDueField } from "./database-settings-schema";
 
 export type CaptureTokenKind = "date" | "tag" | "person" | "priority";
 export type CaptureToken = {
@@ -276,7 +277,10 @@ export function tokens(raw: string, context: ParseContext): CaptureToken[] {
 
 // ---- Onto the target's properties ----
 
-export type CaptureProperty = { id: string; name: string; type: string; options?: string[] };
+// `due` marks the database's due date property (lib/database-settings-schema.ts
+// dueField()): true on it, false on the other date properties; without it
+// the due date is guessed by name.
+export type CaptureProperty = { id: string; name: string; type: string; options?: string[]; due?: boolean };
 export type CaptureMember = { id: string; name: string; email: string };
 export type CaptureChip = CaptureToken & {
   // The property it fills; null when the target has none for it (the text
@@ -310,10 +314,13 @@ function priorityOption(options: string[] = [], level: number) {
 function isPriorityField(f: CaptureProperty) {
   return f.type === "select" && (/prio/i.test(f.name) || (f.options || []).filter((o) => priorityWords.has(norm(o))).length >= 2);
 }
-// The due date: a property named so, otherwise the first date property.
+// The due date: the one the server marked (none when the database has "no
+// due date" or the person may not write it), otherwise a property named
+// so, otherwise the first date property.
 function dueProperty(properties: CaptureProperty[]) {
   const dates = properties.filter((f) => f.type === "date");
-  return dates.find((f) => /fällig|faellig|due|deadline|frist|échéance|echeance|termin|date limite/i.test(f.name)) || dates[0];
+  if (dates.some((f) => f.due !== undefined)) return dates.find((f) => f.due);
+  return guessDueField(dates) || dates[0];
 }
 function personProperty(properties: CaptureProperty[]) {
   const people = properties.filter((f) => f.type === "person");

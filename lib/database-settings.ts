@@ -35,6 +35,10 @@ export async function updateDatabaseSettings(user: Identity, page: Page, fields:
     if (id && !known.has(id)) throw new HttpError(400, "Einstellung verweist auf eine unbekannte Eigenschaft.");
   };
   check(next.done?.field);
+  // The due date (#248): a date property of this database.
+  const dueId = next.due && "field" in next.due ? next.due.field : undefined;
+  if (dueId && fields.find((f) => f.id === dueId)?.type !== "date")
+    throw new HttpError(400, "Einstellung verweist auf eine unbekannte Eigenschaft.");
   check(next.workflow?.field);
   check(next.pointsField);
   // Rules replaced by a workflow stay as they were (only removing them is

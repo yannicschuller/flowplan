@@ -5,7 +5,7 @@
 import { all, one } from "./db";
 import { cellText } from "./cell-text";
 import { databaseSettings } from "./database-settings";
-import { doneRule, isDone } from "./database-settings-schema";
+import { doneRule, dueField, isDone } from "./database-settings-schema";
 import type { Notice, NoticeEvent, NoticeItem } from "./notification-templates";
 import { pageRole } from "./permissions";
 import { journalLocked } from "./journal-extras";
@@ -96,9 +96,6 @@ export async function buildNotice(event: NoticeEvent, data: Record<string, unkno
   return notice;
 }
 
-const dueField = (fields: Field[]) =>
-  fields.find((f) => f.type === "date" && /fällig|due|deadline|frist|termin|bis/i.test(f.name)) || fields.find((f) => f.type === "date");
-
 // Open records of the workspace (or one database) due on `day` or earlier,
 // soonest first. Private records stay out: the channel is not a person.
 // With a `reader` (the person a webhook speaks for) only databases and
@@ -114,9 +111,11 @@ export async function dueItems(workspaceId: string, pageId: string | null, day: 
   for (const page of pages) {
     if (reader && !(await pageRole(reader, page))) continue;
     const fields = await fieldsOf(page.id);
-    const due = dueField(fields);
+    const settings = await databaseSettings(page.id);
+    // The database's due date (setting or name guess); "no due date": skipped.
+    const due = dueField(fields, settings);
     if (!due) continue;
-    const rule = doneRule(fields, await databaseSettings(page.id));
+    const rule = doneRule(fields, settings);
     const stored = await all<{ id: string; cells: string; access: string; created_by: string | null }>(
       "SELECT id,cells,access,created_by FROM rows WHERE page_id=? AND access!='private'",
       page.id,
