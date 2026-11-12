@@ -21,6 +21,7 @@ import {
   Link as LinkIcon,
   ListBullets,
   Palette,
+  Plus,
   Smiley,
   SmileyXEyes,
   Subtitles,
@@ -45,7 +46,7 @@ import { flushSync } from "react-dom";
 import { touchHold } from "./pointer-drag";
 import { turnIntoToggle } from "@/lib/toggle-commands";
 import type { Editor } from "@tiptap/core";
-import { NodeSelection, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import {
   BLOCK_SELECTION_META,
   BLOCK_MOVE_META,
@@ -89,13 +90,16 @@ type Positioned = DocumentBlock & {
   rtl: boolean;
   right: number;
   glide?: Animation;
-  // Inside a callout, quote or toggle: no handle of its own (it would sit on
-  // the box's border); the box's handle moves it with everything inside.
+  // Inside a callout or quote (#236): the block shares its first line with
+  // the box, so its handle sits closer to its text, inside the box's
+  // padding, and it has no "+" (that place is the box's handle).
   boxed: boolean;
 };
 // The glide a handle plays with its block, by handle.
 const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
-const BOXES = ["callout", "blockquote", "toggle"];
+// Boxes whose first line is the first line of their content (a toggle has a
+// title line of its own).
+const BOXES = ["callout", "blockquote"];
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
 function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect, dom: HTMLElement) {
@@ -1041,9 +1045,7 @@ export function DocumentBlockControls({
     editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
     setTick((t) => t + 1);
   }
-  const visible = blocks.filter(
-    (block) => !listContainers.includes(block.node.type.name) && !block.boxed,
-  );
+  const visible = blocks.filter((block) => !listContainers.includes(block.node.type.name));
   // The block with the caret: the innermost one with a handle around it (a
   // selected block itself).
   // While a block is dragged the caret's handle stays where it was: the
@@ -1065,42 +1067,112 @@ export function DocumentBlockControls({
   caretBefore.current = caret;
   const isEmptyParagraph = (block: Positioned) => block.node.type.name === "paragraph" && block.node.childCount === 0;
   // An empty paragraph has a handle only while it has the caret (or is
-  // chosen).
+  // chosen, or under the mouse: its "+" and ⠿ are how to fill it).
   const handles = handlesAlways
     ? visible
-    : visible.filter((block) => !isEmptyParagraph(block) || block.pos === caret || selected.current.includes(block.pos));
-  // The block under the mouse: the innermost one with a handle at the
-  // pointer's height (a gap between blocks keeps the one before).
-  function hover(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType === "touch" || handlesAlways || picking) return;
-    const host = surface.current;
-    if (!host) return;
-    const y = event.clientY - host.getBoundingClientRect().top;
-    const under = geometry.current
-      .filter((b) => !listContainers.includes(b.node.type.name) && !b.boxed && y >= b.top && y <= b.top + b.height)
-      .sort((a, b) => b.depth - a.depth)[0];
-    if (under && under.pos !== hovered) setHovered(under.pos);
+    : visible.filter((block) => !isEmptyParagraph(block) || block.pos === caret || block.pos === hovered || selected.current.includes(block.pos));
+  // The block under the mouse (#236): anywhere on its row, the page margin
+  // left of it included. The innermost block at the pointer's height wins;
+  // inside a callout or quote only right of its handle, so the box's own
+  // handle further left stays reachable. A gap between blocks keeps the one
+  // before, and so does a pointer on a handle or "+".
+  const hoverRef = useRef(hovered);
+  hoverRef.current = hovered;
+  useEffect(() => {
+    if (!editor?.isEditable || picking) return;
+    const move = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || dragging.current) return;
+      const host = surface.current;
+      if (!host) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".document-block-handle, .document-block-add")) return;
+      const box = host.getBoundingClientRect();
+      // The page column and its margin: inside the area that scrolls with
+      // the page, not in the sidebar or a menu above it.
+      const page = host.closest('[role="dialog"], main') || document.body;
+      const inside =
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom &&
+        event.clientX >= box.left - 160 &&
+        event.clientX <= box.right + 24 &&
+        !!target &&
+        page.contains(target) &&
+        !target.closest('[role="menu"], .dropdown');
+      if (!inside) {
+        if (hoverRef.current !== null) setHovered(null);
+        return;
+      }
+      const x = event.clientX - box.left,
+        y = event.clientY - box.top;
+      const under = geometry.current
+        .filter(
+          (b) =>
+            !listContainers.includes(b.node.type.name) &&
+            y >= b.top &&
+            y <= b.top + b.height &&
+            (!b.boxed || (b.rtl ? x <= b.right + 26 : x >= b.left - 26)),
+        )
+        .sort((a, b) => b.depth - a.depth)[0];
+      if (under && under.pos !== hoverRef.current) setHovered(under.pos);
+    };
+    const leave = () => hoverRef.current !== null && setHovered(null);
+    window.addEventListener("pointermove", move, { passive: true });
+    document.documentElement.addEventListener("pointerleave", leave);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      document.documentElement.removeEventListener("pointerleave", leave);
+    };
+  }, [editor, picking]);
+  // "+" (#236): an empty block below the block (⌥/Alt: above) with the "/"
+  // menu open, as if "/" had been typed there. An empty paragraph itself
+  // takes the "/".
+  function addBlock(block: DocumentBlock, above: boolean) {
+    if (!editor?.isEditable) return;
+    const { state, view } = editor;
+    const { schema } = state;
+    const name = block.node.type.name;
+    const tr = state.tr;
+    let caretAt: number;
+    if (name === "paragraph" && block.node.childCount === 0) caretAt = block.pos + 1;
+    else {
+      const item = listItems.includes(name);
+      const paragraph = schema.nodes.paragraph.create();
+      const node = item ? schema.nodes[name].create(null, paragraph) : paragraph;
+      const at = above ? block.pos : block.end;
+      const $at = state.doc.resolve(at);
+      if (!$at.parent.canReplaceWith($at.index(), $at.index(), node.type)) {
+        setError(t("Hier kann kein Block eingefügt werden.", "A block cannot be inserted here."));
+        return;
+      }
+      tr.insert(at, node);
+      caretAt = at + (item ? 2 : 1);
+    }
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, caretAt)).scrollIntoView());
+    view.focus();
+    const pos = view.state.selection.from;
+    const insert = () => view.state.tr.insertText("/", pos, pos);
+    if (!view.someProp("handleTextInput", (f) => f(view, pos, pos, "/", insert))) view.dispatch(insert());
+    setError("");
   }
   const count = selected.current.length;
-  const picked = picking
-    ? blocks.filter((b) => selected.current.includes(b.pos))
-    : [];
+  // Chosen blocks are tinted: in the selection mode, and while the menu of
+  // a block is open (#236), so it is clear what the menu applies to.
+  const marked = picking || menu ? blocks.filter((b) => selected.current.includes(b.pos)) : [];
+  const adding = !picking && hovered !== null && !pointerActive ? handles.find((b) => b.pos === hovered && !b.boxed) : undefined;
   return (
     <>
       <div
         ref={surface}
         className={`block-editor-surface ${editor?.isEditable ? "with-block-handles" : ""}${picking ? " picking-blocks" : ""}${blocks.some((block) => block.rtl) ? " with-rtl-blocks" : ""}`}
-        onPointerMove={hover}
-        onPointerLeave={() => setHovered(null)}
       >
         {children}
         {editor?.isEditable && (
           <div className={`block-handle-layer${handlesAlways ? " always-handles" : ""}`} aria-label={t("Blockgriffe", "Block handles")}>
-            {picked.map((block) => (
+            {marked.map((block) => (
               <div
                 key={`picked-${block.pos}`}
-                className="document-block-picked"
-                style={{ top: block.top - 3, left: block.left - 6, width: block.width + 12, height: block.height + 6 }}
+                className={picking ? "document-block-picked" : "document-block-marked"}
+                style={{ top: block.top - (picking ? 3 : 1), left: block.left - (picking ? 6 : 4), width: block.right - block.left + (picking ? 12 : 8), height: block.height + (picking ? 6 : 2) }}
                 aria-hidden="true"
               />
             ))}
@@ -1134,15 +1206,17 @@ export function DocumentBlockControls({
                 // Near the left edge on phones: dragging a block is not the
                 // swipe that opens the sidebar (components/drawer-swipe.ts).
                 data-no-edge-swipe=""
-                className={`document-block-handle${selected.current.includes(block.pos) ? " selected" : ""}${block.pos === caret ? " active" : ""}${block.pos === hovered ? " hovered" : ""}`}
+                className={`document-block-handle${block.rtl ? " rtl" : ""}${block.boxed ? " boxed" : ""}${selected.current.includes(block.pos) ? " selected" : ""}${block.pos === caret ? " active" : ""}${block.pos === hovered ? " hovered" : ""}`}
+                // Placed at the edge of the text; the gap to it is the
+                // stylesheet's (wider with a mouse than on touch screens).
                 style={{
-                  left: block.rtl ? block.right + 2 : Math.max(0, block.left - 25),
+                  left: block.rtl ? block.right : block.left,
                   top: block.handleTop,
                 }}
                 aria-label={t(`Blockaktionen: ${block.label}`, `Block actions: ${block.label}`)}
                 aria-haspopup="menu"
                 aria-expanded={!!menu && selected.current.includes(block.pos)}
-                title={t("Ziehen zum Verschieben, klicken für das Menü", "Drag to move, click for the menu")}
+                title={t("Ziehen zum Verschieben · Klicken für Menü", "Drag to move · Click to open menu")}
                 onPointerDown={(event) => pointerDown(event, block)}
                 onPointerMove={pointerMove}
                 onPointerUp={(event) => {
@@ -1186,6 +1260,23 @@ export function DocumentBlockControls({
                 <HandleDots />
               </button>
             ))}
+            {adding && (
+              <button
+                key={`add-${adding.pos}`}
+                type="button"
+                // Reached by the keyboard with ↵ and "/" in the text instead.
+                tabIndex={-1}
+                className={`document-block-add${adding.rtl ? " rtl" : ""}`}
+                style={{ left: adding.rtl ? adding.right : adding.left, top: adding.handleTop }}
+                aria-label={t(`Block darunter einfügen: ${adding.label}`, `Add a block below: ${adding.label}`)}
+                title={t("Klicken: Block darunter einfügen · ⌥-Klick: darüber", "Click to add a block below · ⌥-click to add above")}
+                onPointerDown={(event) => event.preventDefault()}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => addBlock(adding, event.altKey)}
+              >
+                <Plus size={15} weight="bold" aria-hidden />
+              </button>
+            )}
             {drop && (
               <div
                 className="document-block-drop"

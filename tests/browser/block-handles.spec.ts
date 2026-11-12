@@ -166,7 +166,8 @@ test("the handle's dots are centred on the first text line of paragraphs, headin
         return [{ label, offset: Math.round((dotsMiddle - (line.top + line.bottom) / 2) * 100) / 100 }];
       }),
     texts);
-    expect(offsets).toHaveLength(texts.length);
+    // The quote's paragraph has a handle of its own too (#236).
+    expect(offsets).toHaveLength(texts.length + 1);
     for (const { label, offset } of offsets) expect(Math.abs(offset), `${font}: ${label} (${offset} px)`).toBeLessThanOrEqual(1);
   }
   await page.evaluate(() => localStorage.removeItem("flowplan.block-handles-always"));

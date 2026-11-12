@@ -9561,19 +9561,68 @@ tr.order-drop-after > td {
      (WCAG 2.5.8). */
   width: 24px;
   height: 28px;
+  /* Placed at the edge of the block's text (left in the style attribute);
+     with a mouse 14 px apart from it (#236), so selecting text at the
+     start of a line never grabs the handle; the "+" is left of it. */
+  margin-left: -38px;
   padding: 0;
   /* The dots (an SVG, #226) on the button's centre – which is the centre
      of the block's first text line – whatever the font. */
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   cursor: grab;
   opacity: 0;
   border-radius: 4px;
   z-index: 2;
   user-select: none;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+.document-block-handle.rtl {
+  margin-left: 14px;
+}
+/* Inside a callout or quote: in the box's padding, next to its text. */
+.document-block-handle.boxed {
+  margin-left: -25px;
+}
+.document-block-handle.boxed.rtl {
+  margin-left: 1px;
+}
+/* "+" (#236): adds a block below (⌥: above) with the "/" menu open. Only
+   at the block under the mouse. */
+.document-block-add {
+  position: absolute;
+  pointer-events: auto;
+  width: 24px;
+  height: 28px;
+  margin-left: -62px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  z-index: 2;
+  user-select: none;
+  animation: block-add-in 0.12s ease;
+}
+.document-block-add.rtl {
+  margin-left: 38px;
+}
+@keyframes block-add-in {
+  from {
+    opacity: 0;
+  }
+}
+.document-block-add:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 /* Only where it is wanted (#138): the block under the mouse, the block with
    the caret – or every block (Settings › Appearance › Editor, "Always show
@@ -9584,13 +9633,16 @@ tr.order-drop-after > td {
 }
 .document-block-handle.hovered,
 .document-block-handle.active {
-  opacity: 0.45;
+  opacity: 1;
 }
 .document-block-handle:hover,
 .document-block-handle:focus-visible,
 .document-block-handle.selected {
   opacity: 1;
-  background: var(--surface);
+  background: var(--hover);
+  color: var(--text);
+}
+.document-block-handle.selected {
   color: var(--blue);
 }
 .document-block-handle:focus-visible {
@@ -9599,6 +9651,18 @@ tr.order-drop-after > td {
 }
 .document-block-handle:active {
   cursor: grabbing;
+}
+/* The block a menu applies to (#236), and blocks chosen with the mouse or
+   the keyboard: a light tint over the whole block, nothing moves. */
+.document-block-marked {
+  position: absolute;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+[data-theme="dark"] .document-block-marked {
+  background: color-mix(in srgb, var(--blue) 24%, transparent);
 }
 .document-block-drop {
   position: absolute;
@@ -9837,6 +9901,14 @@ tr.order-drop-after > td {
   .document-block-handle {
     height: 44px;
     margin-top: -8px;
+    /* Right next to the text: phones have no margin to spare. */
+    margin-left: -25px;
+  }
+  .document-block-handle.rtl {
+    margin-left: 1px;
+  }
+  .document-block-add {
+    display: none;
   }
   .document-block-handle::before {
     content: "";
@@ -9850,6 +9922,11 @@ tr.order-drop-after > td {
   .document-block-handle.active,
   .always-handles .document-block-handle {
     opacity: 0.65;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-block-add {
+    animation: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -34041,12 +34118,13 @@ label.ws-search input {
 [dir="rtl"] > .heading-fold[aria-expanded="false"] svg {
   transform: scaleX(-1);
 }
+/* Left of the block's "+" and handle (#236). */
 .block-editor-surface.with-block-handles .heading-fold {
-  left: -50px;
+  left: -88px;
 }
 .block-editor-surface.with-block-handles [dir="rtl"] > .heading-fold {
   left: auto;
-  right: -50px;
+  right: -88px;
 }
 .document-editor > :hover > .heading-fold,
 .heading-fold[aria-expanded="false"] {
