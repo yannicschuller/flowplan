@@ -17,6 +17,7 @@ import { pageRole } from "./permissions";
 import { HttpError } from "./auth";
 import type { Identity, Page } from "./types";
 import { documentChanged } from "./document-live";
+import { placeBlocks, type BlockPlace } from "./journal-place";
 import { indexPageTasks } from "./doc-tasks";
 import {
   hasEntryData,
@@ -135,14 +136,22 @@ export function carryTasks(tasks: PMNode[], from: string) {
     ),
   );
 }
-// Carried tasks first, then the journal's template (if any).
-export function dayDocument(tasks: PMNode[], template: PMNode[] = []) {
-  const s = schema();
-  return s.node("doc", null, [
-    ...(tasks.length ? [s.node("taskList", null, tasks)] : []),
-    ...(template.length ? template : [s.node("paragraph")]),
-  ]);
+// The journal's template (if any) with the carried tasks as one list: at
+// the top (the default), after the template, or directly below one of its
+// headings (#247; after the template when it has no such heading).
+export function dayDocument(tasks: PMNode[], template: PMNode[] = [], place: BlockPlace = { at: "top" }) {
+  // The nodes' own schema (nodes of different instances cannot be combined).
+  const s = (tasks[0] || template[0])?.type.schema || schema();
+  const body = template.length ? template : [s.node("paragraph")];
+  // No template: the tasks come before the empty line to write in, wherever they go.
+  const where = template.length ? place : { at: "top" as const };
+  return s.node("doc", null, placeBlocks(body, tasks.length ? [s.node("taskList", null, tasks)] : [], where));
 }
+// The journal option "Übernommene Aufgaben" (#247) as a place.
+export const carriedPlace = (options: { carried?: "top" | "end" | "heading"; carriedHeading?: string }): BlockPlace => ({
+  at: options.carried || "top",
+  heading: options.carriedHeading || "",
+});
 
 async function loadDocument(pageId: string) {
   const row = await one<{ state: Uint8Array | null; html: string }>(
@@ -238,7 +247,7 @@ export async function dayStart(journal: Page, today: string) {
       previous.journal_date!,
     );
   }
-  const doc = dayDocument(carried, await templateNodes(journal.id, schema()));
+  const doc = dayDocument(carried, await templateNodes(journal.id, schema()), carriedPlace((await journalSettings(journal.id)).options));
   return { previous, before, carried, daily, doc };
 }
 

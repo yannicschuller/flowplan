@@ -65,6 +65,11 @@ export const journalOptionsSchema = z.object({
   create: z.enum(["auto", "write"]).default("auto"),
   // How the days appear in the page tree (lib/journal-nav.ts).
   sidebar: z.enum(SIDEBAR_MODES).default(DEFAULT_SIDEBAR_MODE),
+  // "Übernommene Aufgaben" (#247): where the open tasks of the day before go
+  // in a new day – at the top, after the template, or directly below the
+  // template's heading `carriedHeading` (after the template without it).
+  carried: z.enum(["top", "end", "heading"]).default("top"),
+  carriedHeading: z.string().trim().max(200).default(""),
 });
 export type JournalOptions = z.infer<typeof journalOptionsSchema>;
 async function settingsRow(journalId: string) {
@@ -79,7 +84,7 @@ export async function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
   } catch {}
-  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE };
+  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE, carried: "top", carriedHeading: "" };
   try {
     options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
   } catch {}

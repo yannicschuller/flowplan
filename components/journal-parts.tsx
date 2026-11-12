@@ -44,8 +44,31 @@ export type JournalSettings = {
   icsUrl?: string;
   // create: "Seite des Tages anlegen" – when the day starts or on the first write.
   // completed: "An diesem Tag erledigt" below each day (#169).
-  options?: { place: boolean; events: boolean; completed?: boolean; create?: "auto" | "write"; sidebar?: SidebarMode };
+  // carried: where the open tasks of the day before go in a new day (#247).
+  options?: {
+    place: boolean;
+    events: boolean;
+    completed?: boolean;
+    create?: "auto" | "write";
+    sidebar?: SidebarMode;
+    carried?: CarriedMode;
+    carriedHeading?: string;
+  };
 };
+type CarriedMode = "top" | "end" | "heading";
+// The template's top-level headings (their text, as the server compares it:
+// lib/journal-place.ts), for "Übernommene Aufgaben".
+function templateHeadings(html: string) {
+  if (!html || typeof DOMParser === "undefined") return [];
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  const texts: string[] = [];
+  for (const node of Array.from(body.children))
+    if (/^H[1-6]$/.test(node.tagName)) {
+      const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+      if (text && !texts.includes(text)) texts.push(text);
+    }
+  return texts;
+}
 export type DayEntry = {
   values: Record<string, number | boolean>;
   place: string;
@@ -174,6 +197,20 @@ export function JournalSettingsDialog({
     setCurrent({ ...current, options: { ...options, [key]: value } });
     if (!(await save({ options: { [key]: value } }))) setCurrent(before);
   };
+  // "Übernommene Aufgaben" (#247): one select – top, after the template, or
+  // below one of its headings ("heading:<text>").
+  const carried = options.carried || "top";
+  const carriedHeading = options.carriedHeading || "";
+  const headings = templateHeadings(current.template);
+  const carriedValue = carried === "heading" ? `heading:${carriedHeading}` : carried;
+  const setCarried = async (value: string) => {
+    const next = value.startsWith("heading:")
+      ? { carried: "heading" as const, carriedHeading: value.slice("heading:".length) }
+      : { carried: value as CarriedMode, carriedHeading: "" };
+    const before = current;
+    setCurrent({ ...current, options: { ...options, ...next } });
+    if (!(await save({ options: next }))) setCurrent(before);
+  };
   // "Tage in der Seitenleiste" (#49): how the days show in the page tree.
   const sidebar = options.sidebar || DEFAULT_SIDEBAR_MODE;
   const setSidebar = async (value: SidebarMode) => {
@@ -281,6 +318,29 @@ export function JournalSettingsDialog({
               <p className="journal-template-empty">{t("Keine Vorlage – neue Tage beginnen leer.", "No template – new days start empty.")}</p>
             )}
           </div>
+          <label className="js-field js-carried">
+            <strong className="js-label">{t("Übernommene Aufgaben", "Carried-over tasks")}</strong>
+            <small className="muted">
+              {t(
+                "Wo die offenen Aufgaben des Vortags in einem neuen Tag stehen. Fehlt die Überschrift in der Vorlage, kommen sie nach die Vorlage.",
+                "Where the open tasks of the day before go in a new day. If the template no longer has the heading, they go after the template.",
+              )}
+            </small>
+            <select value={carriedValue} disabled={busy} onChange={(e) => void setCarried(e.target.value)}>
+              <option value="top">{t("Oben", "At the top")}</option>
+              <option value="end">{t("Nach der Vorlage", "After the template")}</option>
+              {headings.map((text) => (
+                <option key={text} value={`heading:${text}`}>
+                  {t(`Unter der Überschrift „${text}“`, `Below the heading “${text}”`)}
+                </option>
+              ))}
+              {carried === "heading" && !headings.includes(carriedHeading) && (
+                <option value={carriedValue}>
+                  {t(`Unter „${carriedHeading}“ (nicht in der Vorlage – nach der Vorlage)`, `Below “${carriedHeading}” (not in the template – after the template)`)}
+                </option>
+              )}
+            </select>
+          </label>
           <strong className="js-label">{t("Fertige Vorlagen", "Ready-made templates")}</strong>
           <div className="journal-presets">
             {templatePresets.map((preset) => (
