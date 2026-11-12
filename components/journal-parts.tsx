@@ -322,7 +322,7 @@ export function JournalSettingsDialog({
             <strong className="js-label">{t("Übernommene Aufgaben", "Carried-over tasks")}</strong>
             <small className="muted">
               {t(
-                "Wo die offenen Aufgaben des Vortags in einem neuen Tag stehen. Fehlt die Überschrift in der Vorlage, kommen sie nach die Vorlage.",
+                "Wo die offenen Aufgaben des Vortags in einem neuen Tag stehen. Fehlt die Überschrift in der Vorlage, stehen sie nach der Vorlage.",
                 "Where the open tasks of the day before go in a new day. If the template no longer has the heading, they go after the template.",
               )}
             </small>
