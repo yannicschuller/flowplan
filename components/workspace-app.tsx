@@ -1980,7 +1980,11 @@ export default function WorkspaceApp({
   // The way to the open page unfolds, for this visit only (not stored):
   // nothing else folds. Folding one of those pages by hand closes it.
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set());
-  const openPath = screen === "page" && pageId ? ancestorIds(boot.pages, pageId).join(",") : "";
+  // A record opened as a page with sub-pages (#231) is listed below its
+  // database: the database unfolds like the parent of an open page.
+  const recordInTree =
+    recordFull && !!recordView && boot.pages.some((p) => p.parent_id === pageId && p.parent_row_id === recordView.rowId && !p.deleted_at);
+  const openPath = screen === "page" && pageId ? [...(recordInTree ? [pageId] : []), ...ancestorIds(boot.pages, pageId)].join(",") : "";
   // Updated while rendering (not in an effect): the tree never shows the
   // open page folded away first.
   const [revealedPath, setRevealedPath] = useState("");
@@ -2629,7 +2633,7 @@ export default function WorkspaceApp({
         icon={shownPageIcon(r.icon, "document")}
         label={r.title}
         href={pageLocationHash({ pageId: database.id, rowId: r.rowId, full: true })}
-        selected={screen === "page" && pageId === database.id && recordView?.rowId === r.rowId}
+        selected={recordFull && pageId === database.id && recordView?.rowId === r.rowId}
         open={open}
         dropping={recordDrop === key}
         onToggle={(next) => foldRecord(key, !next)}
@@ -2672,16 +2676,20 @@ export default function WorkspaceApp({
             : records.length > 0 || (treeIndex.get(p.id) || []).some((x) => !filterMatches || filterMatches.has(x.id)),
           // While filtering, the way to every match stays open.
           closed = !filterMatches && !pageOpen(p.id);
+        // A record opened as a page whose row shows below its database
+        // (#231): the record is the active entry, the database an ancestor.
+        const recordActive = recordFull && pageId === p.id && !closed && records.some((r) => r.rowId === recordView?.rowId);
+        const active = screen === "page" && pageId === p.id && !recordActive;
         return (
           <div key={p.id}>
             <div
-              className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
+              className={`page-nav ${active ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
               data-tree-id={p.id}
               data-prefetch-page={p.id}
               role="treeitem"
               aria-level={level + 1}
-              aria-selected={screen === "page" && pageId === p.id}
+              aria-selected={active}
               aria-expanded={children ? !closed : undefined}
               aria-owns={children && !closed ? `tree-group-${p.id}` : undefined}
               tabIndex={stop === p.id ? 0 : -1}
