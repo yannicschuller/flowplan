@@ -2,7 +2,8 @@
 // Settings → Darstellung & Sprache: language (profile, all devices),
 // light or dark (this device), the workspace's look or Flowplan's own (#196,
 // profile, all devices), the page icon above or next to the title (#214,
-// profile, all devices), the related pages and backlinks below pages
+// profile, all devices), the arrow after links to the web (#217, profile,
+// all devices), the related pages and backlinks below pages
 // and records (this device), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
@@ -23,6 +24,7 @@ import type { TextMenuPref } from "@/lib/text-menu-pref";
 import { setTextMenuPrefLocal, textMenuPref, useTextMenuPref } from "@/lib/text-menu-pref-client";
 import type { PageIconPref } from "@/lib/page-icon-pref";
 import { pageIconPref, setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
+import { externalLinkIcon, setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 
 export default function AppearanceSection() {
   const t = useT();
@@ -58,6 +60,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.pageIcon", pageIcon: value });
       } catch (e) {
         setPageIconPrefLocal(before);
+        throw e;
+      }
+    });
+  };
+  const linkIcon = useExternalLinkIcon();
+  const [linkIconStatus, runLinkIcon] = useSaveState();
+  const chooseLinkIcon = (on: boolean) => {
+    const before = externalLinkIcon();
+    setExternalLinkIconLocal(on);
+    void runLinkIcon(async () => {
+      try {
+        await mutate({ action: "profile.externalLinkIcon", externalLinkIcon: on });
+      } catch (e) {
+        setExternalLinkIconLocal(before);
         throw e;
       }
     });
@@ -142,6 +158,17 @@ export default function AppearanceSection() {
               </label>
             ))}
           </div>
+        </SettingRow>
+        <SettingRow
+          anchor="external-link-icon"
+          label={t("Symbol bei externen Links", "Icon on external links")}
+          description={t(
+            "Ein kleiner Pfeil hinter Links ins Web, in Seiten, Einträgen und Kommentaren. Aus: Links bleiben farbig und unterstrichen. Veröffentlichte Seiten zeigen den Pfeil weiter, gedruckt wird er nie. Gilt auf allen Geräten.",
+            "A small arrow after links to the web, in pages, records and comments. Off: links stay coloured and underlined. Published pages keep showing the arrow; it is never printed. Applies on all devices.",
+          )}
+        >
+          <SaveState status={linkIconStatus} />
+          <Switch checked={linkIcon} label={t("Symbol bei externen Links", "Icon on external links")} onChange={chooseLinkIcon} />
         </SettingRow>
         <SwitchRow
           label={t("Verwandte Seiten und Rückverweise anzeigen", "Show related pages and backlinks")}

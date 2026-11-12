@@ -293,6 +293,8 @@ export type Bootstrap = {
   textMenu?: import("./text-menu-pref").TextMenuPref;
   // "Seitensymbol" (#214, lib/page-icon-pref.ts).
   pageIcon?: import("./page-icon-pref").PageIconPref;
+  // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).
+  externalLinkIcon?: boolean;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).

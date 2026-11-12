@@ -9,6 +9,7 @@ import { workspaceThemeSchema } from "./workspace-theme";
 import { autoLinkRulesSchema } from "./auto-link";
 import { textMenuPrefSchema } from "./text-menu-pref";
 import { pageIconPrefSchema } from "./page-icon-pref";
+import { externalLinkIconSchema } from "./external-link-icon-pref";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
@@ -58,7 +59,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.pageIcon", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.pageIcon", "profile.externalLinkIcon", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -182,6 +183,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: the large icon above the title (above, the default) or a small icon next to the title on its first line (inline). Only how the caller sees pages; published pages keep the default.",
     input: z.object({ action: z.literal("profile.pageIcon"), pageIcon: pageIconPrefSchema }),
     result: z.object({ pageIcon: pageIconPrefSchema }),
+  },
+  {
+    action: "profile.externalLinkIcon",
+    summary: "Show the arrow after links to the web",
+    description: "For the caller, on all devices: whether links to the web show a small outward arrow after them (true, the default) or only their colour and underline (false). Only how the caller sees pages, comments and records; published pages keep the default, and the arrow is never printed.",
+    input: z.object({ action: z.literal("profile.externalLinkIcon"), externalLinkIcon: externalLinkIconSchema }),
+    result: z.object({ externalLinkIcon: externalLinkIconSchema }),
   },
   {
     action: "space.create",
