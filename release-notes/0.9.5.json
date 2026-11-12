@@ -1,0 +1,9 @@
+{
+  "improvements": [
+    {
+      "de": "„Einträge öffnen als → Ganze Seite“ öffnet einen Datensatz jetzt als echte Seite neben der Seitenleiste – mit eigener Adresse, Zurück/Vor und neuem Tab – statt als großen Dialog. Das gilt auch für Datenbanken, die schon so eingestellt sind (etwa die Arten „Dokumente“ und „Kontakte“). Wer den Dialog behalten will, stellt die Datenbank oder Ansicht auf „Mittig“.",
+      "en": "“Open records as → Full page” now opens a record as a real page next to the sidebar – with its own address, back/forward and new tab – instead of a large dialog. This also applies to databases already set that way (such as the “Documents” and “Contacts” kinds). To keep the dialog, set the database or view to “Centred”.",
+      "issues": [231]
+    }
+  ]
+}
