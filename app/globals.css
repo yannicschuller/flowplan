@@ -3601,6 +3601,21 @@ tr:hover .row-open,
     80px 1px 0 transparent;
   transition: box-shadow 0.15s ease;
 }
+/* WebKit (Safari, the iPad and Mac apps) places a sticky heading with a
+   negative offset against the scroll area below the dialog's top padding,
+   so scrolled content showed through that strip above the heading. A cover
+   as tall as the top padding closes it; Chromium clips it away. Bottom
+   sheets have no top padding (the grab handle sits there), so it is 0. */
+.modal-heading::before {
+  content: "";
+  position: absolute;
+  left: -80px;
+  right: -80px;
+  bottom: 100%;
+  height: var(--modal-pad-top);
+  background: var(--modal-bg);
+  pointer-events: none;
+}
 .modal-heading[data-stuck] {
   box-shadow:
     var(--modal-heading-cover),
