@@ -864,6 +864,8 @@ const exact: Record<string, string> = {
   "Transkription ist auf diesem Server nicht eingerichtet.": "Transcription is not set up on this server.",
   "Die Aufnahme ist zu lang.": "The recording is too long.",
   "Der Transkriptionsdienst ist nicht erreichbar.": "The transcription service is not reachable.",
+  "Der Transkriptionsdienst hat nicht rechtzeitig geantwortet.": "The transcription service did not answer in time.",
+  "Für diese Besprechung ist kein Audio mehr gespeichert.": "No audio of this meeting is stored any more.",
   "Relation fehlt.": "Relation missing.",
   "Ungültige Zieldatenbank.": "Invalid target database.",
   "Die Zieldatenbank wurde geändert. Bitte den Eigenschaftsdialog erneut öffnen.": "The target database was changed. Please open the property dialog again.",
