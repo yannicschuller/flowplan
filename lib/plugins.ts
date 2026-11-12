@@ -17,6 +17,7 @@ import { visibleRows } from "./row-access";
 import { requireUnlocked } from "./journal-extras";
 import { visibleFields } from "./field-access";
 import { publicTree } from "./publication";
+import { recordScope } from "./record-share";
 import {
   MANIFEST_FILE,
   MAX_QUERY_ROWS,
@@ -264,9 +265,11 @@ export async function deletePlugin(user: Identity, input: Record<string, unknown
 // A plugin as a published page shows it: only when its owner allowed
 // published pages, for the publication's own workspace.
 export async function publicPlugin(token: string, pluginId: string) {
-  const { root } = await publicTree(token);
+  // A shared record (lib/record-share.ts) shows its workspace's blocks too.
+  const record = await recordScope(token);
+  const workspaceId = record ? record.page.workspace_id : (await publicTree(token)).root.workspace_id;
   const row = await requirePlugin(pluginId);
-  if (row.workspace_id !== root.workspace_id || !row.enabled || !row.public)
+  if (row.workspace_id !== workspaceId || !row.enabled || !row.public)
     throw new HttpError(404, "Block-Erweiterung nicht gefunden.");
   const view = pluginView(row);
   // Published frames never query databases.

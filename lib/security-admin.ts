@@ -26,6 +26,7 @@ import { isSecurityKind, securityRules, type SecurityRule } from "./security-kin
 import { incidentThreshold, notificationPrefs } from "./notification-prefs";
 import type { Identity } from "./types";
 import { dropLiveProjections } from "./shared-live";
+import { ct } from "./content-locale";
 
 const HOUR = 3_600_000,
   DAY = 24 * HOUR;
@@ -340,6 +341,21 @@ async function links() {
     `SELECT l.token,l.name,l.role,p.title,p.id page_id,l.created_at,u.name creator FROM share_links l JOIN pages p ON p.id=l.root_id LEFT JOIN users u ON u.id=l.created_by
      WHERE p.deleted_at IS NULL ORDER BY CASE l.role WHEN 'editor' THEN 0 WHEN 'commenter' THEN 1 ELSE 2 END, l.created_at DESC LIMIT 200`,
   )).map((l) => ({ id: l.token.slice(0, 12), name: l.name, role: l.role, page: l.title, pageId: l.page_id, createdAt: l.created_at, creator: l.creator }));
+  // Shared and published single records (#231, lib/record-share.ts): listed
+  // with their database, revoked by the same "share.revoke".
+  const records = (await all<{ token: string; kind: string; name: string; role: string; title: string; page_id: string; created_at: number; creator: string | null }>(
+    `SELECT s.token,s.kind,s.name,s.role,p.title,p.id page_id,s.created_at,u.name creator FROM record_shares s JOIN pages p ON p.id=s.page_id LEFT JOIN users u ON u.id=s.created_by
+     WHERE p.deleted_at IS NULL ORDER BY CASE s.role WHEN 'editor' THEN 0 WHEN 'commenter' THEN 1 ELSE 2 END, s.created_at DESC LIMIT 200`,
+  )).map((l) => ({
+    id: l.token.slice(0, 12),
+    name: l.kind === "publication" ? ct("Veröffentlichter Eintrag", "Published record") : l.name,
+    role: l.role,
+    page: `${l.title} · ${ct("Eintrag", "Record")}`,
+    pageId: l.page_id,
+    createdAt: new Date(l.created_at).toISOString().replace("T", " ").slice(0, 19),
+    creator: l.creator,
+  }));
+  shares.push(...records);
   const published = (await all<{ id: string; title: string; updated_at: string }>(
     "SELECT id,title,updated_at FROM pages WHERE public_token IS NOT NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200",
   )).map((p) => ({ id: p.id, page: p.title, updatedAt: p.updated_at }));
@@ -547,7 +563,14 @@ export async function securityAction(admin: Identity, input: unknown, requestHea
       break;
     case "share.revoke": {
       const link = await one<{ token: string; root_id: string }>("SELECT token,root_id FROM share_links WHERE token LIKE ?", `${b.id}%`);
-      if (!link) throw new HttpError(404, "Diesen Link gibt es nicht mehr.");
+      if (!link) {
+        const record = await one<{ token: string; row_id: string }>("SELECT token,row_id FROM record_shares WHERE token LIKE ?", `${b.id}%`);
+        if (!record) throw new HttpError(404, "Diesen Link gibt es nicht mehr.");
+        await run("DELETE FROM record_shares WHERE token=?", record.token);
+        await dropLiveProjections([record.token]);
+        securityEvent("admin.settings", { actorId: admin.id, headers: requestHeaders, severity: "info", detail: `record share revoked ${record.row_id}` });
+        break;
+      }
       await run("DELETE FROM share_links WHERE token=?", link.token);
       await dropLiveProjections([link.token]);
       securityEvent("admin.settings", { actorId: admin.id, headers: requestHeaders, severity: "info", detail: `share link revoked ${link.root_id}` });

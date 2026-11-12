@@ -1398,6 +1398,21 @@ function migrate(d: DatabaseSync) {
   // just can't run the check), so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(api_tokens)").all() as { name: string }[]).some((c) => c.name === "marketplace_check"))
     d.exec("ALTER TABLE api_tokens ADD COLUMN marketplace_check INTEGER NOT NULL DEFAULT 0");
+  // Sharing and publishing a single record (#231, lib/record-share.ts):
+  // record_shares holds the record's links (kind 'link', with role,
+  // password and end date like share_links) and its publication (kind
+  // 'publication', at most one, viewer only). include_children is the
+  // extension point for sub-pages under records and stays 0 for now.
+  // record_share_fields: the properties visitors see, chosen per record
+  // (no row: the default); record_share_requests the guest writes per
+  // link and minute, as share_requests for page links. New tables only – an older version leaves them
+  // alone (its links simply do not open) – so the schema number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS record_shares(token TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('link','publication')),name TEXT NOT NULL DEFAULT '',role TEXT NOT NULL CHECK(role IN ('viewer','commenter','editor')),include_children INTEGER NOT NULL DEFAULT 0,password_hash TEXT,expires_at INTEGER,created_by TEXT REFERENCES users(id),created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS record_shares_row ON record_shares(row_id,kind);
+    CREATE INDEX IF NOT EXISTS record_shares_page ON record_shares(page_id);
+    CREATE TABLE IF NOT EXISTS record_share_fields(row_id TEXT PRIMARY KEY REFERENCES rows(id) ON DELETE CASCADE,fields TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS record_share_requests(token TEXT NOT NULL REFERENCES record_shares(token) ON DELETE CASCADE,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS record_share_requests_token ON record_share_requests(token,created_at);`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

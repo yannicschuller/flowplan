@@ -13,6 +13,7 @@ import { notificationPrefs } from "./notification-prefs";
 import { deviceLabel } from "./device-name";
 import { subjectHash } from "./security-events";
 import type { Identity } from "./types";
+import { ct } from "./content-locale";
 
 const DAY = 86_400_000;
 export type CheckState = "ok" | "todo" | "info";
@@ -61,7 +62,16 @@ export async function mySecurity(user: Identity, currentToken: string | undefine
     user.id,
     now,
   );
-  const openEditorLinks = links.filter((l) => l.role === "editor" && !l.password && !l.expires_at);
+  // Links of single records (#231, lib/record-share.ts), revoked with
+  // "record.share.revoke" (rowId).
+  const recordLinks = (await all<{ token: string; name: string; role: string; page_id: string; row_id: string; title: string; created_at: number; password: number; expires_at: number | null }>(
+    `SELECT s.token,s.name,s.role,s.page_id,s.row_id,p.title,s.created_at,s.password_hash IS NOT NULL password,s.expires_at
+     FROM record_shares s JOIN pages p ON p.id=s.page_id WHERE s.created_by=? AND s.kind='link' AND p.deleted_at IS NULL AND (s.expires_at IS NULL OR s.expires_at>?)
+     ORDER BY s.created_at DESC LIMIT 200`,
+    user.id,
+    now,
+  ));
+  const openEditorLinks = [...links, ...recordLinks].filter((l) => l.role === "editor" && !l.password && !l.expires_at);
   const published = await all<{ id: string; title: string; updated_at: string }>(
     "SELECT id,title,updated_at FROM pages WHERE created_by=? AND public_token IS NOT NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200",
     user.id,
@@ -132,7 +142,8 @@ export async function mySecurity(user: Identity, currentToken: string | undefine
       expiresAt: t.expires_at,
       idle: (t.last_used_at ?? t.created_at) < now - 90 * DAY,
     })),
-    links: links.map((l) => ({
+    links: [
+      ...links.map((l) => ({
       token: l.token,
       pageId: l.root_id,
       page: l.title,
@@ -142,7 +153,21 @@ export async function mySecurity(user: Identity, currentToken: string | undefine
       password: !!l.password,
       expiresAt: l.expires_at,
       createdAt: l.created_at,
+      rowId: undefined as string | undefined,
     })),
+      ...recordLinks.map((l) => ({
+        token: l.token,
+        pageId: l.page_id,
+        page: `${l.title} · ${ct("Eintrag", "Record")}`,
+        name: l.name,
+        role: l.role,
+        subpages: false,
+        password: !!l.password,
+        expiresAt: l.expires_at,
+        createdAt: new Date(l.created_at).toISOString().replace("T", " ").slice(0, 19),
+        rowId: l.row_id as string | undefined,
+      })),
+    ],
     published: published.map((p) => ({ pageId: p.id, page: p.title })),
     people,
     activity,

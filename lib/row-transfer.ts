@@ -6,6 +6,7 @@
 // records with their content and files; a move keeps the record itself –
 // content, comments, versions, time and Git links travel with it – and
 // gives it a number in the new database.
+import { revokeRecordSharesOfRow } from "./record-share";
 import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
@@ -213,6 +214,8 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
       if (html) await replaceRowDocument(rid, rewrite(html), user.id);
       results.push(rid);
     } else {
+      // Links and the publication of the record end with the move (#231).
+      await revokeRecordSharesOfRow(row.id);
       await run(
         "UPDATE rows SET page_id=?,cells=?,position=?,number=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
         target.id,

@@ -230,7 +230,7 @@ function Shared({ data, act, busy }: { data: MySecurity; act: Act; busy: boolean
                 key: "action",
                 header: "",
                 render: (l) => (
-                  <button type="button" className="text-button danger" disabled={busy} onClick={() => void act({ action: "share.revoke", pageId: l.pageId, token: l.token }, t(`Den Link „${l.name}“ löschen? Wer ihn hat, kommt nicht mehr hinein.`, `Delete the link “${l.name}”? Whoever has it can no longer get in.`))}>
+                  <button type="button" className="text-button danger" disabled={busy} onClick={() => void act(l.rowId ? { action: "record.share.revoke", pageId: l.pageId, rowId: l.rowId, token: l.token } : { action: "share.revoke", pageId: l.pageId, token: l.token }, t(`Den Link „${l.name}“ löschen? Wer ihn hat, kommt nicht mehr hinein.`, `Delete the link “${l.name}”? Whoever has it can no longer get in.`))}>
                     {t("Löschen", "Delete")}
                   </button>
                 ),
