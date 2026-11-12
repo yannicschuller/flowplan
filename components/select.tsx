@@ -21,6 +21,27 @@ type Choice = {
   // workspace's look, #196).
   font?: string;
 };
+// Whether `el` or a box around it is the containing block of its fixed
+// children (transform, scale, filter … – CSS Positioned Layout, "fixed").
+function holdsFixed(el: HTMLElement) {
+  for (let node: HTMLElement | null = el; node && node !== document.documentElement; node = node.parentElement) {
+    const s = getComputedStyle(node);
+    if (
+      (s.transform && s.transform !== "none") ||
+      (s.translate && s.translate !== "none") ||
+      (s.scale && s.scale !== "none") ||
+      (s.rotate && s.rotate !== "none") ||
+      (s.filter && s.filter !== "none") ||
+      (s.backdropFilter && s.backdropFilter !== "none") ||
+      (s.perspective && s.perspective !== "none") ||
+      /transform|filter|perspective/.test(s.willChange || "") ||
+      /paint|layout|strict|content/.test(s.contain || "") ||
+      (s.containerType && s.containerType !== "normal")
+    )
+      return true;
+  }
+  return false;
+}
 // Drop-in replacement for <select> with a styled list. The native element
 // stays in place (invisible) as the form control: it keeps the value,
 // labels, forms and keyboard focus; the list only sets its value and fires
@@ -56,6 +77,7 @@ export function Select({
       left: number;
       width: number;
       up: boolean;
+      fixed: boolean;
     } | null>(null);
   const setRefs = useCallback(
     (node: HTMLSelectElement | null) => {
@@ -138,11 +160,20 @@ export function Select({
     const el = wrapper.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    // Inside dialogs the list stays in the dialog, so it remains usable.
+    // Inside dialogs the list stays in the dialog's DOM, so it remains
+    // usable (focus trap, outside clicks). It is placed against the window
+    // (position: fixed, .fp-select-list.fixed) and not inside the dialog's
+    // scroll area: there a list reaching below the dialog's edge made the
+    // dialog scroll and showed a scrollbar while it was open, and the list
+    // was cut off at the dialog's bottom (#219). Where the dialog (or a box
+    // around it) would hold fixed children itself – a transform, as in
+    // popovers or while a dialog opens – it stays placed inside the host.
     const host =
       (el.closest("[role=dialog]") as HTMLElement | null) || document.body;
-    const base =
-      host === document.body
+    const fixed = host !== document.body && !holdsFixed(host);
+    const base = fixed
+      ? { top: 0, left: 0 }
+      : host === document.body
         ? { top: -window.scrollY, left: -window.scrollX }
         : (() => {
             const r = host.getBoundingClientRect();
@@ -161,6 +192,7 @@ export function Select({
       left: rect.left - base.left,
       width: rect.width,
       up,
+      fixed,
     });
   }, []);
   const show = useCallback(() => {
@@ -316,7 +348,7 @@ export function Select({
         createPortal(
           <div
             ref={list}
-            className={`fp-select-list${place.up ? " up" : ""}`}
+            className={`fp-select-list${place.up ? " up" : ""}${place.fixed ? " fixed" : ""}`}
             style={{
               top: place.top,
               left: place.left,

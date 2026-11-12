@@ -10837,6 +10837,11 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   transform-origin: top center;
   animation: select-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
+/* In a dialog: against the window, so it neither scrolls the dialog nor is
+   cut off by it (#219, components/select.tsx). */
+.fp-select-list.fixed {
+  position: fixed;
+}
 .fp-select-list.up {
   transform: translateY(-100%);
   transform-origin: bottom center;
