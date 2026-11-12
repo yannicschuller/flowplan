@@ -15,19 +15,25 @@
 // (labels); the import clears what is still open and lists it
 // (lib/marketplace-package.ts). Next to it payload/workflow-meta.json
 // (lib/marketplace-workflow-meta.ts) with the gap labels in both languages.
+//
+// Next to them the templates that exist only in the marketplace
+// (lib/marketplace-official-extra/: documents, databases, whiteboards,
+// workflows, workspace looks and link rules) – kept out of the built-in
+// catalog so the app does not ship them.
 import { createHash } from "node:crypto";
 import { ZipFile } from "yazl";
 import { templateCatalog, resolveCatalogDates, type CatalogTemplate } from "./template-catalog";
 import { templateCatalogEn } from "./template-catalog-en";
 import { galleryTemplates, galleryCategories, type GalleryCategory } from "./whiteboard-template-gallery";
-import { workflowTemplates, type Gap } from "./workflows/templates";
+import { layoutGraph, workflowTemplates, type Gap } from "./workflows/templates";
 import { GRAPH_FORMAT, GRAPH_VERSION } from "./workflows/graph";
 import { TEMPLATE_FORMAT } from "./template-exchange";
 import { BOARD_TEMPLATE_FORMAT, cleanTemplateItems, portableTemplateItems } from "./whiteboard-user-templates";
-import { MARKETPLACE_FORMAT, type MarketplaceKind } from "./marketplace-package";
+import { LINK_RULES_FORMAT, LOOK_FORMAT, MARKETPLACE_FORMAT, type MarketplaceKind } from "./marketplace-package";
 import { packageMinVersion } from "./marketplace-config";
 import { workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
 import { templateCategoryLabels, type TemplateCategory } from "./template-categories";
+import { extraOfficial, type ExtraItem } from "./marketplace-official-extra";
 
 const MTIME = new Date(Date.UTC(2026, 0, 1));
 // Example dates ("@+3") are resolved against this day.
@@ -56,15 +62,31 @@ export function stableUuid(name: string) {
 const json = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
 
 export type OfficialPackage = { file: string; kind: MarketplaceKind; id: string; title: string; bytes: Buffer };
-type Meta = { kind: MarketplaceKind; id: string; title: string; titleEn: string; summary: { de: string; en: string }; category: Exclude<TemplateCategory, "">; tags: string[]; payload: string; entries: [string, Buffer][] };
+type Meta = {
+  kind: MarketplaceKind;
+  id: string;
+  title: string;
+  titleEn: string;
+  summary: { de: string; en: string };
+  // Markdown; without it the summary is the description.
+  description?: { de: string; en: string };
+  language?: "de" | "multi";
+  category: Exclude<TemplateCategory, "">;
+  tags: string[];
+  payload: string;
+  entries: [string, Buffer][];
+};
 
 async function envelope(m: Meta, version: string, previews: Map<string, Buffer>): Promise<OfficialPackage> {
   // The marketplace takes the file name as the template's slug: kebab case.
   const key = `${m.kind}-${m.id}`;
   const file = key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
   const englishOnly = m.titleEn && m.titleEn !== m.title;
-  const descriptionDe = `${m.summary.de}\n\nDiese Vorlage gehört zu Flowplan und ist gemeinfrei (CC0).`;
-  const descriptionEn = `${englishOnly ? `**${m.titleEn}** – ` : ""}${m.summary.en}\n\nThis template comes with Flowplan and is in the public domain (CC0). Its content is in German.`;
+  const language = m.language ?? "de";
+  const descriptionDe = `${m.description?.de ?? m.summary.de}\n\nDiese Vorlage gehört zu Flowplan und ist gemeinfrei (CC0).`;
+  const descriptionEn = m.description
+    ? `${englishOnly ? `**${m.titleEn}**\n\n` : ""}${m.description.en}\n\nThis template comes with Flowplan and is in the public domain (CC0).${language === "de" ? " Its content is in German." : ""}`
+    : `${englishOnly ? `**${m.titleEn}** – ` : ""}${m.summary.en}\n\nThis template comes with Flowplan and is in the public domain (CC0). Its content is in German.`;
   const manifest = {
     format: MARKETPLACE_FORMAT,
     kind: m.kind,
@@ -75,7 +97,7 @@ async function envelope(m: Meta, version: string, previews: Map<string, Buffer>)
     category: m.category,
     tags: [...new Set(m.tags)].slice(0, 10).map((t) => t.slice(0, 32)),
     minVersion: packageMinVersion(version),
-    language: "de",
+    language,
     payload: m.payload,
     license: "CC0-1.0",
     author: { name: "Flowplan", handle: "flowplan" },
@@ -109,6 +131,50 @@ const workflowCategory: Record<string, Exclude<TemplateCategory, "">> = {
   "mail-ticket": "projects",
   "webhook-record": "other",
 };
+const kindTag: Record<MarketplaceKind, string> = {
+  document: "Dokument",
+  database: "Datenbank",
+  whiteboard: "Whiteboard",
+  workflow: "Workflow",
+  appearance: "Erscheinungsbild",
+  "link-rules": "Automatische Links",
+};
+
+// The payload of a marketplace-only template, in its kind's exchange format.
+async function extraEntries(x: ExtraItem): Promise<{ payload: string; entries: [string, Buffer][] }> {
+  const key = `${x.kind}-${x.id}`;
+  switch (x.kind) {
+    case "document":
+    case "database": {
+      const t: CatalogTemplate =
+        x.kind === "document"
+          ? { kind: "document", name: x.title.de, category: x.category, description: x.summary.de, icon: x.icon, html: x.html }
+          : { kind: "database", name: x.title.de, category: x.category, description: x.summary.de, icon: x.icon, fields: x.fields, views: x.views, rows: x.rows };
+      return { payload: "payload/template.zip", entries: [["payload/template.zip", await catalogPayload(key, t)]] };
+    }
+    case "whiteboard": {
+      const items = portableTemplateItems(cleanTemplateItems(x.items)).items;
+      return { payload: "payload/whiteboard.json", entries: [["payload/whiteboard.json", json({ format: BOARD_TEMPLATE_FORMAT, version: 1, name: x.title.de, items })]] };
+    }
+    case "workflow": {
+      const graph = layoutGraph({ format: GRAPH_FORMAT, version: GRAPH_VERSION, settings: { timeZone: "Europe/Berlin", triggerOnOwnChanges: false, limits: {} }, nodes: x.nodes, edges: x.edges });
+      const gaps = x.gaps.map((g) => ({ id: g.id, kind: g.kind, label: g.label.de, ...(g.optional ? { optional: true } : {}) }));
+      const meta = workflowMeta(graph, x.gaps.map((g) => ({ id: g.id, kind: g.kind, label: g.label, ...(g.optional ? { optional: true as const } : {}) })));
+      return {
+        payload: "payload/workflow.json",
+        entries: [
+          ["payload/workflow.json", json({ format: GRAPH_FORMAT, version: GRAPH_VERSION, title: x.title.de, graph, references: {}, gaps })],
+          [WORKFLOW_META_PATH, workflowMetaBytes(meta)],
+        ],
+      };
+    }
+    case "appearance":
+      return { payload: "payload/theme.json", entries: [["payload/theme.json", json({ format: LOOK_FORMAT, version: 1, theme: x.theme, fonts: [] })]] };
+    case "link-rules":
+      return { payload: "payload/link-rules.json", entries: [["payload/link-rules.json", json({ format: LINK_RULES_FORMAT, version: 1, rules: x.rules.map((r) => ({ ...r, enabled: true })) })]] };
+  }
+}
+
 // Catalog templates that need the instance itself (the survey builder) stay out.
 export const OFFICIAL_SKIPPED = ["survey"];
 
@@ -184,6 +250,28 @@ export async function officialPackages(version: string, previews: Map<string, Bu
             ["payload/workflow.json", json({ format: GRAPH_FORMAT, version: GRAPH_VERSION, title: w.name, graph, references: {}, gaps })],
             [WORKFLOW_META_PATH, workflowMetaBytes(meta)],
           ],
+        },
+        version,
+        previews,
+      ),
+    );
+  }
+  for (const x of extraOfficial) {
+    const { payload, entries } = await extraEntries(x);
+    out.push(
+      await envelope(
+        {
+          kind: x.kind,
+          id: x.id,
+          title: x.title.de,
+          titleEn: x.title.en,
+          summary: x.summary,
+          description: x.description,
+          language: x.language ?? "de",
+          category: x.category,
+          tags: ["Flowplan", deLabels[x.category], kindTag[x.kind], ...x.tags],
+          payload,
+          entries,
         },
         version,
         previews,

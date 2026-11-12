@@ -12,6 +12,8 @@ const { NODE_TYPES } = await import("../lib/workflows/catalog");
 const { NODE_ICON_PATHS } = await import("../lib/workflows/node-icon-paths");
 const { workflowMeta, referenceGaps, WORKFLOW_META_PATH } = await import("../lib/marketplace-workflow-meta");
 const { officialPackages } = await import("../lib/marketplace-official");
+const { extraOfficial } = await import("../lib/marketplace-official-extra");
+const { TEMPLATE_IDS } = await import("../lib/workflows/templates");
 const { readZip } = await import("../lib/archive");
 const { readPackage } = await import("../lib/marketplace-package");
 const { parseGraph } = await import("../lib/workflows/graph");
@@ -29,7 +31,8 @@ test("every catalogue symbol has its path data, the same as the icon package", a
 
 test("official workflow packages: meta with exactly the node types used, gaps in both languages", async () => {
   const packages = (await officialPackages("0.9.4")).filter((p) => p.kind === "workflow");
-  assert.equal(packages.length, 6);
+  // The gallery's and the marketplace-only ones (lib/marketplace-official-extra/workflows.ts).
+  assert.equal(packages.length, TEMPLATE_IDS.length + extraOfficial.filter((x) => x.kind === "workflow").length);
   for (const pkg of packages) {
     const entries = await readZip(pkg.bytes, { foreign: true });
     const workflow = JSON.parse(entries.get("payload/workflow.json")!.toString());
