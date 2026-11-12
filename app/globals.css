@@ -7285,6 +7285,18 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .page-content.full-width .editor-wrapper.with-outline {
   padding-right: 236px;
 }
+/* A record as a page of its own (#231, #245): the list is fixed at the
+   main area's right edge (20 px in, 232 px wide), and not only the text but
+   the whole record – its bar with the actions, title, properties,
+   sub-pages, comments – keeps out from under it, at every width, centred
+   or at "Volle Breite". The page's right padding takes the list's place;
+   the record's text needs no room of its own then. */
+.page-content.record-full-page:has(.record-page .editor-wrapper.with-outline) {
+  padding-right: calc(20px + 232px + 24px + var(--safe-right, 0px));
+}
+.page-content .record-page .editor-wrapper.with-outline {
+  padding-right: 0;
+}
 /* A narrow text column: the button stays inside the page's edge. */
 @container main (max-width: 767px) {
   .outline-toggle {
