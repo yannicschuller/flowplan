@@ -4,7 +4,8 @@
 // whole board or the selection, for everyone in the workspace or only for
 // oneself (lib/whiteboard-user-templates.ts).
 import { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlass, Trash } from "@phosphor-icons/react";
+import { MagnifyingGlass, Storefront, Trash } from "@phosphor-icons/react";
+import { PublishDialog, useMarketplace } from "../marketplace";
 import { useT } from "../i18n";
 import { Modal, api } from "../ui";
 import { WhiteboardStatic } from "./render";
@@ -12,7 +13,7 @@ import { findTemplates, galleryCategories, type Draft, type GalleryCategory } fr
 import { templateDrafts } from "@/lib/whiteboard-template-save";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 
-type Own = { id: string; name: string; private: boolean; author: string; items: Draft[]; canDelete: boolean };
+type Own = { id: string; name: string; private: boolean; author: string; items: Draft[]; canDelete: boolean; workspaceId?: string; canPublish?: boolean };
 const preview = (drafts: Draft[]) => drafts.map((d, i) => ({ ...d, z: d.z ?? i }) as WhiteboardItem);
 
 export function TemplateGallery({
@@ -37,6 +38,8 @@ export function TemplateGallery({
   onError: (message: string) => void;
 }) {
   const t = useT();
+  const marketplace = useMarketplace();
+  const [publishing, setPublishing] = useState<Own | null>(null);
   const [tab, setTab] = useState<"gallery" | "own" | "save">(initialTab);
   const [query, setQuery] = useState(""),
     [category, setCategory] = useState<GalleryCategory | "">(""),
@@ -162,6 +165,17 @@ export function TemplateGallery({
                     {template.author ? ` · ${template.author}` : ""}
                   </small>
                 </button>
+                {marketplace && template.canPublish && template.workspaceId && (
+                  <button
+                    type="button"
+                    className="icon-button wb-template-publish"
+                    aria-label={t(`Vorlage „${template.name}“ im Marketplace veröffentlichen …`, `Publish template “${template.name}” to the marketplace …`)}
+                    title={t("Im Marketplace veröffentlichen …", "Publish to the marketplace …")}
+                    onClick={() => setPublishing(template)}
+                  >
+                    <Storefront size={15} />
+                  </button>
+                )}
                 {template.canDelete && (
                   <button
                     type="button"
@@ -215,6 +229,9 @@ export function TemplateGallery({
             {busy ? t("Wird gespeichert …", "Saving …") : t("Als Vorlage speichern", "Save as template")}
           </button>
         </form>
+      )}
+      {publishing && marketplace && publishing.workspaceId && (
+        <PublishDialog config={marketplace} source={{ kind: "whiteboard", workspaceId: publishing.workspaceId, id: publishing.id, title: publishing.name }} onClose={() => setPublishing(null)} />
       )}
     </Modal>
   );

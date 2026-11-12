@@ -836,6 +836,16 @@ p.wb-frame-notes {
   right: 6px;
   background: var(--bg) !important;
 }
+/* Beside the delete button (components/marketplace.tsx). */
+.wb-template-publish {
+  position: absolute;
+  top: 6px;
+  right: 42px;
+  background: var(--bg) !important;
+}
+.wb-template-card.own > .wb-template-publish:last-child {
+  right: 6px;
+}
 .wb-template-save {
   display: grid;
   gap: 12px;

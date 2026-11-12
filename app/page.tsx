@@ -20,6 +20,8 @@ import { instanceSettings } from "@/lib/instance-settings";
 import Login from "@/components/login";
 import { TwoFactorRequired } from "@/components/two-factor";
 import { loginOptions } from "@/lib/local-auth";
+import { marketplaceConfig } from "@/lib/marketplace-config";
+import { MarketplaceReceiver } from "@/components/marketplace";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -36,6 +38,8 @@ export default async function Home({
     return (
       <>
         <MoveBanner initial={move} poll={false} />
+        {/* A template from the marketplace (#marketplace-import) waits in this browser until signing in. */}
+        <MarketplaceReceiver config={await marketplaceConfig()} />
         <Login
           legal={legalLinks()}
           {...await loginOptions((await searchParams).setup, (await searchParams).invite)}

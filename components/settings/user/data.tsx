@@ -17,6 +17,7 @@ import { SpaceExportDialog } from "../../space-export";
 import { ImportSources } from "../../import-sources";
 import { CONTROL, SettingGroup, SettingRow } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
+import { TemplateFileButton } from "../../marketplace";
 
 type Result = { tone: "ok" | "error"; text: string } | null;
 
@@ -208,6 +209,15 @@ export default function DataSection() {
             <Outcome result={results.files} />
           </Stack>
         </SettingRow>
+        {boot.instance?.marketplace && !boot.workspace.guest && (
+          <SettingRow
+            anchor="marketplace-file"
+            label={t("Vorlage aus dem Marketplace", "Template from the marketplace")}
+            description={t("Eine heruntergeladene .flowplan-template-Datei: Vorlage, Workflow, Whiteboard-Vorlage, Erscheinungsbild oder automatische Links. Vor dem Import siehst du, was entsteht.", "A downloaded .flowplan-template file: template, workflow, whiteboard template, appearance or automatic links. Before the import you see what will be created.")}
+          >
+            <TemplateFileButton config={boot.instance.marketplace} />
+          </SettingRow>
+        )}
       </SettingGroup>
 
       <SettingGroup id="export" title={t("Export", "Export||section")} description={t("Eine Kopie von allem, was du lesen darfst – zum Archivieren oder für einen Umzug.", "A copy of everything you may read – to archive or to move.")}>

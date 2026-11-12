@@ -3697,6 +3697,34 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/templates/import`, { form, idempotent: true }, options);
   }
 
+  /** What a marketplace package would carry — Defaults for the publish dialog (title, category, minVersion) and notes on what stays on this instance. Checked like building the package: own document and database templates (creator or owner), workflows (editors), own whiteboard templates, the appearance and the link rules (owners); never guests. 404 when the marketplace is switched off (`FLOWPLAN_MARKETPLACE_URL=off` or Administration). (GET /api/marketplace/draft) */
+  async marketplaceDraft(query: { kind: "document" | "database" | "workflow" | "whiteboard" | "appearance" | "link-rules"; workspace: string; id?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/marketplace/draft`, { query }, options);
+  }
+
+  /** Build a marketplace package (.flowplan-template) — A ZIP in the `flowplan-marketplace-1` format: template.json, the kind's own exchange format under payload/ and up to four preview pictures (`preview`, PNG/JPEG/WebP, 1 MB each). Secrets, the instance address and names of people are never included. Nothing is sent anywhere – the browser hands the file to the marketplace. (POST /api/marketplace/package) */
+  async marketplacePackage(form: {
+    kind: "document" | "database" | "workflow" | "whiteboard" | "appearance" | "link-rules";
+    workspaceId: string;
+    id?: string;
+    meta: string;
+    preview?: Blob[];
+  }, options?: RequestOptions): Promise<Response> {
+    return this.request("POST", `/api/marketplace/package`, { form }, options);
+  }
+
+  /** Check or import a marketplace package — Every check runs again here (size ≤ 25 MB, ZIP safety, template.json, the kind's schema). `preview=1` only answers what would be created (for workflows: nodes, external hosts, AI and e-mail steps). Otherwise imported with the kind's own import: templates and whiteboard templates (editors; `spaceId`, `private`), a workflow as a paused draft on a new page (`spaceId` required, `parentId`), the appearance (replaces the current one) and link rules (owners). (POST /api/marketplace/import) */
+  async marketplaceImport(form: {
+    file: Blob;
+    preview?: "1";
+    workspaceId?: string;
+    spaceId?: string;
+    parentId?: string;
+    private?: "true" | "false";
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/marketplace/import`, { form }, options);
+  }
+
   /** Export a saved template as archive (GET /api/templates/{templateId}/export) */
   async exportTemplate(templateId: string, query: { workspace: string }, options?: RequestOptions): Promise<Response> {
     return this.request("GET", `/api/templates/${encodeURIComponent(templateId)}/export`, { query }, options);

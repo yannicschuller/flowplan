@@ -242,10 +242,12 @@ export async function exportLook(workspaceId: string) {
 // `droppedFonts`), never the whole import. Faces get new ids; a slot whose
 // face was left out goes back to the default. `data: null`: a face the
 // archive declares larger than allowed (not read at all).
-export async function importLook(user: Identity, workspaceId: string, look: { theme: unknown; fonts: { id: string; name: string; data: Buffer | null }[] }) {
+// `replace` (a look the owner chose to apply, from the marketplace):
+// replaces the workspace's look instead of only filling an empty one.
+export async function importLook(user: Identity, workspaceId: string, look: { theme: unknown; fonts: { id: string; name: string; data: Buffer | null }[] }, options: { replace?: boolean } = {}) {
   const result = { imported: false, droppedTheme: false, droppedFonts: 0 };
   if ((await one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id))?.role !== "owner") return result;
-  if (await storedTheme(workspaceId)) return result;
+  if (!options.replace && (await storedTheme(workspaceId))) return result;
   const parsed = look.theme === null || look.theme === undefined ? null : workspaceThemeSchema.safeParse(look.theme);
   if (parsed && !parsed.success) result.droppedTheme = true;
   const remap = new Map<string, string>();
@@ -291,6 +293,7 @@ export async function importLook(user: Identity, workspaceId: string, look: { th
   const theme = normalizeTheme({ ...chosen, fonts });
   if (!theme && !remap.size) return result;
   if (theme) await run("UPDATE workspaces SET theme=? WHERE id=?", JSON.stringify(theme), workspaceId);
+  if (options.replace) await audit(user.id, "workspace.theme", workspaceId);
   result.imported = true;
   return result;
 }

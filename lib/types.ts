@@ -342,6 +342,8 @@ export type Bootstrap = {
     mail?: boolean;
     // Legal notice and privacy policy of the operator (IMPRINT_URL, PRIVACY_URL).
     legal?: { imprint?: string; privacy?: string };
+    // The Flowplan Marketplace (lib/marketplace-config.ts); null: switched off.
+    marketplace?: import("./marketplace-config").MarketplaceClientConfig | null;
     // Settings → Über Flowplan (lib/about.ts); `update` only for administrators.
     about?: import("./about").AboutInfo & { update?: import("./update-check").UpdateStatus | null };
   };

@@ -119,6 +119,9 @@ export async function listBoardTemplates(user: Identity, pageId: unknown) {
       }
     })(),
     canDelete: row.created_by === user.id || role === "owner",
+    // For publishing it (components/marketplace.tsx); guests never do.
+    workspaceId: page.workspace_id,
+    canPublish: !guest && role !== "viewer" && (row.created_by === user.id || role === "owner"),
   }));
 }
 const saveInput = z.object({
@@ -147,6 +150,69 @@ export async function saveBoardTemplate(user: Identity, pageId: unknown, raw: un
     Date.now(),
   );
   return { id: templateId };
+}
+// ---- Portable whiteboard templates (the marketplace, lib/marketplace-package.ts) ----
+//
+//   {format: "flowplan.whiteboard-template", version: 1, name, items}
+//
+// Only what works on another instance: pictures uploaded here
+// (/api/files/…, /api/share/…) and record cards are left out and
+// counted; links to pages of this workspace are removed from the rest.
+export const BOARD_TEMPLATE_FORMAT = "flowplan.whiteboard-template";
+export function portableTemplateItems(items: TemplateDraft[]) {
+  let dropped = 0;
+  const out: TemplateDraft[] = [];
+  for (const item of items) {
+    if (item.type === "image" && !/^https:\/\//i.test(item.src || "")) {
+      dropped++;
+      continue;
+    }
+    if (item.type === "card") {
+      dropped++;
+      continue;
+    }
+    const copy: TemplateDraft = { ...item };
+    delete copy.pageId;
+    delete copy.rowId;
+    out.push(copy);
+  }
+  return { items: out, dropped };
+}
+// An own template of the workspace for publishing: its creator or an owner,
+// never a guest.
+export async function exportBoardTemplate(user: Identity, workspaceId: string, templateId: unknown) {
+  const role = await requireMember(user, workspaceId, "editor");
+  if (await isGuest(user, workspaceId)) throw new HttpError(403, "Gäste dürfen keine Vorlagen veröffentlichen.");
+  const row = await one<Row>("SELECT * FROM whiteboard_templates WHERE id=? AND workspace_id=?", z.uuid().parse(templateId), workspaceId);
+  if (!row) throw new HttpError(404, "Vorlage fehlt.");
+  if (row.created_by !== user.id && role !== "owner")
+    throw new HttpError(403, "Nur der Ersteller oder ein Besitzer darf die Vorlage verwalten.");
+  const portable = portableTemplateItems(cleanTemplateItems(JSON.parse(row.items)));
+  if (!portable.items.length) throw new HttpError(400, "Die Vorlage enthält nichts, was sich weitergeben lässt.");
+  return { name: row.name, ...portable };
+}
+// A portable template as an own template of the workspace (editors).
+export async function importBoardTemplate(user: Identity, workspaceId: string, input: { name: string; items: unknown; private?: boolean }) {
+  await requireMember(user, workspaceId, "editor");
+  const name = z.string().trim().min(1).max(200).parse(input.name);
+  const items = portableTemplateItems(cleanTemplateItems(input.items)).items;
+  if (!items.length) throw new HttpError(400, "Die Vorlage ist leer.");
+  const json = JSON.stringify(items);
+  if (json.length > 4_000_000) throw new HttpError(413, "Vorlage zu groß.");
+  if (((await one<{ n: number }>("SELECT COUNT(*) n FROM whiteboard_templates WHERE workspace_id=?", workspaceId))?.n || 0) >= 500)
+    throw new HttpError(409, "Dieser Arbeitsbereich hat schon 500 Whiteboard-Vorlagen.");
+  const templateId = id();
+  await run(
+    "INSERT INTO whiteboard_templates(id,workspace_id,name,items,created_by,visibility,created_at) VALUES(?,?,?,?,?,?,?)",
+    templateId,
+    workspaceId,
+    name,
+    json,
+    user.id,
+    input.private ? "private" : "workspace",
+    Date.now(),
+  );
+  return { id: templateId, items: items.length };
 }
 export async function deleteBoardTemplate(user: Identity, pageId: unknown, templateId: unknown) {
   const page = await boardPage(user, pageId);

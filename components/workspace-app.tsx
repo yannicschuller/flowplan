@@ -91,6 +91,7 @@ import {
 import { useOfflineRefresh } from "./offline-refresh";
 import { appCopyUnreachable } from "@/lib/offline-store";
 import SavedTemplates from "./saved-templates";
+import { MarketplaceReceiver } from "./marketplace";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
 import { commandOverlay } from "@/lib/optimistic-commands";
@@ -4800,6 +4801,16 @@ export default function WorkspaceApp({
         </div>
       </main>
       <AppPromo paused={onboarding} />
+      {/* #marketplace-import and "Vorlage aus Datei importieren" (components/marketplace.tsx). */}
+      <MarketplaceReceiver
+        config={boot.instance?.marketplace}
+        boot={boot}
+        onSwitchWorkspace={(id) => switchWorkspace(id)}
+        onImported={async (result) => {
+          await refresh().catch(() => {});
+          if (result.pageId) void openPage(result.pageId);
+        }}
+      />
       {onboarding && (
         <Onboarding
           boot={boot}
@@ -5795,6 +5806,7 @@ export default function WorkspaceApp({
           spaceId={templatesFor?.spaceId ?? boot.spaces[0]?.id}
           spaces={boot.spaces.filter((sp) => !sp.deleted_at)}
           manageWorkspace={!!boot.taxonomy?.manage}
+          marketplace={boot.workspace.guest ? null : boot.instance?.marketplace}
           // The "New page" dialog with the template chosen: the name first
           // (#213), then the page.
           onUse={async (t, meta) => {

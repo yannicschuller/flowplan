@@ -22,10 +22,12 @@ import {
   Pause,
   SidebarSimple,
   Sparkle,
+  Storefront,
   TreeStructure,
   Users,
 } from "@phosphor-icons/react";
 import { useLocale } from "../i18n";
+import { PublishDialog, useMarketplace } from "../marketplace";
 import { api } from "../ui";
 import { StatusBadge } from "../settings-ui";
 import { isTrigger, nodeSpec } from "@/lib/workflows/catalog";
@@ -168,6 +170,7 @@ export default function WorkflowView(props: WorkflowViewProps) {
             <DownloadSimple />
           </button>
         )}
+        {manage && props.workspaceId && <WorkflowPublish pageId={pageId} workspaceId={props.workspaceId} />}
         {manage && (
           <div className="wf-switch">
             {phone ? (
@@ -656,6 +659,29 @@ function statusWord(s: string, t: (de: string, en: string) => string) {
   if (s === "failed") return t("fehlgeschlagen", "failed");
   if (s === "cancelled") return t("abgebrochen", "cancelled");
   return t("läuft …", "running …");
+}
+
+// "Im Marketplace veröffentlichen …" (components/marketplace.tsx): only for
+// those who manage the workflow, when the marketplace is on.
+function WorkflowPublish({ pageId, workspaceId }: { pageId: string; workspaceId: string }) {
+  const t = useStableT();
+  const config = useMarketplace();
+  const [open, setOpen] = useState(false);
+  if (!config) return null;
+  return (
+    <>
+      <button
+        type="button"
+        className="icon-button wf-export"
+        aria-label={t("Im Marketplace veröffentlichen …", "Publish to the marketplace …")}
+        title={t("Im Marketplace veröffentlichen …", "Publish to the marketplace …")}
+        onClick={() => setOpen(true)}
+      >
+        <Storefront />
+      </button>
+      {open && <PublishDialog config={config} source={{ kind: "workflow", workspaceId, id: pageId }} onClose={() => setOpen(false)} />}
+    </>
+  );
 }
 
 // The workflow as a JSON file (GET /api/workflows/{id}/export): never secrets.

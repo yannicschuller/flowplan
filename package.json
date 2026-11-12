@@ -30,7 +30,8 @@
     "test:visual": "playwright test --config playwright.visual.config.ts",
     "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots",
     "help-docs": "node scripts/help-docs.mjs",
-    "move": "node scripts/move.mjs"
+    "move": "node scripts/move.mjs",
+    "marketplace-official": "node --import tsx scripts/marketplace-official.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

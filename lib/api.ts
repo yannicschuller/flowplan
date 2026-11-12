@@ -167,6 +167,7 @@ import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
+import { marketplaceConfig } from "./marketplace-config";
 import { incidentThreshold, notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
 import { saveShortcuts, userShortcuts } from "./user-shortcuts";
@@ -402,6 +403,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       drawio: drawioConfig(),
       mail: !!mailConfig(),
       legal: legalLinks(),
+      // The marketplace's origin and this version (lib/marketplace-config.ts); null: off.
+      marketplace: await marketplaceConfig(),
       // Settings → Über Flowplan; a newer release for administrators.
       about: { ...aboutInfo(agent), ...(user.isAdmin ? { update: knownUpdate() } : {}) },
     },
