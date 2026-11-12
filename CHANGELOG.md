@@ -1,6 +1,199 @@
 # Changelog
 
-All releases of Flowplan, newest first. Generated from the commits by the release workflow.
+All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
+
+## v0.9.4 – 2026-11-12
+
+### Security
+
+- Task notices only reach assignees who may read the task.
+- Lists of where tags and properties are used only show titles you may read.
+- Workspace tags from archives only by owners; tagging several journal days at once needs the PIN.
+- A deleted account leaves no calendar tokens, keys, grants or settings behind.
+
+### New
+
+- Flowplan Marketplace: publish templates, workflows, whiteboards, appearances and link rules, and take them over with one click – the instance never connects to the marketplace itself.
+- Print and PDF: options before printing (cover, tags, properties, page numbers, fonts, links) and print presets for you or the whole workspace ([#215](https://github.com/yannicschuller/flowplan/issues/215)).
+- New “Page break” block for print, PDF and Word ([#216](https://github.com/yannicschuller/flowplan/issues/216)).
+- Export to the clipboard, and for Jira (wiki markup) and Confluence (storage format) ([#220](https://github.com/yannicschuller/flowplan/issues/220), [#221](https://github.com/yannicschuller/flowplan/issues/221)).
+- What’s new: after an update Flowplan shows once what changed – can be turned off under Appearance & language ([#223](https://github.com/yannicschuller/flowplan/issues/223)).
+- Meeting notes with /meet: recording including system sound, a summary with citations, tasks, API and MCP ([#199](https://github.com/yannicschuller/flowplan/issues/199)).
+- My tasks: your own tasks without a document, filters, a badge for new tasks, completed tasks in the journal and a “Create task” workflow step ([#208](https://github.com/yannicschuller/flowplan/issues/208)).
+- Tasks have five states: open, in progress, done, cancelled, deferred – pick one with a right click or long press ([#201](https://github.com/yannicschuller/flowplan/issues/201)).
+- Automatic links: workspace rules turn ticket IDs into links while you type and paste ([#202](https://github.com/yannicschuller/flowplan/issues/202)).
+- Workspace appearance: accent colour, background tint and typefaces, uploaded ones too ([#196](https://github.com/yannicschuller/flowplan/issues/196)).
+- The page icon can sit small next to the title ([#214](https://github.com/yannicschuller/flowplan/issues/214)).
+- Menu on text selection: a new setting, by default only on a computer; copy a calculation’s result with one click ([#200](https://github.com/yannicschuller/flowplan/issues/200)).
+- Publications can publish new sub-pages automatically.
+- The keyboard shortcuts overview has a search field ([#204](https://github.com/yannicschuller/flowplan/issues/204)).
+- Apps: assigned database records in the overview, the calendar widget, Spotlight and Siri.
+
+### Improved
+
+- Sign-in shows the fastest way first, split in two on wide screens.
+- Phones: one “More” sheet with the account, the whole page title in the top bar, follow, favourite and share in the ⋯ menu ([#197](https://github.com/yannicschuller/flowplan/issues/197)).
+- Favourite records show their own icon in the sidebar ([#198](https://github.com/yannicschuller/flowplan/issues/198)).
+- Inbox notices in the reader’s language ([#206](https://github.com/yannicschuller/flowplan/issues/206)).
+- Backups keep the workspace’s link rules and appearance.
+- CSV import adds missing select options and reads common number and date formats.
+- Flowplan’s own Markdown ZIP imports again with its page tree and databases; Git sync and ZIP import handle files above 10 MB.
+- Search finds words with formatting inside and short queries in any script; people, records and sprints sort by name.
+- PDF viewer: smooth two-finger zoom.
+- The home page and dashboards fill the gaps below short widgets automatically ([#218](https://github.com/yannicschuller/flowplan/issues/218)).
+- The arrow after links to the web can be turned off ([#217](https://github.com/yannicschuller/flowplan/issues/217)).
+- The sign-in page loads considerably less JavaScript.
+
+### Bug fixes
+
+- “@” and “/” open their menus with Android keyboards too ([#207](https://github.com/yannicschuller/flowplan/issues/207)).
+- The text menu no longer covers the formatting toolbar ([#210](https://github.com/yannicschuller/flowplan/issues/210)).
+- Workflows: a failed check when activating can be run again ([#209](https://github.com/yannicschuller/flowplan/issues/209)).
+- A new page from a template keeps the title you typed ([#213](https://github.com/yannicschuller/flowplan/issues/213)).
+- Dialogs keep all four rounded corners while they scroll ([#205](https://github.com/yannicschuller/flowplan/issues/205)).
+- AI: no temperature for models that only accept the default ([#222](https://github.com/yannicschuller/flowplan/issues/222)).
+- Offline edits survive a briefly unreachable server.
+- Restored records keep their history; restoring a page no longer brings back sub-pages trashed before it.
+- Forms accept answers again when a required property has an access rule.
+- A very long search query no longer runs the server out of memory.
+- Times in date fields show as “08:30”; shape fill colours can be picked again.
+- Phones: calendar entries show their time and title, long page titles wrap, the journal day bar stays on screen.
+- Dropdown lists in dialogs no longer cause a scrollbar ([#219](https://github.com/yannicschuller/flowplan/issues/219)).
+- In Safari and the apps, no text shows through above dialog headings any more.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes 0.9.4: marketplace, print options, page break, clipboard and Jira/Confluence export, gap-free home ([28cdf6b](https://github.com/yannicschuller/flowplan/commit/28cdf6b742f9ec40fb3783b4f35a4f3ba8b55ecf))
+- Dialogs: no content showing through above the sticky heading in WebKit ([0b92789](https://github.com/yannicschuller/flowplan/commit/0b92789a9231bf36d3877fb60499e00282a1cc41))
+- Visual baselines from ubuntu-latest ([168869d](https://github.com/yannicschuller/flowplan/commit/168869d93df9c833458c3c62661a6860766c90fd))
+- Sign-in page: server message table, backup restore and marketplace receiver load on demand ([eb16aab](https://github.com/yannicschuller/flowplan/commit/eb16aab1fba0811e17187c59120c6a68c90ef7fe))
+- Marketplace packages: workflow-meta.json for the marketplace's workflow viewer ([927922a](https://github.com/yannicschuller/flowplan/commit/927922a704252b46c00b88106d70fd520e2fed10))
+- Help docs: What's new after updates (#223) ([f2d7517](https://github.com/yannicschuller/flowplan/commit/f2d7517c042e4a63149ed146370265098c223c6a))
+- Help docs: print options, page break, clipboard and Jira/Confluence export, marketplace instance ([452570e](https://github.com/yannicschuller/flowplan/commit/452570edccca73ec9f696c498a3240c952e50a1d))
+- "Neu in Flowplan": release notes once after a server update (#223) ([97827e7](https://github.com/yannicschuller/flowplan/commit/97827e7ce74fd2a3bceb3a028459fe9427743d0c))
+- Release notes: curated notes per version lead the release and CHANGELOG (#223) ([0171b86](https://github.com/yannicschuller/flowplan/commit/0171b8627a310801cfb47236a9814a36ca90d1d8))
+- Marketplace links tell the marketplace which instance they come from ([396e057](https://github.com/yannicschuller/flowplan/commit/396e057cf096bb31e995c2f6eab9b7429e9d5b96))
+- Export dialog: copy text formats to the clipboard, Jira and Confluence formats (#220, #221) ([e6e16ff](https://github.com/yannicschuller/flowplan/commit/e6e16ff35efacd984b948a35e7df7ed8b5ae5fd2))
+- Dialogs no longer scroll or show a scrollbar while a select list is open (#219) ([8376276](https://github.com/yannicschuller/flowplan/commit/8376276fffde753d1eec2edd92760c5979bbd3ed))
+- Help docs: external link icon, gap-free start page (#217, #218) ([3cc5597](https://github.com/yannicschuller/flowplan/commit/3cc5597c97c3192d0a2d7276dffffc48c1d0da35))
+- Print options: browser spec, editing buttons stay off paper (#215, #216) ([9075924](https://github.com/yannicschuller/flowplan/commit/90759240d9d186bb737671e0402cee65e35c6807))
+- Setting to hide the arrow after external links (#217) ([e872f82](https://github.com/yannicschuller/flowplan/commit/e872f8271ded29b7d150279bc129d3edf6248ad2))
+- Start page and dashboards fill gaps below short widgets (#218) ([257bce7](https://github.com/yannicschuller/flowplan/commit/257bce7d8c2a903edc56011510f02a2599f0ff8e))
+- Export pages and records as Jira wiki markup and Confluence storage format (#221) ([0a372b1](https://github.com/yannicschuller/flowplan/commit/0a372b16b6641b1a2b37f6a841eed9aca368e6ae))
+- Help docs: Marketplace ([dc3dd98](https://github.com/yannicschuller/flowplan/commit/dc3dd98aaccaba4517fa1a34ae4c2591cd50a25a))
+- Official marketplace packages: kebab-case file names (the marketplace's slug) ([37c2638](https://github.com/yannicschuller/flowplan/commit/37c2638700b1947f44ac4e6a2e67565d8dda5093))
+- Marketplace: publish templates, workflows, whiteboards, looks and link rules; take them over from the marketplace ([441fc52](https://github.com/yannicschuller/flowplan/commit/441fc525ccadc7a40639396119ab893847dbc0ca))
+- AI: no temperature for models that accept only the default (#222) ([693ca62](https://github.com/yannicschuller/flowplan/commit/693ca62599a3f3aa69aefe2ed6da287be112d8a7))
+- Page break block (#216) ([5aadc46](https://github.com/yannicschuller/flowplan/commit/5aadc463d954ee035a94e448923a571e7d199488))
+- Print / PDF options with print presets (#215) ([e707a07](https://github.com/yannicschuller/flowplan/commit/e707a07c04ee5882f0d406f8adedf1c6d91bcea1))
+- Fix circular import of TASK_TEXT_MAX between doc-tasks and personal-tasks ([b67a6b3](https://github.com/yannicschuller/flowplan/commit/b67a6b3af01b88c14c1974adea61c055b8e5f39d))
+- Help docs: page icon next to the title (#214) ([b07a4b6](https://github.com/yannicschuller/flowplan/commit/b07a4b6b06518e028e4ec9f0281845225254661d))
+- Page icon next to the title: new appearance setting (#214) ([abc6a06](https://github.com/yannicschuller/flowplan/commit/abc6a06c7d431cbd8326143f2578aa5c476d2147))
+- Help docs: own tasks, Create task node (#208) ([6344253](https://github.com/yannicschuller/flowplan/commit/63442531a8e05a54a3ff0df6ec3337e3250b5922))
+- My tasks: own tasks without a document, filter, new-task badge, completed tasks in the journal, "Create task" workflow node (#208) ([b26f57e](https://github.com/yannicschuller/flowplan/commit/b26f57e78e2fadcdcf6fa52d8505cf5b0dae2866))
+- Ask AI: equal full-text ranks no longer decided by random page ids ([d198a80](https://github.com/yannicschuller/flowplan/commit/d198a80324bb21f57c77084f4f6ee371bdf9667e))
+- Help docs: template titles (#213) ([ec4ef55](https://github.com/yannicschuller/flowplan/commit/ec4ef55762520e7aba0dd18ba5b49b3781fc89e3))
+- New page from a template: the name typed stays, the template's only as a start ([ab236f4](https://github.com/yannicschuller/flowplan/commit/ab236f421ed3acf375e84e26db2cbc1c42e0c905))
+- Help docs: toolbar and text menu (#210) ([4ecfe20](https://github.com/yannicschuller/flowplan/commit/4ecfe2038ca9be3ff5dcd1d7427ee99a04331b6e))
+- Text menu no longer covers the formatting toolbar (#210) ([fed3442](https://github.com/yannicschuller/flowplan/commit/fed3442526d3da6cbe206a320cfa73573e8fa630))
+- Editor: "@" and "/" open their menus with Android keyboards (#207) ([0b0fc25](https://github.com/yannicschuller/flowplan/commit/0b0fc25e131406cc43f685c2575c88eea0175af4))
+- Workflows: a failed check in "Activate the workflow" can be run again (#209) ([27e639a](https://github.com/yannicschuller/flowplan/commit/27e639a8806a7344a191c27eda1bd151d8f64531))
+- Pages from a template: the given title wins, the template's name only as fallback ([40286e8](https://github.com/yannicschuller/flowplan/commit/40286e8d5be39fa8f37ccc04cf8f77378f026fd7))
+- French: typographic apostrophe in the new-device notice; browser specs on demand only ([264c82d](https://github.com/yannicschuller/flowplan/commit/264c82d5b2784ef46535c9f1a734e1f7f5d17bab))
+- CI: the browser specs in a workflow of their own ([252f444](https://github.com/yannicschuller/flowplan/commit/252f444cfceacaad2eeeeb2f357101113c5f8da5))
+- Dialogs keep all four corners rounded while they scroll (#205) ([7b6bec9](https://github.com/yannicschuller/flowplan/commit/7b6bec9c5a31ce20d06bebe67e75e5b4a23e01ce))
+- Help docs: settings in the archive ([1abea15](https://github.com/yannicschuller/flowplan/commit/1abea15ab8db6e565d184dc8452820fd1765be95))
+- Backups keep the workspace's link rules and look, checked like the settings ([b1b3c00](https://github.com/yannicschuller/flowplan/commit/b1b3c00d01907d2d349a57aaf57a66f363e6f525))
+- Inbox: the journal PIN reset notice in the reader's language ([cd72f32](https://github.com/yannicschuller/flowplan/commit/cd72f32946839fc39a2955fe08c7c920d5ae8b71))
+- Inbox: the new-device sign-in notice in the reader's language (#206) ([2251aff](https://github.com/yannicschuller/flowplan/commit/2251aff3f8a331053148d3121b15857a3bb65ad9))
+- Search: a long query no longer runs the server out of memory ([f227bfd](https://github.com/yannicschuller/flowplan/commit/f227bfdaee3867d46c08c52f34fca2ec52d6f71f))
+- Tests: session-ended spec recognises the new sign-in page ([1ffe1d5](https://github.com/yannicschuller/flowplan/commit/1ffe1d5e3c4d3b1acf44573e7385786e05d8b6ee))
+- Help docs: shortcuts search (#204) ([98a0995](https://github.com/yannicschuller/flowplan/commit/98a099528dca3b4cb84678a7aaab47d2402306a8))
+- Keyboard shortcuts: search field, and all four corners rounded (#204, #205) ([1d24a08](https://github.com/yannicschuller/flowplan/commit/1d24a08a802717c3a9ecbef4f0929805058e6b9a))
+- Tests: read-mode spec finds reading mode in the phone's page menu ([84a93b4](https://github.com/yannicschuller/flowplan/commit/84a93b4f0e46d548a86567c760fa9e2dd0047568))
+- Visual baselines from ubuntu-latest ([f29e733](https://github.com/yannicschuller/flowplan/commit/f29e733c03ddc14a04a974dc0002430c5be780e7))
+- Help docs: automatic links (#202) ([87dc1d5](https://github.com/yannicschuller/flowplan/commit/87dc1d5ab2886793316d48a74c9f8e71ddd0be40))
+- Automatic links: safe with collaboration, Markdown marks and pasted links at the end (#202) ([a393624](https://github.com/yannicschuller/flowplan/commit/a39362438094fdbf53a85b2e99c506b37e35be18))
+- Sign-in: load the passkey library only when a passkey is used ([e48f9df](https://github.com/yannicschuller/flowplan/commit/e48f9dfc57b436f0e04bc656c5caef9919b06685))
+- Help docs: task statuses (#201) ([8b309bb](https://github.com/yannicschuller/flowplan/commit/8b309bbf9c6b99c0dfdf9bea197f726a7e081ad2))
+- Task boxes show their state; right click or long press picks one (#201) ([17a4dcc](https://github.com/yannicschuller/flowplan/commit/17a4dcc9a542ad839596ba93899c5e204ec6f119))
+- Automatic links: workspace rules turn ticket IDs into links while typing and pasting (#202) ([67b1062](https://github.com/yannicschuller/flowplan/commit/67b10625f6e4ea2a59bdaf85ba6b88ed93b38cb6))
+- Tests: iOS print spec runs in Chromium with the iPhone's profile ([cafb502](https://github.com/yannicschuller/flowplan/commit/cafb502538379985d7d613e6f3c7c47ae2cf680e))
+- Tasks get five states: open, in progress, done, cancelled, deferred (#201) ([57ed620](https://github.com/yannicschuller/flowplan/commit/57ed6206cc47b452c4eccdff4ef80b3b89547164))
+- Phones: a line break lost in the touch-target rules ([da9486f](https://github.com/yannicschuller/flowplan/commit/da9486f8efd3ae5d9cea566473fc632251094eb5))
+- CI: the browser specs on eight runners against the dev server ([c1ef9a2](https://github.com/yannicschuller/flowplan/commit/c1ef9a2d128367a7bd5f573756d7d430aa10142e))
+- CI: install Chromium from Playwright's CDN; Ubuntu packages best-effort ([a1350b6](https://github.com/yannicschuller/flowplan/commit/a1350b6e3016b0d8c53efac0035f690157bda83d))
+- Help docs: publish new sub-pages automatically ([011208f](https://github.com/yannicschuller/flowplan/commit/011208fe0aa5de4d4df8da0ffc8963631a180f86))
+- Publications: option to publish new sub-pages automatically ([927e32e](https://github.com/yannicschuller/flowplan/commit/927e32eadf0ddc58937dbef18a2efa7a77387542))
+- Tests: page tree autoscroll spec drags in a space of its own ([971c1da](https://github.com/yannicschuller/flowplan/commit/971c1da720d35dc68aac9691e1426f4d4f095df6))
+- Tests: optimistic-cells spec unfolds a record's properties on the phone ([24bc613](https://github.com/yannicschuller/flowplan/commit/24bc613068473ac9eef8da4e8ed2427caf21f995))
+- Tests: my-tasks spec waits for the page to catch up with the server ([549d3ef](https://github.com/yannicschuller/flowplan/commit/549d3ef5ad82a662337fdbf0d6833d28fad326c2))
+- Help docs: menu on text selection, copy a calculation result ([f7635c0](https://github.com/yannicschuller/flowplan/commit/f7635c03343108fad8e65ca06284a90a68ee82d2))
+- Text menu: copy a calculation's result with a button at the end of its row ([c8b4a2a](https://github.com/yannicschuller/flowplan/commit/c8b4a2af993a641463cd2f46c13822cb9c189653))
+- Text menu on selection: new setting, by default only on a computer (#200) ([dc4e2fd](https://github.com/yannicschuller/flowplan/commit/dc4e2fd26f390a11fa549227d5f50f3102330b7a))
+- Highlights: muted colours in the dark theme, room around the letters ([343580e](https://github.com/yannicschuller/flowplan/commit/343580efe0934556708f811826e6b5ea26a382dd))
+- Help docs: meeting notes (#199) ([b8d9fb3](https://github.com/yannicschuller/flowplan/commit/b8d9fb39cc9369cb8c4454b9c06e6474d9baeda9))
+- Meeting blocks remind when their calendar event starts; empty status for blocks not recorded yet ([92284a4](https://github.com/yannicschuller/flowplan/commit/92284a46dd51af60b2fd9f029ea835b0ffa3dfc3))
+- CI: install Chromium through the runners' Ubuntu mirror, with retries ([3593016](https://github.com/yannicschuller/flowplan/commit/3593016155026577eb23b9315f4c7901845fc283))
+- Meeting block: the recording survives the editor being rebuilt, passages highlighted after a chip click, consent panel layout; guest and private-space tests ([191f388](https://github.com/yannicschuller/flowplan/commit/191f388543a674f7165de12815a21fcf0c0559f8))
+- Slash menu follows the "/" when the page scrolls under it ([3684d0e](https://github.com/yannicschuller/flowplan/commit/3684d0e8b0b7c009d41b3419424b761bd737fe21))
+- Slash menu: re-placed when iOS reports the keyboard late ([6c79630](https://github.com/yannicschuller/flowplan/commit/6c79630682befedcae7921bff603949d0f5b2b61))
+- Meeting notes: OpenAPI (Meetings, token permission) and regenerated SDKs, error messages and French/Chinese texts ([084652b](https://github.com/yannicschuller/flowplan/commit/084652b495a57fc5699b58ee6860f743a2c5a34c))
+- Tests: image copy spec loads the page with a full navigation ([4bc8b61](https://github.com/yannicschuller/flowplan/commit/4bc8b610de9707e6bedf43324078729612f1e19b))
+- Meeting block in the editor: /meet (/besprechung), recording with system sound, tabs, citation chips, ask; workspace meeting settings ([2985c0e](https://github.com/yannicschuller/flowplan/commit/2985c0e3c7ac2f1db907e9e8e0adcd4d58eac0be))
+- Tests: idempotency spec opens comments with the page's own button ([ca91e1f](https://github.com/yannicschuller/flowplan/commit/ca91e1fd97dcb22ce911de9c6f0d4dd21b655240))
+- Phones: folded record properties and saved collections get 44 px touch targets ([3f83ac7](https://github.com/yannicschuller/flowplan/commit/3f83ac7f19ea0d6b97b581b6764b72170b97198e))
+- Meeting notes: tests for citations, echoes, tasks, flow, retention, consent, rights, tokens, API and MCP ([95d986c](https://github.com/yannicschuller/flowplan/commit/95d986c6b5150e17e7c49d31525aa544cf2226a3))
+- Meeting notes: schema 103, meeting block nodes, server processing, API and MCP; API tokens get an opt-in AI and transcription permission ([57a2258](https://github.com/yannicschuller/flowplan/commit/57a2258a6d66e9b6c431b690e6417066f36d2998))
+- Tests: quote the end column in the account deletion test for PostgreSQL ([6811a9f](https://github.com/yannicschuller/flowplan/commit/6811a9f1aa94f63a54ae44c475c0c1a0b15b4990))
+- Tests: export spec exports a space of its own ([669e932](https://github.com/yannicschuller/flowplan/commit/669e932cbc5a26fcbd748ebf9eb9b8143b10ca86))
+- Favourite records show their own icon in the sidebar (#198) ([3f397ea](https://github.com/yannicschuller/flowplan/commit/3f397eabda7df23ef75c53fe2f613396b57080f5))
+- Help docs: sign-in, phone sidebar and top bar, CSV import, restore, import, account deletion, widgets, appearance ([b93661e](https://github.com/yannicschuller/flowplan/commit/b93661e107bb4461d54b097b3184e3af13031aa6))
+- Tests: desktop sign-in and on-device AI specs independent of the run ([2781fa1](https://github.com/yannicschuller/flowplan/commit/2781fa14bd835c0f81d94af4b960c588403124dd))
+- Workspace appearance settings: stable font list fetch, neutral preview code ([fdd6f18](https://github.com/yannicschuller/flowplan/commit/fdd6f18d9c5c31f38970f750a0b4ef90f1046f25))
+- Tests: demo spec starts the demo at /demo ([41d2724](https://github.com/yannicschuller/flowplan/commit/41d272455b56450474799568d4f2949195702d3c))
+- Sign-in shows the fastest way first ([7c02995](https://github.com/yannicschuller/flowplan/commit/7c02995bfae53bf5717ed8d811ba775f5f9cfce9))
+- Phones show the whole page title in the top bar ([1ccf7d4](https://github.com/yannicschuller/flowplan/commit/1ccf7d46d78f98adae958737065be774645d6b9c))
+- Tests: board spec unfolds a record's properties on the phone ([8300a32](https://github.com/yannicschuller/flowplan/commit/8300a325b4e1bf2f5601b52b58dbd12b90b300e6))
+- Workspace appearance: accent colour, background tint and typefaces (#196) ([c8b10cf](https://github.com/yannicschuller/flowplan/commit/c8b10cf7f6f143fb2d4d3134b7c7278bbb16894c))
+- Tests: notebook and PDF ink browser specs run again ([807aff0](https://github.com/yannicschuller/flowplan/commit/807aff05830fc19273e0d37700a41e441b5159a1))
+- PDF viewer: smooth two-finger pinch zoom anchored at the fingers, as in notebooks ([cafebff](https://github.com/yannicschuller/flowplan/commit/cafebff963f497915b384ca5f0f269c8f2b5b742))
+- Shape fill colours can be picked again ([692c734](https://github.com/yannicschuller/flowplan/commit/692c734e2889d2ae11dae9589160c2bbda8f08ae))
+- Notebook recordings load again where the recordings route starts the server ([a950d13](https://github.com/yannicschuller/flowplan/commit/a950d13f91c93cb5ec579b0203d9a29a114b774c))
+- Whiteboard on phones: long tool names stay inside their tiles ([ba13eca](https://github.com/yannicschuller/flowplan/commit/ba13eca21ec95ef6d18183732a5a66879575098e))
+- Phones: calendar month entries show their time and title ([e04f2ac](https://github.com/yannicschuller/flowplan/commit/e04f2ac47939a577fb75dccedf57c08ee0c4ce7c))
+- Date fields show times as "08:30", not "08:30:00.000" ([317a035](https://github.com/yannicschuller/flowplan/commit/317a035dbfc9a05c864dc06aedcbaef9ee67fa55))
+- Shape panel: line styles and measuring tools fit in every language ([b75a83d](https://github.com/yannicschuller/flowplan/commit/b75a83d93bda268f52f886bba4beaa62359a1c14))
+- Phones: the journal day bar stays inside the screen ([6d1c877](https://github.com/yannicschuller/flowplan/commit/6d1c87717f724e2d3087abfe3ac6e5154725dc79))
+- Phones: long page titles wrap instead of being cut off ([2333df9](https://github.com/yannicschuller/flowplan/commit/2333df92243347143b0e180b36fa540fa12e5a7d))
+- A deleted account keeps no calendar tokens, keys, grants or settings ([4436de4](https://github.com/yannicschuller/flowplan/commit/4436de426ea6c2f1a9332aeb3c72331ccc06a03a))
+- CSV import adds missing select options instead of storing unknown values ([470e13b](https://github.com/yannicschuller/flowplan/commit/470e13b662bbf5ba291247b60ced5c3c7498309f))
+- Mobile: account menu merged into "Mehr" in the sidebar's profile row (#197) ([8cf6008](https://github.com/yannicschuller/flowplan/commit/8cf60088043a01be066aae4d8861e4168f6adab0))
+- Large-attachment Git test cleans up after itself ([27e884a](https://github.com/yannicschuller/flowplan/commit/27e884a3292e4b04e12ce1a86a70fa6dc8a7fb61))
+- Offline edits survive a briefly unreachable server and conflicts found while resolving one ([14c4acf](https://github.com/yannicschuller/flowplan/commit/14c4acf18bb613aabbfe4454efdd6e5166c8db77))
+- Flowplan's own Markdown ZIP imports with its page tree, titles and databases ([df2ab26](https://github.com/yannicschuller/flowplan/commit/df2ab26aa05d6893d773217e78c4223723c4b653))
+- Tag and property usage lists only titles the owner may read ([75461c4](https://github.com/yannicschuller/flowplan/commit/75461c44674d15e09e206c72c0096e0aa0e6fbb9))
+- Test the "is not empty" filter on formula errors with its real operator ([984013e](https://github.com/yannicschuller/flowplan/commit/984013ea5b12ca49c3e5c814afc65eb57617c4b3))
+- CSV import keeps empty numbers empty and reads common number and date writings ([706be02](https://github.com/yannicschuller/flowplan/commit/706be0269c99eafebd8bb03198e924220189f265))
+- Workspace tags from archives only by owners; batch tagging needs the PIN ([727c9df](https://github.com/yannicschuller/flowplan/commit/727c9dfebdedeb5a0793acc8d9391c3d38a9ca32))
+- Copied, restored and templated databases get a ticket prefix of their own ([8d17b9f](https://github.com/yannicschuller/flowplan/commit/8d17b9fc367d8efb4c0b1559fd0a51d0edf7936e))
+- Sort and search people, related records and sprints by name ([ccfda3b](https://github.com/yannicschuller/flowplan/commit/ccfda3b2f9a18e83a135a0b566bcafb49b6b9f8b))
+- Search finds words with formatting inside them and short non-ASCII queries in any case ([d58cd0f](https://github.com/yannicschuller/flowplan/commit/d58cd0fdcaf1867dd2e447da8a3f99a17cf7cc50))
+- Task notices only reach assignees who may read the task ([eb36820](https://github.com/yannicschuller/flowplan/commit/eb36820f1b5c9acf4800058da34be2049c2ecfed))
+- Each copy of a page sits directly after its source ([11e851b](https://github.com/yannicschuller/flowplan/commit/11e851b604192c577d7b0128f715f4959deb041b))
+- Filters skip records whose formula shows #DIV/0 or #RELATION ([f8060cf](https://github.com/yannicschuller/flowplan/commit/f8060cfa92077027f51a0285f7fb4c5257324571))
+- Git sync and ZIP import handle files above 10 MB ([7203e0b](https://github.com/yannicschuller/flowplan/commit/7203e0b43484711ee92bc2478d5b6c40ec7b4160))
+- Restored records keep their history and restore despite deleted links ([c60d3af](https://github.com/yannicschuller/flowplan/commit/c60d3af9407e86ee817f043ce91e5289cc983c96))
+- Restoring a page no longer revives sub-pages trashed before it ([faa9387](https://github.com/yannicschuller/flowplan/commit/faa93870916743783f346f9fd25f2d0bdc7c67ae))
+- Apps: assigned records in the overview, calendar widget and Spotlight ([5b1db27](https://github.com/yannicschuller/flowplan/commit/5b1db2754790d1b25db452865faabe49461bc9f4))
+- Survey results list ranking options nobody placed last, without an average ([75c5ed6](https://github.com/yannicschuller/flowplan/commit/75c5ed650280a18de84e95f1204be472db855187))
+- Forms accept answers again when a required property got an access rule ([7e213a8](https://github.com/yannicschuller/flowplan/commit/7e213a8d505201e25786029d47a904a35fedf4e3))
+- An invalid journal date answers 400 instead of 500 ([f3fb0ec](https://github.com/yannicschuller/flowplan/commit/f3fb0ec5a4c170d2bcce60cc5f5730a24f321ab3))
+- Sprint actions on a page that is not a database answer 400 instead of 500 ([d124efe](https://github.com/yannicschuller/flowplan/commit/d124efeb79a8d0422d90ed254944ae57f12e8b7d))
+- Text style menus leave the text in view ([efccd40](https://github.com/yannicschuller/flowplan/commit/efccd40ea4104e081f9f58d60ad73dc32d7b40ae))
+
+</details>
 
 ## v0.9.3 – 2026-11-11
 
