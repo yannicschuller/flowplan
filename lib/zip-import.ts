@@ -22,11 +22,16 @@ import type { Field, Identity, Space } from "./types";
 import { maxImportEntries, maxImportPages, tooManyPages } from "./importers/types";
 import { documentAnchors, findAnchor, pendingAnchor, resolvePendingAnchors } from "./import-anchors";
 import { forEachAsync } from "./each-async";
+import { cleanHtmlAsync } from "./document-server";
+import { isNotionHtml, notionHtmlPage } from "./importers/notion-html";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
 // page holds its subpages; files referenced from Markdown become attachments;
-// Excalidraw and draw.io drawings become whiteboards.
+// Excalidraw and draw.io drawings become whiteboards. Notion's HTML export
+// (#234) is read the same way: its .html pages become documents
+// (lib/importers/notion-html.ts) – with toggles, callouts and colours –, the
+// CSV beside a database's HTML table the database.
 export const MAX_IMPORT_ROWS = 5000;
 const NOTION_ID = /\s+([0-9a-f]{32})$/i;
 const mimeTypes: Record<string, string> = {
@@ -53,14 +58,14 @@ type Node = {
 export function exportTitle(name: string) {
   return (
     name
-      .replace(/\.(md|csv|excalidraw|drawio)$/i, "")
+      .replace(/\.(md|html?|csv|excalidraw|drawio)$/i, "")
       .replace(/_all$/i, "")
       .replace(NOTION_ID, "")
       .trim() || "Ohne Titel"
   );
 }
 function nodeKey(path: string) {
-  return path.replace(/\.(md|csv|excalidraw|drawio)$/i, "").replace(/_all$/i, "");
+  return path.replace(/\.(md|html?|csv|excalidraw|drawio)$/i, "").replace(/_all$/i, "");
 }
 
 // Notion puts a large export into several inner ZIP files.
@@ -285,19 +290,28 @@ export async function importZip(
     return { rootIds: result.rootIds, pages: result.pages + result.folders, rows: 0, files: result.files };
   }
   // Notion exports "Name.csv" (current view) and "Name_all.csv" (all rows).
+  // HTML pages count where they are Notion's, or where the ZIP has no
+  // Markdown at all; a database's HTML table gives way to its CSV.
   const nodes = new Map<string, Node>();
+  const withMarkdown = [...entries.keys()].some((path) => /\.md$/i.test(path));
+  const isHtml = (path: string) => /\.html?$/i.test(path);
   for (const path of entries.keys()) {
     const kind = /\.md$/i.test(path)
       ? "document"
-      : /\.csv$/i.test(path)
-        ? "database"
-        : /\.(excalidraw|drawio)$/i.test(path)
-          ? "whiteboard"
-          : null;
+      : isHtml(path)
+        ? !withMarkdown || isNotionHtml(entries.get(path)!.subarray(0, 64 * 1024).toString("utf8"))
+          ? "document"
+          : null
+        : /\.csv$/i.test(path)
+          ? "database"
+          : /\.(excalidraw|drawio)$/i.test(path)
+            ? "whiteboard"
+            : null;
     if (!kind) continue;
     const key = nodeKey(path);
     const existing = nodes.get(key);
-    if (existing && !(kind === "database" && /_all\.csv$/i.test(path)))
+    const replaces = existing && ((kind === "database" && (/_all\.csv$/i.test(path) || isHtml(existing.path))) || (kind === "document" && !isHtml(path) && isHtml(existing.path)));
+    if (existing && !replaces)
       continue;
     nodes.set(key, {
       key,
@@ -309,6 +323,16 @@ export async function importZip(
   }
   const text = (path: string) =>
     entries.get(path)!.toString("utf8").replace(/^﻿/, "");
+  // Notion's HTML pages, read once: their title and content.
+  const htmlPages = new Map<string, ReturnType<typeof notionHtmlPage>>();
+  const htmlPage = (path: string) => {
+    if (!htmlPages.has(path)) htmlPages.set(path, notionHtmlPage(text(path)));
+    return htmlPages.get(path)!;
+  };
+  for (const node of nodes.values())
+    if (node.kind === "document" && isHtml(node.path)) node.title = (htmlPage(node.path).title || node.title).slice(0, 500);
+  // The file of each document (record pages leave the list of nodes below).
+  const documentPath = new Map([...nodes.values()].filter((node) => node.kind === "document").map((node) => [node.key, node.path]));
   const layout = flowplanLayout(entries, nodes, text);
   // Markdown pages inside a database folder are its records.
   const rowPages = new Map<string, string[]>(layout?.rowPages);
@@ -441,6 +465,18 @@ export async function importZip(
         uploaded.set(target, url);
         return url;
       };
+    // A Notion HTML page: its links and images resolved like Markdown's,
+    // the result sanitised; what cannot be resolved loses its address.
+    const htmlDocument = (path: string, pageId: string, self?: string) => {
+      const resolve = resolver(path, pageId, self);
+      return cleanHtmlAsync(htmlPage(path).html, async (tagName, attribs) => {
+        const key = tagName === "a" ? "href" : tagName === "img" ? "src" : null;
+        if (!key || !attribs[key]) return { tagName, attribs };
+        const target = await resolve(attribs[key], tagName === "a" ? "link" : "image");
+        const { [key]: _dropped, ...rest } = attribs;
+        return { tagName, attribs: target ? { ...rest, [key]: target } : rest };
+      });
+    };
     const manageProperties = await canManageScope(user, workspaceId, spaceId),
       people = await memberByName(workspaceId);
     let rowCount = 0,
@@ -457,6 +493,12 @@ export async function importZip(
         bytesAdded = imageBytes.bytes;
         boardImages += urls.size;
         await writeWhiteboard(pid, boardState(boards.get(node.key)!, urls));
+        continue;
+      }
+      if (node.kind === "document" && isHtml(node.path)) {
+        const converted = documentAnchors(await htmlDocument(node.path, pid, pid), node.title, false);
+        anchors.set(pid, converted.anchors);
+        documents.push({ pid, html: converted.html });
         continue;
       }
       if (node.kind === "document") {
@@ -515,7 +557,8 @@ export async function importZip(
       // Record pages are matched by title in order of appearance.
       const pagesByTitle = new Map<string, string[]>();
       for (const key of rowPages.get(node.key) || []) {
-        const title = layout?.recordTitles.get(key) ?? exportTitle(posix.basename(key));
+        const path = documentPath.get(key);
+        const title = layout?.recordTitles.get(key) ?? (path && isHtml(path) ? htmlPage(path).title : null) ?? exportTitle(posix.basename(key));
         pagesByTitle.set(title, [...(pagesByTitle.get(title) || []), key]);
       }
       await forEachAsync(records, async (record, i) => {
@@ -526,14 +569,18 @@ export async function importZip(
         const pageKey = pagesByTitle.get(title)?.shift();
         // Flowplan's record documents: properties in the frontmatter (and
         // the CSV), the text below the heading.
-        const markdown = !pageKey
+        // A Notion HTML record page: its body (the properties are above it).
+        const path = pageKey ? documentPath.get(pageKey) || `${pageKey}.md` : "";
+        const markdown = !pageKey || isHtml(path)
           ? ""
           : layout
-            ? splitFrontmatter(text(`${pageKey}.md`)).body.replace(/^\s*#\s[^\n]*\n?/, "").trim()
-            : rowBody(text(`${pageKey}.md`));
-        const html = markdown
-          ? await markdownToHtmlAsync(markdown, resolver(`${pageKey}.md`, pid))
-          : "";
+            ? splitFrontmatter(text(path)).body.replace(/^\s*#\s[^\n]*\n?/, "").trim()
+            : rowBody(text(path));
+        const html = pageKey && isHtml(path)
+          ? htmlPage(path).html.trim() ? await htmlDocument(path, pid) : ""
+          : markdown
+            ? await markdownToHtmlAsync(markdown, resolver(path, pid))
+            : "";
         const rid = id();
         await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",

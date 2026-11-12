@@ -5387,7 +5387,7 @@
   "Markdown": "Markdown",
   "Markdown (decrypted)": "Markdown（已解密）",
   "Markdown & Git export": "Markdown 与 Git 导出",
-  "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.": "Markdown 变成页面，CSV 数据库，Excalidraw 和 draw.io 图纸白板，文件夹子页面。Markdown 中引用的图片和文件会被上传；Notion 记录页面会与其记录匹配。每个表最多 100 MB、10,000 页面（可由操作员调整）和 5,000 条记录。",
+  "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. Notion's HTML export (Export → HTML) also keeps toggles, callouts and colours. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.": "Markdown 变成页面，CSV 数据库，Excalidraw 和 draw.io 图纸白板，文件夹子页面。Markdown 中引用的图片和文件会被上传；Notion 记录页面会与其记录匹配。Notion 的 HTML 导出（导出 → HTML）还会保留折叠块、标注和颜色。每个表最多 100 MB、10,000 页面（可由操作员调整）和 5,000 条记录。",
   "Markdown export": "Markdown 导出",
   "Markdown export done": "Markdown 导出完成",
   "Markdown export failed": "Markdown 导出失败",

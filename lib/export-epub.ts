@@ -12,6 +12,7 @@ import { exportName } from "./export-name";
 import { collectExportContent, withExportLookups, type ExportContent } from "./export-content";
 import { documentXhtml, xml } from "./export-xhtml";
 import { exportUrl } from "./export-docx";
+import { listLevelCss } from "./list-levels";
 import type { Identity } from "./types";
 
 export type EpubChapter = { id: string; title: string; depth: number; body: string };
@@ -55,6 +56,8 @@ table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.95em
 th, td { border: 1px solid #ccc; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
 th { background: #f0f0ee; }
 th > p, td > p { margin: 0; }
+li > p { margin: 0.15em 0; }
+${listLevelCss("")}
 ul.task-list { list-style: none; padding-left: 1.2em; }
 .task-box { font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif; }
 .task.done > p { color: #666; }
