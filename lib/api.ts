@@ -1,6 +1,7 @@
 import { withReadMemo } from "./read-memo";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { setUserPageIcon, userPageIcon } from "./user-page-icon";
+import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { requireDocumentSize } from "./document-size";
@@ -354,6 +355,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     textMenu: await userTextMenu(user.id),
     // "Seitensymbol" (#214, lib/page-icon-pref.ts).
     pageIcon: await userPageIcon(user.id),
+    // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).
+    externalLinkIcon: await userExternalLinkIcon(user.id),
     pages,
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
@@ -888,6 +891,10 @@ async function runCommand(
       // Where the page icon sits in the page header (#214, lib/page-icon-pref.ts).
       case "profile.pageIcon":
         result = await setUserPageIcon(user, b.pageIcon);
+        break;
+      // The arrow after links to the web (#217, lib/external-link-icon-pref.ts).
+      case "profile.externalLinkIcon":
+        result = await setUserExternalLinkIcon(user, b.externalLinkIcon);
         break;
       // A workspace's look: read by its members (the settings list every
       // uploaded face), changed by its owners (lib/workspace-fonts.ts).

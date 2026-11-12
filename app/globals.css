@@ -12182,6 +12182,15 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 3h8v8M13 3 3 13' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+/* "Symbol bei externen Links" off (#217, lib/external-link-icon-pref.ts):
+   no arrow; colour and underline stay. Screen only – print replaces the
+   arrow with the address anyway (@media print below). */
+@media screen {
+  html.hide-external-link-icon :is(.document-editor, .shared-rich-editor, .inline-comment-panel) a[href^="http"]::after {
+    content: none;
+    display: none;
+  }
+}
 :is(.document-editor, .shared-rich-editor, .inline-comment-panel)
   :is(a[href*="#page="], a[href^="/share/"]) {
   display: inline;

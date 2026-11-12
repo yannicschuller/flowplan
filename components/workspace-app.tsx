@@ -277,6 +277,8 @@ import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { setAutoLinkRules } from "@/lib/auto-link-plugin";
 import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
 import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
+import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
+import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -555,6 +557,16 @@ export default function WorkspaceApp({
   // "Seitensymbol" (#214): the page header reads it.
   useEffect(() => setPageIconPrefLocal(boot.pageIcon), [boot.pageIcon]);
   const pageIconPlace = usePageIconPref();
+  // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts): off
+  // puts a class on <html> that hides the arrow everywhere in the app;
+  // gone again when the app is left (published pages keep the arrow).
+  useEffect(() => setExternalLinkIconLocal(boot.externalLinkIcon), [boot.externalLinkIcon]);
+  const linkIcon = useExternalLinkIcon();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle(HIDE_EXTERNAL_LINK_ICON_CLASS, !linkIcon);
+    return () => root.classList.remove(HIDE_EXTERNAL_LINK_ICON_CLASS);
+  }, [linkIcon]);
   // The draw.io editor the documents' blocks open (lib/drawio-prefs.ts).
   setDrawioEditor(boot.instance?.drawio);
   const data = useMemo(

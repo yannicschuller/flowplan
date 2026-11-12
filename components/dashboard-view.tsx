@@ -20,6 +20,7 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { useMasonry } from "./use-masonry";
 import { Modal, PageIcon, api } from "./ui";
 import { Select } from "./select";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
@@ -133,6 +134,8 @@ export default function DashboardView({
     void save(next);
   };
   const canEdit = editable && editing;
+  // Short tiles next to a tall one fill the gap below them (#218).
+  const gridRef = useMasonry();
   const menuTile = menu && tiles.find((tile) => tile.id === menu.id);
   const menuIndex = menuTile ? tiles.indexOf(menuTile) : -1;
   return (
@@ -176,7 +179,7 @@ export default function DashboardView({
           )}
         </div>
       )}
-      <div className={`dashboard-grid${canEdit ? " editing" : ""}`}>
+      <div className={`dashboard-grid${canEdit ? " editing" : ""}`} ref={gridRef}>
         {tiles.map((tile, index) => (
           <section
             key={tile.id}

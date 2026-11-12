@@ -103,6 +103,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         anchor: "page-icon",
       },
       {
+        title: { de: "Symbol bei externen Links", en: "Icon on external links" },
+        keywords: { de: "link links pfeil extern web adresse url symbol icon", en: "link links arrow external web address url symbol icon" },
+        anchor: "external-link-icon",
+      },
+      {
         title: { de: "Menü bei Textauswahl", en: "Menu on text selection" },
         keywords: { de: "textmenü markieren auswahl popup reaktionen formatieren handy tablet", en: "text menu select selection popup reactions formatting phone tablet" },
         anchor: "text-menu",
