@@ -176,6 +176,36 @@ async function roundTrip(kind: string, id: string | null, as = owner) {
   return { built, entries, parsed, preview };
 }
 
+test("marketplace links carry #from=<this instance> and respect the switch", async () => {
+  const config = { origin: "https://marketplace.flowplan.org", version: "1.0.0" };
+  const here = "https://flowplan.example.org:8443";
+  assert.equal(hand.browseAddress(config, here), "https://marketplace.flowplan.org/#from=https%3A%2F%2Fflowplan.example.org%3A8443");
+  assert.equal(hand.browseAddress(config, here, "/t/weekly"), "https://marketplace.flowplan.org/t/weekly#from=https%3A%2F%2Fflowplan.example.org%3A8443");
+  assert.equal(hand.browseAddress(config, null), "https://marketplace.flowplan.org/", "while rendering on the server: no fragment");
+  assert.equal(hand.browseAddress(null, here), null, "off: no link");
+  assert.equal(hand.browseAddress(undefined, here), null);
+  assert.equal(hand.submitAddress(config.origin, here), "https://marketplace.flowplan.org/submit?handover=1#from=https%3A%2F%2Fflowplan.example.org%3A8443");
+  assert.equal(hand.withFrom("https://m.example/#browse", here), "https://m.example/#browse&from=https%3A%2F%2Fflowplan.example.org%3A8443");
+  // A template's url: the fragment only on the configured marketplace.
+  assert.equal(hand.marketplacePageAddress("https://marketplace.flowplan.org/t/weekly", config, here), "https://marketplace.flowplan.org/t/weekly#from=https%3A%2F%2Fflowplan.example.org%3A8443");
+  assert.equal(hand.marketplacePageAddress("https://elsewhere.example/t/weekly", config, here), "https://elsewhere.example/t/weekly");
+  assert.equal(hand.marketplacePageAddress("not a url", config, here), "not a url");
+  // The switch: FLOWPLAN_MARKETPLACE_URL=off and the admin switch leave no config, so no link.
+  process.env.FLOWPLAN_MARKETPLACE_URL = "off";
+  try {
+    assert.equal(hand.browseAddress(await cfg.marketplaceConfig(), here), null);
+  } finally {
+    delete process.env.FLOWPLAN_MARKETPLACE_URL;
+  }
+  await saveInstanceSettings({ marketplace: false });
+  try {
+    assert.equal(hand.browseAddress(await cfg.marketplaceConfig(), here), null);
+  } finally {
+    await saveInstanceSettings({ marketplace: true });
+  }
+  assert.ok(hand.browseAddress(await cfg.marketplaceConfig(), here)?.startsWith("https://marketplace.flowplan.org/#from="));
+});
+
 test("document and database templates: flowplan-template-1 inside, imported into another workspace", async () => {
   const page = (await act({ action: "page.create", workspaceId: wid, spaceId: space, title: "Protokoll" })).id;
   await run("UPDATE documents SET html=? WHERE page_id=?", "<h1>Agenda</h1><p>Punkte</p>", page);

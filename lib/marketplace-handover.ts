@@ -23,7 +23,29 @@ export const SUBMIT_PACKAGE = "flowplan-marketplace-package";
 export const INSTANCE_READY = "flowplan-instance-ready";
 export const TEMPLATE_MESSAGE = "flowplan-marketplace-template";
 
-export const submitAddress = (origin: string) => `${origin}/submit?handover=1`;
+// Links that open the marketplace carry #from=<this instance's origin>: the
+// marketplace keeps it as the visitor's instance for "In Flowplan öffnen" –
+// in the browser only; a fragment never reaches its server.
+export function withFrom(url: string, instanceOrigin?: string | null) {
+  if (!instanceOrigin) return url;
+  return `${url}${url.includes("#") ? "&" : "#"}from=${encodeURIComponent(instanceOrigin)}`;
+}
+export const submitAddress = (origin: string, instanceOrigin?: string | null) => withFrom(`${origin}/submit?handover=1`, instanceOrigin);
+// The marketplace for browsing (a path on it, default the start page); null
+// when the marketplace is off here (FLOWPLAN_MARKETPLACE_URL=off or the
+// admin switch: no config).
+export function browseAddress(config: { origin: string } | null | undefined, instanceOrigin?: string | null, path = "/") {
+  if (!config) return null;
+  return withFrom(`${config.origin}${path.startsWith("/") ? path : `/${path}`}`, instanceOrigin);
+}
+// A marketplace page the marketplace itself named (a template's url): the
+// fragment only when it really is on the configured marketplace.
+export function marketplacePageAddress(url: string, config: { origin: string } | null | undefined, instanceOrigin?: string | null) {
+  try {
+    if (config && new URL(url).origin === config.origin) return withFrom(url, instanceOrigin);
+  } catch {}
+  return url;
+}
 export const isImportHash = (hash: string) => hash === IMPORT_HASH || hash.startsWith(`${IMPORT_HASH}&`) || hash.startsWith(`${IMPORT_HASH}?`);
 
 // Messages are answered only when they come from the configured origin and
