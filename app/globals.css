@@ -5076,7 +5076,7 @@ mark[data-color] {
   padding: 10px;
   gap: 12px;
 }
-.search-results > button > span {
+.search-results > button > span:not(.page-emoji) {
   flex: 1;
 }
 .search-results small {
@@ -9478,7 +9478,11 @@ tr.order-drop-after > td {
   width: 24px;
   height: 28px;
   padding: 0;
-  font-size: 19px;
+  /* The dots (an SVG, #226) on the button's centre – which is the centre
+     of the block's first text line – whatever the font. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
   cursor: grab;
   opacity: 0;
@@ -26223,7 +26227,9 @@ td.ai-filled {
   cursor: pointer;
   color: var(--text);
 }
-.palette-option > span:not(.search-context) {
+/* The title takes the room; an emoji icon (PageIcon's span.page-emoji)
+   keeps its icon slot like a symbol does (#227). */
+.palette-option > span:not(.search-context, .page-emoji) {
   flex: 1;
   min-width: 0;
 }
@@ -31489,7 +31495,7 @@ label.ws-search input {
 .home-list li > a:hover {
   background: var(--hover);
 }
-.home-list li > :is(button, a) > span {
+.home-list li > :is(button, a) > span:not(.page-emoji) {
   flex: 1;
   min-width: 0;
   overflow: hidden;

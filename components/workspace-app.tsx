@@ -1878,6 +1878,17 @@ export default function WorkspaceApp({
   useDrawerSwipe(mobile, setMobile);
   // Only the panes scroll, never the document (no rubber band under the bars).
   useShellDocument();
+  // Another page – or another place of the app – starts at its top (#224).
+  // The pane keeps its position across renders: a page whose kept copy
+  // (lib/swr-cache.ts) came in at full height at once showed up as far down
+  // as the page before. A block or comment link scrolls to its target after
+  // this (lib/jump.ts); the same page re-rendered keeps its position; the
+  // right page of the split view scrolls on its own.
+  const mainScroll = useRef<HTMLDivElement>(null);
+  const shownPlace = screen === "page" ? `page:${data?.page.id ?? ""}` : `${screen}:${collectionId ?? ""}`;
+  useLayoutEffect(() => {
+    if (mainScroll.current) mainScroll.current.scrollTop = 0;
+  }, [shownPlace]);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
   const e2eeState = useE2ee();
@@ -4149,7 +4160,7 @@ export default function WorkspaceApp({
             </button>
           </div>
         )}
-        <div className="main-scroll">
+        <div className="main-scroll" ref={mainScroll}>
           {screen === "home" && (
             <HomeScreen
               boot={boot}

@@ -118,6 +118,17 @@ function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect, do
     } catch {}
   return rect.top + Math.min(rect.height, 28) / 2;
 }
+// The ⠿ of the handle, drawn (#226): the braille character sat about 3 px
+// above the middle of its line box in every font, so the handle looked
+// higher than the text it belongs to. Eight dots, symmetric around the
+// centre of the box, which the flex button puts on its own centre.
+function HandleDots() {
+  return (
+    <svg className="document-block-handle-dots" width="8" height="14" viewBox="0 0 8 14" fill="currentColor" aria-hidden="true">
+      {[1.45, 5.15, 8.85, 12.55].flatMap((cy) => [1.45, 6.55].map((cx) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.35" />))}
+    </svg>
+  );
+}
 type Drag = {
   pointer: number;
   x: number;
@@ -1164,7 +1175,7 @@ export function DocumentBlockControls({
                   if (event.detail === 0) openMenu(event.currentTarget, block);
                 }}
               >
-                ⠿
+                <HandleDots />
               </button>
             ))}
             {drop && (
