@@ -3637,6 +3637,16 @@ export class FlowplanClient {
     return this.request("GET", `/api/export/docx`, { query }, options);
   }
 
+  /** A page or record as Jira wiki markup — Reads only, so read tokens may use it. `row` picks one record of the database `page`. One page without sub-pages, like the single Markdown file: headings `h1.`–`h6.`, `*bold*`, `_italic_`, `-strike-`, `+underline+`, `{{monospace}}`, `{code:language}`/`{noformat}`, `{quote}`, `*`/`#` lists, tasks as `[ ]`/`[x]`, tables, `[text|url]` links, `!url!` pictures, `{info}`/`{tip}`/`{note}`/`{warning}` callouts, `{panel}` toggles. Links and pictures keep absolute addresses of the instance. (GET /api/export/jira) */
+  async exportJira(query: { page: string; row?: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/export/jira`, { query }, options);
+  }
+
+  /** A page or record in Confluence's storage format — Reads only, so read tokens may use it. `row` picks one record of the database `page`. One page without sub-pages, as Confluence storage-format XHTML (the body of a page for the REST API's `storage` representation or the source editor): code macro with language and CDATA body, info/tip/note/warning macros for callouts, expand for toggles, `<ac:task-list>` for tasks, `<ac:image><ri:url/></ac:image>` for pictures. Links and pictures keep absolute addresses of the instance. (GET /api/export/confluence) */
+  async exportConfluence(query: { page: string; row?: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/export/confluence`, { query }, options);
+  }
+
   /** A page with sub-pages or a whole space as one print view — Reads only. Either `page` (with `children=1` its sub-pages) or `space`. Answers with an HTML print view (cover, table of contents, one chapter per page) that a browser turns into a PDF; at most 200 pages. (GET /api/export/pdf) */
   async exportPrintView(query?: { page?: string; children?: "0" | "1"; space?: string }, options?: RequestOptions): Promise<Response> {
     return this.request("GET", `/api/export/pdf`, { query }, options);
