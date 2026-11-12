@@ -9751,6 +9751,18 @@ tr.order-drop-after > td {
   flex-shrink: 0;
   margin: 0;
 }
+/* File or clipboard for the text formats of the export dialog (#220). */
+.export-destination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 16px 0 10px;
+}
+.export-destination > span:first-child {
+  font-weight: 500;
+}
 
 .lifecycle-buttons {
   display: flex;

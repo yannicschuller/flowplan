@@ -38,3 +38,10 @@ export const pdfUrl = (target: { pageId: string; children: boolean } | { spaceId
   "spaceId" in target ? `/api/export/pdf?space=${target.spaceId}` : `/api/export/pdf?page=${target.pageId}${target.children ? "&children=1" : ""}`;
 export const epubUrl = (target: { pageId: string; children: boolean } | { spaceId: string }) =>
   "spaceId" in target ? `/api/export/epub?space=${target.spaceId}` : `/api/export/epub?page=${target.pageId}${target.children ? "&children=1" : ""}`;
+// Jira wiki markup and Confluence storage format of a page or record (#221).
+export const textExportUrl = (format: "jira" | "confluence", pageId: string, rowId?: string) =>
+  `/api/export/${format}?page=${pageId}${rowId ? `&row=${rowId}` : ""}`;
+// A text export as text, for the clipboard.
+export async function exportText(url: string) {
+  return await (await fetchExport(url)).text();
+}

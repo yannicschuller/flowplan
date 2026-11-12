@@ -203,7 +203,6 @@ import {
   Avatar,
   setAvatarDirectory,
   api,
-  download,
   ApiError,
   isTransient,
   PageSkeleton,
@@ -6095,23 +6094,21 @@ export default function WorkspaceApp({
         <PageExportDialog
           page={data.page}
           onClose={() => setPageExport(false)}
-          onLegacy={() => {
-            if (data.page.kind === "document")
-              download(
-                `${data.page.title}.html`,
-                `<!doctype html><html lang="de"><meta charset="utf-8"><title>${data.page.title.replace(/[<>&]/g, "")}</title><body>${exportDocumentHtml(html.current, { captionNumbers: !!data.page.caption_numbers })}</body></html>`,
-                "text/html",
-              );
-            else
-              download(
-                `${data.page.title}.json`,
-                JSON.stringify(
-                  { database: data.database, rows: data.rows },
-                  null,
-                  2,
-                ),
-                "application/json",
-              );
+          legacy={() => {
+            if (data.page.kind === "document") {
+              const body = exportDocumentHtml(html.current, { captionNumbers: !!data.page.caption_numbers });
+              return {
+                name: `${data.page.title}.html`,
+                text: `<!doctype html><html lang="de"><meta charset="utf-8"><title>${data.page.title.replace(/[<>&]/g, "")}</title><body>${body}</body></html>`,
+                mime: "text/html",
+                html: body,
+              };
+            }
+            return {
+              name: `${data.page.title}.json`,
+              text: JSON.stringify({ database: data.database, rows: data.rows }, null, 2),
+              mime: "application/json",
+            };
           }}
         />
       )}
