@@ -315,6 +315,12 @@ export async function rollJournal(
     }
     ydoc.destroy();
   }
+  const { dayId, generation } = await storeNewDay(user, journal, today, doc);
+  return { dayId, changed: true, ...(options.write ? { generation } : {}) };
+}
+// Stores a new day page with `doc` and announces it (page tree, My tasks,
+// workflows with a journal-day trigger).
+async function storeNewDay(user: Identity, journal: Page, today: string, doc: PMNode) {
   // A day that was a draft keeps its id and gets exactly the state the
   // draft showed (lib/journal-days.ts), so what was typed there merges.
   const draft = await journalDraftId(journal.id, today);
@@ -350,7 +356,29 @@ export async function rollJournal(
   await indexPageTasks(dayId, false);
   // Workflows with a journal-day trigger (lib/workflows/hooks.ts).
   await journalDayEvent(dayId, journal, today, user.id);
-  return { dayId, changed: true, ...(options.write ? { generation: seeded.generation } : {}) };
+  return { dayId, generation: seeded.generation };
+}
+// The day of a journal for a date, made when it is missing (#250, the
+// workflow step "An Journaltag anhängen"). The newest day is made as
+// opening the journal makes it (rollJournal: the open tasks of the day
+// before, placed by the journal's setting, and the template; "create on
+// first write" counts as written). A day before an existing later one gets
+// the template only: open tasks have moved past it already. A day in the
+// trash stays there; days after `today` are not made.
+export async function ensureJournalDay(user: Identity, journal: Page, date: string, today: string): Promise<{ dayId: string; created: boolean }> {
+  if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
+  journalDate.parse(date);
+  const existing = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=?", journal.id, date);
+  if (existing?.deleted_at) throw new HttpError(409, "Dieser Tag liegt im Papierkorb.");
+  if (existing) return { dayId: existing.id, created: false };
+  if (date > today) throw new HttpError(400, "Ein künftiger Tag lässt sich noch nicht anlegen.");
+  const later = await one("SELECT 1 FROM pages WHERE parent_id=? AND journal_date>? AND deleted_at IS NULL LIMIT 1", journal.id, date);
+  if (!later) {
+    const rolled = await rollJournal(user, journal, date, date, false, { write: true });
+    return { dayId: rolled.dayId, created: rolled.changed };
+  }
+  const { dayId } = await storeNewDay(user, journal, date, dayDocument([], await templateNodes(journal.id, schema())));
+  return { dayId, created: true };
 }
 // All journals of a workspace the user may edit.
 export async function rollJournals(user: Identity, workspaceId: string, today: string) {

@@ -313,6 +313,10 @@ const ISSUE_TEXT: Record<string, [string, string]> = {
   ai_to_url: ["Eine KI-Ausgabe bestimmt hier den URL-Pfad – prüfen, ob das gewollt ist.", "An AI output decides the URL path here – check that this is intended."],
   ai_to_target: ["Eine KI-Ausgabe bestimmt hier das Ziel – prüfen, ob das gewollt ist.", "An AI output decides the target here – check that this is intended."],
   unknown_journal: ["Das Journal gibt es nicht oder es hat eine PIN.", "The journal does not exist or has a PIN."],
+  no_journal: ["Ein Journal wählen.", "Choose a journal."],
+  no_journal_date: ["Ein Datum angeben (oder einen Platzhalter darauf).", "Give a date (or a placeholder on one)."],
+  no_journal_content: ["Den Inhalt schreiben, der angehängt wird.", "Write the content to append."],
+  no_journal_heading: ["Ohne Überschrift wird am Ende des Tages angehängt.", "Without a heading it is appended at the end of the day."],
 };
 export function issueMessage(issue: GraphIssue, locale: Locale) {
   const tr = translate(locale);

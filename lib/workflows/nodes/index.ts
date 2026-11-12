@@ -5,6 +5,7 @@ import { pageAppend, pageCreate, pageMove, pageTag, taskCreate } from "./pages";
 import { recordCreate, recordFind, recordTemplate, recordUpdate } from "./records";
 import { aiClassify, aiExtract, aiPrompt, aiSummarize } from "./ai";
 import { httpRequest } from "./http";
+import { journalAppend } from "./journal";
 import type { NodeImpl } from "./types";
 
 export const NODE_IMPLS: Record<string, NodeImpl> = {
@@ -24,6 +25,7 @@ export const NODE_IMPLS: Record<string, NodeImpl> = {
   "action.page.tag": pageTag,
   "action.page.move": pageMove,
   "action.task.create": taskCreate,
+  "action.journal.append": journalAppend,
   "notify.person": notifyPerson,
   "notify.email": notifyEmail,
   "notify.chat": notifyChat,

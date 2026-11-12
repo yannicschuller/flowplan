@@ -21,18 +21,19 @@ export function headingsOf(nodes: PMNode[]) {
 // "heading", "start" is directly below the heading (carried tasks come
 // before whatever the template puts there), "end" at the end of the
 // heading's section – before the next heading of the same or a higher
-// level (entries added later stay in order).
+// level (entries added later stay in order). With "end" (or a missing
+// heading) and section "end", before the day's trailing empty lines.
 export function placeIndex(body: PMNode[], place: BlockPlace, section: "start" | "end" = "start") {
   if (place.at === "top") return 0;
   const wanted = (place.heading || "").trim();
   const i = place.at === "heading" && wanted ? body.findIndex((n) => n.type.name === "heading" && n.textContent.trim() === wanted) : -1;
-  if (i < 0) return body.length;
-  if (section === "start") return i + 1;
-  const level = Number(body[i].attrs.level) || 1;
+  if (i < 0 && section === "start") return body.length;
+  if (i >= 0 && section === "start") return i + 1;
+  const level = i >= 0 ? Number(body[i].attrs.level) || 1 : 0;
   let end = i + 1;
-  while (end < body.length && !(body[end].type.name === "heading" && (Number(body[end].attrs.level) || 1) <= level)) end++;
-  // Empty paragraphs at the end of the section (a template's placeholder
-  // lines) stay below what is added: the new text joins the section's content.
+  while (end < body.length && !(i >= 0 && body[end].type.name === "heading" && (Number(body[end].attrs.level) || 1) <= level)) end++;
+  // Empty paragraphs at the end of the section or the day (a template's
+  // lines to write in) stay below what is added: it joins the content.
   while (end > i + 1 && body[end - 1].type.name === "paragraph" && !body[end - 1].content.size) end--;
   return end;
 }

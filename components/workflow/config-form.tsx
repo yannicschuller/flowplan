@@ -58,6 +58,7 @@ export function initialConfig(type: string, context: { database?: string } = {})
   if (type === "action.page.move") Object.assign(out, { page: "", parent: "" });
   if (type === "action.page.tag") Object.assign(out, { page: "", tags: [] });
   if (type === "action.task.create") Object.assign(out, { page: "", text: "", assignee: [] });
+  if (type === "action.journal.append") Object.assign(out, { journal: "", content: "" });
   if (type === "logic.if") out.condition = { kind: "group", join: "and", rules: [{ kind: "condition", left: "", op: "eq", value: "" }] };
   if (type === "action.record.find") out.filter = { kind: "group", join: "and", rules: [] };
   if (type === "logic.switch") out.cases = [{ id: newCaseId(), label: "", op: "eq", value: "" }];
@@ -184,6 +185,11 @@ const TYPE_KEY_TEXT: Record<string, [string, string]> = {
   "action.page.create:template": ["Seitenvorlage", "Page template"],
   "action.task.create:text": ["Aufgabe", "Task"],
   "action.task.create:heading": ["Unter der Überschrift (optional)", "Below the heading (optional)"],
+  "action.journal.append:day": ["Tag", "Day"],
+  "action.journal.append:date": ["Datum (Datum oder Platzhalter)", "Date (a date or placeholder)"],
+  "action.journal.append:content": ["Inhalt (Markdown, mit Platzhaltern)", "Content (Markdown, with placeholders)"],
+  "action.journal.append:place": ["Stelle", "Place"],
+  "action.journal.append:heading": ["Überschrift im Tag", "Heading in the day"],
 };
 // i18n-table: 1 – [German, English] pairs (choices)
 const ENUM_TEXT: Record<string, [string, string]> = {
@@ -268,6 +274,11 @@ const ENUM_TEXT: Record<string, [string, string]> = {
   "senders.any": ["Alle erlaubten Absender", "All allowed senders"],
   "target.page": ["In eine Seite", "Into a page"],
   "target.personal": ["In die eigene Aufgabenseite (Meine Aufgaben)", "Into the own task page (My tasks)"],
+  "day.today": ["Heute", "Today"],
+  "day.yesterday": ["Gestern", "Yesterday"],
+  "day.date": ["Ein bestimmtes Datum", "A given date"],
+  "place.end": ["Am Ende des Tages", "At the end of the day"],
+  "place.heading": ["Unter einer Überschrift", "Below a heading"],
 };
 // i18n-table: 1 – [German, English] pairs (page types)
 const KIND_TEXT: Record<string, [string, string]> = {
@@ -342,6 +353,10 @@ function visible(type: string, key: string, c: Record<string, unknown>) {
   }
   if (type === "logic.foreach" && key === "parallel") return c.mode === "parallel";
   if (type === "action.task.create" && key === "page") return c.target !== "personal";
+  if (type === "action.journal.append") {
+    if (key === "date") return c.day === "date";
+    if (key === "heading") return c.place === "heading";
+  }
   if (type === "logic.approval" && key === "onTimeout") return !!c.deadline;
   if (type === "ai.summarize" && key === "languageCode") return c.language === "fixed";
   if (type === "ai.classify") {
@@ -384,6 +399,9 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
   if (name === "webhook" && type === "notify.chat") return <ResourceSelect id={id} label={label} kind="chatHooks" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "address" && type === "trigger.mail.received") return <ResourceSelect id={id} label={label} kind="addresses" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "journal" && type === "trigger.journal.day") return <ResourceSelect id={id} label={label} kind="journals" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
+  // One journal to write into (#250): no "any journal".
+  if (name === "journal" && type === "action.journal.append")
+    return <ResourceSelect id={id} label={label} kind="journals" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} empty={t("Journal wählen …", "Choose a journal …")} />;
   if (name === "credential" && type === "http.request") return <CredentialSelect id={id} label={label} value={String(value || "")} url={String(config.url || "")} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "mode" && type === "trigger.webhook")
     return (
@@ -514,7 +532,7 @@ function Generic({ name, label, schema, value, ctx, onChange, t }: { name: strin
   if (type === "string") {
     // Ids and short codes are plain fields, longer texts take placeholders.
     if ((schema.maxLength ?? 0) >= 500)
-      return <TemplateInput label={label} value={String(value ?? "")} picker={ctx.picker} disabled={ctx.disabled} multiline={["message", "text", "prompt", "body", "system"].includes(name) || (name === "value" && ctx.node.type !== "logic.switch")} onChange={onChange} />;
+      return <TemplateInput label={label} value={String(value ?? "")} picker={ctx.picker} disabled={ctx.disabled} multiline={["message", "text", "prompt", "body", "system", "content"].includes(name) || (name === "value" && ctx.node.type !== "logic.switch")} onChange={onChange} />;
     return (
       <Labeled id={id} label={label}>
         <input id={id} type={name === "time" ? "time" : "text"} value={String(value ?? "")} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value === "" && !schema.minLength ? undefined : e.target.value)} />
@@ -999,7 +1017,7 @@ export function useResources(pageId: string | undefined) {
   }, [pageId, tick]);
   return { res, reload: () => setTick((n) => n + 1) };
 }
-function ResourceSelect({ id, label, kind, value, ctx, onChange, t }: { id: string; label: string; kind: keyof Resources; value: string; ctx: FormContext; onChange: (v: string) => void; t: T }) {
+function ResourceSelect({ id, label, kind, value, ctx, onChange, t, empty: emptyText }: { id: string; label: string; kind: keyof Resources; value: string; ctx: FormContext; onChange: (v: string) => void; t: T; empty?: string }) {
   const { res } = useResources(ctx.pageId);
   const items: [string, string][] =
     kind === "chatHooks"
@@ -1008,7 +1026,8 @@ function ResourceSelect({ id, label, kind, value, ctx, onChange, t }: { id: stri
         ? (res?.addresses || []).map((a) => [a.id, `${a.label || t("Ohne Namen", "Unnamed")}${a.signed ? "" : t(" · ohne Signierschlüssel", " · without signing key")}`])
         : (res?.journals || []).filter((j) => !j.locked).map((j) => [j.id, j.title || t("Ohne Titel", "Untitled")]);
   const empty =
-    kind === "journals" ? t("Jedes Journal, das du siehst", "Any journal you see") : kind === "chatHooks" ? t("Webhook wählen …", "Choose a webhook …") : t("Adresse wählen …", "Choose an address …");
+    emptyText ??
+    (kind === "journals" ? t("Jedes Journal, das du siehst", "Any journal you see") : kind === "chatHooks" ? t("Webhook wählen …", "Choose a webhook …") : t("Adresse wählen …", "Choose an address …"));
   return (
     <Labeled id={id} label={label}>
       <Select id={id} value={value} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value)}>

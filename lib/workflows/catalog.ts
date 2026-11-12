@@ -304,6 +304,13 @@ const NODE_TEXT: Record<string, { name: [string, string]; description: [string, 
     name: ["Aufgabe erstellen", "Create task"],
     description: ["Schreibt eine Aufgabe in eine Seite, auf Wunsch mit Person und Fälligkeit.", "Writes a task into a page, with a person and a due date if you like."],
   },
+  "action.journal.append": {
+    name: ["An Journaltag anhängen", "Append to journal day"],
+    description: [
+      "Schreibt Markdown mit Platzhaltern in den heutigen, gestrigen oder einen bestimmten Tag eines Journals – am Ende oder unter einer Überschrift. Fehlt der Tag, wird er wie beim Öffnen angelegt.",
+      "Writes Markdown with placeholders into today’s, yesterday’s or a given day of a journal – at the end or below a heading. A missing day is created as opening it would.",
+    ],
+  },
   "notify.person": {
     name: ["Person benachrichtigen", "Notify person"],
     description: ["Benachrichtigung in der App, per Push, E-Mail oder Chat-App.", "A notification in the app, by push, email or chat app."],
@@ -370,6 +377,7 @@ const OUT: Record<string, [string, string]> = {
   task: ["Aufgabe", "Task"],
   due: ["Fällig am", "Due on"],
   assignee: ["Zuständig", "Assignee"],
+  created: ["Tag neu angelegt", "Day newly created"],
 };
 
 // Typed fields that an AI answer fills (ai.extract, ai.prompt as JSON).
@@ -874,6 +882,28 @@ export const NODE_TYPES: NodeSpec[] = [
         ],
       },
     ],
+  }),
+  // A journal day (#250): today or yesterday in the workflow's time zone,
+  // or a date; made with the journal's template when missing.
+  spec({
+    type: "action.journal.append",
+    category: "pages",
+    icon: "Notebook",
+    inline: false,
+    config: z.object({
+      // The journal (a page id); empty is caught by the check ("no_journal").
+      journal: z.string().max(100).default(""),
+      day: z.enum(["today", "yesterday", "date"]).default("today"),
+      // day "date": a date, or a placeholder on a date or a moment.
+      date: shortTmpl.default(""),
+      // Markdown with placeholders; values go in as text (§7.4).
+      content: tmpl.default(""),
+      // At the end of the day, or at the end of the section below a heading (the end without it).
+      place: z.enum(["end", "heading"]).default("end"),
+      heading: z.string().max(200).default(""),
+    }),
+    ports: out,
+    outputs: [pageOut("day", OUT.day), { key: "date", label: OUT.date, type: "date" }, pageOut("journal", OUT.journal), { key: "created", label: OUT.created, type: "boolean" }],
   }),
   /* ---------- Notify ---------- */
   spec({
