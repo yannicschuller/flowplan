@@ -58,7 +58,8 @@ test("the explicit setting wins; a deleted or changed property falls back to the
 
 test("done statuses in every UI language; expired is not done", () => {
   const status = (options: string[]) => doneRule([select("s", "Statut", options)], undefined)?.values;
-  assert.deepEqual(status(["Actif", "Utilisé", "Expiré"]), ["Utilisé"]);
+  // "Used" and "expired" are not done words in any language: set them under the done rule.
+  assert.equal(status(["Actif", "Utilisé", "Expiré"]), undefined);
   assert.deepEqual(status(["À faire", "En cours", "Terminé"]), ["Terminé"]);
   assert.deepEqual(status(["Ouvert", "Fermé", "Résolu", "Clos"]), ["Fermé", "Résolu", "Clos"]);
   assert.deepEqual(status(["Aperto", "Completato", "Chiuso"]), ["Completato", "Chiuso"]);
@@ -109,7 +110,7 @@ await act({
   version: (await database(pageId)).version,
   fields: [
     { id: "title", name: "Nom", type: "text" },
-    { id: "state", name: "Statut", type: "select", options: ["Actif", "Utilisé", "Expiré"] },
+    { id: "state", name: "Statut", type: "select", options: ["Actif", "Fermé", "Expiré"] },
     { id: "who", name: "Responsable", type: "person" },
     { id: "buy", name: "Date d'achat", type: "date" },
     { id: "end", name: "Échéance", type: "date" },
@@ -117,12 +118,12 @@ await act({
   views: (await database(pageId)).views,
 });
 await act({ action: "row.create", pageId, cells: { title: "Bon cadeau", state: "Actif", who: me.id, buy: "2020-01-01", end: "2099-12-31" } });
-await act({ action: "row.create", pageId, cells: { title: "Bon utilisé", state: "Utilisé", who: me.id, buy: "2020-01-01", end: "2020-06-01" } });
+await act({ action: "row.create", pageId, cells: { title: "Bon utilisé", state: "Fermé", who: me.id, buy: "2020-01-01", end: "2020-06-01" } });
 const settings = async (patch: Record<string, unknown>) => await act({ action: "database.settings", pageId, settings: patch });
 const dueOf = async () => (await crossRecords(me, wid, {})).records.map((r) => [r.title, r.due]);
 const widgetDue = async () => (await myRecordTasks(me, () => true)).map((t) => [t.text, t.due]);
 
-test("My tasks, notifications and widgets use the guessed due date; used vouchers are done", async () => {
+test("My tasks, notifications and widgets use the guessed due date; closed vouchers are done", async () => {
   assert.deepEqual(await dueOf(), [["Bon cadeau", "2099-12-31"]]);
   assert.deepEqual(await widgetDue(), [["Bon cadeau", "2099-12-31"]]);
   assert.deepEqual((await dueItems(wid, pageId, "2026-11-12")).map((i) => i.title), []);

@@ -152,7 +152,7 @@ const DONE_WORDS = new RegExp(
     [
       "erledigt|fertig|abgeschlossen|gelost|geloest|geschlossen",
       "done|closed|resolved|complete|completed",
-      "termine|terminee|fait|faite|fini|finie|clos|close|cloture|cloturee|ferme|fermee|resolu|resolue|utilise|utilisee",
+      "termine|terminee|fait|faite|fini|finie|clos|close|cloture|cloturee|ferme|fermee|resolu|resolue",
       "completato|completata|fatto|fatta|chiuso|chiusa|risolto|risolta",
       "hecho|hecha|terminado|terminada|cerrado|cerrada|completado|completada|resuelto|resuelta",
       "已完成|完成|已关闭|已解决|已结束",
