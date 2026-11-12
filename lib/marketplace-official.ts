@@ -13,7 +13,8 @@
 // go into the English summary and description. Licence CC0-1.0.
 // Workflows keep their gaps as "$ask:<gap>" tokens plus a `gaps` list
 // (labels); the import clears what is still open and lists it
-// (lib/marketplace-package.ts).
+// (lib/marketplace-package.ts). Next to it payload/workflow-meta.json
+// (lib/marketplace-workflow-meta.ts) with the gap labels in both languages.
 import { createHash } from "node:crypto";
 import { ZipFile } from "yazl";
 import { templateCatalog, resolveCatalogDates, type CatalogTemplate } from "./template-catalog";
@@ -25,6 +26,7 @@ import { TEMPLATE_FORMAT } from "./template-exchange";
 import { BOARD_TEMPLATE_FORMAT, cleanTemplateItems, portableTemplateItems } from "./whiteboard-user-templates";
 import { MARKETPLACE_FORMAT, type MarketplaceKind } from "./marketplace-package";
 import { packageMinVersion } from "./marketplace-config";
+import { workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
 import { templateCategoryLabels, type TemplateCategory } from "./template-categories";
 
 const MTIME = new Date(Date.UTC(2026, 0, 1));
@@ -161,6 +163,12 @@ export async function officialPackages(version: string, previews: Map<string, Bu
     const graph = w.build(answers, { t: tDe, timeZone: "Europe/Berlin", fields: () => undefined });
     const gaps = w.gaps.filter((g) => g.kind !== "toggle").map((g: Gap) => ({ id: g.id, kind: g.kind, label: g.label, ...(g.help ? { help: g.help } : {}), ...(g.optional ? { optional: true } : {}) }));
     const e = english.get(w.id);
+    const labelsEn = new Map((e?.gaps ?? []).map((g) => [g.id, g.label]));
+    const meta = workflowMeta(
+      graph,
+      // Only what the import will ask for: the gaps whose token is in the graph.
+      gaps.filter((g) => JSON.stringify(graph.nodes).includes(`$ask:${g.id}`)).map((g) => ({ id: g.id, kind: g.kind, label: { de: g.label, en: labelsEn.get(g.id) ?? g.label }, ...(g.optional ? { optional: true as const } : {}) })),
+    );
     out.push(
       await envelope(
         {
@@ -172,7 +180,10 @@ export async function officialPackages(version: string, previews: Map<string, Bu
           category: workflowCategory[w.id] ?? "other",
           tags: ["Flowplan", "Workflow", "Automatisierung"],
           payload: "payload/workflow.json",
-          entries: [["payload/workflow.json", json({ format: GRAPH_FORMAT, version: GRAPH_VERSION, title: w.name, graph, references: {}, gaps })]],
+          entries: [
+            ["payload/workflow.json", json({ format: GRAPH_FORMAT, version: GRAPH_VERSION, title: w.name, graph, references: {}, gaps })],
+            [WORKFLOW_META_PATH, workflowMetaBytes(meta)],
+          ],
         },
         version,
         previews,
