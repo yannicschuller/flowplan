@@ -62,21 +62,31 @@ export function toggleAfter(state: EditorState, pos: number): { tr: Transaction;
   return { tr: trn, pos: at };
 }
 
-// ↵ in the empty title of a toggle: it becomes an empty paragraph, its
-// content follows on the same level (an empty paragraph alone is dropped).
-export function emptyTitleToParagraph(state: EditorState, pos: number): Transaction | null {
+// A toggle back to text: a paragraph with `text` (its title), with the
+// toggle's block id when `keepId`, its content following on the same level
+// (an empty paragraph alone is dropped). The caret at the start of the
+// paragraph. One transaction: one undo step brings the toggle back.
+export function toggleToParagraph(state: EditorState, pos: number, text: string, keepId = false): Transaction | null {
   const node = state.doc.nodeAt(pos);
   if (node?.type.name !== "toggle") return null;
   const { schema } = state;
   const only = node.childCount === 1 ? node.firstChild : null;
   const content = only?.type.name === "paragraph" && !only.content.size ? Fragment.empty : node.content;
-  const fragment = Fragment.from(schema.nodes.paragraph.create()).append(content);
+  const paragraph = schema.nodes.paragraph.create({ blockId: keepId ? validBlockId(node.attrs.blockId) : null }, text ? schema.text(text) : undefined);
+  const fragment = Fragment.from(paragraph).append(content);
   const trn = state.tr;
   if (!canReplace(trn, pos, pos + node.nodeSize, fragment)) return null;
   trn.replaceWith(pos, pos + node.nodeSize, fragment);
   trn.setSelection(TextSelection.create(trn.doc, pos + 1));
   return trn;
 }
+// ↵ in the empty title of a toggle (#230): an empty paragraph.
+export const emptyTitleToParagraph = (state: EditorState, pos: number) => toggleToParagraph(state, pos, "");
+// ⌫ at the very start of a toggle's title (#244), empty or not: a
+// paragraph with the title's text and the toggle's block id (links to it
+// keep working); ⌫ again joins it with the block above.
+export const titleToParagraph = (state: EditorState, pos: number, title: string) =>
+  toggleToParagraph(state, pos, title.replace(/\s*\n\s*/g, " "), true);
 
 // The block types "Umwandeln in → Aufklappbarer Block" works on.
 export const turnsIntoToggle = (node: PMNode, parent: PMNode | null) =>

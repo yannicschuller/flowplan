@@ -26,7 +26,7 @@ after(async () => {
 });
 
 const { documentExtensions, documentSchema } = await import("../lib/document-schema");
-const { emptyTitleToParagraph, toggleAfter, turnIntoToggle, toggleFromMarker } = await import("../lib/toggle-commands");
+const { emptyTitleToParagraph, titleToParagraph, toggleAfter, turnIntoToggle, toggleFromMarker } = await import("../lib/toggle-commands");
 const { isToggleClosed, toggleBlocksPlugin, toggleKey } = await import("../lib/toggle-view");
 const { readClosedToggles, writeClosedToggles, TOGGLE_STORAGE_KEY, MAX_CLOSED_TOGGLES, MAX_TOGGLE_DOCUMENTS, toggleDocumentKey } = await import("../lib/toggle-memory");
 const { ShortcutBlockquote, MARKER_RULE, QUOTE_MARK_RULE } = await import("../lib/quote-shortcut");
@@ -155,6 +155,35 @@ test("↵ in an empty title: the toggle becomes a paragraph, its content stays a
   // A fresh toggle (only an empty paragraph inside) leaves one empty paragraph.
   const fresh = emptyTitleToParagraph(docState(p("Intro"), toggle("", null)), 7)!;
   assert.deepEqual(fresh.doc.content.content.map((n) => n.textContent), ["Intro", ""]);
+});
+
+test("⌫ at the start of a title: the toggle becomes a paragraph with the title's text and block id, its content after it (#244)", () => {
+  const s0 = docState(p("Intro"), toggle("Mehr dazu", "tog12345", p("Inhalt"), p("Weiter")), p("Ende"));
+  const trn = titleToParagraph(s0, 7, "Mehr dazu")!;
+  assert.deepEqual(types(trn.doc), ["paragraph", "paragraph", "paragraph", "paragraph", "paragraph"]);
+  assert.deepEqual(trn.doc.content.content.map((n) => n.textContent), ["Intro", "Mehr dazu", "Inhalt", "Weiter", "Ende"]);
+  assert.equal(trn.doc.child(1).attrs.blockId, "tog12345", "the block keeps its id");
+  assert.equal(trn.selection.from, 8, "the caret at the start of the paragraph");
+  assert.equal(trn.selection.empty, true);
+  // One step: undone, the toggle is back as it was.
+  const undone = trn.steps.reduceRight((doc, step, i) => step.invert(trn.docs[i]).apply(doc).doc!, trn.doc);
+  assert.ok(undone.eq(s0.doc));
+  // An empty title: an empty paragraph (a fresh toggle's empty content dropped).
+  const empty = titleToParagraph(docState(p("Intro"), toggle("", null)), 7, "")!;
+  assert.deepEqual(empty.doc.content.content.map((n) => n.textContent), ["Intro", ""]);
+  // Line breaks a title may hold when pasted: one line.
+  const lines = titleToParagraph(docState(p("Intro"), toggle("a", null, p("x"))), 7, "a\n b")!;
+  assert.equal(lines.doc.child(1).textContent, "a b");
+  // Inside a toggle's content too, on the same level.
+  const nested = docState(toggle("Außen", "outer123", p("Vor"), toggle("Innen", "inner123", p("Tief"))));
+  let inner = -1;
+  nested.doc.descendants((node, pos) => void (node.attrs.blockId === "inner123" && (inner = pos)));
+  const out = titleToParagraph(nested, inner, "Innen")!;
+  const outer = out.doc.child(0);
+  assert.equal(outer.type.name, "toggle");
+  assert.deepEqual(outer.content.content.map((n) => `${n.type.name}:${n.textContent}`), ["paragraph:Vor", "paragraph:Innen", "paragraph:Tief"]);
+  // Not a toggle: nothing.
+  assert.equal(titleToParagraph(s0, 0, "x"), null);
 });
 
 test("turning a paragraph into a toggle: its text is the title, an empty paragraph inside, one step", () => {

@@ -23,7 +23,7 @@ import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Tra
 import { Decoration, DecorationSet, type EditorView, type NodeView, type ViewMutationRecord } from "@tiptap/pm/view";
 import { tr } from "./locale-tag";
 import { browserStorage, readClosedToggles, writeClosedToggles } from "./toggle-memory";
-import { emptyTitleToParagraph, toggleAfter } from "./toggle-commands";
+import { emptyTitleToParagraph, titleToParagraph, toggleAfter } from "./toggle-commands";
 import { linkableBlocks, newBlockId, validBlockId } from "./block-ids";
 import { blockIdsKey } from "./block-ids-plugin";
 
@@ -306,6 +306,18 @@ function caretAtEnd(el: HTMLElement) {
   return rest.toString() === "";
 }
 
+// A collapsed caret before the first character (nothing selected).
+function caretAtStart(el: HTMLElement) {
+  const selection = el.ownerDocument.getSelection();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.startContainer)) return false;
+  const before = el.ownerDocument.createRange();
+  before.selectNodeContents(el);
+  before.setEnd(range.startContainer, range.startOffset);
+  return before.toString() === "";
+}
+
 // The caret at the start of the toggle's content (opening it).
 function enterContent(view: EditorView, pos: number) {
   const node = view.state.doc.nodeAt(pos);
@@ -503,6 +515,20 @@ export function toggleNodeView({
       e.preventDefault();
       const trn = emptyTitleToParagraph(view.state, pos);
       if (!trn) return;
+      view.focus();
+      view.dispatch(trn.scrollIntoView());
+      return;
+    }
+    // ⌫ at the very start of the title (#244), empty or not: the toggle
+    // becomes a paragraph with the title's text, its content after it; one
+    // undo brings it back, ⌫ again joins the paragraph with the block above.
+    if (e.key === "Backspace" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && editable() && caretAtStart(title)) {
+      e.preventDefault();
+      if (!titleToParagraph(view.state, pos, title.textContent || "")) return;
+      // No longer remembered as closed: the paragraph keeps the id, and a
+      // toggle made of it later would start closed.
+      if (!open) openToggles(view, [pos]);
+      const trn = titleToParagraph(view.state, pos, title.textContent || "")!;
       view.focus();
       view.dispatch(trn.scrollIntoView());
       return;
