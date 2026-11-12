@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { all, id, one, onTransactionRollback, run, transaction, audit } from "./db";
 import { HttpError } from "./auth";
 import { publicPage } from "./publication";
+import { recordScope } from "./record-share";
 import { enforceQuota } from "./instance-ops";
 import { takeAnonymousBudget } from "./anonymous-budget";
 import { limitShareRequests } from "./shared-content";
@@ -66,7 +67,12 @@ export async function guestUpload(token: string, pageId: string, file: File) {
     throw new HttpError(415, "Keine Textdatei.");
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   return await transaction(async () => {
-    const { page, role } = await publicPage(token, pageId);
+    // A shared record (lib/record-share.ts): uploads belong to its database
+    // and are readable through this link only until the record uses them.
+    const record = await recordScope(token);
+    if (record && (record.page.id !== pageId || record.row.access === "readonly"))
+      throw new HttpError(404, "Seite nicht veröffentlicht.");
+    const { page, role } = record ? { page: record.page, role: record.role } : await publicPage(token, pageId);
     if (role !== "editor")
       throw new HttpError(403, "Dieser Link erlaubt keine Uploads.");
     if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");

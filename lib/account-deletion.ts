@@ -304,6 +304,7 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   // Share links keep working for those who have them; who created one is
   // no reason to keep the account as a shell.
   await run("UPDATE share_links SET created_by=NULL WHERE created_by=?", userId);
+  await run("UPDATE record_shares SET created_by=NULL WHERE created_by=?", userId);
   // Tracked time stays with the records (reports, billing); a timer still
   // running stops now (after the devices went: no push to them).
   await stopRunning(userId);

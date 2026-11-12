@@ -845,6 +845,11 @@ const exact: Record<string, string> = {
   "Die Abfrage der Sammlung ist leer.": "The collection's query is empty.",
   "Die Abfrage der Sammlung ist zu lang.": "The collection's query is too long.",
   "Maximal 50 aktive Links pro Seite.": "At most 50 active links per page.",
+  // Sharing a single record (#231, lib/record-share.ts).
+  "Maximal 50 aktive Links pro Eintrag.": "At most 50 active links per record.",
+  "Nur Einträge von Datenbanken lassen sich so teilen.": "Only records of databases can be shared this way.",
+  "Private Einträge lassen sich nicht per Link teilen oder veröffentlichen.": "Private records cannot be shared by link or published.",
+  "Dieser Eintrag ist nicht veröffentlicht.": "This record is not published.",
   "Dieser Link erlaubt keine Live-Bearbeitung.": "This link does not allow live editing.",
   "Diese Eigenschaft kann über diesen Link nicht geändert werden.": "This property cannot be changed through this link.",
   "Datei ist über diesen Link nicht verfügbar.": "The file is not available through this link.",

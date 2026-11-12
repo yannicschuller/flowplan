@@ -45,6 +45,9 @@ export const withShareRequest = <T>(req: Request, fn: () => T): T => withShareCo
 export async function shareProtection(token: string): Promise<Protection | null> {
   const link = await one<Protection>("SELECT password_hash,expires_at FROM share_links WHERE token=?", token);
   if (link) return link;
+  // A shared or published record (lib/record-share.ts).
+  const record = await one<Protection>("SELECT password_hash,expires_at FROM record_shares WHERE token=?", token);
+  if (record) return record;
   return (
     await one<Protection>(
       "SELECT p.password_hash,p.expires_at FROM publications p JOIN pages g ON g.id=p.page_id WHERE g.public_token=? AND g.deleted_at IS NULL",

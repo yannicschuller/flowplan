@@ -31,6 +31,7 @@ import { documentChanged } from "./document-live";
 import { rowChanged, rowCreated } from "./automations";
 import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
 import { flatMapAsync, mapAsync } from "./each-async";
+import { recordCells, recordFileIds, recordScope, recordSharePages, type RecordScope } from "./record-share";
 
 // Properties with a read rule are never public (lib/field-access.ts).
 export const publicField = (f: Field) =>
@@ -115,8 +116,19 @@ export type SharedComment = {
   resolved: number;
   created_at: string;
 };
+// What a request through a link works on. A shared record (lib/record-share.ts)
+// opens its record and nothing else: other ids are not found, its database
+// is no page of the share (`pages` stays empty, so links, embeds and
+// whiteboards of pages never resolve), and `record` names the properties
+// visitors see.
+async function shareContext(token: string, pageId?: string, rowId?: string) {
+  const record = await recordScope(token);
+  if (!record) return { ...(await publicPage(token, pageId)), record: undefined };
+  if (pageId !== record.page.id || rowId !== record.row.id) throw new HttpError(404, "Seite nicht veröffentlicht.");
+  return { root: record.page, page: record.page, role: record.role, pages: await recordSharePages(record), record };
+}
 async function source(token: string, pageId?: string, rowId?: string) {
-  const context = await publicPage(token, pageId);
+  const context = await shareContext(token, pageId, rowId);
   const { page } = context;
   const row = rowId
     ? (await one<Row>(
@@ -146,7 +158,7 @@ async function source(token: string, pageId?: string, rowId?: string) {
   const stored: Record<string, unknown> = row
     ? JSON.parse(String(row.cells))
     : {};
-  const cells = stripCells(stored, publicHiddenFieldIds(fields));
+  const cells = context.record ? recordCells(context.record) : stripCells(stored, publicHiddenFieldIds(fields));
   const version = createHash("sha256")
     .update(
       JSON.stringify([
@@ -155,7 +167,7 @@ async function source(token: string, pageId?: string, rowId?: string) {
         doc?.generation,
         row?.version,
         cells,
-        fields,
+        context.record ? [context.record.titleField, ...context.record.shown] : fields,
       ]),
     )
     .digest("hex");
@@ -172,8 +184,17 @@ async function shareFileUrl(token: string, url: string) {
     return "";
   }
 }
+// Properties of a shared record a guest editor changes: the title and the
+// shown properties that links may write – no relations (their choices
+// would list other records) and nothing computed.
+export function recordWritableFields(scope: RecordScope) {
+  return [scope.titleField, ...scope.shown].filter(
+    (f): f is Field => !!f && (writablePublicField(f) || (f.type === "files" && !writeRestricted(f))),
+  );
+}
 export async function sharedContent(token: string, pageId?: string, rowId?: string) {
   const s = await source(token, pageId, rowId);
+  if (s.record) return await sharedRecordContent(token, s, s.record);
   const fields = guestFields(s.fields, s.pages);
   // Choices for relations: records of shared databases (title only).
   const related: Record<string, { id: string; cells: { title: string } }[]> =
@@ -262,16 +283,60 @@ export async function sharedContent(token: string, pageId?: string, rowId?: stri
     ),
   };
 }
+async function sharedRecordContent(token: string, s: Awaited<ReturnType<typeof source>>, scope: RecordScope) {
+  const fields = recordWritableFields(scope);
+  // Only the files this record uses (lib/record-share.ts recordFile).
+  const files = await flatMapAsync([...(await recordFileIds(scope))].slice(0, 500), async (fid) => {
+    const f = await one<{ id: string; name: string; mime: string }>(
+      "SELECT id,name,mime FROM files WHERE id=? AND page_id=? AND deleted_at IS NULL",
+      fid,
+      scope.page.id,
+    );
+    const url = f ? await shareFileUrl(token, `/api/files/${f.id}`) : "";
+    return f && url ? [{ url, name: f.name, mime: f.mime }] : [];
+  });
+  return {
+    pageId: scope.page.id,
+    rowId: scope.row.id,
+    role: scope.row.access === "readonly" && scope.role === "editor" ? ("commenter" as const) : scope.role,
+    locked: !!scope.page.locked,
+    title: s.page.title,
+    html: await publishedHtml(s.doc?.html || "", token, s.pages, scope.role === "editor" ? new Map() : undefined),
+    version: s.version,
+    canEditContent: true,
+    titleField: undefined,
+    fields,
+    cells: Object.fromEntries(
+      await mapAsync(fields, async (f) => [
+        f.id,
+        f.type === "files"
+          ? (await mapAsync(fileUrls(s.cells[f.id]), async (url) => await shareFileUrl(token, url))).filter(Boolean)
+          : (s.cells[f.id] ?? null),
+      ]),
+    ),
+    related: {} as Record<string, { id: string; cells: { title: string } }[]>,
+    files,
+    // A publication is read by anyone: guest comments stay with the links.
+    comments: scope.publication
+      ? []
+      : await all<SharedComment>(
+          "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id=? ORDER BY created_at,id LIMIT 500",
+          scope.page.id,
+          scope.row.id,
+        ),
+  };
+}
 async function validatedCells(
   input: unknown,
   fields: Field[],
   current: Record<string, unknown>,
-  share: { token: string; pages: { id: string }[]; pageId: string },
+  // `allowed`: a shared record names the properties guests may write.
+  share: { token: string; pages: { id: string }[]; pageId: string; allowed?: Set<string> },
 ) {
   const patch = z.record(z.string(), z.unknown()).parse(input);
   const cells = { ...current };
   for (const [key, value] of Object.entries(patch)) {
-    const f = fields.find((f) => f.id === key && guestWritable(f, share.pages, fields));
+    const f = fields.find((f) => f.id === key && (share.allowed ? share.allowed.has(f.id) : guestWritable(f, share.pages, fields)));
     if (!f)
       throw new HttpError(
         403,
@@ -422,16 +487,18 @@ async function writableHtml(
   });
 }
 // At most 30 guest writes per link and minute.
+// Links of single records count in their own table (lib/record-share.ts).
 export async function limitShareRequests(token: string) {
-  await run("DELETE FROM share_requests WHERE created_at<?", Date.now() - 60000);
+  const table = (await one("SELECT 1 FROM record_shares WHERE token=?", token)) ? "record_share_requests" : "share_requests";
+  await run(`DELETE FROM ${table} WHERE created_at<?`, Date.now() - 60000);
   if (
     ((await one<{ n: number }>(
-      "SELECT count(*) n FROM share_requests WHERE token=?",
+      `SELECT count(*) n FROM ${table} WHERE token=?`,
       token,
     ))?.n || 0) >= 30
   )
     throw new HttpError(429, "Zu viele Anfragen. Bitte warte eine Minute.");
-  await run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
+  await run(`INSERT INTO ${table}(token,created_at) VALUES(?,?)`, token, Date.now());
 }
 // What a guest may make of a document through a link: 3 MB of canonical
 // HTML, and a stored projection of at most 8 MB before it is rebuilt.
@@ -449,6 +516,16 @@ async function limitLiveChanges(token: string) {
     throw new HttpError(429, "Zu viele Änderungen. Bitte warte kurz.");
   await run("INSERT INTO share_live_requests VALUES(?,?)", token, Date.now());
 }
+type Source = Awaited<ReturnType<typeof source>>;
+const cellShare = (token: string, s: Source) => ({
+  token,
+  pages: s.pages,
+  pageId: s.page.id,
+  allowed: s.record ? new Set(recordWritableFields(s.record).map((f) => f.id)) : undefined,
+});
+// Pages a guest's links may point to: the share's pages with its root; for a
+// shared record only the share's pages (none yet), never its database.
+const linkTargets = (s: Source) => (s.record ? s.pages : [s.root, ...s.pages.filter((p) => p.id !== s.root.id)]);
 export async function mutateSharedContent(token: string, input: unknown) {
   const b = z
     .object({
@@ -475,11 +552,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
         b.cells ?? {},
         s.fields,
         {},
-        {
-          token,
-          pages: s.pages,
-          pageId: s.page.id,
-        },
+        cellShare(token, s),
       );
       const rid = id();
       await run(
@@ -512,11 +585,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
           409,
           "Der Eintrag wurde inzwischen geändert. Bitte neu laden.",
         );
-      const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, {
-        token,
-        pages: s.pages,
-        pageId: s.page.id,
-      });
+      const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, cellShare(token, s));
       await run(
         "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
         JSON.stringify(cells), nowText(),
@@ -555,11 +624,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
       // Live editing saves the content continuously; saving then only
       // changes the title or the properties.
       if (b.html === undefined && s.row) {
-        const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, {
-          token,
-          pages: s.pages,
-          pageId: s.page.id,
-        });
+        const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, cellShare(token, s));
         await run(
           "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
           JSON.stringify(cells), nowText(),
@@ -573,7 +638,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
         const html = await writableHtml(
           z.string().max(2_000_000).parse(b.html),
           token,
-          [s.root, ...s.pages.filter((p) => p.id !== s.root.id)],
+          linkTargets(s),
           s.doc?.html || "",
         );
         const state = htmlState(html),
@@ -586,11 +651,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
           doc.destroy();
         }
         if (s.row) {
-          const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, {
-            token,
-            pages: s.pages,
-            pageId: s.page.id,
-          });
+          const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, cellShare(token, s));
           await run(
             "INSERT INTO row_snapshots(id,row_id,state,html,created_by) VALUES(?,?,?,?,?)",
             id(),
@@ -663,7 +724,7 @@ async function liveSync(
       vector: z.string().max(100_000).optional(),
     })
     .parse(input);
-  const pages = [s.root, ...s.pages.filter((p) => p.id !== s.root.id)];
+  const pages = linkTargets(s);
   const member = s.row
     ? (await ensureRowDocument(s.row))
     : (() => {

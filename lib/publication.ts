@@ -10,6 +10,8 @@ import { cleanHtml, cleanHtmlAsync } from "./document-server";
 import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
+import { recordFile, recordScope } from "./record-share";
+import { parsePageLocation } from "./page-location";
 
 export async function publicationSettings(pageId: string) {
   const row = await one<{
@@ -238,6 +240,9 @@ export async function publicPage(token: string, pageId?: string) {
   return { ...tree, page };
 }
 export async function publicFile(token: string, fileId: string) {
+  // A shared record serves only the files it uses (lib/record-share.ts).
+  const record = await recordScope(token);
+  if (record) return await recordFile(record, fileId);
   const { pages } = await publicTree(token);
   const file = await one<{ id: string; page_id: string; name: string; mime: string }>(
     "SELECT * FROM files WHERE id=? AND deleted_at IS NULL",
@@ -385,6 +390,12 @@ export function publishedHtml(
       if (link) {
         if (pageIds.has(link[1])) attrs[attr] = `/share/${token}/${link[1]}`;
         else hide(attrs, attr);
+      } else {
+        // Links to records, threads or whiteboard elements of pages outside
+        // the share do not even name them (a shared record links nowhere, #231).
+        const raw = attrs[attr] || "";
+        const target = /^\/?#page=/.test(raw) ? parsePageLocation(raw.replace(/^\//, "")) : null;
+        if (target && !pageIds.has(target.pageId)) hide(attrs, attr);
       }
     }
     return { tagName, attribs: attrs };

@@ -191,7 +191,9 @@ import {
   CopySimple,
   ArrowLeft,
   ArrowRight,
+  ShareNetwork,
 } from "@phosphor-icons/react";
+import { RecordShareDialog } from "./record-share-dialog";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
@@ -641,6 +643,8 @@ export default function DatabaseView({
   const [showEmpty, setShowEmpty] = useState(false),
     [layoutOpen, setLayoutOpen] = useState(false),
     [accessOpen, setAccessOpen] = useState(false);
+  // The record's Share menu (#231): links and publishing of this record only.
+  const [shareRecord, setShareRecord] = useState<{ id: string; title: string } | null>(null);
   // Records opened for reading on this device (same list as pages, by record
   // id) and records as full pages across the whole width (issue #25).
   const [readRows, setReadRows] = useState<string[]>([]),
@@ -980,6 +984,19 @@ export default function DatabaseView({
         >
           <LinkIcon size={17} />
         </button>
+        {editable && row.role !== "viewer" && (
+          // Share this record alone (#231); the database's Share stays with the database.
+          <button
+            type="button"
+            className={pageRecord ? "button compact share-button record-share-button" : "icon-button record-share-button"}
+            aria-label={t("Eintrag teilen", "Share record")}
+            title={t("Eintrag teilen", "Share record")}
+            onClick={() => setShareRecord({ id: row.id, title: cellText(row.cells[fields[0]?.id || "title"]) || t("Ohne Titel", "Untitled") })}
+          >
+            <ShareNetwork size={pageRecord ? 15 : 17} />
+            {pageRecord && t("Teilen", "Share")}
+          </button>
+        )}
         {aiSummarize !== "hidden" && (
           <button
             type="button"
@@ -5814,6 +5831,17 @@ export default function DatabaseView({
         ))}
       </Modal>
       <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />
+      {shareRecord && (
+        <RecordShareDialog
+          open
+          onClose={() => setShareRecord(null)}
+          pageId={page.id}
+          rowId={shareRecord.id}
+          title={shareRecord.title}
+          mutate={(input) => mutate(input)}
+          onError={onError}
+        />
+      )}
       {(() => {
         // The record's content, in its dialog or as a page of its own (#231).
         const detail = selected && (

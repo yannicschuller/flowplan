@@ -89,6 +89,7 @@ export const commandActionNames = [
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
   "notification.prefs", "notification.read", "notification.mark", "notification.delete",
   "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme",
+  "record.shares", "record.share.create", "record.share.revoke", "record.share.protect", "record.share.fields", "record.publish", "record.publication.protect",
   "domain.add", "domain.remove", "plugin.update", "plugin.delete",
   "form.update", "form.submit", "survey.save",
   "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points",

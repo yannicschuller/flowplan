@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { CUSTOM_HOST_HEADER } from "./custom-domain-routing";
 import { customHostFor, publicationHost, renderedTheme } from "./custom-domains";
 import { publicPage } from "./publication";
+import { recordScope, recordTitle } from "./record-share";
 
 // The custom domain this request came in on, when it belongs to `token`.
 // The proxy sets the header and removes any a client sends.
@@ -21,6 +22,14 @@ export async function requestCustomHost(token: string) {
 
 export async function publicationMetadata(token: string, pageId?: string): Promise<Metadata> {
   const base: Metadata = { robots: { index: false, follow: false }, referrer: "no-referrer" };
+  // A shared record (lib/record-share.ts): its title, never indexed – the
+  // app's /share addresses stay out of search engines.
+  try {
+    const record = await recordScope(token);
+    if (record) return pageId ? base : { ...base, title: recordTitle(record) || record.page.title };
+  } catch {
+    return base;
+  }
   let context;
   try {
     context = await publicPage(token, pageId);

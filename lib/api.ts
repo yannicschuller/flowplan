@@ -217,6 +217,7 @@ import { publishPage, publicationSettings, protectPublication } from "./publicat
 import { protectionChanges } from "./share-access";
 import { adminResetTwoFactor } from "./two-factor";
 import { manageShareLink, listShareLinks } from "./share-links";
+import { recordShareCommand, recordShares, revokeRecordSharesOfPage } from "./record-share";
 import { relatedData, validateDatabaseRelations } from "./related-data";
 import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
@@ -1863,6 +1864,7 @@ async function runCommand(
           await dropLiveProjectionsOfRoot(child);
           await run("DELETE FROM share_links WHERE root_id=?", child);
           await run("DELETE FROM share_link_pages WHERE page_id=?", child);
+          await revokeRecordSharesOfPage(child);
           await run(
             "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", deletedAt,
             child,
@@ -3022,6 +3024,18 @@ async function runCommand(
       case "share.revoke":
       case "share.protect":
         result = await manageShareLink(user, b);
+        break;
+      // Sharing and publishing a single record (#231, lib/record-share.ts).
+      case "record.shares":
+        result = await recordShares(user, b);
+        break;
+      case "record.share.create":
+      case "record.share.revoke":
+      case "record.share.protect":
+      case "record.share.fields":
+      case "record.publish":
+      case "record.publication.protect":
+        result = await recordShareCommand(user, action, b);
         break;
       case "publication.protect":
         await protectPublication(await write(), protectionChanges(b));

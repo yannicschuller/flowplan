@@ -159,6 +159,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "instance_banners.created_by": "move",
   "invites.created_by": "move",
   "share_links.created_by": "move",
+  "record_shares.created_by": "move",
   "publications.published_by": "move",
   "webhooks.created_by": "move",
   "calendar_connections.user_id": "move",

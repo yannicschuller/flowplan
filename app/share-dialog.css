@@ -738,3 +738,49 @@ button.sh-value:hover {
     display: none;
   }
 }
+
+/* "Eintrag teilen" (#231): the record's own Share menu. */
+.sh-record-title {
+  color: var(--text);
+  font-weight: 600;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-share-dialog .sh-record-note {
+  margin: -8px 0 14px;
+}
+.record-share-dialog .sh-record-private {
+  margin: -6px 0 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.sh-field-list {
+  margin-bottom: 12px;
+}
+.record-share-dialog .sh-field label {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  cursor: pointer;
+}
+.record-share-dialog .sh-field input {
+  width: auto;
+  margin: 0;
+  flex: none;
+  transform: translateY(1px);
+}
+.record-share-dialog .sh-field small {
+  flex-basis: 100%;
+  padding-inline-start: 23px;
+  font-size: 12px;
+}

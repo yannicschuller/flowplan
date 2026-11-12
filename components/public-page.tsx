@@ -51,6 +51,8 @@ import {
   publicMonth,
 } from "./public-views";
 import { mapAsync } from "../lib/each-async";
+import { recordScope } from "@/lib/record-share";
+import { renderPublicRecord } from "./public-record";
 
 // A property value on a published page; formatted text (#126) with its
 // formatting (no links inside a card that is itself a link; line breaks
@@ -104,7 +106,22 @@ export async function PublishedPage(props: PublishedPageProps) {
       </main>
     );
   }
-  return withShareCookie(unlock, () => renderPublishedPage(props));
+  return withShareCookie(unlock, async () => {
+    // A shared or published record (#231): that record alone, at the
+    // link's own address – another page id or ?row= is not found.
+    let record;
+    try {
+      record = await recordScope(props.token);
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 404) notFound();
+      throw e;
+    }
+    if (record) {
+      if (props.pageId || (props.rowId && props.rowId !== record.row.id)) notFound();
+      return await renderPublicRecord(record);
+    }
+    return renderPublishedPage(props);
+  });
 }
 async function renderPublishedPage({
   token,

@@ -14,15 +14,22 @@ import { Hint } from "./share-hint";
 
 const linkUrl = (token: string) => `${location.origin}/share/${token}`;
 
+// The links of a page, or (`rowId`, #231) of a single record: those have
+// no sub-pages to include (yet) and their own commands (lib/record-share.ts).
+type LinkItem = Pick<ShareLink, "token" | "name" | "role" | "password" | "expires_at"> & { count?: number };
 export function ShareLinks({
   pageId,
+  rowId,
   links,
   act,
 }: {
   pageId: string;
-  links: ShareLink[];
+  rowId?: string;
+  links: LinkItem[];
   act: (input: Record<string, unknown>) => Promise<unknown>;
 }) {
+  const command = rowId ? "record.share" : "share";
+  const target = rowId ? { pageId, rowId } : { pageId };
   const t = useT();
   const formId = useId();
   const [name, setName] = useState(""),
@@ -53,11 +60,11 @@ export function ShareLinks({
     setMessage("");
     try {
       const result = await act({
-        action: "share.create",
-        pageId,
+        action: `${command}.create`,
+        ...target,
         name,
         role,
-        includeChildren: children,
+        ...(rowId ? {} : { includeChildren: children }),
         ...(password ? { password } : {}),
         ...(expiry ? { expiresAt: fromLocalInput(expiry) } : {}),
       });
@@ -70,7 +77,7 @@ export function ShareLinks({
       setBusy(false);
     }
   }
-  async function copy(link: ShareLink) {
+  async function copy(link: LinkItem) {
     try {
       await navigator.clipboard.writeText(linkUrl(link.token));
       setCopied(link.token);
@@ -82,10 +89,10 @@ export function ShareLinks({
       setMessage(t("Bitte den Link im Textfeld kopieren.", "Please copy the link in the text field."));
     }
   }
-  async function revoke(link: ShareLink) {
+  async function revoke(link: LinkItem) {
     setBusy(true);
     try {
-      if (await act({ action: "share.revoke", pageId, token: link.token })) {
+      if (await act({ action: `${command}.revoke`, ...target, token: link.token })) {
         setMessage(t(`Link „${link.name}“ widerrufen.`, `Link “${link.name}” revoked.`));
         if (editing === link.token) setEditing(null);
       }
@@ -98,10 +105,17 @@ export function ShareLinks({
       <div className="sh-label-row">
         <span id={`${formId}-title`}>{t("Links mit eigenen Berechtigungen", "Links with their own permissions")}</span>
         <Hint
-          text={t(
-            "Jeder mit einem Link erhält dessen Rechte, auch ohne Anmeldung. Bearbeiten erlaubt Änderungen an Titel, Dokumenten und sichtbaren Datensatzeigenschaften. Gastkommentare sind über alle Links dieser Seite sichtbar.",
-            "Everyone with a link gets its permissions, even without signing in. Edit allows changes to the title, documents and visible record properties. Guest comments are visible through all links of this page.",
-          )}
+          text={
+            rowId
+              ? t(
+                  "Jeder mit einem Link sieht nur diesen Eintrag – keine anderen Einträge und nicht die Datenbank. Bearbeiten erlaubt Änderungen am Dokument und an sichtbaren Eigenschaften. Gastkommentare sind über alle Links dieses Eintrags sichtbar.",
+                  "Everyone with a link sees only this record – no other records and not the database. Edit allows changes to the document and visible properties. Guest comments are visible through all links of this record.",
+                )
+              : t(
+                  "Jeder mit einem Link erhält dessen Rechte, auch ohne Anmeldung. Bearbeiten erlaubt Änderungen an Titel, Dokumenten und sichtbaren Datensatzeigenschaften. Gastkommentare sind über alle Links dieser Seite sichtbar.",
+                  "Everyone with a link gets its permissions, even without signing in. Edit allows changes to the title, documents and visible record properties. Guest comments are visible through all links of this page.",
+                )
+          }
         />
       </div>
       {links.length ? (
@@ -119,7 +133,7 @@ export function ShareLinks({
                     <strong>{link.name}</strong>
                     <span className="sh-badges">
                       <span className="sh-perm">{labels[link.role]}</span>
-                      {link.count > 1 && (
+                      {!!link.count && link.count > 1 && (
                         <span className="tag">
                           {link.count === 2
                             ? t("mit 1 Unterseite", "with 1 sub-page")
@@ -172,13 +186,13 @@ export function ShareLinks({
                       label={link.name}
                       password={link.password}
                       disabled={busy}
-                      onSave={(patch) => act({ action: "share.protect", pageId, token: link.token, ...patch })}
+                      onSave={(patch) => act({ action: `${command}.protect`, ...target, token: link.token, ...patch })}
                     />
                     <ExpiryEditor
                       label={link.name}
                       expiresAt={link.expires_at}
                       disabled={busy}
-                      onSave={(patch) => act({ action: "share.protect", pageId, token: link.token, ...patch })}
+                      onSave={(patch) => act({ action: `${command}.protect`, ...target, token: link.token, ...patch })}
                     />
                   </div>
                 )}
@@ -189,7 +203,9 @@ export function ShareLinks({
       ) : (
         !adding && (
           <p className="sh-empty">
-            {t("Noch keine Links. Ein Link teilt die Seite auch mit Menschen ohne Konto.", "No links yet. A link shares the page with people without an account too.")}
+            {rowId
+              ? t("Noch keine Links. Ein Link teilt diesen Eintrag auch mit Menschen ohne Konto.", "No links yet. A link shares this record with people without an account too.")
+              : t("Noch keine Links. Ein Link teilt die Seite auch mit Menschen ohne Konto.", "No links yet. A link shares the page with people without an account too.")}
           </p>
         )
       )}
@@ -223,6 +239,8 @@ export function ShareLinks({
               </Select>
             </label>
           </div>
+          {/* Sub-pages under records come later (#231, lib/record-share.ts). */}
+          {!rowId && (
           <div className="sh-opt">
             <span className="sh-opt-label">
               <span id={`${formId}-children`}>{t("Aktuell vorhandene Unterseiten einschließen", "Include current sub-pages")}</span>
@@ -244,6 +262,7 @@ export function ShareLinks({
               <span />
             </button>
           </div>
+          )}
           <div className="sh-grid-2">
             <label>
               {t("Passwort (optional)", "Password (optional)")}

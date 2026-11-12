@@ -1,3 +1,4 @@
+import { revokeRecordSharesOfPage } from "./record-share";
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { claimTicketPrefix } from "./ticket-refs";
@@ -40,6 +41,7 @@ async function revokePage(pageId: string) {
   await dropLiveProjectionsOfRoot(pageId);
   await run("DELETE FROM share_links WHERE root_id=?", pageId);
   await run("DELETE FROM share_link_pages WHERE page_id=?", pageId);
+  await revokeRecordSharesOfPage(pageId);
   await run("UPDATE pages SET public_token=NULL WHERE id=?", pageId);
   await run("UPDATE forms SET enabled=0 WHERE page_id=?", pageId);
   await run("DELETE FROM notifications WHERE page_id=?", pageId);
