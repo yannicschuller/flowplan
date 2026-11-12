@@ -3689,15 +3689,19 @@ tr:hover .row-open,
    negative offset against the scroll area below the dialog's top padding,
    so scrolled content showed through that strip above the heading. A cover
    as tall as the top padding closes it; Chromium clips it away. Bottom
-   sheets have no top padding (the grab handle sits there), so it is 0. */
+   sheets have no top padding (the grab handle sits there), so it is 0.
+   It stays as wide as the heading and covers the side padding with
+   shadows: a wider box would widen the dialog's scroll area, so the
+   dialog scrolled sideways. */
 .modal-heading::before {
   content: "";
   position: absolute;
-  left: -80px;
-  right: -80px;
+  left: 0;
+  right: 0;
   bottom: 100%;
   height: var(--modal-pad-top);
   background: var(--modal-bg);
+  box-shadow: var(--modal-heading-cover);
   pointer-events: none;
 }
 .modal-heading[data-stuck] {
