@@ -35845,3 +35845,142 @@ sup.meeting-cite:hover,
     left: 50% !important;
   }
 }
+
+/* The path of the open page in the top bar (#231, components/page-breadcrumb.tsx):
+   ancestors, database and record as links; "…" folds the middle. */
+.breadcrumb a.breadcrumb-workspace {
+  color: var(--muted);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.breadcrumb a.breadcrumb-workspace:hover {
+  color: var(--text);
+}
+.breadcrumb-path {
+  min-width: 0;
+  overflow: hidden;
+}
+.breadcrumb-path ol {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.breadcrumb-path li {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex-shrink: 1;
+}
+/* Ancestors give way first; the current segment keeps the most room. */
+.breadcrumb-path li:not(.breadcrumb-current) {
+  max-width: 180px;
+}
+.breadcrumb-path li.breadcrumb-more {
+  flex-shrink: 0;
+}
+/* Spacing as the .breadcrumb's own gap, so a single segment looks as the
+   title alone did; the hover area reaches beyond it without moving it. */
+.breadcrumb-sep {
+  margin: 0 10px;
+  color: #d2d6dd;
+  flex-shrink: 0;
+}
+.breadcrumb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 5px;
+  color: var(--secondary);
+  text-decoration: none;
+}
+.breadcrumb-link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breadcrumb-current .breadcrumb-link {
+  color: inherit;
+}
+.breadcrumb-link > svg,
+.breadcrumb-link > .page-emoji,
+.breadcrumb-link > img {
+  flex-shrink: 0;
+}
+.breadcrumb-more-button {
+  padding: 2px 7px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--secondary);
+}
+@media (hover: hover) {
+  .breadcrumb-link:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}
+.breadcrumb-menu a {
+  text-decoration: none;
+  color: inherit;
+}
+.breadcrumb-menu a > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+[data-theme="dark"] .breadcrumb-sep {
+  color: var(--border);
+}
+
+/* A record as a page of its own in the main area (#231): about as wide as
+   a page ("Volle Breite": all of it), its actions in a bar that stays at
+   the top. */
+.record-page {
+  max-width: 900px;
+  margin: -20px auto 0;
+}
+.record-page.record-page-wide {
+  max-width: none;
+}
+.record-page-wide .row-columns:not(.properties-side) .row-properties {
+  max-width: 860px;
+}
+.record-page-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 0;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+.record-page-bar .modal-heading-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+a.icon-button.record-page-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+a.favorite-nav {
+  align-items: center;
+  border-radius: 5px;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  a.favorite-nav:hover {
+    background: var(--hover);
+  }
+}
+a.favorite-nav.selected {
+  background: var(--hover);
+  color: var(--text);
+}

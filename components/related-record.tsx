@@ -66,13 +66,14 @@ export function useRelatedRecord() {
       if (back?.isConnected) back.focus();
     });
   }, []);
-  const openInDatabase = useCallback(() => {
+  // full: as a page of its own ("Als Seite öffnen", #231).
+  const openInDatabase = useCallback((full?: boolean) => {
     const open = current.current;
     if (!open) return;
     setTarget(null);
     // In place of the overlay's entry: Back from the database returns to
     // the view the record was opened from.
-    leaveTo(pageLocationHash({ pageId: open.pageId, rowId: open.rowId }), onRelatedEntry(history, open.token) ? "replace" : "push");
+    leaveTo(pageLocationHash({ pageId: open.pageId, rowId: open.rowId, full: full === true }), onRelatedEntry(history, open.token) ? "replace" : "push");
   }, []);
   return { target, open, close, openInDatabase };
 }
@@ -97,7 +98,7 @@ export function RelatedRecord({
 }: {
   target: RelatedTarget;
   onClose: () => void;
-  onOpenInDatabase: () => void;
+  onOpenInDatabase: (full?: boolean) => void;
   // The view behind it shows titles, icons and rollups of this record.
   onChanged: () => Promise<unknown>;
   onError: (message: string) => void;

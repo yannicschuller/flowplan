@@ -32,21 +32,25 @@ test("records open as full pages, can be favourited and restored from the trash"
   const mobile = testInfo.project.name === "mobile";
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await entry.getByRole("button", { name: "Als Seite öffnen", exact: true }).click();
-  await expect(entry).toHaveClass(/modal-full/);
-  await entry.getByRole("button", { name: "Zu Favoriten" }).click();
+  // "Als Seite öffnen": the record as a page of its own (#231).
+  await entry.getByRole("link", { name: "Als Seite öffnen", exact: true }).click();
+  const recordPage = page.locator(".record-page");
+  await expect(recordPage).toBeVisible();
+  await expect(entry).toHaveCount(0);
+  await recordPage.getByRole("button", { name: "Zu Favoriten" }).click();
   await expect(
-    entry.getByRole("button", { name: "Aus Favoriten entfernen" }),
+    recordPage.getByRole("button", { name: "Aus Favoriten entfernen" }),
   ).toBeVisible();
-  await entry.getByRole("button", { name: "Zurück zur Ansicht „Dialog“", exact: true }).click();
-  await expect(entry).not.toHaveClass(/modal-full/);
+  await recordPage.getByRole("button", { name: "Zurück zur Ansicht „Mittig“", exact: true }).click();
+  await expect(entry).toBeVisible();
+  await expect(recordPage).toHaveCount(0);
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   if (mobile)
     await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   await expect(
     page
       .locator(".sidebar")
-      .getByRole("button", { name: `Eintrag Vertrag ${tag}` }),
+      .getByRole("link", { name: `Eintrag Vertrag ${tag}` }),
   ).toBeVisible();
 
   await page.goto(`/#page=${p.id}&row=${row.id}`);

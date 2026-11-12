@@ -50,11 +50,13 @@ test("records switch to reading and open across the full width", async ({ page }
   await expect(record.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "false");
   await page.keyboard.press("ControlOrMeta+Alt+KeyE");
   await expect(record.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "true");
-  // As a full page, across the whole width.
-  await record.getByRole("button", { name: "Als Seite öffnen", exact: true }).click();
-  const narrow = (await record.boundingBox())!.width;
-  await record.getByRole("button", { name: "Volle Breite" }).click();
-  await expect.poll(async () => (await record.boundingBox())!.width).toBeGreaterThan(narrow + 100);
-  await record.getByRole("button", { name: "Volle Breite" }).click();
+  // As a page of its own (#231), across the whole width.
+  await record.getByRole("link", { name: "Als Seite öffnen", exact: true }).click();
+  const recordPage = page.locator(".record-page");
+  await expect(recordPage).toBeVisible();
+  const narrow = (await recordPage.boundingBox())!.width;
+  await recordPage.getByRole("button", { name: "Volle Breite" }).click();
+  await expect.poll(async () => (await recordPage.boundingBox())!.width).toBeGreaterThan(narrow + 100);
+  await recordPage.getByRole("button", { name: "Volle Breite" }).click();
   await command({ action: "page.delete", pageId: db });
 });

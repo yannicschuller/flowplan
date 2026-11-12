@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-// Issue #139: in a long record (centred dialog or bottom sheet, side panel,
-// full page) title, actions and close button stay at the dialog's top edge
+// Issue #139: in a long record (centred dialog or bottom sheet, side panel)
+// title, actions and close button stay at the dialog's top edge
 // while the content scrolls; a thin line below them appears only once the
 // content has scrolled.
 test("the record's heading stays at the top while the content scrolls", async ({ page }, info) => {
@@ -29,7 +29,7 @@ test("the record's heading stays at the top while the content scrolls", async ({
   });
   const row = await command({ action: "row.create", pageId: db.id, cells: { title: "Langer Eintrag" } });
 
-  for (const mode of ["center", "side", "full"]) {
+  for (const mode of ["center", "side"]) {
     const current = await (await page.request.get(`/api/pages/${db.id}`)).json();
     await command({
       action: "database.update",
@@ -91,6 +91,27 @@ test("the record's heading stays at the top while the content scrolls", async ({
     await close.click();
     await expect(dialog).toHaveCount(0);
   }
+  // "Ganze Seite" (#231): the record is a page of its own; its actions stay
+  // at the top of the main area while it scrolls.
+  const current = await (await page.request.get(`/api/pages/${db.id}`)).json();
+  await command({
+    action: "database.update",
+    pageId: db.id,
+    version: current.database.version,
+    fields: [{ id: "title", name: "Name", type: "text" }],
+    views: [{ id: "table", name: "Tabelle", type: "table", filters: [], sorts: [], recordOpen: "full" }],
+  });
+  await page.goto("about:blank");
+  await page.goto(`/#page=${db.id}&row=${row.id}`);
+  const recordPage = page.locator(".record-page");
+  await expect(recordPage.locator(".ProseMirror.document-editor p").nth(39)).toBeAttached();
+  await expect(page.locator(".modal.record-dialog")).toHaveCount(0);
+  const bar = recordPage.locator(".record-page-bar");
+  const top = (await bar.boundingBox())!.y;
+  await page.locator(".main-scroll").evaluate((el) => (el.scrollTop = el.scrollHeight));
+  expect(await page.locator(".main-scroll").evaluate((el) => el.scrollTop), "full scrolls").toBeGreaterThan(300);
+  await expect(bar.getByRole("button", { name: "Zu Favoriten" })).toBeInViewport({ ratio: 1 });
+  expect((await bar.boundingBox())!.y).toBeLessThanOrEqual(top + 2);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: db.id });
 });

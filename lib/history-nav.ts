@@ -34,13 +34,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The place an address stands for, as a hash without "#" – or null when it
 // is no place to return to (#search, #new, a broken link). A page keeps its
-// record; threads, blocks and whiteboard elements are parts of it.
+// record (and whether the record fills the page, #231); threads, blocks and
+// whiteboard elements are parts of it.
 export function stepOf(fragment: string): string | null {
   const hash = fragment.replace(/^#/, "");
   if (!hash) return "home";
   if (hash.startsWith("page=")) {
     const target = parsePageLocation(hash);
-    return target ? pageLocationHash({ pageId: target.pageId, rowId: target.rowId }).slice(1) : null;
+    return target ? pageLocationHash({ pageId: target.pageId, rowId: target.rowId, full: target.full }).slice(1) : null;
   }
   const settings = parseSettingsHash(hash);
   if (settings) return settingsHash(settings).slice(1);

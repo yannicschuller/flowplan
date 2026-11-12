@@ -376,13 +376,18 @@ export default function DatabaseView({
   onError,
   ai,
   record,
+  onRecordView,
 }: {
+  // The open record as the workspace shows it (#231): the breadcrumb's last
+  // segment and, as a page of its own ("full"), in place of the database's
+  // title and actions. null once no record is open. Only with routeNavigation.
+  onRecordView?: (view: { rowId: string; title: string; icon: string; full: boolean } | null) => void;
   // AI features of the person (bootstrap); without it no AI controls.
   ai?: AiStatus;
   // Only this record's dialog, on top of another view: a related record
   // opened from a relation cell (#192, components/related-record.tsx).
   // Closing the dialog calls onClose; the views are not shown.
-  record?: { id: string; onClose: () => void; onOpenInDatabase: () => void };
+  record?: { id: string; onClose: () => void; onOpenInDatabase: (full?: boolean) => void };
   data: DatabaseData;
   page: Page;
   userId: string;
@@ -464,13 +469,16 @@ export default function DatabaseView({
   const lastOpened = useRef<string | null>(null);
   function setRowId(id: string | null, occurrence?: string, zone?: string) {
     if (id) lastOpened.current = id;
-    else setOpenAsPage(false);
+    // A record opened from a record shown as a page stays a page (#231).
+    const full = !!id && routeNavigation && !record && (viewRecordMode === "full" || pageRecord);
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence, zone } : null);
     setLocalRowId(id);
+    setFullFromUrl(full);
     if (routeNavigation) {
       const hash = pageLocationHash({
         pageId: page.id,
         rowId: id || undefined,
+        full,
       });
       ownHash.current = hash;
       // Closing goes back to the database it was opened from – no step of
@@ -485,7 +493,8 @@ export default function DatabaseView({
   const recordDialog = () => document.querySelector<HTMLElement>(".modal.record-dialog");
   const morphsRecords = () => !window.matchMedia(SHEET_MEDIA).matches;
   function openRecordFrom(card: HTMLElement, id: string) {
-    if (!morphsRecords()) return setRowId(id);
+    // A record as a page (#231) replaces the view: no card morph.
+    if (!morphsRecords() || (routeNavigation && !record && viewRecordMode === "full")) return setRowId(id);
     transitionView(() => setRowId(id), {
       kind: "record",
       // The dialog's own rise would run on top of the morph.
@@ -497,7 +506,7 @@ export default function DatabaseView({
       ? boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"] .record-card`)
       : null;
     const box = card?.getBoundingClientRect();
-    if (!card || !box || box.bottom < 0 || box.top > window.innerHeight || !morphsRecords()) return setRowId(null);
+    if (!card || !box || box.bottom < 0 || box.top > window.innerHeight || !morphsRecords() || pageRecord) return setRowId(null);
     transitionView(() => setRowId(null), { kind: "record", morph: [{ name: "fp-record", from: recordDialog(), to: () => card }] });
   }
   const ownHash = useRef("");
@@ -507,6 +516,7 @@ export default function DatabaseView({
       const target = parsePageLocation(location.hash);
       const rowId = target?.pageId === page.id ? target.rowId || null : null;
       setLocalRowId(rowId);
+      setFullFromUrl(!!rowId && !!target?.full);
       // Arriving by a link to a record: its card or row in the view flashes
       // briefly where it is visible, for orientation behind the record.
       if (rowId && location.hash !== ownHash.current)
@@ -626,7 +636,8 @@ export default function DatabaseView({
     : recordLayout.open === "full"
       ? t("Neues Dokument", "New document")
       : t("Neuer Eintrag", "New entry");
-  const [openAsPage, setOpenAsPage] = useState(false);
+  // The address asks for the record as a page of its own (#231, "&full=1").
+  const [fullFromUrl, setFullFromUrl] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false),
     [layoutOpen, setLayoutOpen] = useState(false),
     [accessOpen, setAccessOpen] = useState(false);
@@ -682,7 +693,12 @@ export default function DatabaseView({
       (f) => !view.hiddenFields?.includes(f.id),
     );
   const viewRecordMode = viewRecordOpenMode(view, recordLayout);
-  const recordMode: RecordOpenMode = openAsPage ? "full" : viewRecordMode;
+  // The open record as a page of its own in the main area (#231): asked
+  // for by the address or by the view's setting "Ganze Seite" – only for
+  // the database opened as the page itself. Elsewhere (a linked database,
+  // a related record on top) "Ganze Seite" stays a dialog across the window.
+  const pageRecord = routeNavigation && !record && !!rowId && (fullFromUrl || viewRecordMode === "full") && data.rows.some((r) => r.id === rowId);
+  const recordMode: RecordOpenMode = pageRecord ? "full" : viewRecordMode;
   // The first column (and the selection cell before it) stays in place while
   // the table scrolls sideways.
   // Next to the selection column (wider on touch screens: --selection-column);
@@ -828,6 +844,32 @@ export default function DatabaseView({
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
   }, [selected]);
+  // The open record for the workspace (#231): its breadcrumb and, as a
+  // page, the page around it. Before painting, so the database's title
+  // never flashes above a record page.
+  const recordTitle = selected ? cellText(selected.cells[fields[0]?.id || "title"]) || t("Ohne Titel", "Untitled") : "";
+  const reportRecord = useRef(onRecordView);
+  reportRecord.current = onRecordView;
+  useLayoutEffect(() => {
+    reportRecord.current?.(selected && !record ? { rowId: selected.id, title: recordTitle, icon: selected.icon || "", full: pageRecord } : null);
+  }, [selected?.id, selected?.icon, recordTitle, pageRecord, record]);
+  useLayoutEffect(() => () => reportRecord.current?.(null), []);
+  // A record page starts at its top; back on the database, the view is
+  // where it was.
+  const viewScroll = useRef(0);
+  useLayoutEffect(() => {
+    const scroller = boardRef.current?.closest<HTMLElement>(".main-scroll");
+    if (!scroller) return;
+    if (pageRecord) {
+      scroller.scrollTop = 0;
+      return;
+    }
+    const top = viewScroll.current;
+    if (top) scroller.scrollTop = top;
+    const keep = () => void (viewScroll.current = scroller.scrollTop);
+    scroller.addEventListener("scroll", keep, { passive: true });
+    return () => scroller.removeEventListener("scroll", keep);
+  }, [pageRecord, selected?.id]);
   // Subtasks: the parent property and, in tables, the tree.
   const subtaskParent = parentField(fields);
   const treeParent = view.type === "table" && view.tree ? subtaskParent : undefined;
@@ -847,19 +889,41 @@ export default function DatabaseView({
     const AccessIcon =
       access === "inherit" ? UsersThree : access === "private" ? LockSimple : LockSimpleOpen;
     const backLabel = t(`Zurück zur Ansicht „${t(recordOpenLabels[viewRecordMode])}“`, `Back to “${t(recordOpenLabels[viewRecordMode])}”`);
+    // The record as a page of its own (#231): a real link, so it also
+    // opens in a new tab or window.
+    const pageHash = pageLocationHash({ pageId: page.id, rowId: row.id, full: true });
     return (
       <>
-        {viewRecordMode !== "full" && (
-          <button
-            type="button"
-            className={`icon-button record-page-toggle${openAsPage ? " active" : ""}`}
-            aria-pressed={openAsPage}
-            aria-label={openAsPage ? backLabel : t("Als Seite öffnen", "Open as page")}
-            title={openAsPage ? backLabel : t("Als Seite öffnen", "Open as page")}
-            onClick={() => setOpenAsPage((v) => !v)}
+        {pageRecord ? (
+          viewRecordMode !== "full" && (
+            <button
+              type="button"
+              className="icon-button record-page-toggle active"
+              aria-pressed
+              aria-label={backLabel}
+              title={backLabel}
+              // Back to the dialog it came from, or to a new one.
+              onClick={() => leaveTo(pageLocationHash({ pageId: page.id, rowId: row.id }))}
+            >
+              <ArrowsIn size={17} />
+            </button>
+          )
+        ) : (
+          <a
+            className="icon-button record-page-toggle"
+            href={pageHash}
+            aria-label={t("Als Seite öffnen", "Open as page")}
+            title={t("Als Seite öffnen", "Open as page")}
+            onClick={(e) => {
+              if (!plainClick(e)) return;
+              e.preventDefault();
+              if (record) return record.onOpenInDatabase(true);
+              if (!routeNavigation) setLocalRowId(null);
+              location.hash = pageHash;
+            }}
           >
-            {openAsPage ? <ArrowsIn size={17} /> : <ArrowsOut size={17} />}
-          </button>
+            <ArrowsOut size={17} />
+          </a>
         )}
         {recordMode === "full" && (
           <button
@@ -906,7 +970,7 @@ export default function DatabaseView({
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(
-                `${location.origin}${location.pathname}${pageLocationHash({ pageId: page.id, rowId: row.id })}`,
+                `${location.origin}${location.pathname}${pageLocationHash({ pageId: page.id, rowId: row.id, full: pageRecord })}`,
               );
               showToast({ text: t("Link kopiert", "Link copied") });
             } catch {
@@ -935,7 +999,7 @@ export default function DatabaseView({
           pageId={page.id}
           rowId={row.id}
           title={cellText(row.cells[fields[0]?.id || "title"]) || t("Eintrag", "Record")}
-          printRoot={() => document.querySelector<HTMLElement>(".modal .row-detail")}
+          printRoot={() => document.querySelector<HTMLElement>(pageRecord ? ".record-page .row-detail" : ".modal .row-detail")}
           onError={onError}
           onToPage={editable && row.role !== "viewer" ? () => setToPage(row.id) : undefined}
           onApplyTemplate={editable && row.role !== "viewer" && data.rowTemplates?.length ? () => setApplyTo(row.id) : undefined}
@@ -3047,8 +3111,9 @@ export default function DatabaseView({
         setRecordMenu({ x: e.clientX, y: e.clientY, rowIds });
       }}
     >
-      {/* A related record on top of another view: its dialog only (#192). */}
-      {!record && (<>
+      {/* A related record on top of another view: its dialog only (#192);
+          a record as a page of its own (#231): only the record. */}
+      {!record && !pageRecord && (<>
       <ScrollFade className="database-tabs" role="group" aria-label={t("Ansichten", "Views")}>
         {viewTabs.shown.map((v) => {
           const Icon = viewIcons[v.type];
@@ -5749,33 +5814,9 @@ export default function DatabaseView({
         ))}
       </Modal>
       <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />
-      <Modal
-        open={!!selected}
-        onClose={closeRecord}
-        // Back to the record's row or card, so the keyboard stays in the view.
-        onCloseAutoFocus={(event) => {
-          const row = lastOpened.current && boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"]`);
-          const opener = row && (row.querySelector<HTMLElement>(".row-title-link, .row-open") || row.querySelector<HTMLElement>("button"));
-          if (!opener) return;
-          event.preventDefault();
-          opener.focus();
-        }}
-        title={t("Eintrag", "Record")}
-        wide
-        // Centred records are bottom sheets on phones.
-        sheet={recordMode !== "full" && recordMode !== "side"}
-        actions={selected && recordActions(selected)}
-        className={`record-dialog ${
-          recordMode === "full"
-            ? `modal-full${recordWide ? " modal-full-wide" : ""}`
-            : recordMode === "side"
-              ? "modal-side"
-              : recordLayout.properties === "side"
-                ? "modal-record-wide"
-                : ""
-        }`}
-      >
-        {selected && (
+      {(() => {
+        // The record's content, in its dialog or as a page of its own (#231).
+        const detail = selected && (
           <div className="row-detail" ref={watchRecordWidth}>
             {record && (
               // Opened from a relation in another view (#192): where the
@@ -6153,8 +6194,47 @@ export default function DatabaseView({
               </button>
             )}
           </div>
-        )}
+        );
+        if (pageRecord && selected)
+          return (
+            <section className={`record-page${recordWide ? " record-page-wide" : ""}`} aria-label={t("Eintrag", "Record")}>
+              <div className="record-page-bar">
+                <div className="modal-heading-actions">{recordActions(selected)}</div>
+              </div>
+              {detail}
+            </section>
+          );
+        return (
+      <Modal
+        open={!!selected && !pageRecord}
+        onClose={closeRecord}
+        // Back to the record's row or card, so the keyboard stays in the view.
+        onCloseAutoFocus={(event) => {
+          const row = lastOpened.current && boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"]`);
+          const opener = row && (row.querySelector<HTMLElement>(".row-title-link, .row-open") || row.querySelector<HTMLElement>("button"));
+          if (!opener) return;
+          event.preventDefault();
+          opener.focus();
+        }}
+        title={t("Eintrag", "Record")}
+        wide
+        // Centred records are bottom sheets on phones.
+        sheet={recordMode !== "full" && recordMode !== "side"}
+        actions={selected && recordActions(selected)}
+        className={`record-dialog ${
+          recordMode === "full"
+            ? `modal-full${recordWide ? " modal-full-wide" : ""}`
+            : recordMode === "side"
+              ? "modal-side"
+              : recordLayout.properties === "side"
+                ? "modal-record-wide"
+                : ""
+        }`}
+      >
+  {detail}
       </Modal>
+        );
+      })()}
       {selected && rowIconPicker && (
         <Modal
           open
