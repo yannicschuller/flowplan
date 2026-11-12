@@ -14,6 +14,7 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { hiddenFileIds } from "./row-files";
 import { createPage } from "./seed";
+import { hiddenRecordPageIds } from "./record-pages";
 import { htmlState, cleanHtml } from "./document-server";
 import { relationPairs, insertRelationPair } from "./relation-sync";
 import { copyDashboard, dashboardTiles } from "./dashboard";
@@ -62,6 +63,9 @@ export async function duplicatePages(
   spaceId: string,
   root?: Page,
 ) {
+  // Pages below records hidden from the copier stay out with their records (#231).
+  const hiddenBelow = await hiddenRecordPageIds(user, tree);
+  if (hiddenBelow.size) tree = tree.filter((p) => p.id === root?.id || !hiddenBelow.has(p.id));
   // Every page must be readable, journals behind a PIN unlocked.
   await forEachAsync(tree, async (p) => await requireUnlocked(user, await requirePage(user, p.id)));
   const hiddenFiles = new Set(await flatMapAsync(tree, async (p) => [...await hiddenFileIds(user, p)]));
@@ -163,8 +167,14 @@ export async function duplicatePages(
     for (const p of tree) {
       const target = pageIds.get(p.id)!;
       await run(
-        "UPDATE pages SET parent_id=?,icon=?,cover=?,cover_position=?,position=?,full_width=?,caption_numbers=?,font=?,icon_size=? WHERE id=?",
+        "UPDATE pages SET parent_id=?,parent_row_id=?,icon=?,cover=?,cover_position=?,position=?,full_width=?,caption_numbers=?,font=?,icon_size=? WHERE id=?",
         p.id === root?.id ? root.parent_id : pageIds.get(p.parent_id!) || null,
+        // Below a record: the copy of the record in the copied database (#231).
+        p.id === root?.id
+          ? (root.parent_row_id ?? null)
+          : p.parent_row_id && pageIds.has(p.parent_id!)
+            ? (rowIds.get(p.parent_row_id) ?? null)
+            : null,
         rewrite(p.icon),
         rewrite(p.cover),
         p.cover_position ?? 50,

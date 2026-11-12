@@ -88,6 +88,17 @@ export async function pageRole(user: Identity, page: Page): Promise<Role | null>
   while (current?.parent_id) {
     if (seen.has(current.id)) return null;
     seen.add(current.id);
+    // Below a record (#231): the record's role – its database's role with
+    // the record's own rules (readonly, private, record grants,
+    // lib/row-access.ts). A grant on the page itself or on a page between
+    // it and the record (checked above, on the way up) still wins, as a
+    // page shared from a private space does.
+    if (current.parent_row_id) {
+      const database = await pageRow(current.parent_id);
+      // Loaded when needed: lib/row-access.ts reaches this module again
+      // through its imports (an import cycle at start-up).
+      if (database) return await (await import("./row-access")).subPageRecordRole(user, database, current.parent_row_id);
+    }
     current = await pageRow(current.parent_id);
     if (current) {
       const inherited = await grantRole(user, "page", current.id, page.workspace_id);

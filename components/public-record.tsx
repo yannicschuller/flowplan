@@ -9,7 +9,7 @@ import { imageFileId } from "@/lib/page-appearance";
 import { ReadOnlyDocument } from "./read-only-document";
 import { PublicOutline } from "./document-outline";
 import { PageIcon } from "./ui";
-import { publicFile, publishedHtml } from "@/lib/publication";
+import { publicFile, publishedHtml, publishedLinkPages } from "@/lib/publication";
 import { recordHtml, recordReferenceNames, recordSharePages, recordTitle, type RecordScope } from "@/lib/record-share";
 import { publicHiddenFieldIds, stripCells } from "@/lib/field-access";
 import { computedCells } from "@/lib/database";
@@ -59,6 +59,9 @@ export async function renderPublicRecord(scope: RecordScope) {
     f.type === "relation" ? !!names.relations[f.id]?.length : ["person", "created_by", "updated_by"].includes(f.type) ? !!names.people[f.id]?.length : !empty(values[f.id]),
   );
   const pages = await recordSharePages(scope);
+  const children = pages.filter((p) => p.parent_id === page.id && p.parent_row_id === row.id);
+  // Links to the included sub-pages show their icons (#96).
+  const linkPages = await publishedLinkPages(token, pages);
   const html = await recordHtml(scope);
   const shownPlugins = await publicPluginIds(page.workspace_id);
   const withPlugins = (value: string) =>
@@ -97,7 +100,7 @@ export async function renderPublicRecord(scope: RecordScope) {
           </span>
         </div>
       )}
-      {/* The path starts at the shared record (sub-pages join it later). */}
+      {/* The path starts at the shared record (its sub-pages follow it). */}
       <nav className="public-breadcrumb" aria-label={t("Pfad", "Path")}>
         <a href={`/share/${token}`} aria-current="page">
           {title}
@@ -139,10 +142,22 @@ export async function renderPublicRecord(scope: RecordScope) {
       <ReadOnlyDocument
         className={`font-${page.font}`}
         shareToken={token}
-        linkPages={[]}
+        linkPages={linkPages}
         title={title}
         html={withPlugins(await publishedHtml(html, token, pages))}
       />
+      {/* Its sub-pages, when the share includes them (#231). */}
+      {children.length > 0 && (
+        <nav className="public-children" aria-label={t("Unterseiten", "Sub-pages")}>
+          <h2>{t("Unterseiten", "Sub-pages")}</h2>
+          {children.map((p) => (
+            <a key={p.id} href={`/share/${token}/${p.id}`}>
+              <PageIcon name={linkPages.find((l) => l.id === p.id)?.icon || "file"} /> {p.title}
+              <span>→</span>
+            </a>
+          ))}
+        </nav>
+      )}
       {/* A publication only reads: no permission line, no guest comments. */}
       {!scope.publication && <SharedInteractions key={row.id} token={token} initial={await sharedContent(token, page.id, row.id)} />}
       <footer className="home-footnote">{t("Mit Flowplan geteilt", "Shared with Flowplan")}</footer>

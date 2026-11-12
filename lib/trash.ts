@@ -53,7 +53,15 @@ export async function restoreTrashedPage(user: Identity, input: Record<string, u
     page.parent_id &&
     (await one<Page>("SELECT * FROM pages WHERE id=?", page.parent_id))?.deleted_at
   )
-    await run("UPDATE pages SET parent_id=NULL WHERE id=?", page.id);
+    await run("UPDATE pages SET parent_id=NULL,parent_row_id=NULL WHERE id=?", page.id);
+  // Below a record that is not there (in the trash itself): to the top of
+  // the space, as below a trashed page. Restoring the record later leaves
+  // it there (lib/record-pages.ts).
+  else if (
+    page.parent_row_id &&
+    !(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", page.parent_row_id, page.parent_id))
+  )
+    await run("UPDATE pages SET parent_id=NULL,parent_row_id=NULL WHERE id=?", page.id);
   if (!page.deleted_at) return { ok: true };
   const restored = new Set([page.id]);
   let level = [page.id];

@@ -623,6 +623,10 @@ const exact: Record<string, string> = {
   "Keine Datenbank.": "Not a database.",
   "Doppelte Einträge in der Auswahl.": "Duplicate records in the selection.",
   "Eintrag nicht gefunden.": "Record not found.",
+  // Sub-pages under records (#231, lib/record-pages.ts).
+  "Die Datenbank des Eintrags fehlt.": "The record's database is missing.",
+  "Unterseiten gibt es nur unter Einträgen einer Datenbank.": "Sub-pages can only sit under records of a database.",
+  "Wähle ein Ziel außerhalb der Unterseiten des Eintrags.": "Choose a destination outside the record's sub-pages.",
   "Mindestens ein ausgewählter Eintrag ist für dich schreibgeschützt.": "At least one selected record is read-only for you.",
   "Mindestens ein ausgewählter Eintrag wurde geändert. Bitte Auswahl erneuern.": "At least one selected record was changed. Please renew the selection.",
   "Einfache Filter und Filtergruppen nicht gleichzeitig angeben.": "Do not give simple filters and filter groups at the same time.",

@@ -13,8 +13,8 @@ import { recordScope } from "./record-share";
 export async function shareAccess(token: string, pageId: string, rowId?: string | null) {
   // A shared record (lib/record-share.ts): only its own record.
   const record = await recordScope(token);
-  if (record) {
-    if (record.page.id !== pageId || record.row.id !== rowId) throw new HttpError(404, "Datensatz nicht gefunden.");
+  if (record && record.page.id === pageId) {
+    if (record.row.id !== rowId) throw new HttpError(404, "Datensatz nicht gefunden.");
     if (record.role !== "editor") throw new HttpError(403, "Dieser Link erlaubt keine Live-Bearbeitung.");
     if (record.row.access === "readonly") throw new HttpError(404, "Datensatz nicht gefunden.");
     return record.page;

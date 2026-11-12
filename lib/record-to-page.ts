@@ -4,6 +4,7 @@
 // properties can stay as a short list at the top of the text, and the new
 // page follows the permissions of the place it goes to. The record goes to
 // the trash, so nothing is lost if the change was a mistake.
+import { adoptRecordSubPages, recordSubTree } from "./record-pages";
 import { hiddenFieldsFor } from "./field-access";
 import { recordAliases, storedAliases } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
@@ -295,6 +296,13 @@ export async function recordToPage(
   }
   // Record favourites become page favourites.
   await run("INSERT INTO favorites(user_id,page_id) SELECT user_id,? FROM row_favorites WHERE row_id=? ON CONFLICT DO NOTHING", pageId, row.id);
+  // Its sub-pages (#231) become the page's sub-pages – not into its own
+  // tree (a page placed below one of them).
+  const created = (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;
+  const below = new Set((await recordSubTree(database.id, row.id, true)).map((p) => p.id));
+  for (let at: Page | undefined = created; at?.parent_id; at = await one<Page>("SELECT * FROM pages WHERE id=?", at.parent_id))
+    if (below.has(at.parent_id)) throw new HttpError(400, "Wähle ein Ziel außerhalb der Unterseiten des Eintrags.");
+  await adoptRecordSubPages(database, row.id, created);
   // The record goes to the trash (restorable, under the same id).
   await trashRow(user, database, row.id);
   await maintainRowOrders(database.id);

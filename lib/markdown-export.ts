@@ -854,6 +854,13 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         document += content.trimStart().startsWith("<")
           ? (await render(content, recordContext))
           : markdownText(content) + "\n";
+        // The record's own sub-pages (#231).
+        const subPages = visible.filter((child) => child.parent_id === page.id && child.parent_row_id === row.id);
+        if (subPages.length)
+          document +=
+            `\n\n${zip ? "##" : "###"} ${ct("Unterseiten", "Sub-pages")}\n\n` +
+            subPages.map((child) => "- " + markdownLink(child.title, pageUrl(child.id, recordPath))).join("\n") +
+            "\n";
         if (zip) {
           add(recordPath, Buffer.from(document), true);
           await history(recordPath, page.id, row.id, title);
@@ -861,7 +868,8 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         else markdown += "\n\n" + document;
       }
     }
-    const children = visible.filter((child) => child.parent_id === page.id);
+    // Pages below a record are listed with their record.
+    const children = visible.filter((child) => child.parent_id === page.id && !child.parent_row_id);
     if (children.length)
       markdown +=
         `\n\n## ${ct("Unterseiten", "Sub-pages")}\n\n` +

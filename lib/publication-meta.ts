@@ -26,7 +26,12 @@ export async function publicationMetadata(token: string, pageId?: string): Promi
   // app's /share addresses stay out of search engines.
   try {
     const record = await recordScope(token);
-    if (record) return pageId ? base : { ...base, title: recordTitle(record) || record.page.title };
+    if (record && !pageId) return { ...base, title: recordTitle(record) || record.page.title };
+    // A sub-page of the record (#231): its title, never indexed.
+    if (record) {
+      const sub = await publicPage(token, pageId);
+      return { ...base, title: sub.page.title || sub.root.title };
+    }
   } catch {
     return base;
   }

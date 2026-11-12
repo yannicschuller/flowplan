@@ -10,6 +10,7 @@ import { cellText } from "./cell-text";
 import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync } from "./each-async";
+import { purgeRecordSubPages, restoreRecordSubPages, trashRecordSubPages, type TrashedSubPages } from "./record-pages";
 
 // Deleted records keep their content, document and comments in the trash so
 // they can be restored under the same id (relations pointing at them work
@@ -25,6 +26,8 @@ type Payload = {
   snapshots?: { id: string; state: string; html: string; created_by: string | null; created_at: string; kind: string }[];
   sharedComments?: Record<string, unknown>[];
   reactions?: Record<string, unknown>[];
+  // Its sub-pages, moved to the trash with it (#231, lib/record-pages.ts).
+  subPages?: TrashedSubPages;
 };
 export const trashedRole = async (user: Identity, page: Page, payload: Payload) =>
   await roleWithGrants(
@@ -55,7 +58,10 @@ export async function trashRow(user: Identity, page: Page, rowId: string) {
       page.id,
     ))?.fields || "[]",
   ) as Field[];
+  // Its sub-pages first, while the record's rules still decide about them.
+  const subPages = await trashRecordSubPages(user, page, rowId, nowText());
   const payload: Payload = {
+    ...(subPages ? { subPages } : {}),
     row,
     document: doc
       ? {
@@ -258,14 +264,16 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
       s.kind || "auto",
     );
   await run("DELETE FROM row_trash WHERE id=?", trashId);
+  await restoreRecordSubPages(payload.subPages);
   await maintainRowOrders(page.id);
   // Its tasks went with it (lib/db.ts, schema 76): back into "My tasks".
   await reindexRowTasks(user, page, [trashId]);
   return { ok: true, pageId: page.id, rowId: trashId };
 }
 export async function purgeTrashedRow(user: Identity, raw: unknown) {
-  const { trashId } = await entry(user, raw);
+  const { trashId, page, payload } = await entry(user, raw);
   await run("DELETE FROM row_trash WHERE id=?", trashId);
+  await purgeRecordSubPages(page.workspace_id, payload.subPages);
   return { ok: true };
 }
 export async function expireRowTrash(days = ROW_TRASH_DAYS) {

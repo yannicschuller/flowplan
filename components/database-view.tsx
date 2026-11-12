@@ -194,6 +194,7 @@ import {
   ShareNetwork,
 } from "@phosphor-icons/react";
 import { RecordShareDialog } from "./record-share-dialog";
+import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
@@ -6121,6 +6122,18 @@ export default function DatabaseView({
                   onError={onError}
                   onChanged={onRefresh}
                 />
+                {/* Pages below the record (#231), like a page's sub-pages. */}
+                {!record && (
+                  <RecordSubPages
+                    key={`subpages-${selected.id}`}
+                    database={page}
+                    rowId={selected.id}
+                    pages={pages}
+                    editable={selectedEditable && !readingRecord && !page.locked}
+                    mutate={mutate}
+                    onError={onError}
+                  />
+                )}
                 {fields
                   .filter((f) => f.type === "time")
                   .map((f) => (

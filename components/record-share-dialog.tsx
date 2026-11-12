@@ -176,6 +176,35 @@ export function RecordShareDialog({
             </button>
           </div>
           {publication && (
+          <div className="sh-opt sh-record-children">
+            <span className="sh-opt-label">
+              <span id={`${id}-children`}>{t("Unterseiten einbeziehen", "Include sub-pages")}</span>
+              <Hint
+                text={
+                  shares?.subPages === 1
+                    ? t("Besucher lesen auch die Unterseite dieses Eintrags und spätere – sonst nichts aus der Datenbank.", "Visitors also read this record's sub-page and later ones – nothing else of the database.")
+                    : shares?.subPages
+                      ? t(
+                          `Besucher lesen auch die ${shares.subPages} Unterseiten dieses Eintrags und spätere – sonst nichts aus der Datenbank.`,
+                          `Visitors also read this record's ${shares.subPages} sub-pages and later ones – nothing else of the database.`,
+                        )
+                      : t("Dieser Eintrag hat noch keine Unterseiten. Spätere werden dann mit veröffentlicht.", "This record has no sub-pages yet. Later ones are then published too.")
+                }
+              />
+            </span>
+            <button
+              type="button"
+              role="switch"
+              className="switch"
+              aria-checked={publication.includeChildren}
+              aria-labelledby={`${id}-children`}
+              onClick={() => void act({ action: "record.publish", enabled: true, includeChildren: !publication.includeChildren })}
+            >
+              <span />
+            </button>
+          </div>
+          )}
+          {publication && (
             <>
               <div className="sh-url">
                 <input readOnly aria-label={t("Öffentlicher Link", "Public link")} value={publicUrl} onFocus={(e) => e.target.select()} />

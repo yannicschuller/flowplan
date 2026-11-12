@@ -270,8 +270,10 @@ test("a page moves into a database with its content, links and comments", async 
   assert.equal((await one<{ row_id: string }>("SELECT row_id FROM comments WHERE body='Im Herbst machen'"))!.row_id, rid);
   assert.ok(await one("SELECT 1 FROM row_favorites WHERE user_id=? AND row_id=?", anna.id, rid));
   assert.match(String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", other))!.html), new RegExp(`href="/#page=${notes}&amp;row=${rid}"`));
-  // Sub-pages move up; sharing of the page ends; the page is in the trash.
-  assert.equal((await one<{ parent_id: string }>("SELECT parent_id FROM pages WHERE id=?", child))!.parent_id, parent);
+  // Sub-pages become the record's sub-pages (#231; the database is in the
+  // same space); sharing of the page ends; the page is in the trash.
+  const childNow = (await one<{ parent_id: string; parent_row_id: string | null }>("SELECT parent_id,parent_row_id FROM pages WHERE id=?", child))!;
+  assert.deepEqual([childNow.parent_id, childNow.parent_row_id], [notes, rid]);
   // What was shared on the page still holds for them: neither wider nor narrower.
   assert.equal((await one<{ role: string }>("SELECT role FROM grants WHERE resource_id=? AND user_id=?", child, ben.id))?.role, "editor");
   assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM grants WHERE resource_id=?", guide))!.n, 0);

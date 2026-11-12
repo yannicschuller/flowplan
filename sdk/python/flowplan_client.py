@@ -270,6 +270,7 @@ Page = TypedDict("Page", {
     "workspace_id": Required[str],
     "space_id": Required[str],
     "parent_id": Required[Optional[str]],
+    "parent_row_id": Optional[str],  # Below this record of the parent database (parent_id)
     "title": Required[str],
     "icon": Required[str],
     "cover": Required[str],
@@ -898,6 +899,7 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "title": str,  # Required unless `templateId` or `starterTemplate` is given: from a template the given title wins, without one the page takes the template's name
     "kind": Literal["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"],  # Default: document
     "parentId": str,  # Parent page in the same space
+    "parentRowId": str,  # A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record
     "databaseKind": Literal["tasks", "documents", "contacts", "empty"],
     "templateId": str,  # A saved page template of the workspace
     "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`
@@ -1187,6 +1189,7 @@ CommandPageMove = TypedDict("CommandPageMove", {
     "targetId": str,  # The page to place it next to or inside
     "placement": Literal["before", "after", "inside"],  # Default: inside
     "parentId": str,  # New parent when there is no target
+    "parentRowId": str,  # Below this record of the new parent database (with `parentId`, or `targetId` and placement `inside`). Next to a page (`before`/`after`) the page joins that page's record, if any
     "spaceId": str,  # Move into another space
     "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # Into another space or workspace: what to do with the source space's tags and properties the pages carry (page.moveCheck lists them, by id): map to one of the destination, copy there, or remove. Without it such a move is refused with 409 – nothing is dropped silently.
 }, total=False)

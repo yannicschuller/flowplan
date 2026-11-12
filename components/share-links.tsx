@@ -15,8 +15,9 @@ import { Hint } from "./share-hint";
 const linkUrl = (token: string) => `${location.origin}/share/${token}`;
 
 // The links of a page, or (`rowId`, #231) of a single record: those have
-// no sub-pages to include (yet) and their own commands (lib/record-share.ts).
-type LinkItem = Pick<ShareLink, "token" | "name" | "role" | "password" | "expires_at"> & { count?: number };
+// their own commands (lib/record-share.ts) and include the record's
+// sub-pages as they are, also later ones ("Unterseiten einbeziehen").
+type LinkItem = Pick<ShareLink, "token" | "name" | "role" | "password" | "expires_at"> & { count?: number; includeChildren?: boolean };
 export function ShareLinks({
   pageId,
   rowId,
@@ -64,7 +65,7 @@ export function ShareLinks({
         ...target,
         name,
         role,
-        ...(rowId ? {} : { includeChildren: children }),
+        includeChildren: children,
         ...(password ? { password } : {}),
         ...(expiry ? { expiresAt: fromLocalInput(expiry) } : {}),
       });
@@ -133,6 +134,7 @@ export function ShareLinks({
                     <strong>{link.name}</strong>
                     <span className="sh-badges">
                       <span className="sh-perm">{labels[link.role]}</span>
+                      {rowId && link.includeChildren && <span className="tag">{t("mit Unterseiten", "with sub-pages")}</span>}
                       {!!link.count && link.count > 1 && (
                         <span className="tag">
                           {link.count === 2
@@ -239,16 +241,23 @@ export function ShareLinks({
               </Select>
             </label>
           </div>
-          {/* Sub-pages under records come later (#231, lib/record-share.ts). */}
-          {!rowId && (
           <div className="sh-opt">
             <span className="sh-opt-label">
-              <span id={`${formId}-children`}>{t("Aktuell vorhandene Unterseiten einschließen", "Include current sub-pages")}</span>
+              <span id={`${formId}-children`}>
+                {rowId ? t("Unterseiten einbeziehen", "Include sub-pages") : t("Aktuell vorhandene Unterseiten einschließen", "Include current sub-pages")}
+              </span>
               <Hint
-                text={t(
-                  "Neue Unterseiten werden nicht automatisch freigegeben. Jeder Link lässt sich einzeln widerrufen.",
-                  "New sub-pages are not shared automatically. Every link can be revoked on its own.",
-                )}
+                text={
+                  rowId
+                    ? t(
+                        "Besucher öffnen auch die Unterseiten dieses Eintrags – die heutigen und spätere, solange sie unter ihm liegen. Sonst nichts aus der Datenbank.",
+                        "Visitors can also open this record's sub-pages – today's and later ones, as long as they sit under it. Nothing else of the database.",
+                      )
+                    : t(
+                        "Neue Unterseiten werden nicht automatisch freigegeben. Jeder Link lässt sich einzeln widerrufen.",
+                        "New sub-pages are not shared automatically. Every link can be revoked on its own.",
+                      )
+                }
               />
             </span>
             <button
@@ -262,7 +271,6 @@ export function ShareLinks({
               <span />
             </button>
           </div>
-          )}
           <div className="sh-grid-2">
             <label>
               {t("Passwort (optional)", "Password (optional)")}

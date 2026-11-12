@@ -117,7 +117,10 @@ export async function PublishedPage(props: PublishedPageProps) {
       throw e;
     }
     if (record) {
-      if (props.pageId || (props.rowId && props.rowId !== record.row.id)) notFound();
+      // An included sub-page of the record (#231): a page of the share
+      // (publicPage answers 404 for anything else).
+      if (props.pageId) return renderPublishedPage(props);
+      if (props.rowId && props.rowId !== record.row.id) notFound();
       return await renderPublicRecord(record);
     }
     return renderPublishedPage(props);

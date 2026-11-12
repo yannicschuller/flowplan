@@ -207,7 +207,9 @@ function flowplanLayout(entries: Map<string, Buffer>, nodes: Map<string, Node>, 
   const parents = new Map<string, string>(),
     records = new Map<string, string[]>(),
     recordTitles = new Map<string, string>(),
-    databases = new Map<string, string>();
+    databases = new Map<string, string>(),
+    // Record documents: their "## Unterseiten" lists name their sub-pages (#231).
+    recordNodes = new Map<string, string>();
   const heading = (path: string | null) => (path ? /^#\s+([^\n]+)/m.exec(splitFrontmatter(text(path)).body)?.[1]?.trim() : undefined);
   // A database's own Markdown file once its CSV took its place.
   const markdownOf = (node: Node) => (/\.md$/i.test(node.path) ? node.path : entries.has(`${node.key}.md`) ? `${node.key}.md` : null);
@@ -232,6 +234,7 @@ function flowplanLayout(entries: Map<string, Buffer>, nodes: Map<string, Node>, 
     const record = /^records\/([0-9a-f-]{36})\/[^/]+$/.exec(rest);
     if (record && node.kind === "document") {
       nodes.delete(node.key);
+      recordNodes.set(node.key, node.path);
       const list = records.get(`${unit}\u0000${record[1]}`) || [];
       list.push(node.key);
       records.set(`${unit}\u0000${record[1]}`, list);
@@ -248,8 +251,8 @@ function flowplanLayout(entries: Map<string, Buffer>, nodes: Map<string, Node>, 
     for (let at: string | undefined = key; at; at = parents.get(at)) if (at === of) return true;
     return false;
   };
-  for (const node of nodes.values()) {
-    const markdown = markdownOf(node);
+  for (const node of [...nodes.values(), ...[...recordNodes].map(([key, path]) => ({ key, path, kind: "document" as const }))]) {
+    const markdown = recordNodes.has(node.key) ? node.path : markdownOf(node as Node);
     const list = (markdown && SUBPAGES.exec(text(markdown))?.[1]) || "";
     for (const link of list.matchAll(/^- \[[^\n]*\]\(<?([^>\n)]+\.md)>?\)$/gm)) {
       let target: string;
@@ -343,6 +346,12 @@ export async function importZip(
       nodes.delete(node.key);
     }
   }
+  // The pages of a record (#231): Notion puts them in a folder named like
+  // the record page, next to it in the database's folder (a Flowplan
+  // export lists them in the record's document). They go below the record
+  // – created below its database, placed under the record once it exists.
+  const recordDatabase = new Map<string, string>();
+  for (const [database, keys] of rowPages) for (const key of keys) recordDatabase.set(key, database);
   if (!nodes.size)
     throw new HttpError(
       400,
@@ -356,7 +365,10 @@ export async function importZip(
   for (const [key, day] of days) if (day.skip) nodes.delete(key);
   // A page's parent: a journal for its days, in a Flowplan export the page
   // whose list names it, otherwise the page of its folder.
-  const parentKey = (key: string) => days.get(key)?.journal ?? layout?.parents.get(key) ?? posix.dirname(key);
+  const folderKey = (key: string) => days.get(key)?.journal ?? layout?.parents.get(key) ?? posix.dirname(key);
+  // Below a record: its database is the page's parent.
+  const parentKey = (key: string) => recordDatabase.get(folderKey(key)) ?? folderKey(key);
+  const recordOf = (key: string) => (recordDatabase.has(folderKey(key)) ? folderKey(key) : undefined);
   if (layout)
     for (const node of nodes.values()) {
       node.depth = 1;
@@ -484,6 +496,8 @@ export async function importZip(
     const anchors = new Map<string, Map<string, string>>();
     const documents: { pid: string; html: string }[] = [];
     const recordDocs: { rid: string; html: string }[] = [];
+    // The record made of each record page (for the pages below it).
+    const recordIds = new Map<string, string>();
     const imageBytes = { bytes: 0 };
     for (const node of ordered) {
       const pid = pageIds.get(node.key)!;
@@ -574,7 +588,7 @@ export async function importZip(
         const markdown = !pageKey || isHtml(path)
           ? ""
           : layout
-            ? splitFrontmatter(text(path)).body.replace(/^\s*#\s[^\n]*\n?/, "").trim()
+            ? splitFrontmatter(text(path)).body.replace(/^\s*#\s[^\n]*\n?/, "").replace(SUBPAGES, "\n").trim()
             : rowBody(text(path));
         const html = pageKey && isHtml(path)
           ? htmlPage(path).html.trim() ? await htmlDocument(path, pid) : ""
@@ -582,6 +596,7 @@ export async function importZip(
             ? await markdownToHtmlAsync(markdown, resolver(path, pid))
             : "";
         const rid = id();
+        if (pageKey) recordIds.set(pageKey, rid);
         await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
           rid,
@@ -594,6 +609,13 @@ export async function importZip(
         );
         if (html) recordDocs.push({ rid, html });
       });
+    }
+    // Pages of records below their record (#231); one whose record page
+    // matched no row of the table stays below the database.
+    for (const node of ordered) {
+      const record = recordOf(node.key);
+      const rid = record && recordIds.get(record);
+      if (rid) await run("UPDATE pages SET parent_row_id=? WHERE id=?", rid, pageIds.get(node.key)!);
     }
     // Links to blocks and headings, now that every document has its ids.
     const lookup = (pageId: string, anchor: string) => findAnchor(anchors.get(pageId), anchor);

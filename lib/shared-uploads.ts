@@ -69,10 +69,12 @@ export async function guestUpload(token: string, pageId: string, file: File) {
   return await transaction(async () => {
     // A shared record (lib/record-share.ts): uploads belong to its database
     // and are readable through this link only until the record uses them.
+    // Another page: one of its included sub-pages (#231, publicPage).
     const record = await recordScope(token);
-    if (record && (record.page.id !== pageId || record.row.access === "readonly"))
+    const own = !!record && record.page.id === pageId;
+    if (own && record.row.access === "readonly")
       throw new HttpError(404, "Seite nicht veröffentlicht.");
-    const { page, role } = record ? { page: record.page, role: record.role } : await publicPage(token, pageId);
+    const { page, role } = own ? { page: record.page, role: record.role } : await publicPage(token, pageId);
     if (role !== "editor")
       throw new HttpError(403, "Dieser Link erlaubt keine Uploads.");
     if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");

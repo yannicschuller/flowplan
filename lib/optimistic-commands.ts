@@ -52,7 +52,7 @@ export function subtree(pages: Pick<Page, "id" | "parent_id">[], id: string) {
 // level and goes before/after the target or at the end of the new parent.
 export function movePages(
   pages: Page[],
-  move: { pageId: string; targetId?: string; placement?: string; parentId?: string | null; spaceId?: string },
+  move: { pageId: string; targetId?: string; placement?: string; parentId?: string | null; parentRowId?: string | null; spaceId?: string },
 ): Page[] {
   const moving = pages.find((p) => p.id === move.pageId);
   if (!moving) return pages;
@@ -60,15 +60,17 @@ export function movePages(
   if (move.targetId && !target) return pages;
   const placement = move.placement || "inside";
   const parent = target ? (placement === "inside" ? target.id : target.parent_id) : (move.parentId ?? null);
+  // Below a record (#231): asked for, or next to a page below one.
+  const parentRow = target && placement !== "inside" ? (target.parent_row_id ?? null) : (move.parentRowId ?? null);
   const parentPage = parent ? pages.find((p) => p.id === parent) : undefined;
   const space = parentPage?.space_id || target?.space_id || move.spaceId || moving.space_id;
   const below = subtree(pages, moving.id);
   if (parent && below.has(parent)) return pages;
   const moved = pages.map((p) =>
-    p.id === moving.id ? { ...p, parent_id: parent, space_id: space } : below.has(p.id) ? { ...p, space_id: space } : p,
+    p.id === moving.id ? { ...p, parent_id: parent, parent_row_id: parentRow, space_id: space } : below.has(p.id) ? { ...p, space_id: space } : p,
   );
   const self = moved.find((p) => p.id === moving.id)!;
-  const siblings = moved.filter((p) => p.id !== moving.id).filter((p) => p.space_id === space && (p.parent_id ?? null) === parent && !p.deleted_at);
+  const siblings = moved.filter((p) => p.id !== moving.id).filter((p) => p.space_id === space && (p.parent_id ?? null) === parent && (p.parent_row_id ?? null) === parentRow && !p.deleted_at);
   const at =
     target && placement !== "inside" ? siblings.findIndex((p) => p.id === target.id) + (placement === "after" ? 1 : 0) : siblings.length;
   const order = [...siblings];
@@ -262,6 +264,7 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
             targetId: str(b.targetId),
             placement: str(b.placement),
             parentId: b.parentId === undefined ? undefined : (str(b.parentId) ?? null),
+            parentRowId: str(b.parentRowId) ?? null,
             spaceId: str(b.spaceId),
           }),
         }),

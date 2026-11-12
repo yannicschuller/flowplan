@@ -5,8 +5,9 @@
 // target, and properties the target lacks can be created. A copy gets new
 // records with their content and files; a move keeps the record itself –
 // content, comments, versions, time and Git links travel with it – and
-// gives it a number in the new database.
+// gives it a number in the new database. Its sub-pages go along (#231).
 import { revokeRecordSharesOfRow } from "./record-share";
+import { moveRecordSubPages } from "./record-pages";
 import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
@@ -225,6 +226,8 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
         user.id, nowText(),
         row.id,
       );
+      // Its sub-pages (#231) stay below it, in the target database.
+      await moveRecordSubPages(user, source, target, row.id);
       // Everything that belongs to the record moves along.
       for (const table of ["comments", "notifications", "shared_comments", "inline_threads", "row_favorites", "time_entries", "git_links", "tickets", "doc_tasks"])
         await run(`UPDATE ${table} SET page_id=? WHERE row_id=? AND page_id=?`, target.id, row.id, source.id);

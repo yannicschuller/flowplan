@@ -297,6 +297,7 @@ export const commandActions: ActionDoc[] = [
       title: str.optional().describe("Required unless `templateId` or `starterTemplate` is given: from a template the given title wins, without one the page takes the template's name"),
       kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"]).optional().describe("Default: document"),
       parentId: uuid.optional().describe("Parent page in the same space"),
+      parentRowId: uuid.optional().describe("A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record"),
       databaseKind: z.enum(["tasks", "documents", "contacts", "empty"]).optional(),
       templateId: z.string().max(100).optional().describe("A saved page template of the workspace"),
       meta: metaPlanInput.optional().describe("With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`"),
@@ -593,6 +594,7 @@ export const commandActions: ActionDoc[] = [
       targetId: uuid.optional().describe("The page to place it next to or inside"),
       placement: z.enum(["before", "after", "inside"]).optional().describe("Default: inside"),
       parentId: uuid.optional().describe("New parent when there is no target"),
+      parentRowId: uuid.optional().describe("Below this record of the new parent database (with `parentId`, or `targetId` and placement `inside`). Next to a page (`before`/`after`) the page joins that page's record, if any"),
       spaceId: uuid.optional().describe("Move into another space"),
       meta: metaPlanInput
         .optional()
@@ -1232,6 +1234,7 @@ const schemas: Record<string, Json> = {
       workspace_id: { type: "string", format: "uuid" },
       space_id: { type: "string", format: "uuid" },
       parent_id: { type: ["string", "null"], format: "uuid" },
+      parent_row_id: { type: ["string", "null"], format: "uuid", description: "Below this record of the parent database (parent_id)" },
       title: { type: "string" },
       icon: { type: "string" },
       cover: { type: "string" },
