@@ -132,9 +132,12 @@ export function hiddenSelectors(options: PrintOptions): string[] {
   else if (!options.properties) out.push(".page-properties-list", ".row-properties");
   return out;
 }
+// Buttons for editing that are no use on paper ("Cover ändern", "+ Tag",
+// "+ Eigenschaft", a tag's ×).
+export const EDIT_CONTROLS = [".cover-change", ".add-cover", ".page-properties-add", ".page-tag-remove"];
 // Removes them from the copy (never from the page itself).
 export function applyPrintOptions(copy: Element, options: PrintOptions) {
-  const selectors = hiddenSelectors(options);
+  const selectors = [...hiddenSelectors(options), ...EDIT_CONTROLS];
   if (selectors.length) copy.querySelectorAll(selectors.join(",")).forEach((el) => el.remove());
   copy.classList.add("print-options");
 }

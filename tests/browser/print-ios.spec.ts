@@ -41,10 +41,12 @@ test("print on iPhone prints a lean copy in the page right away", async ({ page 
   await editor.click();
   await page.keyboard.type("Ein Absatz zum Drucken.");
   await page.getByRole("button", { name: "Seitenaktionen" }).click();
-  const item = page.getByRole("menuitem", { name: "Drucken / PDF" });
-  await item.waitFor();
+  await page.getByRole("menuitem", { name: "Drucken / PDF" }).click();
+  // The print options first (#215); "Drucken" is the tap that prints.
+  const print = page.getByRole("dialog", { name: "Drucken / PDF" }).getByRole("button", { name: "Drucken", exact: true });
+  await print.waitFor();
   const tapped = await page.evaluate(() => performance.now());
-  await item.click();
+  await print.click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { printed: Printed }).printed.length)).toBe(1);
   const [printed] = await page.evaluate(() => (window as unknown as { printed: Printed }).printed);
   // Printed while the tap still counts (Safari forwards it for about a second).
@@ -101,6 +103,7 @@ test("print in the home screen app hands a print view to the browser", async ({ 
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Ein Absatz für den Browser.", { timeout: 20_000 });
   await page.getByRole("button", { name: "Seitenaktionen" }).click();
   await page.getByRole("menuitem", { name: "Drucken / PDF" }).click();
+  await page.getByRole("dialog", { name: "Drucken / PDF" }).getByRole("button", { name: "Drucken", exact: true }).click();
   const dialog = page.locator("dialog.print-handoff");
   const open = dialog.getByRole("link", { name: "Druckansicht öffnen" });
   await expect(open).toBeVisible();

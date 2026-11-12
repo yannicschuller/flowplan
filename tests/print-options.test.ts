@@ -57,7 +57,7 @@ test("options: cover, icon, tags and properties leave the copy of a page or reco
   const doc = new Window().document;
   const page = () => {
     doc.body.innerHTML =
-      '<article class="page-content"><div class="page-cover">C</div><div class="document-header"><button class="large-page-icon">I</button><div class="page-title">T</div></div>' +
+      '<article class="page-content"><div class="page-cover">C<button class="cover-change">Cover ändern</button></div><div class="document-header"><button class="large-page-icon">I</button><div class="page-title">T</div></div>' +
       '<section class="page-properties"><div class="page-properties-tags">#tag</div><dl class="page-properties-list">Status</dl></section><div class="document-editor"><p>Text</p></div>' +
       '<div class="row-detail"><div class="row-cover">RC</div><h2><span class="row-title-icon">RI</span>Eintrag</h2><div class="row-properties">Felder</div></div></article>';
     return doc.querySelector(".page-content")! as unknown as Element;
@@ -66,6 +66,7 @@ test("options: cover, icon, tags and properties leave the copy of a page or reco
   P.applyPrintOptions(copy, P.DEFAULT_PRINT_OPTIONS);
   for (const sel of [".page-cover", ".large-page-icon", ".page-properties-tags", ".page-properties-list", ".row-cover", ".row-title-icon", ".row-properties"]) assert.ok(copy.querySelector(sel), sel);
   assert.ok(copy.classList.contains("print-options"));
+  assert.equal(copy.querySelector(".cover-change"), null, "no editing buttons on paper");
   copy = page();
   P.applyPrintOptions(copy, { ...P.DEFAULT_PRINT_OPTIONS, cover: false, icon: false });
   for (const sel of [".page-cover", ".large-page-icon", ".row-cover", ".row-title-icon"]) assert.equal(copy.querySelector(sel), null, sel);
