@@ -1,6 +1,7 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
 import { exportLook, FONT_LIMITS, importLook, storedTheme } from "./workspace-fonts";
 import { importLinkRules, workspaceLinkRules } from "./auto-link-rules";
+import { importPrintPresets, workspacePrintPresets } from "./print-settings";
 import { importWorkflow, workflowArchive, workflowArchiveSchema } from "./workflows/archive";
 import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
@@ -242,6 +243,9 @@ export const archiveSchema = z.object({
   // checked rule by rule on import (importLinkRules). Archives from before
   // have none; an older Flowplan ignores the key (zod strips it).
   linkRules: z.unknown().optional(),
+  // The workspace's print presets (#215, lib/print-settings.ts), checked
+  // preset by preset on import (importPrintPresets).
+  printPresets: z.unknown().optional(),
   templates: z
     .array(
       z.object({
@@ -495,6 +499,13 @@ async function snapshotFor(user: Identity, wid: string) {
       : await (async () => {
           const rules = await workspaceLinkRules(wid);
           return rules.length ? { linkRules: rules } : {};
+        })()),
+    // The print presets, for members (#215).
+    ...((await isGuest(user, wid))
+      ? {}
+      : await (async () => {
+          const print = await workspacePrintPresets(wid);
+          return print.presets.length ? { printPresets: print } : {};
         })()),
     favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
@@ -765,6 +776,7 @@ export async function jsonExportWorkspace(wid: string) {
     ...(await one<{ name: string; icon: string }>("SELECT name,icon FROM workspaces WHERE id=?", wid)),
     theme: await storedTheme(wid),
     linkRules: await workspaceLinkRules(wid),
+    printPresets: await workspacePrintPresets(wid),
   };
 }
 // Streams a workspace archive without holding its files in memory.
@@ -1765,7 +1777,7 @@ async function importEntries(
       // has none yet (lib/workspace-fonts.ts importLook), and its link
       // rules, added to the workspace's own (lib/auto-link-rules.ts).
       // Invalid ones are left out and counted for the report.
-      const omittedSettings = { linkRules: 0, fonts: 0, theme: 0 };
+      const omittedSettings = { linkRules: 0, fonts: 0, theme: 0, printPresets: 0 };
       if (data.look) {
         const look = await importLook(user, wid, {
           theme: data.look.theme,
@@ -1776,6 +1788,7 @@ async function importEntries(
         omittedSettings.theme = look.droppedTheme ? 1 : 0;
       }
       omittedSettings.linkRules = (await importLinkRules(user, wid, data.linkRules)).dropped;
+      omittedSettings.printPresets = (await importPrintPresets(user, wid, data.printPresets)).dropped;
       await audit(
         user.id,
         "workspace.archive.import",

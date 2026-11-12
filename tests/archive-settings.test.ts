@@ -55,7 +55,7 @@ test("round trip: link rules and the look with its uploaded face come back in a 
   assert.ok(entries.has(`fonts/${face.id}`));
   const target = await createWorkspace(restorer.id, "Ziel");
   const result = await importArchive(restorer, target, zip);
-  assert.deepEqual(result.omittedSettings, { linkRules: 0, fonts: 0, theme: 0 });
+  assert.deepEqual(result.omittedSettings, { linkRules: 0, fonts: 0, theme: 0, printPresets: 0 });
   const rules = await workspaceLinkRules(target);
   assert.deepEqual(rules.map((r) => [r.name, r.pattern, r.template, r.enabled]), [
     ["Jira", JIRA.pattern, JIRA.template, true],
@@ -132,7 +132,7 @@ test("a crafted archive: invalid rules, an oversized and a fake face and a bad t
   });
   const other = await createWorkspace(restorer.id, "Ohne Farbe");
   const second = await importArchive(restorer, other, badTheme);
-  assert.deepEqual(second.omittedSettings, { linkRules: 1, fonts: 0, theme: 1 });
+  assert.deepEqual(second.omittedSettings, { linkRules: 1, fonts: 0, theme: 1, printPresets: 0 });
   const otherLook = await fonts.workspaceLook(other, true);
   assert.equal(otherLook.theme, null);
   assert.deepEqual(otherLook.fonts.map((f) => f.name), ["Hausschrift"]);
@@ -164,7 +164,7 @@ test("an archive from before (no link rules, no look) still imports", async () =
   const target = await createWorkspace(restorer.id, "Alt");
   const result = await importArchive(restorer, target, archive);
   assert.ok(result.pages >= 1);
-  assert.deepEqual(result.omittedSettings, { linkRules: 0, fonts: 0, theme: 0 });
+  assert.deepEqual(result.omittedSettings, { linkRules: 0, fonts: 0, theme: 0, printPresets: 0 });
   assert.deepEqual(await workspaceLinkRules(target), []);
   assert.equal((await fonts.workspaceLook(target)).theme, null);
 });
@@ -177,7 +177,7 @@ test("the JSON export carries the look and the link rules; its import checks the
   const targetSpace = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", target))!;
   exported.workspace.linkRules.push({ pattern: "(a+)+", template: "https://x.example/{match}" });
   const result = (await command(restorer, { action: "workspace.import", workspaceId: target, spaceId: targetSpace.id, backup: exported })) as { omittedSettings: unknown };
-  assert.deepEqual(result.omittedSettings, { linkRules: 1, fonts: 0, theme: 0 });
+  assert.deepEqual(result.omittedSettings, { linkRules: 1, fonts: 0, theme: 0, printPresets: 0 });
   assert.deepEqual((await workspaceLinkRules(target)).map((r) => r.pattern), [JIRA.pattern, ISSUES.pattern]);
   // Uploaded faces are only in the ZIP archive: that slot stays at the default.
   assert.deepEqual((await fonts.workspaceLook(target)).theme, { accent: "#be123c", background: "sepia", fonts: { mono: "source-code-pro" } });
@@ -187,7 +187,7 @@ test("the JSON export carries the look and the link rules; its import checks the
   const { workspace: _w, ...older } = exported;
   const plain = (await command(restorer, { action: "workspace.import", workspaceId: old, spaceId: oldSpace.id, backup: older })) as { pages: number; omittedSettings: unknown };
   assert.ok(plain.pages >= 1);
-  assert.deepEqual(plain.omittedSettings, { linkRules: 0, fonts: 0, theme: 0 });
+  assert.deepEqual(plain.omittedSettings, { linkRules: 0, fonts: 0, theme: 0, printPresets: 0 });
   assert.deepEqual(await workspaceLinkRules(old), []);
 });
 

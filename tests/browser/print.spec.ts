@@ -26,6 +26,8 @@ test("print from the page menu prints a lean copy of the page", async ({ page })
   await page.keyboard.type("Ein Absatz zum Drucken.");
   await page.getByRole("button", { name: "Seitenaktionen" }).click();
   await page.getByRole("menuitem", { name: "Drucken / PDF" }).click();
+  // The print options (#215), then the copy.
+  await page.getByRole("dialog", { name: "Drucken / PDF" }).getByRole("button", { name: "Drucken", exact: true }).click();
   const frame = page.frameLocator("iframe.print-frame");
   await expect(frame.locator(".page-content")).toContainText("Ein Absatz zum Drucken.");
   await expect(frame.locator("body")).toContainText(title);

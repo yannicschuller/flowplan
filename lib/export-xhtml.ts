@@ -162,6 +162,9 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       }
       case "horizontalRule":
         return "<hr/>";
+      // A new page in the combined print view and e-books (#216).
+      case "pageBreak":
+        return '<div class="page-break"></div>';
       case "codeBlock": {
         const label = caption(node);
         const code = `<pre><code${attr("class", node.attrs.language ? `language-${String(node.attrs.language)}` : "")}>${xml(node.textContent)}</code></pre>`;

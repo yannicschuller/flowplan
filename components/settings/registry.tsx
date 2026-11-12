@@ -26,6 +26,7 @@ import {
   PaintBrush,
   Palette,
   PlugsConnected,
+  Printer,
   Pulse,
   PuzzlePiece,
   ShieldCheck,
@@ -54,6 +55,7 @@ import ClipperSection from "./user/clipper";
 import WorkspaceSection from "./user/workspace";
 import WorkspaceLookSection from "./user/workspace-look";
 import LinkRulesSection from "./user/link-rules";
+import { PrintSection, WorkspacePrintSection } from "./user/print";
 import MembersSection from "./user/members";
 import GroupsSection from "./user/groups";
 import SpacesSection from "./user/spaces";
@@ -104,6 +106,7 @@ export const ICONS: Record<string, Icon> = {
   PaintBrush,
   Palette,
   PlugsConnected,
+  Printer,
   Pulse,
   PuzzlePiece,
   ShieldCheck,
@@ -132,6 +135,8 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   workspace: WorkspaceSection,
   look: WorkspaceLookSection,
   autolinks: LinkRulesSection,
+  print: PrintSection,
+  printpresets: WorkspacePrintSection,
   members: MembersSection,
   groups: GroupsSection,
   spaces: SpacesSection,

@@ -38,6 +38,7 @@ const names: Record<string, string> = {
   media: tr("Medium", "Media"),
   linkedDatabase: tr("Verknüpfte Datenbank", "Linked database"),
   horizontalRule: tr("Trennlinie", "Divider"),
+  pageBreak: tr("Seitenumbruch", "Page break"),
 };
 export function documentBlocks(doc: Node): DocumentBlock[] {
   const blocks: DocumentBlock[] = [];

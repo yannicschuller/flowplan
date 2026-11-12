@@ -291,6 +291,10 @@ export type Bootstrap = {
   linkRules?: import("./auto-link").AutoLinkRule[];
   // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
   textMenu?: import("./text-menu-pref").TextMenuPref;
+  // Print options (#215, lib/print-options.ts): the person's last choice
+  // and own presets; the workspace's presets.
+  print?: import("./print-options").UserPrintSettings;
+  printPresets?: import("./print-options").WorkspacePrintPresets;
   // "Seitensymbol" (#214, lib/page-icon-pref.ts).
   pageIcon?: import("./page-icon-pref").PageIconPref;
   // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).

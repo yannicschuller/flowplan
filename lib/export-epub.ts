@@ -62,6 +62,7 @@ ul.task-list { list-style: none; padding-left: 1.2em; }
 .due { font-size: 0.85em; color: #666; }
 mark { background: #fff3a3; }
 hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }
+.page-break { page-break-after: always; break-after: page; height: 0; margin: 0; }
 .columns .column { margin-bottom: 1em; }
 .placeholder, .media, .linked-database, .whiteboard { color: #555; font-style: italic; }
 .footnotes { margin-top: 2em; padding-top: 0.5em; border-top: 1px solid #ccc; font-size: 0.85em; }

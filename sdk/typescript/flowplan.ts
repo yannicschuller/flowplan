@@ -1117,6 +1117,99 @@ export type CommandWorkspaceLinkRulesResult = {
   }[];
 };
 
+/** Set the workspace's print presets. Needs the owner role (guests never). Replaces the whole list (at most 30 presets): named sets of print options (cover, icon, tags, properties, page numbers, title page, table of contents, paper, title size, typefaces, links) that every member and guest can pick in the print dialog but not change. `defaultId` names the preset the dialog starts with for people who have not printed yet (null: none). Every member and guest gets them in the bootstrap (`printPresets`). */
+export type CommandWorkspacePrintPresets = {
+  action: "workspace.printPresets";
+  workspaceId: string;
+  presets: {
+    id: string;
+    name: string;
+    options: unknown;
+  }[];
+  defaultId?: string | null;
+};
+
+export type CommandWorkspacePrintPresetsResult = {
+  presets: ({
+    id: string;
+    name: string;
+    options: {
+      cover: boolean;
+      icon: boolean;
+      tags: boolean;
+      properties: boolean;
+      pageNumbers: boolean;
+      titlePage: boolean;
+      toc: boolean;
+      paper: "auto" | "a4" | "letter";
+      titleSize: "small" | "normal" | "large";
+      bodyFont: "default" | "serif" | "sans" | "workspace";
+      headingFont: "default" | "serif" | "sans" | "workspace";
+      links: "auto" | "plain" | "underline" | "dashed" | "address";
+    };
+  })[];
+  defaultId: string | null;
+};
+
+/** Remember the caller's print options and own print presets. For the caller, on all devices. `options` is the last choice in the print dialog (null forgets it); `presets` replaces the caller's own list of presets (at most 30). Either may be left out. Unknown or invalid option values in a preset are replaced by the defaults. */
+export type CommandProfilePrint = {
+  action: "profile.print";
+  options?: {
+    cover: boolean;
+    icon: boolean;
+    tags: boolean;
+    properties: boolean;
+    pageNumbers: boolean;
+    titlePage: boolean;
+    toc: boolean;
+    paper: "auto" | "a4" | "letter";
+    titleSize: "small" | "normal" | "large";
+    bodyFont: "default" | "serif" | "sans" | "workspace";
+    headingFont: "default" | "serif" | "sans" | "workspace";
+    links: "auto" | "plain" | "underline" | "dashed" | "address";
+  } | null;
+  presets?: {
+    id: string;
+    name: string;
+    options: unknown;
+  }[];
+};
+
+export type CommandProfilePrintResult = {
+  last: {
+    cover: boolean;
+    icon: boolean;
+    tags: boolean;
+    properties: boolean;
+    pageNumbers: boolean;
+    titlePage: boolean;
+    toc: boolean;
+    paper: "auto" | "a4" | "letter";
+    titleSize: "small" | "normal" | "large";
+    bodyFont: "default" | "serif" | "sans" | "workspace";
+    headingFont: "default" | "serif" | "sans" | "workspace";
+    links: "auto" | "plain" | "underline" | "dashed" | "address";
+  } | null;
+  presets: ({
+    id: string;
+    name: string;
+    options: {
+      cover: boolean;
+      icon: boolean;
+      tags: boolean;
+      properties: boolean;
+      pageNumbers: boolean;
+      titlePage: boolean;
+      toc: boolean;
+      paper: "auto" | "a4" | "letter";
+      titleSize: "small" | "normal" | "large";
+      bodyFont: "default" | "serif" | "sans" | "workspace";
+      headingFont: "default" | "serif" | "sans" | "workspace";
+      links: "auto" | "plain" | "underline" | "dashed" | "address";
+    };
+  })[];
+};
+
 /** Use Flowplan's own look instead of the workspaces' appearance. For the caller, in every workspace and on all devices; light or dark stays a choice per device. */
 export type CommandProfilePlainLook = {
   action: "profile.plainLook";
@@ -2730,10 +2823,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandWorkspaceTheme | CommandWorkspaceLinkRules | CommandProfilePlainLook | CommandProfileTextMenu | CommandProfilePageIcon | CommandProfileExternalLinkIcon | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandTaskAdd | CommandTasksSeen | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandWorkspaceTheme | CommandWorkspaceLinkRules | CommandWorkspacePrintPresets | CommandProfilePrint | CommandProfilePlainLook | CommandProfileTextMenu | CommandProfilePageIcon | CommandProfileExternalLinkIcon | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandTaskAdd | CommandTasksSeen | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "workspace.linkRules" } ? CommandWorkspaceLinkRulesResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "profile.pageIcon" } ? CommandProfilePageIconResult : A extends { action: "profile.externalLinkIcon" } ? CommandProfileExternalLinkIconResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "task.add" } ? CommandTaskAddResult : A extends { action: "tasks.seen" } ? CommandTasksSeenResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "workspace.linkRules" } ? CommandWorkspaceLinkRulesResult : A extends { action: "workspace.printPresets" } ? CommandWorkspacePrintPresetsResult : A extends { action: "profile.print" } ? CommandProfilePrintResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "profile.pageIcon" } ? CommandProfilePageIconResult : A extends { action: "profile.externalLinkIcon" } ? CommandProfileExternalLinkIconResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "task.add" } ? CommandTaskAddResult : A extends { action: "tasks.seen" } ? CommandTasksSeenResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 

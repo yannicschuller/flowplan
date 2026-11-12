@@ -10,6 +10,7 @@ import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes } from "./code-block-options";
 import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
+import { isPageBreakStyle } from "./page-break-node";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 // cleanHtml with a transform that awaits (database lookups, #127): the
 // tags are collected in a first pass, transformed one after the other, and
@@ -119,6 +120,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-bibliography",
         "data-bibliography-title",
         "data-footnote",
+        // The page break block (#216, lib/page-break-node.ts).
+        "data-page-break",
         // The meeting block (#199, lib/meeting-schema.ts).
         "data-meeting",
         "data-meeting-title",
@@ -168,8 +171,11 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
     transformTags: {
       // A draw.io block's picture is cleaned as SVG (lib/drawio-svg.ts),
       // its diagram kept only within the limit.
+      // A page break from Word, Google Docs or Markdown
+      // (<div style="page-break-after: always">) becomes the block (#216).
       "*": (tagName, attribs) => {
         const result = transform ? transform(tagName, attribs) : { tagName, attribs };
+        if (result.tagName === "div" && isPageBreakStyle(result.attribs.style)) result.attribs = { ...result.attribs, "data-page-break": "", class: "page-break" };
         return "data-drawio" in result.attribs || "data-drawio-svg" in result.attribs ? drawioAttributes(result) : result;
       },
       // Only the known providers' player URLs survive, not any page on

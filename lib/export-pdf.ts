@@ -12,18 +12,22 @@ import { exportName } from "./export-name";
 import { collectExportContent, withExportLookups, type ExportContent } from "./export-content";
 import { documentXhtml, xml } from "./export-xhtml";
 import { exportUrl } from "./export-docx";
+import { DEFAULT_PRINT_OPTIONS, printOptionsCss, type PrintFontStacks, type PrintOptions } from "./print-options";
+import { workspaceLook } from "./workspace-fonts";
+import { appFontUrl, themeFontFaces } from "./workspace-theme";
+import { DEFAULT_FONTS, customFontId, fontStack } from "./theme-fonts";
 import type { Identity } from "./types";
 
 export const PDF_MAX_PAGES = 200;
-export const PRINT_STYLE = `@page { size: A4; margin: 18mm 16mm 20mm; @bottom-center { content: counter(page); font: 10pt Helvetica, Arial, sans-serif; color: #666; } }
-html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+// Paper, page numbers, link addresses, title size and typefaces come from
+// the print options (#215, lib/print-options.ts printOptionsCss).
+export const PRINT_STYLE = `html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { margin: 0; background: #fff; }
 .print-book { max-width: 760px; margin: 0 auto; padding: 24px 16px; color: #111; font: 11pt/1.5 Georgia, "Times New Roman", serif; }
 .print-book h1, .print-book h2, .print-book h3, .print-book h4, .print-book h5, .print-book h6 { font-family: Helvetica, Arial, sans-serif; line-height: 1.25; margin: 1.3em 0 0.4em; break-after: avoid; page-break-after: avoid; }
 .print-book h1 { font-size: 20pt; } .print-book h2 { font-size: 15pt; } .print-book h3 { font-size: 13pt; } .print-book h4, .print-book h5, .print-book h6 { font-size: 11pt; }
 .print-book p { margin: 0 0 0.7em; orphans: 3; widows: 3; }
 .print-book a { color: #1f3fbf; text-decoration: none; }
-.print-book a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #666; word-break: break-all; }
 .print-book .cover { min-height: 70vh; display: flex; flex-direction: column; justify-content: center; text-align: center; page-break-after: always; break-after: page; }
 .print-book .cover-kind { text-transform: uppercase; letter-spacing: 0.1em; font: 9pt Helvetica, Arial, sans-serif; color: #666; }
 .print-book .cover h1 { font-size: 30pt; margin: 0.3em 0; }
@@ -68,6 +72,7 @@ body { margin: 0; background: #fff; }
 .print-book .due { font-size: 9pt; color: #666; }
 .print-book mark { background: #fff3a3; }
 .print-book hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }
+.print-book .page-break { break-after: page; page-break-after: always; height: 0; margin: 0; border: 0; }
 .print-book .columns { display: flex; gap: 1.5em; }
 .print-book .columns .column { flex: 1; min-width: 0; }
 .print-book .placeholder, .print-book .media, .print-book .linked-database, .print-book .whiteboard { color: #555; font-style: italic; }
@@ -87,7 +92,22 @@ function numbers(pages: ExportContent["pages"]) {
   });
 }
 
-export function printHtml(content: ExportContent, author: string) {
+// The workspace's typefaces for "workspace" in the print options: the
+// stacks of the look's text and heading faces and the @font-face rules
+// they need (fonts.css holds Flowplan's own).
+export type PrintLook = { stacks: PrintFontStacks; faces: string };
+export async function printLook(workspaceId: string): Promise<PrintLook> {
+  const look = await workspaceLook(workspaceId);
+  const stack = (slot: "ui" | "display") => {
+    const ref = look.theme?.fonts?.[slot] || DEFAULT_FONTS[slot];
+    const custom = customFontId(ref);
+    const font = custom ? look.fonts.find((f) => f.id === custom) : undefined;
+    return (custom && !font ? null : fontStack(slot, ref, font)) || fontStack(slot, DEFAULT_FONTS[slot]);
+  };
+  return { stacks: { body: stack("ui"), heading: stack("display") }, faces: themeFontFaces(look.theme, look.fonts, appFontUrl) };
+}
+
+export function printHtml(content: ExportContent, author: string, options: PrintOptions = DEFAULT_PRINT_OPTIONS, look?: PrintLook) {
   const locale = contentLocale();
   const anchors = new Map(content.pages.map((entry) => [entry.page.id, `#p-${entry.page.id}`]));
   const image = (raw: string) => (content.fileInfo(raw) ? raw.replace(/^https?:\/\/[^/]+/, "") : /^https:\/\//.test(raw) ? raw : null);
@@ -101,7 +121,7 @@ export function printHtml(content: ExportContent, author: string) {
   const chapters = content.pages.map((entry, index) => {
     const title = entry.title || ct("Ohne Titel", "Untitled");
     let body = "";
-    if (entry.cover) body += `<p class="cover-image"><img src="${xml(entry.cover)}" alt=""></p>`;
+    if (entry.cover && options.cover) body += `<p class="cover-image"><img src="${xml(entry.cover)}" alt=""></p>`;
     if (entry.page.kind === "whiteboard")
       body += entry.svg
         ? `<figure class="whiteboard"><img src="${xml(svgData(entry.svg))}" alt="${xml(title)}"></figure>`
@@ -141,21 +161,33 @@ export function printHtml(content: ExportContent, author: string) {
   if (depth >= 0) toc += "</li></ol>".repeat(depth + 1);
   const title = content.name || ct("Ohne Titel", "Untitled");
   const date = new Date().toLocaleDateString(localeTag(locale), { year: "numeric", month: "long", day: "numeric" });
-  const cover = content.root?.cover && content.pages[0]?.cover ? `<p class="cover-image"><img src="${xml(content.pages[0].cover)}" alt=""></p>` : "";
+  const cover = options.cover && content.root?.cover && content.pages[0]?.cover ? `<p class="cover-image"><img src="${xml(content.pages[0].cover)}" alt=""></p>` : "";
+  // The workspace's typefaces only when chosen (Flowplan's own from
+  // fonts.css, the look's from its rules).
+  const workspaceFonts = !!look && (options.bodyFont === "workspace" || options.headingFont === "workspace");
+  const fonts = workspaceFonts ? `<link rel="stylesheet" href="/fonts.css">${look.faces ? `<style>${look.faces}</style>` : ""}` : "";
+  // Without title page and table of contents the first chapter starts on
+  // the first page.
+  const first = !options.titlePage && !options.toc ? "\n.print-book .chapter:first-of-type { page-break-before: auto; break-before: auto; }" : "";
+  const style = `${PRINT_STYLE}\n${printOptionsCss(options, "book", look?.stacks)}${first}`;
   return (
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${xml(title)}</title><style>${PRINT_STYLE}</style></head>` +
+    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${xml(title)}</title>${fonts}<style>${style}</style></head>` +
     `<body><main class="print-book">` +
-    `<section class="cover"><p class="cover-kind">${xml(content.space ? ct("Bereich", "Space") : ct("Seite mit Unterseiten", "Page with sub-pages"))}</p><h1>${xml(title)}</h1>${cover}` +
-    `<p class="cover-meta">${xml(author)} · ${xml(date)} · ${content.pages.length} ${xml(content.pages.length === 1 ? ct("Seite", "page") : ct("Seiten", "pages"))}</p></section>` +
-    `<nav class="toc"><h2>${xml(ct("Inhalt", "Contents"))}</h2>${toc}</nav>` +
+    (options.titlePage
+      ? `<section class="cover"><p class="cover-kind">${xml(content.space ? ct("Bereich", "Space") : ct("Seite mit Unterseiten", "Page with sub-pages"))}</p><h1>${xml(title)}</h1>${cover}` +
+        `<p class="cover-meta">${xml(author)} · ${xml(date)} · ${content.pages.length} ${xml(content.pages.length === 1 ? ct("Seite", "page") : ct("Seiten", "pages"))}</p></section>`
+      : "") +
+    (options.toc ? `<nav class="toc"><h2>${xml(ct("Inhalt", "Contents"))}</h2>${toc}</nav>` : "") +
     chapters.join("") +
     `</main></body></html>`
   );
 }
 
-export async function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
+export async function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }, print: PrintOptions = DEFAULT_PRINT_OPTIONS) {
   const content = await collectExportContent(user, { ...options, maxPages: PDF_MAX_PAGES, format: "PDF" });
-  const html = await withExportLookups(content, (c) => printHtml(c, user.name));
+  const workspaceId = content.space?.workspace_id || content.root?.workspace_id;
+  const look = workspaceId && (print.bodyFont === "workspace" || print.headingFont === "workspace") ? await printLook(workspaceId) : undefined;
+  const html = await withExportLookups(content, (c) => printHtml(c, user.name, print, look));
   if (content.space) await audit(user.id, "space.pdf.export", content.space.id);
   else await audit(user.id, "page.pdf.export", content.root!.id);
   return { html, name: `${exportName(content.name)}.html` };

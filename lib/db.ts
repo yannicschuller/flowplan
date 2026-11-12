@@ -1349,6 +1349,14 @@ function migrate(d: DatabaseSync) {
   // column (nothing is linked automatically), so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "link_rules"))
     d.exec("ALTER TABLE workspaces ADD COLUMN link_rules TEXT");
+  // Print options and presets (#215, lib/print-settings.ts): a person's
+  // last choice and own presets (users.print_settings), a workspace's
+  // presets (workspaces.print_presets), JSON, NULL = none. An older version
+  // ignores the columns (prints as before), so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "print_settings"))
+    d.exec("ALTER TABLE users ADD COLUMN print_settings TEXT");
+  if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "print_presets"))
+    d.exec("ALTER TABLE workspaces ADD COLUMN print_presets TEXT");
   // Personal tasks (#208, lib/personal-tasks.ts): the person's own task
   // page per workspace ("Aufgabe hinzufügen" in My tasks), when a task was
   // given to someone by another person (doc_tasks.assigned_at, NULL for

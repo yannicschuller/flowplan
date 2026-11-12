@@ -4,6 +4,7 @@ import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
+import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -317,12 +318,13 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     guest: number;
     theme?: string | null;
     link_rules?: string | null;
+    print_presets?: string | null;
   }>(
     "SELECT w.*,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
     user.id,
     // The look and the link rules come once, parsed, for the open
     // workspace (`look` and `linkRules` below).
-  )).map(({ theme: _theme, link_rules: _rules, ...w }) => w);
+  )).map(({ theme: _theme, link_rules: _rules, print_presets: _print, ...w }) => w);
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
@@ -353,6 +355,10 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     linkRules: await workspaceLinkRules(workspace.id),
     // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
     textMenu: await userTextMenu(user.id),
+    // Print options (#215, lib/print-options.ts): the person's last choice
+    // and own presets, the workspace's presets.
+    print: await userPrintSettings(user.id),
+    printPresets: await workspacePrintPresets(workspace.id),
     // "Seitensymbol" (#214, lib/page-icon-pref.ts).
     pageIcon: await userPageIcon(user.id),
     // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).
@@ -909,6 +915,14 @@ async function runCommand(
       case "workspace.linkRules":
         result = await saveWorkspaceLinkRules(user, wid(), b.rules);
         break;
+      // Print presets (#215): owners replace the workspace's list; everyone
+      // keeps their last choice and their own presets.
+      case "workspace.printPresets":
+        result = await saveWorkspacePrintPresets(user, wid(), { presets: b.presets, defaultId: b.defaultId });
+        break;
+      case "profile.print":
+        result = await setUserPrintSettings(user, { options: b.options, presets: b.presets });
+        break;
       case "workspace.font.rename":
         result = await renameWorkspaceFont(user, wid(), b.fontId, b.name);
         break;
@@ -1046,7 +1060,7 @@ async function runCommand(
             format: z.literal("flowplan-1"),
             // Look and link rules (#196, #202): exports from before have
             // none; checked like the ZIP archive's further down.
-            workspace: z.object({ theme: z.unknown().optional(), linkRules: z.unknown().optional() }).optional(),
+            workspace: z.object({ theme: z.unknown().optional(), linkRules: z.unknown().optional(), printPresets: z.unknown().optional() }).optional(),
             pages: z
               .array(
                 z.object({
@@ -1224,6 +1238,7 @@ async function runCommand(
             linkRules: (await importLinkRules(user, wid(), backup.workspace?.linkRules)).dropped,
             fonts: 0,
             theme: look.droppedTheme ? 1 : 0,
+            printPresets: (await importPrintPresets(user, wid(), backup.workspace?.printPresets)).dropped,
           },
         };
         break;

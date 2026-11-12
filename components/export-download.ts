@@ -6,6 +6,7 @@ import { flushOpenDocuments } from "@/lib/document-flush";
 import { tr } from "@/lib/locale-tag";
 import { downloadBlob } from "./ui";
 import { printDocument } from "./print-page";
+import { printOptionsQuery, type PrintOptions } from "@/lib/print-options";
 
 async function fetchExport(url: string) {
   await flushOpenDocuments();
@@ -28,9 +29,11 @@ export async function downloadExport(url: string, fallbackName: string) {
     } catch {}
   downloadBlob(name, await response.blob());
 }
-// The combined print view: fetched with the session, then printed.
-export async function printExport(url: string) {
-  const response = await fetchExport(url);
+// The combined print view: fetched with the session, then printed – with
+// the print options (#215) in the query.
+export async function printExport(url: string, options?: PrintOptions) {
+  const query = options ? printOptionsQuery(options) : "";
+  const response = await fetchExport(query ? `${url}&print=${encodeURIComponent(query)}` : url);
   printDocument(await response.text());
 }
 export const docxUrl = (pageId: string, rowId?: string) => `/api/export/docx?page=${pageId}${rowId ? `&row=${rowId}` : ""}`;
