@@ -95,6 +95,18 @@ test("sub-pages under a record: create, show, move, delete with the record, rest
   // The record lists both sub-pages (its page and its dialog).
   await page.goto(`/#page=${db.id}&row=${record.id}&full=1`);
   await expect(subPages.locator(".record-subpage")).toHaveText([new RegExp(`Gesprächsnotizen ${tag}`), new RegExp(`Flussdiagramme ${tag}`)]);
+  // In the sidebar only the record is the active entry; its database is
+  // an ancestor, like the parent of an open sub-page.
+  if (desktop) {
+    const item = page.locator(`[data-record-tree="record:${db.id}:${record.id}"]`);
+    await expect(item).toHaveAttribute("aria-selected", "true");
+    await expect(item).toHaveClass(/\bselected\b/);
+    const database = page.locator(`.page-nav[data-page-id="${db.id}"]`);
+    await expect(database).toHaveAttribute("aria-selected", "false");
+    await expect(database).not.toHaveClass(/\bselected\b/);
+    await expect(database).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator('.sidebar [aria-selected="true"].page-nav')).toHaveCount(1);
+  }
   // The "moved" notice with its Undo goes first (not in the pictures).
   const toast = page.locator(".toast");
   if (await toast.count()) await toast.getByRole("button", { name: "Meldung schließen" }).click().catch(() => {});

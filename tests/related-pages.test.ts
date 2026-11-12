@@ -169,3 +169,13 @@ test("records: a multi-select property hidden by a read rule never makes records
   assert.equal(tagged((await relatedPages(ben, hiddenDb, a)).items), false);
   assert.equal(tagged((await relatedPages(admin, hiddenDb, a)).items), true);
 });
+
+test("records: their own sub-pages are structure, not related pages", async () => {
+  const sub = ((await command(admin, { action: "page.create", workspaceId: wid, spaceId: space, parentId: db, parentRowId: r1, title: "Logo entwerfen Skizzen" })) as { id: string }).id;
+  const loose = await createPage(wid, space, admin.id, "Logo entwerfen Ideen");
+  const pages = (await relatedPages(ben, db, r1)).items.filter((i) => !i.rowId).map((i) => i.pageId);
+  assert.ok(!pages.includes(sub), "not a sub-page of the record itself");
+  assert.ok(pages.includes(loose), "other pages with a similar title still show");
+  // From another record the sub-page is an ordinary page.
+  assert.ok((await relatedPages(ben, db, r4)).items.some((i) => !i.rowId && i.pageId === sub));
+});

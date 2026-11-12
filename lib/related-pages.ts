@@ -32,6 +32,7 @@ import { allow } from "./action-limits";
 import { recordTitle } from "./ai/sources";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync, mapAsync } from "./each-async";
+import { recordSubPageIds } from "./record-pages";
 
 export type RelatedReason = "meaning" | "link" | "backlink" | "shared-links" | "tags" | "title";
 export type RelatedItem = {
@@ -123,11 +124,15 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
   const page = rowId ? (await requireRow(user, pageId, rowId)).page : (await requirePage(user, pageId));
   if (await journalLocked(user, page)) return { items: [], semantic: false };
   const self = key(pageId, rowId);
+  // A record's own sub-pages (pages.parent_row_id) are its structure, not
+  // related pages – like the database the record lives in.
+  const structure = new Set(rowId ? await recordSubPageIds(pageId, rowId) : []);
   const found = new Map<string, { pageId: string; rowId: string | null; score: number; reasons: Set<RelatedReason> }>();
   const add = (p: string, r: string | null | undefined, score: number, reason: RelatedReason) => {
     const k = key(p, r);
     // Not the page itself, nor – for a record – its own database.
-    if (k === self || (!r && p === pageId)) return;
+    // Nor a record's own sub-pages.
+    if (k === self || (!r && (p === pageId || structure.has(p)))) return;
     const entry = found.get(k) || { pageId: p, rowId: r || null, score: 0, reasons: new Set<RelatedReason>() };
     entry.score += score;
     entry.reasons.add(reason);
