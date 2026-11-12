@@ -25,6 +25,8 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { templateCategoryLabels, templateCategoryIds } from "@/lib/template-categories";
 import {
   MAX_PACKAGE_BYTES,
+  browseAddress,
+  marketplacePageAddress,
   checksumMatches,
   instanceReady,
   isImportHash,
@@ -55,6 +57,28 @@ export function useMarketplace() {
     },
     () => current,
     () => null,
+  );
+}
+
+// This instance's origin in the browser (null while rendering on the server),
+// for the #from= part of marketplace links.
+const noSubscription = () => () => {};
+function useInstanceOrigin() {
+  return useSyncExternalStore(
+    noSubscription,
+    () => location.origin,
+    () => null,
+  );
+}
+
+// A plain link to the marketplace (new tab); nothing when it is off.
+export function MarketplaceLink({ config, path, className, children }: { config?: MarketplaceClientConfig | null; path?: string; className?: string; children: React.ReactNode }) {
+  const href = browseAddress(config, useInstanceOrigin(), path);
+  if (!href) return null;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+      {children}
+    </a>
   );
 }
 
@@ -226,7 +250,7 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
   // configured origin and only that window.
   function openMarketplace() {
     stop.current();
-    const win = window.open(submitAddress(config.origin), "_blank");
+    const win = window.open(submitAddress(config.origin, location.origin), "_blank");
     if (!win) {
       setSending({ step: "error", message: t("Dein Browser hat das neue Fenster blockiert. Erlaube Pop-ups für diese Seite und versuch es noch einmal.", "Your browser blocked the new window. Allow pop-ups for this site and try again.") });
       return;
@@ -631,6 +655,8 @@ function ImportDialog({
 }) {
   const t = useT();
   const locale = useLocale();
+  const config = boot.instance?.marketplace;
+  const instanceOrigin = useInstanceOrigin();
   const [preview, setPreview] = useState<Preview | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -747,7 +773,7 @@ function ImportDialog({
             {summary && <p>{summary}</p>}
             {preview.url && (
               <p className="muted">
-                <a href={preview.url} target="_blank" rel="noopener noreferrer">
+                <a href={marketplacePageAddress(preview.url, config, instanceOrigin)} target="_blank" rel="noopener noreferrer">
                   {t("Im Marketplace ansehen", "View in the marketplace")}
                 </a>
               </p>

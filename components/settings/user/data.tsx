@@ -7,7 +7,7 @@
 // Sicherungen (restoring a Flowplan archive; the instance's backups live in
 // the administration) and Papierkorb & Aufbewahrung.
 import { useState, type ReactNode } from "react";
-import { ArrowRight, DownloadSimple, UploadSimple } from "@phosphor-icons/react";
+import { ArrowRight, DownloadSimple, Storefront, UploadSimple } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "../../i18n";
 import { api, download, downloadBlob } from "../../ui";
@@ -17,7 +17,7 @@ import { SpaceExportDialog } from "../../space-export";
 import { ImportSources } from "../../import-sources";
 import { CONTROL, SettingGroup, SettingRow } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
-import { TemplateFileButton } from "../../marketplace";
+import { MarketplaceLink, TemplateFileButton } from "../../marketplace";
 
 type Result = { tone: "ok" | "error"; text: string } | null;
 
@@ -215,7 +215,12 @@ export default function DataSection() {
             label={t("Vorlage aus dem Marketplace", "Template from the marketplace")}
             description={t("Eine heruntergeladene .flowplan-template-Datei: Vorlage, Workflow, Whiteboard-Vorlage, Erscheinungsbild oder automatische Links. Vor dem Import siehst du, was entsteht.", "A downloaded .flowplan-template file: template, workflow, whiteboard template, appearance or automatic links. Before the import you see what will be created.")}
           >
-            <TemplateFileButton config={boot.instance.marketplace} />
+            <div className="ws-buttons">
+              <TemplateFileButton config={boot.instance.marketplace} />
+              <MarketplaceLink config={boot.instance.marketplace} className="button compact">
+                <Storefront aria-hidden /> {t("Marketplace öffnen", "Open the marketplace")}
+              </MarketplaceLink>
+            </div>
           </SettingRow>
         )}
       </SettingGroup>

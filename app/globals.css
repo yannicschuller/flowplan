@@ -5148,6 +5148,22 @@ mark[data-color] {
 .template-categories button.selected {
   border-color: transparent;
 }
+/* "Mehr Vorlagen im Marketplace" under the built-in templates. */
+.template-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -6px 0 18px;
+  font-size: 13px;
+}
+.template-more svg {
+  flex: none;
+}
+.template-more svg:last-child {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+}
 @media (max-width: 600px) {
   .template-grid {
     grid-template-columns: 1fr;

@@ -91,7 +91,7 @@ import {
 import { useOfflineRefresh } from "./offline-refresh";
 import { appCopyUnreachable } from "@/lib/offline-store";
 import SavedTemplates from "./saved-templates";
-import { MarketplaceReceiver } from "./marketplace";
+import { MarketplaceLink, MarketplaceReceiver } from "./marketplace";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
 import { commandOverlay } from "@/lib/optimistic-commands";
@@ -271,7 +271,7 @@ import { templateCategories } from "@/lib/template-categories";
 import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
-import { CalendarX, Compass, LockKey } from "@phosphor-icons/react";
+import { CalendarX, Compass, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { setAutoLinkRules } from "@/lib/auto-link-plugin";
@@ -5831,6 +5831,11 @@ export default function WorkspaceApp({
               ))}
           </div>
         )}
+        {/* The Flowplan Marketplace for more (components/marketplace.tsx); nothing when it is off. */}
+        <MarketplaceLink config={boot.workspace.guest ? null : boot.instance?.marketplace} className="template-more">
+          <Storefront aria-hidden /> {t("Mehr Vorlagen im Marketplace", "More templates in the marketplace")}
+          <ArrowSquareOut aria-hidden />
+        </MarketplaceLink>
         <SavedTemplates
           workspaceId={boot.workspace.id}
           canCreate={canCreate}
