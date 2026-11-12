@@ -23,6 +23,7 @@ import type { Identity, Page, Row } from "./types";
 import { filterAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { validBlockId } from "./block-ids";
 import { TASK_STATUSES, isClosedStatus, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
 
 // The state as doc_tasks keeps it: NULL for open and done (`checked` says which).
@@ -44,6 +45,9 @@ export type DocTask = {
   status: TaskStatus;
   assignees: string[];
   due: string | null;
+  // Its block id (lib/block-ids.ts), when it has one: its identity across
+  // edits (#249).
+  blockId: string | null;
 };
 // The task's own line: its first paragraph, with mentions as @Name.
 function lineOf(item: JsonNode) {
@@ -82,7 +86,7 @@ export function extractTasks(json: JsonNode): DocTask[] {
       const { text, assignees } = lineOf(node);
       const due = typeof node.attrs?.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(node.attrs.due) ? node.attrs.due : null;
       const status = taskStatusOf(node.attrs);
-      tasks.push({ index: tasks.length, text, checked: isClosedStatus(status), status, assignees, due });
+      tasks.push({ index: tasks.length, text, checked: isClosedStatus(status), status, assignees, due, blockId: validBlockId(node.attrs?.blockId) });
     }
     for (const child of node.content || []) walk(child);
   };
@@ -101,8 +105,8 @@ export async function syncDocTasks(
   notify = true,
 ) {
   const tasks = extractTasks(yDocToProsemirrorJSON(ydoc, "default") as JsonNode);
-  const previous = await all<{ text: string; assignee: string | null; checked: number; status: string | null; assigned_at: number | null }>(
-    "SELECT text,assignee,checked,status,assigned_at FROM doc_tasks WHERE page_id=? AND row_id=?",
+  const previous = await all<{ idx: number; text: string; assignee: string | null; checked: number; status: string | null; assigned_at: number | null; block_id: string | null }>(
+    "SELECT idx,text,assignee,checked,status,assigned_at,block_id FROM doc_tasks WHERE page_id=? AND row_id=?",
     page.id,
     rowId || "",
   );
@@ -111,6 +115,7 @@ export async function syncDocTasks(
   // Tasks that were there and not done: ticked off now when they are done.
   const wasOpen = new Set(previous.filter((t) => !(Number(t.checked) && !t.status)).map((t) => t.text));
   const wasDone = new Set(previous.filter((t) => Number(t.checked) && !t.status).map((t) => t.text));
+  await followDoneLog(page, rowId, previous, tasks, wasDone);
   await run("DELETE FROM doc_tasks WHERE page_id=? AND row_id=?", page.id, rowId || "");
   const notified = new Set<string>();
   const logged = new Set<string>();
@@ -140,7 +145,7 @@ export async function syncDocTasks(
       // notice below); "Neu" in My tasks until they open it.
       const assignedAt = known.has(key) ? known.get(key)! : notify && assignee && assignee !== user.id && !task.checked ? now : null;
       await run(
-        "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at,assigned_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at,assigned_at,block_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         id(),
         page.id,
         rowId || "",
@@ -154,6 +159,7 @@ export async function syncDocTasks(
         user.id,
         now,
         assignedAt,
+        task.blockId,
       );
       if (
         notify &&
@@ -179,6 +185,36 @@ export async function syncDocTasks(
     }
   }
   return assignees;
+}
+
+// A done task reworded (#249): its entries in task_done_log take the new
+// text, so it stays in "An diesem Tag erledigt" (matched by text, lib/
+// journal-completed.ts). The task before is the one with the same block id;
+// without ids on either side, the done task at the same position – and only
+// when its old text is gone from the document (else the old task is still
+// there and this one is another).
+async function followDoneLog(
+  page: Page,
+  rowId: string | null,
+  previous: { idx: number; text: string; checked: number; status: string | null; block_id: string | null }[],
+  tasks: DocTask[],
+  wasDone: Set<string>,
+) {
+  const before = previous.filter((t) => Number(t.checked) && !t.status);
+  if (!before.length) return;
+  const texts = new Set(tasks.map((t) => t.text.slice(0, TASK_TEXT_MAX)));
+  const renamed = new Map<string, string>();
+  for (const task of tasks.slice(0, 2000)) {
+    const text = task.text.slice(0, TASK_TEXT_MAX);
+    if (task.status !== "done" || !text || wasDone.has(text)) continue;
+    const old =
+      (task.blockId && before.find((t) => t.block_id === task.blockId)) ||
+      before.find((t) => Number(t.idx) === task.index && !(task.blockId && t.block_id) && !texts.has(t.text));
+    if (!old || old.text === text || renamed.has(old.text)) continue;
+    renamed.set(old.text, text);
+  }
+  for (const [from, to] of renamed)
+    await run("UPDATE task_done_log SET text=? WHERE page_id=? AND row_id=? AND text=?", to, page.id, rowId || "", from);
 }
 
 // Tasks for "Meine Aufgaben": assigned to the person, unassigned ones with
@@ -444,7 +480,7 @@ export async function backfillDocTasks() {
       for (const task of tasks.slice(0, 2000))
         for (const assignee of task.assignees.length ? task.assignees : [null])
           await run(
-            "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at,block_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
             id(),
             page.id,
             rowId || "",
@@ -457,6 +493,7 @@ export async function backfillDocTasks() {
             page.workspace_id,
             null,
             Date.now(),
+            task.blockId,
           );
     } finally {
       ydoc.destroy();
