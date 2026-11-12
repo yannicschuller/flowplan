@@ -1,7 +1,8 @@
 "use client";
 // Settings → Arbeitsbereich → Besprechungen (#199, lib/meetings.ts): the
 // default instructions of new meeting blocks, what happens to the audio
-// after the transcript, and whether recording needs everyone's consent.
+// after the transcript, whether recording needs everyone's consent and the
+// glossary the speech recognition gets (names, acronyms).
 // Members read, owners change.
 import { useEffect, useState } from "react";
 import { useT } from "../../i18n";
@@ -18,6 +19,7 @@ type Settings = {
   retentionDays: number;
   consentRequired: boolean;
   consentText: string;
+  glossary: string;
   defaultConsentText: string;
   transcription: boolean;
 };
@@ -78,6 +80,26 @@ export default function MeetingsSection() {
             />
           </SettingRow>
         )}
+      </SettingGroup>
+      <SettingGroup
+        id="glossary"
+        title={t("Vokabular", "Vocabulary")}
+        description={t(
+          "Namen, Abkürzungen und Fachbegriffe, die die Spracherkennung richtig schreiben soll – einer pro Zeile oder durch Kommas getrennt. Nur die ersten rund 550 Zeichen werden verwendet.",
+          "Names, acronyms and terms the speech recognition should spell right – one per line or separated by commas. Only the first 550 or so characters are used.",
+        )}
+      >
+        <SettingRow label={t("Glossar", "Glossary")} id="meeting-glossary" wide>
+          <textarea
+            id="meeting-glossary"
+            rows={3}
+            maxLength={2000}
+            disabled={!owner || !settings.transcription}
+            placeholder={t("z. B. Flowplan, OKR, Ada Lovelace", "e.g. Flowplan, OKR, Ada Lovelace")}
+            defaultValue={settings.glossary}
+            onBlur={(e) => e.target.value !== settings.glossary && void save({ glossary: e.target.value })}
+          />
+        </SettingRow>
       </SettingGroup>
       <SettingGroup
         id="audio"

@@ -8,9 +8,9 @@
 //                        "Agenda"; rich text, editable at any time, read
 //                        by the summary)
 //     meetingTranscript  meetingSegment* – one passage each, with its time,
-//                        speaker, track and recording session; "edited"
-//                        once a person corrected it, "hallucination" when
-//                        the pipeline found it invented (hidden by default)
+//                        speaker, track and recording session; flagged
+//                        when it is no speech (hallucination) or a person
+//                        corrected it (edited, hash of the original)
 //
 // Citation chips (meetingCite, ①②…) in the summary point at a segment by
 // its id. The recording, its processing and the kept audio are in the
@@ -26,16 +26,13 @@ const attr = (name: string, fallback = "") => ({
   parseHTML: (el: HTMLElement) => el.getAttribute(name) ?? fallback,
   renderHTML: () => ({}),
 });
+// "1" (as written); "true" from early copies of the editor side.
+const flag = (name: string) => ({ default: false, parseHTML: (el: HTMLElement) => ["1", "true"].includes(el.getAttribute(name) || ""), renderHTML: () => ({}) });
 const num = (value: string | null) => {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : 0;
 };
 const MEETING_ID = /^[0-9a-f-]{36}$/i;
-const flag = (name: string) => ({
-  default: false,
-  parseHTML: (el: HTMLElement) => el.getAttribute(name) === "true",
-  renderHTML: () => ({}),
-});
 
 export const Meeting = Node.create({
   name: "meeting",
@@ -117,12 +114,15 @@ export const MeetingSegmentNode = Node.create({
       speaker: attr("data-speaker"),
       track: attr("data-track", "mixed"),
       session: { default: 1, parseHTML: (el: HTMLElement) => num(el.getAttribute("data-session")) || 1, renderHTML: () => ({}) },
-      // Corrected by a person (lib/meeting-transcript-edit.ts): transcribing
-      // again warns before it replaces such passages.
-      edited: flag("data-edited"),
-      // Invented by the speech recognition in silence ("Untertitel im
-      // Auftrag des ZDF"): kept, but hidden in the block until shown.
+      // Not speech: a silence phrase or repetition the recogniser made up
+      // (lib/meeting-core.ts markHallucinations) – hidden by default, left
+      // out of the summary.
       hallucination: flag("data-hallucination"),
+      // Corrected by a person (set by the editor); `hash` is the text as
+      // transcribed (segmentHash), so the server also sees a correction the
+      // editor did not mark. Re-transcribing keeps corrected passages.
+      edited: flag("data-edited"),
+      hash: attr("data-hash"),
     };
   },
   parseHTML: () => [{ tag: "p[data-segment]", priority: 1000 }],
@@ -135,8 +135,9 @@ export const MeetingSegmentNode = Node.create({
       "data-speaker": node.attrs.speaker,
       "data-track": node.attrs.track,
       "data-session": String(node.attrs.session),
-      ...(node.attrs.edited ? { "data-edited": "true" } : {}),
-      ...(node.attrs.hallucination ? { "data-hallucination": "true" } : {}),
+      ...(node.attrs.hallucination ? { "data-hallucination": "1" } : {}),
+      ...(node.attrs.edited ? { "data-edited": "1" } : {}),
+      ...(node.attrs.hash ? { "data-hash": String(node.attrs.hash) } : {}),
       // Shown before the text (CSS), so exports read "03:21 · Ada".
       "data-label": `${formatTimestamp(Number(node.attrs.start) || 0)}${node.attrs.speaker ? ` · ${node.attrs.speaker}` : ""}`,
       class: "meeting-segment",

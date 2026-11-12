@@ -12,8 +12,19 @@
 // once). On macOS a missing "Screen & System Audio Recording" permission
 // shows as reason "permission" – or, from 14.2, as an audio track that is
 // already ended (or ends within a second).
+//
+// In a browser, Chrome and Edge can record everyone as well: capture
+// "browser" asks getDisplayMedia for a tab's or the system's sound (the
+// person picks it and ticks "share audio"), the video track is stopped at
+// once. Firefox and Safari give no audio there (browserCapture() says why).
+//
+// Options: `mix` records microphone and call as one track ("mixed", Web
+// Audio) instead of two – speakers then only come from the service's
+// diarization. A level meter (onLevel, every 100 ms per source) and a
+// warning when one source stays silent for 30 s while the other has sound
+// (onSilentSource) are there for the block to show.
 import { serverMessage } from "./i18n-errors";
-import { MEETING_CHUNK_SECONDS, type MeetingTrack } from "./meeting-core";
+import { MEETING_CHUNK_SECONDS, SilenceWatch, browserCaptureSupport, rmsLevel, type BrowserCapture, type MeetingTrack } from "./meeting-core";
 
 type Bridge = {
   version?: string;
@@ -24,13 +35,26 @@ const bridge = () => (typeof window === "undefined" ? null : ((window as unknown
 
 // "browser": no desktop app; "update": an older desktop app; "permission",
 // "os-version", "platform" and others from the desktop app.
-export type SystemAudio = { supported: boolean; reason?: string };
+export type SystemAudio = { supported: boolean; reason?: string; browser?: BrowserCapture };
 export function systemAudioSupport(): SystemAudio {
   const d = bridge();
-  if (!d) return { supported: false, reason: "browser" };
+  // In a browser: whether "record all participants" (capture "browser") works.
+  if (!d) return { supported: false, reason: "browser", browser: browserCapture() };
   if (!d.systemAudio || typeof d.armSystemAudio !== "function") return { supported: false, reason: "update" };
   if (!d.systemAudio.supported) return { supported: false, reason: d.systemAudio.reason || "platform" };
   return { supported: true };
+}
+
+// Tab or system sound through the browser's screen sharing.
+export function browserCapture(): BrowserCapture {
+  if (typeof navigator === "undefined") return { supported: false, reason: "unsupported" };
+  const data = (navigator as Navigator & { userAgentData?: { brands?: { brand: string }[]; mobile?: boolean } }).userAgentData;
+  return browserCaptureSupport({
+    userAgent: navigator.userAgent,
+    brands: data?.brands?.map((b) => b.brand),
+    mobile: data?.mobile,
+    getDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia === "function",
+  });
 }
 
 export function recorderMime() {
@@ -52,6 +76,23 @@ async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 export const postJson = <T>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 export const getJson = <T>(url: string) => call<T>(url, { cache: "no-store" });
+
+// A tab's or the system's sound in Chrome/Edge: the person picks what to
+// share; without "share audio" there is no audio track ("no-audio"),
+// closing the picker is "cancelled".
+async function browserStream(): Promise<{ stream: MediaStream | null; reason?: string }> {
+  if (!browserCapture().supported) return { stream: null, reason: browserCapture().reason };
+  let display: MediaStream;
+  try {
+    display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: "include" } as DisplayMediaStreamOptions);
+  } catch {
+    return { stream: null, reason: "cancelled" };
+  }
+  for (const track of display.getVideoTracks()) track.stop();
+  const audio = display.getAudioTracks()[0];
+  if (!audio || audio.readyState === "ended") return { stream: null, reason: "no-audio" };
+  return { stream: new MediaStream([audio]) };
+}
 
 // The system sound: armed, asked for, the video stopped. Null with the
 // reason when it is not there.
@@ -109,9 +150,19 @@ export class MeetingRecorder {
       pageId: string;
       rowId?: string | null;
       consent: boolean;
+      // The desktop app's system sound (window.FlowplanDesktop).
       system: boolean;
+      // "browser": everyone in the call through the browser's screen sharing
+      // (Chrome/Edge), instead of the desktop app's system sound.
+      capture?: "desktop" | "browser";
+      // Microphone and call as one track ("mixed") instead of two.
+      mix?: boolean;
       onState?: (state: RecorderState) => void;
       onError: (message: string) => void;
+      // Loudness per source (0–1, RMS), every 100 ms.
+      onLevel?: (levels: Partial<Record<"me" | "others", number>>) => void;
+      // A source silent for 30 s while the other has sound.
+      onSilentSource?: (source: "me" | "others") => void;
     },
   ) {}
 
@@ -146,13 +197,22 @@ export class MeetingRecorder {
     const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     this.streams.push(mic);
     let system: MediaStream | null = null;
-    if (this.options.system) {
-      const result = await systemStream();
+    if (this.options.system || this.options.capture === "browser") {
+      const result = this.options.capture === "browser" ? await browserStream() : await systemStream();
       system = result.stream;
       this.systemReason = result.reason;
       if (system) this.streams.push(system);
     }
-    this.tracks = system ? ["me", "others"] : ["me"];
+    // One mixed track: both sources through Web Audio into one stream.
+    let mixed: MediaStream | null = null;
+    if (system && this.options.mix) {
+      const context = this.audioContext();
+      const destination = context.createMediaStreamDestination();
+      context.createMediaStreamSource(mic).connect(destination);
+      context.createMediaStreamSource(system).connect(destination);
+      mixed = destination.stream;
+    }
+    this.tracks = mixed ? ["mixed"] : system ? ["me", "others"] : ["me"];
     try {
       const started = await postJson<{ session: number; offsetMs: number }>(`/api/meetings/${this.options.meetingId}/start`, {
         pageId: this.options.pageId,
@@ -160,13 +220,15 @@ export class MeetingRecorder {
         tracks: this.tracks,
         mime: mime.split(";")[0],
         consent: this.options.consent,
+        // The server transcribes the pieces as they come.
+        live: true,
       });
       this.session = started.session;
     } catch (error) {
       this.release();
       throw error;
     }
-    const streamOf: Record<MeetingTrack, MediaStream | null> = { me: mic, others: system, mixed: null };
+    const streamOf: Record<MeetingTrack, MediaStream | null> = { me: mic, others: system, mixed };
     for (const track of this.tracks) {
       const recorder = new MediaRecorder(streamOf[track]!, { mimeType: mime, audioBitsPerSecond: 32_000 });
       this.counts.set(track, 0);
@@ -186,7 +248,62 @@ export class MeetingRecorder {
     active.set(this.options.meetingId, this);
     window.addEventListener("online", this.online);
     this.timer = setInterval(() => this.emit(), 500);
+    this.meter(mic, system);
     this.emit();
+  }
+
+  private context: AudioContext | null = null;
+  private meterTimer: ReturnType<typeof setInterval> | undefined;
+  private audioContext() {
+    this.context ??= new AudioContext();
+    return this.context;
+  }
+  private levelListeners = new Set<(levels: Partial<Record<"me" | "others", number>>) => void>();
+  private silentListeners = new Set<(source: "me" | "others") => void>();
+  // The view that shows the level meter now; answers a function to stop listening.
+  subscribeLevels(onLevel: (levels: Partial<Record<"me" | "others", number>>) => void, onSilentSource?: (source: "me" | "others") => void) {
+    this.levelListeners.add(onLevel);
+    if (onSilentSource) this.silentListeners.add(onSilentSource);
+    return () => {
+      this.levelListeners.delete(onLevel);
+      if (onSilentSource) this.silentListeners.delete(onSilentSource);
+    };
+  }
+  // An AnalyserNode per source, read every 100 ms (not while paused).
+  private meter(mic: MediaStream, system: MediaStream | null) {
+    if (typeof AudioContext === "undefined") return;
+    try {
+      const context = this.audioContext();
+      const sources: ["me" | "others", AnalyserNode][] = [];
+      for (const [name, stream] of [
+        ["me", mic],
+        ["others", system],
+      ] as const) {
+        if (!stream) continue;
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 1024;
+        context.createMediaStreamSource(stream).connect(analyser);
+        sources.push([name, analyser]);
+      }
+      const samples = new Float32Array(1024);
+      const watch = new SilenceWatch();
+      this.meterTimer = setInterval(() => {
+        if (this.phase !== "recording") return;
+        const levels: Partial<Record<"me" | "others", number>> = {};
+        for (const [name, analyser] of sources) {
+          analyser.getFloatTimeDomainData(samples);
+          levels[name] = rmsLevel(samples);
+        }
+        this.options.onLevel?.(levels);
+        for (const listener of this.levelListeners) listener(levels);
+        for (const source of watch.update(levels as Record<string, number>, Date.now()) as ("me" | "others")[]) {
+          this.options.onSilentSource?.(source);
+          for (const listener of this.silentListeners) listener(source);
+        }
+      }, 100);
+    } catch {
+      // No meter: the recording goes on without it.
+    }
   }
   pause() {
     if (this.phase !== "recording") return;
@@ -206,6 +323,9 @@ export class MeetingRecorder {
   private release() {
     for (const stream of this.streams) for (const track of stream.getTracks()) track.stop();
     this.streams = [];
+    clearInterval(this.meterTimer);
+    void this.context?.close().catch(() => {});
+    this.context = null;
   }
   // Sends the queue in order; a failed piece stays and is tried again.
   private async pump() {
