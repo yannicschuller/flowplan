@@ -52,6 +52,7 @@
     "@tesseract.js-data/fra": "^1.0.0",
     "@tiptap/core": "^3.32.2",
     "@tiptap/extension-blockquote": "^3.32.2",
+    "@tiptap/extension-code": "^3.32.2",
     "@tiptap/extension-code-block": "^3.32.2",
     "@tiptap/extension-collaboration": "^3.32.2",
     "@tiptap/extension-highlight": "^3.32.2",

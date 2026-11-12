@@ -192,3 +192,99 @@ test("turn into toggle from the block menu, and closed toggles stay closed after
   await expect(toggles.nth(1)).toHaveAttribute("open", "");
   expect(errors).toEqual([]);
 });
+
+test("a toggle without block id (imported, API) gets one when closed and stays closed after a reload", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  // Written as the API and importers did: no data-block-id anywhere.
+  const f = await fixture(page, `Ohne Id ${Date.now()}`, "<p>Intro</p><details><summary>Ohne Id</summary><div><p>Innen</p></div></details><p>Ende</p>");
+  await page.goto(`/#page=${f.host.id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor.locator(":scope > p", { hasText: "Ende" })).toBeVisible({ timeout: 20_000 });
+  const toggle = editor.locator(":scope > details.toggle-block");
+  await expect(toggle).not.toHaveAttribute("data-block-id", /./);
+  await toggle.locator(".toggle-arrow").click();
+  await expect(toggle).not.toHaveAttribute("open", "");
+  // Named right away, and remembered under that name.
+  await expect(toggle).toHaveAttribute("data-block-id", /^[a-z0-9]{8}$/);
+  const id = (await toggle.getAttribute("data-block-id"))!;
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("flowplan.toggles") || "")).toContain(id);
+  // The id is part of the document (saved and synced).
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${f.host.id}`)).text()).includes(id), { timeout: 15_000 }).toBe(true);
+  // Closing is nothing to undo.
+  await editor.locator(":scope > p", { hasText: "Intro" }).click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toggle).toHaveAttribute("data-block-id", id);
+  await page.waitForTimeout(1000);
+  await page.reload();
+  await expect(editor.locator(":scope > p", { hasText: "Ende" })).toBeVisible({ timeout: 20_000 });
+  await expect(toggle).toHaveAttribute("data-block-id", id);
+  await expect(toggle).not.toHaveAttribute("open", "");
+  await expect(toggle.locator(":scope > div")).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("⌫ at the start of a toggle's title turns it into text; undo brings it back, ⌫ again joins it with the line above (#244)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Keyboard: desktop.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const f = await fixture(
+    page,
+    `Rücktaste ${Date.now()}`,
+    '<p>Oben</p><details data-block-id="bksp1234"><summary>Titel</summary><div><p>Inhalt</p></div></details><details><summary></summary><div><p></p></div></details><p>Ende</p>',
+  );
+  await page.goto(`/#page=${f.host.id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor.locator(":scope > p", { hasText: "Ende" })).toBeVisible({ timeout: 20_000 });
+  const toggles = editor.locator(":scope > details.toggle-block");
+  await expect(toggles).toHaveCount(2);
+  // The top-level lines (empty lines at the very start and end, which the
+  // editor and the fixture's sync may add, left out).
+  const paragraphs = async () => {
+    const all = await editor.locator(":scope > p").allTextContents();
+    while (all.length && all[all.length - 1] === "") all.pop();
+    while (all.length && all[0] === "") all.shift();
+    return all;
+  };
+
+  // Caret at the start of a filled title, nothing selected: a paragraph
+  // with its text and block id, the content after it on the same level.
+  const title = toggles.first().locator(".toggle-title");
+  await title.click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Backspace");
+  await expect(toggles).toHaveCount(1);
+  expect(await paragraphs()).toEqual(["Oben", "Titel", "Inhalt", "Ende"]);
+  await expect(editor.locator(":scope > p", { hasText: "Titel" })).toHaveAttribute("data-block-id", "bksp1234");
+  // The caret at its start.
+  expect(
+    await page.evaluate(() => {
+      const s = getSelection()!;
+      return { text: s.anchorNode?.textContent, offset: s.anchorOffset, collapsed: s.isCollapsed };
+    }),
+  ).toEqual({ text: "Titel", offset: 0, collapsed: true });
+  // One undo: the toggle again (once the moved blocks got their ids, as
+  // after any change).
+  await expect(editor.locator(":scope > p", { hasText: "Inhalt" })).toHaveAttribute("data-block-id", /./);
+  await page.waitForTimeout(600);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toggles).toHaveCount(2);
+  await expect(toggles.first().locator(".toggle-title")).toHaveText("Titel");
+  expect(await paragraphs()).toEqual(["Oben", "Ende"]);
+  // Again, then ⌫ once more: joined with the line above, as usual.
+  await toggles.first().locator(".toggle-title").click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Backspace");
+  await expect(toggles).toHaveCount(1);
+  await page.keyboard.press("Backspace");
+  expect(await paragraphs()).toEqual(["ObenTitel", "Inhalt", "Ende"]);
+
+  // An empty title: an empty paragraph.
+  const empty = toggles.first().locator(".toggle-title");
+  await empty.click();
+  await page.keyboard.press("Backspace");
+  await expect(toggles).toHaveCount(0);
+  expect(await paragraphs()).toEqual(["ObenTitel", "Inhalt", "", "Ende"]);
+  expect(errors).toEqual([]);
+});

@@ -22,6 +22,14 @@
   --cell-selection: #3b3fd81f;
   --primary-hover: #2468cf;
   --signal: #f0663a;
+  /* Inline code (#241): an accent colour on a light grey, as in Notion;
+     the colour darker than Notion's #eb5757 for 4.5:1 on every background
+     preset (tests/workspace-theme.test.ts). Highlight without a colour:
+     the palette's yellow (lib/text-marks.ts). */
+  --code-inline-fg: #bd2931;
+  --code-inline-bg: rgba(135, 131, 120, 0.15);
+  --mark-bg: #ffec99;
+  --mark-fg: var(--text);
   --shadow: 0 12px 40px #1d1a1414;
   --radius: 10px;
   --font-ui: "Instrument Sans", ui-sans-serif, system-ui, -apple-system,
@@ -1449,11 +1457,14 @@ kbd,
   overflow: auto;
   font-size: 13px;
 }
+/* Inline code (#241): its own colour so it stands out in running text;
+   theme tokens (--code-inline-*) in :root and the dark theme. */
 .document-editor code {
-  background: var(--surface);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-size: 0.88em;
+  color: var(--code-inline-fg);
+  background: var(--code-inline-bg);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 85%;
 }
 .document-editor hr {
   border: 0;
@@ -1777,6 +1788,24 @@ kbd,
 }
 .block-caption[data-kind="table"] .block-caption-add {
   top: 2px;
+}
+/* The button sits inside the block's bottom corner, never over the first
+   line of the block after it (#241). Its own place for now; an image
+   toolbar can take it over later. */
+.block-caption[data-state="add"] .block-caption-add {
+  top: auto;
+  bottom: 0;
+  left: 8px;
+}
+/* Images: inside the picture, clear of its corner resize handle. */
+.block-caption[data-kind="figure"][data-state="add"] .block-caption-add {
+  bottom: 16px;
+  left: 22px;
+}
+/* Tables: at the right, away from the first column's text. */
+.block-caption[data-kind="table"][data-state="add"] .block-caption-add {
+  left: auto;
+  right: 8px;
 }
 *:hover + .block-caption[data-state="add"] .block-caption-add,
 .block-caption[data-state="add"]:hover .block-caption-add,
@@ -4876,7 +4905,15 @@ td:hover .link-cell-edit,
 mark[data-color] {
   color: #1d1c22 !important;
 }
-mark[data-color] {
+/* A highlight without a colour (Mod+Shift+H, "==text==" from Markdown):
+   the palette's yellow and the theme's text colour, not the browser's
+   bright #ff0 with black letters (#241). Same box as the coloured ones. */
+:is(.document-editor, .ProseMirror) mark:not([data-color]) {
+  background-color: var(--mark-bg);
+  color: var(--mark-fg);
+}
+mark[data-color],
+:is(.document-editor, .ProseMirror) mark:not([data-color]) {
   border-radius: 3px;
   /* Room around the letters, also for raised ones (a²), on every line of
      a highlight that wraps. */
@@ -6161,6 +6198,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   --accent-strong: #b9bcff;
   --on-accent: #121117;
   --signal: #ff8a5c;
+  --code-inline-fg: #e9695e;
+  --code-inline-bg: rgba(255, 255, 255, 0.055);
+  --mark-bg: rgba(230, 190, 20, 0.3);
+  --mark-fg: var(--text);
   --shadow: 0 12px 50px #0007;
   color-scheme: dark;
 }
@@ -7426,7 +7467,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .inline-text code {
   padding: 1px 4px;
   border-radius: 4px;
-  background: var(--hover);
+  color: var(--code-inline-fg);
+  background: var(--code-inline-bg);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.9em;
 }
@@ -8876,6 +8918,7 @@ tr.order-drop-after > td {
   padding: 0;
   border-radius: 0;
   font: inherit;
+  color: inherit;
   background: transparent;
 }
 .document-editor pre,
@@ -9442,12 +9485,27 @@ tr.order-drop-after > td {
 .mermaid-preview {
   max-height: 360px;
 }
+/* Dark mode (#241): Mermaid's dark theme (lib/mermaid-render.ts) on the
+   page's dark card instead of a white box; drawn again on a switch.
+   Printed, the page is light (see @media print): the dark drawing is
+   turned back into light colours there. */
+[data-theme="dark"] :is(.mermaid-block, .mermaid-preview, .code-block-preview[data-preview-kind="mermaid"]),
+.diagram-viewer[data-diagram-theme="dark"] .diagram-viewer-stage {
+  background: var(--surface);
+  color: var(--text);
+}
+@media print {
+  [data-diagram-theme="dark"] img {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
 [data-diagram-state="error"] {
   color: #a32d36;
   font-size: 13px;
 }
 /* draw.io diagrams (#110, lib/drawio-preview.ts): the stored picture on a
-   light card, in dark mode too – like Mermaid diagrams. color-scheme keeps
+   light card, in dark mode too (it is drawn once, in light colours; Mermaid
+   is drawn for the theme, #241). color-scheme keeps
    pictures with light-dark() colours light. */
 .drawio-block {
   position: relative;
@@ -17686,6 +17744,12 @@ h3 .block-reactions {
     --border: #d8d8d8;
     --blue: #1f3fbf;
     --blue-light: #eef0fb;
+    /* Inline code and highlights as on the light page (also when printed
+       from the dark theme). */
+    --code-inline-fg: #bd2931;
+    --code-inline-bg: rgba(135, 131, 120, 0.15);
+    --mark-bg: #ffec99;
+    --mark-fg: var(--text);
     color-scheme: light;
   }
   body {

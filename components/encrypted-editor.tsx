@@ -18,6 +18,7 @@ import { FlowTaskItem } from "@/lib/document-schema";
 import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
+import { FlowCode } from "@/lib/text-marks";
 import Collaboration from "@tiptap/extension-collaboration";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { Extension, Node, mergeAttributes } from "@tiptap/core";
@@ -171,7 +172,8 @@ export default function EncryptedEditor({
       immediatelyRender: false,
       editable,
       extensions: [
-        StarterKit.configure({ undoRedo: false, link: { openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer" } } }),
+        StarterKit.configure({ code: false, undoRedo: false, link: { openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer" } } }),
+        FlowCode,
         TaskList,
         // The states of a task and Ctrl/Cmd+L (#201), as in other documents.
         FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }) }),

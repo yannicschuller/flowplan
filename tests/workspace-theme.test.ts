@@ -117,6 +117,30 @@ test("the text colours keep their contrast on every background preset", () => {
   for (const [key, value] of Object.entries(standard.dark)) assert.ok(dark.slice(0, 600).includes(`--${key}: ${value};`), `dark ${key}`);
 });
 
+test("inline code's accent keeps 4.5:1 on its tint over every background preset, light and dark (#241)", () => {
+  const css = readFileSync("app/globals.css", "utf8");
+  const dark = css.slice(css.indexOf('[data-theme="dark"] {'));
+  const token = (part: string, name: string) => {
+    const m = new RegExp(`--${name}: ([^;]+);`).exec(part);
+    assert.ok(m, name);
+    return m[1].trim();
+  };
+  // rgba(r, g, b, a) laid over a background.
+  const over = (rgba: string, bg: string) => {
+    const [r, g, b, a] = /rgba\(([^)]+)\)/.exec(rgba)![1].split(",").map(Number);
+    const base = theme.parseHex(bg).map((v) => v * 255);
+    return theme.toHex([r, g, b].map((c, i) => (c * a + base[i] * (1 - a)) / 255) as [number, number, number]);
+  };
+  const modes = { light: css.slice(0, 3000), dark: dark.slice(0, 1200) };
+  for (const mode of ["light", "dark"] as const) {
+    const fg = token(modes[mode], "code-inline-fg"),
+      tint = token(modes[mode], "code-inline-bg");
+    for (const preset of theme.BACKGROUND_PRESETS)
+      for (const bg of ["bg", "surface"] as const)
+        assert.ok(theme.contrast(fg, over(tint, preset[mode][bg])) >= 4.5, `${preset.id} ${mode} inline code on ${bg}`);
+  }
+});
+
 // ---- Validation and the style sheet ----
 
 test("the theme schema takes hex colours, preset ids and known font ids only", () => {

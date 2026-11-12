@@ -118,7 +118,8 @@ test("Confluence HTML export: page tree, callouts, code, tasks, attachments", as
   assert.doesNotMatch(html, /javascript:|onclick|<script/);
   assert.match(await pageHtml(guide.id), /<img src="\/api\/files\//);
   assert.match(await pageHtml(guide.id), /<table>/);
-  assert.match(await pageHtml(details.id), /<details><summary>Mehr anzeigen<\/summary>/);
+  // Toggles get a block id on import (#230).
+  assert.match(await pageHtml(details.id), /<details data-block-id="[a-z0-9]{8}"><summary>Mehr anzeigen<\/summary>/);
 });
 
 test("Confluence XML export: current versions, storage format, page links and attachments", async () => {

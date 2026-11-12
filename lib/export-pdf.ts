@@ -51,8 +51,8 @@ body { margin: 0; background: #fff; }
 .print-book figure.listing { text-align: left; }
 .print-book .caption-label { font-weight: bold; }
 .print-book pre { white-space: pre-wrap; word-wrap: break-word; font: 9pt/1.4 Menlo, Consolas, monospace; background: #f4f4f2; padding: 0.7em; border-radius: 4px; break-inside: avoid; page-break-inside: avoid; }
-.print-book code { font-family: Menlo, Consolas, monospace; font-size: 0.9em; background: #f4f4f2; padding: 0 0.2em; }
-.print-book pre code { background: none; padding: 0; font-size: inherit; }
+.print-book code { font-family: Menlo, Consolas, monospace; font-size: 85%; color: #bd2931; background: rgba(135, 131, 120, 0.15); padding: 0.2em 0.4em; border-radius: 4px; }
+.print-book pre code { color: inherit; background: none; padding: 0; border-radius: 0; font-size: inherit; }
 .print-book blockquote { margin: 1em 0; padding: 0 0 0 1em; border-left: 3px solid #ccc; color: #444; break-inside: avoid; }
 .print-book .callout { margin: 1em 0; padding: 0.7em 1em; border-left: 4px solid #1a73e8; background: #eef3fd; break-inside: avoid; page-break-inside: avoid; }
 .print-book .callout-tip { border-color: #188038; background: #e6f4ea; }

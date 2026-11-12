@@ -212,3 +212,38 @@ test("the commands: reading for readers, applying for editors, a version first, 
   await assert.rejects(async () => await command(owner, { action: "document.markdown.apply", pageId, markdown: "x", blocks: [] }), /gesperrt/);
   await command(owner, { action: "page.update", pageId, patch: { locked: false } });
 });
+
+test("bold, italic, struck and linked inline code keep both marks through Markdown import and export (#241)", async () => {
+  const { htmlToMarkdown } = await import("../lib/markdown");
+  const { documentSchema } = await import("../lib/document-schema");
+  const { htmlJson } = await import("../lib/document-server");
+  const markdown = "a **`fett`** b *`kursiv`* c ~~`weg`~~ d [`verlinkt`](https://example.test/x)";
+  const html = canonical(markdownToHtml(markdown, (href) => href));
+  assert.match(html, /<strong><code>fett<\/code><\/strong>/);
+  assert.match(html, /<em><code>kursiv<\/code><\/em>/);
+  assert.match(html, /<s><code>weg<\/code><\/s>/);
+  assert.match(html, /<a [^>]*href="https:\/\/example.test\/x"[^>]*><code>verlinkt<\/code><\/a>/);
+  // The schema lets code stand together with other marks.
+  const doc = documentSchema().nodeFromJSON(htmlJson(html));
+  const marks: string[][] = [];
+  doc.descendants((node) => void (node.isText && node.marks.some((m) => m.type.name === "code") && marks.push(node.marks.map((m) => m.type.name).sort())));
+  assert.deepEqual(marks, [["bold", "code"], ["code", "italic"], ["code", "strike"], ["code", "link"]]);
+  // And back: the same Markdown.
+  const back = htmlToMarkdown(html, { url: (url: string) => url, linked: () => null });
+  assert.equal(back.trim(), "a **`fett`** b *`kursiv`* c ~~`weg`~~ d [`verlinkt`](<https://example.test/x>)");
+  assert.equal(canonical(markdownToHtml(back, (href) => href)), html);
+});
+
+test("imported toggles get a block id of their own; the source view's round trip adds none (#230)", async () => {
+  const { withToggleIds } = await import("../lib/block-ids");
+  const html = markdownToHtml("<details>\n<summary>Mehr</summary>\n\nInnen\n\n</details>\n\n<details>\n<summary>Zwei</summary>\n\nB\n\n</details>\n", (href) => href);
+  const ids = [...html.matchAll(/<details data-block-id="([a-z0-9]{8})">/g)].map((m) => m[1]);
+  assert.equal(ids.length, 2);
+  assert.notEqual(ids[0], ids[1]);
+  // Kept by the document.
+  assert.match(canonical(html), new RegExp(`<details[^>]*data-block-id="${ids[0]}"`));
+  // A toggle that has one keeps it; other blocks get none.
+  assert.equal(withToggleIds('<details data-block-id="keep-me"><summary>A</summary></details>'), '<details data-block-id="keep-me"><summary>A</summary></details>');
+  assert.equal(withToggleIds("<p>details</p>"), "<p>details</p>");
+  assert.doesNotMatch(markdownToHtml("<details>\n<summary>Mehr</summary>\n\nInnen\n\n</details>\n", (href) => href, { source: true }), /data-block-id/);
+});

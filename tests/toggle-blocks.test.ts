@@ -57,6 +57,31 @@ test("without a block id a toggle is known by its position, mapped through chang
   assert.equal(isToggleClosed(s2, TOGGLE + 2), true);
 });
 
+test("a closed toggle without block id gets one, unique, kept out of undo; then it is known by it (#230)", async () => {
+  const { closedToggleIdTransaction } = await import("../lib/toggle-view");
+  const { blockIdsKey } = await import("../lib/block-ids-plugin");
+  const s0 = state(p("Intro"), toggle({ title: "Mehr" }, p("Geheim")), toggle({ title: "Offen" }, p("Zwei")));
+  // Nothing closed, nothing to do.
+  assert.equal(closedToggleIdTransaction(s0, toggleKey.getState(s0)!.closed), null);
+  const s1 = flip(s0);
+  const change = closedToggleIdTransaction(s1, toggleKey.getState(s1)!.closed)!;
+  assert.ok(change, "an id for the closed toggle");
+  assert.equal(change.getMeta("addToHistory"), false);
+  assert.equal(change.getMeta(blockIdsKey), true);
+  const s2 = s1.apply(change);
+  const id = s2.doc.nodeAt(TOGGLE)!.attrs.blockId;
+  assert.match(id, /^[a-z0-9]{8}$/);
+  // Only the closed toggle; the open one keeps none.
+  const second = s2.doc.childCount - 1;
+  let openPos = 0;
+  s2.doc.forEach((node, offset, index) => void (index === second && (openPos = offset)));
+  assert.equal(s2.doc.nodeAt(openPos)!.attrs.blockId, null);
+  // Closed by its id from now on, still closed, and nothing left to name.
+  assert.deepEqual([...toggleKey.getState(s2)!.closed], [id]);
+  assert.equal(isToggleClosed(s2, TOGGLE), true);
+  assert.equal(closedToggleIdTransaction(s2, toggleKey.getState(s2)!.closed), null);
+});
+
 test("closing moves the caret out of the hidden content, and the caret getting in opens it", () => {
   const s0 = sample();
   // Caret in "Zwei" inside the toggle.

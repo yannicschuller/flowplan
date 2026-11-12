@@ -64,6 +64,7 @@ import { newDrawBlockId } from "@/lib/draw-block-node";
 import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  FlowCode,
   highlightColors,
   Subscript,
   Superscript,
@@ -683,6 +684,7 @@ export default function DocumentEditor({
       editable,
       extensions: [
         StarterKit.configure({
+          code: false,
           codeBlock: false,
           // Below, with its typing shortcuts: "> " makes a toggle or a
           // quote, as the person chose (#230).
@@ -693,6 +695,7 @@ export default function DocumentEditor({
             HTMLAttributes: { rel: "noopener noreferrer" },
           },
         }),
+        FlowCode,
         ShortcutBlockquote.configure({ creates: quoteShortcut }),
         EditableCodeBlock,
         BlockShortcuts,
