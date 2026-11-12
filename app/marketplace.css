@@ -1,0 +1,214 @@
+/* The Flowplan Marketplace in the app (components/marketplace.tsx): the
+   publish dialog, the import preview and the notice on the sign-in page. */
+.marketplace-dialog .marketplace-form,
+.marketplace-preview {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.marketplace-form > label,
+.marketplace-row > label,
+.marketplace-target > label:not(.checkbox-label) {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.marketplace-form input:not([type="file"]):not([type="checkbox"]),
+.marketplace-form textarea {
+  width: 100%;
+  min-width: 0;
+}
+.marketplace-form textarea {
+  resize: vertical;
+  min-height: 0;
+  height: auto;
+}
+.marketplace-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.marketplace-pictures {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.marketplace-pictures legend {
+  font-size: 13px;
+  color: var(--secondary);
+  margin-bottom: 6px;
+}
+.marketplace-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.marketplace-thumbs figure {
+  position: relative;
+  margin: 0;
+  width: 96px;
+  height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.marketplace-thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.marketplace-thumbs .icon-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  background: var(--bg);
+  border-radius: 6px;
+}
+.marketplace-notes,
+.marketplace-warnings {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+.marketplace-warnings:empty {
+  display: none;
+}
+.marketplace-license {
+  margin: 0;
+}
+.marketplace-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.marketplace-status.ok {
+  color: var(--text);
+  font-weight: 500;
+}
+.marketplace-error {
+  margin: 0;
+  font-size: 13px;
+  color: #c43a2c;
+}
+.marketplace-actions {
+  flex-wrap: wrap;
+}
+.marketplace-preview header h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.marketplace-preview header p {
+  margin: 4px 0 0;
+}
+.marketplace-preview h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.marketplace-creates p {
+  margin: 0 0 8px;
+}
+.marketplace-shots {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.marketplace-shots img {
+  height: 140px;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.marketplace-nodes {
+  margin: 0 0 10px;
+  padding-left: 22px;
+  display: grid;
+  gap: 3px;
+  font-size: 13.5px;
+  max-height: 220px;
+  overflow: auto;
+}
+.marketplace-paused {
+  font-weight: 500;
+}
+.marketplace-rules {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.marketplace-rules code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+.marketplace-look {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.marketplace-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+.marketplace-target {
+  display: grid;
+  gap: 10px;
+}
+.marketplace-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+.marketplace-banner.error {
+  border-color: #c43a2c;
+}
+[data-theme="dark"] .marketplace-error {
+  color: #ff8a7a;
+}
+@media (max-width: 600px) {
+  .marketplace-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .marketplace-actions > .button {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}

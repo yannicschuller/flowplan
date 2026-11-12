@@ -28,6 +28,8 @@ import { instanceSettings } from "@/lib/instance-settings";
 import { pendingRestore } from "@/lib/instance-backup";
 import { linkedDatabaseData } from "@/lib/linked-databases";
 import { editorPresence } from "@/lib/editor-presence";
+import { marketplaceOrigin, requireMarketplace } from "@/lib/marketplace-config";
+import { buildPackage, importPackage, packageDraft, packagePreview, readPackage, MARKETPLACE_KINDS } from "@/lib/marketplace-package";
 import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
 import { imageMimes } from "@/lib/page-appearance";
 import { after } from "next/server";
@@ -895,6 +897,20 @@ async function handleGET(
         )),
       });
     }
+    // The marketplace (lib/marketplace-package.ts): what a package of this
+    // template, workflow, whiteboard template, look or link rules would
+    // carry – for the publish dialog; permission-checked like building it.
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "draft") {
+      await requireMarketplace();
+      return NextResponse.json(
+        await packageDraft(user, {
+          kind: z.enum(MARKETPLACE_KINDS).parse(url.searchParams.get("kind")),
+          workspaceId: z.uuid().parse(url.searchParams.get("workspace")),
+          id: url.searchParams.get("id") || null,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (path[0] === "templates" && path[1] && path[2] === "export") {
       const exported = await exportTemplate(
         user,
@@ -1082,6 +1098,8 @@ async function handleGET(
         metrics: await instanceMetrics(),
         usage: await workspaceUsage(),
         settings: await instanceSettings(),
+        // FLOWPLAN_MARKETPLACE_URL's origin; null: "off" or unusable.
+        marketplaceOrigin: marketplaceOrigin(),
         // How long sessions last, and what the environment would give (#133).
         sessionPolicy: await sessionSettings(),
         localAccounts: await localAccountInfo(),
@@ -1474,6 +1492,60 @@ async function handlePOST(
                 })();
       after(dispatchPush);
       return NextResponse.json(result);
+    }
+    // The marketplace: a package built here (publish dialog: the details and
+    // up to four pictures) or one read and imported – from the marketplace's
+    // hand-over or a file; `preview=1` only answers what it would create.
+    // Nothing here ever contacts the marketplace.
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "package") {
+      await requireMarketplace();
+      const data = await req.formData();
+      const previews: Buffer[] = [];
+      for (const entry of data.getAll("preview")) {
+        if (!(entry instanceof File)) continue;
+        if (entry.size > 1024 * 1024) throw new HttpError(413, "Ein Vorschaubild ist größer als 1 MB.");
+        previews.push(Buffer.from(await entry.arrayBuffer()));
+      }
+      let meta: unknown;
+      try {
+        meta = JSON.parse(String(data.get("meta") || "{}"));
+      } catch {
+        throw new HttpError(400, "Ungültige Angaben.");
+      }
+      const built = await buildPackage(
+        user,
+        {
+          kind: z.enum(MARKETPLACE_KINDS).parse(data.get("kind")),
+          workspaceId: z.uuid().parse(data.get("workspaceId")),
+          id: data.get("id") ? String(data.get("id")) : null,
+        },
+        meta,
+        previews,
+      );
+      return new NextResponse(new Uint8Array(built.bytes), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(built.name)}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "import") {
+      await requireMarketplace();
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 25 * 1024 * 1024) throw new HttpError(413, "Die Vorlage darf höchstens 25 MB groß sein.");
+      const pkg = await readPackage(Buffer.from(await file.arrayBuffer()));
+      if (data.get("preview") === "1") return NextResponse.json(packagePreview(pkg), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(
+        await importPackage(user, pkg, {
+          workspaceId: data.get("workspaceId"),
+          spaceId: data.get("spaceId") || null,
+          parentId: data.get("parentId") || null,
+          private: data.get("private") === "true",
+        }),
+      );
     }
     if (path[0] === "templates" && path[1] === "import") {
       const data = await req.formData();

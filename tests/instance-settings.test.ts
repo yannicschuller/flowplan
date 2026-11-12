@@ -75,6 +75,8 @@ test("admins configure the instance; stored values override the environment", as
     mail: false,
     // No IMPRINT_URL or PRIVACY_URL set.
     legal: {},
+    // No FLOWPLAN_MARKETPLACE_URL: the public marketplace (lib/marketplace-config.ts).
+    marketplace: { origin: "https://marketplace.flowplan.org", version: process.env.FLOWPLAN_VERSION || "" },
     // Settings → Über Flowplan (no update shown to non-admins).
     about: aboutInfo(),
   });

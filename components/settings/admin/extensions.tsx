@@ -1,7 +1,8 @@
 "use client";
 // Administration → Erweiterungen & Domains: where block extensions may come
 // from (lib/plugins.ts) and whether owners may serve publications under
-// their own domain (lib/custom-domains.ts).
+// their own domain (lib/custom-domains.ts), and whether the instance uses
+// the Flowplan Marketplace (lib/marketplace-config.ts).
 import { useT } from "../../i18n";
 import { SettingGroup, SettingRow } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
@@ -33,6 +34,9 @@ export default function ExtensionsSection() {
                 tone: "off",
                 label: t("Eigene Domains aus", "Custom domains off"),
               },
+          data.marketplaceOrigin && s.marketplace
+            ? { tone: "ok", label: t("Marketplace an", "Marketplace on") }
+            : { tone: "off", label: t("Marketplace aus", "Marketplace off") },
         ]}
       />
       <SettingGroup
@@ -74,6 +78,35 @@ export default function ExtensionsSection() {
         />
         <SettingRow label={t("Reverse Proxy einrichten", "Set up the reverse proxy")} description={t("Beispiele für Caddy, Traefik und Coolify.", "Examples for Caddy, Traefik and Coolify.")}>
           <FixLink href={docs("coolify-and-proxy")}>{t("Anleitung", "Guide")}</FixLink>
+        </SettingRow>
+      </SettingGroup>
+      <SettingGroup
+        id="marketplace"
+        title={t("Marketplace", "Marketplace")}
+        description={t(
+          "Vorlagen, Workflows, Whiteboard-Vorlagen, Erscheinungsbilder und automatische Links im Flowplan Marketplace veröffentlichen und von dort übernehmen. Die Übergabe läuft im Browser – diese Instanz verbindet sich nie selbst mit dem Marketplace.",
+          "Publish templates, workflows, whiteboard templates, appearances and automatic links to the Flowplan Marketplace and take them over from there. The hand-over runs in the browser – this instance never connects to the marketplace itself.",
+        )}
+      >
+        <InstanceSwitch
+          field="marketplace"
+          label={t("Marketplace verwenden", "Use the marketplace")}
+          disabled={!data.marketplaceOrigin}
+          checked={!!data.marketplaceOrigin && s.marketplace}
+          description={
+            data.marketplaceOrigin ? (
+              <>
+                {t("Ausgeschaltet zeigt Flowplan keine Marketplace-Schaltflächen und nimmt keine Vorlagen an. Adresse:", "When off, Flowplan shows no marketplace buttons and accepts no templates. Address:")} <code>{data.marketplaceOrigin}</code>
+              </>
+            ) : (
+              <>
+                {t("Abgeschaltet mit", "Switched off with")} <code>FLOWPLAN_MARKETPLACE_URL=off</code>.
+              </>
+            )
+          }
+        />
+        <SettingRow label={t("So funktioniert der Marketplace", "How the marketplace works")} description={t("Veröffentlichen, übernehmen und Datenschutz.", "Publishing, importing and privacy.")}>
+          <FixLink href={docs("marketplace")}>{t("Anleitung", "Guide")}</FixLink>
         </SettingRow>
       </SettingGroup>
     </>

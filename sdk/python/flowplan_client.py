@@ -2030,6 +2030,29 @@ ImportTemplateForm = TypedDict("ImportTemplateForm", {
     "private": Literal["true", "false"],
 }, total=False)
 
+MarketplaceDraftQuery = TypedDict("MarketplaceDraftQuery", {
+    "kind": Required[Literal["document", "database", "workflow", "whiteboard", "appearance", "link-rules"]],  # What to publish
+    "workspace": Required[str],  # Workspace ID
+    "id": str,  # Template, workflow page or whiteboard template (not for appearance and link-rules)
+}, total=False)
+
+MarketplacePackageForm = TypedDict("MarketplacePackageForm", {
+    "kind": Required[Literal["document", "database", "workflow", "whiteboard", "appearance", "link-rules"]],
+    "workspaceId": Required[str],
+    "id": str,
+    "meta": Required[str],
+    "preview": list[FormFile],
+}, total=False)
+
+MarketplaceImportForm = TypedDict("MarketplaceImportForm", {
+    "file": Required[FormFile],
+    "preview": Literal["1"],
+    "workspaceId": str,
+    "spaceId": str,
+    "parentId": str,
+    "private": Literal["true", "false"],
+}, total=False)
+
 ExportTemplateQuery = TypedDict("ExportTemplateQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
@@ -2627,6 +2650,18 @@ class FlowplanClient:
     def import_template(self, form: "ImportTemplateForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Import a template archive (POST /api/templates/import)"""
         return self._json("POST", "/api/templates/import", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def marketplace_draft(self, query: "MarketplaceDraftQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What a marketplace package would carry — Defaults for the publish dialog (title, category, minVersion) and notes on what stays on this instance. Checked like building the package: own document and database templates (creator or owner), workflows (editors), own whiteboard templates, the appearance and the link rules (owners); never guests. 404 when the marketplace is switched off (`FLOWPLAN_MARKETPLACE_URL=off` or Administration). (GET /api/marketplace/draft)"""
+        return self._json("GET", "/api/marketplace/draft", query=dict(query) if query else None, headers=headers)
+
+    def marketplace_package(self, form: "MarketplacePackageForm", headers: Optional[dict[str, str]] = None) -> bytes:
+        """Build a marketplace package (.flowplan-template) — A ZIP in the `flowplan-marketplace-1` format: template.json, the kind's own exchange format under payload/ and up to four preview pictures (`preview`, PNG/JPEG/WebP, 1 MB each). Secrets, the instance address and names of people are never included. Nothing is sent anywhere – the browser hands the file to the marketplace. (POST /api/marketplace/package)"""
+        return self._bytes("POST", "/api/marketplace/package", form=dict(form), headers=headers)
+
+    def marketplace_import(self, form: "MarketplaceImportForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Check or import a marketplace package — Every check runs again here (size ≤ 25 MB, ZIP safety, template.json, the kind's schema). `preview=1` only answers what would be created (for workflows: nodes, external hosts, AI and e-mail steps). Otherwise imported with the kind's own import: templates and whiteboard templates (editors; `spaceId`, `private`), a workflow as a paused draft on a new page (`spaceId` required, `parentId`), the appearance (replaces the current one) and link rules (owners). (POST /api/marketplace/import)"""
+        return self._json("POST", "/api/marketplace/import", form=dict(form), headers=headers)
 
     def export_template(self, template_id: str, query: "ExportTemplateQuery", headers: Optional[dict[str, str]] = None) -> bytes:
         """Export a saved template as archive (GET /api/templates/{templateId}/export)"""

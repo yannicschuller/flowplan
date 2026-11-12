@@ -28,6 +28,8 @@ export type AdminData = {
   update?: UpdateStatus | null;
   // APP_URL is plain http on another machine (lib/instance-https.ts).
   plainHttp?: boolean;
+  // The marketplace FLOWPLAN_MARKETPLACE_URL names; null: switched off there.
+  marketplaceOrigin?: string | null;
   userUsage?: {
     id: string;
     bytes: number;

@@ -28,6 +28,7 @@ import {
 } from "@/lib/workspace-theme";
 import { BUNDLED_FONTS, CUSTOM_PREFIX, DEFAULT_FONTS, FONT_SLOTS, SYSTEM_FONT, bundledFont, bundledFontFaces, fontStack, type FontCategory, type FontSlot } from "@/lib/theme-fonts";
 import { useUserSettings } from "../user-context";
+import { PublishButton } from "../../marketplace";
 
 // A few accents to start from; any other colour through the picker.
 const SWATCHES = ["#3b3fd8", "#2563eb", "#0e7490", "#0f766e", "#15803d", "#a16207", "#c2410c", "#be123c", "#be185d", "#7c3aed", "#475569"];
@@ -234,6 +235,26 @@ export default function WorkspaceLookSection() {
           return { ...d, fonts };
         });
       }} />
+      {owner && boot.instance?.marketplace && (
+        <SettingGroup
+          id="look-marketplace"
+          title={t("Im Marketplace teilen", "Share in the marketplace")}
+          description={t("Das gespeicherte Erscheinungsbild mit den Schriften, die es verwendet, als Vorlage für andere Arbeitsbereiche.", "The saved appearance with the typefaces it uses, as a template for other workspaces.")}
+        >
+          <SettingRow
+            label={t("Erscheinungsbild veröffentlichen", "Publish the appearance")}
+            description={!look.theme ? t("Zuerst ein eigenes Erscheinungsbild speichern.", "Save an own appearance first.") : dirty ? t("Zuerst die Änderungen speichern.", "Save the changes first.") : undefined}
+          >
+            {look.theme && !dirty ? (
+              <PublishButton config={boot.instance.marketplace} source={{ kind: "appearance", workspaceId, title: t("Erscheinungsbild", "Appearance") }} />
+            ) : (
+              <button type="button" className="button compact" disabled>
+                {t("Im Marketplace veröffentlichen …", "Publish to the marketplace …")}
+              </button>
+            )}
+          </SettingRow>
+        </SettingGroup>
+      )}
       {owner && (
         <SaveBar
           dirty={dirty}

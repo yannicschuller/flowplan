@@ -7,6 +7,9 @@ import { useEffect, useState, useCallback } from "react";
 import { api, ApiError, Modal, PageIcon } from "./ui";
 import { MetaResolveDialog, ScopeBadge } from "./meta-scope";
 import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
+import { PublishButton, openTemplateFile } from "./marketplace";
+import { PACKAGE_EXTENSION } from "@/lib/marketplace-handover";
+import type { MarketplaceClientConfig } from "@/lib/marketplace-config";
 import {
   templateCategories,
   type TemplateCategory,
@@ -48,6 +51,7 @@ export default function SavedTemplates({
   spaceId,
   spaces = [],
   manageWorkspace = false,
+  marketplace = null,
 }: {
   workspaceId: string;
   canCreate: boolean;
@@ -62,6 +66,8 @@ export default function SavedTemplates({
   spaceId?: string;
   spaces?: { id: string; name: string }[];
   manageWorkspace?: boolean;
+  // The Flowplan Marketplace (components/marketplace.tsx); null: off.
+  marketplace?: MarketplaceClientConfig | null;
 }) {
   const t = useT();
   const [items, setItems] = useState<Template[]>([]),
@@ -243,14 +249,16 @@ export default function SavedTemplates({
             {t("Vorlage importieren", "Import template")}
             <input
               type="file"
-              accept=".zip,application/zip"
+              accept={marketplace ? `.zip,${PACKAGE_EXTENSION},application/zip` : ".zip,application/zip"}
               hidden
               aria-label={t("Vorlagendatei importieren", "Import template file")}
               disabled={busy}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = "";
-                if (file) void importFile(file);
+                // A marketplace package (.flowplan-template): the preview first.
+                if (file && marketplace && file.name.toLowerCase().endsWith(PACKAGE_EXTENSION)) openTemplateFile(file);
+                else if (file) void importFile(file);
               }}
             />
           </label>
@@ -361,6 +369,13 @@ export default function SavedTemplates({
                     >
                       {t("Kopieren", "Copy")}
                     </button>
+                    {(template.kind === "document" || template.kind === "database") && (
+                      <PublishButton
+                        config={marketplace}
+                        source={{ kind: template.kind, workspaceId, id: template.id, title: template.name }}
+                        label={t("Im Marketplace veröffentlichen …", "Publish to the marketplace …")}
+                      />
+                    )}
                     <button
                       className="button compact"
                       aria-label={t(`${template.name} bearbeiten`, `Edit ${template.name}`)}

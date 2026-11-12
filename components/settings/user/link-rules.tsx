@@ -8,6 +8,7 @@ import { LinkSimple, Plus, Trash } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
 import { EmptyState, SaveBar, SettingGroup, Switch } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
+import { PublishButton } from "../../marketplace";
 import { AUTO_LINK_LIMITS, compileRules, findAutoLinks, ruleProblems, type AutoLinkProblem, type AutoLinkRule } from "@/lib/auto-link";
 
 type Say = (de: string, en: string) => string;
@@ -99,9 +100,14 @@ export default function LinkRulesSection() {
         }
         actions={
           owner && (
-            <button type="button" className="button compact" disabled={draft.length >= AUTO_LINK_LIMITS.rules} onClick={() => setDraft((list) => [...list, newRule()])}>
-              <Plus aria-hidden /> {t("Regel hinzufügen", "Add rule")}
-            </button>
+            <>
+              {boot.instance?.marketplace && base.length > 0 && !dirty && (
+                <PublishButton config={boot.instance.marketplace} source={{ kind: "link-rules", workspaceId: boot.workspace.id }} />
+              )}
+              <button type="button" className="button compact" disabled={draft.length >= AUTO_LINK_LIMITS.rules} onClick={() => setDraft((list) => [...list, newRule()])}>
+                <Plus aria-hidden /> {t("Regel hinzufügen", "Add rule")}
+              </button>
+            </>
           )
         }
       >

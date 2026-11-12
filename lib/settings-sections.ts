@@ -327,6 +327,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Aus Notion, AppFlowy, Confluence, Evernote oder Obsidian importieren", en: "Import from Notion, AppFlowy, Confluence, Evernote or Obsidian" }, keywords: { de: "google docs markdown zip", en: "google docs markdown zip" }, anchor: "import" },
       { title: { de: "Aus GoodNotes importieren", en: "Import from GoodNotes" }, keywords: { de: "pdf notizbuch handschrift ipad", en: "pdf notebook handwriting ipad" }, anchor: "import" },
       { title: { de: "Aus Jira oder Trello importieren", en: "Import from Jira or Trello" }, anchor: "import" },
+      { title: { de: "Vorlage aus Datei importieren", en: "Import template from file" }, keywords: { de: "marketplace flowplan-template", en: "marketplace flowplan-template" }, anchor: "marketplace-file" },
       { title: { de: "Arbeitsbereich exportieren", en: "Export workspace" }, anchor: "export" },
       { title: { de: "Bereich als Markdown exportieren", en: "Export space as Markdown" }, keywords: { de: "pdf epub e-book", en: "pdf epub e-book" }, anchor: "export" },
       { title: { de: "Flowplan-Archiv wiederherstellen", en: "Restore a Flowplan archive" }, keywords: { de: "backup importieren sicherung", en: "import backup" }, anchor: "backups" },
@@ -520,11 +521,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "services",
     icon: "PuzzlePiece",
     title: { de: "Erweiterungen & Domains", en: "Extensions & domains" },
-    description: { de: "Woher Block-Erweiterungen kommen dürfen und eigene Domains für Veröffentlichungen.", en: "Where block extensions may come from and custom domains for publications." },
-    keywords: { de: "erweiterungen plugins blöcke https domains eigene domain veröffentlichen dns", en: "extensions plugins blocks https domains custom domain publish dns" },
+    description: { de: "Woher Block-Erweiterungen kommen dürfen, eigene Domains für Veröffentlichungen und der Marketplace.", en: "Where block extensions may come from, custom domains for publications and the marketplace." },
+    keywords: { de: "erweiterungen plugins blöcke https domains eigene domain veröffentlichen dns marketplace vorlagen", en: "extensions plugins blocks https domains custom domain publish dns marketplace templates" },
     entries: [
       { title: { de: "Block-Erweiterungen von jeder HTTPS-Adresse", en: "Block extensions from any HTTPS address" }, anchor: "plugins" },
       { title: { de: "Eigene Domains für Veröffentlichungen", en: "Custom domains for publications" }, anchor: "domains" },
+      { title: { de: "Marketplace", en: "Marketplace" }, keywords: { de: "vorlagen veröffentlichen teilen ausschalten", en: "templates publish share switch off" }, anchor: "marketplace" },
     ],
   },
   {

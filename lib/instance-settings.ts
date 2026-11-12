@@ -40,6 +40,9 @@ export const instanceSettingsSchema = z.object({
   pluginsAnyOrigin: z.boolean().default(false),
   // Owners may serve publications under their own domain (lib/custom-domains.ts).
   customDomains: z.boolean().default(false),
+  // Publishing to and importing from the Flowplan Marketplace (lib/marketplace-config.ts);
+  // FLOWPLAN_MARKETPLACE_URL=off switches it off regardless.
+  marketplace: z.boolean().default(true),
   // How long sessions last (lib/session-policy.ts). null follows the
   // environment (SESSION_HOURS, SESSION_REMEMBER, SESSION_IDLE_HOURS,
   // SESSION_APP_REMEMBER, SESSION_APP_DAYS) and its defaults.
@@ -76,6 +79,7 @@ const defaults: InstanceSettings = {
   twoFactor: "off",
   pluginsAnyOrigin: false,
   customDomains: false,
+  marketplace: true,
   sessionHours: null,
   sessionRemember: null,
   rememberDays: null,
