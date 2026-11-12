@@ -55,7 +55,9 @@ import { touchHold } from "./pointer-drag";
 import { blockToMath, blockToToggle, blocksToColumns, colorable, setBlockColors, toggleToBlock, type TitleBlock } from "@/lib/block-turn";
 import { BLOCK_COLOR_NAMES, blockColor, blockColorLabels, type BlockColorName } from "@/lib/block-colors";
 import type { Editor } from "@tiptap/core";
-import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import * as pmView from "@tiptap/pm/view";
+import type { ResolvedPos, Slice } from "@tiptap/pm/model";
 import {
   BLOCK_SELECTION_META,
   BLOCK_MOVE_META,
@@ -105,6 +107,12 @@ type Positioned = DocumentBlock & {
   // padding, and it has no "+" (that place is the box's handle).
   boxed: boolean;
 };
+// ProseMirror's own reading of pasted HTML and text (what a paste in the
+// editor does), for pasting copied blocks after chosen ones (#237). Exported
+// by prosemirror-view, though not in its types.
+const parseFromClipboard = (pmView as unknown as {
+  __parseFromClipboard: (view: Editor["view"], text: string, html: string | null, plainText: boolean, $context: ResolvedPos) => Slice | null;
+}).__parseFromClipboard;
 // The glide a handle plays with its block, by handle.
 const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
 // Boxes whose first line is the first line of their content (a toggle has a
@@ -384,7 +392,8 @@ export function DocumentBlockControls({
   }
   // Not on touch screens: the keyboard would cover the page.
   function focusEditor() {
-    if (!editor || pickingRef.current) return;
+    // Neither in the selection modes: the keys stay with the chosen blocks.
+    if (!editor || pickingRef.current || selectingRef.current) return;
     if (window.matchMedia("(pointer: coarse)").matches) return;
     editor.commands.focus();
   }
@@ -582,7 +591,16 @@ export function DocumentBlockControls({
   ) {
     if (!editor?.isEditable || event.button !== 0) return;
     event.preventDefault();
-    if (!selected.current.includes(block.pos)) select([block.pos]);
+    // ⇧-click on a handle (#237): the selection reaches to this block.
+    if (event.shiftKey && event.pointerType === "mouse") {
+      extendTo(block.pos);
+      return;
+    }
+    // Dragging a chosen block moves all chosen blocks.
+    if (!selected.current.includes(block.pos)) {
+      if (selectingRef.current) endSelection(false);
+      select([block.pos]);
+    }
     dragging.current = {
       pointer: event.pointerId,
       x: event.clientX,
@@ -747,13 +765,17 @@ export function DocumentBlockControls({
   }
   function openMenu(handle: HTMLElement, block?: DocumentBlock, view = "main") {
     if (menu?.handle === handle) return closeMenu();
-    if (block) select([block.pos]);
+    // A handle of chosen blocks (#237): the menu for all of them.
+    if (block && !(selectingRef.current && selected.current.includes(block.pos))) {
+      if (selectingRef.current) endSelection(false);
+      select([block.pos]);
+    }
     setMenu({ anchor: handle.getBoundingClientRect(), handle, view });
   }
   function closeMenu() {
     const handle = menu?.handle;
     setMenu(null);
-    if (!pickingRef.current) {
+    if (!pickingRef.current && !selectingRef.current) {
       remember([]);
       setTick((t) => t + 1);
     }
@@ -782,6 +804,434 @@ export function DocumentBlockControls({
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
   });
+  // Choosing blocks with the mouse and the keyboard (#237), like Notion:
+  // a rectangle dragged from the page margin or empty space, Esc in a block,
+  // ⌘A twice, ⇧-click on a handle. The chosen blocks are tinted (no circles,
+  // nothing moves); the keyboard acts on all of them. The selection mode
+  // with circles and a bar (above) stays for touch screens.
+  const [selecting, setSelecting] = useState(false);
+  const selectingRef = useRef(false);
+  selectingRef.current = selecting;
+  // The block the selection started at and the one it reaches to.
+  const anchorRef = useRef<number | null>(null);
+  const headRef = useRef<number | null>(null);
+  const focusTarget = useRef<HTMLDivElement>(null);
+  const [band, setBand] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  function startSelection(positions: number[], anchor = positions[0], head = positions[positions.length - 1]) {
+    if (!editor || !positions.length) return;
+    select(positions);
+    anchorRef.current = anchor;
+    headRef.current = head;
+    selectingRef.current = true;
+    setSelecting(true);
+    // No caret while blocks are chosen: the keys act on the blocks.
+    // (The text selection itself stays: the editor keeps track of it, and
+    // a later click into the text must not find it changed behind its back.)
+    if (editor.view.hasFocus()) (editor.view.dom as HTMLElement).blur();
+    requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+  }
+  function endSelection(caret: boolean) {
+    const first = selected.current.length ? Math.min(...selected.current) : null;
+    selectingRef.current = false;
+    setSelecting(false);
+    anchorRef.current = headRef.current = null;
+    select([]);
+    if (caret && editor && !editor.isDestroyed && first !== null && first <= editor.state.doc.content.size) {
+      try {
+        editor.chain().focus().setTextSelection(Math.min(first + 1, editor.state.doc.content.size)).scrollIntoView().run();
+      } catch {}
+    }
+  }
+  // The blocks with a handle, in document order.
+  const handled = () =>
+    editor ? documentBlocks(editor.state.doc).filter((b) => !listContainers.includes(b.node.type.name)) : [];
+  // From the anchor to `head`: the run of neighbours on one level that
+  // holds both (an outer block where they lie at different levels).
+  function between(anchor: number, head: number): { positions: number[]; head: number } | null {
+    if (!editor) return null;
+    const blocks = documentBlocks(editor.state.doc);
+    const byPosition = new Map(blocks.map((b) => [b.pos, b]));
+    const chain = (pos: number) => {
+      const list: DocumentBlock[] = [];
+      for (let b = byPosition.get(pos); b; b = byPosition.get(b.parentPos)) list.unshift(b);
+      return list;
+    };
+    const a = chain(anchor),
+      h = chain(head);
+    if (!a.length || !h.length) return null;
+    let depth = 0;
+    while (depth < a.length && depth < h.length && a[depth].pos === h[depth].pos) depth++;
+    // One inside the other: the outer one.
+    if (depth === a.length || depth === h.length) {
+      const outer = a[depth - 1];
+      return { positions: promote([outer.pos]), head: outer.pos };
+    }
+    const from = a[depth],
+      to = h[depth];
+    const lo = Math.min(from.pos, to.pos),
+      hi = Math.max(from.pos, to.pos);
+    const positions = blocks.filter((b) => b.parentPos === from.parentPos && b.pos >= lo && b.pos <= hi).map((b) => b.pos);
+    // A list's items whole: the list.
+    return { positions: promote(positions), head: to.pos };
+  }
+  function extendTo(pos: number) {
+    const anchor = anchorRef.current ?? selected.current[0] ?? pos;
+    const run = between(anchor, pos);
+    if (run) startSelection(run.positions, anchor, run.head);
+  }
+  // ↑/↓: the block before or after the selection; ⇧: the selection grows
+  // to the neighbour on the head's level (or its outer block at an edge).
+  function step(direction: -1 | 1, extend: boolean) {
+    if (!editor || !selected.current.length) return;
+    const blocks = handled();
+    const range = (() => {
+      try {
+        return blockRange(editor.state.doc, selected.current);
+      } catch {
+        return null;
+      }
+    })();
+    if (!extend || !range) {
+      const lo = Math.min(...selected.current);
+      const hi = range ? range.to : Math.max(...selected.current) + 1;
+      const next = direction < 0 ? blocks.filter((b) => b.pos < lo).at(-1) : blocks.find((b) => b.pos >= hi);
+      if (next) startSelection([next.pos]);
+      scrollToBlock(next?.pos);
+      return;
+    }
+    const head = headRef.current ?? (direction < 0 ? range.from : range.blocks.at(-1)!.pos);
+    const all = documentBlocks(editor.state.doc);
+    const current = all.find((b) => b.pos === head);
+    if (!current) return;
+    const siblings = all.filter((b) => b.parentPos === current.parentPos);
+    const index = siblings.findIndex((b) => b.pos === current.pos);
+    const next = siblings[index + direction];
+    const target = next ? next.pos : current.parentPos >= 0 ? current.parentPos : null;
+    if (target === null) return;
+    extendTo(target);
+    scrollToBlock(target);
+  }
+  function scrollToBlock(pos?: number) {
+    if (!editor || pos === undefined) return;
+    const dom = editor.view.nodeDOM(pos);
+    if (dom instanceof HTMLElement) dom.scrollIntoView({ block: "nearest" });
+  }
+  // The chosen blocks as a slice, for the clipboard.
+  function chosenSlice() {
+    if (!editor) return null;
+    try {
+      const range = blockRange(editor.state.doc, selected.current);
+      return editor.state.doc.slice(range.from, range.to);
+    } catch {
+      return null;
+    }
+  }
+  // Tab / ⇧Tab: what the keys do in the text, for the text of all chosen
+  // blocks (lists nest, paragraphs and headings indent); the same blocks
+  // stay chosen.
+  function indent(out: boolean) {
+    if (!editor?.isEditable) return;
+    let range;
+    try {
+      range = blockRange(editor.state.doc, selected.current);
+    } catch {
+      return;
+    }
+    const marks = captureBlockSelection(editor, selected.current);
+    const from = Selection.findFrom(editor.state.doc.resolve(range.from), 1, true),
+      to = Selection.findFrom(editor.state.doc.resolve(range.to), -1, true);
+    if (!from || !to) return;
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(from.$from, to.$to)));
+    editor.commands.keyboardShortcut(out ? "Shift-Tab" : "Tab");
+    const positions = marks.map((mark) => mark.pos).filter((pos) => editor.state.doc.nodeAt(pos));
+    (editor.view.dom as HTMLElement).blur();
+    startSelection(positions.length ? positions : selected.current);
+  }
+  // The functions of the latest render, for the listeners below.
+  const live = useRef({ startSelection, endSelection, bandBlocks, handled });
+  live.current = { startSelection, endSelection, bandBlocks, handled };
+  // Nothing left chosen (deleted, moved away by someone else): the
+  // selection ends.
+  useEffect(() => {
+    if (selecting && !band && !selected.current.length) endSelection(false);
+  });
+  const keyActions = useRef<(event: KeyboardEvent) => void>(() => {});
+  keyActions.current = (event: KeyboardEvent) => {
+    if (!editor || !selectingRef.current || menu) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable='true'], [role='menu'], [role='dialog'] [role='dialog']")) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const key = event.key;
+    const done = () => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    if (key === "Escape") {
+      done();
+      endSelection(false);
+      // Back to the text where the selection was.
+      return;
+    }
+    if (key === "ArrowUp" || key === "ArrowDown") {
+      const direction = key === "ArrowUp" ? -1 : 1;
+      done();
+      if (mod && event.shiftKey) return shift(direction);
+      return step(direction, event.shiftKey);
+    }
+    if (key === "Enter" && !mod) {
+      done();
+      return endSelection(true);
+    }
+    if (!editor.isEditable) return;
+    if (key === "Delete" || key === "Backspace") {
+      done();
+      const first = Math.min(...selected.current);
+      perform("delete");
+      endSelection(false);
+      editor.chain().focus().setTextSelection(Math.max(0, Math.min(first, editor.state.doc.content.size))).run();
+      return;
+    }
+    if (mod && !event.shiftKey && !event.altKey && key.toLowerCase() === "d") {
+      done();
+      return perform("duplicate");
+    }
+    if (mod && !event.shiftKey && key.toLowerCase() === "a") {
+      done();
+      const top = documentBlocks(editor.state.doc).filter((b) => b.parentPos === -1).map((b) => b.pos);
+      return startSelection(top);
+    }
+    if (key === "Tab") {
+      done();
+      return indent(event.shiftKey);
+    }
+    if ((key === "/" && !mod) || (mod && key === "/")) {
+      done();
+      const handle = surface.current?.querySelector<HTMLElement>(`.document-block-handle[data-block-pos="${Math.min(...selected.current)}"]`);
+      if (handle) setMenu({ anchor: handle.getBoundingClientRect(), handle, view: "main" });
+    }
+  };
+  // While blocks are chosen: their keys, the clipboard, and a click into
+  // the text (or elsewhere) ends it.
+  useEffect(() => {
+    if (!selecting || !editor) return;
+    const keydown = (event: KeyboardEvent) => keyActions.current(event);
+    const copy = (event: ClipboardEvent, cut: boolean) => {
+      if (menu || !selectingRef.current || !event.clipboardData) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      const slice = chosenSlice();
+      if (!slice) return;
+      const { dom, text } = editor.view.serializeForClipboard(slice);
+      event.preventDefault();
+      event.clipboardData.clearData();
+      event.clipboardData.setData("text/html", dom.innerHTML);
+      event.clipboardData.setData("text/plain", text);
+      if (cut && editor.isEditable) {
+        const first = Math.min(...selected.current);
+        perform("delete");
+        endSelection(false);
+        editor.chain().focus().setTextSelection(Math.max(0, Math.min(first, editor.state.doc.content.size))).run();
+      }
+    };
+    const onCopy = (event: ClipboardEvent) => copy(event, false);
+    const onCut = (event: ClipboardEvent) => copy(event, true);
+    // ⌘V: the copied blocks after the chosen ones.
+    const onPaste = (event: ClipboardEvent) => {
+      if (menu || !selectingRef.current || !editor.isEditable || !event.clipboardData) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      let range;
+      try {
+        range = blockRange(editor.state.doc, selected.current);
+      } catch {
+        return;
+      }
+      event.preventDefault();
+      const html = event.clipboardData.getData("text/html"),
+        text = event.clipboardData.getData("text/plain");
+      const $at = editor.state.doc.resolve(range.to);
+      const slice = parseFromClipboard(editor.view, text, html || null, false, $at);
+      if (!slice) return;
+      const tr = editor.state.tr.replaceRange(range.to, range.to, slice);
+      endSelection(false);
+      applyBlockChange(editor, tr.scrollIntoView());
+      editor.commands.focus();
+    };
+    const down = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".document-block-handle, .document-block-add, [role='menu'], .block-menu-sheet, .block-select-band")) return;
+      // Inside the text: the caret goes there (the editor does that).
+      endSelection(false);
+    };
+    const blur = () => {};
+    window.addEventListener("keydown", keydown, true);
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("cut", onCut);
+    document.addEventListener("paste", onPaste);
+    document.addEventListener("pointerdown", down, true);
+    const focus = () => selectingRef.current && endSelection(false);
+    editor.on("focus", focus);
+    return () => {
+      window.removeEventListener("keydown", keydown, true);
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCut);
+      document.removeEventListener("paste", onPaste);
+      document.removeEventListener("pointerdown", down, true);
+      editor.off("focus", focus);
+      void blur;
+    };
+  }, [selecting, editor, menu]);
+  // Esc in a block chooses the block; ⌘A where the whole document is
+  // already selected chooses all blocks. Only when nothing else took the
+  // key (the "/" menu, a calculation hint, a dialog's own Esc).
+  useEffect(() => {
+    if (!editor?.isEditable) return;
+    const host = surface.current;
+    if (!host) return;
+    // Esc after every other handler of the editor (the "/" menu, a
+    // calculation hint …): a plugin of the lowest priority. ProseMirror
+    // itself marks every Esc as handled, so a DOM listener cannot tell.
+    const escapeKey = new PluginKey("blockSelectionEscape");
+    editor.registerPlugin(
+      new Plugin({
+        key: escapeKey,
+        props: {
+          handleKeyDown(view, event) {
+            if (event.key !== "Escape" || event.isComposing || event.shiftKey || selectingRef.current || pickingRef.current) return false;
+            // A click just before may not have reached the editor's selection yet.
+            (view as unknown as { domObserver?: { flush?: () => void } }).domObserver?.flush?.();
+            const blocks = live.current.handled();
+            const known = new Set(blocks.map((b) => b.pos));
+            const { selection } = view.state;
+            // Where the caret is on screen (the editor's own selection can
+            // lag behind a click that just moved it).
+            let $at = selection.$from;
+            const dom = window.getSelection();
+            if (dom?.anchorNode && dom.isCollapsed && view.dom.contains(dom.anchorNode))
+              try {
+                $at = view.state.doc.resolve(view.posAtDOM(dom.anchorNode, dom.anchorOffset));
+              } catch {}
+            let pos: number | null =
+              selection instanceof NodeSelection && known.has(selection.from) && $at.pos === selection.from ? selection.from : null;
+            for (let d = $at.depth; pos === null && d > 0; d--) if (known.has($at.before(d))) pos = $at.before(d);
+            if (pos === null) return false;
+            live.current.startSelection([pos]);
+            return true;
+          },
+        },
+      }),
+    );
+    const all = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "a") return;
+      if (selectingRef.current || !editor.view.dom.contains(event.target as Node)) return;
+      const { from, to } = editor.state.selection;
+      const size = editor.state.doc.content.size;
+      if (from > 1 || to < size - 1) return;
+      event.preventDefault();
+      event.stopPropagation();
+      live.current.startSelection(documentBlocks(editor.state.doc).filter((b) => b.parentPos === -1).map((b) => b.pos));
+    };
+    host.addEventListener("keydown", all, true);
+    return () => {
+      host.removeEventListener("keydown", all, true);
+      if (!editor.isDestroyed) editor.unregisterPlugin(escapeKey);
+    };
+  }, [editor]);
+  // The rectangle: pressed with the mouse in the page margin or empty space
+  // (not on text, a control or a menu) and dragged; every block it touches
+  // is chosen while dragging. A rectangle inside one container (a list, a
+  // toggle, a callout) chooses the blocks inside it.
+  useEffect(() => {
+    if (!editor?.isEditable || picking) return;
+    const down = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse" || event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey) return;
+      const host = surface.current;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!host || !target || menu) return;
+      const page = host.closest('[role="dialog"], main');
+      if (!page?.contains(target)) return;
+      if (editor.view.dom.contains(target)) return;
+      if (
+        target.closest(
+          "button, a, input, textarea, select, label, summary, [role='button'], [role='menu'], [role='dialog'] [role='dialog'], [contenteditable], .dropdown, .editor-toolbar, [draggable='true'], .page-header, .row-document-heading",
+        )
+      )
+        return;
+      const box = host.getBoundingClientRect();
+      // Beside or below the document, not far above it.
+      if (event.clientY < box.top - 24) return;
+      const startX = event.clientX,
+        startY = event.clientY;
+      let active = false;
+      const move = (e: PointerEvent) => {
+        if (!active && Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
+        if (!active) {
+          active = true;
+          document.documentElement.classList.add("selecting-blocks-band");
+        }
+        e.preventDefault();
+        const left = Math.min(startX, e.clientX),
+          top = Math.min(startY, e.clientY),
+          width = Math.abs(e.clientX - startX),
+          height = Math.abs(e.clientY - startY);
+        setBand({ left, top, width, height });
+        const positions = live.current.bandBlocks({ left, top, right: left + width, bottom: top + height });
+        if (positions.length) live.current.startSelection(positions);
+        else if (selectingRef.current) {
+          select([]);
+        }
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move, true);
+        window.removeEventListener("pointerup", up, true);
+        window.removeEventListener("pointercancel", up, true);
+        document.documentElement.classList.remove("selecting-blocks-band");
+        setBand(null);
+        if (active && !selected.current.length) live.current.endSelection(false);
+      };
+      window.addEventListener("pointermove", move, true);
+      window.addEventListener("pointerup", up, true);
+      window.addEventListener("pointercancel", up, true);
+    };
+    document.addEventListener("pointerdown", down);
+    return () => document.removeEventListener("pointerdown", down);
+  }, [editor, picking, menu]);
+  // The blocks the rectangle (window coordinates) touches: its height
+  // decides; the outermost level it covers more than one block of, or
+  // the blocks inside the one container it lies in.
+  function bandBlocks(rect: { left: number; top: number; right: number; bottom: number }) {
+    const host = surface.current;
+    if (!host || !editor) return [];
+    const origin = host.getBoundingClientRect();
+    const top = rect.top - origin.top,
+      bottom = rect.bottom - origin.top;
+    // Only rectangles that reach the column of the text or its margin.
+    if (rect.right < origin.left - 200 || rect.left > origin.right + 200) return [];
+    const touched = geometry.current.filter((b) => b.top < bottom && b.top + b.height > top);
+    let level = touched.filter((b) => b.depth === 0);
+    for (;;) {
+      if (level.length !== 1) break;
+      const only = level[0];
+      const inside = touched.filter((b) => b.parentPos === only.pos);
+      if (!inside.length) break;
+      // The rectangle on the container's own first line (a toggle's title,
+      // the start of a callout): the container itself.
+      const firstInside = Math.min(...geometry.current.filter((b) => b.parentPos === only.pos).map((b) => b.top));
+      if (!listContainers.includes(only.node.type.name) && top < firstInside) break;
+      level = inside;
+    }
+    const positions = level.map((b) => b.pos).sort((a, b) => a - b);
+    if (!positions.length) return [];
+    // One run of neighbours (blocks hidden in between count too).
+    const parent = level[0].parentPos;
+    const lo = positions[0],
+      hi = positions[positions.length - 1];
+    return promote(
+      documentBlocks(editor.state.doc)
+        .filter((b) => b.parentPos === parent && b.pos >= lo && b.pos <= hi)
+        .map((b) => b.pos),
+    );
+  }
   // "Turn into" (#238): the current block takes another form. Text blocks
   // change through the editor's commands on a text selection inside the
   // block, like the slash menu; toggles, equations, columns and pages
@@ -1384,7 +1834,7 @@ export function DocumentBlockControls({
   const count = selected.current.length;
   // Chosen blocks are tinted: in the selection mode, and while the menu of
   // a block is open (#236), so it is clear what the menu applies to.
-  const marked = picking || menu ? blocks.filter((b) => selected.current.includes(b.pos)) : [];
+  const marked = picking || menu || selecting ? blocks.filter((b) => selected.current.includes(b.pos)) : [];
   const adding = !picking && hovered !== null && !pointerActive ? handles.find((b) => b.pos === hovered && !b.boxed) : undefined;
   return (
     <>
@@ -1394,7 +1844,25 @@ export function DocumentBlockControls({
       >
         {children}
         {editor?.isEditable && (
-          <div className={`block-handle-layer${handlesAlways ? " always-handles" : ""}`} aria-label={t("Blockgriffe", "Block handles")}>
+          <div className={`block-handle-layer${handlesAlways ? " always-handles" : ""}${selecting ? " selecting-blocks" : ""}`} aria-label={t("Blockgriffe", "Block handles")}>
+            {/* Takes the focus while blocks are chosen (#237): the keys act on
+                them; screen readers hear how many and what the keys do. */}
+            <div
+              ref={focusTarget}
+              tabIndex={-1}
+              className="block-selection-focus"
+              role="group"
+              aria-label={
+                !selecting
+                  ? undefined
+                  : selected.current.length === 1
+                    ? t("1 Block ausgewählt. Pfeiltasten wählen andere Blöcke, Entf löscht, Esc beendet die Auswahl.", "1 block selected. Arrow keys choose other blocks, Delete deletes, Esc ends the selection.")
+                    : t(
+                        `${selected.current.length} Blöcke ausgewählt. Pfeiltasten wählen andere Blöcke, Entf löscht, Esc beendet die Auswahl.`,
+                        `${selected.current.length} blocks selected. Arrow keys choose other blocks, Delete deletes, Esc ends the selection.`,
+                      )
+              }
+            />
             {marked.map((block) => (
               <div
                 key={`picked-${block.pos}`}
@@ -1465,6 +1933,7 @@ export function DocumentBlockControls({
                       );
                     // A drag selects only for its own duration; the moved
                     // block's handle must not stay highlighted afterwards.
+                    if (selectingRef.current) endSelection(false);
                     remember([]);
                     setTick((t) => t + 1);
                   } else openMenu(event.currentTarget, block);
@@ -1504,6 +1973,9 @@ export function DocumentBlockControls({
                 <Plus size={15} weight="bold" aria-hidden />
               </button>
             )}
+            {band &&
+              typeof document !== "undefined" &&
+              createPortal(<div className="block-select-band" style={band} aria-hidden="true" />, document.body)}
             {drop && (
               <div
                 className="document-block-drop"

@@ -9665,6 +9665,36 @@ tr.order-drop-after > td {
   pointer-events: none;
   z-index: 1;
 }
+/* Choosing blocks (#237): the rectangle dragged from the margin, no text
+   selection meanwhile; the chosen blocks' handles stay calm (the tint
+   shows the choice); the focus target is invisible. */
+.block-select-band {
+  position: fixed;
+  z-index: 40;
+  border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  pointer-events: none;
+}
+.selecting-blocks-band,
+.selecting-blocks-band * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.selecting-blocks .document-block-handle.selected:not(:hover, :focus-visible, .hovered) {
+  opacity: 0;
+}
+.block-selection-focus {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  outline: none;
+  pointer-events: none;
+}
 [data-theme="dark"] .document-block-marked {
   background: color-mix(in srgb, var(--blue) 24%, transparent);
 }
