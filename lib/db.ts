@@ -1382,6 +1382,11 @@ function migrate(d: DatabaseSync) {
     d.exec("ALTER TABLE doc_tasks ADD COLUMN assigned_at INTEGER");
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "tasks_seen_at"))
     d.exec("ALTER TABLE users ADD COLUMN tasks_seen_at INTEGER");
+  // Why a meeting's processing failed, for administrators (#225,
+  // lib/meetings.ts): meetings.error_detail next to the message people
+  // see. An older version ignores the column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(meetings)").all() as { name: string }[]).some((c) => c.name === "error_detail"))
+    d.exec("ALTER TABLE meetings ADD COLUMN error_detail TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

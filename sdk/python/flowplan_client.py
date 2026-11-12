@@ -2605,12 +2605,16 @@ class FlowplanClient:
         return self._json("POST", "/api/meetings", form=dict(form), headers=headers)
 
     def get_meeting(self, meeting_id: str, query: Optional["GetMeetingQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Status of a meeting note — `status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary). With `content=1` also `title`, `summary` and `agenda` as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session). Needs read access to the page; kept audio is listed as file URLs. Answered with `Cache-Control: no-store`. (GET /api/meetings/{meetingId})"""
+        """Status of a meeting note — `status`: new, recording, transcribing, summarizing, done or failed (`error` says why; `done` with an `error` means the transcript is there but no summary; `errorDetail` – for instance administrators only – what went wrong, e.g. a timeout or the transcription service's answer). With `content=1` also `title`, `summary` and `agenda` (the participants' notes) as Markdown and the `transcript` segments (time in seconds, speaker, track `me`/`others`/`mixed`, session, `hallucination`: no speech – silence phrases or repetitions the recogniser made up, left out of the summary –, `edited`: corrected by a person). Needs read access to the page; kept audio is listed as file URLs. Answered with `Cache-Control: no-store`. (GET /api/meetings/{meetingId})"""
         return self._json("GET", "/api/meetings/" + _p(meeting_id), query=dict(query) if query else None, headers=headers)
 
     def regenerate_meeting_summary(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Write the summary again — With other instructions, without transcribing again. Needs edit rights and “AI and transcription” for tokens. (POST /api/meetings/{meetingId}/summarize)"""
         return self._json("POST", "/api/meetings/" + _p(meeting_id) + "/summarize", json_body=body, headers=headers)
+
+    def retranscribe_meeting(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Transcribe the kept audio again — For sessions whose audio the workspace keeps: transcribes it again (e.g. with a better glossary or model) and writes the summary anew; the earlier summary stays in the page's versions. Transcript passages people corrected stay and new segments at their time are left out, unless `force: true`. `dryRun: true` changes nothing and only answers how many corrected passages there are (`edited`). Answers the meeting with `edited`, `keepsEdited` and `started`; poll the status. 409 when no audio is kept or the meeting is being processed. Needs edit rights and “AI and transcription” for tokens. (POST /api/meetings/{meetingId}/retranscribe)"""
+        return self._json("POST", "/api/meetings/" + _p(meeting_id) + "/retranscribe", json_body=body, headers=headers)
 
     def ask_meeting(self, meeting_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> bytes:
         """Ask a question about one meeting — Answered from the meeting's transcript and agenda only, as a text stream; `[S12]` names the transcript segment (header `X-Flowplan-Segments`: base64 JSON list of segment ids, S1 first). (POST /api/meetings/{meetingId}/ask)"""

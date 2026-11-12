@@ -11,6 +11,8 @@
 //   POST /api/meetings/{id}/finish           transcribe and summarise
 //   POST /api/meetings/{id}/retry            again after an error
 //   POST /api/meetings/{id}/summarize        the summary again (other instructions)
+//   POST /api/meetings/{id}/retranscribe     transcribe the kept audio again
+//        { force?, dryRun?, language? } – corrected passages stay unless force
 //   POST /api/meetings/{id}/ask              "Frag diese Besprechung" (text stream)
 //   POST /api/meetings/{id}/audio/delete     remove the kept audio now
 //   POST /api/meetings/{id}/event            the block's calendar event (its reminder)
@@ -39,6 +41,7 @@ import {
   MEETING_COPY,
   readMeetingSettings,
   regenerateSummary,
+  retranscribeMeeting,
   retryMeeting,
   saveMeetingSettings,
   startMeetingSession,
@@ -173,6 +176,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     }
     if (path.length === 2 && action === "finish") return NextResponse.json(await finishMeetingSession(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "retry") return NextResponse.json(await retryMeeting(user, meetingId, (await json(req)).language), noStore);
+    if (path.length === 2 && action === "retranscribe") return NextResponse.json(await retranscribeMeeting(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "summarize") return NextResponse.json(await regenerateSummary(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "ask") return await askMeeting(user, meetingId, await json(req, 200_000), req.signal);
     // The block's calendar event: its reminder (lib/meeting-reminders.ts).

@@ -223,6 +223,24 @@ test("appointments of the day come from databases and ICS calendars", async () =
   await row({ t: "Yoga", d: "2026-09-07" }, { freq: "weekly", interval: 1 });
   const events = await databaseEvents(user, wid, "2026-10-05", "Europe/Berlin");
   assert.deepEqual(events.map((e) => e.title).sort(), ["Yoga", "Zahnarzt"]);
+  // A database with a calendar view holds appointments (#229).
+  assert.ok(events.every((e) => e.calendar === true));
+  // Dated records of another database (a sync log) come, marked as such.
+  const log = (
+    (await command(user, { action: "page.create", workspaceId: wid, spaceId: space, title: "Sync-Log", kind: "database" })) as { id: string }
+  ).id;
+  await run(
+    "UPDATE databases SET fields=?,views=? WHERE page_id=?",
+    JSON.stringify([
+      { id: "t", name: "Titel", type: "text" },
+      { id: "d", name: "Datum", type: "date" },
+    ]),
+    JSON.stringify([{ id: "v", name: "Tabelle", type: "table" }]),
+    log,
+  );
+  await run("INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)", id(), log, JSON.stringify({ t: "OK", d: "2026-10-05T08:23" }), 0, uid, uid);
+  const withLog = await databaseEvents(user, wid, "2026-10-05", "Europe/Berlin");
+  assert.deepEqual(withLog.filter((e) => !e.calendar).map((e) => [e.title, e.source]), [["OK", "Sync-Log"]]);
 
   const ics = [
     "BEGIN:VCALENDAR",
@@ -242,6 +260,7 @@ test("appointments of the day come from databases and ICS calendars", async () =
   ].join("\r\n");
   const parsed = parseIcs(ics, "Europe/Berlin");
   assert.deepEqual(icsEventsOn(parsed, "2026-10-05", "Europe/Berlin").map((e) => e.title), ["Team, Sync"]);
+  assert.equal(icsEventsOn(parsed, "2026-10-05", "Europe/Berlin")[0].calendar, true);
   assert.deepEqual(icsEventsOn(parsed, "2026-10-08", "Europe/Berlin").map((e) => e.title), ["Sport"]);
   assert.deepEqual(icsEventsOn(parsed, "2026-10-15", "Europe/Berlin"), []);
 });

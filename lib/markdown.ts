@@ -507,7 +507,7 @@ export function htmlToMarkdown(
         const body = children(node, inTable).trim();
         if (!body) return "";
         const label =
-          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Agenda", "Agenda") : ct("Transkript", "Transcript");
+          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Notizen", "Notes") : ct("Transkript", "Transcript");
         return `**${label}**\n\n${body}`;
       }
       case "meetingSegment": {

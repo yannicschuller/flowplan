@@ -26,8 +26,8 @@ import {
   SuggestChanges,
 } from "@/lib/suggestions";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
-import { meetingNode, type MeetingContext } from "./meeting-block";
-import { MeetingAgenda, MeetingCite, MeetingSegmentNode, MeetingSummary, MeetingTranscript } from "@/lib/meeting-schema";
+import { meetingNode, MeetingTranscriptView, type MeetingContext } from "./meeting-block";
+import { MeetingAgenda, MeetingCite, MeetingSegmentNode, MeetingSummary } from "@/lib/meeting-schema";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
 import { TableTools } from "./table-tools";
@@ -603,6 +603,7 @@ export default function DocumentEditor({
     members,
     editable,
     onError,
+    copyLink: (pos) => void copyBlockLink.current(pos),
   };
   function insertSynced(id: string) {
     editor
@@ -785,7 +786,7 @@ export default function DocumentEditor({
         meetingNode(() => meetingContext.current),
         MeetingSummary,
         MeetingAgenda,
-        MeetingTranscript,
+        MeetingTranscriptView,
         MeetingSegmentNode,
         MeetingCite,
         whiteboardEmbedNode(),

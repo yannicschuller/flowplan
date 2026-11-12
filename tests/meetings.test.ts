@@ -4,7 +4,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, existsSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:http";
@@ -28,6 +28,7 @@ const meetings = await import("../lib/meetings");
 const { meetingHtml } = await import("../lib/meeting-schema");
 const { startOllamaMock } = await import("./helpers/ai-mock");
 const { resolveAi } = await import("../lib/ai/resolve");
+const { webmClusters, webmHeader } = await import("../lib/webm");
 import type { Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
@@ -64,28 +65,71 @@ const docHtml = async (pageId: string) => (await one<{ html: string }>("SELECT h
 // ---- Fake Whisper: the microphone hears Ada and the call (echo), the
 // system sound the call only. ----
 const whisperCalls: string[] = [];
+const whisperPrompts: string[] = [];
+// Switches of single tests: the call track fails (`failOthers` times), the
+// "mixed" track has extra segments, live windows fail.
+const fakeWhisper = { failOthers: 0, mixedExtra: [] as { start: number; end: number; text: string }[], failLive: false };
+// What is said in the live test's recording (seconds of the track): the
+// fake hears the part of it that its window holds – from the window's
+// first cluster to about a second after its last one, cut off there.
+const liveScript = [
+  { start: 0.2, end: 0.8, text: "Erster Punkt heute" },
+  { start: 1.1, end: 1.9, text: "Zweiter Punkt morgen" },
+  { start: 2.2, end: 2.9, text: "Dritter Punkt übermorgen" },
+  { start: 3.1, end: 3.8, text: "Vierter Punkt nächste Woche" },
+  { start: 4.0, end: 4.5, text: "Fünfter Punkt zum Schluss" },
+];
+let liveWindows = 0;
+function liveAnswer(file: Uint8Array) {
+  const clusters = webmClusters(file);
+  assert.ok(webmHeader(file), "every window starts with the recording's header");
+  const from = clusters[0].time / 1000;
+  const to = clusters[clusters.length - 1].time / 1000 + 1.1;
+  // Each window hears the times a little differently.
+  const jitter = liveWindows++ % 2 ? 0.12 : 0;
+  return liveScript
+    .filter((s) => s.start < to && s.end > from)
+    .map((s) => ({ start: s.start - from + jitter, end: Math.min(s.end, to) - from + jitter, text: s.end > to ? s.text.split(" ")[0] : s.text }));
+}
 const whisper = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
-    const body = Buffer.concat(chunks).toString("latin1");
+    const raw = Buffer.concat(chunks);
+    const body = raw.toString("latin1");
     const name = /filename="([^"]+)"/.exec(body)?.[1] || "";
     whisperCalls.push(name);
+    whisperPrompts.push(/name="prompt"\r\n\r\n([^\r]*)\r\n/.exec(body)?.[1] ?? "");
+    res.setHeader("Content-Type", "application/json");
+    if (name.includes("-live.")) {
+      if (fakeWhisper.failLive) {
+        res.statusCode = 503;
+        return res.end("busy");
+      }
+      const start = body.indexOf("\r\n\r\n", body.indexOf('name="file"')) + 4;
+      const end = body.lastIndexOf("\r\n--");
+      const segments = liveAnswer(new Uint8Array(raw.subarray(start, end)));
+      return res.end(JSON.stringify({ text: segments.map((s) => s.text).join(" "), segments }));
+    }
     const others = name.includes("-others.");
+    if (others && fakeWhisper.failOthers > 0) {
+      fakeWhisper.failOthers--;
+      res.statusCode = 500;
+      return res.end("CUDA out of memory");
+    }
     const segments = others
       ? [
           { start: 10, end: 16, text: "Ben, kannst du bis Freitag das Angebot an den Kunden schicken?" },
           { start: 40, end: 50, text: "Das Budget für das nächste Quartal bleibt gleich." },
         ]
       : name.includes("-mixed.")
-        ? [{ start: 0, end: 20, text: "Kurze Notiz ohne viel Inhalt." }]
+        ? [{ start: 0, end: 20, text: "Kurze Notiz ohne viel Inhalt." }, ...fakeWhisper.mixedExtra]
         : [
             { start: 2, end: 8, text: "Hallo zusammen, wir fangen mit dem Angebot an." },
             // The call through the loudspeakers, a little later and slightly different.
             { start: 10.4, end: 16.2, text: "Ben kannst du bis Freitag das Angebot an den Kunden schicken" },
             { start: 60, end: 70, text: "Ja, das mache ich bis Freitag." },
           ];
-    res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ text: segments.map((s) => s.text).join(" "), segments, duration: others ? 50 : 70 }));
   });
 });
@@ -147,12 +191,14 @@ test("echoes of the call in the microphone are dropped, own speech stays", () =>
   assert.equal(core.textSimilarity("Ja", "Nein"), 0);
 });
 
-test("the summary becomes tasks with owner mention and due date, then topics and open points", () => {
+test("the summary becomes tasks with owner mention and due date, then decisions, open questions and topics", () => {
   const summary = core.meetingSummarySchema.parse({
     actions: [
       { text: "Angebot schicken", owner: "ben", due: "2026-11-13", sources: [2, 1] },
       { text: "Raum buchen", owner: "Externe Person", due: "morgen", sources: [9] },
+      { text: "Protokoll verteilen", owner: null },
     ],
+    decisions: [{ text: "Budget bleibt", reason: "Der Umsatz ist stabil.", sources: [1] }],
     topics: [{ title: "Budget", points: [{ text: "Bleibt gleich", sources: [1] }] }],
     open: [{ text: "Termin offen" }],
   });
@@ -169,11 +215,48 @@ test("the summary becomes tasks with owner mention and due date, then topics and
   assert.equal(tasks[1].attrs!.due, undefined);
   assert.ok(tasks[1].content![0].content!.some((n) => n.text?.includes("Externe Person")));
   assert.ok(!tasks[1].content![0].content!.some((n) => n.type === "meetingCite"));
-  assert.deepEqual(nodes.map((n) => n.type), ["heading", "taskList", "heading", "bulletList", "heading", "bulletList"]);
+  // Nobody named: the task says so and is nobody's.
+  assert.ok(tasks[2].content![0].content!.some((n) => n.text === " (Zuständig: unklar)"));
+  assert.ok(!tasks[2].content![0].content!.some((n) => n.type === "mention"));
+  // Fixed order: action items, decisions (reason below), open questions (the
+  // earlier "open" shape), the summary by topic.
+  assert.deepEqual(nodes.map((n) => n.type), ["heading", "taskList", "heading", "bulletList", "heading", "bulletList", "heading", "heading", "bulletList"]);
+  assert.deepEqual(
+    nodes.filter((n) => n.type === "heading").map((n) => [n.attrs!.level, n.content![0].text]),
+    [
+      [3, "Aufgaben"],
+      [3, "Entscheidungen"],
+      [3, "Offene Fragen"],
+      [3, "Zusammenfassung"],
+      [4, "Budget"],
+    ],
+  );
+  const decision = nodes[3].content![0];
+  assert.equal(decision.content![1].type, "bulletList");
+  assert.equal(decision.content![1].content![0].content![0].content![0].text, "Der Umsatz ist stabil.");
   // Segment S2 got ①, S1 ②: the order of first citation.
   assert.equal(numbers.get("1m1"), 1);
   assert.equal(numbers.get("1o0"), 2);
-  assert.equal(nodes[4].content![0].text, "Offene Punkte");
+});
+
+test("the summary prompt asks for the fixed order, never guessed owners, and reads the notes", () => {
+  const prompt = core.meetingPrompt({
+    segments: [{ sid: "1m0", start: 3, end: 5, text: "Hallo", speaker: "Ada", track: "me", session: 1 }],
+    agenda: "Raum klären",
+    title: "Weekly",
+    date: "2026-11-11",
+    attendees: ["Ada"],
+    language: "de",
+    instructions: core.presetPrompt("auto", ""),
+    today: "2026-11-12",
+  });
+  const system = String(prompt.system);
+  const order = ['"actions"', '"decisions"', '"questions"', '"topics"'].map((key) => system.indexOf(key));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.ok(order.every((i) => i > 0));
+  assert.match(system, /never guess an owner/);
+  assert.match(system, /subtitle credits/);
+  assert.match(String(prompt.messages[0].content), /Notes:\nRaum klären/);
 });
 
 test("speaker names come from the tracks", () => {
@@ -410,4 +493,181 @@ test("guests read a meeting only on a page shared with them; private spaces stay
   await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), secret);
   await meetings.startMeetingSession(ada, { meetingId: secretMeeting, pageId: secret, tracks: ["me"] });
   await assert.rejects(() => meetings.meetingStatus(ben, secretMeeting), /Berechtigung|nicht gefunden/);
+});
+
+// ---- #225 and the #199 follow-up: the pipeline ----
+
+test("a failed track: the error for people, its cause for administrators, the finished track is not transcribed again", async () => {
+  const { pageId, meetingId } = await pageWithMeeting("Teilweise");
+  fakeWhisper.failOthers = 1;
+  const before = whisperCalls.length;
+  await record(ada, pageId, meetingId, ["me", "others"]);
+  const failed = await meetings.meetingStatus(ada, meetingId);
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.error, "Transkription fehlgeschlagen (500).");
+  assert.equal(failed.errorDetail, "HTTP 500: CUDA out of memory");
+  // Ben edits the page but administers nothing: no detail.
+  assert.equal((await meetings.meetingStatus(ben, meetingId)).errorDetail, null);
+  assert.deepEqual(whisperCalls.slice(before).map((n) => n.replace(/^besprechung-\d+-/, "")), ["me.webm", "others.webm"]);
+  await meetings.retryMeeting(ada, meetingId, "de");
+  await meetings.meetingJob(meetingId);
+  const done = await meetings.meetingDetails(ada, meetingId);
+  assert.equal(done.status, "done", String(done.error));
+  assert.equal(done.errorDetail, null);
+  // Only the call track again; the microphone's transcript was kept.
+  assert.deepEqual(whisperCalls.slice(before).map((n) => n.replace(/^besprechung-\d+-/, "")), ["me.webm", "others.webm", "others.webm"]);
+  assert.deepEqual(done.transcript.map((s) => `${s.speaker}@${s.start}`), ["Ada@2", "Andere@10", "Andere@40", "Ada@60"]);
+});
+
+test("the workspace glossary goes to the speech recognition; owners change it", async () => {
+  await meetings.saveMeetingSettings(ada, wid, { glossary: "Flowplan\nOKR, Ada Lovelace" });
+  try {
+    assert.equal((await meetings.readMeetingSettings(ben, wid)).glossary, "Flowplan\nOKR, Ada Lovelace");
+    await assert.rejects(() => meetings.saveMeetingSettings(ben, wid, { glossary: "" }), /Berechtigung/);
+    const { pageId, meetingId } = await pageWithMeeting("Glossar");
+    const before = whisperPrompts.length;
+    await record(ada, pageId, meetingId, ["mixed"], { durationMs: 20_000 });
+    assert.deepEqual(whisperPrompts.slice(before), ["Flowplan, OKR, Ada Lovelace"]);
+  } finally {
+    await meetings.saveMeetingSettings(ada, wid, { glossary: "" });
+  }
+});
+
+test("made-up lines are marked in the transcript and left out of the summary", async () => {
+  fakeWhisper.mixedExtra = [
+    { start: 30, end: 40, text: "Wir haben beschlossen, das Budget gleich zu lassen." },
+    { start: 50, end: 52, text: "Untertitel im Auftrag des ZDF, 2021" },
+    { start: 80, end: 82, text: "Vielen Dank." },
+  ];
+  try {
+    const { pageId, meetingId } = await pageWithMeeting("Halluzination");
+    const chats = mock.chats.length;
+    await record(ada, pageId, meetingId, ["mixed"], { durationMs: 90_000 });
+    const status = await meetings.meetingDetails(ada, meetingId);
+    assert.equal(status.status, "done", String(status.error));
+    assert.deepEqual(
+      status.transcript.map((s) => [s.text, s.hallucination]),
+      [
+        ["Kurze Notiz ohne viel Inhalt.", false],
+        ["Wir haben beschlossen, das Budget gleich zu lassen.", false],
+        ["Untertitel im Auftrag des ZDF, 2021", true],
+        ["Vielen Dank.", true],
+      ],
+    );
+    assert.match(await docHtml(pageId), /data-hallucination="1"/);
+    const prompt = mock.chats.slice(chats).find((c) => c.system.includes("You write the notes"))!;
+    assert.match(prompt.prompt, /S2 \[00:30\] Wir haben beschlossen/);
+    assert.doesNotMatch(prompt.prompt, /ZDF|Vielen Dank/);
+  } finally {
+    fakeWhisper.mixedExtra = [];
+  }
+});
+
+// The fixture's five 1-second pieces of a real Chromium MediaRecorder file.
+const piece = (i: number) => new Uint8Array(readFileSync(new URL(`./fixtures/mediarecorder/chunk${i}`, import.meta.url)));
+
+test("transcribing while recording: windows as the pieces come, the overlap once, only the last window at the end", async () => {
+  const { pageId, meetingId } = await pageWithMeeting("Live");
+  const started = await meetings.startMeetingSession(ada, { meetingId, pageId, tracks: ["me"], mime: "audio/webm", live: true });
+  const before = whisperCalls.length;
+  for (let index = 0; index < 5; index++) {
+    await meetings.storeMeetingChunk(ada, meetingId, { session: started.session, track: "me", index }, piece(index));
+    await meetings.meetingLiveJob(meetingId);
+  }
+  const live = whisperCalls.length - before;
+  assert.equal(live, 5);
+  await meetings.finishMeetingSession(ada, meetingId, { session: started.session, parts: { me: 5 }, durationMs: 4_600, language: "de" });
+  await meetings.meetingJob(meetingId);
+  const status = await meetings.meetingDetails(ada, meetingId);
+  assert.equal(status.status, "done", String(status.error));
+  // One more window at the end, never the whole track.
+  assert.deepEqual(
+    whisperCalls.slice(before).map((n) => n.replace(/^besprechung-\d+-/, "")),
+    Array(6).fill("me-live.webm"),
+  );
+  assert.deepEqual(
+    status.transcript.map((s) => s.text),
+    liveScript.map((s) => s.text),
+  );
+  for (const [i, s] of status.transcript.entries()) assert.ok(Math.abs(s.start - liveScript[i].start) < 0.2, `${s.text} at ${s.start}`);
+});
+
+test("transcribing while recording falls back to the whole track: no WebM, or the live service failing", async () => {
+  // Pieces that are no WebM: live gives up, the end transcribes the track.
+  const { pageId, meetingId } = await pageWithMeeting("Kein WebM");
+  const started = await meetings.startMeetingSession(ada, { meetingId, pageId, tracks: ["me"], mime: "audio/webm", live: true });
+  const before = whisperCalls.length;
+  for (let index = 0; index < 2; index++) {
+    await meetings.storeMeetingChunk(ada, meetingId, { session: started.session, track: "me", index }, new Uint8Array([1, 2, 3, index]));
+    await meetings.meetingLiveJob(meetingId);
+  }
+  await meetings.finishMeetingSession(ada, meetingId, { session: started.session, parts: { me: 2 }, durationMs: 70_000, language: "de" });
+  await meetings.meetingJob(meetingId);
+  assert.equal((await meetings.meetingStatus(ada, meetingId)).status, "done");
+  assert.deepEqual(whisperCalls.slice(before), ["besprechung-1-me.webm"]);
+  // Real pieces, but the service fails for every window.
+  fakeWhisper.failLive = true;
+  try {
+    const second = await pageWithMeeting("Dienst weg");
+    const s = await meetings.startMeetingSession(ada, { meetingId: second.meetingId, pageId: second.pageId, tracks: ["me"], mime: "audio/webm", live: true });
+    for (let index = 0; index < 5; index++) {
+      await meetings.storeMeetingChunk(ada, second.meetingId, { session: s.session, track: "me", index }, piece(index));
+      await meetings.meetingLiveJob(second.meetingId);
+    }
+    const mark = whisperCalls.length;
+    await meetings.finishMeetingSession(ada, second.meetingId, { session: s.session, parts: { me: 5 }, durationMs: 70_000, language: "de" });
+    await meetings.meetingJob(second.meetingId);
+    const status = await meetings.meetingDetails(ada, second.meetingId);
+    assert.equal(status.status, "done", String(status.error));
+    assert.ok(whisperCalls.slice(mark).includes("besprechung-1-me.webm"));
+    assert.equal(status.transcript.length, 3);
+  } finally {
+    fakeWhisper.failLive = false;
+  }
+});
+
+test("transcribing kept audio again: corrected passages stay unless forced, the summary is written anew", async () => {
+  await meetings.saveMeetingSettings(ada, wid, { retention: "keep" });
+  try {
+    const { pageId, meetingId } = await pageWithMeeting("Nochmal");
+    await record(ada, pageId, meetingId, ["me", "others"]);
+    assert.equal((await meetings.meetingStatus(ada, meetingId)).audio.length, 2);
+    // Ada corrects a passage in the editor (the text no longer matches its fingerprint).
+    const html = (await docHtml(pageId)).replace("Ja, das mache ich bis Freitag.", "Ja, das mache ich bis Donnerstag.");
+    await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+    assert.deepEqual((await meetings.meetingDetails(ada, meetingId)).transcript.filter((s) => s.edited).map((s) => s.text), ["Ja, das mache ich bis Donnerstag."]);
+    const check = await meetings.retranscribeMeeting(ada, meetingId, { dryRun: true });
+    assert.equal(check.edited, 1);
+    assert.equal(check.started, false);
+    await assert.rejects(() => meetings.retranscribeMeeting(vic, meetingId, {}), /Berechtigung/);
+    const calls = whisperCalls.length,
+      chats = mock.chats.length;
+    const started = await meetings.retranscribeMeeting(ada, meetingId, {});
+    assert.equal(started.started, true);
+    assert.equal(started.keepsEdited, true);
+    await meetings.meetingJob(meetingId);
+    const kept = await meetings.meetingDetails(ada, meetingId);
+    assert.equal(kept.status, "done", String(kept.error));
+    assert.equal(whisperCalls.length - calls, 2);
+    assert.ok(mock.chats.slice(chats).some((c) => c.system.includes("You write the notes")));
+    const texts = kept.transcript.map((s) => s.text);
+    assert.ok(texts.includes("Ja, das mache ich bis Donnerstag."));
+    assert.ok(!texts.includes("Ja, das mache ich bis Freitag."));
+    assert.equal(new Set(kept.transcript.map((s) => s.id)).size, kept.transcript.length);
+    // The audio is not kept a second time.
+    assert.equal(kept.audio.length, 2);
+    assert.equal((await all("SELECT id FROM files WHERE page_id=?", pageId)).length, 2);
+    // force: the corrections are replaced.
+    await meetings.retranscribeMeeting(ada, meetingId, { force: true });
+    await meetings.meetingJob(meetingId);
+    const forced = (await meetings.meetingDetails(ada, meetingId)).transcript.map((s) => s.text);
+    assert.ok(forced.includes("Ja, das mache ich bis Freitag."));
+    assert.ok(!forced.includes("Ja, das mache ich bis Donnerstag."));
+  } finally {
+    await meetings.saveMeetingSettings(ada, wid, { retention: "delete" });
+  }
+  // Without kept audio there is nothing to transcribe again.
+  const { pageId, meetingId } = await pageWithMeeting("Ohne Audio");
+  await record(ada, pageId, meetingId, ["mixed"], { durationMs: 20_000 });
+  await assert.rejects(() => meetings.retranscribeMeeting(ada, meetingId, {}), /kein Audio mehr/);
 });
