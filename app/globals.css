@@ -9478,7 +9478,11 @@ tr.order-drop-after > td {
   width: 24px;
   height: 28px;
   padding: 0;
-  font-size: 19px;
+  /* The dots (an SVG, #226) on the button's centre – which is the centre
+     of the block's first text line – whatever the font. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
   cursor: grab;
   opacity: 0;

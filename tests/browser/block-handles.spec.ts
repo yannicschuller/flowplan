@@ -119,3 +119,57 @@ test("on touch screens only the block with the caret has a handle, at least 44 p
   await page.goto("/#home");
   await f.command({ action: "page.delete", pageId: f.host.id });
 });
+
+// The handle's dots sit on the middle of the block's first text line (#226):
+// the ⠿ character sat about 3 px above it in every font. Measured: the dots
+// drawn (their circles) against the box the block's first character is
+// drawn in, for every page font.
+test("the handle's dots are centred on the first text line of paragraphs, headings and list items", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Same geometry on touch screens.");
+  const f = await fixture(page, `Handles centred ${Date.now()}`);
+  const { htmlState } = await import("../../lib/document-server");
+  const read = async () => (await page.request.get(`/api/pages/${f.host.id}`)).json();
+  await f.command({
+    action: "document.sync",
+    pageId: f.host.id,
+    generation: (await read()).generation,
+    update: Buffer.from(
+      htmlState(
+        '<p>Paragraph</p><h1>Heading one</h1><h2>Heading two</h2><h3>Heading three</h3><ul><li><p>List item</p></li></ul><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Task item</p></li></ul><blockquote><p>Quote</p></blockquote>',
+      ),
+    ).toString("base64"),
+  });
+  await page.goto("/#home");
+  await page.evaluate(() => localStorage.setItem("flowplan.block-handles-always", "true"));
+  for (const font of ["sans", "serif", "mono"]) {
+    await f.command({ action: "page.update", pageId: f.host.id, patch: { font } });
+    await page.goto(`/#page=${f.host.id}`);
+    await page.reload();
+    const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+    await expect(editor.locator(":scope > blockquote")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Blockaktionen: Zitat · Quote", exact: true })).toBeAttached();
+    const texts = ["Paragraph", "Heading one", "Heading two", "Heading three", "List item", "Task item", "Quote"];
+    const offsets = await page.evaluate((texts) =>
+      [...document.querySelectorAll<HTMLElement>(".document-block-handle")].flatMap((handle) => {
+        const dots = [...handle.querySelectorAll("circle")].map((c) => c.getBoundingClientRect());
+        const dotsMiddle = dots.length ? (Math.min(...dots.map((r) => r.top)) + Math.max(...dots.map((r) => r.bottom))) / 2 : NaN;
+        const label = handle.getAttribute("aria-label") || "";
+        const text = label.split(" · ").pop()!;
+        if (!texts.includes(text)) return [];
+        const walker = document.createTreeWalker(document.querySelector(".ProseMirror")!, NodeFilter.SHOW_TEXT);
+        let node: Node | null;
+        while ((node = walker.nextNode()) && node.textContent !== text);
+        const range = document.createRange();
+        range.setStart(node!, 0);
+        range.setEnd(node!, 1);
+        const line = range.getBoundingClientRect();
+        return [{ label, offset: Math.round((dotsMiddle - (line.top + line.bottom) / 2) * 100) / 100 }];
+      }),
+    texts);
+    expect(offsets).toHaveLength(texts.length);
+    for (const { label, offset } of offsets) expect(Math.abs(offset), `${font}: ${label} (${offset} px)`).toBeLessThanOrEqual(1);
+  }
+  await page.evaluate(() => localStorage.removeItem("flowplan.block-handles-always"));
+  await page.goto("/#home");
+  await f.command({ action: "page.delete", pageId: f.host.id });
+});
