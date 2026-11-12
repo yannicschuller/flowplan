@@ -7,11 +7,8 @@
 // left edge (`edge="start"`, --ask-width).
 import { useRef } from "react";
 
-export const SIDEBAR_WIDTH_KEY = "flowplan-sidebar-width";
-export const SIDEBAR_MIN = 200;
-export const SIDEBAR_MAX = 480;
-export const clampSidebar = (value: number) =>
-  Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, value)));
+import { SIDEBAR_MIN, SIDEBAR_MAX } from "@/lib/layout-cookie";
+export { SIDEBAR_WIDTH_KEY, SIDEBAR_MIN, SIDEBAR_MAX, clampSidebar } from "@/lib/layout-cookie";
 
 export function SidebarResize({
   width,

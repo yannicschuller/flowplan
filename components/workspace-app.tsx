@@ -105,6 +105,7 @@ import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/l
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { workspaceCookie } from "@/lib/last-workspace";
+import { layoutCookie, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
 import { ListSkeleton, viewShapeOf } from "./skeleton";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
@@ -419,8 +420,12 @@ export default function WorkspaceApp({
   initial,
   useTemplate,
   inviteResult,
+  layout,
 }: {
   initial: Bootstrap;
+  // The layout kept on this device (lib/layout-cookie.ts), read by the
+  // server from the cookie; null on the first load without one.
+  layout?: StoredLayout | null;
   // Public gallery: create a page from this template once signed in.
   useTemplate?: string;
   // Opened through an invitation link (?invite=…).
@@ -598,40 +603,43 @@ export default function WorkspaceApp({
   // Profile pictures for every Avatar below, from the current member list.
   setAvatarDirectory([...boot.members, boot.user]);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
-  // The sidebar's width on wide screens, dragged at its right edge (kept per
-  // device, read after the first render so it matches the server's; null:
-  // the default from the stylesheet).
-  const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
-  const sidebarWidthRead = useRef(false);
+  // The sidebar's width on wide screens, dragged at its right edge (null:
+  // the default from the stylesheet), the width of the "KI fragen" panel the
+  // same way (dragged at its left edge; the stylesheet keeps it within
+  // 320 px and 45 % of the window), and whether that panel is pinned beside
+  // the page on narrow windows – where it otherwise lies over the page
+  // (lib/ask-panel.ts). Kept per device in localStorage and in a cookie the
+  // server renders the first paint with (lib/layout-cookie.ts), so the
+  // sidebar does not jump from the default width after a reload.
+  const [sidebarWidth, setSidebarWidth] = useState<number | null>(layout?.sidebar ?? null);
+  const [askWidth, setAskWidth] = useState<number | null>(layout?.ask ?? null);
+  const [askPinned, setAskPinned] = useState(layout?.askPinned ?? false);
+  const layoutRead = useRef(false);
   useEffect(() => {
-    try {
-      if (!sidebarWidthRead.current) {
-        sidebarWidthRead.current = true;
-        const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-        if (stored) setSidebarWidth(clampSidebar(stored));
+    if (!layoutRead.current) {
+      layoutRead.current = true;
+      // The first load without the cookie (e.g. right after the update):
+      // the values from localStorage, after the first render as before;
+      // the next run writes the cookie.
+      if (!layout) {
+        try {
+          const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+          if (stored) setSidebarWidth(clampSidebar(stored));
+        } catch {}
+        setAskWidth(readAskWidth());
+        setAskPinned(readAskPinned());
         return;
       }
+    }
+    try {
       if (sidebarWidth === null) localStorage.removeItem(SIDEBAR_WIDTH_KEY);
       else localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
     } catch {}
-  }, [sidebarWidth]);
-  // The width of the "KI fragen" panel, the same way (dragged at its left
-  // edge; the stylesheet keeps it within 320 px and 45 % of the window), and
-  // whether it is pinned beside the page on narrow windows – where it
-  // otherwise lies over the page (lib/ask-panel.ts).
-  const [askWidth, setAskWidth] = useState<number | null>(null);
-  const [askPinned, setAskPinned] = useState(false);
-  const askStoreRead = useRef(false);
-  useEffect(() => {
-    if (!askStoreRead.current) {
-      askStoreRead.current = true;
-      setAskWidth(readAskWidth());
-      setAskPinned(readAskPinned());
-      return;
-    }
     writeAskWidth(askWidth);
     writeAskPinned(askPinned);
-  }, [askWidth, askPinned]);
+    document.cookie = layoutCookie({ sidebar: sidebarWidth, ask: askWidth, askPinned });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarWidth, askWidth, askPinned]);
   const askNarrowWindow = useMedia(ASK_OVERLAY_MEDIA);
   // Presentation mode of the open document (components/presentation.tsx).
   const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
