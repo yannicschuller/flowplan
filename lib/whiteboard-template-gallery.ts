@@ -18,7 +18,7 @@ export type GalleryTemplate = {
   items: (t: T) => Draft[];
 };
 
-const frame = (id: string, x: number, y: number, w: number, h: number, text: string, fill = "#ffffff"): Draft => ({
+export const frame = (id: string, x: number, y: number, w: number, h: number, text: string, fill = "#ffffff"): Draft => ({
   id,
   type: "frame",
   x,
@@ -28,7 +28,7 @@ const frame = (id: string, x: number, y: number, w: number, h: number, text: str
   text,
   fill,
 });
-const note = (id: string, x: number, y: number, text = "", fill = "#fff6b6", size = 160): Draft => ({
+export const note = (id: string, x: number, y: number, text = "", fill = "#fff6b6", size = 160): Draft => ({
   id,
   type: "sticky",
   x,
@@ -39,7 +39,7 @@ const note = (id: string, x: number, y: number, text = "", fill = "#fff6b6", siz
   fill,
   fontSize: 16,
 });
-const box = (
+export const box = (
   id: string,
   x: number,
   y: number,
@@ -64,7 +64,7 @@ const box = (
   fontSize,
 });
 // A heading or label on the board.
-const label = (id: string, x: number, y: number, w: number, text: string, fontSize = 20, bold = true): Draft => ({
+export const label = (id: string, x: number, y: number, w: number, text: string, fontSize = 20, bold = true): Draft => ({
   id,
   type: "text",
   x,
@@ -76,7 +76,7 @@ const label = (id: string, x: number, y: number, w: number, text: string, fontSi
   bold,
   align: "left",
 });
-const line = (
+export const line = (
   id: string,
   from: string | { x: number; y: number },
   to: string | { x: number; y: number },
@@ -97,11 +97,13 @@ const line = (
   route,
 });
 // A grid of empty notes inside a frame, as space to write.
-const slots = (prefix: string, x: number, y: number, count: number, fill: string, cols = 2, size = 140, gap = 20) =>
+export const slots = (prefix: string, x: number, y: number, count: number, fill: string, cols = 2, size = 140, gap = 20) =>
   Array.from({ length: count }, (_, i) =>
     note(`${prefix}${i}`, x + (i % cols) * (size + gap), y + Math.floor(i / cols) * (size + gap), "", fill, size),
   );
 
+// The builders above are also used by the marketplace's own whiteboards
+// (lib/marketplace-official-extra/whiteboards.ts).
 const classic = (kind: WhiteboardTemplate) => () => templateItems(kind) as Draft[];
 
 export const galleryTemplates: GalleryTemplate[] = [

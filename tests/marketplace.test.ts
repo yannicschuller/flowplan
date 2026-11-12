@@ -404,9 +404,15 @@ test("official packages: every built-in template, deterministic, valid, and each
   const { galleryTemplates } = await import("../lib/whiteboard-template-gallery");
   const { TEMPLATE_IDS } = await import("../lib/workflows/templates");
   const { draftOf } = await import("../lib/workflows/store");
-  const first = await officialPackages("0.9.4");
+  const { extraOfficial } = await import("../lib/marketplace-official-extra");
+  const every = await officialPackages("0.9.4");
   const again = await officialPackages("0.9.4");
-  assert.deepEqual(first.map((p) => p.bytes.toString("base64")), again.map((p) => p.bytes.toString("base64")), "byte for byte the same");
+  assert.deepEqual(every.map((p) => p.bytes.toString("base64")), again.map((p) => p.bytes.toString("base64")), "byte for byte the same");
+  assert.equal(new Set(every.map((p) => p.file)).size, every.length, "unique file names");
+  // The built-in ones here; the marketplace-only ones in tests/marketplace-official-extra.test.ts.
+  const extra = new Set(extraOfficial.map((x) => `${x.kind}:${x.id}`));
+  const first = every.filter((p) => !extra.has(`${p.kind}:${p.id}`));
+  assert.equal(every.length - first.length, extraOfficial.length);
   const count = (kind: string) => first.filter((p) => p.kind === kind).length;
   const catalog = Object.keys(templateCatalog).filter((key) => !OFFICIAL_SKIPPED.includes(key));
   assert.equal(count("document") + count("database"), catalog.length);
