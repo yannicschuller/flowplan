@@ -8,6 +8,7 @@ import { requireUnlocked } from "./journal-extras";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { expireTrash } from "./trash";
 import { pruneNotifications } from "./notification-retention";
+import { pruneSearchVisits } from "./search-visits";
 import {
   compareDocuments,
   htmlBlocks,
@@ -246,6 +247,8 @@ export async function startRetentionWorker() {
       await expireTrash();
       // Old notifications (lib/notification-retention.ts).
       await pruneNotifications();
+      // The quick search's visit history (#243).
+      await pruneSearchVisits();
     } catch (error) {
       console.error("Snapshot retention failed", error);
     }

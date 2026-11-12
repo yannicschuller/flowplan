@@ -16,6 +16,7 @@ import { escapeFormattedCells, FORMATTED_TEXT_MIGRATION } from "./formatted-text
 import { isFormattedText } from "./inline-markdown";
 import { isSealed, sealGit, sealWebhookSecret, sealWebhookUrl, SEALED_SECRETS_MIGRATION, type StoredGit } from "./sealed-values";
 import type { Field } from "./types";
+import { RETENTION_DAYS } from "./search-visits";
 
 type Cells = Record<string, unknown>;
 export type DataStep = { name: string; run: () => Promise<void> };
@@ -26,6 +27,7 @@ export const REACTION_EMOJI_STEP = "reaction-emoji-fe0f";
 export const ISSUE_PROVIDERS_STEP = "issue-providers-95";
 export const GRANT_KINDS_STEP = "grant-kinds-100";
 export const SYNCED_JOURNAL_STEP = "synced-journal-parent";
+export const SEARCH_VISITS_STEP = "search-visits-243";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -38,6 +40,7 @@ export const dataSteps = (): DataStep[] => [
   { name: ISSUE_PROVIDERS_STEP, run: issueProvidersCheck },
   { name: GRANT_KINDS_STEP, run: grantKinds },
   { name: SYNCED_JOURNAL_STEP, run: syncedBlocksIntoJournals },
+  { name: SEARCH_VISITS_STEP, run: searchVisitsFromPageVisits },
 ];
 
 // Runs the steps not done yet (`only`: just these). Several instances on
@@ -305,4 +308,16 @@ async function syncedBlocksIntoJournals() {
       await run("UPDATE pages SET parent_id=? WHERE id=? AND parent_id IS NULL", day.parent_id, block);
       orphans.delete(block);
     }
+}
+
+// #243: the quick search's visit history starts with each person's last
+// visit of a page (page_visits, one time per page) within the retention
+// period, so frecency and "recently visited" are not empty after the update.
+async function searchVisitsFromPageVisits() {
+  await run(
+    `INSERT INTO search_visits(user_id,page_id,row_id,visits,last_at)
+     SELECT user_id,page_id,'',CAST(seen_at/60000 AS TEXT),seen_at FROM page_visits WHERE seen_at>?
+     ON CONFLICT DO NOTHING`,
+    Date.now() - RETENTION_DAYS * 86_400_000,
+  );
 }

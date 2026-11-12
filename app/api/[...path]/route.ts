@@ -87,7 +87,8 @@ import {
 } from "@/lib/permissions";
 import { one, all, run, id, audit, sql } from "@/lib/db";
 import type { Page } from "@/lib/types";
-import { searchWorkspace } from "@/lib/search-index";
+import { searchWorkspace, recentlyVisited } from "@/lib/search-index";
+import { recordSearchVisit } from "@/lib/search-visits";
 import { listCollections, previewQuery, runCollection } from "@/lib/collections";
 import { tagListing } from "@/lib/page-properties-server";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
@@ -698,8 +699,13 @@ async function handleGET(
           z.uuid().parse(path[3]),
         ),
       );
-    if (path[0] === "pages" && path[2] === "rows" && path[3])
-      return NextResponse.json(await rowDocumentData(user, path[1], path[3]));
+    if (path[0] === "pages" && path[2] === "rows" && path[3]) {
+      const data = await rowDocumentData(user, path[1], path[3]);
+      // Opening a record (dialog or full page, X-Flowplan-Visit) counts for
+      // the person's own quick search (#243); reloads and prefetches do not.
+      if (req.headers.get("x-flowplan-visit") === "1") await recordSearchVisit(user, path[1], path[3]);
+      return NextResponse.json(data);
+    }
     // Opening a page (header X-Flowplan-Visit) records the visit: read
     // receipts and changes since then. Reloads and embeds do not.
     // Today's journal day while it is a draft (lib/journal-days.ts).
@@ -751,6 +757,23 @@ async function handleGET(
         ssoSources: await ssoSources(wid),
       });
     }
+    // The quick search with nothing typed (#243): the person's own
+    // recently visited pages and records.
+    if (path[0] === "search" && path[1] === "recent" && path.length === 2) {
+      const wid = url.searchParams.get("workspace") || "";
+      await requireMember(user, wid);
+      return NextResponse.json(
+        await recentlyVisited(user, wid, {
+          kind: z
+            .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
+            .catch("all")
+            .parse(url.searchParams.get("kind") || "all"),
+          spaceId: url.searchParams.get("space") ? z.uuid().parse(url.searchParams.get("space")) : undefined,
+          limit: z.coerce.number().int().min(1).max(50).catch(20).parse(url.searchParams.get("limit") || 20),
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (path[0] === "search") {
       const wid = url.searchParams.get("workspace") || "";
       await requireMember(user, wid);
@@ -767,6 +790,8 @@ async function handleGET(
           excludeDays: url.searchParams.get("days") === "0",
           // For created:today and the like (#86).
           timeZone: url.searchParams.get("tz") || undefined,
+          // Best match (default), last change or creation (#243).
+          sort: z.enum(["relevance", "edited", "created"]).catch("relevance").parse(url.searchParams.get("sort") || "relevance"),
         }),
         { headers: { "Cache-Control": "no-store" } },
       );

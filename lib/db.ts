@@ -1413,6 +1413,13 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS record_share_fields(row_id TEXT PRIMARY KEY REFERENCES rows(id) ON DELETE CASCADE,fields TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS record_share_requests(token TEXT NOT NULL REFERENCES record_shares(token) ON DELETE CASCADE,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS record_share_requests_token ON record_share_requests(token,created_at);`);
+  // The quick search's personal visit history (#243, lib/search-visits.ts):
+  // per person and page (row_id '') or record the last visit minutes,
+  // newest first, comma-separated. Private to the person; bounded in
+  // number and age. A new table only – the schema number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS search_visits(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL DEFAULT '',visits TEXT NOT NULL,last_at INTEGER NOT NULL,PRIMARY KEY(user_id,page_id,row_id));
+    CREATE INDEX IF NOT EXISTS search_visits_recent ON search_visits(user_id,last_at);
+    CREATE INDEX IF NOT EXISTS search_visits_age ON search_visits(last_at);`);
   // Schema 104 – sub-pages under records (#231, part 3): a page whose
   // parent is a database page may name one of its records in
   // pages.parent_row_id; it then sits under that record (sidebar,
