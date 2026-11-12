@@ -36,7 +36,10 @@ import {
   parseTemplateMessage,
   submitAddress,
   trustedSource,
+  uploadAddress,
+  READY_MS,
 } from "@/lib/marketplace-handover";
+import { armDesktopMarketplace, marketplacePublishWay, nativeSaveFile } from "@/lib/native-app";
 import type { MarketplaceClientConfig } from "@/lib/marketplace-config";
 import type { Bootstrap } from "@/lib/types";
 
@@ -106,6 +109,10 @@ async function readError(response: Response, t: T) {
   return serverMessage(body?.error) || t("Das hat nicht geklappt.", "That didn't work.");
 }
 function saveFile(name: string, bytes: ArrayBuffer) {
+  // The mobile apps' web view cannot download: the app's share sheet.
+  void nativeSaveFile(name, new Blob([bytes], { type: "application/zip" })).then((done) => done || downloadFile(name, bytes));
+}
+function downloadFile(name: string, bytes: ArrayBuffer) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
   a.download = name;
@@ -118,8 +125,10 @@ function saveFile(name: string, bytes: ArrayBuffer) {
 export type PublishSource = { kind: MarketplaceKind; workspaceId: string; id?: string | null; title?: string };
 type Draft = { kind: MarketplaceKind; title: string; category: string; minVersion: string; notes: { code: string; count?: number }[] };
 type Picture = { file: File; url: string };
-type Sending = { step: "idle" } | { step: "building" } | { step: "waiting" } | { step: "sent" } | { step: "error"; message: string };
-const ANSWER_MS = 120_000;
+// "file": no hand-over possible here (or no answer) – the package was saved
+// as a file, to upload on the marketplace's submit page.
+type FileReason = "desktop" | "app" | "blocked" | "silent";
+type Sending = { step: "idle" } | { step: "building" } | { step: "waiting" } | { step: "sent" } | { step: "file"; reason: FileReason } | { step: "error"; message: string };
 
 export function PublishButton({ config, source, className = "button compact", label }: { config?: MarketplaceClientConfig | null; source: PublishSource; className?: string; label?: string }) {
   const t = useT();
@@ -245,25 +254,50 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
       setSending({ step: "error", message: (e as Error).message });
     }
   }
+  // The package as a file and the submit page to upload it: older desktop
+  // apps and the mobile apps open other sites in the system browser, where
+  // the page has no opener; also when the browser blocked the window or the
+  // marketplace did not say "ready" in time.
+  async function handToFile(reason: FileReason, pkg: Promise<{ name: string; bytes: ArrayBuffer }>, openPage: boolean) {
+    try {
+      const { name, bytes } = await pkg;
+      saveFile(name, bytes);
+      setSending((s) => (s.step === "sent" ? s : { step: "file", reason }));
+      if (openPage) window.open(uploadAddress(config.origin, location.origin), "_blank", "noopener");
+    } catch (e) {
+      setSending({ step: "error", message: (e as Error).message });
+    }
+  }
   // Opened in the click (popup blockers), with its opener: the submit page
   // says "ready" to us and gets the package – only from and to the
-  // configured origin and only that window.
+  // configured origin and only that window. The desktop app opens it in a
+  // window of its own when armed right before (lib/native-app.ts).
   function openMarketplace() {
     stop.current();
-    const win = window.open(submitAddress(config.origin, location.origin), "_blank");
-    if (!win) {
-      setSending({ step: "error", message: t("Dein Browser hat das neue Fenster blockiert. Erlaube Pop-ups für diese Seite und versuch es noch einmal.", "Your browser blocked the new window. Allow pop-ups for this site and try again.") });
+    const way = marketplacePublishWay();
+    if (way !== "handover") {
+      setSending({ step: "building" });
+      void handToFile(way === "app-file" ? "app" : "desktop", build(), way === "desktop-file");
       return;
     }
+    armDesktopMarketplace(config.origin);
+    const win = window.open(submitAddress(config.origin, location.origin), "_blank");
     setSending({ step: "building" });
     const pkg = build();
+    if (!win) {
+      void handToFile("blocked", pkg, false);
+      return;
+    }
     pkg.then(() => setSending((s) => (s.step === "building" ? { step: "waiting" } : s))).catch((e: Error) => {
       setSending({ step: "error", message: e.message });
       cleanup();
     });
+    let ready = false;
     // A copy each time: the submit page may load again (signing in there).
     const onMessage = async (event: MessageEvent) => {
       if (!trustedSource(event, config.origin, win) || !isSubmitReady(event.data)) return;
+      ready = true;
+      window.clearTimeout(timer);
       try {
         const { name, bytes } = await pkg;
         const copy = bytes.slice(0);
@@ -271,9 +305,12 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
         setSending({ step: "sent" });
       } catch {}
     };
+    // The submit page says "ready" as soon as it has loaded; without it
+    // (no opener there after all) the file – still listening, in case it
+    // comes late.
     const timer = window.setTimeout(() => {
-      setSending((s) => (s.step === "sent" ? s : { step: "error", message: t("Der Marketplace hat nicht geantwortet. Lade die Vorlage als Datei herunter und lade sie dort hoch.", "The marketplace didn't answer. Download the template as a file and upload it there.") }));
-    }, ANSWER_MS);
+      if (!ready) void handToFile("silent", pkg, false);
+    }, READY_MS);
     const cleanup = () => {
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
@@ -404,6 +441,20 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
           </p>
           {sending.step === "waiting" && <p className="marketplace-status" role="status">{t("Warte auf den Marketplace …", "Waiting for the marketplace …")}</p>}
           {sending.step === "sent" && <p className="marketplace-status ok" role="status">{t("An den Marketplace übergeben – dort geht es weiter.", "Handed over to the marketplace – continue there.")}</p>}
+          {sending.step === "file" && (
+            <p className="marketplace-status ok" role="status">
+              {sending.reason === "desktop"
+                ? t("Die Desktop-App öffnet den Marketplace im Browser. Die Datei wurde gespeichert – lade sie dort unter „Datei hochladen“ hoch.", 'The desktop app opens the marketplace in the browser. The file has been saved – upload it there under "Upload a .flowplan-template file".')
+                : sending.reason === "app"
+                  ? t("Die App öffnet den Marketplace im Browser. Sichere die Datei und lade sie dort unter „Datei hochladen“ hoch.", 'The app opens the marketplace in the browser. Save the file and upload it there under "Upload a .flowplan-template file".')
+                  : sending.reason === "blocked"
+                    ? t("Dein Browser hat das neue Fenster blockiert. Die Datei wurde gespeichert – öffne den Marketplace und lade sie dort unter „Datei hochladen“ hoch.", 'Your browser blocked the new window. The file has been saved – open the marketplace and upload it there under "Upload a .flowplan-template file".')
+                    : t("Der Marketplace hat sich nicht gemeldet. Die Datei wurde gespeichert – lade sie dort unter „Datei hochladen“ hoch.", 'The marketplace didn\'t answer. The file has been saved – upload it there under "Upload a .flowplan-template file".')}{" "}
+              <a href={uploadAddress(config.origin, location.origin)} target="_blank" rel="noopener noreferrer">
+                {t("Marketplace öffnen", "Open the marketplace")}
+              </a>
+            </p>
+          )}
           {sending.step === "error" && (
             <p className="marketplace-error" role="alert">
               {sending.message}
