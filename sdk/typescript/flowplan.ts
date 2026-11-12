@@ -642,6 +642,8 @@ export type ApiToken = {
   expires_at?: number | null;
   /** 1: the token has the permission “AI and transcription” (AI features, transcription, meeting notes) */
   ai?: 0 | 1;
+  /** 1: the token has the permission “Marketplace check” (POST /api/marketplace/check only, never a real import) */
+  marketplace_check?: 0 | 1;
 };
 
 /** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`. */
@@ -3918,6 +3920,77 @@ export class FlowplanClient {
     preview?: Blob[];
   }, options?: RequestOptions): Promise<Response> {
     return this.request("POST", `/api/marketplace/package`, { form }, options);
+  }
+
+  /** Check whether a marketplace package would import — Reads the package exactly like the import (`/api/marketplace/import`) and then imports it in the target workspace inside a database transaction that is always rolled back: the template and a page made from it (fields, views, records, attachments), the whiteboard template, the look with its typefaces, the link rules – so errors that only show on insert are caught. Workflows are read, matched against the workspace and validated, not inserted. Nothing is kept, no webhooks or events are sent. `workspaceId`: the workspace for the dry run (member, not a guest); without it the first one the caller owns or edits. `dryRun=0` only reads. Answers 200 with `ok: false` and `errors` when the package would not import. API tokens need the permission “Marketplace check” (also read tokens; it never allows a real import). At most 30 checks in 10 minutes per person; 25 MB per package. 404 when the marketplace is switched off. (POST /api/marketplace/check) */
+  async marketplaceCheck(form: {
+    file: Blob;
+    workspaceId?: string;
+    dryRun?: "0" | "1";
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    kind: string | null;
+    title?: string | null;
+    minVersion?: string | null;
+    /** This instance's version */
+    version?: string;
+    sha256?: string;
+    size?: number;
+    /** What the import would create: templates, pages, fields, views, records, files, nodes, items, fonts, rules, theme */
+    creates: Record<string, unknown>;
+    errors: {
+      code: string;
+      de: string;
+      en: string;
+      at?: string;
+    }[];
+    warnings: {
+      code: string;
+      de: string;
+      en: string;
+      at?: string;
+    }[];
+    dryRun: {
+      ran?: boolean;
+      rolledBack?: boolean;
+      workspace?: boolean;
+      ms?: number;
+      reason?: "off" | "no_workspace" | "errors";
+    };
+    checkedAt?: string;
+  }> {
+    return this.json<{
+    ok: boolean;
+    kind: string | null;
+    title?: string | null;
+    minVersion?: string | null;
+    /** This instance's version */
+    version?: string;
+    sha256?: string;
+    size?: number;
+    /** What the import would create: templates, pages, fields, views, records, files, nodes, items, fonts, rules, theme */
+    creates: Record<string, unknown>;
+    errors: {
+      code: string;
+      de: string;
+      en: string;
+      at?: string;
+    }[];
+    warnings: {
+      code: string;
+      de: string;
+      en: string;
+      at?: string;
+    }[];
+    dryRun: {
+      ran?: boolean;
+      rolledBack?: boolean;
+      workspace?: boolean;
+      ms?: number;
+      reason?: "off" | "no_workspace" | "errors";
+    };
+    checkedAt?: string;
+  }>("POST", `/api/marketplace/check`, { form }, options);
   }
 
   /** Check or import a marketplace package — Every check runs again here (size ≤ 25 MB, ZIP safety, template.json, the kind's schema). `preview=1` only answers what would be created (for workflows: nodes, external hosts, AI and e-mail steps). Otherwise imported with the kind's own import: templates and whiteboard templates (editors; `spaceId`, `private`), a workflow as a paused draft on a new page (`spaceId` required, `parentId`), the appearance (replaces the current one) and link rules (owners). (POST /api/marketplace/import) */

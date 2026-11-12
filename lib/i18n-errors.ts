@@ -6,6 +6,19 @@ import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
   // The Flowplan Marketplace (lib/marketplace-package.ts, lib/marketplace-config.ts).
+  // The import check (lib/marketplace-check.ts).
+  "Dieses API-Token hat keine Berechtigung „Marketplace-Prüfung“.": "This API token has no permission “Marketplace check”.",
+  "Zu viele Prüfungen in kurzer Zeit. Bitte später erneut versuchen.": "Too many checks in a short time. Please try again later.",
+  "Gäste können keine Vorlagen importieren.": "Guests can't import templates.",
+  "Der Inhalt der Vorlage ist ungültig.": "The template's content is invalid.",
+  "Der Import würde mit einem Fehler abbrechen.": "The import would stop with an error.",
+  "Probelauf übersprungen: Für Vorlagen braucht es Bearbeitungsrechte im Arbeitsbereich.": "Dry run skipped: templates need edit rights in the workspace.",
+  "Probelauf übersprungen: Das Erscheinungsbild übernehmen nur Besitzer.": "Dry run skipped: only owners take over the appearance.",
+  "Probelauf übersprungen: Linkregeln übernehmen nur Besitzer.": "Dry run skipped: only owners take over link rules.",
+  "Probelauf übersprungen: kein Arbeitsbereich, in dem du Vorlagen anlegen darfst.": "Dry run skipped: no workspace where you may create templates.",
+  "Probelauf ohne Seite aus der Vorlage: Kein Bereich, in dem du Seiten anlegen darfst.": "Dry run without a page from the template: no space where you may create pages.",
+  "Für einen Workflow braucht es Bearbeitungsrechte in einem Bereich.": "A workflow needs edit rights in a space.",
+  "Alle Linkregeln gibt es im Arbeitsbereich schon.": "Every link rule is already in the workspace.",
   "Der Marketplace ist auf dieser Instanz ausgeschaltet.": "The marketplace is switched off on this instance.",
   "Bitte eine Kurzbeschreibung angeben.": "Please enter a summary.",
   "Bitte einen Bereich wählen.": "Please choose a space.",
@@ -1402,6 +1415,14 @@ const exact: Record<string, string> = {
   "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
 };
 const patterns: [RegExp, string][] = [
+  // The import check of marketplace packages (lib/marketplace-check.ts).
+  [/^Die Vorlage braucht Flowplan (\S+) – diese Instanz hat (\S+)\.$/, "The template needs Flowplan $1 – this instance has $2."],
+  [/^(\d+) Schrift\(en\) würden nicht übernommen \(Größe, Anzahl oder Speicherplatz\)\.$/, "$1 typeface(s) would not be taken over (size, number or storage)."],
+  [/^(\d+) Linkregel\(n\) würden nicht übernommen\.$/, "$1 link rule(s) would not be taken over."],
+  [/^(\d+) Linkregel\(n\) sind ungültig und würden nicht übernommen\.$/, "$1 link rule(s) are invalid and would not be taken over."],
+  [/^(\d+) Verweis\(e\) bleiben nach dem Import offen und werden dort festgelegt\.$/, "$1 reference(s) stay open after the import and are set there."],
+  [/^(\d+) Angabe\(n\) legt die Person beim Import fest\.$/, "$1 detail(s) are set by the person importing it."],
+  [/^(\d+) Element\(e\) würden nicht übernommen\.$/, "$1 element(s) would not be taken over."],
   // Notebooks (lib/notebook-library.ts).
   [/^Höchstens (\d+) eigene Sticker\.$/, "At most $1 stickers of your own."],
   [/^Maximal (\d+) MB pro Vorlage\.$/, "At most $1 MB per template."],

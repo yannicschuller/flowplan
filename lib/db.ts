@@ -1387,6 +1387,12 @@ function migrate(d: DatabaseSync) {
   // see. An older version ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(meetings)").all() as { name: string }[]).some((c) => c.name === "error_detail"))
     d.exec("ALTER TABLE meetings ADD COLUMN error_detail TEXT");
+  // The "Marketplace-Prüfung" permission of an API token (lib/api-tokens.ts,
+  // lib/marketplace-check.ts): 1 = the token may run the import check of
+  // marketplace packages. An older version ignores the column (its tokens
+  // just can't run the check), so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(api_tokens)").all() as { name: string }[]).some((c) => c.name === "marketplace_check"))
+    d.exec("ALTER TABLE api_tokens ADD COLUMN marketplace_check INTEGER NOT NULL DEFAULT 0");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
