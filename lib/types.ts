@@ -303,6 +303,8 @@ export type Bootstrap = {
   pageIcon?: import("./page-icon-pref").PageIconPref;
   // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).
   externalLinkIcon?: boolean;
+  // "`>` erzeugt" (#230, lib/quote-shortcut-pref.ts).
+  quoteShortcut?: import("./quote-shortcut-pref").QuoteShortcutPref;
   // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts).
   updateNotes?: import("./update-notes-pref").UpdateNotesBoot;
   spaces: Space[];

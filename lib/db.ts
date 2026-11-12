@@ -1338,6 +1338,11 @@ function migrate(d: DatabaseSync) {
   // the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "external_link_icon"))
     d.exec("ALTER TABLE users ADD COLUMN external_link_icon INTEGER");
+  // "`>` erzeugt" per person (#230, lib/quote-shortcut-pref.ts):
+  // users.quote_shortcut, NULL = the default ('toggle'), or 'quote'. An
+  // older version ignores the column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "quote_shortcut"))
+    d.exec("ALTER TABLE users ADD COLUMN quote_shortcut TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

@@ -136,19 +136,29 @@ export const Callout = Node.create({
     0,
   ],
 });
-export const Toggle = Node.create({
+// `storageKey`: where the editor remembers closed toggles on this device
+// (#230, lib/toggle-memory.ts); none on the server and in other editors.
+export const Toggle = Node.create<{ storageKey: string | null }>({
   name: "toggle",
   group: "block",
   content: "block+",
   defining: true,
   addAttributes() {
     return {
+      // An empty title stays empty (#230: a toggle inserted with /toggle
+      // or "> " starts without one); only a <details> without any
+      // <summary> gets the browser's own "Details".
       title: {
         default: "Weitere Informationen",
-        parseHTML: (el) =>
-          el.querySelector("summary")?.textContent || "Details",
+        parseHTML: (el) => {
+          const summary = el.querySelector("summary");
+          return summary ? (summary.textContent ?? "") : "Details";
+        },
       },
     };
+  },
+  addOptions() {
+    return { storageKey: null };
   },
   parseHTML: () => [{ tag: "details", contentElement: "div" }],
   // Stored, exported and read: always open. In the editor a node view of
@@ -167,7 +177,7 @@ export const Toggle = Node.create({
     };
   },
   addProseMirrorPlugins() {
-    return [toggleBlocksPlugin()];
+    return [toggleBlocksPlugin({ storageKey: this.options.storageKey })];
   },
   // ⌘⌥↵ / Ctrl+Alt+Enter inside a toggle closes it (the caret goes to its
   // title, where the same keys open it again); ↑ or ← at the very start of

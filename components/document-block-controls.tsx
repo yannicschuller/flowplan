@@ -10,6 +10,7 @@ import {
   ArrowsClockwise,
   ArrowsLeftRight,
   ArrowsOutLineHorizontal,
+  CaretRight,
   Check,
   CheckCircle,
   CheckSquare,
@@ -42,6 +43,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { touchHold } from "./pointer-drag";
+import { turnIntoToggle } from "@/lib/toggle-commands";
 import type { Editor } from "@tiptap/core";
 import { NodeSelection, type Transaction } from "@tiptap/pm/state";
 import {
@@ -781,6 +783,10 @@ export function DocumentBlockControls({
         [t("Aufgabenliste", "Task list"), <CheckSquare key="i" />, false, (c) => c.setParagraph().toggleTaskList()],
         [t("Zitat", "Quote"), <Quotes key="i" />, false, (c) => c.wrapIn("blockquote")],
         [t("Hinweis", "Callout"), <Info key="i" />, false, (c) => c.wrapIn("callout", { type: "note" })],
+        // Its text becomes the title (#230).
+        ...(name === "paragraph"
+          ? ([[t("Aufklappbarer Block", "Toggle"), <CaretRight key="i" />, false, (c) => c.command(({ tr }) => turnIntoToggle(tr, block.pos))]] as Turn[])
+          : []),
         [t("Code", "Code"), <Code key="i" />, name === "codeBlock", (c) => c.setCodeBlock()],
       ];
     else if (listItems.includes(name)) {
@@ -790,6 +796,8 @@ export function DocumentBlockControls({
         [t("Nummerierte Liste", "Numbered list"), <ListNumbers key="i" />, parent === "orderedList", (c) => c.toggleOrderedList()],
         [t("Aufgabenliste", "Task list"), <CheckSquare key="i" />, parent === "taskList", (c) => c.toggleTaskList()],
         [t("Text", "Text"), <TextT key="i" />, false, (c) => c.liftListItem(name)],
+        // The item's text becomes the title, its sub-list the content (#230).
+        [t("Aufklappbarer Block", "Toggle"), <CaretRight key="i" />, false, (c) => c.command(({ tr }) => turnIntoToggle(tr, block.pos))],
       ];
     } else if (name === "blockquote" || name === "callout") {
       at = { from: block.pos + 2, to: block.end - 2 };

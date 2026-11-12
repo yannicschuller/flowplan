@@ -4,7 +4,8 @@
 // profile, all devices), the page icon above or next to the title (#214,
 // profile, all devices), the arrow after links to the web (#217, profile,
 // all devices), the related pages and backlinks below pages
-// and records (this device), the editor's block handles and code blocks
+// and records (this device), what "> " creates in the editor (#230,
+// profile, all devices), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
@@ -26,6 +27,8 @@ import { setTextMenuPrefLocal, textMenuPref, useTextMenuPref } from "@/lib/text-
 import type { PageIconPref } from "@/lib/page-icon-pref";
 import { pageIconPref, setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
 import { externalLinkIcon, setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
+import type { QuoteShortcutPref } from "@/lib/quote-shortcut-pref";
+import { quoteShortcut, setQuoteShortcutLocal, useQuoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
 
@@ -77,6 +80,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.externalLinkIcon", externalLinkIcon: on });
       } catch (e) {
         setExternalLinkIconLocal(before);
+        throw e;
+      }
+    });
+  };
+  const quoteMarker = useQuoteShortcut();
+  const [quoteStatus, runQuote] = useSaveState();
+  const chooseQuoteMarker = (value: QuoteShortcutPref) => {
+    const before = quoteShortcut();
+    setQuoteShortcutLocal(value);
+    void runQuote(async () => {
+      try {
+        await mutate({ action: "profile.quoteShortcut", quoteShortcut: value });
+      } catch (e) {
+        setQuoteShortcutLocal(before);
         throw e;
       }
     });
@@ -217,6 +234,28 @@ export default function AppearanceSection() {
             ).map(([value, label]) => (
               <label key={value} data-active={textMenu === value}>
                 <input type="radio" name="text-menu" checked={textMenu === value} onChange={() => chooseTextMenu(value)} /> {label}
+              </label>
+            ))}
+          </div>
+        </SettingRow>
+        <SettingRow
+          anchor="quote-shortcut"
+          label={t("„>“ erzeugt", "“>” creates")}
+          description={t(
+            "Was „>“ und ein Leerzeichen am Anfang einer leeren Zeile erzeugen. Ein Zitat bekommst du immer mit „\"“ und einem Leerzeichen; eingefügtes und importiertes Markdown „> Text“ bleibt ein Zitat. Gilt auf allen Geräten.",
+            "What “>” and a space at the start of an empty line create. A quote is always “\"” and a space; pasted and imported Markdown “> text” stays a quote. Applies on all devices.",
+          )}
+        >
+          <SaveState status={quoteStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("„>“ erzeugt", "“>” creates")}>
+            {(
+              [
+                ["toggle", t("Aufklappbaren Block", "Toggle")],
+                ["quote", t("Zitat", "Quote")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={quoteMarker === value}>
+                <input type="radio" name="quote-shortcut" checked={quoteMarker === value} onChange={() => chooseQuoteMarker(value)} /> {label}
               </label>
             ))}
           </div>
