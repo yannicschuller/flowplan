@@ -9751,6 +9751,18 @@ tr.order-drop-after > td {
   flex-shrink: 0;
   margin: 0;
 }
+/* File or clipboard for the text formats of the export dialog (#220). */
+.export-destination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 16px 0 10px;
+}
+.export-destination > span:first-child {
+  font-weight: 500;
+}
 
 .lifecycle-buttons {
   display: flex;
@@ -10836,6 +10848,11 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   font-size: 13px;
   transform-origin: top center;
   animation: select-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+/* In a dialog: against the window, so it neither scrolls the dialog nor is
+   cut off by it (#219, components/select.tsx). */
+.fp-select-list.fixed {
+  position: fixed;
 }
 .fp-select-list.up {
   transform: translateY(-100%);

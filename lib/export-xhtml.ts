@@ -34,6 +34,25 @@ export type XhtmlContext = {
   prefix?: string;
   // The page numbers its captions (Figure 1, Table 1, Listing 1).
   captionNumbers?: boolean;
+  // A dialect of XHTML (Confluence's storage format, lib/export-confluence.ts):
+  // its own form of a block or inline node, null/undefined for the default.
+  block?: (node: Node, render: XhtmlRender) => string | null | undefined;
+  inline?: (node: Node, render: XhtmlRender) => string | null | undefined;
+  // The list of footnotes at the end, instead of the default section.
+  footnotes?: (notes: string[]) => string;
+};
+// What a dialect's own forms may build on: the default rendering.
+export type XhtmlRender = {
+  children: (node: Node) => string;
+  inline: (node: Node) => string;
+  block: (node: Node) => string;
+  // The default form of this very node (without the dialect's own).
+  fallback: (node: Node) => string;
+  // The caption of an image, table or code block as XHTML ("" for none);
+  // counts the block, so ask once per block.
+  caption: (node: Node) => string;
+  // A footnote: its number.
+  footnote: (note: string) => number;
 };
 export const xml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
@@ -85,7 +104,14 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
     );
     return `<section class="bibliography"><h2>${xml(title)}</h2>${items.length ? `<ul>${items.join("")}</ul>` : ""}</section>`;
   };
+  const footnote = (note: string) => {
+    notes.push(note);
+    return notes.length;
+  };
+  const render: XhtmlRender = { children: (node) => children(node), inline: (node) => inline(node), block: (node) => block(node), fallback: (node) => defaultBlock(node), caption, footnote };
   function inline(node: Node): string {
+    const own = context.inline?.(node, render);
+    if (own != null) return own;
     if (node.type.name === "hardBreak") return "<br/>";
     if (node.type.name === "citation")
       return `<span class="citation">${xml(inlineCitation(parseItemAttribute(node.attrs.item), String(node.attrs.locator || ""), ct))}</span>`;
@@ -153,6 +179,10 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
     return result;
   }
   function block(node: Node): string {
+    const own = context.block?.(node, render);
+    return own != null ? own : defaultBlock(node);
+  }
+  function defaultBlock(node: Node): string {
     switch (node.type.name) {
       case "paragraph":
         return `<p${blockAttrs(node)}>${inline(node)}</p>`;
@@ -311,7 +341,8 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
   }
   let body = children(doc);
   if (cited.length && !bibliographies) body += bibliography(ct("Literaturverzeichnis", "References"));
-  if (notes.length)
+  if (notes.length && context.footnotes) body += context.footnotes(notes);
+  else if (notes.length)
     body +=
       `<section class="footnotes"><p class="footnotes-title">${xml(ct("Fußnoten", "Footnotes"))}</p><ol>` +
       notes

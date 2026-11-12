@@ -2013,6 +2013,16 @@ ExportDocxQuery = TypedDict("ExportDocxQuery", {
     "row": str,  # Record ID (one record of the database)
 }, total=False)
 
+ExportJiraQuery = TypedDict("ExportJiraQuery", {
+    "page": Required[str],  # Page ID
+    "row": str,  # Record ID (one record of the database)
+}, total=False)
+
+ExportConfluenceQuery = TypedDict("ExportConfluenceQuery", {
+    "page": Required[str],  # Page ID
+    "row": str,  # Record ID (one record of the database)
+}, total=False)
+
 ExportPrintViewQuery = TypedDict("ExportPrintViewQuery", {
     "page": str,  # Page ID
     "children": Literal["0", "1"],  # `1` includes the sub-pages
@@ -2645,6 +2655,14 @@ class FlowplanClient:
     def export_docx(self, query: "ExportDocxQuery", headers: Optional[dict[str, str]] = None) -> bytes:
         """A page or record as a Word file — Reads only, so read tokens may use it. `row` picks one record of the database `page`. (GET /api/export/docx)"""
         return self._bytes("GET", "/api/export/docx", query=dict(query) if query else None, headers=headers)
+
+    def export_jira(self, query: "ExportJiraQuery", headers: Optional[dict[str, str]] = None) -> bytes:
+        """A page or record as Jira wiki markup — Reads only, so read tokens may use it. `row` picks one record of the database `page`. One page without sub-pages, like the single Markdown file: headings `h1.`–`h6.`, `*bold*`, `_italic_`, `-strike-`, `+underline+`, `{{monospace}}`, `{code:language}`/`{noformat}`, `{quote}`, `*`/`#` lists, tasks as `[ ]`/`[x]`, tables, `[text|url]` links, `!url!` pictures, `{info}`/`{tip}`/`{note}`/`{warning}` callouts, `{panel}` toggles. Links and pictures keep absolute addresses of the instance. (GET /api/export/jira)"""
+        return self._bytes("GET", "/api/export/jira", query=dict(query) if query else None, headers=headers)
+
+    def export_confluence(self, query: "ExportConfluenceQuery", headers: Optional[dict[str, str]] = None) -> bytes:
+        """A page or record in Confluence's storage format — Reads only, so read tokens may use it. `row` picks one record of the database `page`. One page without sub-pages, as Confluence storage-format XHTML (the body of a page for the REST API's `storage` representation or the source editor): code macro with language and CDATA body, info/tip/note/warning macros for callouts, expand for toggles, `<ac:task-list>` for tasks, `<ac:image><ri:url/></ac:image>` for pictures. Links and pictures keep absolute addresses of the instance. (GET /api/export/confluence)"""
+        return self._bytes("GET", "/api/export/confluence", query=dict(query) if query else None, headers=headers)
 
     def export_print_view(self, query: Optional["ExportPrintViewQuery"] = None, headers: Optional[dict[str, str]] = None) -> bytes:
         """A page with sub-pages or a whole space as one print view — Reads only. Either `page` (with `children=1` its sub-pages) or `space`. Answers with an HTML print view (cover, table of contents, one chapter per page) that a browser turns into a PDF; at most 200 pages. (GET /api/export/pdf)"""
