@@ -374,6 +374,8 @@ test("official packages: every built-in template, deterministic, valid, and each
   assert.equal(count("whiteboard"), galleryTemplates.length);
   assert.equal(count("workflow"), TEMPLATE_IDS.length);
   assert.equal(new Set(first.map((p) => p.file)).size, first.length, "unique file names");
+  // The marketplace takes the file name as the slug: a-z, 0-9 and -, at most 60.
+  for (const p of first) assert.match(p.file, /^[a-z0-9][a-z0-9-]{0,59}\.flowplan-template$/, p.file);
   const imported = new Set<string>();
   for (const pkg of first) {
     assert.match(pkg.file, /^(document|database|whiteboard|workflow)-[a-z0-9-]+\.flowplan-template$/i);

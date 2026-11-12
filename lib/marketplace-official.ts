@@ -57,7 +57,9 @@ export type OfficialPackage = { file: string; kind: MarketplaceKind; id: string;
 type Meta = { kind: MarketplaceKind; id: string; title: string; titleEn: string; summary: { de: string; en: string }; category: Exclude<TemplateCategory, "">; tags: string[]; payload: string; entries: [string, Buffer][] };
 
 async function envelope(m: Meta, version: string, previews: Map<string, Buffer>): Promise<OfficialPackage> {
-  const file = `${m.kind}-${m.id}`;
+  // The marketplace takes the file name as the template's slug: kebab case.
+  const key = `${m.kind}-${m.id}`;
+  const file = key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
   const englishOnly = m.titleEn && m.titleEn !== m.title;
   const descriptionDe = `${m.summary.de}\n\nDiese Vorlage gehört zu Flowplan und ist gemeinfrei (CC0).`;
   const descriptionEn = `${englishOnly ? `**${m.titleEn}** – ` : ""}${m.summary.en}\n\nThis template comes with Flowplan and is in the public domain (CC0). Its content is in German.`;
@@ -76,7 +78,7 @@ async function envelope(m: Meta, version: string, previews: Map<string, Buffer>)
     license: "CC0-1.0",
     author: { name: "Flowplan", handle: "flowplan" },
   };
-  const preview = previews.get(file);
+  const preview = previews.get(key) ?? previews.get(file);
   const bytes = await stableZip([["template.json", json(manifest)], ...m.entries, ...(preview ? ([["preview/1.png", preview]] as [string, Buffer][]) : [])]);
   return { file: `${file}.flowplan-template`, kind: m.kind, id: m.id, title: m.title, bytes };
 }
