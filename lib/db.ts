@@ -1332,6 +1332,15 @@ function migrate(d: DatabaseSync) {
   // column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "page_icon"))
     d.exec("ALTER TABLE users ADD COLUMN page_icon TEXT");
+  // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
+  // users.update_notes (the level, NULL = all) and users.seen_version (the
+  // last version whose notes were seen, NULL = not tracked yet). An older
+  // version ignores the columns, so the schema number stays.
+  {
+    const columns = (d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("update_notes")) d.exec("ALTER TABLE users ADD COLUMN update_notes TEXT");
+    if (!columns.includes("seen_version")) d.exec("ALTER TABLE users ADD COLUMN seen_version TEXT");
+  }
   // The state of a document task (#201, lib/task-status.ts): 'progress',
   // 'cancelled' or 'deferred', NULL for open and done (`checked` says
   // which; cancelled counts as checked). An older version writes NULL and

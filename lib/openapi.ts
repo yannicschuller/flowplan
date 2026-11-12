@@ -9,6 +9,8 @@ import { workspaceThemeSchema } from "./workspace-theme";
 import { autoLinkRulesSchema } from "./auto-link";
 import { textMenuPrefSchema } from "./text-menu-pref";
 import { pageIconPrefSchema } from "./page-icon-pref";
+import { updateNotesLevelSchema } from "./update-notes-pref";
+import { releaseNoteItemSchema } from "./release-notes";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
@@ -58,7 +60,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.pageIcon", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.pageIcon", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -182,6 +184,39 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: the large icon above the title (above, the default) or a small icon next to the title on its first line (inline). Only how the caller sees pages; published pages keep the default.",
     input: z.object({ action: z.literal("profile.pageIcon"), pageIcon: pageIconPrefSchema }),
     result: z.object({ pageIcon: pageIconPrefSchema }),
+  },
+  {
+    action: "profile.updateNotes",
+    summary: "What's new after updates: the level, or mark the running version as seen",
+    description:
+      "For the caller, on all devices. level: show the release notes of every version since the last one seen (all, the default), only when one of them has breaking changes and then only those (breaking), or never. seen: true marks the running version as seen (the dialog was closed); it only ever moves forward. The bootstrap's updateNotes carries the level and, once after an update, the versions to show.",
+    input: z.object({
+      action: z.literal("profile.updateNotes"),
+      level: updateNotesLevelSchema.optional(),
+      seen: z.literal(true).optional(),
+    }),
+    result: z.object({ level: updateNotesLevelSchema, seenVersion: z.string().nullable() }),
+  },
+  {
+    action: "releaseNotes.list",
+    summary: "The latest release notes up to the running version",
+    description: "Curated notes bundled with the server (no request to the internet), newest first, whatever the caller's level. Release builds leave out pre-release notes.",
+    input: z.object({ action: z.literal("releaseNotes.list"), limit: z.number().int().min(1).max(20).optional().describe("Default 5") }),
+    result: z.object({
+      current: z.string().nullable(),
+      changelog: z.string(),
+      versions: z.array(
+        z.object({
+          version: str,
+          date: z.string().optional(),
+          breaking: z.array(releaseNoteItemSchema).optional(),
+          security: z.array(releaseNoteItemSchema).optional(),
+          features: z.array(releaseNoteItemSchema).optional(),
+          improvements: z.array(releaseNoteItemSchema).optional(),
+          fixes: z.array(releaseNoteItemSchema).optional(),
+        }),
+      ),
+    }),
   },
   {
     action: "space.create",

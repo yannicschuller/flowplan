@@ -111,6 +111,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
       { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },
       { title: { de: "Einführung ansehen", en: "Show introduction" } },
+      {
+        title: { de: "Neuigkeiten nach Updates", en: "What’s new after updates" },
+        keywords: { de: "neu update version änderungen versionshinweise breaking changes stumm aus", en: "new update version changes release notes changelog breaking changes mute off" },
+        anchor: "update-notes",
+      },
+      { title: { de: "Was ist neu", en: "What’s new" }, keywords: { de: "neuigkeiten versionshinweise", en: "release notes changelog" }, anchor: "whats-new" },
     ],
   },
   {
@@ -617,6 +623,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Name der Instanz", en: "Instance name" }, anchor: "instance" },
       { title: { de: "Öffentliche Demo", en: "Public demo" }, anchor: "instance" },
+      {
+        title: { de: "Neuigkeiten nach Updates für neue Konten", en: "What’s new after updates for new accounts" },
+        keywords: { de: "versionshinweise neu update standard", en: "release notes new update default" },
+        anchor: "version",
+      },
     ],
   },
 ];

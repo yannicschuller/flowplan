@@ -1,0 +1,171 @@
+/* ===== "Neu in Flowplan" (#223, components/whats-new.tsx): the release
+   notes after an update – one foldable card per version, sections with an
+   icon and a colour, breaking changes set apart. A bottom sheet on phones
+   (the modal's own .modal-sheet). ===== */
+.whats-new {
+  --wn-breaking: #a43c3f;
+  --wn-breaking-bg: #fbecec;
+  --wn-security: #3f6aa8;
+  --wn-features: var(--blue);
+  --wn-improvements: #3f6d52;
+  --wn-fixes: var(--secondary);
+  width: min(640px, calc(100% - 32px));
+}
+[data-theme="dark"] .whats-new {
+  --wn-breaking: #f0a0a2;
+  --wn-breaking-bg: rgba(220, 90, 95, 0.16);
+  --wn-security: #9dbcf0;
+  --wn-improvements: #8fcaa4;
+  --wn-fixes: #b9b5c3;
+}
+.whats-new-intro {
+  margin: -8px 0 16px;
+  color: var(--secondary);
+  line-height: 1.5;
+}
+.whats-new-versions {
+  display: grid;
+  gap: 10px;
+}
+.whats-new-version {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.whats-new-version.has-breaking {
+  border-color: color-mix(in srgb, var(--wn-breaking) 45%, var(--border));
+}
+.whats-new-version > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  list-style: none;
+}
+.whats-new-version > summary::-webkit-details-marker {
+  display: none;
+}
+/* The fold arrow, turned when open. */
+.whats-new-version > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-inline-end: 2px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.whats-new-version[open] > summary::before {
+  transform: rotate(45deg);
+}
+:dir(rtl) .whats-new-version > summary::before {
+  transform: rotate(135deg);
+}
+.whats-new-version > summary:hover {
+  background: var(--hover);
+}
+.whats-new-version > summary:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
+}
+.whats-new-date {
+  color: var(--muted);
+  font-size: 13px;
+}
+.whats-new-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--wn-breaking-bg);
+  color: var(--wn-breaking);
+  font-size: 12px;
+  font-weight: 600;
+}
+.whats-new-section {
+  padding: 2px 16px 10px;
+}
+.whats-new-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.whats-new-section.breaking h3 {
+  color: var(--wn-breaking);
+}
+.whats-new-section.security h3 svg {
+  color: var(--wn-security);
+}
+.whats-new-section.features h3 svg {
+  color: var(--wn-features);
+}
+.whats-new-section.improvements h3 svg {
+  color: var(--wn-improvements);
+}
+.whats-new-section.fixes h3 svg {
+  color: var(--wn-fixes);
+}
+/* Breaking changes: a tinted box, the first thing in the version. */
+.whats-new-section.breaking {
+  margin: 0 10px 8px;
+  padding: 4px 12px 8px;
+  border-radius: 8px;
+  background: var(--wn-breaking-bg);
+}
+.whats-new-section ul {
+  margin: 0;
+  padding-inline-start: 22px;
+  display: grid;
+  gap: 5px;
+  line-height: 1.45;
+}
+.whats-new-issue {
+  margin-inline-start: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.whats-new-issue:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.whats-new-empty {
+  color: var(--muted);
+}
+.whats-new-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.whats-new-changelog {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-end: auto;
+  color: var(--secondary);
+  font-size: 14px;
+}
+/* Phones: the buttons share the width below the link. */
+@media (max-width: 600px) {
+  .whats-new-changelog {
+    flex-basis: 100%;
+    min-height: 44px;
+  }
+  .whats-new-actions .button {
+    flex: 1;
+  }
+  .whats-new-flag {
+    margin-inline-start: 0;
+  }
+}

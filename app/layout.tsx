@@ -20,6 +20,7 @@ import "./notebook-text-style.css";
 import "./workspace-look.css";
 import "./link-rules.css";
 import "./page-icon-inline.css";
+import "./whats-new.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";

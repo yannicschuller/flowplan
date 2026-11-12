@@ -6,9 +6,10 @@
 // and records (this device), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
-// keyboard shortcuts and the introduction.
+// keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
+// "Was ist neu" (#223, profile, all devices).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { CircleHalf, Keyboard, Moon, Sun } from "@phosphor-icons/react";
+import { CircleHalf, Gift, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
 import { Select } from "../../select";
@@ -23,6 +24,8 @@ import type { TextMenuPref } from "@/lib/text-menu-pref";
 import { setTextMenuPrefLocal, textMenuPref, useTextMenuPref } from "@/lib/text-menu-pref-client";
 import type { PageIconPref } from "@/lib/page-icon-pref";
 import { pageIconPref, setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
+import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
+import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
 
 export default function AppearanceSection() {
   const t = useT();
@@ -58,6 +61,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.pageIcon", pageIcon: value });
       } catch (e) {
         setPageIconPrefLocal(before);
+        throw e;
+      }
+    });
+  };
+  const notesLevel = useUpdateNotesLevel();
+  const [notesStatus, runNotes] = useSaveState();
+  const chooseNotesLevel = (value: UpdateNotesLevel) => {
+    const before = updateNotesLevel();
+    setUpdateNotesLevelLocal(value);
+    void runNotes(async () => {
+      try {
+        await mutate({ action: "profile.updateNotes", level: value });
+      } catch (e) {
+        setUpdateNotesLevelLocal(before);
         throw e;
       }
     });
@@ -250,6 +267,39 @@ export default function AppearanceSection() {
         <SettingRow label={t("Einführung ansehen", "Show introduction")} description={t("Die kurze Tour durch Flowplan und die ersten Einstellungen, wie nach dem Anlegen des Kontos.", "The short tour of Flowplan and the first settings, as after creating your account.")}>
           <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:onboarding"))}>
             {t("Einführung starten", "Start introduction")}
+          </button>
+        </SettingRow>
+        <SettingRow
+          anchor="update-notes"
+          label={t("Neuigkeiten nach Updates", "What’s new after updates")}
+          description={t(
+            "Nach einem Update von Flowplan einmal zeigen, was sich geändert hat. Nur Breaking Changes: nur wenn sich etwas so ändert, dass du dich darauf einstellen musst. Gilt auf allen Geräten.",
+            "After Flowplan was updated, show once what changed. Only breaking changes: only when something changes in a way you need to adapt to. Applies on all devices.",
+          )}
+        >
+          <SaveState status={notesStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Neuigkeiten nach Updates", "What’s new after updates")}>
+            {(
+              [
+                ["all", t("Alle anzeigen", "Show all")],
+                ["breaking", t("Nur Breaking Changes", "Only breaking changes")],
+                ["never", t("Nie", "Never")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={notesLevel === value}>
+                <input type="radio" name="update-notes" checked={notesLevel === value} onChange={() => chooseNotesLevel(value)} /> {label}
+              </label>
+            ))}
+          </div>
+        </SettingRow>
+        <SettingRow
+          anchor="whats-new"
+          label={t("Was ist neu", "What’s new")}
+          description={t("Die Versionshinweise der letzten Versionen, unabhängig von der Einstellung darüber.", "The release notes of the latest versions, whatever the setting above.")}
+        >
+          <button type="button" className="button" onClick={openWhatsNew}>
+            <Gift size={16} aria-hidden="true" />
+            {t("Was ist neu anzeigen", "Show what’s new")}
           </button>
         </SettingRow>
       </SettingGroup>
