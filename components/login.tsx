@@ -1,5 +1,4 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
 // Sign-in page: e-mail and password, passkeys, single sign-on (OIDC) – as
 // far as the instance offers them. Also creating an account (the first
 // account sets the instance up) and asking for a password reset link.
@@ -10,7 +9,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 // bottom, in reach of the thumb.
 import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
-import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { PlainHttpNote, SetupTokenNote } from "./plain-http-note";
 import { LanguageSwitch, useLocale, useT } from "./i18n";
@@ -21,7 +20,6 @@ import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
 import { startAppSignIn } from "@/lib/app-sign-in";
 import { appDeviceKey, desktopPasskeysInWindow } from "@/lib/native-app";
-import { SetupRestore } from "./setup-restore";
 import { AuthLayout } from "./auth-layout";
 import {
   availableSignInWays,
@@ -31,6 +29,10 @@ import {
   writeLastSignIn,
   type SignInWay,
 } from "@/lib/sign-in-ways";
+
+// Restoring a backup at setup is rare: its code (and the table of server
+// messages it uses) loads only when chosen.
+const SetupRestore = lazy(() => import("./setup-restore").then((m) => ({ default: m.SetupRestore })));
 
 // SSO and the app's hand-offs leave the page: the way is noted when they
 // start, and the one before it comes back when the sign-in returns with an
@@ -83,7 +85,12 @@ async function post(path: string, body?: unknown) {
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
+  if (!response.ok) {
+    // The table of server messages is large and only needed after a failure:
+    // loaded then, so it stays out of the sign-in page's script.
+    const { serverMessage } = await import("@/lib/i18n-errors");
+    throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
+  }
   return data;
 }
 
@@ -566,7 +573,11 @@ export default function Login({
               {notice}
             </div>
           )}
-          {restoring && <SetupRestore onCancel={() => setRestoring(false)} />}
+          {restoring && (
+            <Suspense fallback={null}>
+              <SetupRestore onCancel={() => setRestoring(false)} />
+            </Suspense>
+          )}
           {mode === "confirm" && (
             <div className="login-confirm">
               <EnvelopeSimple size={30} aria-hidden />
