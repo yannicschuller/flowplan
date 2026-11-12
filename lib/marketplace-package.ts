@@ -7,6 +7,8 @@
 //   payload/…       the kind's own exchange format, unchanged:
 //                     document, database  payload/template.zip  (flowplan-template-1, lib/template-exchange.ts)
 //                     workflow            payload/workflow.json (flowplan.workflow, lib/workflows/portable.ts)
+//                                         + payload/workflow-meta.json (names, symbols and gaps for the
+//                                           marketplace's viewer, lib/marketplace-workflow-meta.ts)
 //                     whiteboard          payload/whiteboard.json (flowplan.whiteboard-template, lib/whiteboard-user-templates.ts)
 //                     appearance          payload/theme.json + payload/fonts/<id>.<ext> (flowplan.workspace-look)
 //                     link-rules          payload/link-rules.json (flowplan.link-rules)
@@ -36,6 +38,7 @@ import { themeCustomFonts, workspaceThemeSchema } from "./workspace-theme";
 import { importLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { AUTO_LINK_LIMITS, autoLinkRuleSchema, ruleProblems } from "./auto-link";
 import { packageMinVersion } from "./marketplace-config";
+import { referenceGaps, workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
 import { MAX_PACKAGE_BYTES, packageFileName } from "./marketplace-handover";
 import type { Identity } from "./types";
 
@@ -152,12 +155,16 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
       if (role !== "editor" && role !== "owner") throw fail("Nur wer den Workflow bearbeiten darf, kann ihn veröffentlichen.", 403);
       const data = publicWorkflow(await exportWorkflow(user, page.id));
       const references = Object.keys(data.references).length;
+      const graph = parseGraph(data.graph);
       return {
         kind: "workflow",
         title: data.title || page.title,
         category: "other",
         path: "payload/workflow.json",
-        entries: [["payload/workflow.json", Buffer.from(JSON.stringify(data, null, 2))]],
+        entries: [
+          ["payload/workflow.json", Buffer.from(JSON.stringify(data, null, 2))],
+          [WORKFLOW_META_PATH, workflowMetaBytes(workflowMeta(graph, referenceGaps(data, graph)))],
+        ],
         notes: [{ code: "secrets-never" }, ...(references ? [{ code: "references-cleared" as const, count: references }] : [])],
       };
     }

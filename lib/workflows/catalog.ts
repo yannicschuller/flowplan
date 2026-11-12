@@ -391,6 +391,20 @@ export const fixedHost = (url: string) => {
   const m = /^https?:\/\/([^/?#{}\\@\s]+)(?:[/?#]|$)/i.exec(url.trim());
   return m ? m[1].toLowerCase() : null;
 };
+// i18n-table: 1 – [German, English] pairs (output ports; also in the marketplace meta)
+export const PORT_TEXT: Record<string, [string, string]> = {
+  out: ["weiter", "next"],
+  true: ["ja", "yes"],
+  false: ["nein", "no"],
+  error: ["Fehler", "Error"],
+  item: ["Element", "Item"],
+  done: ["fertig", "done"],
+  default: ["sonst", "otherwise"],
+  approved: ["genehmigt", "approved"],
+  rejected: ["abgelehnt", "rejected"],
+  timeout: ["Frist abgelaufen", "timed out"],
+  unclear: ["unklar", "unclear"],
+};
 const nameValue = z.object({ name: z.string().trim().max(200), value: shortTmpl.default("") });
 
 export const NODE_TYPES: NodeSpec[] = [

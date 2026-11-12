@@ -3,7 +3,7 @@
 // nodes (triggers first, then along the edges), labels, one-line summaries
 // and the output tree of the placeholder picker. Client-only helpers; the
 // graph model itself is lib/workflows/graph.ts.
-import { aiFieldOutputs, isTrigger, nodeSpec, NODE_TYPES, RECORD_OUTPUT, type AiField, type NodeSpec, type OutputField } from "@/lib/workflows/catalog";
+import { aiFieldOutputs, isTrigger, nodeSpec, NODE_TYPES, PORT_TEXT, RECORD_OUTPUT, type AiField, type NodeSpec, type OutputField } from "@/lib/workflows/catalog";
 import { nodePorts, outgoing, type GraphIssue, type WorkflowGraph, type WorkflowNode } from "@/lib/workflows/graph";
 import { toDisplay, type DisplayContext } from "@/lib/workflows/placeholders";
 import type { Field } from "@/lib/types";
@@ -119,20 +119,6 @@ export const CATEGORY_TEXT: Record<string, [string, string]> = {
   notify: ["Benachrichtigen", "Notify"],
   ai: ["KI", "AI"],
   http: ["HTTP", "HTTP"],
-};
-// i18n-table: 1 – [German, English] pairs (output ports)
-const PORT_TEXT: Record<string, [string, string]> = {
-  out: ["weiter", "next"],
-  true: ["ja", "yes"],
-  false: ["nein", "no"],
-  error: ["Fehler", "Error"],
-  item: ["Element", "Item"],
-  done: ["fertig", "done"],
-  default: ["sonst", "otherwise"],
-  approved: ["genehmigt", "approved"],
-  rejected: ["abgelehnt", "rejected"],
-  timeout: ["Frist abgelaufen", "timed out"],
-  unclear: ["unklar", "unclear"],
 };
 // A port's name; a switch's cases by their label (or value).
 export const portLabel = (port: string, t: T, node?: WorkflowNode) => {

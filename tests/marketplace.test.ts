@@ -228,7 +228,7 @@ test("document and database templates: flowplan-template-1 inside, imported into
 test("workflows: the export without instance, people or secrets; imported as a paused draft", async () => {
   const graph = chain(
     node("trigger.manual", {}, "Start"),
-    node("http.request", { method: "GET", url: "https://api.example.com/v1/items", headers: [] }, "Abrufen"),
+    node("http.request", { method: "GET", url: "https://api.example.com/v1/items", headers: [{ name: "X-Api-Key", value: "dummy-not-a-secret-4711" }] }, "Abrufen"),
     node("ai.summarize", { text: "{{Abrufen.body}}" }, "Zusammenfassen"),
   );
   const { pageId } = await workflow("Tägliche Zusammenfassung", graph, owner, false);
@@ -239,6 +239,15 @@ test("workflows: the export without instance, people or secrets; imported as a p
   assert.equal(file.format, "flowplan.workflow");
   assert.equal(file.source, undefined, "no instance address, no workspace");
   assert.ok(!JSON.stringify(file).includes(wid));
+  // The viewer's meta: exactly the node types used, catalogue texts and symbols only.
+  const metaFile = JSON.parse(entries.get("payload/workflow-meta.json")!.toString());
+  assert.equal(metaFile.format, "flowplan.workflow-meta");
+  assert.deepEqual(Object.keys(metaFile.nodes), ["ai.summarize", "http.request", "trigger.manual"]);
+  assert.deepEqual(metaFile.nodes["http.request"].name, { de: "HTTP-Anfrage", en: "HTTP request" });
+  assert.equal(metaFile.nodes["http.request"].external, true);
+  assert.equal(metaFile.nodes["ai.summarize"].ai, true);
+  assert.match(metaFile.nodes["trigger.manual"].icon, /^M[0-9MmLlHhVvCcSsQqTtAaZz.,\s-]+$/);
+  for (const secret of ["dummy-not-a-secret-4711", "api.example.com", wid, "Abrufen"]) assert.ok(!entries.get("payload/workflow-meta.json")!.toString().includes(secret), secret);
   const wf = preview.creates.workflow!;
   assert.deepEqual(wf.nodes.map((n) => n.label), ["Start", "Abrufen", "Zusammenfassen"]);
   assert.deepEqual(wf.hosts, ["api.example.com"]);
