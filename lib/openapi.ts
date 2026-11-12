@@ -8,6 +8,7 @@
 import { workspaceThemeSchema } from "./workspace-theme";
 import { autoLinkRulesSchema } from "./auto-link";
 import { textMenuPrefSchema } from "./text-menu-pref";
+import { printOptionsSchema, printPresetSchema, printPresetsSchema } from "./print-options";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
@@ -56,8 +57,8 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 // API tokens and therefore not listed.
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
-  "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -160,6 +161,31 @@ export const commandActions: ActionDoc[] = [
       rules: autoLinkRulesSchema,
     }),
     result: z.object({ rules: z.array(z.object({ id: str, name: str, pattern: str, template: str, enabled: z.boolean() })) }),
+  },
+  {
+    action: "workspace.printPresets",
+    summary: "Set the workspace's print presets",
+    description:
+      "Needs the owner role (guests never). Replaces the whole list (at most 30 presets): named sets of print options (cover, icon, tags, properties, page numbers, title page, table of contents, paper, title size, typefaces, links) that every member and guest can pick in the print dialog but not change. `defaultId` names the preset the dialog starts with for people who have not printed yet (null: none). Every member and guest gets them in the bootstrap (`printPresets`).",
+    input: z.object({
+      action: z.literal("workspace.printPresets"),
+      workspaceId: uuid,
+      presets: printPresetsSchema,
+      defaultId: z.string().max(64).nullable().optional(),
+    }),
+    result: z.object({ presets: z.array(printPresetSchema.extend({ options: printOptionsSchema })), defaultId: z.string().nullable() }),
+  },
+  {
+    action: "profile.print",
+    summary: "Remember the caller's print options and own print presets",
+    description:
+      "For the caller, on all devices. `options` is the last choice in the print dialog (null forgets it); `presets` replaces the caller's own list of presets (at most 30). Either may be left out. Unknown or invalid option values in a preset are replaced by the defaults.",
+    input: z.object({
+      action: z.literal("profile.print"),
+      options: printOptionsSchema.nullable().optional(),
+      presets: printPresetsSchema.optional(),
+    }),
+    result: z.object({ last: printOptionsSchema.nullable(), presets: z.array(printPresetSchema.extend({ options: printOptionsSchema })) }),
   },
   {
     action: "profile.plainLook",

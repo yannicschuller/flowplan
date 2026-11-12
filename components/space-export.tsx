@@ -11,6 +11,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { downloadBlob, Modal } from "./ui";
 import { downloadExport, epubUrl, pdfUrl, printExport } from "./export-download";
+import { requestPrint } from "./print-dialog";
 
 type SpaceChoice = { id: string; name: string };
 
@@ -29,8 +30,10 @@ export function SpaceExportDialog({ spaces, initial, onClose }: { spaces: SpaceC
     try {
       await flushOpenDocuments();
       if (format === "pdf") {
-        await printExport(pdfUrl({ spaceId }));
+        // The print options (#215), then the browser's print dialog.
+        const url = pdfUrl({ spaceId });
         onClose();
+        requestPrint({ kind: "book", run: (options) => printExport(url, options) });
         return;
       }
       if (format === "epub") {

@@ -12,6 +12,7 @@ import { exportName } from "@/lib/export-name";
 import { useT } from "./i18n";
 import { downloadBlob } from "./ui";
 import { printPage } from "./print-page";
+import { requestPrint } from "./print-dialog";
 import { docxUrl, downloadExport } from "./export-download";
 
 export async function downloadMarkdown(pageId: string, title: string, format: "markdown" | "zip", rowId?: string) {
@@ -128,7 +129,7 @@ export function RecordExportMenu({
             <FileDoc />
             {busy ? t("Word wird erstellt …", "Creating Word file …") : t("Als Word (DOCX)", "As Word (DOCX)")}
           </Dropdown.Item>
-          <Dropdown.Item className="dropdown-item" onSelect={() => printPage(printRoot() || undefined)}>
+          <Dropdown.Item className="dropdown-item" onSelect={() => requestPrint({ kind: "page", run: (options) => printPage(printRoot() || undefined, options) })}>
             <Printer />
             {t("Drucken / PDF", "Print / PDF")}
           </Dropdown.Item>

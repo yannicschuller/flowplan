@@ -7,6 +7,7 @@ import { downloadBlob, Modal } from "./ui";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
 import { docxUrl, downloadExport, epubUrl, pdfUrl, printExport } from "./export-download";
+import { requestPrint } from "./print-dialog";
 export function PageExportDialog({
   page,
   onClose,
@@ -45,9 +46,10 @@ export function PageExportDialog({
         return;
       }
       if (format === "pdf") {
-        // The print dialog takes over from here.
-        await printExport(pdfUrl({ pageId: page.id, children: treeChildren }));
+        // The print options (#215), then the browser's print dialog.
+        const url = pdfUrl({ pageId: page.id, children: treeChildren });
         onClose();
+        requestPrint({ kind: "book", run: (options) => printExport(url, options) });
         return;
       }
       const response = await fetch("/api/markdown-export", {

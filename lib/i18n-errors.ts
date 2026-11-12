@@ -24,6 +24,7 @@ const exact: Record<string, string> = {
   "Die Link-Vorlage ergibt keine gültige Adresse.": "The link template does not give a valid address.",
   "Der Name ist länger als 60 Zeichen.": "The name is longer than 60 characters.",
   "Höchstens 50 Regeln.": "At most 50 rules.",
+  "Höchstens 30 Druckvorlagen.": "At most 30 print presets.",
   // Meeting notes and the tokens' AI permission (#199, lib/meetings.ts, lib/ai/token-access.ts).
   "Dieses API-Token hat keine Berechtigung „KI und Transkription“.": "This API token has no permission for “AI and transcription”.",
   "KI und Transkription sind für API-Tokens auf dieser Instanz ausgeschaltet.": "AI and transcription are switched off for API tokens on this instance.",

@@ -67,8 +67,8 @@ export default function DataSection() {
   const [results, setResults] = useState<Record<string, Result>>({});
   // Link rules, faces or a theme of a restored archive that did not pass
   // the settings' checks (lib/archive.ts omittedSettings).
-  const omittedNote = (omitted?: { linkRules?: number; fonts?: number; theme?: number }) => {
-    const n = (omitted?.linkRules || 0) + (omitted?.fonts || 0) + (omitted?.theme || 0);
+  const omittedNote = (omitted?: { linkRules?: number; fonts?: number; theme?: number; printPresets?: number }) => {
+    const n = (omitted?.linkRules || 0) + (omitted?.fonts || 0) + (omitted?.theme || 0) + (omitted?.printPresets || 0);
     if (!n) return "";
     return ` ${n === 1 ? t("Eine ungültige Einstellung des Arbeitsbereichs (Link-Regel, Schrift oder Aussehen) wurde nicht übernommen.", "One invalid workspace setting (link rule, font or appearance) was not taken over.") : t(`${n} ungültige Einstellungen des Arbeitsbereichs (Link-Regeln, Schriften oder Aussehen) wurden nicht übernommen.`, `${n} invalid workspace settings (link rules, fonts or appearance) were not taken over.`)}`;
   };

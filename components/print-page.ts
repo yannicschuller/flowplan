@@ -1,11 +1,14 @@
 "use client";
 import { tr } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
+import { applyPrintOptions, printOptionsCss, type PrintOptions } from "@/lib/print-options";
 // Printing (and "Save as PDF"): the page content alone, as a lean copy –
 // Safari lays out the whole app before showing its print dialog, which takes
 // long. Started after the menu has closed – Safari ignores print() while a
-// menu holds the page.
-export function printPage(root?: HTMLElement) {
+// menu holds the page. `options` (#215, components/print-dialog.tsx) leave
+// parts out of the copy and set paper, page numbers and the look; without
+// them it prints as before.
+export function printPage(root?: HTMLElement, options?: PrintOptions) {
   setTimeout(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     const source = root || document.querySelector<HTMLElement>(".page-content");
@@ -16,18 +19,22 @@ export function printPage(root?: HTMLElement) {
     // opens in the browser instead.
     if (isIOS() && isStandalone())
       return void printInBrowser(async () => {
-        const copy = leanCopy(source, document);
+        const copy = leanCopy(source, document, options);
         await inlineImages(copy);
-        return `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(document.title)}</title>${appStyles()}</head><body class="print-view">${copy.outerHTML}</body></html>`;
+        return `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(document.title)}</title>${appStyles()}${optionsStyle(options)}</head><body class="print-view">${copy.outerHTML}</body></html>`;
       });
     // iPhone and iPad print the page itself, not a frame, and only while the
     // tap still counts: the copy goes into the page, printed right away.
-    if (isIOS()) return printInPage([leanCopy(source, document)]);
+    if (isIOS()) {
+      const style = document.createElement("style");
+      style.textContent = options ? printOptionsCss(options, "page") : "";
+      return printInPage([style, leanCopy(source, document, options)]);
+    }
     // Elsewhere in a hidden frame with the app's styles.
     const styles = [...document.head.querySelectorAll('link[rel="stylesheet"], style')].map((el) => el.outerHTML).join("");
     printInFrame(
-      `<!doctype html><html lang="${document.documentElement.lang}" data-theme="light"><head><meta charset="utf-8"><base href="${location.origin}/"><title>${document.title.replace(/</g, "&lt;")}</title>${styles}</head><body class="print-view"></body></html>`,
-      (doc) => doc.body.append(doc.importNode(leanCopy(source, doc), true)),
+      `<!doctype html><html lang="${document.documentElement.lang}" data-theme="light"><head><meta charset="utf-8"><base href="${location.origin}/"><title>${document.title.replace(/</g, "&lt;")}</title>${styles}${optionsStyle(options)}</head><body class="print-view"></body></html>`,
+      (doc) => doc.body.append(doc.importNode(leanCopy(source, doc, options), true)),
     );
   }, 120);
 }
@@ -53,6 +60,11 @@ export function printDocument(html: string) {
     printInFrame(html.replace(/<head>/i, `<head><base href="${location.origin}/">`));
   }, 120);
 }
+// The options' style sheet (lib/print-options.ts), after the app's.
+const optionsStyle = (options?: PrintOptions) => {
+  const css = options ? printOptionsCss(options, "page") : "";
+  return css ? `<style data-print-options>${css.replace(/<\//g, "<\\/")}</style>` : "";
+};
 const isStandalone = () =>
   (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia("(display-mode: standalone)").matches;
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -182,7 +194,7 @@ async function inlineImages(root: HTMLElement) {
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 // A copy of the page content that prints like the original.
-function leanCopy(source: HTMLElement, doc: Document) {
+function leanCopy(source: HTMLElement, doc: Document, options?: PrintOptions) {
   const copy = source.cloneNode(true) as HTMLElement;
   // Drawings on a canvas do not survive copying: as pictures instead.
   const canvases = source.querySelectorAll("canvas");
@@ -216,5 +228,7 @@ function leanCopy(source: HTMLElement, doc: Document) {
   // No second element with the same id, no editing in the copy.
   copy.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
   copy.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
+  // Cover, icon, tags and properties as chosen (#215).
+  if (options) applyPrintOptions(copy, options);
   return copy;
 }

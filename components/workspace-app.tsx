@@ -238,6 +238,7 @@ import { FocusBar } from "./focus-bar";
 import { PageGraph } from "./page-graph";
 import { QuickCapture } from "./quick-capture";
 import { printPage } from "./print-page";
+import { PrintDialogHost, requestPrint } from "./print-dialog";
 import { exportDocumentHtml } from "@/lib/document-html";
 import { PageToRecord } from "./page-to-record";
 import {
@@ -418,6 +419,8 @@ export default function WorkspaceApp({
   const toggleReadingRef = useRef(() => {});
   // What a global shortcut does (set each render, see runShortcut).
   const shortcutRef = useRef((_action: ShortcutAction) => {});
+  const printOpenPageRef = useRef(() => {});
+  const printOpenPage = () => printOpenPageRef.current();
   const t = useT();
   const statusLabel = useStatusLabel();
   // Phones (≤ 767 px, app/globals.css): the page's top bar keeps the title;
@@ -1537,6 +1540,13 @@ export default function WorkspaceApp({
       // Radix marks handled.
       if (e.key === "Escape" && !e.defaultPrevented) setMobile(false);
       if (e.isComposing || presentingRef.current) return;
+      // Ctrl/⌘+P on an open page: the print options first (#215), Enter
+      // prints. Elsewhere (and with Shift or Alt) the browser's own.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p" && screenRef.current === "page" && dataRef.current && !dataRef.current.encrypted && document.querySelector(".page-content")) {
+        e.preventDefault();
+        if (!document.querySelector(".print-dialog")) printOpenPageRef.current();
+        return;
+      }
       const action = matchAction(e, isTyping(e.target));
       if (!action) return;
       // A whiteboard has its own search for ⌘F (it marks the event handled).
@@ -1764,6 +1774,8 @@ export default function WorkspaceApp({
     }
   };
   shortcutRef.current = runShortcut;
+  // "Drucken / PDF" of the open page: the options dialog, then the copy.
+  printOpenPageRef.current = () => requestPrint({ kind: "page", run: (options) => printPage(undefined, options) });
   // Hints in titles follow the own shortcuts ("Lesemodus (⌘ ⌥ E)").
   const hint = (action: ShortcutAction) => {
     const keys = keyHints.visible ? shortcutHint(action, mac) : "";
@@ -2862,7 +2874,7 @@ export default function WorkspaceApp({
           },
           { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
           { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
-          { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: printPage },
+          { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: () => printOpenPage() },
           ...(openPageData.page.kind === "document" && !openPageData.locked
             ? [{ label: t("Präsentieren", "Present"), keywords: t("präsentation folien vortrag beamer", "präsentation folien vortrag beamer presentation slides talk slideshow"), icon: PresentIcon, run: startPresentation }]
             : []),
@@ -3967,7 +3979,7 @@ export default function WorkspaceApp({
                     {!data.encrypted && (
                       <Dropdown.Item
                         className="dropdown-item"
-                        onSelect={() => printPage()}
+                        onSelect={() => printOpenPage()}
                       >
                         <FileText />
                         {t("Drucken / PDF", "Print / PDF")}
@@ -4810,6 +4822,14 @@ export default function WorkspaceApp({
           onClose={() => setOnboarding(false)}
         />
       )}
+      {/* "Drucken / PDF" with options and presets (#215). */}
+      <PrintDialogHost
+        settings={boot.print}
+        workspace={boot.printPresets}
+        workspaceId={boot.workspace.id}
+        owner={boot.workspace.role === "owner" && !boot.workspace.guest}
+        command={(body) => api("/api/command", body)}
+      />
       <FindInPage open={find.open} focusKey={find.key} onClose={() => setFind((f) => ({ ...f, open: false }))} />
       <KeyboardShortcuts
         open={shortcuts}

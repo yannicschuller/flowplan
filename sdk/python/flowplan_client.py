@@ -764,6 +764,31 @@ CommandWorkspaceLinkRulesResult = TypedDict("CommandWorkspaceLinkRulesResult", {
     "rules": Required[list[dict[str, Any]]],
 }, total=False)
 
+# Set the workspace's print presets. Needs the owner role (guests never). Replaces the whole list (at most 30 presets): named sets of print options (cover, icon, tags, properties, page numbers, title page, table of contents, paper, title size, typefaces, links) that every member and guest can pick in the print dialog but not change. `defaultId` names the preset the dialog starts with for people who have not printed yet (null: none). Every member and guest gets them in the bootstrap (`printPresets`).
+CommandWorkspacePrintPresets = TypedDict("CommandWorkspacePrintPresets", {
+    "action": Required[Literal["workspace.printPresets"]],
+    "workspaceId": Required[str],
+    "presets": Required[list[dict[str, Any]]],
+    "defaultId": Optional[str],
+}, total=False)
+
+CommandWorkspacePrintPresetsResult = TypedDict("CommandWorkspacePrintPresetsResult", {
+    "presets": Required[list[dict[str, Any]]],
+    "defaultId": Required[Optional[str]],
+}, total=False)
+
+# Remember the caller's print options and own print presets. For the caller, on all devices. `options` is the last choice in the print dialog (null forgets it); `presets` replaces the caller's own list of presets (at most 30). Either may be left out. Unknown or invalid option values in a preset are replaced by the defaults.
+CommandProfilePrint = TypedDict("CommandProfilePrint", {
+    "action": Required[Literal["profile.print"]],
+    "options": Optional[dict[str, Any]],
+    "presets": list[dict[str, Any]],
+}, total=False)
+
+CommandProfilePrintResult = TypedDict("CommandProfilePrintResult", {
+    "last": Required[Optional[dict[str, Any]]],
+    "presets": Required[list[dict[str, Any]]],
+}, total=False)
+
 # Use Flowplan's own look instead of the workspaces' appearance. For the caller, in every workspace and on all devices; light or dark stays a choice per device.
 CommandProfilePlainLook = TypedDict("CommandProfilePlainLook", {
     "action": Required[Literal["profile.plainLook"]],
@@ -1666,7 +1691,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

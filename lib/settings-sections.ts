@@ -238,6 +238,32 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     ],
   },
   {
+    id: "printpresets",
+    area: "settings",
+    group: "workspace",
+    icon: "Printer",
+    title: { de: "Druckvorlagen", en: "Print presets" },
+    description: { de: "Einstellungen für Drucken und PDF, die alle im Arbeitsbereich wählen können.", en: "Print and PDF settings that everyone in the workspace can pick." },
+    keywords: {
+      de: "drucken pdf druckvorlage vorlage seitenzahlen titelbild tags eigenschaften inhaltsverzeichnis titelseite schrift links papier a4 letter",
+      en: "print pdf print preset preset page numbers cover tags properties table of contents title page font links paper a4 letter",
+    },
+    entries: [{ title: { de: "Standardvorlage", en: "Default preset" }, anchor: "workspace-print-presets" }],
+  },
+  {
+    id: "print",
+    area: "settings",
+    group: "personal",
+    icon: "Printer",
+    title: { de: "Drucken / PDF", en: "Print / PDF" },
+    description: { de: "Deine Druckvorlagen: was beim Drucken und im PDF erscheint und wie es aussieht.", en: "Your print presets: what appears in print and PDF and how it looks." },
+    keywords: {
+      de: "drucken pdf druckvorlage vorlage seitenzahlen titelbild icon tags eigenschaften schrift links papier",
+      en: "print pdf print preset preset page numbers cover icon tags properties font links paper",
+    },
+    entries: [{ title: { de: "Meine Druckvorlagen", en: "My print presets" }, anchor: "print-presets" }],
+  },
+  {
     id: "autolinks",
     area: "settings",
     group: "workspace",

@@ -291,6 +291,10 @@ export type Bootstrap = {
   linkRules?: import("./auto-link").AutoLinkRule[];
   // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
   textMenu?: import("./text-menu-pref").TextMenuPref;
+  // Print options (#215, lib/print-options.ts): the person's last choice
+  // and own presets; the workspace's presets.
+  print?: import("./print-options").UserPrintSettings;
+  printPresets?: import("./print-options").WorkspacePrintPresets;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).
