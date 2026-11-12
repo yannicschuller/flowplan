@@ -65,9 +65,13 @@ export default function RowDocument({
     [replaceId, setReplaceId] = useState(""),
     // Offline and not in the device's copy (#47).
     [unavailable, setUnavailable] = useState(false);
-  const refresh = useCallback(async () => {
+  // `visit`: the record was just opened – it counts for the person's own
+  // quick search (#243); the reloads every few seconds do not.
+  const refresh = useCallback(async (visit = false) => {
     const next = await api<RowDocumentData>(
       `/api/pages/${pageId}/rows/${rowId}`,
+      undefined,
+      visit ? { "X-Flowplan-Visit": "1" } : {},
     );
     const cache = appCache();
     cache.set(rowKey(pageId, rowId), next, { policy: recordCachePolicy(cache, pageId) });
@@ -78,9 +82,13 @@ export default function RowDocument({
     );
   }, [pageId, rowId]);
   useEffect(() => {
+    let first = true;
     const load = () =>
-      refresh().then(
-        () => setUnavailable(false),
+      refresh(first).then(
+        () => {
+          first = false;
+          setUnavailable(false);
+        },
         (e) => {
           // No connection (fetch fails) and no stored copy of the record.
           if (!navigator.onLine || e instanceof TypeError) setUnavailable(true);

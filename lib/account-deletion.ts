@@ -70,6 +70,8 @@ const PERSONAL = [
   "home_layouts",
   "page_follows",
   "page_visits",
+  // The quick search's own visit history (#243, lib/search-visits.ts).
+  "search_visits",
   "page_view_prefs",
   // The own task page per workspace (#208); the page itself stays a page.
   "personal_task_pages",

@@ -26336,6 +26336,43 @@ td.ai-filled {
 .command-actions.palette-group {
   display: block;
 }
+/* Quick search hits and recent visits (#243): the path under the title,
+   the last change at the end of the row; the count and order above. */
+.palette-list .palette-path {
+  color: var(--muted);
+  font-size: 11px;
+  max-width: none;
+}
+.palette-list .palette-option > .palette-date {
+  display: block;
+  flex-shrink: 0;
+  max-width: 40%;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.palette-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 10px;
+}
+.palette-results-head :is(select, .fp-select) {
+  width: auto;
+  font-size: 12px;
+}
+.palette-date-inline {
+  display: none;
+}
+@media (max-width: 767px) {
+  .palette-list .palette-option > .palette-date {
+    display: none;
+  }
+  .palette-date-inline {
+    display: inline;
+  }
+}
 .palette-list .empty-state.small {
   padding: 18px 10px;
 }

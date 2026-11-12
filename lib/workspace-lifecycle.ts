@@ -306,7 +306,7 @@ export async function removeFromWorkspace(userId: string, wid: string, spacesTo?
   await run("DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE workspace_id=?)", userId, wid);
   // Own collections of the workspace (#86) leave with the person.
   await run("DELETE FROM collections WHERE owner_id=? AND workspace_id=?", userId, wid);
-  for (const table of ["favorites", "date_reminders", "notifications", "presence", "page_follows", "page_view_prefs"])
+  for (const table of ["favorites", "date_reminders", "notifications", "presence", "page_follows", "page_view_prefs", "search_visits"])
     await run(`DELETE FROM ${table} WHERE user_id=? AND page_id IN (SELECT id FROM pages WHERE workspace_id=?)`, userId, wid);
   const email = (await one<{ email: string }>("SELECT email FROM users WHERE id=?", userId))?.email || "";
   await run("DELETE FROM invites WHERE workspace_id=? AND lower(email)=lower(?)", wid, email);

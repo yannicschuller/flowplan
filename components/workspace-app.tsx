@@ -74,7 +74,8 @@ import { aiUsable } from "@/lib/ai/client";
 import {
   imageFileId,
 } from "@/lib/page-appearance";
-import type { SearchKind, SearchResult } from "@/lib/search-index";
+import type { RecentVisit, SearchKind, SearchResult, SearchSort } from "@/lib/search-index";
+import { groupByDay, hitPath } from "@/lib/search-palette";
 import { IconImagePicker } from "./icon-image-picker";
 import { IconLibraryPicker } from "./icon-library-picker";
 import { iconPixels } from "@/lib/page-appearance";
@@ -258,6 +259,7 @@ import { NewPageDialog } from "./new-page-dialog";
 import {
   FollowButton,
   ReadersButton,
+  ago,
   SinceVisitBanner,
   type Reader,
   type SinceVisit,
@@ -378,7 +380,7 @@ type CommandAction = {
 // command. The id names the option for aria-activedescendant.
 type PaletteItem =
   | { kind: "result"; id: string; result: SearchResult }
-  | { kind: "recent"; id: string; page: Page }
+  | { kind: "recent"; id: string; result: RecentVisit }
   | { kind: "command"; id: string; action: CommandAction };
 // Typing there: "?" is a character, not the shortcut overlay.
 const isTyping = (el: EventTarget | null) =>
@@ -756,6 +758,10 @@ export default function WorkspaceApp({
   const [savedTemplateCount, setSavedTemplateCount] = useState(0);
   const shownCategory = galleryCategory === "mine" && !savedTemplateCount ? "all" : galleryCategory;
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  // Nothing typed (#243): the person's recently visited pages and records.
+  const [recentHits, setRecentHits] = useState<RecentVisit[] | null>(null);
+  // Best match, last edited or created first (#243).
+  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
   const [searchKind, setSearchKind] = useState<SearchKind>("all");
   const [iconTab, setIconTab] = useState<"emoji" | "image" | "library">(
     "emoji",
@@ -807,9 +813,32 @@ export default function WorkspaceApp({
   // A search is on its way: placeholders instead of "Nothing found".
   const [searching, setSearching] = useState(false);
   useEffect(() => {
-    if (!search) return;
+    if (!search || query.trim()) return;
     const controller = new AbortController();
-    setSearching(!!query.trim());
+    fetch(
+      `/api/search/recent?${new URLSearchParams({
+        workspace: boot.workspace.id,
+        kind: searchKind,
+        ...(searchSpace ? { space: searchSpace } : {}),
+        limit: "20",
+      })}`,
+      { signal: controller.signal },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((list) => list && setRecentHits(list))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [query, search, boot.workspace.id, searchKind, searchSpace]);
+  useEffect(() => {
+    if (!search) return;
+    // Nothing typed: the recently visited list above, no search.
+    if (!query.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSearching(true);
     const timer = setTimeout(() => {
       fetch(
         `/api/search?${new URLSearchParams({
@@ -818,6 +847,7 @@ export default function WorkspaceApp({
           kind: searchKind,
           ...(searchSpace ? { space: searchSpace } : {}),
           ...(searchNoDays ? { days: "0" } : {}),
+          ...(searchSort !== "relevance" ? { sort: searchSort } : {}),
           // For created:today and the like (#86).
           tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         })}`,
@@ -836,7 +866,7 @@ export default function WorkspaceApp({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, search, boot.workspace.id, searchKind, searchSpace, searchNoDays]);
+  }, [query, search, boot.workspace.id, searchKind, searchSpace, searchNoDays, searchSort]);
   const currentId = useRef(pageId),
     currentWorkspace = useRef(boot.workspace.id),
     screenRef = useRef(screen),
@@ -3098,19 +3128,33 @@ export default function WorkspaceApp({
   // The rows of the palette in order: hits, recently viewed pages (while
   // nothing is typed), then the commands – ">" shows commands only.
   const commandsOnly = query.startsWith(">");
-  const recentPages: Page[] = commandsOnly || query.trim()
+  // Nothing typed: the recently visited pages and records (#243), until
+  // they arrive the start page's list. Pages under the titles the
+  // workspace knows (decrypted, readable); records as the server names them.
+  const recentPages: RecentVisit[] = commandsOnly || query.trim()
     ? []
-    : (boot.recentVisits || [])
-        .flatMap((visit) => {
+    : (recentHits ??
+        (boot.recentVisits || []).flatMap((visit): RecentVisit[] => {
           const page = activePages.find((p) => p.id === visit.pageId);
-          return page ? [page] : [];
+          return page ? [{ id: page.id, title: page.title, icon: page.icon, space_id: page.space_id, kind: page.kind === "database" || page.kind === "whiteboard" ? page.kind : "document", snippet: "", updatedAt: page.updated_at, visitedAt: visit.seenAt }] : [];
+        }))
+        .flatMap((hit) => {
+          if (hit.rowId) return [hit];
+          const page = activePages.find((p) => p.id === hit.id);
+          return page ? [{ ...hit, title: page.title, icon: page.icon }] : [];
         })
-        .slice(0, 6);
-  const paletteResults = commandsOnly
-    ? []
-    : searchResults.filter((r) => !recentPages.some((p) => p.id === r.id && !r.rowId));
+        .slice(0, 20);
+  const recentGroups = groupByDay(recentPages);
+  const paletteResults = commandsOnly || !query.trim() ? [] : searchResults;
+  const resultPath = (hit: { id: string; rowId?: string; space_id: string }) =>
+    hitPath(hit, activePages, boot.spaces, boot.recordParents || [], phone ? 3 : 4);
+  const edited = (value?: string) => {
+    if (!value) return "";
+    const ms = Date.parse(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
+    return Number.isFinite(ms) ? t(`Bearbeitet ${ago(ms, clock ?? Date.now(), locale)}`, `Edited ${ago(ms, clock ?? Date.now(), locale)}`) : "";
+  };
   const paletteItems: PaletteItem[] = [
-    ...recentPages.map((page): PaletteItem => ({ kind: "recent", id: `recent-${page.id}`, page })),
+    ...recentGroups.flatMap((group) => group.items).map((result): PaletteItem => ({ kind: "recent", id: `recent-${result.id}-${result.rowId || ""}`, result })),
     ...paletteResults.map((result): PaletteItem => ({ kind: "result", id: `result-${result.kind}-${result.id}-${result.rowId || ""}`, result })),
     ...shownActions.map((action, i): PaletteItem => ({ kind: "command", id: `command-${i}`, action })),
   ];
@@ -3128,9 +3172,9 @@ export default function WorkspaceApp({
     const intoSplit = paletteSplit;
     closeSearch();
     // Chosen for the split view: the page opens next to the open one.
-    if (intoSplit) return openSplit(item.kind === "recent" ? item.page.id : item.result.id);
-    if (item.kind === "recent") return void openPage(item.page.id);
+    if (intoSplit) return openSplit(item.result.id);
     const p = item.result;
+    if (item.kind === "recent") return void openPage(p.id, p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined);
     // The block with the hit flashes once the page is open.
     const hit = p.kind === "comment" || p.kind === "file" ? "" : snippetHit(p.snippet);
     if (hit) jumpTo({ pageId: p.id, rowId: p.rowId }, byText(hit));
@@ -3138,15 +3182,13 @@ export default function WorkspaceApp({
   };
   // Hovering or highlighting a hit loads its page ahead (components/prefetch.ts).
   const prefetchOf = (item: PaletteItem) =>
-    item.kind === "recent"
-      ? { "data-prefetch-page": item.page.id }
-      : item.kind === "result"
-        ? { "data-prefetch-page": item.result.id, ...(item.result.rowId ? { "data-prefetch-row": item.result.rowId } : {}) }
-        : {};
+    item.kind === "command"
+      ? {}
+      : { "data-prefetch-page": item.result.id, ...(item.result.rowId ? { "data-prefetch-row": item.result.rowId } : {}) };
   useEffect(() => {
     if (!search || !activeItem || activeItem.kind === "command") return;
     const timer = setTimeout(() => {
-      const target = activeItem.kind === "recent" ? { id: activeItem.page.id } : { id: activeItem.result.id, row: activeItem.result.rowId };
+      const target = { id: activeItem.result.id, row: activeItem.result.rowId };
       if (target.row) prefetchRecord(target.id, target.row);
       else prefetchPage(target.id);
     }, INTENT_DELAY);
@@ -5335,30 +5377,67 @@ export default function WorkspaceApp({
           role="listbox"
           aria-label={t("Ergebnisse und Befehle", "Results and commands")}
         >
-          {recentPages.length > 0 && (
-            <div className="search-results palette-group" role="group" aria-labelledby="palette-recent-title">
-              <small className="palette-group-title" id="palette-recent-title">
-                {t("Zuletzt angesehen", "Recently viewed")}
+          {recentGroups.map((group, g) => {
+            const offset = recentGroups.slice(0, g).reduce((n, x) => n + x.items.length, 0);
+            return (
+              <div key={group.day} className="search-results palette-group" role="group" aria-labelledby={g === 0 ? "palette-recent-title" : `palette-recent-${group.day}`}>
+                <small className="palette-group-title" id={g === 0 ? "palette-recent-title" : `palette-recent-${group.day}`}>
+                  {g === 0 && <>{t("Zuletzt angesehen", "Recently viewed")} · </>}
+                  {group.label === "today"
+                    ? t("Heute", "Today")
+                    : group.label === "yesterday"
+                      ? t("Gestern", "Yesterday")
+                      : new Date(`${group.day}T12:00:00`).toLocaleDateString(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long" })}
+                </small>
+                {group.items.map((p, i) => {
+                  const path = resultPath(p);
+                  return paletteOption(
+                    paletteItems[offset + i],
+                    offset + i,
+                    <>
+                      <PageIcon name={shownPageIcon(p.icon, p.kind === "row" ? "row" : p.kind)} />
+                      <span>
+                        {p.title || t("Ohne Titel", "Untitled")}
+                        {(path.length > 0 || p.updatedAt) && (
+                        <small className="palette-path">
+                          {path.join(" / ")}
+                          {p.updatedAt && <span className="palette-date-inline">{path.length ? " · " : ""}{edited(p.updatedAt)}</span>}
+                        </small>
+                      )}
+                      </span>
+                      <small className="palette-date">{edited(p.updatedAt)}</small>
+                    </>,
+                  );
+                })}
+              </div>
+            );
+          })}
+          {paletteResults.length > 0 && (
+            <div className="palette-results-head">
+              <small className="palette-group-title" role="status">
+                {paletteResults.length >= 50
+                  ? t("Mehr als 50 Treffer", "More than 50 hits")
+                  : paletteResults.length === 1
+                    ? t("1 Treffer", "1 hit")
+                    : t(`${paletteResults.length} Treffer`, `${paletteResults.length} hits`)}
               </small>
-              {recentPages.map((page, i) =>
-                paletteOption(
-                  paletteItems[i],
-                  i,
-                  <>
-                    <PageIcon name={shownPageIcon(page.icon, page.kind)} />
-                    <span>
-                      {page.title || t("Ohne Titel", "Untitled")}
-                      <small>{boot.spaces.find((s) => s.id === page.space_id)?.name}</small>
-                    </span>
-                  </>,
-                ),
-              )}
+              <Select
+                aria-label={t("Sortierung", "Sort order")}
+                className="palette-sort"
+                value={searchSort}
+                onChange={(e) => setSearchSort(e.target.value as SearchSort)}
+              >
+                <option value="relevance">{t("Beste Treffer", "Best match")}</option>
+                <option value="edited">{t("Zuletzt bearbeitet", "Last edited")}</option>
+                <option value="created">{t("Zuletzt erstellt", "Recently created")}</option>
+              </Select>
             </div>
           )}
           {paletteResults.length > 0 && (
             <div className="search-results palette-group" role="group" aria-label={t("Treffer", "Hits")}>
-              {paletteResults.map((p, i) =>
-                paletteOption(
+              {paletteResults.map((p, i) => {
+                const path = resultPath(p);
+                return paletteOption(
                   paletteItems[recentPages.length + i],
                   recentPages.length + i,
                   <>
@@ -5366,27 +5445,29 @@ export default function WorkspaceApp({
                     <span>
                       {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
                       {p.alias && <span className="alias-hit"> · {p.alias}</span>}
-                      {p.pageTitle && (
+                      {p.pageTitle && (p.kind === "comment" || p.kind === "file") && (
                         <small className="search-context">
                           {p.kind === "comment"
                             ? t(`Kommentar in ${p.pageTitle}`, `Comment in ${p.pageTitle}`)
-                            : p.kind === "file"
-                              ? t(`Datei in ${p.pageTitle}`, `File in ${p.pageTitle}`)
-                              : t(`Eintrag in ${p.pageTitle}`, `Record in ${p.pageTitle}`)}
+                            : t(`Datei in ${p.pageTitle}`, `File in ${p.pageTitle}`)}
                         </small>
                       )}
-                      <small className={p.snippet ? "search-snippet" : undefined}>
-                        {p.snippet ? (
+                      {(path.length > 0 || p.updatedAt) && (
+                        <small className="palette-path">
+                          {path.join(" / ")}
+                          {p.updatedAt && <span className="palette-date-inline">{path.length ? " · " : ""}{edited(p.updatedAt)}</span>}
+                        </small>
+                      )}
+                      {p.snippet && (
+                        <small className="search-snippet">
                           <SearchSnippet text={p.snippet} />
-                        ) : (
-                          boot.spaces.find((s) => s.id === p.space_id)?.name
-                        )}
-                      </small>
+                        </small>
+                      )}
                     </span>
-                    <ArrowSquareOut size={17} />
+                    <small className="palette-date">{edited(p.updatedAt)}</small>
                   </>,
-                ),
-              )}
+                );
+              })}
             </div>
           )}
           {shownActions.length > 0 && (

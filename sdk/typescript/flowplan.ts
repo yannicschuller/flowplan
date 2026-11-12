@@ -629,6 +629,13 @@ export type SearchResult = {
   alias?: string;
   /** A hit on a journal day: its date (ranked after other pages) */
   journalDate?: string;
+  /** Last change of the page or record (UTC) */
+  updatedAt?: string;
+};
+
+export type RecentVisit = SearchResult & {
+  /** Your last visit, milliseconds since 1970 */
+  visitedAt: number;
 };
 
 export type ApiToken = {
@@ -3067,8 +3074,13 @@ export class FlowplanClient {
   }
 
   /** Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also `OR` (or `|`), `AND` (implicit), `NOT` or `-` before any term or group, parentheses (NOT binds tightest, then AND, then OR), `created_by:`/`creator:` and `updated_by:`/`editor:` (a name or `me`), `created:` and `updated:` (`2026-03`, `>2026-01-01`, `a..b`, `-7d`, `-2w`, `-3m`, `-1y`, `today`, `yesterday`, `this-week`, `last-week`, `this-month`, `last-month`, `this-year`, `last-year`), `type:document|database|whiteboard|record`, `in:"Space name"` and `title:`; such queries list the matching pages and records (without snippets) by last change. Answered with `Cache-Control: no-store`. (GET /api/search) */
-  async search(query: { workspace: string; q: string; kind?: "all" | "document" | "database" | "whiteboard" | "row" | "comment" | "file"; space?: string; days?: "0" | "1"; tz?: string }, options?: RequestOptions): Promise<SearchResult[]> {
+  async search(query: { workspace: string; q: string; kind?: "all" | "document" | "database" | "whiteboard" | "row" | "comment" | "file"; space?: string; days?: "0" | "1"; tz?: string; sort?: "relevance" | "edited" | "created" }, options?: RequestOptions): Promise<SearchResult[]> {
     return this.json<SearchResult[]>("GET", `/api/search`, { query }, options);
+  }
+
+  /** Your recently visited pages and records — The pages and records you opened last in the workspace, newest first – what the quick search shows with nothing typed. Only your own visits (never other people's), only what you may still read; visits through API tokens are not recorded. Answered with `Cache-Control: no-store`. (GET /api/search/recent) */
+  async searchRecent(query: { workspace: string; kind?: "all" | "document" | "database" | "whiteboard" | "row"; space?: string; limit?: number }, options?: RequestOptions): Promise<RecentVisit[]> {
+    return this.json<RecentVisit[]>("GET", `/api/search/recent`, { query }, options);
   }
 
   /** My newest notifications — What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command. (GET /api/notifications) */
@@ -3382,7 +3394,7 @@ export class FlowplanClient {
     return this.json<CommandResultOf<A>>("POST", `/api/command`, { json: body, idempotent: true }, options);
   }
 
-  /** A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts). (GET /api/pages/{pageId}) */
+  /** A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts, and your own quick-search history; not for API tokens). (GET /api/pages/{pageId}) */
   async getPage(pageId: string, options?: RequestOptions): Promise<PageData> {
     return this.json<PageData>("GET", `/api/pages/${encodeURIComponent(pageId)}`, {}, options);
   }
@@ -3500,7 +3512,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/pages/${encodeURIComponent(pageId)}/import-markdown`, { form, idempotent: true }, options);
   }
 
-  /** A record with its document (GET /api/pages/{pageId}/rows/{rowId}) */
+  /** A record with its document — The header `X-Flowplan-Visit: 1` records the opening in your own quick-search history (not for API tokens). (GET /api/pages/{pageId}/rows/{rowId}) */
   async getRow(pageId: string, rowId: string, options?: RequestOptions): Promise<RowDocument> {
     return this.json<RowDocument>("GET", `/api/pages/${encodeURIComponent(pageId)}/rows/${encodeURIComponent(rowId)}`, {}, options);
   }

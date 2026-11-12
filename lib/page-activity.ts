@@ -8,6 +8,7 @@ import { htmlParagraphs } from "./version-history";
 import type { Identity, Page } from "./types";
 import { notificationOn } from "./notification-kinds";
 import { filterAsync } from "./each-async";
+import { recordSearchVisit } from "./search-visits";
 
 const BASELINE_LIMIT = 300_000;
 const now = () => Date.now();
@@ -67,6 +68,8 @@ export async function visitPage(user: Identity, page: Page, html: string | null)
     now(),
     baseline,
   );
+  // The quick search's own history of this person (#243).
+  await recordSearchVisit(user, page.id);
   // Looking at the page answers its change notification.
   await run(
     "UPDATE notifications SET read_at=? WHERE user_id=? AND page_id=? AND kind='change' AND read_at IS NULL", nowText(),

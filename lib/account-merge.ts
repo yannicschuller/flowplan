@@ -116,6 +116,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "messenger_targets.user_id": "move",
   "page_follows.user_id": "move",
   "page_visits.user_id": "move",
+  "search_visits.user_id": "move",
   "page_edits.user_id": "move",
   "page_view_prefs.user_id": "move",
   "page_ink.updated_by": "move",

@@ -3,7 +3,9 @@ import { lockedPageIds } from "./journal-extras";
 import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { all, one, run, sql, transaction } from "./db";
-import { addEntry, clearIndex, entryOrder, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
+import { addEntry, clearIndex, entryOrder, foldText, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
+import { personalBoost, personalSignals, titleScore } from "./search-visits";
+import { cellText } from "./cell-text";
 import { isGuest, pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
@@ -322,7 +324,15 @@ export type SearchResult = {
   alias?: string;
   // A hit on a journal day (its date): ranked after other pages.
   journalDate?: string;
+  // When the page or record was last changed (ISO 8601, UTC), #243.
+  updatedAt?: string;
 };
+// Order of the hits (#243): the best match (text and the person's own
+// visits), the last change or the creation, newest first.
+export type SearchSort = "relevance" | "edited" | "created";
+// Stored times ('YYYY-MM-DD HH:MM:SS', UTC) as ISO 8601.
+const isoTime = (value: string | null | undefined) =>
+  !value ? undefined : /T/.test(value) ? value : `${value.replace(" ", "T")}Z`;
 // Snippet markers; the client renders text between them highlighted.
 export const MARK_START = "\u0002",
   MARK_END = "\u0003";
@@ -332,7 +342,7 @@ export async function searchWorkspace(
   workspaceId: string,
   rawQuery: string,
   // excludeDays: "Ohne Journaltage" – no hits on journal days at all.
-  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string } = {},
+  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string; sort?: SearchSort } = {},
 ): Promise<SearchResult[]> {
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
@@ -420,7 +430,7 @@ export async function searchWorkspace(
   const finish = () => [...results, ...days].slice(0, SEARCH_LIMIT);
   const hidden = new Map<string, Set<string>>(),
     hiddenFiles = new Map<string, Set<string>>();
-  const push = async (hit: Page, key: string, column: string, snippet: string) => {
+  const push = async (hit: Page, key: string, column: string, snippet: string, updatedAt?: string | null) => {
     let page = hit;
     let { title, aliases } = splitTitle(column);
     if (!key) aliases = pageAliases(hit);
@@ -465,6 +475,7 @@ export async function searchWorkspace(
       snippet,
       ...(alias ? { alias } : {}),
       ...(day ? { journalDate: day } : {}),
+      ...(isoTime(updatedAt ?? page.updated_at) ? { updatedAt: isoTime(updatedAt ?? page.updated_at) } : {}),
     });
   };
   const scope =
@@ -491,7 +502,7 @@ export async function searchWorkspace(
         if (!databases.has(r.pageId)) databases.set(r.pageId, (await one<Page>("SELECT * FROM pages WHERE id=?", r.pageId))!);
         const page = databases.get(r.pageId)!;
         if (!(await allowed(page))) continue;
-        await push(page, r.rowId, r.title || "Ohne Titel", "");
+        await push(page, r.rowId, r.title || "Ohne Titel", "", r.updatedAt);
       }
     }
     return finish();
@@ -513,24 +524,30 @@ export async function searchWorkspace(
       }, [""]))];
   const anyLike = (column: string) => `(${spellings.map(() => `${sql.ilike(column, "?")} ESCAPE '\\'`).join(" OR ")})`;
   const titleLike = anyLike("s.title");
+  // Sorted by date (#243): the newest of the matches; a record's own times.
+  const sort = options.sort || "relevance";
+  const dated = sort === "edited" ? "hit_updated DESC," : sort === "created" ? "hit_created DESC," : "";
+  const times = "COALESCE(r.updated_at,p.updated_at) hit_updated,COALESCE(r.created_at,p.created_at) hit_created";
+  const rowJoin = "LEFT JOIN rows r ON r.id=s.row_id AND r.page_id=s.page_id";
   const candidates = (await all<
-    Page & { row_id: string; hit_title: string; snippet: string }
+    Page & { row_id: string; hit_title: string; snippet: string; hit_rank: number | null; hit_updated: string | null }
   >(
     short
-      ? `SELECT p.*,s.row_id,s.title hit_title,'' snippet FROM search_index s JOIN pages p ON p.id=s.page_id
+      ? `SELECT p.*,s.row_id,s.title hit_title,'' snippet,NULL hit_rank,${times} FROM search_index s JOIN pages p ON p.id=s.page_id ${rowJoin}
          WHERE ${scope} AND (${titleLike} OR ${anyLike("s.body")})
-         ORDER BY (CASE WHEN ${titleLike} THEN 1 ELSE 0 END) DESC,p.updated_at DESC${entryOrder()} LIMIT 1000`
-      : `SELECT p.*,s.row_id,s.title hit_title,${snip.sql} snippet
-         FROM search_index s JOIN pages p ON p.id=s.page_id
+         ORDER BY ${dated}(CASE WHEN ${titleLike} THEN 1 ELSE 0 END) DESC,p.updated_at DESC${entryOrder()} LIMIT 1000`
+      : `SELECT p.*,s.row_id,s.title hit_title,${snip.sql} snippet,${match.rank} hit_rank,${times}
+         FROM search_index s JOIN pages p ON p.id=s.page_id ${rowJoin}
          WHERE ${match.where} AND ${scope}
-         ORDER BY ${match.rank},p.updated_at DESC${entryOrder()} LIMIT 1000`,
+         ORDER BY ${dated}hit_rank,p.updated_at DESC${entryOrder()} LIMIT 1000`,
     ...(short
       ? (() => {
           const like = spellings.map((v) => `%${v.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
           return [...scopeArgs, ...like, ...like, ...like];
         })()
-      : [...snip.args, ...match.whereArgs, ...scopeArgs, ...match.rankArgs]),
+      : [...snip.args, ...match.rankArgs, ...match.whereArgs, ...scopeArgs]),
   )).map((hit) => (short ? hit : { ...hit, snippet: snip.finish(hit.snippet) }));
+  if (sort === "relevance") await rankHits(user, candidates, query);
   for (const hit of candidates) {
     if (!matchesKind(hit, hit.row_id) || !(await allowed(hit))) continue;
     await push(
@@ -538,10 +555,115 @@ export async function searchWorkspace(
       hit.row_id,
       hit.hit_title,
       hit.snippet.includes(MARK_START) ? hit.snippet : "",
+      hit.hit_updated,
     );
     if (done()) break;
   }
   return finish();
+}
+
+// The best match first (#243): where the query stands in the title (exact,
+// start of the title or a word, inside it – lib/search-visits.ts
+// titleScore), the text relevance relative to the best hit (BM25 of
+// lib/search-store.ts, 0 … 1) and the person's own use of the page or
+// record (frecency of their visits, own recent edits, favourites; at most
+// PERSONAL_MAX). The title tiers are further apart than the text part can
+// make up, and the personal part stays below the step from a hit in the
+// text to a title that starts with the query: an often visited page passes
+// a rarely visited one with a similar match, but text-only hits never pass
+// exact or prefix title matches, and an exact title without visits stays
+// near the top. Sorted in place, stable (equal scores keep the index's
+// order: BM25, then the last change).
+async function rankHits(user: Identity, hits: (Page & { row_id: string; hit_title: string; hit_rank: number | null })[], query: string) {
+  if (!hits.length) return;
+  const signals = await personalSignals(user, hits.map((h) => h.id));
+  const folded = foldText(query);
+  // BM25 is negative, the best the lowest (FTS5 and lib/search-store.ts).
+  const best = Math.min(0, ...hits.map((h) => Number(h.hit_rank) || 0));
+  const score = new Map<object, number>();
+  for (const hit of hits) {
+    const key = hit.row_id;
+    const extra = /^[cm]:/.test(key);
+    const { title, aliases } = splitTitle(hit.hit_title || "");
+    const tier = extra ? 0 : titleScore([title, ...aliases].map(foldText), folded);
+    const text = best < 0 ? (Number(hit.hit_rank) || 0) / best : 0;
+    // Comments and files count with the page (or record) they belong to.
+    const own = personalBoost(signals, hit.id, key && !/^[cmf]:/.test(key) ? key : "");
+    score.set(hit, tier + 0.5 * text + own);
+  }
+  hits.sort((a, b) => score.get(b)! - score.get(a)!);
+}
+
+export type RecentVisit = SearchResult & { visitedAt: number };
+// The pages and records the person opened last, newest first (#243): the
+// quick search with nothing typed. Only their own visits
+// (lib/search-visits.ts), only what they may still read.
+export async function recentlyVisited(
+  user: Identity,
+  workspaceId: string,
+  options: { kind?: SearchKind; spaceId?: string; limit?: number } = {},
+): Promise<RecentVisit[]> {
+  const limit = Math.min(50, Math.max(1, options.limit || 20));
+  const kind = options.kind || "all";
+  if (kind === "comment" || kind === "file") return [];
+  const locked = await lockedPageIds(user, workspaceId);
+  const guest = await isGuest(user, workspaceId);
+  const roles = new Map<string, boolean>();
+  const hidden = new Map<string, Set<string>>();
+  const fields = new Map<string, Field[]>();
+  const out: RecentVisit[] = [];
+  const visits = await all<Page & { v_row: string; v_at: number; cells: string | null; row_icon: string | null; row_updated: string | null }>(
+    `SELECT p.*,v.row_id v_row,v.last_at v_at,r.cells,r.icon row_icon,r.updated_at row_updated FROM search_visits v
+     JOIN pages p ON p.id=v.page_id LEFT JOIN rows r ON r.id=v.row_id AND r.page_id=v.page_id
+     WHERE v.user_id=? AND p.workspace_id=? AND p.deleted_at IS NULL${options.spaceId ? " AND p.space_id=?" : ""}
+     ORDER BY v.last_at DESC LIMIT 200`,
+    user.id,
+    workspaceId,
+    ...(options.spaceId ? [options.spaceId] : []),
+  );
+  for (const v of visits) {
+    if (out.length >= limit) break;
+    if (v.synced) continue;
+    const record = !!v.v_row;
+    // A record that is gone (deleted, in the trash) or of another page.
+    if (record && (v.cells === null || v.kind !== "database")) continue;
+    const type: SearchResult["kind"] = record
+      ? "row"
+      : v.kind === "database" || v.kind === "whiteboard"
+        ? v.kind
+        : "document";
+    if (kind !== "all" && kind !== type) continue;
+    if (!roles.has(v.id)) roles.set(v.id, !locked.has(v.id) && !(guest && v.kind === "workflow") && !!(await pageRole(user, v)));
+    if (!roles.get(v.id)) continue;
+    let title = v.title;
+    if (record) {
+      // Records of end-to-end encrypted spaces: their cells are not plain
+      // text (and the search does not know them either).
+      if (await isEncryptedPage(v)) continue;
+      if (!hidden.has(v.id)) hidden.set(v.id, await hiddenRowIds(user, v));
+      if (hidden.get(v.id)!.has(v.v_row)) continue;
+      if (!fields.has(v.id))
+        fields.set(v.id, JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", v.id))?.fields || "[]"));
+      // The title as the index has it: the first property without a read rule.
+      const list = fields.get(v.id)!;
+      const shown = publicHiddenFieldIds(list);
+      const titleField = list.find((f) => !shown.has(f.id));
+      title = (titleField ? cellText((JSON.parse(v.cells || "{}") as Record<string, unknown>)[titleField.id]) : "") || "Ohne Titel";
+    }
+    out.push({
+      id: v.id,
+      ...(record ? { rowId: v.v_row, pageTitle: v.title } : {}),
+      title,
+      icon: record ? v.row_icon || "" : v.icon,
+      space_id: v.space_id,
+      kind: type,
+      snippet: "",
+      ...(v.journal_date ? { journalDate: v.journal_date } : {}),
+      ...(isoTime(record ? v.row_updated : v.updated_at) ? { updatedAt: isoTime(record ? v.row_updated : v.updated_at) } : {}),
+      visitedAt: Number(v.v_at),
+    });
+  }
+  return out;
 }
 
 async function queryResults(
@@ -569,6 +691,7 @@ async function queryResults(
     kind: item.type === "record" ? "row" : item.type === "database" || item.type === "whiteboard" ? item.type : "document",
     snippet: "",
     ...(item.journalDate ? { journalDate: item.journalDate } : {}),
+    ...(isoTime(item.updatedAt) ? { updatedAt: isoTime(item.updatedAt) } : {}),
   }));
 }
 

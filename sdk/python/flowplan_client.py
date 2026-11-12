@@ -460,7 +460,10 @@ SearchResult = TypedDict("SearchResult", {
     "snippet": Required[str],  # Matches are wrapped in U+0002 … U+0003
     "alias": str,  # The alias the query matched
     "journalDate": str,  # A hit on a journal day: its date (ranked after other pages)
+    "updatedAt": str,  # Last change of the page or record (UTC)
 }, total=False)
+
+RecentVisit = dict[str, Any]
 
 ApiToken = TypedDict("ApiToken", {
     "id": Required[str],
@@ -1764,6 +1767,14 @@ SearchQuery = TypedDict("SearchQuery", {
     "space": str,  # Only in this space
     "days": Literal["0", "1"],  # 0: leave out journal days (they are ranked after other pages otherwise)
     "tz": str,  # IANA time zone for relative dates such as created:today (default UTC)
+    "sort": Literal["relevance", "edited", "created"],  # `relevance`: the best match – text relevance (exact and prefix title matches first) plus your own visits, recent edits and favourites; `edited`/`created`: newest first
+}, total=False)
+
+SearchRecentQuery = TypedDict("SearchRecentQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "kind": Literal["all", "document", "database", "whiteboard", "row"],  # Only this kind
+    "space": str,  # Only in this space
+    "limit": int,  # At most this many (1–50)
 }, total=False)
 
 NotificationsQuery = TypedDict("NotificationsQuery", {
@@ -2376,6 +2387,10 @@ class FlowplanClient:
         """Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also `OR` (or `|`), `AND` (implicit), `NOT` or `-` before any term or group, parentheses (NOT binds tightest, then AND, then OR), `created_by:`/`creator:` and `updated_by:`/`editor:` (a name or `me`), `created:` and `updated:` (`2026-03`, `>2026-01-01`, `a..b`, `-7d`, `-2w`, `-3m`, `-1y`, `today`, `yesterday`, `this-week`, `last-week`, `this-month`, `last-month`, `this-year`, `last-year`), `type:document|database|whiteboard|record`, `in:"Space name"` and `title:`; such queries list the matching pages and records (without snippets) by last change. Answered with `Cache-Control: no-store`. (GET /api/search)"""
         return self._json("GET", "/api/search", query=dict(query) if query else None, headers=headers)
 
+    def search_recent(self, query: "SearchRecentQuery", headers: Optional[dict[str, str]] = None) -> list["RecentVisit"]:
+        """Your recently visited pages and records — The pages and records you opened last in the workspace, newest first – what the quick search shows with nothing typed. Only your own visits (never other people's), only what you may still read; visits through API tokens are not recorded. Answered with `Cache-Control: no-store`. (GET /api/search/recent)"""
+        return self._json("GET", "/api/search/recent", query=dict(query) if query else None, headers=headers)
+
     def notifications(self, query: Optional["NotificationsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """My newest notifications — What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command. (GET /api/notifications)"""
         return self._json("GET", "/api/notifications", query=dict(query) if query else None, headers=headers)
@@ -2485,7 +2500,7 @@ class FlowplanClient:
         return self._json("POST", "/api/command", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def get_page(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "PageData":
-        """A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts). (GET /api/pages/{pageId})"""
+        """A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts, and your own quick-search history; not for API tokens). (GET /api/pages/{pageId})"""
         return self._json("GET", "/api/pages/" + _p(page_id), headers=headers)
 
     def block_preview(self, page_id: str, block_id: str, query: Optional["BlockPreviewQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
@@ -2533,7 +2548,7 @@ class FlowplanClient:
         return self._json("POST", "/api/pages/" + _p(page_id) + "/import-markdown", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def get_row(self, page_id: str, row_id: str, headers: Optional[dict[str, str]] = None) -> "RowDocument":
-        """A record with its document (GET /api/pages/{pageId}/rows/{rowId})"""
+        """A record with its document — The header `X-Flowplan-Visit: 1` records the opening in your own quick-search history (not for API tokens). (GET /api/pages/{pageId}/rows/{rowId})"""
         return self._json("GET", "/api/pages/" + _p(page_id) + "/rows/" + _p(row_id), headers=headers)
 
     def row_backlinks(self, page_id: str, row_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
