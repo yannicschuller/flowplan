@@ -116,11 +116,11 @@ export function errorDetail(status: Record<string, unknown> | null): string {
   const value = status?.errorDetail ?? status?.error_detail;
   return typeof value === "string" ? value.trim() : "";
 }
-// Whether "Transcribe again" is offered: the kept audio, and a server that
-// says it can (a status field `canRetranscribe` or `retranscribe`).
+// Whether "Transcribe again" is offered: while the audio is kept
+// (POST /api/meetings/{id}/retranscribe), not while it is processed.
 export function canRetranscribe(status: Record<string, unknown> | null): boolean {
   if (!status || !Array.isArray(status.audio) || !status.audio.length) return false;
-  return status.canRetranscribe === true || status.retranscribe === true;
+  return !["recording", "transcribing", "summarizing"].includes(String(status.status));
 }
 // The workspace's glossary (names and terms for the speech recognition),
 // when the server has one: a list, or text with one entry per line or comma.

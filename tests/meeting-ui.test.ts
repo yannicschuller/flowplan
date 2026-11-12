@@ -19,7 +19,7 @@ function meetingState(segments: { sid: string; text: string; hallucination?: boo
     `<div data-meeting-part="transcript">${segments
       .map(
         (s, i) =>
-          `<p data-segment="${s.sid}" data-start="${i * 5}" data-end="${i * 5 + 4}" data-speaker="Ada" data-track="me" data-session="1"${s.hallucination ? ' data-hallucination="true"' : ""}${s.edited ? ' data-edited="true"' : ""}>${s.text}</p>`,
+          `<p data-segment="${s.sid}" data-start="${i * 5}" data-end="${i * 5 + 4}" data-speaker="Ada" data-track="me" data-session="1"${s.hallucination ? ' data-hallucination="1"' : ""}${s.edited ? ' data-edited="1"' : ""}>${s.text}</p>`,
       )
       .join("")}</div>`,
   );
@@ -109,9 +109,10 @@ test("adapters: error detail, re-transcription, glossary, levels and the silent 
   assert.equal(ui.errorDetail({ errorDetail: " RangeError: x " }), "RangeError: x");
   assert.equal(ui.errorDetail({ error_detail: "ECONNREFUSED" }), "ECONNREFUSED");
   assert.equal(ui.errorDetail({}), "");
-  assert.equal(ui.canRetranscribe({ audio: [{}] }), false);
-  assert.equal(ui.canRetranscribe({ audio: [{}], canRetranscribe: true }), true);
-  assert.equal(ui.canRetranscribe({ audio: [], canRetranscribe: true }), false);
+  assert.equal(ui.canRetranscribe({ status: "done", audio: [{}] }), true);
+  assert.equal(ui.canRetranscribe({ status: "transcribing", audio: [{}] }), false);
+  assert.equal(ui.canRetranscribe({ status: "done", audio: [] }), false);
+  assert.equal(ui.errorDetail({ errorDetail: null }), "");
   assert.equal(ui.glossaryOf({}), null);
   assert.deepEqual(ui.glossaryOf({ glossary: "BANF, Ariba\nVIM" }), ["BANF", "Ariba", "VIM"]);
   assert.deepEqual(ui.withGlossaryEntry({ glossary: ["Maier"] }, "maier"), ["Maier"]);

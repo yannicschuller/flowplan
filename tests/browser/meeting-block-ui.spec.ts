@@ -62,7 +62,7 @@ async function openMeeting(page: Page, options: Options = {}) {
     `<div data-meeting-part="summary"><h3>Aufgaben</h3><ul><li><p>Budget umsetzen <sup data-meeting-cite="s2" data-n="1">①</sup></p></li></ul></div>` +
     `<div data-meeting-part="agenda"><p>Budget</p></div><div data-meeting-part="transcript">` +
     segments
-      .map(([sid, start, text, hidden]) => `<p data-segment="${sid}" data-start="${start}" data-end="${start + 8}" data-speaker="Ada" data-track="me" data-session="1"${hidden ? ' data-hallucination="true"' : ""}>${text}</p>`)
+      .map(([sid, start, text, hidden]) => `<p data-segment="${sid}" data-start="${start}" data-end="${start + 8}" data-speaker="Ada" data-track="me" data-session="1"${hidden ? ' data-hallucination="1"' : ""}>${text}</p>`)
       .join("") +
     `</div></div></div><p></p>`;
   await page.evaluate((content) => {
@@ -230,8 +230,8 @@ test("the transcript is locked until switched on; edited passages are marked; hi
   await page.keyboard.press("End");
   await page.keyboard.type(" Ende");
   await expect(first).toHaveText("Willkommen, heute geht es um das Budget mit Herrn Mayr. Ende");
-  await expect(first).toHaveAttribute("data-edited", "true");
-  await expect(transcript.locator('[data-segment="s2"]')).not.toHaveAttribute("data-edited", "true");
+  await expect(first).toHaveAttribute("data-edited", "1");
+  await expect(transcript.locator('[data-segment="s2"]')).not.toHaveAttribute("data-edited", "1");
   // Find and replace.
   await block.getByRole("button", { name: "Suchen und ersetzen" }).click();
   await block.getByLabel("Suchen", { exact: true }).fill("mayr");
@@ -255,6 +255,27 @@ test("notes keep their place as a tab and stay editable after the recording", as
   await page.keyboard.press("End");
   await page.keyboard.type(", Roadmap");
   await expect(notes).toHaveText("Budget, Roadmap");
+});
+
+test("transcribe again asks first whether corrected passages stay", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers it.");
+  const bodies: Record<string, unknown>[] = [];
+  const { block } = await openMeeting(page, { status: { audio: [{ session: 1, track: "me", url: "/api/files/x" }] } });
+  await page.route("**/api/meetings/*/retranscribe", async (r) => {
+    const body = r.request().postDataJSON();
+    bodies.push(body);
+    await r.fulfill({ json: { status: body.dryRun ? "done" : "transcribing", edited: 2, started: !body.dryRun } });
+  });
+  await block.getByRole("button", { name: "Einstellungen der Besprechung" }).click();
+  await page.getByRole("menuitem", { name: "Erneut transkribieren" }).click();
+  const dialog = page.getByRole("dialog", { name: "Erneut transkribieren" });
+  await expect(dialog).toContainText("2 Stellen im Transkript wurden von Hand korrigiert.");
+  await dialog.getByRole("button", { name: "2 korrigierte Stellen behalten" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(bodies[0].dryRun).toBe(true);
+  expect(bodies[1].dryRun).toBeUndefined();
+  expect(bodies[1].force).toBeUndefined();
 });
 
 test("phones: the settings menu is a bottom sheet", async ({ page }, testInfo) => {

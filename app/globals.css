@@ -35546,10 +35546,10 @@ html.native-app body {
   margin: 0;
   color: var(--secondary);
 }
-.meeting-block:not(.meeting-show-hidden) p[data-segment][data-hallucination="true"] {
+.meeting-block:not(.meeting-show-hidden) p[data-segment][data-hallucination] {
   display: none;
 }
-.meeting-block p[data-segment][data-hallucination="true"] {
+.meeting-block p[data-segment][data-hallucination] {
   color: var(--muted);
   font-style: italic;
 }
@@ -35557,7 +35557,7 @@ html.native-app body {
   border-radius: 8px;
   box-shadow: 0 0 0 1px var(--border);
 }
-p[data-segment][data-edited="true"]::before {
+p[data-segment][data-edited]::before {
   content: attr(data-label) " · ✎";
 }
 /* The anchored menus and pickers (#229): rows of one height, left-aligned. */
@@ -35568,6 +35568,14 @@ p[data-segment][data-edited="true"]::before {
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Icons of the rows (not labels: .block-menu-item > span stretches). */
+.meeting-menu .block-menu-item > .meeting-menu-dot,
+.meeting-menu .block-menu-item > .meeting-menu-code {
+  flex: none;
+}
+.meeting-menu .block-menu-back {
+  justify-content: flex-start;
 }
 .meeting-menu-dot {
   flex: none;
@@ -35639,6 +35647,7 @@ p[data-segment][data-edited="true"]::before {
 .meeting-option {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 9px;
   box-sizing: border-box;
   width: 100%;
@@ -35710,6 +35719,7 @@ p[data-segment][data-edited="true"]::before {
 .meeting-more {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   width: 100%;
   min-height: 30px;

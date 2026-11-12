@@ -44,14 +44,16 @@ import {
   Trash,
   UploadSimple,
   UserPlus,
+  UsersThree,
   Warning,
+  Waveform,
   X,
 } from "@phosphor-icons/react";
 import { useLocale, useT } from "./i18n";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useEditorEditable } from "./editor-editable";
 import { Meeting, MeetingTranscript } from "@/lib/meeting-schema";
-import { MEETING_LANGUAGES, MEETING_PRESETS, MEETING_PRESET_LABELS, circled, type MeetingLanguage, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";
+import { BROWSER_CAPTURE_HINT, MEETING_LANGUAGES, MEETING_PRESETS, MEETING_PRESET_LABELS, circled, type MeetingLanguage, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";
 import { MeetingRecorder, activeRecorder, getJson, postJson, systemAudioSupport, uploadMeetingFiles, type RecorderState } from "@/lib/meeting-recorder";
 import {
   calmState,
@@ -150,11 +152,24 @@ const tidy = (items: (BlockMenuItem | false | null | undefined)[]): BlockMenuIte
   return out;
 };
 
-// Levels per source while recording, from the recorder (lib/meeting-
-// recorder.ts) to whichever view of the block shows it now.
-const levelListeners = new Map<string, Set<(levels: Levels, silent: MeetingTrack | null) => void>>();
-const emitLevels = (meetingId: string, levels: Levels, silent: MeetingTrack | null) => {
-  for (const listener of levelListeners.get(meetingId) || []) listener(levels, silent);
+// A level above this counts as sound again (RMS, 0–1).
+const SOUND = 0.02;
+// Per person and device: record everyone through the browser (Chrome/Edge),
+// and microphone and call as one track.
+const PREF_BROWSER = "flowplan-meeting-capture-all";
+const PREF_MIX = "flowplan-meeting-mix";
+const readPref = (key: string) => {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+};
+const writePref = (key: string, on: boolean) => {
+  try {
+    if (on) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  } catch {}
 };
 const useTranscriptUnlocked = (meetingId: string) =>
   useSyncExternalStore(
@@ -254,26 +269,19 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     if (!recorder) setRecorder(running);
     return running.subscribe(setRecording);
   }, [recorder, meetingId]);
-  // Its levels (when the recorder reports them).
+  // Its levels per source, and a source that stays silent (the warning
+  // goes once that source has sound again).
   useEffect(() => {
-    const listener = (next: Levels, quiet: MeetingTrack | null) => {
-      setLevels((current) => ({ ...current, ...next }));
-      setSilent(quiet);
-    };
-    const set = levelListeners.get(meetingId) || new Set();
-    set.add(listener);
-    levelListeners.set(meetingId, set);
-    // A recorder that offers to be listened to (rather than the option).
-    const running = recorder as unknown as { onLevel?: unknown } | null;
-    const off =
-      running && typeof running.onLevel === "function" && running.onLevel.length === 1
-        ? (running.onLevel as (cb: (...args: unknown[]) => void) => (() => void) | void)((...args) => listener(normalizeLevels(...args), silentSourceOf(args[0])))
-        : undefined;
-    return () => {
-      set.delete(listener);
-      if (typeof off === "function") off();
-    };
-  }, [meetingId, recorder]);
+    if (!recorder) return;
+    return recorder.subscribeLevels(
+      (next) => {
+        const read = normalizeLevels(next);
+        setLevels((current) => ({ ...current, ...read }));
+        setSilent((quiet) => (quiet && (read[quiet] || 0) > SOUND ? null : quiet));
+      },
+      (source) => setSilent(source),
+    );
+  }, [recorder]);
 
   // ---- Citation chips: hover and click (they are document content) ----
   const segmentElement = useCallback((sid: string) => root.current?.querySelector<HTMLElement>(`[data-meeting-part="transcript"] [data-segment="${CSS.escape(sid)}"]`) || null, []);
@@ -284,7 +292,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
         const el = segmentElement(sid);
         if (!el) return;
         // A hidden line (invented in silence) is shown when it is cited.
-        if (el.getAttribute("data-hallucination") === "true") setShowHidden(true);
+        if (el.hasAttribute("data-hallucination")) setShowHidden(true);
         el.scrollIntoView({ block: "center", behavior: "smooth" });
         // Highlighted by a rule, not a class: the editor owns the passage's DOM.
         setFocus(sid);
@@ -356,27 +364,40 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     }
     context.onError(e.message);
   };
-  const begin = async () => {
+  // In Chrome/Edge everyone can be recorded through the screen sharing's
+  // sound; elsewhere in a browser only the microphone.
+  const browserAll = !system.supported && !!system.browser?.supported;
+  const [captureAll, setCaptureAll] = useState(false);
+  const [mix, setMix] = useState(false);
+  useEffect(() => {
+    setCaptureAll(readPref(PREF_BROWSER));
+    setMix(readPref(PREF_MIX));
+  }, []);
+  const begin = async (everyone = browserAll && captureAll) => {
     if (settings?.consentRequired && !consent) return setConsentOpen(true);
     setConsentOpen(false);
     setNotice("");
-    // The recorder reports levels per source when it can (onLevel).
-    const options = {
+    if (browserAll) {
+      setCaptureAll(everyone);
+      writePref(PREF_BROWSER, everyone);
+    }
+    const next = new MeetingRecorder({
       meetingId,
       pageId: context.pageId,
       rowId: context.rowId,
       consent,
       system: system.supported,
+      capture: browserAll && everyone ? "browser" : "desktop",
+      mix,
       onError: context.onError,
-      onLevel: (...args: unknown[]) => emitLevels(meetingId, normalizeLevels(...args), silentSourceOf(args[0], args[1])),
-    };
-    const next = new MeetingRecorder(options);
+    });
     try {
       setLevels({});
       setSilent(null);
       await next.start();
       setRecorder(next);
-      if (system.supported && next.tracks.length === 1) setNotice(systemNotice(next.systemReason));
+      // The call's sound was wanted but is not there: why.
+      if ((system.supported || (browserAll && everyone)) && next.systemReason) setNotice(systemNotice(next.systemReason));
       else if (!system.supported && system.reason !== "browser") setNotice(systemNotice(system.reason));
       await load();
     } catch (error) {
@@ -392,7 +413,14 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
         )
       : reason === "update"
         ? t("Desktop-App aktualisieren, um Systemton aufzunehmen.", "Update the desktop app to record the system sound.")
-        : t("Systemton ist auf diesem System nicht verfügbar – es wird nur das Mikrofon aufgenommen.", "System sound is not available on this system – only the microphone is recorded.");
+        : reason === "cancelled"
+          ? t("Keine Freigabe gewählt – es wird nur das Mikrofon aufgenommen.", "No sharing chosen – only the microphone is recorded.")
+          : reason === "no-audio"
+            ? t(
+                "Die Freigabe hat keinen Ton – beim nächsten Mal „Tab-Audio teilen“ bzw. „Systemaudio teilen“ ankreuzen. Es wird nur das Mikrofon aufgenommen.",
+                "The sharing has no sound – next time tick “Share tab audio” or “Share system audio”. Only the microphone is recorded.",
+              )
+            : t("Systemton ist auf diesem System nicht verfügbar – es wird nur das Mikrofon aufgenommen.", "System sound is not available on this system – only the microphone is recorded.");
   const stop = async () => {
     if (!recorder) return;
     // Ending means: transcribe, summarise, done – asked once.
@@ -462,19 +490,23 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     }
     await load();
   };
-  // Transcribing the kept audio again replaces the transcript – corrected
-  // passages included, so it says how many first.
-  const retranscribe = async () => {
-    const { edited } = segmentCounts(node);
-    const question = edited
-      ? edited === 1
-        ? t("1 korrigierte Stelle wird ersetzt. Trotzdem erneut transkribieren?", "1 corrected passage will be replaced. Transcribe again anyway?")
-        : t(`${edited} korrigierte Stellen werden ersetzt. Trotzdem erneut transkribieren?`, `${edited} corrected passages will be replaced. Transcribe again anyway?`)
-      : t("Erneut transkribieren? Transkript und Zusammenfassung werden neu erstellt.", "Transcribe again? The transcript and the summary are created anew.");
-    if (!window.confirm(question)) return;
+  // Transcribing the kept audio again: the server first says how many
+  // passages people corrected; those stay unless they are to be replaced.
+  const [corrected, setCorrected] = useState(0);
+  const retranscribe = async (force?: boolean) => {
+    if (force === undefined) {
+      try {
+        const { edited } = await postJson<{ edited?: number }>(`/api/meetings/${meetingId}/retranscribe`, { language: spoken, dryRun: true });
+        if (edited) return setCorrected(edited);
+      } catch (error) {
+        return handle(error);
+      }
+      if (!window.confirm(t("Erneut transkribieren? Transkript und Zusammenfassung werden neu erstellt.", "Transcribe again? The transcript and the summary are created anew."))) return;
+    }
+    setCorrected(0);
     try {
       setStatus((s) => (s ? { ...s, status: "transcribing" } : s));
-      await postJson(`/api/meetings/${meetingId}/retranscribe`, { language: spoken, force: edited > 0 });
+      await postJson(`/api/meetings/${meetingId}/retranscribe`, { language: spoken, ...(force ? { force: true } : {}) });
     } catch (error) {
       handle(error);
     }
@@ -611,12 +643,26 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       items: tidy([
         canEdit && transcription && recorded && !live && !busy && { icon: <span className="meeting-menu-dot" aria-hidden />, label: t("Weiter aufnehmen", "Continue recording"), run: () => void begin() },
         canEdit && recorded && !transcriptEmpty && { icon: <ArrowClockwise />, label: t("Zusammenfassung neu erstellen", "Re-generate summary"), run: () => void regenerate(), disabled: busy || live },
-        canEdit && canRetranscribe(status) && { icon: <ArrowsClockwise />, label: t("Erneut transkribieren", "Transcribe again"), run: () => void retranscribe(), disabled: busy || live },
+        canEdit && transcription && canRetranscribe(status) && { icon: <ArrowsClockwise />, label: t("Erneut transkribieren", "Transcribe again"), run: () => void retranscribe(), disabled: busy || live },
         "separator",
         canEdit && { icon: <Globe />, label: t("Sprache", "Language"), value: language ? LANGUAGE_NAMES[language] : t("Automatisch", "Automatic"), view: "language" },
         canEdit && { icon: <NotePencil />, label: t("Anweisungen", "Instructions"), value: presetLabel(instructions), view: "instructions" },
         canEdit && { icon: <ShieldCheck />, label: t("Einwilligung", "Consent"), value: settings?.consentRequired ? t("Erforderlich", "Required||consent") : t("Optional", "Optional||consent"), view: "consent" },
         canEdit && transcription && { icon: <UploadSimple />, label: t("Aufnahme hochladen …", "Upload recording …"), view: "upload", disabled: busy || live || upload !== null },
+        // Microphone and call as one track (per person and device).
+        canEdit &&
+          transcription &&
+          (system.supported || browserAll) && {
+            icon: <Waveform />,
+            label: t("Eine gemeinsame Tonspur", "One combined track"),
+            checked: mix,
+            stay: true,
+            disabled: live,
+            run: () => {
+              writePref(PREF_MIX, !mix);
+              setMix(!mix);
+            },
+          },
         "separator",
         !!context.copyLink && {
           icon: <LinkIcon />,
@@ -889,9 +935,18 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
                 .join(" · ")}
             </span>
           ) : canEdit && transcription ? (
-            <button type="button" className="button primary meeting-start" onClick={() => void begin()}>
-              <Microphone size={14} /> {t("Aufnahme starten", "Start recording")}
-            </button>
+            <>
+              <button type="button" className="button primary meeting-start" onClick={() => void begin(false)}>
+                <Microphone size={14} /> {t("Aufnahme starten", "Start recording")}
+              </button>
+              {browserAll ? (
+                <button type="button" className="button meeting-start-all" onClick={() => void begin(true)} title={t("Chrome oder Edge fragen nach einem Tab oder dem Bildschirm – dort „Tab-Audio teilen“ ankreuzen.", "Chrome or Edge ask for a tab or the screen – tick “Share tab audio” there.")}>
+                  <UsersThree size={14} /> {t("Alle Teilnehmenden aufnehmen", "Record all participants")}
+                </button>
+              ) : system.reason === "browser" ? (
+                <span className="muted meeting-capture-hint">{t(BROWSER_CAPTURE_HINT[0], BROWSER_CAPTURE_HINT[1])}</span>
+              ) : null}
+            </>
           ) : canEdit ? (
             <span className="muted">{t("Transkription ist auf diesem Server nicht eingerichtet.", "Transcription is not set up on this server.")}</span>
           ) : null}
@@ -1030,6 +1085,34 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
           <EventPicker events={events} dateLabel={dateLabel} onPick={chooseEvent} />
         </AnchoredPopover>
       )}
+      <Modal
+        open={corrected > 0}
+        onClose={() => setCorrected(0)}
+        title={t("Erneut transkribieren", "Transcribe again")}
+        className="meeting-retranscribe"
+        actions={
+          <>
+            <button type="button" className="button danger" onClick={() => void retranscribe(true)}>
+              {t("Ersetzen", "Replace")}
+            </button>
+            <button type="button" className="button primary" onClick={() => void retranscribe(false)} autoFocus>
+              {corrected === 1 ? t("Korrigierte Stelle behalten", "Keep the corrected passage") : t(`${corrected} korrigierte Stellen behalten`, `Keep ${corrected} corrected passages`)}
+            </button>
+          </>
+        }
+      >
+        <p>
+          {corrected === 1
+            ? t(
+                "1 Stelle im Transkript wurde von Hand korrigiert. Sie bleibt beim neuen Transkribieren erhalten – oder wird durch die neue Erkennung ersetzt.",
+                "1 passage of the transcript was corrected by hand. It is kept when transcribing again – or replaced by the new recognition.",
+              )
+            : t(
+                `${corrected} Stellen im Transkript wurden von Hand korrigiert. Sie bleiben beim neuen Transkribieren erhalten – oder werden durch die neue Erkennung ersetzt.`,
+                `${corrected} passages of the transcript were corrected by hand. They are kept when transcribing again – or replaced by the new recognition.`,
+              )}
+        </p>
+      </Modal>
       <Modal
         open={consentOpen}
         onClose={() => setConsentOpen(false)}
