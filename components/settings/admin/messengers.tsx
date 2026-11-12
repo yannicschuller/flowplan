@@ -58,7 +58,7 @@ export default function MessengersSection() {
     );
   if (d.failed) items.push({ tone: "error", label: t(`${d.failed} aufgegeben (24 h)`, `${d.failed} given up (24 h)`) });
   if (d.pending) items.push({ tone: "info", label: t(`${d.pending} in der Warteschlange`, `${d.pending} queued`) });
-  const guide = docs("search-and-notifications", "chat-apps", "chat-apps");
+  const guide = docs("notifications", "chat-apps", "chat-apps");
 
   const saveBot = (e: FormEvent) => {
     e.preventDefault();

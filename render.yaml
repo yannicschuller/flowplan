@@ -18,7 +18,7 @@
 #
 # Updates: Render pulls the image when the service deploys. Manual Deploy →
 # "Deploy latest reference" fetches the newest :latest release.
-# Docs: https://docs.flowplan.org/en/installation#render
+# Docs: https://docs.flowplan.org/en/one-click-deploy#render
 services:
   - type: web
     name: flowplan

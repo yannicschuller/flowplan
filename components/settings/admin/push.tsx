@@ -59,8 +59,8 @@ export default function PushSection() {
   if (!status) return <AdminLoading />;
 
   const r = status.relay;
-  const guide = docs("configuration", "push-relay-und-ende-zu-ende-verschluesselung", "push-relay-and-end-to-end-encryption");
-  const ownRelay = docs("configuration", "eigenes-push-relay-betreiben", "running-your-own-push-relay");
+  const guide = docs("configuration-ai-push", "push-relay-und-ende-zu-ende-verschluesselung", "push-relay-and-end-to-end-encryption");
+  const ownRelay = docs("configuration-ai-push", "eigenes-push-relay-betreiben", "running-your-own-push-relay");
   const testLink = "#settings/notifications/push-test";
   const items: StatusItem[] = [];
   if (!r.enabled) items.push({ tone: r.reason === "off" ? "off" : r.reason === "relay-url" ? "error" : "warn", label: r.reason === "off" ? t("Relay aus", "Relay off") : t("Relay nicht eingerichtet", "Relay not set up") });

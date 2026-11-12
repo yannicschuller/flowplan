@@ -16,7 +16,7 @@
 # the server, firewall (SSH, 80, 443), automatic security updates. After a few
 # minutes, sign in to the server and read /root/flowplan-README.txt – it holds
 # the link for the first account. Progress: /var/log/flowplan-install.log
-# Docs: https://docs.flowplan.org/en/installation#any-server-cloud-init-or-install-script
+# Docs: https://docs.flowplan.org/en/one-click-deploy#any-server-cloud-init-or-install-script
 write_files:
   - path: /root/flowplan.conf
     permissions: "0600"

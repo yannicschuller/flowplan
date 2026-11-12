@@ -47,7 +47,11 @@ const inline = (text) =>
     .trim();
 
 function sections(slug, markdown) {
-  const lines = markdown.replace(/\r/g, "").split("\n");
+  // Front matter (`---` … `---`, e.g. keywords) is page metadata, not help text.
+  const lines = markdown
+    .replace(/\r/g, "")
+    .replace(/^---\n[\s\S]*?\n---\n/, "")
+    .split("\n");
   const title = inline(
     (lines.find((l) => l.startsWith("# ")) || `# ${slug}`).slice(2),
   );

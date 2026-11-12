@@ -80,7 +80,7 @@ export default function StorageSection() {
             <FixLink href="#admin/storage/backup">{t("Zur Sicherung", "To the backup")}</FixLink>
           ) : s3 && !s3.enabled ? (
             <FixLink
-              href={docs("configuration", "s3-und-datenbanksicherung", "s3-and-database-backup")}
+              href={docs("configuration-storage", "s3-und-datenbanksicherung", "s3-and-database-backup")}
             >
               {t("S3 einrichten", "Set up S3")}
             </FixLink>

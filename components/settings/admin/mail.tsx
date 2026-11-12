@@ -18,7 +18,7 @@ export default function MailSection() {
   const [note, setNote] = useState("");
   if (!data) return <AdminLoading />;
   const mail = data.mail;
-  const guide = docs("configuration", "e-mail-smtp");
+  const guide = docs("configuration-integrations", "e-mail-smtp");
   const items: StatusItem[] = [
     mail.configured
       ? { tone: "ok", label: t("SMTP eingerichtet", "SMTP set up") }

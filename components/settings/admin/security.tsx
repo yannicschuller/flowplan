@@ -39,7 +39,7 @@ export default function SecuritySection() {
         action={
           !e.enabled ? (
             <FixLink
-              href={docs("configuration", "verschluesselung", "encryption")}
+              href={docs("configuration-storage", "verschluesselung", "encryption")}
             >
               {t("So schaltest du sie ein", "How to turn it on")}
             </FixLink>

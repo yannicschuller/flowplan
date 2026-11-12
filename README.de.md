@@ -152,7 +152,7 @@ curl -fsSL https://raw.githubusercontent.com/yannicschuller/flowplan/main/deploy
 - **DigitalOcean App Platform** ([`.do/deploy.template.yaml`](.do/deploy.template.yaml)): dort gibt es keine Volumes, deshalb liegen die Daten in einer PostgreSQL-Datenbank, und Uploads brauchen einen Spaces-Bucket (`S3_*`) – ohne ihn gehen Dateien bei jedem Deploy verloren; die Dev-Datenbank hat keine Sicherungen.
 - **Jeder Server** mit Ubuntu 24.04 oder Debian 12 (Hetzner, Netcup, IONOS …): [`deploy/cloud-init.yaml`](deploy/cloud-init.yaml) beim Anlegen des Servers als „User Data“ einfügen (darin `FLOWPLAN_DOMAIN=` setzen) oder den Befehl oben auf einem bestehenden Server ausführen – Docker, Caddy mit HTTPS, erzeugte Secrets, Firewall; die Daten bleiben in einem Docker-Volume auf dem Server.
 
-Schritt für Schritt: [Mit einem Klick bereitstellen](https://docs.flowplan.org/de/installation#mit-einem-klick-bereitstellen).
+Schritt für Schritt: [Mit einem Klick bereitstellen](https://docs.flowplan.org/de/one-click-deploy).
 
 ## Funktionen
 
@@ -160,7 +160,7 @@ Schritt für Schritt: [Mit einem Klick bereitstellen](https://docs.flowplan.org/
   <tr>
     <td width="33%" valign="top">📝 <b><a href="https://docs.flowplan.org/de/documents">Dokumente</a></b><br>Ein Block-Editor mit <code>/</code>-Menü, Markdown-Kürzeln, Formeln, Mermaid, Fußnoten und Versionsverlauf.</td>
     <td width="33%" valign="top">🗂️ <b><a href="https://docs.flowplan.org/de/databases">Datenbanken und Ansichten</a></b><br>23 Eigenschaftstypen mit Relationen und Formeln – als Tabelle, Board, Kalender, Zeitleiste, Galerie, Diagramm und mehr.</td>
-    <td width="33%" valign="top">🧩 <b><a href="https://docs.flowplan.org/de/whiteboards">Whiteboards</a></b><br>Haftnotizen, Verbinder, Mindmaps und Formenbibliotheken – und Server-<a href="https://docs.flowplan.org/de/whiteboards#racks-und-verkabelung">Racks mit Verkabelung</a>.</td>
+    <td width="33%" valign="top">🧩 <b><a href="https://docs.flowplan.org/de/whiteboards">Whiteboards</a></b><br>Haftnotizen, Verbinder, Mindmaps und Formenbibliotheken – und Server-<a href="https://docs.flowplan.org/de/whiteboard-racks">Racks mit Verkabelung</a>.</td>
   </tr>
   <tr>
     <td valign="top">📔 <b><a href="https://docs.flowplan.org/de/journal">Journal</a></b><br>Eine Seite pro Tag mit Vorlagen, Trackern, Monatsrückblick und optionaler PIN-Sperre.</td>
@@ -248,7 +248,7 @@ Ein fairer Vergleich ist schwer – jedes dieser Werkzeuge kann etwas gut. Das h
 
 ## Datenschutz von Grund auf
 
-- **Kein Tracking** – keine Analyse- oder Werbe-Cookies, keine Profile. Die Statistiken in der Administration sind reine Zahlen (ohne IP-Adressen, Pfade oder Namen) und bleiben auf deiner Instanz ([Betrieb](https://docs.flowplan.org/de/operations#statistik)).
+- **Kein Tracking** – keine Analyse- oder Werbe-Cookies, keine Profile. Die Statistiken in der Administration sind reine Zahlen (ohne IP-Adressen, Pfade oder Namen) und bleiben auf deiner Instanz ([Betrieb](https://docs.flowplan.org/de/monitoring#statistik)).
 - **Gehostet in Deutschland** – die gehostete Version auf [app.flowplan.org](https://app.flowplan.org) läuft auf Servern in Deutschland. Oder du betreibst Flowplan auf deinem eigenen Server: Es schickt keine Nutzungsdaten irgendwohin, und die Prüfung auf neue Versionen bei GitHub schaltet `FLOWPLAN_UPDATE_CHECK=false` ab.
 - **Alles exportierbar** – Markdown mit YAML-Frontmatter, ZIP mit allen Dateien, CSV, HTML/JSON, Word, PDF und EPUB; geplante Exporte nach S3 oder Git ([Import, Export und Versionen](https://docs.flowplan.org/de/import-export-versions)).
 - **Open Source unter der AGPL-3.0** – vollständig: keine geschlossene Enterprise-Version, keine Funktionen hinter einem Lizenzschlüssel.
@@ -383,7 +383,7 @@ Stell die Startseite aus 20 Widgets zusammen – Aufgaben zum Abhaken, Termine, 
 
 ## Gemeinsam, überall
 
-Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, ein Posteingang, E-Mail-Zusammenfassungen und Web-Push. Teile eine Seite mit einer einzelnen Person, mit Gästen über Links (auf Wunsch mit **Passwort und Ablaufdatum**), veröffentliche sie im Web oder mach ein Formular daraus. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download) – mit Schnell erfassen aus jeder App (Kürzel wie `morgen 15 Uhr #kunde @anna !hoch`, Links, Dateien, Bildschirmausschnitte und Sprachnotizen, Warteschlange ohne Verbindung; [Doku](https://docs.flowplan.org/de/desktop-capture)). Für **iPhone und iPad gibt es die App im [App Store](https://apps.apple.com/app/id6825801344)**, für **Android eine App zum [Herunterladen](https://flowplan.org/download/android.apk)** ohne Play Store (sie aktualisiert sich selbst) – mit Widgets, Knöpfen an Benachrichtigungen, Siri und Kurzbefehlen, Teilen aus anderen Apps, dem Apple Pencil und Fenstern auf dem iPad ([Apps](https://docs.flowplan.org/de/offline-and-apps#apps-fuer-iphone-ipad-und-android)). Ihre Benachrichtigungen laufen über das quelloffene [Flowplan-Push-Relay](https://github.com/yannicschuller/flowplan-push), Ende-zu-Ende-verschlüsselt: Sie zeigen ihren Text, während Relay, Apple und Google nur Chiffretext sehen.
+Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, ein Posteingang, E-Mail-Zusammenfassungen und Web-Push. Teile eine Seite mit einer einzelnen Person, mit Gästen über Links (auf Wunsch mit **Passwort und Ablaufdatum**), veröffentliche sie im Web oder mach ein Formular daraus. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download) – mit Schnell erfassen aus jeder App (Kürzel wie `morgen 15 Uhr #kunde @anna !hoch`, Links, Dateien, Bildschirmausschnitte und Sprachnotizen, Warteschlange ohne Verbindung; [Doku](https://docs.flowplan.org/de/desktop-capture)). Für **iPhone und iPad gibt es die App im [App Store](https://apps.apple.com/app/id6825801344)**, für **Android eine App zum [Herunterladen](https://flowplan.org/download/android.apk)** ohne Play Store (sie aktualisiert sich selbst) – mit Widgets, Knöpfen an Benachrichtigungen, Siri und Kurzbefehlen, Teilen aus anderen Apps, dem Apple Pencil und Fenstern auf dem iPad ([Apps](https://docs.flowplan.org/de/mobile-apps)). Ihre Benachrichtigungen laufen über das quelloffene [Flowplan-Push-Relay](https://github.com/yannicschuller/flowplan-push), Ende-zu-Ende-verschlüsselt: Sie zeigen ihren Text, während Relay, Apple und Google nur Chiffretext sehen.
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="Das Board auf dem Handy" width="32%">
@@ -478,7 +478,7 @@ Unter **Einstellungen → Import & Export → Import**: Exporte aus Notion und C
 <details>
 <summary><b>Gibt es Apps?</b></summary>
 
-Flowplan lässt sich auf jedem Gerät aus dem Browser als App installieren. Desktop-Apps für macOS, Windows und Linux sowie die Android-App gibt es auf [flowplan.org/download](https://flowplan.org/download); die App für iPhone und iPad gibt es im [App Store](https://apps.apple.com/app/id6825801344). Sie verbinden sich mit jeder Instanz, auch mit selbst gehosteten. Siehe [Apps](https://docs.flowplan.org/de/offline-and-apps#apps-fuer-iphone-ipad-und-android).
+Flowplan lässt sich auf jedem Gerät aus dem Browser als App installieren. Desktop-Apps für macOS, Windows und Linux sowie die Android-App gibt es auf [flowplan.org/download](https://flowplan.org/download); die App für iPhone und iPad gibt es im [App Store](https://apps.apple.com/app/id6825801344). Sie verbinden sich mit jeder Instanz, auch mit selbst gehosteten. Siehe [Apps](https://docs.flowplan.org/de/mobile-apps).
 
 </details>
 
@@ -499,7 +499,7 @@ Starte auf dem neuen Server eine frische Installation und nutze **Administration
 <details>
 <summary><b>Gibt es KI, und wohin gehen meine Daten?</b></summary>
 
-Nur, wenn ein Admin sie einschaltet – und dann pro Funktion und Person. Mit [Ollama](https://ollama.com) auf deinem eigenen Server verlässt nichts den Server; mit OpenAI, Anthropic, Gemini oder einem anderen OpenAI-kompatiblen Dienst gehen der markierte Text und – wo du es willst – die Seite an diesen Anbieter. Jedes KI-Fenster nennt den Anbieter, und die KI liest nie mehr, als du sehen darfst. Siehe [KI](https://docs.flowplan.org/de/ai#wohin-die-daten-gehen).
+Nur, wenn ein Admin sie einschaltet – und dann pro Funktion und Person. Mit [Ollama](https://ollama.com) auf deinem eigenen Server verlässt nichts den Server; mit OpenAI, Anthropic, Gemini oder einem anderen OpenAI-kompatiblen Dienst gehen der markierte Text und – wo du es willst – die Seite an diesen Anbieter. Jedes KI-Fenster nennt den Anbieter, und die KI liest nie mehr, als du sehen darfst. Siehe [KI](https://docs.flowplan.org/de/ai-writing#wohin-die-daten-gehen).
 
 </details>
 

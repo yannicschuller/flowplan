@@ -17,7 +17,7 @@
 # creating the app (marked "required" below) – e.g. with
 #   openssl rand -hex 24       (FLOWPLAN_SETUP_TOKEN)
 #   openssl rand -base64 32    (FLOWPLAN_ENCRYPTION_KEY)
-# Docs: https://docs.flowplan.org/en/installation#digitalocean-app-platform
+# Docs: https://docs.flowplan.org/en/one-click-deploy#digitalocean-app-platform
 spec:
   name: flowplan
   region: fra

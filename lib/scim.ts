@@ -620,7 +620,7 @@ function list(resources: Json[], query: URLSearchParams) {
 function serviceProviderConfig() {
   return {
     schemas: ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],
-    documentationUri: "https://docs.flowplan.org/en/sign-in#user-provisioning-scim",
+    documentationUri: "https://docs.flowplan.org/en/scim-and-ldap#user-provisioning-scim",
     patch: { supported: true },
     bulk: { supported: false, maxOperations: 0, maxPayloadSize: 0 },
     filter: { supported: true, maxResults: MAX_COUNT },

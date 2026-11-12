@@ -150,7 +150,7 @@ curl -fsSL https://raw.githubusercontent.com/yannicschuller/flowplan/main/deploy
 - **DigitalOcean App Platform** ([`.do/deploy.template.yaml`](.do/deploy.template.yaml)): no volumes there, so the data goes to a PostgreSQL database and uploads need a Spaces bucket (`S3_*`) – without it, files are lost on every deploy; the dev database has no backups.
 - **Any server** with Ubuntu 24.04 or Debian 12 (Hetzner, Netcup, IONOS …): paste [`deploy/cloud-init.yaml`](deploy/cloud-init.yaml) as "user data" when creating the server (set `FLOWPLAN_DOMAIN=` in it), or run the command above on an existing one – Docker, Caddy with HTTPS, generated secrets, firewall; the data stays in a Docker volume on the server.
 
-Step by step: [Deploy in one click](https://docs.flowplan.org/en/installation#deploy-in-one-click).
+Step by step: [Deploy in one click](https://docs.flowplan.org/en/one-click-deploy).
 
 ## Features
 
@@ -158,7 +158,7 @@ Step by step: [Deploy in one click](https://docs.flowplan.org/en/installation#de
   <tr>
     <td width="33%" valign="top">📝 <b><a href="https://docs.flowplan.org/en/documents">Documents</a></b><br>A block editor with the <code>/</code> menu, Markdown shortcuts, formulas, Mermaid, footnotes and version history.</td>
     <td width="33%" valign="top">🗂️ <b><a href="https://docs.flowplan.org/en/databases">Databases and views</a></b><br>23 property types with relations and formulas – as table, board, calendar, timeline, gallery, chart and more.</td>
-    <td width="33%" valign="top">🧩 <b><a href="https://docs.flowplan.org/en/whiteboards">Whiteboards</a></b><br>Sticky notes, connectors, mind maps and shape libraries – and server <a href="https://docs.flowplan.org/en/whiteboards#racks-and-cabling">racks with cabling</a>.</td>
+    <td width="33%" valign="top">🧩 <b><a href="https://docs.flowplan.org/en/whiteboards">Whiteboards</a></b><br>Sticky notes, connectors, mind maps and shape libraries – and server <a href="https://docs.flowplan.org/en/whiteboard-racks">racks with cabling</a>.</td>
   </tr>
   <tr>
     <td valign="top">📔 <b><a href="https://docs.flowplan.org/en/journal">Journal</a></b><br>One page per day with templates, trackers, monthly reviews and an optional PIN lock.</td>
@@ -246,7 +246,7 @@ A fair comparison is hard – every tool here is good at something. This is our 
 
 ## Private by design
 
-- **No tracking** – no analytics or advertising cookies, no profiles. The statistics in the administration are counts only (no IP addresses, paths or names) and stay on your instance ([Operations](https://docs.flowplan.org/en/operations#statistics)).
+- **No tracking** – no analytics or advertising cookies, no profiles. The statistics in the administration are counts only (no IP addresses, paths or names) and stay on your instance ([Operations](https://docs.flowplan.org/en/monitoring#statistics)).
 - **Hosted in Germany** – the hosted version at [app.flowplan.org](https://app.flowplan.org) runs on servers in Germany. Or run it on your own server: it sends no usage data anywhere, and its check for new releases on GitHub can be turned off with `FLOWPLAN_UPDATE_CHECK=false`.
 - **Everything exportable** – Markdown with YAML frontmatter, ZIP with all files, CSV, HTML/JSON, Word, PDF and EPUB; scheduled exports to S3 or Git ([Import, export and versions](https://docs.flowplan.org/en/import-export-versions)).
 - **Open source under the AGPL-3.0** – all of it: no closed enterprise edition, no features behind a licence key.
@@ -381,7 +381,7 @@ Arrange the home page from 20 widgets – tasks to tick off, agenda, journal tod
 
 ## Together, everywhere
 
-Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Share a page with one person, with guests through links (optionally with **password and expiry date**), publish it on the web, or turn it into a form. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download) – with quick capture from any app (shorthand like `morgen 15 Uhr #kunde @anna !hoch`, links, files, screen regions and voice notes, an offline queue; [docs](https://docs.flowplan.org/en/desktop-capture)). For **iPhone and iPad the app is on the [App Store](https://apps.apple.com/app/id6825801344)**, for **Android an app to [download](https://flowplan.org/download/android.apk)** without the Play Store (it updates itself) – with widgets, notification buttons, Siri and Shortcuts, sharing from other apps, the Apple Pencil and windows on the iPad ([Apps](https://docs.flowplan.org/en/offline-and-apps#apps-for-iphone-ipad-and-android)). Their notifications travel through the open-source [Flowplan push relay](https://github.com/yannicschuller/flowplan-push), end-to-end encrypted: they show their text, while the relay, Apple and Google only handle ciphertext.
+Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Share a page with one person, with guests through links (optionally with **password and expiry date**), publish it on the web, or turn it into a form. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download) – with quick capture from any app (shorthand like `morgen 15 Uhr #kunde @anna !hoch`, links, files, screen regions and voice notes, an offline queue; [docs](https://docs.flowplan.org/en/desktop-capture)). For **iPhone and iPad the app is on the [App Store](https://apps.apple.com/app/id6825801344)**, for **Android an app to [download](https://flowplan.org/download/android.apk)** without the Play Store (it updates itself) – with widgets, notification buttons, Siri and Shortcuts, sharing from other apps, the Apple Pencil and windows on the iPad ([Apps](https://docs.flowplan.org/en/mobile-apps)). Their notifications travel through the open-source [Flowplan push relay](https://github.com/yannicschuller/flowplan-push), end-to-end encrypted: they show their text, while the relay, Apple and Google only handle ciphertext.
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="The board on a phone" width="32%">
@@ -476,7 +476,7 @@ Under **Settings → Import & export → Import**: Notion and Confluence exports
 <details>
 <summary><b>Are there apps?</b></summary>
 
-Flowplan installs from the browser as an app on any device. Desktop apps for macOS, Windows and Linux and the Android app are at [flowplan.org/download](https://flowplan.org/download); the iPhone and iPad app is on the [App Store](https://apps.apple.com/app/id6825801344). They connect to any instance, self-hosted ones included. See [Apps](https://docs.flowplan.org/en/offline-and-apps#apps-for-iphone-ipad-and-android).
+Flowplan installs from the browser as an app on any device. Desktop apps for macOS, Windows and Linux and the Android app are at [flowplan.org/download](https://flowplan.org/download); the iPhone and iPad app is on the [App Store](https://apps.apple.com/app/id6825801344). They connect to any instance, self-hosted ones included. See [Apps](https://docs.flowplan.org/en/mobile-apps).
 
 </details>
 
@@ -497,7 +497,7 @@ Start a fresh installation on the new server and use **Administration → Storag
 <details>
 <summary><b>Is there AI, and where does my data go?</b></summary>
 
-Only if an admin switches it on, and then per feature and per person. With [Ollama](https://ollama.com) on your own server nothing leaves it; with OpenAI, Anthropic, Gemini or another OpenAI-compatible service, the selected text and – where you ask for it – the page go to that provider. Every AI panel names the provider, and the AI never reads more than you may see. See [AI](https://docs.flowplan.org/en/ai#where-your-data-goes).
+Only if an admin switches it on, and then per feature and per person. With [Ollama](https://ollama.com) on your own server nothing leaves it; with OpenAI, Anthropic, Gemini or another OpenAI-compatible service, the selected text and – where you ask for it – the page go to that provider. Every AI panel names the provider, and the AI never reads more than you may see. See [AI](https://docs.flowplan.org/en/ai-writing#where-your-data-goes).
 
 </details>
 

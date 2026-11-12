@@ -954,7 +954,7 @@ function Setup({ d }: { d: Overview }) {
   };
   const on = (value: boolean, label: string) => <StatusBadge tone={value ? "ok" : "off"}>{label}</StatusBadge>;
   return (
-    <SettingGroup id="setup" title={t("Erkennung & Anbindung", "Detection & connection")} description={<a href={docs("operations", "sicherheit", "security")} target="_blank" rel="noreferrer">{t("Anleitung: Logs, OpenTelemetry, Prometheus, fail2ban und CrowdSec", "Guide: logs, OpenTelemetry, Prometheus, fail2ban and CrowdSec")}</a>}>
+    <SettingGroup id="setup" title={t("Erkennung & Anbindung", "Detection & connection")} description={<a href={docs("security-monitoring", "sicherheit", "security")} target="_blank" rel="noreferrer">{t("Anleitung: Logs, OpenTelemetry, Prometheus, fail2ban und CrowdSec", "Guide: logs, OpenTelemetry, Prometheus, fail2ban and CrowdSec")}</a>}>
       <h3 className="security-sub">{t("Regeln", "Rules")}</h3>
       <ul className="security-rules">
         {d.rules.map((r) => (

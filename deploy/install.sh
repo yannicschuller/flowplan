@@ -25,7 +25,7 @@
 #   FLOWPLAN_FIREWALL=off                leave the firewall alone
 #   FLOWPLAN_DIR=/opt/flowplan           installation folder
 #
-# Docs: https://docs.flowplan.org/en/installation#any-server-cloud-init-or-install-script
+# Docs: https://docs.flowplan.org/en/one-click-deploy#any-server-cloud-init-or-install-script
 set -euo pipefail
 
 IMAGE=ghcr.io/yannicschuller/flowplan
