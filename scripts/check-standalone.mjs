@@ -120,6 +120,11 @@ try {
   );
   const manifest = await fetch(`${origin}/manifest.webmanifest`);
   check("Öffentliche Dateien", manifest.ok);
+  // "Neu in Flowplan" (#223) reads the curated notes from the build.
+  check(
+    "Versionshinweise im Build",
+    existsSync(join(app, "release-notes")) && readdirSync(join(app, "release-notes")).some((n) => n.endsWith(".json")),
+  );
   const demo = await fetch(`${origin}/api/auth/demo`, {
     method: "POST",
     headers: { origin },

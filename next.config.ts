@@ -73,6 +73,8 @@ const config: NextConfig = {
       "./node_modules/@typst-wasm/fonts/dist/files/LibertinusSerif-*.otf",
       "./node_modules/@typst-wasm/fonts/dist/files/NewCMMath-Regular.otf",
       "./node_modules/@typst-wasm/fonts/dist/files/DejaVuSansMono*.ttf",
+      // The curated release notes for "Neu in Flowplan" (#223, lib/release-notes.ts).
+      "./release-notes/*.json",
     ],
   },
   // The documentation is its own site (github.com/yannicschuller/flowplan-docs).

@@ -2,6 +2,7 @@ import { withReadMemo } from "./read-memo";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
+import { recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
@@ -363,6 +364,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     pageIcon: await userPageIcon(user.id),
     // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts).
     externalLinkIcon: await userExternalLinkIcon(user.id),
+    // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts): the level
+    // and, once after an update, the release notes to show.
+    updateNotes: await userUpdateNotes(user),
     pages,
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
@@ -901,6 +905,15 @@ async function runCommand(
       // The arrow after links to the web (#217, lib/external-link-icon-pref.ts).
       case "profile.externalLinkIcon":
         result = await setUserExternalLinkIcon(user, b.externalLinkIcon);
+        break;
+      // "Neuigkeiten nach Updates" and the dialog closed (#223,
+      // lib/user-update-notes.ts).
+      case "profile.updateNotes":
+        result = await setUserUpdateNotes(user, { level: b.level, seen: b.seen });
+        break;
+      // "Was ist neu": the latest release notes up to the running version.
+      case "releaseNotes.list":
+        result = recentReleaseNotes({ limit: b.limit });
         break;
       // A workspace's look: read by its members (the settings list every
       // uploaded face), changed by its owners (lib/workspace-fonts.ts).

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { all, run } from "./db";
 import { HttpError } from "./auth";
+import { updateNotesLevelSchema } from "./update-notes-pref";
 
 // Instance-wide settings admins change in the interface. Environment
 // variables stay the defaults; stored values take precedence.
@@ -57,6 +58,9 @@ export const instanceSettingsSchema = z.object({
   appSessions: z.enum(["remember", "off"]).nullable().default(null),
   // Days without use until an app's session ends.
   appDays: z.number().int().min(1).max(365).nullable().default(null),
+  // "Neuigkeiten nach Updates" that new accounts start with (#223,
+  // lib/update-notes-pref.ts); existing accounts keep theirs.
+  updateNotesDefault: updateNotesLevelSchema.default("all"),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -85,6 +89,7 @@ const defaults: InstanceSettings = {
   rememberDays: null,
   appSessions: null,
   appDays: null,
+  updateNotesDefault: "all",
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

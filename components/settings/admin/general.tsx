@@ -1,6 +1,7 @@
 "use client";
 // Administration → Instanz: the instance's name and public demo, the running
-// version and whether a newer one is out. The other instance settings live
+// version and whether a newer one is out, and what "Neuigkeiten nach
+// Updates" new accounts start with (#223). The other instance settings live
 // where they belong: registration and two-factor under Anmeldung & SSO,
 // limits under Grenzen & Aufbewahrung, backups under Speicher & Sicherung,
 // the notice under Wartung & Hinweise, extensions and domains under
@@ -12,7 +13,7 @@ import { httpsDocsUrl, usePlainHttpText } from "../../plain-http-note";
 import { SettingGroup, SettingRow } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
-import { AdminStatus, FixLink, InstanceSwitch, InstanceText, useDocs } from "./parts";
+import { AdminStatus, FixLink, InstanceSelect, InstanceSwitch, InstanceText, useDocs } from "./parts";
 
 export default function GeneralSection() {
   const t = useT();
@@ -120,6 +121,20 @@ export default function GeneralSection() {
         >
           <code>{data.adminGroup}</code>
         </SettingRow>
+        {/* "Neuigkeiten nach Updates" (#223): what new accounts start with. */}
+        <InstanceSelect
+          field="updateNotesDefault"
+          label={t("Neuigkeiten nach Updates für neue Konten", "What’s new after updates for new accounts")}
+          description={t(
+            "Ob neue Konten nach einem Update einmal „Neu in Flowplan“ sehen. Jede Person kann es unter Darstellung & Sprache ändern; bestehende Konten behalten ihre Einstellung.",
+            "Whether new accounts see “New in Flowplan” once after an update. Everyone can change it under Appearance & language; existing accounts keep their setting.",
+          )}
+          options={[
+            { value: "all", label: t("Alle anzeigen", "Show all") },
+            { value: "breaking", label: t("Nur Breaking Changes", "Only breaking changes") },
+            { value: "never", label: t("Nie", "Never") },
+          ]}
+        />
       </SettingGroup>
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>

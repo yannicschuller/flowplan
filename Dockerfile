@@ -74,6 +74,9 @@ RUN mkdir /app/data && chown node:node /app/data
 COPY --from=standalone --chown=node:node /out ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
+# The curated release notes for "Neu in Flowplan" (#223; next.config.ts also
+# traces them into the standalone output).
+COPY --from=build --chown=node:node /app/release-notes ./release-notes
 # Emergency decryption of encrypted backups and objects (docs: storage).
 COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
 # Instance move without the web interface (docs: Instanz umziehen):

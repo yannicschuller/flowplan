@@ -829,6 +829,30 @@ CommandProfileExternalLinkIconResult = TypedDict("CommandProfileExternalLinkIcon
     "externalLinkIcon": Required[bool],
 }, total=False)
 
+# What's new after updates: the level, or mark the running version as seen. For the caller, on all devices. level: show the release notes of every version since the last one seen (all, the default), only when one of them has breaking changes and then only those (breaking), or never. seen: true marks the running version as seen (the dialog was closed); it only ever moves forward. The bootstrap's updateNotes carries the level and, once after an update, the versions to show.
+CommandProfileUpdateNotes = TypedDict("CommandProfileUpdateNotes", {
+    "action": Required[Literal["profile.updateNotes"]],
+    "level": Literal["all", "breaking", "never"],
+    "seen": Literal[True],
+}, total=False)
+
+CommandProfileUpdateNotesResult = TypedDict("CommandProfileUpdateNotesResult", {
+    "level": Required[Literal["all", "breaking", "never"]],
+    "seenVersion": Required[Optional[str]],
+}, total=False)
+
+# The latest release notes up to the running version. Curated notes bundled with the server (no request to the internet), newest first, whatever the caller's level. Release builds leave out pre-release notes.
+CommandReleaseNotesList = TypedDict("CommandReleaseNotesList", {
+    "action": Required[Literal["releaseNotes.list"]],
+    "limit": int,  # Default 5
+}, total=False)
+
+CommandReleaseNotesListResult = TypedDict("CommandReleaseNotesListResult", {
+    "current": Required[Optional[str]],
+    "changelog": Required[str],
+    "versions": Required[list[dict[str, Any]]],
+}, total=False)
+
 # Create a space in a workspace
 CommandSpaceCreate = TypedDict("CommandSpaceCreate", {
     "action": Required[Literal["space.create"]],
@@ -1711,7 +1735,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileUpdateNotes", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

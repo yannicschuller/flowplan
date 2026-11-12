@@ -5,7 +5,8 @@
 // decided on the server (lib/about.ts): FLOWPLAN_SOURCE_URL, and no sponsor
 // link with FLOWPLAN_HIDE_SPONSOR or inside the mobile apps.
 import { useSyncExternalStore, type ReactNode } from "react";
-import { ArrowCircleUp, ArrowSquareOut, Heart } from "@phosphor-icons/react";
+import { ArrowCircleUp, ArrowSquareOut, Gift, Heart } from "@phosphor-icons/react";
+import { openWhatsNew } from "@/lib/update-notes-client";
 import { DISCORD_URL, ISSUES_URL, LICENSE_URL, SPONSOR_URL, hideSponsorInPage } from "@/lib/about";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useT } from "../../i18n";
@@ -61,6 +62,13 @@ export default function AboutSection() {
                 <code title={t(`Commit ${about.commit}`, `Commit ${about.commit}`)}>{about.commit.slice(0, 7)}</code>
               ))}
           </span>
+        </SettingRow>
+        {/* "Was ist neu" (#223): the release notes bundled with this version. */}
+        <SettingRow anchor="whats-new" label={t("Was ist neu", "What’s new")} description={t("Die Versionshinweise der letzten Versionen.", "The release notes of the latest versions.")}>
+          <button type="button" className="button" onClick={openWhatsNew}>
+            <Gift size={16} aria-hidden="true" />
+            {t("Was ist neu anzeigen", "Show what’s new")}
+          </button>
         </SettingRow>
         {about?.update && (
           <div className="callout about-update" role="status">

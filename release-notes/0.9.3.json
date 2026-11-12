@@ -1,0 +1,89 @@
+{
+  "date": "2026-11-11",
+  "features": [
+    {
+      "de": "Notizbücher: Bilder, Sticker und eigene Papiervorlagen.",
+      "en": "Notebooks: pictures, stickers and your own paper templates."
+    },
+    {
+      "de": "Notizbuch-Audio: beim Schreiben aufnehmen und im Takt der Handschrift abspielen.",
+      "en": "Notebook audio: record while you write and play it back in step with the ink."
+    },
+    {
+      "de": "Notizbücher: Seitenübersicht, Inhaltsverzeichnis, Links, Lesezeichen, Papierkorb und Präsentieren mit Folgemodus.",
+      "en": "Notebooks: page overview, contents, links, bookmarks, trash and presenting with follow mode."
+    },
+    {
+      "de": "Handschrift: bearbeitbare Formen, Formwerkzeug, Lineal, Geodreieck und Zirkel.",
+      "en": "Ink: editable shapes, a shape tool, ruler, set square and compass."
+    },
+    {
+      "de": "Lasso: antippen zum Auswählen, an den Ecken skalieren, drehen, umgestalten, zwischen Blättern ausschneiden und einfügen, Handschrift per KI in Text umwandeln.",
+      "en": "Lasso: tap to select, scale at the corners, rotate, restyle, cut and paste across sheets, turn handwriting into text with AI."
+    },
+    {
+      "de": "GoodNotes-Import: PDF-Exporte werden zu Notizbüchern.",
+      "en": "GoodNotes import: PDF exports become notebooks."
+    },
+    {
+      "de": "Docker: läuft mit jeder UID/GID oder mit PUID/PGID wie bei linuxserver.io.",
+      "en": "Docker: runs as any UID/GID, or with PUID/PGID like linuxserver.io images.",
+      "issues": [193]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Neuer Papier-Dialog und neue Werkzeugleisten im Notizbuch, Lieblingsstifte und Radierer-Modi.",
+      "en": "Notebooks: redesigned paper dialog and tool panels, favourite pens and eraser modes."
+    },
+    {
+      "de": "Handschrift: freie Stiftbreite, eigene Farben, Textgröße und Schriftart; vorhandene Textfelder lassen sich umgestalten.",
+      "en": "Ink: any pen width, your own colours, text size and typeface; existing text boxes can be restyled."
+    },
+    {
+      "de": "Notizbücher: flüssiges Zoomen mit zwei Fingern und PDFs an beliebiger Stelle einfügen.",
+      "en": "Notebooks: smooth two-finger zoom and pan, and PDFs inserted at any position."
+    },
+    {
+      "de": "Meine Aufgaben: Datenbankeinträge neu gestaltet, das Aufgaben-Widget zeigt auch zugewiesene Einträge.",
+      "en": "My tasks: redesigned records from databases; the tasks widget includes records assigned to you."
+    },
+    {
+      "de": "KI fragen: findet die neuesten Journaltage und liest Handschrift und Dateitexte mit.",
+      "en": "Ask AI: finds the latest journal days and reads handwriting and file text too."
+    },
+    {
+      "de": "Server-Protokoll: die Version zuerst, der Einrichtungslink ohne Token.",
+      "en": "Server log: the version first, the setup link without its token.",
+      "issues": [194]
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Workflows: ein Platzhalter bringt den Editor in neueren Chromium-Versionen nicht mehr zum Absturz.",
+      "en": "Workflows: picking a placeholder no longer breaks the builder in newer Chromium.",
+      "issues": [182]
+    },
+    {
+      "de": "Slash-Menü auf iPhones: im sichtbaren Bereich und per Touch scrollbar.",
+      "en": "Slash menu on iPhones: placed in the visible area and scrollable by touch."
+    },
+    {
+      "de": "Nur ein Yjs im Server, keine localStorage-Warnung mehr ab Node.js 25; Web Push ohne das veraltete url.parse().",
+      "en": "Server: one Yjs instance and no localStorage warning on Node.js 25+; Web Push without the legacy url.parse().",
+      "issues": [194, 195]
+    },
+    {
+      "de": "KI fragen funktioniert auch mit PostgreSQL bei Fragen zu Journaltagen.",
+      "en": "Ask AI works with PostgreSQL for questions about journal days."
+    },
+    {
+      "de": "Datenbankeinträge in Meine Aufgaben zeigen keine ausgeblendeten Eigenschaften.",
+      "en": "Records in My tasks no longer show hidden properties."
+    },
+    {
+      "de": "Handschrift endet am Seitenrand; Fälligkeits-Pillen zeigen Emoji und Datum wieder nebeneinander.",
+      "en": "Ink ends at the edge of the page; due date pills show emoji and date side by side again."
+    }
+  ]
+}

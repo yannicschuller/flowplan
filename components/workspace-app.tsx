@@ -173,6 +173,7 @@ import {
   ClockCounterClockwise,
   Graph,
   Sparkle,
+  Gift,
   MarkdownLogo,
   Question,
   Info as InfoIcon,
@@ -279,6 +280,8 @@ import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
 import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
 import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
+import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
+import { WhatsNew } from "./whats-new";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -558,6 +561,8 @@ export default function WorkspaceApp({
   useEffect(() => setTextMenuPrefLocal(boot.textMenu), [boot.textMenu]);
   // "Seitensymbol" (#214): the page header reads it.
   useEffect(() => setPageIconPrefLocal(boot.pageIcon), [boot.pageIcon]);
+  // "Neuigkeiten nach Updates" (#223): the settings read it.
+  useEffect(() => setUpdateNotesLevelLocal(boot.updateNotes?.level), [boot.updateNotes?.level]);
   const pageIconPlace = usePageIconPref();
   // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts): off
   // puts a class on <html> that hides the arrow everywhere in the app;
@@ -2853,6 +2858,7 @@ export default function WorkspaceApp({
     { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
     { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
     { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => (location.hash = "settings/about") },
+    { label: t("Was ist neu", "What’s new"), keywords: t("neu neuigkeiten update version änderungen changelog versionshinweise", "neu neuigkeiten new news update version changes changelog release notes"), icon: Gift, run: openWhatsNew },
     ...(boot.user.isAdmin
       ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
       : []),
@@ -3052,6 +3058,7 @@ export default function WorkspaceApp({
   const accountItems: SidebarAccountItem[] = [
     { id: "theme", label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), icon: dark ? Sun : Moon, keepOpen: true, onSelect: toggleTheme },
     { id: "about", label: t("Über Flowplan", "About Flowplan"), icon: InfoIcon, href: "#settings/about" },
+    { id: "whats-new", label: t("Was ist neu", "What’s new"), icon: Gift, onSelect: openWhatsNew },
     ...(legal?.imprint ? [{ id: "imprint", label: t("Impressum", "Legal notice"), icon: Scales, href: legal.imprint, external: true }] : []),
     ...(legal?.privacy ? [{ id: "privacy", label: t("Datenschutz", "Privacy"), icon: ShieldCheck, href: legal.privacy, external: true }] : []),
   ];
@@ -3568,6 +3575,10 @@ export default function WorkspaceApp({
                       <InfoIcon />
                       {t("Über Flowplan", "About Flowplan")}
                     </a>
+                  </Dropdown.Item>
+                  <Dropdown.Item className="dropdown-item" onSelect={openWhatsNew}>
+                    <Gift />
+                    {t("Was ist neu", "What’s new")}
                   </Dropdown.Item>
                   {boot.instance?.legal?.imprint && (
                     <Dropdown.Item className="dropdown-item" asChild>
@@ -4857,6 +4868,12 @@ export default function WorkspaceApp({
         workspaceId={boot.workspace.id}
         owner={boot.workspace.role === "owner" && !boot.workspace.guest}
         command={(body) => api("/api/command", body)}
+      />
+      {/* "Neu in Flowplan" (#223): once after an update, and on request. */}
+      <WhatsNew
+        notes={boot.updateNotes}
+        paused={onboarding}
+        onSeen={() => api("/api/command", { action: "profile.updateNotes", seen: true })}
       />
       <FindInPage open={find.open} focusKey={find.key} onClose={() => setFind((f) => ({ ...f, open: false }))} />
       <KeyboardShortcuts
