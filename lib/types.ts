@@ -31,6 +31,10 @@ export type Identity = User & {
   // lib/api-tokens.ts); whether it counts also depends on the
   // administration (lib/ai/token-access.ts).
   apiAi?: boolean;
+  // The token carries the "Marketplace-Prüfung" permission: it may run the
+  // import check of marketplace packages (lib/marketplace-check.ts), never
+  // a real import.
+  apiMarketplaceCheck?: boolean;
   // Signed in, but the instance requires a second factor this account has
   // not set up yet: only setting it up is possible (lib/two-factor-policy.ts).
   twoFactorSetup?: boolean;

@@ -20,6 +20,8 @@ type Token = {
   expires_at: number | null;
   // "KI und Transkription" (#199): 1 when the token was created with it.
   ai?: number;
+  // "Marketplace-Prüfung": 1 when the token may run the import check.
+  marketplace_check?: number;
 };
 type McpClient = "claude-code" | "claude-desktop" | "chatgpt" | "other";
 // How Claude, ChatGPT and other AI clients connect (lib/mcp.ts, app/api/mcp).
@@ -152,6 +154,8 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
     [scope, setScope] = useState<"read" | "write" | "clipper">("read"),
     // Off unless chosen (#199): AI, transcription and meeting notes.
     [ai, setAi] = useState(false),
+    // Off unless chosen: the import check of marketplace packages only.
+    [marketplaceCheck, setMarketplaceCheck] = useState(false),
     [fresh, setFresh] = useState<{ label: string; value: string } | null>(null),
     [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
@@ -216,6 +220,7 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
                       <span className="api-token-badges">
                         <StatusBadge tone={scopes[token.scope].tone}>{scopes[token.scope].label}</StatusBadge>
                         {!!token.ai && <StatusBadge tone="info">{t("KI und Transkription", "AI and transcription")}</StatusBadge>}
+                        {!!token.marketplace_check && <StatusBadge tone="info">{t("Marketplace-Prüfung", "Marketplace check")}</StatusBadge>}
                       </span>
                     ),
                   },
@@ -243,10 +248,11 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
             e.preventDefault();
             setBusy(true);
             try {
-              const r = await api<{ token: string }>("/api/command", { action: "token.create", name: tokenName, scope, ai: ai && scope !== "clipper" });
+              const r = await api<{ token: string }>("/api/command", { action: "token.create", name: tokenName, scope, ai: ai && scope !== "clipper", marketplaceCheck: marketplaceCheck && scope !== "clipper" });
               setFresh({ label: t(`Token „${tokenName}“`, `Token “${tokenName}”`), value: r.token });
               setTokenName("");
               setAi(false);
+              setMarketplaceCheck(false);
               await load();
             } catch (error) {
               onError((error as Error).message);
@@ -270,6 +276,10 @@ export function IntegrationSettings({ onError }: { onError: (message: string) =>
           <label className="api-token-ai" title={t("KI-Funktionen, Transkription und Besprechungsnotizen – zählen gegen dieselben KI-Grenzen wie die Oberfläche", "AI features, transcription and meeting notes – count against the same AI limits as the interface")}>
             <input type="checkbox" checked={ai && scope !== "clipper"} disabled={scope === "clipper"} onChange={(e) => setAi(e.target.checked)} />
             {t("KI und Transkription", "AI and transcription")}
+          </label>
+          <label className="api-token-ai" title={t("Prüft Marketplace-Pakete wie ein Import und nimmt alles wieder zurück – importiert nie wirklich", "Checks marketplace packages like an import and undoes everything – never really imports")}>
+            <input type="checkbox" checked={marketplaceCheck && scope !== "clipper"} disabled={scope === "clipper"} onChange={(e) => setMarketplaceCheck(e.target.checked)} />
+            {t("Marketplace-Prüfung", "Marketplace check")}
           </label>
           <button className="button primary" disabled={busy}>
             {t("Token erstellen", "Create token")}

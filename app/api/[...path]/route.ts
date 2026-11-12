@@ -30,6 +30,7 @@ import { linkedDatabaseData } from "@/lib/linked-databases";
 import { editorPresence } from "@/lib/editor-presence";
 import { marketplaceOrigin, requireMarketplace } from "@/lib/marketplace-config";
 import { buildPackage, importPackage, packageDraft, packagePreview, readPackage, MARKETPLACE_KINDS } from "@/lib/marketplace-package";
+import { checkPackage, requireMarketplaceCheck } from "@/lib/marketplace-check";
 import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
 import { imageMimes } from "@/lib/page-appearance";
 import { after } from "next/server";
@@ -1247,7 +1248,7 @@ async function handlePOST(
       path.length === 2 && path[0] === "import" && path[1] === "source" && !req.headers.get("content-type")?.startsWith("multipart/form-data");
     const maxBody = rawImport
       ? Number.MAX_SAFE_INTEGER
-      : path[0] === "import" || path[1] === "import" || path[2] === "import-markdown"
+      : path[0] === "import" || path[1] === "import" || path[2] === "import-markdown" || (path[0] === "marketplace" && path[1] === "check")
         ? ARCHIVE_LIMIT + 1_000_000
         : path[0] === "capture" && path[1] === "save"
           ? 100 * 1024 * 1024 + 1_000_000
@@ -1266,6 +1267,22 @@ async function handlePOST(
     // The open app reports that it is open and how long it has been idle.
     if (path.length === 1 && path[0] === "activity")
       return NextResponse.json(await recordActivity(user, await req.json().catch(() => null)), { headers: { "Cache-Control": "no-store" } });
+    // The import check of a marketplace package (lib/marketplace-check.ts):
+    // reads it like the import and imports it in a transaction that is rolled
+    // back. Tokens need the permission "Marketplace-Prüfung" – read tokens
+    // too, since nothing is kept. Never a real import.
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "check") {
+      await requireMarketplace();
+      requireMarketplaceCheck(user);
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 25 * 1024 * 1024) throw new HttpError(413, "Die Vorlage darf höchstens 25 MB groß sein.");
+      return NextResponse.json(
+        await checkPackage(user, Buffer.from(await file.arrayBuffer()), { workspaceId: data.get("workspaceId") || null, dryRun: data.get("dryRun") !== "0" }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     // Workflows (#168, lib/workflows/rest.ts): the commands as REST routes.
     if (path[0] === "workflows" || path[0] === "workflow-runs" || path[0] === "workflow-approvals") {
