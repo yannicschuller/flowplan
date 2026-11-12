@@ -28,7 +28,7 @@ test("the server-rendered profile picture is visible from the first paint", () =
   setAvatarDirectory([]);
 });
 
-test("a picture fills the whole circle, the placeholder lies in the same box", () => {
+test("a picture and its placeholder share one box, with a thin pastel ring drawn over it", () => {
   const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
   const rule = (selector: string) => {
     const at = css.indexOf(`\n${selector} {`);
@@ -37,11 +37,13 @@ test("a picture fills the whole circle, the placeholder lies in the same box", (
   };
   const frame = rule(".avatar.has-picture");
   const img = rule(".avatar.has-picture img");
-  // No hairline border inset: it left a ring of the pastel colour around
-  // the picture, and the blurred placeholder (painted under the border)
-  // and the picture had different boxes.
+  // Picture and placeholder share one box (the placeholder used to sit
+  // under the border, a box larger than the picture's); the pastel ring is
+  // an outline drawn over both.
+  assert.match(frame.body, /padding: 0;/);
   assert.match(frame.body, /border-width: 0;/);
   assert.match(frame.body, /background-origin: padding-box;/);
+  assert.match(frame.body, /outline-offset: -1px;/);
   assert.match(frame.body, /background-clip: padding-box;/);
   assert.match(img.body, /object-fit: cover;/);
   assert.match(img.body, /width: 100%;/);

@@ -763,18 +763,21 @@ kbd,
   font-size: 9px;
 }
 /* Profile pictures from the identity provider (components/ui.tsx Avatar):
-   the picture fills the whole circle, without the initials' hairline
-   border (which left a ring of the pastel colour around it), and the
-   blurred placeholder (components/image-placeholder.ts) lies in exactly
-   the box the picture covers, cropped the same way (cover, centred).
-   Rings that separate overlapping avatars (.presence) come later and keep
-   their border. */
+   the picture and its blurred placeholder (components/image-placeholder.ts)
+   fill exactly the same circle, so nothing shifts or shows through while
+   it loads. The thin ring in the pastel colour (outlineColor, set inline)
+   is an outline drawn over the edge of both, so it looks the same before
+   and after the picture arrives. Rings that separate overlapping avatars
+   (.presence) come later and keep their border. */
 .avatar.has-picture {
   overflow: hidden;
   padding: 0;
   border-width: 0;
   background-origin: padding-box;
   background-clip: padding-box;
+  outline-style: solid;
+  outline-width: 1px;
+  outline-offset: -1px;
 }
 .avatar.has-picture img {
   width: 100%;

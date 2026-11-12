@@ -491,14 +491,15 @@ export function Avatar({
     .slice(0, 2)
     .join("")
     .toUpperCase();
+  const tint = ["#e5edff", "#f1e8fb", "#e6f2ed", "#fcebcf"][name.charCodeAt(0) % 4];
   return (
     <span
       title={name}
       className={`avatar ${small ? "small" : ""} ${src && broken !== src ? "has-picture" : ""}`}
       style={{
-        backgroundColor: ["#e5edff", "#f1e8fb", "#e6f2ed", "#fcebcf"][
-          name.charCodeAt(0) % 4
-        ],
+        backgroundColor: tint,
+        // The thin ring around a picture (globals.css .avatar.has-picture).
+        outlineColor: tint,
         ...placeholder.frameStyle,
       }}
     >
