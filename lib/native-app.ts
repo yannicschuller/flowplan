@@ -95,6 +95,13 @@ type FlowplanDesktop = {
   // page's own WebAuthn, Windows Hello over the app (Windows) – or
   // "browser", the hand-off to the system browser (macOS, Linux).
   passkeys?: "window" | "browser";
+  // "Im Marketplace veröffentlichen …" (desktop newer than 1.3.7): the page
+  // arms its next window.open to the marketplace (the configured origin),
+  // which then opens in a window of the app with window.opener for the
+  // hand-over (lib/marketplace-handover.ts) – older apps send every other
+  // site to the system browser, without an opener.
+  marketplaceWindow?: boolean;
+  armMarketplaceWindow?: (origin: string) => boolean;
 };
 export function desktopApp(): FlowplanDesktop | undefined {
   if (typeof window === "undefined") return undefined;
@@ -124,6 +131,35 @@ export function appDeviceKey(
     : null;
 }
 export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
+
+// How "Im Marketplace veröffentlichen …" reaches the marketplace's submit
+// page. "handover": window.open with an opener and the package by
+// postMessage – in a browser, and in a desktop app that opens the
+// marketplace in a window of its own (marketplaceWindow). "desktop-file":
+// older desktop apps open other sites in the system browser, without an
+// opener; "app-file": the iPhone, iPad and Android app's web view does the
+// same. Both get the package as a file and the marketplace's submit page
+// to upload it.
+export type MarketplacePublishWay = "handover" | "desktop-file" | "app-file";
+export function marketplacePublishWay(
+  desktop: { marketplaceWindow?: unknown; armMarketplaceWindow?: unknown } | undefined = desktopApp(),
+  app: { platform?: string } | undefined = nativeApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): MarketplacePublishWay {
+  if (app?.platform === "ios" || app?.platform === "android" || /\bFlowplanMobile\//.test(agent)) return "app-file";
+  if (desktop || /FlowplanDesktop\//.test(agent))
+    return desktop?.marketplaceWindow === true && typeof desktop.armMarketplaceWindow === "function" ? "handover" : "desktop-file";
+  return "handover";
+}
+// Arms the desktop app's marketplace window right before window.open (a
+// no-op elsewhere); false when the app did not arm it.
+export function armDesktopMarketplace(origin: string, desktop: Pick<FlowplanDesktop, "marketplaceWindow" | "armMarketplaceWindow"> | undefined = desktopApp()) {
+  try {
+    return desktop?.marketplaceWindow === true && desktop.armMarketplaceWindow?.(origin) === true;
+  } catch {
+    return false;
+  }
+}
 
 // A page in a window of its own: the iPad app and the desktop app can.
 export function openInWindow(): ((url: string) => void) | undefined {

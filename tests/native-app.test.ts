@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APP_PROFILES_LINK, appProfilesAction, desktopPageLink, desktopPasskeysInWindow, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
+import { APP_PROFILES_LINK, appProfilesAction, armDesktopMarketplace, desktopPageLink, desktopPasskeysInWindow, marketplacePublishWay, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
+import { readFileSync } from "node:fs";
 
 const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.4.0";
 const ipad = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) FlowplanMobile/1.4.0";
@@ -84,4 +85,38 @@ test("passkeys in the desktop app's window only where the app says so – Window
   assert.match(login, /passkeyInApp && passkeyFallback && \([\s\S]{0,200}href="\/api\/auth\/desktop"\s*onClick=\{handOff\("passkey"\)\}/);
   // SSO keeps going to the browser in every app.
   assert.match(login, /href=\{desktopApp \? "\/api\/auth\/desktop\?via=sso"/);
+});
+
+test("publishing to the marketplace: the hand-over only where the window can have an opener", () => {
+  const desktop = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Safari/537.36 FlowplanDesktop/1.3.8";
+  const chrome = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Safari/537.36";
+  const arm = () => true;
+  assert.equal(marketplacePublishWay(undefined, undefined, chrome), "handover", "a browser");
+  assert.equal(marketplacePublishWay(undefined, undefined, safari), "handover");
+  // The desktop app opens the marketplace in a window of its own only when it says so (1.3.8+).
+  assert.equal(marketplacePublishWay({ marketplaceWindow: true, armMarketplaceWindow: arm }, undefined, desktop), "handover");
+  assert.equal(marketplacePublishWay({}, undefined, desktop), "desktop-file", "1.3.7 and older: the system browser, no opener");
+  assert.equal(marketplacePublishWay(undefined, undefined, desktop), "desktop-file", "an app without the bridge");
+  assert.equal(marketplacePublishWay({ marketplaceWindow: true }, undefined, desktop), "desktop-file", "no way to arm it");
+  assert.equal(marketplacePublishWay({ marketplaceWindow: "yes", armMarketplaceWindow: arm }, undefined, desktop), "desktop-file");
+  // The mobile apps' web view hands target=_blank to the browser.
+  assert.equal(marketplacePublishWay(undefined, { platform: "ios" }, iphone), "app-file");
+  assert.equal(marketplacePublishWay(undefined, { platform: "android" }, android), "app-file");
+  assert.equal(marketplacePublishWay(undefined, undefined, ipad), "app-file", "before the bridge: the user agent");
+  // Arming: only the desktop app's own call, never throwing.
+  const seen: string[] = [];
+  assert.equal(armDesktopMarketplace("https://marketplace.flowplan.org", { marketplaceWindow: true, armMarketplaceWindow: (o) => (seen.push(o), true) }), true);
+  assert.deepEqual(seen, ["https://marketplace.flowplan.org"]);
+  assert.equal(armDesktopMarketplace("https://m.example", undefined), false);
+  assert.equal(armDesktopMarketplace("https://m.example", { armMarketplaceWindow: () => true }), false, "without the capability");
+  assert.equal(armDesktopMarketplace("https://m.example", { marketplaceWindow: true, armMarketplaceWindow: () => { throw new Error("gone"); } }), false);
+});
+
+test("the publish dialog arms the desktop window right before window.open and falls back to the file", () => {
+  const source = readFileSync("components/marketplace.tsx", "utf8");
+  const open = source.slice(source.indexOf("function openMarketplace()"), source.indexOf("const busy ="));
+  assert.ok(open.indexOf("armDesktopMarketplace(config.origin);") < open.indexOf("window.open(submitAddress("), "armed first");
+  assert.match(open, /if \(way !== "handover"\) \{/, "older desktop apps and the mobile apps: the file");
+  assert.match(open, /if \(!win\) \{\s*void handToFile\("blocked"/, "no window: the file");
+  assert.match(open, /window\.setTimeout\(\(\) => \{\s*if \(!ready\) void handToFile\("silent", pkg, false\);\s*\}, READY_MS\);/, "no \"ready\": the file");
 });

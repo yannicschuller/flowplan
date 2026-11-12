@@ -155,6 +155,9 @@ test("receiver: only the configured origin and the opener, a valid message and a
   assert.equal(hand.isImportHash("#marketplace-import"), true);
   assert.equal(hand.isImportHash("#marketplace-importer"), false);
   assert.equal(hand.submitAddress("https://m.example"), "https://m.example/submit?handover=1");
+  assert.equal(hand.uploadAddress("https://m.example"), "https://m.example/submit", "the file way: no hand-over, no warning about a lost window");
+  assert.equal(hand.uploadAddress("https://m.example", "https://f.example"), "https://m.example/submit#from=https%3A%2F%2Ff.example");
+  assert.ok(hand.READY_MS >= 5000 && hand.READY_MS <= 10_000);
   assert.equal(hand.packageFileName('Team / "Retro"'), "Team - -Retro-.flowplan-template");
 });
 

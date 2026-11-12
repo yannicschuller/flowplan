@@ -31,6 +31,13 @@ export function withFrom(url: string, instanceOrigin?: string | null) {
   return `${url}${url.includes("#") ? "&" : "#"}from=${encodeURIComponent(instanceOrigin)}`;
 }
 export const submitAddress = (origin: string, instanceOrigin?: string | null) => withFrom(`${origin}/submit?handover=1`, instanceOrigin);
+// The submit page without a hand-over, to upload the package as a file –
+// where no opener can exist (older desktop apps, the mobile apps' web view)
+// or the marketplace did not say "ready" in time.
+export const uploadAddress = (origin: string, instanceOrigin?: string | null) => withFrom(`${origin}/submit`, instanceOrigin);
+// How long the submit page has to say "ready" before the package is saved
+// as a file instead (it says so as soon as it has loaded).
+export const READY_MS = 8_000;
 // The marketplace for browsing (a path on it, default the start page); null
 // when the marketplace is off here (FLOWPLAN_MARKETPLACE_URL=off or the
 // admin switch: no config).
