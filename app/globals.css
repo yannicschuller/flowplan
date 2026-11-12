@@ -35200,6 +35200,24 @@ html.native-app body {
   gap: 6px;
   font-size: 13px;
 }
+/* Date, attendees and "+" share one height and one centre line (#228: the
+   date is a label, which forms give a bottom margin). */
+.meeting-block .meeting-chip {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  box-sizing: border-box;
+  height: 24px;
+  margin: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1;
+  vertical-align: middle;
+}
 .meeting-date {
   position: relative;
   cursor: pointer;
@@ -35230,17 +35248,20 @@ html.native-app body {
   background: var(--surface);
   color: var(--secondary);
 }
-.meeting-add-person {
-  display: inline-flex;
-  align-items: center;
+.meeting-block .meeting-add-person {
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  padding: 0;
   border: 1px dashed var(--border);
   border-radius: 50%;
   background: none;
   color: var(--secondary);
   cursor: pointer;
+}
+.meeting-add-person:hover,
+.meeting-add-person[aria-expanded="true"] {
+  border-style: solid;
+  color: var(--text);
 }
 .meeting-panel {
   display: grid;
@@ -35288,7 +35309,7 @@ html.native-app body {
   flex-wrap: wrap;
   gap: 6px;
 }
-.meeting-block .meeting-consent .meeting-consent-check {
+.meeting-consent .meeting-consent-check {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -35298,7 +35319,7 @@ html.native-app body {
   font-weight: 550;
   text-align: start;
 }
-.meeting-block .meeting-consent .meeting-consent-check input {
+.meeting-consent .meeting-consent-check input {
   width: auto;
   margin: 0;
 }
@@ -35313,6 +35334,72 @@ html.native-app body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+.meeting-record-actions {
+  display: inline-flex;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+/* After the recording: one quiet line, the error with its one action. */
+.meeting-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.meeting-status-failed {
+  color: var(--signal);
+}
+.meeting-status-failed > span {
+  color: var(--text);
+}
+.meeting-error-detail {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--secondary);
+  font: 12px/1.45 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+/* A level per source while recording (#199 comment point 9). */
+.meeting-levels {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.meeting-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.meeting-level-bar {
+  position: relative;
+  width: 48px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.meeting-level-bar > span {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  border-radius: 3px;
+  background: #12b76a;
+  transition: transform 0.1s linear;
+}
+.meeting-level.silent .meeting-level-bar > span {
+  background: var(--signal);
+}
+.meeting-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .meeting-dot {
   width: 10px;
@@ -35398,6 +35485,258 @@ html.native-app body {
 .meeting-agenda-hint {
   margin: 4px 0 0;
   font-size: 13px;
+}
+/* The transcript's switches: edit (locked by default), find, hidden lines. */
+.meeting-transcript-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.meeting-bar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--secondary);
+  font: 500 12.5px var(--font-ui);
+  cursor: pointer;
+}
+.meeting-bar-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.meeting-bar-button.active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+.meeting-hidden-toggle {
+  margin-inline-start: auto;
+}
+.meeting-find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.meeting-find input:not([type]) {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.meeting-find-count {
+  min-width: 64px;
+}
+.meeting-find-glossary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--secondary);
+}
+.meeting-block:not(.meeting-show-hidden) p[data-segment][data-hallucination="true"] {
+  display: none;
+}
+.meeting-block p[data-segment][data-hallucination="true"] {
+  color: var(--muted);
+  font-style: italic;
+}
+.meeting-block.meeting-transcript-open [data-meeting-part="transcript"] {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+p[data-segment][data-edited="true"]::before {
+  content: attr(data-label) " · ✎";
+}
+/* The anchored menus and pickers (#229): rows of one height, left-aligned. */
+.meeting-menu .block-menu-value {
+  flex: none;
+  max-width: 110px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meeting-menu-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin: 0 3px;
+  border-radius: 50%;
+  background: #d92d20;
+}
+.meeting-menu-code {
+  flex: none;
+  width: 16px;
+  color: var(--muted);
+  font: 600 9.5px var(--font-ui);
+  text-align: center;
+}
+.block-menu-content {
+  display: grid;
+  gap: 6px;
+  padding: 4px 6px 6px;
+}
+.meeting-menu-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 var(--font-ui);
+  resize: vertical;
+}
+.meeting-menu-text {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.meeting-popover {
+  z-index: 80;
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  max-height: min(60dvh, 420px);
+  padding: 6px;
+}
+.meeting-combobox,
+.meeting-events {
+  display: grid;
+  gap: 2px;
+}
+.meeting-picker-search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  margin: 0 0 4px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px var(--font-ui);
+}
+.meeting-options,
+.meeting-event-group {
+  display: grid;
+  gap: 1px;
+}
+.meeting-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: 13px var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+}
+.meeting-option.active,
+.meeting-option:hover,
+.meeting-option:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.meeting-option-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meeting-option-sub {
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+}
+.meeting-option-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+  color: var(--secondary);
+}
+.meeting-option-guest {
+  color: var(--secondary);
+}
+.meeting-picker-head,
+.meeting-group-label {
+  margin: 4px 8px 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.meeting-picker-head {
+  color: var(--secondary);
+}
+.meeting-picker-empty {
+  margin: 6px 8px;
+  font-size: 12.5px;
+}
+.meeting-event-time {
+  flex: none;
+  width: 58px;
+  color: var(--secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.meeting-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 30px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: var(--secondary);
+  font: 12.5px var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+}
+.meeting-more:hover,
+.meeting-more:focus-visible {
+  color: var(--text);
+  outline: none;
+  background: var(--hover);
+}
+.meeting-popover-sheet .meeting-option {
+  min-height: 46px;
+  font-size: 15px;
+}
+.meeting-popover-sheet .meeting-picker-search {
+  height: 40px;
+  font-size: 16px;
 }
 .meeting-content {
   margin-top: 4px;

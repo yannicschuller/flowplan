@@ -741,6 +741,10 @@ export type DayEvent = {
   attendees?: { email: string; name: string }[];
   // The meeting note of this appointment, when there is one the reader can open.
   noteId?: string;
+  // An appointment of a calendar (an ICS link, or a database with a calendar
+  // view) – not just a dated record such as a sync log or a task (#229: the
+  // meeting block's event picker lists the others only on request).
+  calendar?: boolean;
 };
 function shift(date: string, days: number) {
   return Temporal.PlainDate.from(date).add({ days }).toString();
@@ -766,6 +770,7 @@ export async function databaseEvents(user: Identity, workspaceId: string, date: 
     if (!(await pageRole(user, page)) || await journalLocked(user, page)) continue;
     const fields = JSON.parse(page.fields) as Field[];
     const views = JSON.parse(page.views) as View[];
+    const calendar = views.some((v) => v.type === "calendar");
     const view =
       views.find((v) => v.type === "calendar") ||
       views.find((v) => v.type === "timeline") ||
@@ -817,6 +822,7 @@ export async function databaseEvents(user: Identity, workspaceId: string, date: 
         source: page.title || "Datenbank",
         pageId: page.id,
         rowId: row.id,
+        calendar,
       });
       if (events.length >= 100) return events;
     }
@@ -963,6 +969,7 @@ export function icsEventsOn(events: IcsEvent[], date: string, zone: string): Day
         end: event.end,
         timed: event.timed,
         source: "Kalender",
+        calendar: true,
         ...(event.uid ? { uid: event.uid } : {}),
         ...(event.attendees.length ? { attendees: event.attendees } : {}),
       });

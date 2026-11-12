@@ -4,9 +4,13 @@
 //
 //   meeting (title, date, attendees, calendar event, instructions)
 //     meetingSummary     the AI's notes: tasks, topics, open points (rich text)
-//     meetingAgenda      the participants' own agenda and notes (rich text)
+//     meetingAgenda      the participants' own notes ("Notizen", formerly
+//                        "Agenda"; rich text, editable at any time, read
+//                        by the summary)
 //     meetingTranscript  meetingSegment* – one passage each, with its time,
-//                        speaker, track and recording session
+//                        speaker, track and recording session; "edited"
+//                        once a person corrected it, "hallucination" when
+//                        the pipeline found it invented (hidden by default)
 //
 // Citation chips (meetingCite, ①②…) in the summary point at a segment by
 // its id. The recording, its processing and the kept audio are in the
@@ -27,6 +31,11 @@ const num = (value: string | null) => {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 };
 const MEETING_ID = /^[0-9a-f-]{36}$/i;
+const flag = (name: string) => ({
+  default: false,
+  parseHTML: (el: HTMLElement) => el.getAttribute(name) === "true",
+  renderHTML: () => ({}),
+});
 
 export const Meeting = Node.create({
   name: "meeting",
@@ -48,6 +57,9 @@ export const Meeting = Node.create({
       eventStart: attr("data-meeting-start"),
       instructions: attr("data-meeting-instructions", "auto"),
       prompt: attr("data-meeting-prompt"),
+      // The meeting's language for transcription and summary ("" = the
+      // reader's language, as before).
+      language: attr("data-meeting-language"),
     };
   },
   parseHTML: () => [
@@ -71,6 +83,7 @@ export const Meeting = Node.create({
       ...(validBlockId(node.attrs.blockId) ? { "data-block-id": node.attrs.blockId } : {}),
       "data-meeting-instructions": node.attrs.instructions,
       "data-meeting-prompt": node.attrs.prompt,
+      ...(node.attrs.language ? { "data-meeting-language": node.attrs.language } : {}),
       class: "meeting-block",
     },
     ["p", { class: "meeting-title" }, String(node.attrs.title || "")],
@@ -104,6 +117,12 @@ export const MeetingSegmentNode = Node.create({
       speaker: attr("data-speaker"),
       track: attr("data-track", "mixed"),
       session: { default: 1, parseHTML: (el: HTMLElement) => num(el.getAttribute("data-session")) || 1, renderHTML: () => ({}) },
+      // Corrected by a person (lib/meeting-transcript-edit.ts): transcribing
+      // again warns before it replaces such passages.
+      edited: flag("data-edited"),
+      // Invented by the speech recognition in silence ("Untertitel im
+      // Auftrag des ZDF"): kept, but hidden in the block until shown.
+      hallucination: flag("data-hallucination"),
     };
   },
   parseHTML: () => [{ tag: "p[data-segment]", priority: 1000 }],
@@ -116,6 +135,8 @@ export const MeetingSegmentNode = Node.create({
       "data-speaker": node.attrs.speaker,
       "data-track": node.attrs.track,
       "data-session": String(node.attrs.session),
+      ...(node.attrs.edited ? { "data-edited": "true" } : {}),
+      ...(node.attrs.hallucination ? { "data-hallucination": "true" } : {}),
       // Shown before the text (CSS), so exports read "03:21 · Ada".
       "data-label": `${formatTimestamp(Number(node.attrs.start) || 0)}${node.attrs.speaker ? ` · ${node.attrs.speaker}` : ""}`,
       class: "meeting-segment",

@@ -350,7 +350,7 @@ export function documentJira(html: string, context: TextExportContext): string {
       case "meetingTranscript": {
         if (!node.textContent.trim()) return "";
         const label =
-          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Agenda", "Agenda") : ct("Transkript", "Transcript");
+          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Notizen", "Notes") : ct("Transkript", "Transcript");
         return `*${jiraText(label)}*\n\n${children(node)}`;
       }
       case "meetingSegment": {

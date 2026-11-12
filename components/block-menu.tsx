@@ -2,7 +2,9 @@
 // The menu of a block (components/document-block-controls.tsx): a click on
 // the handle opens it next to the handle; on phones it is a bottom sheet.
 // Entries can open a second level ("Move below …", "Turn into …"); Escape
-// or the back button returns to the first one.
+// or the back button returns to the first one. Other menus use it too (the
+// meeting block's settings, #229): placed below their button, with a value
+// beside an entry, entries that stay open (switches) and levels with a form.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CaretLeft, CaretRight, Check } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -21,11 +23,18 @@ export type BlockMenuItem =
       checked?: boolean;
       // Indents entries of a level (headings below their parent heading).
       indent?: number;
+      // Shown at the end of the row, before the arrow of a level ("Deutsch ›").
+      value?: string;
+      // A switch: runs without closing the menu.
+      stay?: boolean;
     }
   | "separator";
-export type BlockMenuView = { title: string; items: BlockMenuItem[]; note?: string };
+export type BlockMenuView = { title: string; items: BlockMenuItem[]; note?: string; content?: ReactNode };
+// Why the menu closes: the focus goes back to its button after Escape and
+// after an entry, not after a click elsewhere.
+export type BlockMenuClose = "escape" | "select" | "away";
 
-function usePhone() {
+export function usePhone() {
   const [phone, setPhone] = useState(false);
   useEffect(() => {
     const media = window.matchMedia(SHEET_MEDIA);
@@ -43,6 +52,9 @@ export function BlockMenu({
   initial = "main",
   owner,
   onClose,
+  placement = "beside",
+  label,
+  className = "",
 }: {
   // The handle (or button) the menu belongs to, in window coordinates.
   anchor: DOMRect;
@@ -50,7 +62,13 @@ export function BlockMenu({
   initial?: string;
   // A press on it (the handle) is no click elsewhere: it toggles the menu.
   owner?: HTMLElement | null;
-  onClose: () => void;
+  onClose: (reason?: BlockMenuClose) => void;
+  // "below": under the button, its right edges aligned (above it when there
+  // is no room below), following it when the page scrolls.
+  placement?: "beside" | "below";
+  // The menu's name on every level, when it differs from the titles.
+  label?: string;
+  className?: string;
 }) {
   const t = useT();
   const phone = usePhone();
@@ -62,20 +80,34 @@ export function BlockMenu({
   const current = views[view] || views[initial];
   const back = view !== initial ? () => setView(initial) : null;
 
-  // Desktop: beside the handle, inside the window.
+  // Desktop: beside the handle (or below the button), inside the window.
   useLayoutEffect(() => {
     if (phone) return;
-    const el = menu.current;
-    if (!el) return;
-    const safe = safeInsets();
-    const width = el.offsetWidth,
-      height = el.offsetHeight;
-    let left = anchor.right + 6;
-    if (left + width > window.innerWidth - 8 - safe.right) left = anchor.left - width - 6;
-    left = Math.max(8 + safe.left, left);
-    const top = Math.max(8 + safe.top, Math.min(anchor.top - 4, window.innerHeight - height - 8 - safe.bottom));
-    setPlace({ left, top });
-  }, [phone, anchor, view]);
+    const position = () => {
+      const el = menu.current;
+      if (!el) return;
+      const safe = safeInsets();
+      const width = el.offsetWidth,
+        height = el.offsetHeight;
+      if (placement === "below") {
+        const box = owner?.isConnected ? owner.getBoundingClientRect() : anchor;
+        const left = Math.max(8 + safe.left, Math.min(box.right - width, window.innerWidth - width - 8 - safe.right));
+        let top = box.bottom + 4;
+        if (top + height > window.innerHeight - 8 - safe.bottom && box.top - height - 4 >= 8 + safe.top) top = box.top - height - 4;
+        setPlace({ left, top: Math.max(8 + safe.top, top) });
+        return;
+      }
+      let left = anchor.right + 6;
+      if (left + width > window.innerWidth - 8 - safe.right) left = anchor.left - width - 6;
+      left = Math.max(8 + safe.left, left);
+      const top = Math.max(8 + safe.top, Math.min(anchor.top - 4, window.innerHeight - height - 8 - safe.bottom));
+      setPlace({ left, top });
+    };
+    position();
+    if (placement !== "below") return;
+    window.addEventListener("scroll", position, true);
+    return () => window.removeEventListener("scroll", position, true);
+  }, [phone, anchor, view, placement, owner]);
 
   // A new level takes the focus on its first entry.
   // (The sheet's portal is there one frame later.)
@@ -90,8 +122,8 @@ export function BlockMenu({
   useEffect(() => {
     if (phone) return;
     const away = (e: Event) =>
-      !menu.current?.contains(e.target as Node) && !owner?.contains(e.target as Node) && close.current();
-    const resize = () => close.current();
+      !menu.current?.contains(e.target as Node) && !owner?.contains(e.target as Node) && close.current("away");
+    const resize = () => close.current("away");
     document.addEventListener("pointerdown", away, true);
     window.addEventListener("resize", resize);
     return () => {
@@ -115,7 +147,7 @@ export function BlockMenu({
         } else if (e.key === "Escape" && !phone) {
           e.preventDefault();
           e.stopPropagation();
-          onClose();
+          onClose("escape");
         }
       }}
     >
@@ -126,16 +158,17 @@ export function BlockMenu({
           <button
             key={`${view}-${index}`}
             type="button"
-            role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+            role={item.checked === undefined ? "menuitem" : item.stay ? "menuitemcheckbox" : "menuitemradio"}
             aria-checked={item.checked}
             disabled={item.disabled}
             className={`dropdown-item block-menu-item${item.danger ? " danger" : ""}`}
             style={item.indent ? { paddingInlineStart: 10 + item.indent * 14 } : undefined}
             onClick={() => {
               if (item.view) setView(item.view);
+              else if (item.stay) item.run?.();
               else {
                 item.run?.();
-                onClose();
+                onClose("select");
               }
             }}
             onKeyDown={(e) => {
@@ -147,6 +180,7 @@ export function BlockMenu({
           >
             {item.icon}
             <span>{item.label}</span>
+            {item.value && <span className="block-menu-value">{item.value}</span>}
             {item.checked && <Check size={14} className="block-menu-check" aria-hidden />}
             {item.view && <CaretRight size={13} className="block-menu-more" aria-hidden />}
           </button>
@@ -155,6 +189,21 @@ export function BlockMenu({
       {current.note && <p className="block-menu-note">{current.note}</p>}
     </div>
   );
+  // A level with a form (a text field): Escape there goes back as well.
+  const content = current.content ? (
+    <div
+      className="block-menu-content"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (back) back();
+        else if (!phone) onClose("escape");
+      }}
+    >
+      {current.content}
+    </div>
+  ) : null;
 
   if (phone)
     return (
@@ -162,8 +211,8 @@ export function BlockMenu({
         open
         sheet
         title={current.title}
-        className="block-menu-sheet"
-        onClose={onClose}
+        className={`block-menu-sheet ${className}`}
+        onClose={() => onClose("escape")}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -174,14 +223,15 @@ export function BlockMenu({
           </button>
         )}
         {list}
+        {content}
       </Modal>
     );
   return (
     <div
       ref={menu}
-      className="dropdown record-menu block-menu"
+      className={`dropdown record-menu block-menu ${className}`}
       role="menu"
-      aria-label={current.title}
+      aria-label={label || current.title}
       tabIndex={-1}
       style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0 }}
     >
@@ -192,6 +242,7 @@ export function BlockMenu({
         </button>
       )}
       {list}
+      {content}
     </div>
   );
 }

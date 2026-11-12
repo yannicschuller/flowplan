@@ -282,7 +282,7 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         const body = children(node);
         if (!node.textContent.trim()) return "";
         const label =
-          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Agenda", "Agenda") : ct("Transkript", "Transcript");
+          node.type.name === "meetingSummary" ? ct("Zusammenfassung", "Summary") : node.type.name === "meetingAgenda" ? ct("Notizen", "Notes") : ct("Transkript", "Transcript");
         return `<p class="meeting-part-title"><strong>${xml(label)}</strong></p>${body}`;
       }
       case "meetingSegment": {
