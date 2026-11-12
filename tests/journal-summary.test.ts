@@ -36,7 +36,7 @@ test("the sidebar setting: recent by default, stored with the journal's options,
   const result = (await command(user, { action: "journal.settings", pageId: journalId, options: { sidebar: "grouped" } })) as {
     options: { sidebar: string; place: boolean; events: boolean; completed: boolean; create: string };
   };
-  assert.deepEqual(result.options, { place: true, events: true, completed: true, create: "auto", sidebar: "grouped" });
+  assert.deepEqual(result.options, { place: true, events: true, completed: true, create: "auto", sidebar: "grouped", carried: "top", carriedHeading: "" });
   assert.deepEqual((await bootstrap(user, wid)).journalSidebar, { [journalId]: "grouped" });
   // Other options keep it.
   await command(user, { action: "journal.settings", pageId: journalId, options: { place: false } });

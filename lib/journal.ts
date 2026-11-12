@@ -17,6 +17,7 @@ import { pageRole } from "./permissions";
 import { HttpError } from "./auth";
 import type { Identity, Page } from "./types";
 import { documentChanged } from "./document-live";
+import { placeBlocks, type BlockPlace } from "./journal-place";
 import { indexPageTasks } from "./doc-tasks";
 import {
   hasEntryData,
@@ -135,14 +136,22 @@ export function carryTasks(tasks: PMNode[], from: string) {
     ),
   );
 }
-// Carried tasks first, then the journal's template (if any).
-export function dayDocument(tasks: PMNode[], template: PMNode[] = []) {
-  const s = schema();
-  return s.node("doc", null, [
-    ...(tasks.length ? [s.node("taskList", null, tasks)] : []),
-    ...(template.length ? template : [s.node("paragraph")]),
-  ]);
+// The journal's template (if any) with the carried tasks as one list: at
+// the top (the default), after the template, or directly below one of its
+// headings (#247; after the template when it has no such heading).
+export function dayDocument(tasks: PMNode[], template: PMNode[] = [], place: BlockPlace = { at: "top" }) {
+  // The nodes' own schema (nodes of different instances cannot be combined).
+  const s = (tasks[0] || template[0])?.type.schema || schema();
+  const body = template.length ? template : [s.node("paragraph")];
+  // No template: the tasks come before the empty line to write in, wherever they go.
+  const where = template.length ? place : { at: "top" as const };
+  return s.node("doc", null, placeBlocks(body, tasks.length ? [s.node("taskList", null, tasks)] : [], where));
 }
+// The journal option "Übernommene Aufgaben" (#247) as a place.
+export const carriedPlace = (options: { carried?: "top" | "end" | "heading"; carriedHeading?: string }): BlockPlace => ({
+  at: options.carried || "top",
+  heading: options.carriedHeading || "",
+});
 
 async function loadDocument(pageId: string) {
   const row = await one<{ state: Uint8Array | null; html: string }>(
@@ -238,7 +247,7 @@ export async function dayStart(journal: Page, today: string) {
       previous.journal_date!,
     );
   }
-  const doc = dayDocument(carried, await templateNodes(journal.id, schema()));
+  const doc = dayDocument(carried, await templateNodes(journal.id, schema()), carriedPlace((await journalSettings(journal.id)).options));
   return { previous, before, carried, daily, doc };
 }
 
@@ -306,6 +315,12 @@ export async function rollJournal(
     }
     ydoc.destroy();
   }
+  const { dayId, generation } = await storeNewDay(user, journal, today, doc);
+  return { dayId, changed: true, ...(options.write ? { generation } : {}) };
+}
+// Stores a new day page with `doc` and announces it (page tree, My tasks,
+// workflows with a journal-day trigger).
+async function storeNewDay(user: Identity, journal: Page, today: string, doc: PMNode) {
   // A day that was a draft keeps its id and gets exactly the state the
   // draft showed (lib/journal-days.ts), so what was typed there merges.
   const draft = await journalDraftId(journal.id, today);
@@ -341,7 +356,29 @@ export async function rollJournal(
   await indexPageTasks(dayId, false);
   // Workflows with a journal-day trigger (lib/workflows/hooks.ts).
   await journalDayEvent(dayId, journal, today, user.id);
-  return { dayId, changed: true, ...(options.write ? { generation: seeded.generation } : {}) };
+  return { dayId, generation: seeded.generation };
+}
+// The day of a journal for a date, made when it is missing (#250, the
+// workflow step "An Journaltag anhängen"). The newest day is made as
+// opening the journal makes it (rollJournal: the open tasks of the day
+// before, placed by the journal's setting, and the template; "create on
+// first write" counts as written). A day before an existing later one gets
+// the template only: open tasks have moved past it already. A day in the
+// trash stays there; days after `today` are not made.
+export async function ensureJournalDay(user: Identity, journal: Page, date: string, today: string): Promise<{ dayId: string; created: boolean }> {
+  if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
+  journalDate.parse(date);
+  const existing = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=?", journal.id, date);
+  if (existing?.deleted_at) throw new HttpError(409, "Dieser Tag liegt im Papierkorb.");
+  if (existing) return { dayId: existing.id, created: false };
+  if (date > today) throw new HttpError(400, "Ein künftiger Tag lässt sich noch nicht anlegen.");
+  const later = await one("SELECT 1 FROM pages WHERE parent_id=? AND journal_date>? AND deleted_at IS NULL LIMIT 1", journal.id, date);
+  if (!later) {
+    const rolled = await rollJournal(user, journal, date, date, false, { write: true });
+    return { dayId: rolled.dayId, created: rolled.changed };
+  }
+  const { dayId } = await storeNewDay(user, journal, date, dayDocument([], await templateNodes(journal.id, schema())));
+  return { dayId, created: true };
 }
 // All journals of a workspace the user may edit.
 export async function rollJournals(user: Identity, workspaceId: string, today: string) {

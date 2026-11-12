@@ -27,7 +27,7 @@ type Json = { type: string; attrs?: Record<string, unknown>; content?: Json[]; t
 const pageHref = (pageId: string) => `/#page=${pageId}`;
 
 // A page value (or a reference to one) as a link, else null.
-function pageLinkOf(value: unknown): { id: string; title: string } | null {
+export function pageLinkOf(value: unknown): { id: string; title: string } | null {
   if (!value || typeof value !== "object") return null;
   const v = value as { type?: unknown; id?: unknown; title?: unknown; link?: unknown };
   if (v.type === "page" && typeof v.id === "string") return { id: v.id, title: String(v.title || "") };
@@ -124,7 +124,7 @@ async function writeBlocks(ctx: NodeRun, page: Page, blocks: Json[], where: { ki
 // One change of a document as the runner, through "document.sync" (locks,
 // journal PINs, encrypted spaces and tasks as every save); `change`
 // returning null writes nothing.
-async function changeDocument(ctx: NodeRun, page: Page, change: (doc: PMNode, schema: Schema) => PMNode | null) {
+export async function changeDocument(ctx: NodeRun, page: Page, change: (doc: PMNode, schema: Schema) => PMNode | null) {
   if (page.kind !== "document") throw new StepError("Kein Dokument.", "validation");
   const stored = await one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", page.id);
   if (!stored) throw new StepError("Dokument nicht gefunden.", "validation");
@@ -276,7 +276,7 @@ export const taskCreate: NodeImpl = async (ctx) => {
 };
 // A due date from a date, a moment (its day in the workflow's time zone)
 // or a placeholder on one; empty: none.
-function dueDay(ctx: NodeRun, raw: string): string | null {
+export function dueDay(ctx: NodeRun, raw: string): string | null {
   if (!raw.trim()) return null;
   const value = renderValue(raw, ctx.scope);
   if (isEmpty(value)) return null;

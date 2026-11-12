@@ -20,7 +20,7 @@ import { workflowLimits } from "./limits";
 import { resolveAi } from "../ai/resolve";
 import { workflowChatHooks } from "../webhooks";
 
-const WRITE_TYPES = new Set(["action.record.create", "action.record.update", "action.record.template", "action.page.create", "action.page.append", "action.page.tag", "action.page.move", "action.task.create"]);
+const WRITE_TYPES = new Set(["action.record.create", "action.record.update", "action.record.template", "action.page.create", "action.page.append", "action.page.tag", "action.page.move", "action.task.create", "action.journal.append"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function validateGraph(graph: WorkflowGraph, ctx: { workspaceId: string; runner: Identity | null; pageId?: string }): Promise<GraphIssue[]> {
@@ -113,6 +113,21 @@ export async function validateGraph(graph: WorkflowGraph, ctx: { workspaceId: st
       for (const to of (c.assignee as string[]) || [])
         if (UUID.test(to) && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", ctx.workspaceId, to)))
           issues.push({ level: "error", code: "unknown_person", nodeId: n.id });
+    // "An Journaltag anhängen" (#250): a journal the runner may edit, no PIN.
+    if (n.type === "action.journal.append") {
+      const jid = String(c.journal || "");
+      const j = UUID.test(jid) ? await pageOf(jid) : null;
+      if (!jid) issues.push({ level: "error", code: "no_journal", nodeId: n.id });
+      else if (!j || j.kind !== "journal" || j.workspace_id !== ctx.workspaceId || (await behindJournalPin(j)) || (await isEncryptedPage(j))) issues.push({ level: "error", code: "unknown_journal", nodeId: n.id });
+      else if (ctx.runner) {
+        const role = await pageRole(ctx.runner, j);
+        if (!role) issues.push({ level: "error", code: "unknown_journal", nodeId: n.id });
+        else if (role === "viewer") issues.push({ level: "error", code: "page_not_writable", nodeId: n.id });
+      }
+      if (c.day === "date" && !String(c.date || "").trim()) issues.push({ level: "error", code: "no_journal_date", nodeId: n.id });
+      if (!String(c.content || "").trim()) issues.push({ level: "error", code: "no_journal_content", nodeId: n.id });
+      if (c.place === "heading" && !String(c.heading || "").trim()) issues.push({ level: "warning", code: "no_journal_heading", nodeId: n.id });
+    }
     if (n.type === "notify.person")
       for (const to of (c.to as string[]) || [])
         if (UUID.test(to) && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", ctx.workspaceId, to)))
