@@ -279,9 +279,14 @@ export async function checkPackage(user: Identity, bytes: Buffer, options: { wor
       result.creates = { pages: 1, nodes: graph.nodes.length };
       for (const n of graph.nodes)
         if (!nodeSpec(n.type)) result.errors.push({ code: "node_unknown", de: `Unbekannter Schritt-Typ ${n.type}.`, en: `Unknown step type ${n.type}.`, at: `workflow:${n.id}` });
+      const gapNodes = new Set(p.gapNodes ?? []);
       for (const i of checkGraph(graph)) {
         if (i.code === "unknown_type") continue;
-        const list = i.level === "error" ? result.errors : result.warnings;
+        // A step with a gap is completed on import (an empty recipient list
+        // or a placeholder without its field until the person names one):
+        // a hint, not a failed import.
+        const filledOnImport = !!i.nodeId && gapNodes.has(i.nodeId);
+        const list = i.level === "error" && !filledOnImport ? result.errors : result.warnings;
         if (list.length < CHECK_LIMITS.issues) list.push(graphIssue(i, "workflow"));
       }
       if (p.gaps.length) result.warnings.push(issue("gaps", `${p.gaps.length} Angabe(n) legt die Person beim Import fest.`));

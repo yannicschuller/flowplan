@@ -271,7 +271,7 @@ export async function buildPackage(user: Identity, source: PackageSource, rawMet
 export type LookFont = { id: string; name: string; data: Buffer };
 export type ParsedPayload =
   | { kind: "document" | "database"; zip: Buffer; name: string; files: number; fields?: number; views?: number; rows?: number }
-  | { kind: "workflow"; data: WorkflowExport; gaps: { id: string; kind: string; label: string; optional?: boolean }[] }
+  | { kind: "workflow"; data: WorkflowExport; gaps: { id: string; kind: string; label: string; optional?: boolean }[]; gapNodes?: string[] }
   | { kind: "whiteboard"; name: string; items: unknown[]; dropped: number }
   | { kind: "appearance"; theme: z.infer<typeof workspaceThemeSchema>; fonts: LookFont[] }
   | { kind: "link-rules"; rules: z.infer<typeof autoLinkRuleSchema>[]; invalid: number };
@@ -363,7 +363,10 @@ async function parsePayload(manifest: PackageManifest, bytes: Buffer, entries: M
       const graph = parseGraph(data.graph);
       const open = new Set<string>();
       for (const m of JSON.stringify(graph.nodes).matchAll(/\$ask:([a-z0-9_]{1,40})/gi)) open.add(m[1]);
-      return { kind: "workflow", data: open.size ? { ...data, graph: clearTokens(graph) } : data, gaps: [...open].map((id) => gaps.find((g) => g.id === id) ?? { id, kind: "", label: id }) };
+      // The steps the person completes on import (their settings may be
+      // incomplete until then, lib/marketplace-check.ts).
+      const gapNodes = graph.nodes.filter((n) => /\$ask:[a-z0-9_]{1,40}/i.test(JSON.stringify(n))).map((n) => n.id);
+      return { kind: "workflow", data: open.size ? { ...data, graph: clearTokens(graph) } : data, gaps: [...open].map((id) => gaps.find((g) => g.id === id) ?? { id, kind: "", label: id }), gapNodes };
     }
     case "whiteboard": {
       const data = parseJson(bytes) as { format?: unknown; name?: unknown; items?: unknown } | unknown[] | null;

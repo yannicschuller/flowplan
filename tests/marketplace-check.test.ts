@@ -168,6 +168,19 @@ test("workspace: given ones need membership (not as a guest); without one the ca
   assert.ok(asViewer.warnings.some((w) => w.code === "dry_run_role"));
 });
 
+test("official workflows with gaps pass: steps completed on import are hints, not errors", async () => {
+  const { officialPackages } = await import("../lib/marketplace-official");
+  const flows = (await officialPackages("0.9.4")).filter((p) => p.kind === "workflow");
+  assert.ok(flows.length >= 6);
+  let gapped = 0;
+  for (const f of flows) {
+    const r = await check.checkPackage(owner, f.bytes, { dryRun: false });
+    assert.deepEqual(r.errors, [], `${f.file}: ${JSON.stringify(r.errors)}`);
+    if (r.warnings.some((w) => w.code === "gaps")) gapped++;
+  }
+  assert.ok(gapped > 0, "some official workflows have gaps");
+});
+
 test("rate limit: at most 30 checks in 10 minutes per person", async () => {
   const busy = await user("busy");
   for (let i = 0; i < 30; i++) await check.checkPackage(busy, Buffer.from("x"));
