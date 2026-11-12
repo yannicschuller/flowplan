@@ -83,6 +83,7 @@ import { formatTimestamp } from "@/lib/transcript";
 import { streamAiFrom } from "@/lib/ai/client";
 import { BlockMenu, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 import { AnchoredPopover } from "./meeting-popover";
+import { layerHost } from "./layer-host";
 import { Avatar, Modal } from "./ui";
 import type { User } from "@/lib/types";
 
@@ -940,9 +941,16 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
                 <Microphone size={14} /> {t("Aufnahme starten", "Start recording")}
               </button>
               {browserAll ? (
-                <button type="button" className="button meeting-start-all" onClick={() => void begin(true)} title={t("Chrome oder Edge fragen nach einem Tab oder dem Bildschirm – dort „Tab-Audio teilen“ ankreuzen.", "Chrome or Edge ask for a tab or the screen – tick “Share tab audio” there.")}>
-                  <UsersThree size={14} /> {t("Alle Teilnehmenden aufnehmen", "Record all participants")}
-                </button>
+                <>
+                  <button type="button" className="button meeting-start-all" onClick={() => void begin(true)} title={t("Chrome oder Edge fragen nach einem Tab oder dem Bildschirm – dort „Tab-Audio teilen“ ankreuzen.", "Chrome or Edge ask for a tab or the screen – tick “Share tab audio” there.")}>
+                    <UsersThree size={14} /> {t("Alle Teilnehmenden aufnehmen", "Record all participants")}
+                  </button>
+                  {/* "Start recording" hears only this microphone: the others
+                      in the call are missing unless the tab's sound is shared (#199). */}
+                  <span className="muted meeting-capture-hint meeting-mic-only-hint">
+                    {t("Nur dein Mikrofon – wähle „Alle Teilnehmenden aufnehmen“, um die anderen mit aufzunehmen.", "Only your microphone – choose “Record all participants” to include the others.")}
+                  </span>
+                </>
               ) : system.reason === "browser" ? (
                 <span className="muted meeting-capture-hint">{t(BROWSER_CAPTURE_HINT[0], BROWSER_CAPTURE_HINT[1])}</span>
               ) : null}
@@ -1073,7 +1081,8 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       {menu &&
         createPortal(
           <BlockMenu anchor={menu} owner={gear.current} placement="below" views={views} label={t("Einstellungen der Besprechung", "Meeting settings")} className="meeting-menu" onClose={closeMenu} />,
-          document.body,
+          // In a record's dialog the menu stays in the dialog (#232).
+          layerHost(gear.current),
         )}
       {picker === "attendees" && (
         <AnchoredPopover anchor={plus.current} label={t("Teilnehmende hinzufügen", "Add attendees")} className="meeting-picker" onClose={() => setPicker("")}>

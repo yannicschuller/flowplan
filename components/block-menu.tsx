@@ -229,6 +229,7 @@ export function BlockMenu({
   return (
     <div
       ref={menu}
+      data-layer=""
       className={`dropdown record-menu block-menu ${className}`}
       role="menu"
       aria-label={label || current.title}

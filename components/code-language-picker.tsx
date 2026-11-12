@@ -157,6 +157,7 @@ export function CodeLanguagePicker({
         createPortal(
           <div
             ref={panel}
+            data-layer=""
             className={`code-language-panel${place.up ? " up" : ""}`}
             style={{ top: place.top, left: place.left, width: place.width }}
           >

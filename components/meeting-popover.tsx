@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { Modal } from "./ui";
 import { usePhone } from "./block-menu";
 import { safeInsets } from "./safe-area";
+import { escapeForLayer, layerHost } from "./layer-host";
 
 export function AnchoredPopover({
   anchor,
@@ -81,12 +82,13 @@ export function AnchoredPopover({
   return createPortal(
     <div
       ref={panel}
+      data-layer=""
       role="dialog"
       aria-label={label}
       className={`dropdown meeting-popover ${className}`}
       style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0 }}
       onKeyDown={(e) => {
-        if (e.key !== "Escape" || e.defaultPrevented) return;
+        if (e.key !== "Escape" || (e.defaultPrevented && !escapeForLayer(e.nativeEvent))) return;
         e.preventDefault();
         e.stopPropagation();
         escape();
@@ -94,6 +96,7 @@ export function AnchoredPopover({
     >
       {children}
     </div>,
-    document.body,
+    // In a record's dialog it stays in the dialog (#232).
+    layerHost(anchor),
   );
 }

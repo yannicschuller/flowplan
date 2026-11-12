@@ -1288,8 +1288,9 @@ export function DocumentBlockControls({
               {t("Fertig", "Done")}
             </button>
           </div>,
-          // Inside the shell: above its tab bar on phones.
-          document.querySelector(".app-shell") || document.body,
+          // Inside the shell: above its tab bar on phones; in a record's
+          // dialog inside the dialog, so it takes clicks there (#232).
+          editor.view.dom.closest<HTMLElement>('[role="dialog"]') || document.querySelector(".app-shell") || document.body,
         )}
     </>
   );

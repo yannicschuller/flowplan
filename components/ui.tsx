@@ -18,6 +18,7 @@ import { ViewShapeBody, type ViewShape } from "./skeleton";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { useImagePlaceholder } from "./image-placeholder";
 import { showToast } from "./toast";
+import { keepDialogForLayer } from "./layer-host";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -249,7 +250,11 @@ export function Modal({
           aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
           onOpenAutoFocus={onOpenAutoFocus}
-          onEscapeKeyDown={onEscapeKeyDown}
+          onEscapeKeyDown={(event) => {
+            onEscapeKeyDown?.(event);
+            // A menu or popover inside the dialog closes first (#232).
+            if (!event.defaultPrevented) keepDialogForLayer(content.current, event);
+          }}
           ref={contentRef}
         >
           <div className="modal-scroll-sentinel" aria-hidden />
