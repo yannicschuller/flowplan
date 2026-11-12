@@ -10,7 +10,7 @@ import { visibleRows } from "./row-access";
 import { hiddenFieldsFor } from "./field-access";
 import { cellText } from "./cell-text";
 import { databaseSettings } from "./database-settings";
-import { doneRule, isDone } from "./database-settings-schema";
+import { doneRule, dueField, isDone } from "./database-settings-schema";
 import { ticketId } from "./ticket-ids";
 import type { Field, Identity, Page, Row } from "./types";
 
@@ -24,9 +24,9 @@ export const crossFilterSchema = z.object({
 export type CrossFilter = z.infer<typeof crossFilterSchema>;
 
 const MAX = 500;
-// The date a record is due: a date property named like one, else the first.
-export const dueField = (fields: Field[]) =>
-  fields.find((f) => f.type === "date" && /fällig|due|deadline|frist|termin|bis/i.test(f.name)) || fields.find((f) => f.type === "date");
+// The date a record is due: the database's setting, else a date property
+// named like one, else the first (lib/database-settings-schema.ts).
+export { dueField };
 
 // Whether a person stands in a person property ("Assignee", "Verantwortlich"):
 // one user id, or a list of them.
@@ -80,10 +80,11 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
     if (filter.mine && !people.length) continue;
     databases.push({ id: page.id, title: page.title });
     // A hidden status or checkbox: "done" is unknown, the record counts as open.
-    const found = doneRule(fields, await databaseSettings(page.id));
+    const settings = await databaseSettings(page.id);
+    const found = doneRule(fields, settings);
     const rule = found && shown(found.field) ? found : null;
-    // A hidden due date: no date.
-    const foundDue = dueField(fields);
+    // A hidden due date: no date; "no due date" set: none either.
+    const foundDue = dueField(fields, settings);
     const due = shown(foundDue) ? foundDue : undefined;
     // A hidden ID property: no ticket key; a hidden title: none (shown as
     // "Untitled", like everywhere else).

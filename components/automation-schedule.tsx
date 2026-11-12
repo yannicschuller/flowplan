@@ -5,7 +5,7 @@
 import { Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import type { AutomationAction, ScheduleTrigger } from "@/lib/database-settings-schema";
+import { dueSetting, guessDueField, type AutomationAction, type DatabaseSettings, type ScheduleTrigger } from "@/lib/database-settings-schema";
 import type { Field } from "@/lib/types";
 
 export type RowTemplateRef = { id: string; name: string; is_default?: number };
@@ -27,10 +27,12 @@ export function scheduledTrigger(timeZone: string): ScheduleTrigger {
   return { type: "schedule", freq: "weekly", interval: 1, weekday: 1, day: 1, time: "09:00", timeZone };
 }
 // A new record from the default (or first) template; a due date, if there
-// is one, three days after the run.
-export function createAction(templates: RowTemplateRef[], dates: Field[]): CreateAction {
+// is one (the database's setting, else a property named like one), three
+// days after the run.
+export function createAction(templates: RowTemplateRef[], fields: Field[], settings?: DatabaseSettings): CreateAction {
   const template = templates.find((x) => x.is_default) || templates[0];
-  const due = dates.find((f) => /fällig|due|deadline|frist/i.test(f.name));
+  const setting = dueSetting(fields, settings);
+  const due = setting.mode === "field" ? setting.field : setting.mode === "none" ? undefined : guessDueField(fields);
   return { type: "create", template: template?.id || "", cells: {}, dates: due ? { [due.id]: 3 } : {} };
 }
 

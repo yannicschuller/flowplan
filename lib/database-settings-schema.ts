@@ -9,6 +9,9 @@ const fid = z.string().min(1).max(500);
 const optionValue = z.string().max(100);
 
 export const doneSchema = z.object({ field: fid, values: z.array(optionValue).max(50) });
+// The date a record is due (#248): a date property, or none at all ("the
+// dates of this database are no deadlines"). Not set: guessed by name.
+export const dueSchema = z.union([z.object({ field: fid }).strict(), z.object({ none: z.literal(true) }).strict()]);
 
 // Allowed status changes and what a status needs.
 export const workflowSchema = z.object({
@@ -100,6 +103,7 @@ export type Sprint = z.infer<typeof sprintSchema>;
 
 export const settingsSchema = z.object({
   done: doneSchema.optional(),
+  due: dueSchema.optional(),
   workflow: workflowSchema.optional(),
   automations: z.array(automationSchema).max(50).optional(),
   sprints: z.array(sprintSchema).max(200).optional(),
@@ -130,8 +134,33 @@ export const settingsSchema = z.object({
 });
 export type DatabaseSettings = z.infer<typeof settingsSchema>;
 
-// Statuses that mean "finished", when nothing is configured.
-const DONE_WORDS = /^(erledigt|fertig|abgeschlossen|done|closed|resolved|complete|completed|gelöst|geschlossen)$/i;
+// Names are compared lower-case and without accents ("Échéance" →
+// "echeance", "gelöst" → "gelost"), so either spelling matches.
+export const plainName = (name: string) =>
+  name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+// Statuses that mean "finished", when nothing is configured: German,
+// English, French, Italian, Spanish and Chinese. Only words that clearly
+// mean done – "Expiré"/"Abgelaufen" does not (an expired voucher is not a
+// finished task); such databases set it under "Status rules and done".
+const DONE_WORDS = new RegExp(
+  "^(?:" +
+    [
+      "erledigt|fertig|abgeschlossen|gelost|geloest|geschlossen",
+      "done|closed|resolved|complete|completed",
+      "termine|terminee|fait|faite|fini|finie|clos|close|cloture|cloturee|ferme|fermee|resolu|resolue|utilise|utilisee",
+      "completato|completata|fatto|fatta|chiuso|chiusa|risolto|risolta",
+      "hecho|hecha|terminado|terminada|cerrado|cerrada|completado|completada|resuelto|resuelta",
+      "已完成|完成|已关闭|已解决|已结束",
+    ].join("|") +
+    ")$",
+);
+const isDoneWord = (option: string) => DONE_WORDS.test(plainName(option));
+const DONE_CHECKBOX = /erledigt|done|fertig|abgeschlossen|termine|fait|fini|hecho|fatto|completato|完成/;
 
 // The effective rule for "done": the configured one, otherwise a status
 // property with an option like "Erledigt"/"Done", otherwise a checkbox
@@ -140,11 +169,66 @@ export function doneRule(fields: Field[], settings: DatabaseSettings | undefined
   const configured = settings?.done && fields.find((f) => f.id === settings.done!.field);
   if (configured) return { field: configured, values: settings!.done!.values };
   const selects = fields.filter((f) => f.type === "select");
-  const status = selects.find((f) => /status|stand|zustand|phase/i.test(f.name)) || selects.find((f) => f.options?.some((o) => DONE_WORDS.test(o)));
-  const values = status?.options?.filter((o) => DONE_WORDS.test(o)) || [];
+  const status = selects.find((f) => /status|stand|zustand|phase/i.test(f.name)) || selects.find((f) => f.options?.some(isDoneWord));
+  const values = status?.options?.filter(isDoneWord) || [];
   if (status && values.length) return { field: status, values };
-  const check = fields.find((f) => f.type === "checkbox" && /erledigt|done|fertig|abgeschlossen/i.test(f.name));
+  const check = fields.find((f) => f.type === "checkbox" && DONE_CHECKBOX.test(plainName(f.name)));
   return check ? { field: check, values: ["true"] } : null;
+}
+
+// Date properties named like a due date, in two tiers: clear words first
+// ("Fällig", "Due", "Échéance", "截止"), then weaker ones ("Termin", "bis",
+// "Fin de validité", "Expiration"), so "Terminé le" never beats "Échéance".
+const DUE_NAMES = [
+  new RegExp(
+    [
+      "fallig|faellig|due|deadline|frist",
+      "echeance|delai|date limite|a rendre",
+      "scadenza|scadenze|data limite",
+      "vencimiento|fecha limite|plazo",
+      "截止|到期|期限",
+    ].join("|"),
+  ),
+  /termin|bis|until|jusqu|fin de validit|expir|ablauf|valable|entro il|valido fino|hasta|有效期/,
+];
+// The due date by name only (undefined when no property is named so).
+export function guessDueField<F extends { type: string; name: string }>(fields: F[]): F | undefined {
+  const dates = fields.filter((f) => f.type === "date");
+  for (const pattern of DUE_NAMES) {
+    const found = dates.find((f) => pattern.test(plainName(f.name)));
+    if (found) return found;
+  }
+  return undefined;
+}
+// The setting "Due date": a date property ("field"), none ("none"), or
+// automatic ("auto": also when the chosen property was deleted or is no
+// longer a date).
+export function dueSetting(fields: Field[], settings: DatabaseSettings | undefined): { mode: "auto" } | { mode: "none" } | { mode: "field"; field: Field } {
+  const due = settings?.due;
+  if (due && "none" in due) return { mode: "none" };
+  const field = due && "field" in due ? fields.find((f) => f.id === due.field && f.type === "date") : undefined;
+  return field ? { mode: "field", field } : { mode: "auto" };
+}
+// The date a record is due, used by "My tasks", due notifications, the
+// app's widgets and quick capture: the configured property, nothing when
+// set to "no due date", otherwise a date property named like one, else the
+// first date property.
+export function dueField(fields: Field[], settings?: DatabaseSettings) {
+  const setting = dueSetting(fields, settings);
+  if (setting.mode === "none") return undefined;
+  if (setting.mode === "field") return setting.field;
+  return guessDueField(fields) || fields.find((f) => f.type === "date");
+}
+// Where a new due date goes (quick capture, the app's capture), among the
+// date properties `writable` the person may write: the configured property
+// if writable, nothing for "no due date", otherwise the name guess or the
+// first of them.
+export function writableDueField<F extends { id: string; type: string; name: string }>(fields: Field[], settings: DatabaseSettings | undefined, writable: F[]) {
+  const dates = writable.filter((f) => f.type === "date");
+  const setting = dueSetting(fields, settings);
+  if (setting.mode === "none") return undefined;
+  if (setting.mode === "field") return dates.find((f) => f.id === setting.field.id);
+  return guessDueField(dates) || dates[0];
 }
 export function isDone(rule: Awaited<ReturnType<typeof doneRule>>, cells: Record<string, unknown>) {
   if (!rule) return false;

@@ -23,14 +23,14 @@ import { cellText } from "./cell-text";
 import { contentLocale, ct } from "./content-locale";
 import { calendarRange } from "./database-calendar";
 import { queryRows } from "./database";
-import { doneRule, isDone } from "./database-settings-schema";
+import { doneRule, dueField, isDone, type DatabaseSettings } from "./database-settings-schema";
 import { scheduleFields } from "./database-timeline";
 import { validZone } from "./date-values";
 import { openTasksEverywhere, taskKey } from "./doc-tasks";
 import { priorityField, priorityRank, sortTasks, type OrderedTask } from "./task-order";
 import { rewriteStoredDocument } from "./document-rewrite";
 import { unwritableFieldIds, visibleFields } from "./field-access";
-import { assignedTo, dueField } from "./cross-records";
+import { assignedTo } from "./cross-records";
 import { formatNumber } from "./field-format";
 import { localizedMessage } from "./i18n-errors";
 import { isLocale, localeTag, pickLocale, type Locale } from "./i18n";
@@ -361,10 +361,14 @@ export async function myRecordTasks(user: Identity, keep: (due: string | null) =
       const shown = await visibleFields(user, page, fields);
       const people = shown.filter((f) => f.type === "person");
       if (!people.length) continue;
-      const rule = doneRule(fields, parse(raw?.settings, undefined));
+      const settings = parse<DatabaseSettings | undefined>(raw?.settings, undefined);
+      const rule = doneRule(fields, settings);
       const ruleVisible = !!rule && shown.includes(rule.field);
       const ruleWritable = ruleVisible && !(await unwritableFieldIds(user, page, fields)).has(rule.field.id);
-      const due = dueField(shown);
+      // The database's due date (lib/database-settings-schema.ts); hidden
+      // from the person or "no due date": the task shows without a date.
+      const dueFound = dueField(fields, settings);
+      const due = dueFound && shown.some((f) => f.id === dueFound.id) ? dueFound : undefined;
       const priority = priorityField(shown);
       const database = clip(page.title || untitled(), DETAIL);
       const rows = await visibleRows(

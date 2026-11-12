@@ -570,14 +570,15 @@ export const commandActions: ActionDoc[] = [
   },
   {
     action: "database.settings",
-    summary: "Change the settings of a database (done rule, workflow, automations, sprints)",
+    summary: "Change the settings of a database (done rule, due date, workflow, automations, sprints)",
     description:
-      "Needs editor rights. Each key replaces that setting; `null` removes it. Automations with a `schedule` trigger only take `create` actions (a new record from a record template, with dates relative to the run); they run as the person who last saved them, at most once per scheduled time. `createdBy` and `since` are set by the server.",
+      "Needs editor rights. Each key replaces that setting; `null` removes it. `due` is the date a record is due for My tasks, due notifications and the app's widgets: `{ field }` (a date property) or `{ none: true }` (no due date); without it a date property named like a due date is used, else the first. Automations with a `schedule` trigger only take `create` actions (a new record from a record template, with dates relative to the run); they run as the person who last saved them, at most once per scheduled time. `createdBy` and `since` are set by the server.",
     input: z.object({
       action: z.literal("database.settings"),
       pageId: uuid,
       settings: z.object({
         done: settingsSchema.shape.done.nullable(),
+        due: settingsSchema.shape.due.nullable(),
         workflow: settingsSchema.shape.workflow.nullable(),
         automations: settingsSchema.shape.automations.nullable(),
         sprints: settingsSchema.shape.sprints.nullable(),

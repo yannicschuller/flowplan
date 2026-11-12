@@ -5,7 +5,7 @@ import { useT } from "./i18n";
 import { api, reportError } from "./ui";
 import { Select } from "./select";
 import type { Automation, AutomationAction, DatabaseSettings } from "@/lib/database-settings-schema";
-import { doneRule } from "@/lib/database-settings-schema";
+import { doneRule, dueField } from "@/lib/database-settings-schema";
 import { browserZone } from "@/lib/date-values";
 import { conditionTimeZone } from "@/lib/database-filters";
 import type { Field, User } from "@/lib/types";
@@ -94,14 +94,16 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
       }),
     });
   }
-  if (dates.length)
+  // The database's due date (setting or name guess); none: no suggestion.
+  const due = dueField(fields, settings);
+  if (due)
     suggestions.push({
       label: t("Wenn die Fälligkeit überschritten ist, benachrichtigen", "When the due date has passed, notify"),
       rule: () => ({
         id: newId(),
         name: t("Überfällig", "Overdue"),
         enabled: true,
-        trigger: { type: "overdue", field: (dates.find((f) => /fällig|due|deadline|frist/i.test(f.name)) || dates[0]).id },
+        trigger: { type: "overdue", field: due.id },
         conditions: [],
         actions: [{ type: "notify", to: people[0] ? `field:${people[0].id}` : "@creator", message: t("Überfällig", "Overdue") }],
       }),
@@ -127,7 +129,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
       enabled: true,
       trigger: scheduledTrigger(browserZone()),
       conditions: [],
-      actions: [createAction(templates, dates)],
+      actions: [createAction(templates, fields, settings)],
     }),
   });
   const empty = (): Automation => ({ id: newId(), name: "", enabled: true, trigger: { type: "created" }, conditions: [], actions: [{ type: "notify", to: "@creator", message: "" }] });
@@ -137,6 +139,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
       <AutomationEditor
         rule={draft}
         fields={fields}
+        settings={settings}
         members={members}
         templates={templates}
         busy={busy}
@@ -295,6 +298,7 @@ function whoLabel(to: string, fields: Field[], members: Pick<User, "id" | "name"
 function AutomationEditor({
   rule,
   fields,
+  settings,
   members,
   templates,
   busy,
@@ -303,6 +307,7 @@ function AutomationEditor({
 }: {
   rule: Automation;
   fields: Field[];
+  settings: DatabaseSettings;
   members: Pick<User, "id" | "name">[];
   templates: RowTemplateRef[];
   busy: boolean;
@@ -343,7 +348,7 @@ function AutomationEditor({
             // Scheduled rules create records; the other rules do not.
             const actions =
               type === "schedule"
-                ? [createAction(templates, fields.filter((f) => f.type === "date"))]
+                ? [createAction(templates, fields, settings)]
                 : trigger.type === "schedule"
                   ? [{ type: "notify" as const, to: "@creator", message: "" }]
                   : r.actions;
@@ -547,7 +552,7 @@ function AutomationEditor({
                 ...r,
                 actions: [
                   ...r.actions,
-                  trigger.type === "schedule" ? createAction(templates, fields.filter((f) => f.type === "date")) : { type: "notify", to: "@creator", message: "" },
+                  trigger.type === "schedule" ? createAction(templates, fields, settings) : { type: "notify", to: "@creator", message: "" },
                 ],
               })
             }

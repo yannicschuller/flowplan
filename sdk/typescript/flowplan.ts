@@ -1735,7 +1735,7 @@ export type CommandRowRepeatResult = {
   ok: true;
 };
 
-/** Change the settings of a database (done rule, workflow, automations, sprints). Needs editor rights. Each key replaces that setting; `null` removes it. Automations with a `schedule` trigger only take `create` actions (a new record from a record template, with dates relative to the run); they run as the person who last saved them, at most once per scheduled time. `createdBy` and `since` are set by the server. */
+/** Change the settings of a database (done rule, due date, workflow, automations, sprints). Needs editor rights. Each key replaces that setting; `null` removes it. `due` is the date a record is due for My tasks, due notifications and the app's widgets: `{ field }` (a date property) or `{ none: true }` (no due date); without it a date property named like a due date is used, else the first. Automations with a `schedule` trigger only take `create` actions (a new record from a record template, with dates relative to the run); they run as the person who last saved them, at most once per scheduled time. `createdBy` and `since` are set by the server. */
 export type CommandDatabaseSettings = {
   action: "database.settings";
   pageId: string;
@@ -1743,6 +1743,11 @@ export type CommandDatabaseSettings = {
     done?: {
       field: string;
       values: string[];
+    } | null;
+    due?: {
+      field: string;
+    } | {
+      none: true;
     } | null;
     workflow?: {
       field: string;

@@ -156,6 +156,7 @@ export async function importDatabaseSettings(
   // A person in a rule: a member (the exporter becomes the importer) or "@actor".
   const who = (value: unknown) => (outsider(value) ? "@actor" : typeof value === "string" ? ctx.person(value) : value);
   if (settings.done && !known.has(settings.done.field)) delete settings.done;
+  if (settings.due && "field" in settings.due && !known.has(settings.due.field)) delete settings.due;
   if (settings.workflow && !known.has(settings.workflow.field)) delete settings.workflow;
   if (settings.pointsField && !known.has(settings.pointsField)) delete settings.pointsField;
   settings.automations = settings.automations?.map((a) => ({
