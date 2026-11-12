@@ -26,6 +26,7 @@ import {
 import { DomUtils } from "htmlparser2";
 import { CALLOUT_COLORS, calloutIcon, type CalloutColor } from "../callout-types";
 import { highlightColors } from "../text-marks";
+import type { PageTagColor } from "../page-properties";
 
 // Notion's colour names → the editor's palette (lib/text-marks.ts).
 const COLOR_NAMES: Record<string, CalloutColor> = {
@@ -243,3 +244,57 @@ export function notionHtmlPage(source: string): NotionPage {
 
 // Notion's own page files (an export may hold other HTML too).
 export const isNotionHtml = (source: string) => /<div[^>]*\bclass="[^"]*\bpage-body\b/.test(source) || /<article[^>]*\bclass="page\b/.test(source);
+
+// Colours of select and multi-select values (#242): Notion writes each
+// value as <span class="selected-value select-value-color-blue">, in the
+// database's table (<table class="collection-content">, the column's name
+// in its <th>) and in the properties above a record page (<table
+// class="properties">, a <th> per row). Property name → value → colour;
+// Notion's "default" is our grey, its brown our orange.
+const SELECT_COLORS: Record<string, PageTagColor> = {
+  default: "gray",
+  gray: "gray",
+  grey: "gray",
+  brown: "orange",
+  orange: "orange",
+  yellow: "yellow",
+  green: "green",
+  blue: "blue",
+  purple: "purple",
+  pink: "pink",
+  red: "red",
+  teal: "teal",
+};
+export function notionOptionColors(source: string, into = new Map<string, Map<string, PageTagColor>>()) {
+  if (!source.includes("select-value-color-")) return into;
+  const doc = parseHtml(source);
+  const clean = (el: ChildNode) => DomUtils.textContent(el).replace(/\s+/g, " ").trim();
+  const take = (property: string, cell: Element) => {
+    if (!property) return;
+    for (const value of find(cell, (e) => /\bselect-value-color-/.test(attr(e, "class")))) {
+      const name = /\bselect-value-color-([a-z]+)/.exec(attr(value, "class"))?.[1] || "";
+      const color = SELECT_COLORS[name];
+      const text = clean(value).slice(0, 100);
+      if (!color || !text) continue;
+      const map = into.get(property) || new Map<string, PageTagColor>();
+      if (!map.has(text)) map.set(text, color);
+      into.set(property, map);
+    }
+  };
+  for (const table of find(doc.children, (e) => e.name === "table" && hasClass(e, "properties")))
+    for (const row of find(table, byTag("tr"))) {
+      const head = findOne(row, byTag("th")),
+        cell = findOne(row, byTag("td"));
+      if (head && cell) take(clean(head), cell);
+    }
+  for (const table of find(doc.children, (e) => e.name === "table" && hasClass(e, "collection-content"))) {
+    const thead = findOne(table, byTag("thead"));
+    const names = thead ? find(thead, byTag("th")).map(clean) : [];
+    const tbody = findOne(table, byTag("tbody"));
+    for (const row of tbody ? find(tbody, byTag("tr")) : [])
+      children(row)
+        .filter((c) => c.name === "td")
+        .forEach((cell, i) => take(names[i] || "", cell));
+  }
+  return into;
+}

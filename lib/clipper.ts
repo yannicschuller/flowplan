@@ -4,6 +4,7 @@
 // carry CORS headers for browser-extension origins only, never for web
 // pages, and never allow cookies: the bearer token is the only credential.
 // Clipped HTML comes from the content script and is sanitised here.
+import { colorOptions } from "./option-colors";
 import { z } from "zod";
 import { parseDocument, DomUtils } from "htmlparser2";
 import { all, audit, one, run, transaction } from "./db";
@@ -166,7 +167,8 @@ async function targetPage(user: Identity, workspaceId: string, pageId: string) {
 // "Schlagwörter"; for bookmarks a "Tags" property is added on first use.
 async function tagRecord(pageId: string, rowId: string, tags: string[], create = false) {
   if (!tags.length) return;
-  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
+  const stored = (await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields;
+  const fields = JSON.parse(stored) as Field[];
   let field = fields.find((f) => ["multiselect", "select"].includes(f.type) && /^(tags?|schlagw(ö|oe)rter|stichw(ö|oe)rter|labels?)$/i.test(f.name.trim()));
   if (!field && create) {
     field = { id: "bm_tags", name: ct("Tags", "Tags"), type: "multiselect", options: [] };
@@ -179,6 +181,8 @@ async function tagRecord(pageId: string, rowId: string, tags: string[], create =
   const chosen = tags.map((tag) => options.find((o) => o.toLowerCase() === tag.toLowerCase())).filter((t): t is string => !!t);
   const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells) as Record<string, unknown>;
   cells[field.id] = field.type === "select" ? chosen[0] : [...new Set(chosen)];
+  // New tags get colours in turn (#242).
+  colorOptions(fields, JSON.parse(stored) as Field[]);
   await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
   await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rowId);
 }

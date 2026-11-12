@@ -17,6 +17,7 @@ import { assertFieldsWritable } from "./field-access";
 import { replaceRowDocument } from "./row-documents";
 import { relationPairs } from "./relation-sync";
 import { parseAliases } from "./page-aliases";
+import { colorOptions } from "./option-colors";
 import type { Identity, Field, Page, Row } from "./types";
 const computed = [
   "formula",
@@ -75,6 +76,8 @@ export function addImportedOptions(fields: Field[], rows: Record<string, unknown
   for (const f of next)
     if (added.has(f.id) && (f.options?.length || 0) > OPTIONS_MAX)
       throw new HttpError(400, `„${f.name}“ hätte mehr als ${OPTIONS_MAX} Optionen.`);
+  // New options get the next colour in turn (#242).
+  colorOptions(next.filter((f) => added.has(f.id)), fields);
   return { fields: next, added: fields.filter((f) => added.has(f.id)).map((f) => ({ id: f.id, name: f.name, options: added.get(f.id)! })) };
 }
 

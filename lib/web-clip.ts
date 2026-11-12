@@ -1,6 +1,7 @@
 // Web clipper: the readable text of an article (loaded server-side through
 // the SSRF-safe fetch), a bookmarks database per space, and importing the
 // bookmarks file browsers export (Netscape format).
+import { colorOptions } from "./option-colors";
 import { escapeInline } from "./inline-markdown";
 import sanitize from "sanitize-html";
 import { z } from "zod";
@@ -261,6 +262,8 @@ export async function addBookmarks(
     ids.push(rid);
     added++;
   });
+  // New sites and folders get colours in turn (#242).
+  colorOptions(fields, JSON.parse(db.fields) as Field[]);
   await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
   await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   return { added, skipped: items.length - added, ids };

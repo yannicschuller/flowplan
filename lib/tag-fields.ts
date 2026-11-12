@@ -405,6 +405,9 @@ export async function prepareTagFields(user: Identity, page: Page, fields: Field
       }
       const ordered = [...names.filter((n) => used.has(foldName(n))), ...names.filter((n) => !used.has(foldName(n)))];
       f.options = ordered.slice(0, TAG_FIELD_LIMIT);
+      // The options keep the tags' colours (#242).
+      const colors = new Map((await contextTags(page.workspace_id, page.space_id)).map((t) => [t.name, t.color]));
+      f.optionColors = Object.fromEntries(f.options.flatMap((o) => (colors.has(o) ? [[o, colors.get(o)!]] : [])));
     } else if ((f.options?.length || 0) > TAG_FIELD_LIMIT) throw new HttpError(400, "Höchstens 100 Optionen.");
   }
 }

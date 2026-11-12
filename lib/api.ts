@@ -242,6 +242,8 @@ import * as Y from "yjs";
 import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql, lockMembership } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { applyOptionRenames } from "./option-renames-server";
+import { optionRenamesSchema } from "./option-renames";
+import { colorOptions } from "./option-colors";
 import { restoreVersionSettings } from "./database-version-settings";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
@@ -2329,6 +2331,9 @@ async function runCommand(
         prepareSubtaskFields(await write(), fields, await databaseSettings(pid()));
         // Multi-selects with the workspace's tags as options (#79).
         await prepareTagFields(user, await write(), fields, d.fields);
+        // Option colours (#242): new options get the next colour, renamed
+        // ones keep theirs.
+        colorOptions(fields, d.fields, optionRenamesSchema.parse(b.optionRenames ?? []));
         await validateDatabaseRelations(user, await write(), fields, d.fields);
         await validateTicketPrefix(await write(), fields);
         for (const v of views) {

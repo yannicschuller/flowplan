@@ -5,6 +5,7 @@ import { feedSchema } from "./database-feed";
 import { chartSchema } from "./database-chart";
 import { filterSchema, filterGroupSchema } from "./database-filters";
 import { z } from "zod";
+import { OPTION_COLORS } from "./option-colors";
 import { MAX_ORDERED_ROWS } from "./row-order";
 import { rollupAggregates } from "./rollups";
 import { calculationsSchema } from "./database-summary";
@@ -51,6 +52,11 @@ export const field = z.object({
   // options (`tagOptions`) mirrors all tags (lib/tag-fields.ts).
   options: z.array(z.string().max(100)).max(1000).optional(),
   tagOptions: z.boolean().optional(),
+  // A colour per option (#242, lib/option-colors.ts).
+  optionColors: z
+    .record(z.string().max(100), z.enum(OPTION_COLORS))
+    .refine((colors) => Object.keys(colors).length <= 1000)
+    .optional(),
   formula: z.string().max(2000).optional(),
   relationPage: z.string().optional(),
   relationField: z.string().optional(),

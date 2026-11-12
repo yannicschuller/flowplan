@@ -3,6 +3,7 @@
 // points, parents as subtasks, descriptions as the record's content,
 // comments as comments and attachments as links (the files themselves stay
 // at Jira or Trello, which need a sign-in to download them).
+import { colorOptions } from "./option-colors";
 import { escapeFormattedCells } from "./formatted-text";
 import Papa from "papaparse";
 import { all, id, one, run, transaction } from "./db";
@@ -239,6 +240,8 @@ export async function importTracker(user: Identity, workspaceId: string, spaceId
   return await transaction(async () => {
     const pageId = await createPage(workspaceId, spaceId, user.id, draft.title.slice(0, 200) || "Import", "database");
     for (const f of draft.fields) if (f.parent) f.relationPage = pageId;
+    // Options coloured in turn (#242).
+    colorOptions(draft.fields);
     await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(draft.fields), JSON.stringify(draft.views), pageId);
     const ids = new Map<string, string>();
     const parentField = draft.fields.find((f) => f.parent);

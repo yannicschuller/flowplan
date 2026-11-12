@@ -175,6 +175,8 @@ const fieldInfo = (f: Field, _: number, fields: Field[]) => ({
   // Formatted text (#126): the value is inline Markdown.
   ...(isFormattedText(f, fields) ? { markdown: true } : {}),
   ...(f.options?.length ? { options: f.options } : {}),
+  // Colours of the options (#242).
+  ...(f.optionColors && Object.keys(f.optionColors).length ? { optionColors: f.optionColors } : {}),
   // The workspace's tags are the options; a new name creates a tag (#79).
   ...(f.tagOptions ? { tagOptions: true } : {}),
   ...(f.relationPage ? { relationDatabaseId: f.relationPage } : {}),

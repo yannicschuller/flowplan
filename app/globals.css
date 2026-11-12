@@ -2355,9 +2355,11 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   font-size: 12px;
 }
 .property-type {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   color: var(--muted);
-  margin-right: 2px;
+  margin-right: 4px;
 }
 /* Field-level permissions: the lock beside a restricted property and the
    "Visibility" section of its settings. */

@@ -1,4 +1,6 @@
 import { PublicOutline } from "./document-outline";
+import { coloredChoices } from "./option-chips";
+import { choiceChipClass } from "@/lib/option-colors";
 import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
@@ -58,6 +60,8 @@ import { renderPublicRecord } from "./public-record";
 // formatting (no links inside a card that is itself a link; line breaks
 // only in the record's properties).
 function publicValue(f: Field, value: unknown, fields: Field[], options: { links: boolean; block?: boolean }) {
+  const chips = coloredChoices(f, value);
+  if (chips) return chips;
   if (!isFormattedText(f, fields)) return displayText(f, value, "UTC");
   if (typeof value !== "string" || !value.trim()) return "";
   return <InlineText value={value} links={options.links} oneLine={!options.block} />;
@@ -597,7 +601,7 @@ async function PublicBoard({
           aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}
         >
           <header>
-            <span className="tag tag-gray">{g.label}</span>
+            <span className={field && g.value !== null && field.optionColors ? choiceChipClass(field, g.label) : "tag tag-gray"}>{g.label}</span>
             <span className="muted">{g.rows.length}</span>
           </header>
           {g.rows.map((r) => (

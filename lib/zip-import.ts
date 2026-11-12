@@ -23,7 +23,9 @@ import { maxImportEntries, maxImportPages, tooManyPages } from "./importers/type
 import { documentAnchors, findAnchor, pendingAnchor, resolvePendingAnchors } from "./import-anchors";
 import { forEachAsync } from "./each-async";
 import { cleanHtmlAsync } from "./document-server";
-import { isNotionHtml, notionHtmlPage } from "./importers/notion-html";
+import { isNotionHtml, notionHtmlPage, notionOptionColors } from "./importers/notion-html";
+import { colorOptions } from "./option-colors";
+import type { PageTagColor } from "./page-properties";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
@@ -559,6 +561,20 @@ export async function importZip(
           i,
         ),
       );
+      // Option colours (#242): Notion's HTML export has them on the
+      // database's table and its record pages; otherwise in turn.
+      const htmlSources = [
+        ...[...entries.keys()].filter((path) => isHtml(path) && nodeKey(path) === node.key),
+        ...(rowPages.get(node.key) || []).map((key) => documentPath.get(key) || "").filter(isHtml),
+      ];
+      const notionColors = new Map<string, Map<string, PageTagColor>>();
+      for (const path of htmlSources) if (entries.has(path)) notionOptionColors(text(path), notionColors);
+      for (const f of fields) {
+        const colors = notionColors.get(f.name);
+        if (f.type === "select" && colors)
+          f.optionColors = Object.fromEntries((f.options || []).flatMap((o) => (colors.has(o) ? [[o, colors.get(o)!]] : [])));
+      }
+      colorOptions(fields);
       // Default views may refer to default properties; start with a table.
       await run(
         "UPDATE databases SET fields=?,views=? WHERE page_id=?",

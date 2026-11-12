@@ -1,0 +1,115 @@
+/* Options of select and multi-select properties (#242, lib/option-colors.ts):
+   the chip of a value in cells, cards, board columns, groups, filters and
+   records (`tag tag-choice`), coloured with `opt-<colour>`, and the colour
+   pickers in the property settings and the option's menu.
+
+   A chip is a step larger and its colour stronger than a page tag's, so a
+   column reads at a glance; text on every fill is at least 6:1 (light) and
+   6.3:1 (dark, on the page, cards and hovered rows) – above WCAG AA. Chips
+   without a colour keep their earlier look (.tag-gray, .tag-blue …). */
+.tag.tag-choice {
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.tag.tag-colored {
+  background: var(--opt-bg);
+  color: var(--opt-fg);
+}
+.opt-gray { --opt-bg: #e6e7eb; --opt-fg: #474c57; }
+.opt-blue { --opt-bg: #d9e5fb; --opt-fg: #24508f; }
+.opt-green { --opt-bg: #d5ecdd; --opt-fg: #235a39; }
+.opt-red { --opt-bg: #f8dcdc; --opt-fg: #8c3035; }
+.opt-yellow { --opt-bg: #f5e5b5; --opt-fg: #5c4a10; }
+.opt-orange { --opt-bg: #f9dec7; --opt-fg: #7a3d12; }
+.opt-purple { --opt-bg: #e7ddf8; --opt-fg: #553690; }
+.opt-pink { --opt-bg: #f7d9e7; --opt-fg: #842c5c; }
+.opt-teal { --opt-bg: #d0ece8; --opt-fg: #1e5a54; }
+/* Dark: a strong translucent fill with near-white text (as Notion's). */
+[data-theme="dark"] .tag.tag-colored {
+  --opt-fg: #f4f4f6;
+  filter: none;
+}
+[data-theme="dark"] .opt-gray { --opt-bg: rgba(170, 175, 190, 0.3); }
+[data-theme="dark"] .opt-blue { --opt-bg: rgba(81, 146, 255, 0.4); }
+[data-theme="dark"] .opt-green { --opt-bg: rgba(70, 190, 120, 0.34); }
+[data-theme="dark"] .opt-red { --opt-bg: rgba(240, 96, 90, 0.42); }
+[data-theme="dark"] .opt-yellow { --opt-bg: rgba(220, 170, 30, 0.38); }
+[data-theme="dark"] .opt-orange { --opt-bg: rgba(240, 130, 50, 0.42); }
+[data-theme="dark"] .opt-purple { --opt-bg: rgba(165, 115, 250, 0.42); }
+[data-theme="dark"] .opt-pink { --opt-bg: rgba(235, 105, 165, 0.4); }
+[data-theme="dark"] .opt-teal { --opt-bg: rgba(50, 185, 170, 0.36); }
+/* Small places stay small: cards and folded record properties. */
+.card-properties .tag.tag-choice,
+.tag.tag-choice.page-tag-small {
+  min-height: 18px;
+  font-size: 11.5px;
+  line-height: 18px;
+}
+
+/* A colour as a round swatch (menus and pickers). */
+.option-swatch {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--opt-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--opt-fg) 35%, transparent);
+}
+
+/* Property settings: every option with its colour. */
+.option-colors {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+}
+.option-colors-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.option-colors-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 168px;
+  overflow: auto;
+}
+.option-color-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.option-color-button .tag {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.option-color-button:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
+}
+.option-color-button svg {
+  color: var(--secondary);
+}
+/* The chosen colour in its menu. */
+.dropdown-item[role="menuitemradio"][aria-checked="true"]::after {
+  content: "✓";
+  margin-left: auto;
+  padding-left: 12px;
+}
