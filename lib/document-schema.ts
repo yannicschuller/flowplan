@@ -32,6 +32,7 @@ import { FunctionPlot } from "./function-plot-node";
 import { MetricBlock } from "./metric-node";
 import { PluginBlock } from "./plugin-node";
 import { WorkflowButton } from "./workflow-button-node";
+import { PageBreak } from "./page-break-node";
 import { FlowCodeBlock } from "./code-block";
 import { Bibliography, Citation } from "./citation-nodes";
 import { meetingExtensions } from "./meeting-schema";
@@ -737,6 +738,7 @@ export const documentExtensions = [
   MetricBlock,
   PluginBlock,
   WorkflowButton,
+  PageBreak,
   TaskList,
   FlowTaskItem.configure({ nested: true }),
   ListTidy,

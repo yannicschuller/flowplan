@@ -154,6 +154,7 @@ import {
   TextHTwo,
   TextHThree,
   Minus,
+  FileDashed,
   Plus,
   Info,
   ChatCenteredText,
@@ -214,6 +215,7 @@ import {
   CaptionedTable,
 } from "@/lib/document-schema";
 import { BlockCaptions, refreshCaptions } from "./block-captions-view";
+import { PageBreak } from "@/lib/page-break-node";
 import { compressImage } from "@/lib/image-compress";
 import { primePlaceholder } from "./image-placeholder";
 import { imagePlaceholderView } from "./image-placeholder-view";
@@ -759,6 +761,8 @@ export default function DocumentEditor({
           },
         }).configure({ types: ["heading", "paragraph"] }),
         Typography,
+        // A new page in print, PDF and Word (#216).
+        PageBreak,
         Callout,
         Toggle,
         ...mathNodeViews(setMath),
@@ -2063,6 +2067,15 @@ export default function DocumentEditor({
       description: t("Inhalte voneinander trennen", "Separate content"),
       icon: Minus,
       run: () => editor?.chain().focus().setHorizontalRule().run(),
+    },
+    {
+      id: "page-break",
+      group: "text",
+      name: t("Seitenumbruch", "Page break"),
+      keywords: ["seitenumbruch", "pagebreak", "page break", "umbruch", "newpage", "break", "drucken", "print", "pdf"],
+      description: t("Beim Drucken und im PDF auf einer neuen Seite weiter", "Continue on a new page in print and PDF"),
+      icon: FileDashed,
+      run: () => editor?.chain().focus().setPageBreak().run(),
     },
     // In the iPhone and iPad app: the document scanner; the app adds the
     // PDF with its recognised text at the end of this page.

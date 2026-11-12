@@ -142,6 +142,7 @@ const MARKDOWN_BLOCKS = new Set([
   "paragraph",
   "heading",
   "horizontalRule",
+  "pageBreak",
   "codeBlock",
   "mathBlock",
   "mermaidBlock",
@@ -401,6 +402,10 @@ export function htmlToMarkdown(
         );
       case "horizontalRule":
         return "---";
+      // Read back by the import (lib/markdown-html.ts), understood by
+      // Pandoc, Typora and most Markdown-to-PDF tools (#216).
+      case "pageBreak":
+        return '<div style="page-break-after: always"></div>';
       case "bibliography":
         return bibliography(String(node.attrs.title || ct("Literaturverzeichnis", "References")));
       case "codeBlock":

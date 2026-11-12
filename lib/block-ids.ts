@@ -39,6 +39,7 @@ export const BLOCK_ID_TYPES = [
   "pluginBlock",
   "workflowButton",
   "horizontalRule",
+  "pageBreak",
   "media",
   "linkCard",
   "linkedDatabase",

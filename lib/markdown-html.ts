@@ -10,6 +10,7 @@ import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
 import { taskList } from "./task-list-html";
+import { PAGE_BREAK_HTML } from "./page-break-node";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -222,9 +223,24 @@ export function markdownToRawHtml(
     name: "escape",
     renderer: (token) => (token.text === "^" ? "&#94;" : false),
   };
+  // A page break (#216): "\pagebreak" or "\newpage" (LaTeX, Pandoc) on a
+  // line of its own.
+  const pageBreak: TokenizerAndRendererExtension = {
+    name: "pageBreak",
+    level: "block",
+    start(src: string) {
+      const index = src.search(/^ {0,3}\\(?:pagebreak|newpage)[ \t]*$/m);
+      return index < 0 ? undefined : index;
+    },
+    tokenizer(src: string) {
+      const found = /^ {0,3}\\(?:pagebreak|newpage)[ \t]*(?:\n+|$)/.exec(src);
+      return found ? { type: "pageBreak", raw: found[0] } : undefined;
+    },
+    renderer: () => PAGE_BREAK_HTML,
+  };
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
-    extensions: [footnoteRef, caret],
+    extensions: [footnoteRef, caret, pageBreak],
     hooks: { processAllTokens: (tokens) => attachCaptions(tokens as Token[]) },
     renderer: {
       link({ href, tokens }: Tokens.Link) {
@@ -312,6 +328,9 @@ export function markdownToRawHtml(
         if (details) return `<details><summary>${escaped(decode(details[1].replace(/<[^>]*>/g, "")))}</summary><div>`;
         if (/^<\/details>\s*$/i.test(text)) return "</div></details>";
         if (/^<\/?(?:u|mark|sup|sub|strong|em|s)>$|^<br\s*\/?>$/i.test(text)) return text;
+        // A page break as lib/markdown.ts writes it (and Pandoc, Typora):
+        // <div style="page-break-after: always"></div> (#216).
+        if (/^<div\s+(?:class="page-break"\s+)?style="\s*(?:page-)?break-(?:after|before)\s*:\s*(?:always|page)\s*;?\s*"\s*(?:\/>|>\s*<\/div>)\s*$/i.test(text)) return PAGE_BREAK_HTML;
         // In the source view inline formatting comes as HTML; what is kept
         // is decided by the cleaning below and the editor's schema.
         if (options.source && /^<\/?(?:u|mark|sup|sub|s|span)\b[^<>]*>$|^<br\s*\/?>$/i.test(text)) return text;

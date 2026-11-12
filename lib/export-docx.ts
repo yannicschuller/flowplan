@@ -442,6 +442,9 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
       }
       case "horizontalRule":
         return paragraph("", `<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BFBFBF"/></w:pBdr>`);
+      // Word's own page break (#216); none inside a table cell.
+      case "pageBreak":
+        return block.inTable ? undefined : paragraph('<w:r><w:br w:type="page"/></w:r>');
       case "codeBlock":
         codeParagraph(node.textContent, block);
         captionParagraph(node, block);
