@@ -34,7 +34,7 @@ import { DatabaseSprints } from "./database-sprints";
 import { tagByName, useTagOptions } from "./tag-options-context";
 import { isTagField } from "@/lib/page-properties";
 import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRename } from "@/lib/option-renames";
-import { OPTION_COLORS, autoColors, carryColors, choiceChipClass, colorOptions, hasOwnOptions, legacyOptionColor, optionColor, type OptionColor } from "@/lib/option-colors";
+import { OPTION_COLORS, carryColors, choiceChipClass, colorOptions, hasOwnOptions, legacyOptionColor, optionColor, type OptionColor } from "@/lib/option-colors";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
@@ -5192,13 +5192,7 @@ export default function DatabaseView({
                 options={options}
                 colors={preview}
                 onChange={(option, color) => setFieldDraft((f) => ({ ...f, optionColors: { ...preview, ...f.optionColors, [option]: color } }))}
-                onAuto={() => {
-                  const before = fieldDraft.optionColors;
-                  setFieldDraft((f) => ({ ...f, optionColors: autoColors(options) }));
-                  showUndo(t("Farben automatisch vergeben.", "Colours assigned automatically."), () =>
-                    setFieldDraft((f) => ({ ...f, optionColors: before ?? {} })),
-                  );
-                }}
+                onReplace={(colors) => setFieldDraft((f) => ({ ...f, optionColors: colors }))}
               />
             );
           })()}

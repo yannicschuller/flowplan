@@ -64,7 +64,11 @@
 .option-colors {
   display: grid;
   gap: 6px;
-  margin: 2px 0 0;
+  margin: 2px 0 8px;
+}
+.option-colors-actions {
+  display: inline-flex;
+  gap: 12px;
 }
 .option-colors-head {
   display: flex;
@@ -112,4 +116,7 @@
   content: "✓";
   margin-left: auto;
   padding-left: 12px;
+}
+.record-menu .dropdown-item[role="menuitemradio"] {
+  justify-content: flex-start;
 }

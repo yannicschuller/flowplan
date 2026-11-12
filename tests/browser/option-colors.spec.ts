@@ -7,6 +7,8 @@ import { test, expect, type Page } from "@playwright/test";
 async function database(page: Page, name: string) {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // No welcome dialog in front of the database.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const response = await page.request.post("/api/command", {
     headers: { origin },
@@ -58,7 +60,7 @@ test("option colours: settings, table, board, new options, automatic colours, ch
   await page.locator(".data-table th").getByRole("button", { name: "Status" }).click();
   await dialog.getByRole("button", { name: "Farben automatisch vergeben" }).click();
   await expect(dialog.getByRole("button", { name: `Farbe von ${first}: Blau` })).toBeVisible();
-  await page.getByRole("button", { name: "Rückgängig" }).click();
+  await dialog.getByRole("button", { name: "Rückgängig" }).click();
   await expect(dialog.getByRole("button", { name: `Farbe von ${first}: Lila` })).toBeVisible();
   await dialog.getByRole("button", { name: "Farben automatisch vergeben" }).click();
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
