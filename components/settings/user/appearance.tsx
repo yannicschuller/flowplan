@@ -8,7 +8,8 @@
 // profile, all devices), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
-// "Animationen" (#260, profile, all devices),
+// "Animationen" (#260, profile, all devices), pages at full width (#257,
+// profile, all devices),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
 // "Was ist neu" (#223, profile, all devices).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
@@ -34,6 +35,7 @@ import type { FormattingToolbarPref } from "@/lib/toolbar-pref";
 import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
+import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
 
@@ -127,6 +129,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.motion", motion: value });
       } catch (e) {
         setMotionPrefLocal(before);
+        throw e;
+      }
+    });
+  };
+  const allWide = useFullWidthPages(!!boot.fullWidthPages);
+  const [wideStatus, runWide] = useSaveState();
+  const chooseWide = (on: boolean) => {
+    const before = fullWidthPages();
+    setFullWidthPagesLocal(on);
+    void runWide(async () => {
+      try {
+        await mutate({ action: "profile.fullWidthPages", fullWidthPages: on });
+      } catch (e) {
+        setFullWidthPagesLocal(before);
         throw e;
       }
     });
@@ -315,6 +331,17 @@ export default function AppearanceSection() {
               </label>
             ))}
           </div>
+        </SettingRow>
+        <SettingRow
+          anchor="full-width-pages"
+          label={t("Seiten in voller Breite anzeigen", "Show pages at full width")}
+          description={t(
+            "Alle Seiten und als Seite geöffneten Einträge nutzen die ganze Breite, als hätte jede „Volle Breite“. Nur deine Ansicht: Die Einstellung der einzelnen Seite bleibt, wie sie ist, und gilt weiter für alle anderen. Gilt auf allen Geräten.",
+            "All pages and records opened as a page use the whole width, as if each had “Full width” on. Only how you see them: each page's own setting stays as it is and still applies for everyone else. Applies on all devices.",
+          )}
+        >
+          <SaveState status={wideStatus} />
+          <Switch checked={allWide} label={t("Seiten in voller Breite anzeigen", "Show pages at full width")} onChange={chooseWide} />
         </SettingRow>
         <SettingRow
           anchor="quote-shortcut"

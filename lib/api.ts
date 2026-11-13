@@ -5,6 +5,7 @@ import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-l
 import { setUserQuoteShortcut, userQuoteShortcut } from "./user-quote-shortcut";
 import { setUserFormattingToolbar, userFormattingToolbar } from "./user-formatting-toolbar";
 import { setUserMotion, userMotion } from "./user-motion";
+import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
@@ -376,6 +377,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     formattingToolbar: await userFormattingToolbar(user.id),
     // "Animationen" (#260, lib/motion-pref.ts).
     motion: await userMotion(user.id),
+    // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).
+    fullWidthPages: await userFullWidthPages(user.id),
     // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts): the level
     // and, once after an update, the release notes to show.
     updateNotes: await userUpdateNotes(user),
@@ -945,6 +948,10 @@ async function runCommand(
       // "Animationen": normal, reduced or off (#260, lib/motion-pref.ts).
       case "profile.motion":
         result = await setUserMotion(user, b.motion);
+        break;
+      // Every page at full width for the caller (#257, lib/page-width-pref.ts).
+      case "profile.fullWidthPages":
+        result = await setUserFullWidthPages(user, b.fullWidthPages);
         break;
       // "Neuigkeiten nach Updates" and the dialog closed (#223,
       // lib/user-update-notes.ts).

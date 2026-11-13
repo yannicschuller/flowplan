@@ -1353,6 +1353,12 @@ function migrate(d: DatabaseSync) {
   // ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "motion"))
     d.exec("ALTER TABLE users ADD COLUMN motion TEXT");
+  // "Seiten in voller Breite anzeigen" per person (#257,
+  // lib/page-width-pref.ts): users.full_width_pages, NULL = the default
+  // (off), 0 or 1. An older version ignores the column, so the schema number
+  // stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "full_width_pages"))
+    d.exec("ALTER TABLE users ADD COLUMN full_width_pages INTEGER");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

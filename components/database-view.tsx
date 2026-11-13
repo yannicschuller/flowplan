@@ -1,4 +1,5 @@
 "use client";
+import { useFullWidthPages } from "@/lib/page-width-pref-client";
 import { rowChanges } from "@/lib/row-queue";
 import { patchBase } from "@/lib/row-patch";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
@@ -655,6 +656,10 @@ export default function DatabaseView({
       } catch {}
       return !wide;
     });
+  // "Seiten in voller Breite anzeigen" (#257): every record as a page at
+  // full width for this person; the switch then shows as on and locked.
+  const allWide = useFullWidthPages();
+  const recordFullWidth = recordWide || allWide;
   const [rowIconPicker, setRowIconPicker] = useState(false),
     [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
     [rowCoverPicker, setRowCoverPicker] = useState(false);
@@ -925,10 +930,15 @@ export default function DatabaseView({
         {recordMode === "full" && (
           <button
             type="button"
-            className={`icon-button${recordWide ? " active" : ""}`}
-            aria-pressed={recordWide}
+            className={`icon-button${recordFullWidth ? " active" : ""}`}
+            aria-pressed={recordFullWidth}
             aria-label={t("Volle Breite", "Full width")}
-            title={t("Volle Breite", "Full width")}
+            title={
+              allWide
+                ? t("Volle Breite – deine Einstellung „Seiten in voller Breite anzeigen“ ist an", "Full width – your setting “Show pages at full width” is on")
+                : t("Volle Breite", "Full width")
+            }
+            disabled={allWide}
             onClick={toggleRecordWide}
           >
             <ArrowsOutLineHorizontal size={17} />
@@ -6278,7 +6288,7 @@ export default function DatabaseView({
         );
         if (pageRecord && selected)
           return (
-            <section className={`record-page${recordWide ? " record-page-wide" : ""}`} aria-label={t("Eintrag", "Record")}>
+            <section className={`record-page${recordFullWidth ? " record-page-wide" : ""}`} aria-label={t("Eintrag", "Record")}>
               <div className="record-page-bar">
                 <div className="modal-heading-actions">{recordActions(selected)}</div>
               </div>
@@ -6304,7 +6314,7 @@ export default function DatabaseView({
         actions={selected && recordActions(selected)}
         className={`record-dialog ${
           recordMode === "full"
-            ? `modal-full${recordWide ? " modal-full-wide" : ""}`
+            ? `modal-full${recordFullWidth ? " modal-full-wide" : ""}`
             : recordMode === "side"
               ? "modal-side"
               : recordLayout.properties === "side"

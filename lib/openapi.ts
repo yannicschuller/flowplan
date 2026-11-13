@@ -14,6 +14,7 @@ import { externalLinkIconSchema } from "./external-link-icon-pref";
 import { quoteShortcutSchema } from "./quote-shortcut-pref";
 import { formattingToolbarSchema } from "./toolbar-pref";
 import { motionPrefSchema } from "./motion-pref";
+import { fullWidthPagesSchema } from "./page-width-pref";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { releaseNoteItemSchema } from "./release-notes";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
@@ -65,7 +66,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.motion", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.motion", "profile.fullWidthPages", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -243,6 +244,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: normal (the default; menus and dialogs fade and scale slightly, side panels slide in), reduced (short fades only) or off (nothing animates). The system's reduce-motion setting always turns animations off.",
     input: z.object({ action: z.literal("profile.motion"), motion: motionPrefSchema }),
     result: z.object({ motion: motionPrefSchema }),
+  },
+  {
+    action: "profile.fullWidthPages",
+    summary: "Show every page and record page at full width for the caller",
+    description: "For the caller, on all devices: true shows pages and records opened as a page at the full width of the main area, as if each had its own full-width switch on. The pages' own full_width stays as stored and still applies for everyone else. Off by default.",
+    input: z.object({ action: z.literal("profile.fullWidthPages"), fullWidthPages: fullWidthPagesSchema }),
+    result: z.object({ fullWidthPages: fullWidthPagesSchema }),
   },
   {
     action: "profile.updateNotes",

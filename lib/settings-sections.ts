@@ -118,6 +118,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         anchor: "text-menu",
       },
       {
+        title: { de: "Seiten in voller Breite anzeigen", en: "Show pages at full width" },
+        keywords: { de: "volle breite breit seitenbreite layout einträge standard", en: "full width wide page width layout records default" },
+        anchor: "full-width-pages",
+      },
+      {
         title: { de: "Formatierungsleiste", en: "Formatting toolbar" },
         keywords: { de: "symbolleiste toolbar leiste ausblenden fokusmodus formatieren", en: "toolbar bar hide focus mode formatting" },
         anchor: "formatting-toolbar",

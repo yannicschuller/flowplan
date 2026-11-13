@@ -289,6 +289,8 @@ import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
 import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
+import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
+import { fullWidthPagesOf, showsFullWidth } from "@/lib/page-width-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
 import { WhatsNew } from "./whats-new";
@@ -582,6 +584,11 @@ export default function WorkspaceApp({
   useEffect(() => setMotionPrefLocal(boot.motion), [boot.motion]);
   useEffect(() => () => void delete document.documentElement.dataset.motion, []);
   const motion = useMotionPref(motionPrefOf(boot.motion));
+  // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts): every
+  // page at full width for this person; from the bootstrap until the
+  // browser's copy is set, so the first paint has the width.
+  useEffect(() => setFullWidthPagesLocal(boot.fullWidthPages), [boot.fullWidthPages]);
+  const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
     const root = document.documentElement;
@@ -4094,8 +4101,21 @@ export default function WorkspaceApp({
                         {t("Cover ändern", "Change cover")}
                       </Dropdown.Item>
                     )}
+                    {/* With "Seiten in voller Breite anzeigen" on (#257) every
+                        page is wide for this person: the page's own switch
+                        shows as on and locked, and says why. It still
+                        applies for everyone else. */}
                     <Dropdown.Item
                       className="dropdown-item"
+                      disabled={allPagesWide}
+                      title={
+                        allPagesWide
+                          ? t(
+                              "Deine Einstellung „Seiten in voller Breite anzeigen“ zeigt alle Seiten in voller Breite (Einstellungen → Darstellung & Sprache).",
+                              "Your setting “Show pages at full width” shows every page at full width (Settings → Appearance & language).",
+                            )
+                          : undefined
+                      }
                       onSelect={() =>
                         act({
                           action: "page.update",
@@ -4105,7 +4125,8 @@ export default function WorkspaceApp({
                       }
                     >
                       <ArrowSquareOut />
-                      {t("Volle Breite", "Full width")}{" "}{data.page.full_width ? "✓" : ""}
+                      {t("Volle Breite", "Full width")}{" "}{showsFullWidth(data.page.full_width, allPagesWide) ? "✓" : ""}
+                      {allPagesWide && <small className="dropdown-hint">{t("Deine Einstellung", "Your setting")}</small>}
                     </Dropdown.Item>
                     {data.page.kind === "document" && !data.encrypted && (
                       <Dropdown.Item
@@ -4399,7 +4420,7 @@ export default function WorkspaceApp({
               <div className={`page-layout ${comments && !recordFull ? "with-comments" : ""}`}>
                 <article
                   data-revalidating={revalidating ? "true" : undefined}
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${data.page.full_width ? "full-width" : ""}${recordFull ? " record-full-page" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${showsFullWidth(data.page.full_width, allPagesWide) ? "full-width" : ""}${recordFull ? " record-full-page" : ""} font-${data.page.font}`}
                 >
                   {/* A record as a page of its own (#231): only the record. */}
                   {!recordFull && (<>
