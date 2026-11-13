@@ -3050,7 +3050,7 @@
   "Delete the print preset “{0}”?": "删除打印预设“{0}”？",
   "Delete the property “{0}” with all its values?": "删除属性“{0}”及其所有值吗？",
   "Delete the tag “{0}”? It is removed from {1}.": "删除标签“{0}”？它已从 {1} 删除。",
-  "Delete the transcript? The summary stays; its references ①② then point nowhere. Undo with ⌘Z / Ctrl+Z.": "删除转写？摘要会保留，但其中的引用 ①② 将不再指向任何内容。可用 ⌘Z / Ctrl+Z 撤销。",
+  "Delete the transcript? The summary stays; its source references then point nowhere. Undo with ⌘Z / Ctrl+Z.": "删除转写？摘要会保留，但其中的来源引用将不再指向任何内容。可用 ⌘Z / Ctrl+Z 撤销。",
   "Delete the view “{0}”? The records are kept.": "删除视图“{0}”？记录将被保留。",
   "Delete the webhook? No more events are sent to the address.": "删除 Webhook？将不再向该地址发送事件。",
   "Delete this inbound address?": "删除此入站地址吗？",

@@ -3050,7 +3050,7 @@
   "Delete the print preset “{0}”?": "Delete the print preset “{0}”?",
   "Delete the property “{0}” with all its values?": "Delete the property “{0}” with all its values?",
   "Delete the tag “{0}”? It is removed from {1}.": "Delete the tag “{0}”? It is removed from {1}.",
-  "Delete the transcript? The summary stays; its references ①② then point nowhere. Undo with ⌘Z / Ctrl+Z.": "Delete the transcript? The summary stays; its references ①② then point nowhere. Undo with ⌘Z / Ctrl+Z.",
+  "Delete the transcript? The summary stays; its source references then point nowhere. Undo with ⌘Z / Ctrl+Z.": "Delete the transcript? The summary stays; its source references then point nowhere. Undo with ⌘Z / Ctrl+Z.",
   "Delete the view “{0}”? The records are kept.": "Delete the view “{0}”? The records are kept.",
   "Delete the webhook? No more events are sent to the address.": "Delete the webhook? No more events are sent to the address.",
   "Delete this inbound address?": "Delete this inbound address?",

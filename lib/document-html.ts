@@ -3,14 +3,17 @@ import { renderFootnotes } from "./footnotes";
 import { applyTextDirections } from "./text-direction";
 import { captionLabel, type CaptionKind } from "./block-captions";
 import { tr } from "./locale-tag";
+import { labelMeetingCites } from "./meeting-core";
 
 type FinishOptions = { links?: boolean; captionNumbers?: boolean };
 // Stored document HTML as people read it outside the editor: the direction
-// of right-to-left blocks, numbered footnotes with their list at the end
-// and, when the page numbers them, numbered captions.
+// of right-to-left blocks, numbered footnotes with their list at the end,
+// the time of each meeting citation chip (also on chips stored with a
+// number) and, when the page numbers them, numbered captions.
 export function finishDocumentHtml(root: HTMLElement, options: FinishOptions = {}) {
   applyTextDirections(root);
   renderFootnotes(root, options);
+  labelMeetingCites(root, tr("Quelle", "Source"));
   if (options.captionNumbers) numberCaptions(root);
 }
 // Wide tables scroll sideways in a box of their own, as in the editor

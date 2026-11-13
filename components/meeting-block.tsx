@@ -4,8 +4,9 @@
 // desktop app – the call's sound), and the tabs Zusammenfassung · Notizen ·
 // Transkript. Summary, notes and transcript are document content
 // (lib/meeting-schema.ts); this view only shows one of them at a time,
-// links the citation chips ①② to their transcript passage (hover shows
-// it, a click opens the transcript there and plays the kept audio) and
+// links the citation chips ("08:17", the time of their passage) to their
+// transcript passage (hover shows it, a click opens the transcript there
+// and plays the kept audio) and
 // talks to /api/meetings (lib/meetings.ts, lib/meeting-recorder.ts).
 //
 // #229: settings, attendees and the calendar event open anchored menus
@@ -52,8 +53,8 @@ import {
 import { useLocale, useT } from "./i18n";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useEditorEditable } from "./editor-editable";
-import { Meeting, MeetingTranscript } from "@/lib/meeting-schema";
-import { BROWSER_CAPTURE_HINT, MEETING_LANGUAGES, MEETING_PRESETS, MEETING_PRESET_LABELS, circled, type MeetingLanguage, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";
+import { Meeting, MeetingCite, MeetingTranscript } from "@/lib/meeting-schema";
+import { BROWSER_CAPTURE_HINT, MEETING_LANGUAGES, MEETING_PRESETS, MEETING_PRESET_LABELS, citeAria, citeLabel, meetingSegmentIndex, type CitedSegment, type MeetingLanguage, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";
 import { MeetingRecorder, activeRecorder, getJson, postJson, systemAudioSupport, uploadMeetingFiles, type RecorderState } from "@/lib/meeting-recorder";
 import {
   calmState,
@@ -80,6 +81,8 @@ import {
   transcriptUnlocked,
 } from "@/lib/meeting-transcript-edit";
 import { formatTimestamp } from "@/lib/transcript";
+import { tr } from "@/lib/locale-tag";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { streamAiFrom } from "@/lib/ai/client";
 import { BlockMenu, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 import { AnchoredPopover } from "./meeting-popover";
@@ -203,7 +206,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
   const [notice, setNotice] = useState("");
   const [upload, setUpload] = useState<number | null>(null);
   const [events, setEvents] = useState<DayEvent[] | null>(null);
-  const [hover, setHover] = useState<{ n: number; text: string; label: string; x: number; y: number } | null>(null);
+  const [hover, setHover] = useState<{ text: string; label: string; x: number; y: number } | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<{ text: string; sids: string[] } | null>(null);
   const [asking, setAsking] = useState(false);
@@ -328,9 +331,9 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       const box = c.getBoundingClientRect(),
         host = el.getBoundingClientRect();
       setHover({
-        n: Number(c.getAttribute("data-n")) || 0,
         text: segment?.textContent || t("Diese Stelle ist nicht mehr im Transkript.", "This passage is no longer in the transcript."),
-        label: segment?.getAttribute("data-label") || "",
+        // "08:17 · Ada"; the chip's own text when the passage is gone.
+        label: segment?.getAttribute("data-label") || c.textContent || "",
         x: box.left - host.left + box.width / 2,
         y: box.bottom - host.top + 6,
       });
@@ -523,7 +526,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     await load();
   };
   const deleteTranscript = () => {
-    if (!window.confirm(t("Transkript löschen? Die Zusammenfassung bleibt; ihre Verweise ①② zeigen dann ins Leere. Rückgängig machen geht mit ⌘Z / Strg+Z.", "Delete the transcript? The summary stays; its references ①② then point nowhere. Undo with ⌘Z / Ctrl+Z.")))
+    if (!window.confirm(t("Transkript löschen? Die Zusammenfassung bleibt; ihre Quellenverweise zeigen dann ins Leere. Rückgängig machen geht mit ⌘Z / Strg+Z.", "Delete the transcript? The summary stays; its source references then point nowhere. Undo with ⌘Z / Ctrl+Z.")))
       return;
     const pos = position();
     if (pos === undefined) return;
@@ -560,12 +563,21 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     text.split(/(\[S\d+\])/g).map((part, i) => {
       const m = /^\[S(\d+)\]$/.exec(part);
       const sid = m ? sids[Number(m[1]) - 1] : "";
-      return sid ? (
-        <button key={i} type="button" className="meeting-cite-button" onClick={() => openSegment(sid)} title={t("Im Transkript zeigen", "Show in transcript")}>
-          {circled(Number(m![1]))}
+      if (!sid) return <span key={i}>{part}</span>;
+      // The passage's time, as the summary's chips show it.
+      const segment = segmentElement(sid);
+      const label = citeLabel({ n: m![1] }, segment ? { start: Number(segment.getAttribute("data-start")) || 0 } : null);
+      return (
+        <button
+          key={i}
+          type="button"
+          className="meeting-cite-button"
+          onClick={() => openSegment(sid)}
+          title={t("Im Transkript zeigen", "Show in transcript")}
+          aria-label={citeAria(label, segment?.textContent, t("Quelle", "Source"))}
+        >
+          {label}
         </button>
-      ) : (
-        <span key={i}>{part}</span>
       );
     });
 
@@ -1071,7 +1083,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       {hover && (
         <div className="meeting-cite-popover" contentEditable={false} style={{ left: hover.x, top: hover.y }} role="tooltip">
           <span className="meeting-cite-popover-head">
-            {circled(hover.n)} {hover.label}
+            {hover.label}
           </span>
           {hover.text}
         </div>
@@ -1378,6 +1390,65 @@ export const MeetingTranscriptView = MeetingTranscript.extend({
         },
         ignoreMutation: (mutation) => mutation.type === "attributes" && mutation.target === dom,
         destroy: off,
+      };
+    };
+  },
+});
+
+// A citation chip in the editor: the time of the passage it cites, read
+// from the meeting's transcript (so chips stored with a number ①② show it
+// too), named for screen readers ("Quelle 08:17: …"). Drawn again when the
+// document changes; the transcript's index is shared by all chips of a
+// meeting while the transcript stays the same.
+const citedSegments = new WeakMap<PMNode, Map<string, CitedSegment>>();
+export const MeetingCiteView = MeetingCite.extend({
+  addNodeView() {
+    return ({ node, getPos, editor }) => {
+      const dom = document.createElement("sup");
+      dom.className = "meeting-cite";
+      let current = node;
+      const segment = () => {
+        try {
+          const pos = typeof getPos === "function" ? getPos() : undefined;
+          if (pos === undefined || pos > editor.state.doc.content.size) return null;
+          const $pos = editor.state.doc.resolve(pos);
+          for (let depth = $pos.depth; depth >= 0; depth--) {
+            const meeting = $pos.node(depth);
+            if (meeting.type.name !== "meeting") continue;
+            const transcript = meeting.lastChild;
+            if (!transcript || transcript.type.name !== "meetingTranscript") return null;
+            let index = citedSegments.get(transcript);
+            if (!index) citedSegments.set(transcript, (index = meetingSegmentIndex(transcript)));
+            return index.get(String(current.attrs.sid || "")) || null;
+          }
+        } catch {}
+        return null;
+      };
+      const draw = () => {
+        const found = segment();
+        const label = citeLabel(current.attrs, found);
+        dom.setAttribute("data-meeting-cite", String(current.attrs.sid || ""));
+        dom.setAttribute("data-n", String(current.attrs.n));
+        if (current.attrs.start !== null && current.attrs.start !== undefined) dom.setAttribute("data-cite-start", String(current.attrs.start));
+        else dom.removeAttribute("data-cite-start");
+        if (dom.textContent !== label) dom.textContent = label;
+        const aria = citeAria(label, found?.text, tr("Quelle", "Source"));
+        if (dom.getAttribute("aria-label") !== aria) dom.setAttribute("aria-label", aria);
+      };
+      draw();
+      editor.on("update", draw);
+      return {
+        dom,
+        update: (next) => {
+          if (next.type !== current.type) return false;
+          current = next;
+          draw();
+          return true;
+        },
+        ignoreMutation: () => true,
+        destroy: () => {
+          editor.off("update", draw);
+        },
       };
     };
   },

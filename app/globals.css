@@ -36689,21 +36689,26 @@ p[data-segment][data-track="others"]::before {
 .meeting-segment-flash {
   background: color-mix(in srgb, var(--blue) 14%, var(--bg));
 }
+/* A citation chip: the time of its transcript passage ("08:17"). */
 sup.meeting-cite,
 .meeting-cite-button {
   display: inline-block;
   margin: 0 1px;
-  padding: 0;
+  padding: 1px 5px;
   border: 0;
-  background: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
   color: var(--blue);
-  font-size: 0.95em;
-  line-height: 1;
-  vertical-align: baseline;
+  font-size: 0.75em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+  vertical-align: 0.1em;
   cursor: pointer;
 }
 sup.meeting-cite:hover,
 .meeting-cite-button:hover {
+  background: color-mix(in srgb, var(--blue) 18%, transparent);
   color: var(--accent-strong);
 }
 .meeting-cite-popover {

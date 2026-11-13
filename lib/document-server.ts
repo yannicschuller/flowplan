@@ -150,6 +150,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-hash",
         "data-meeting-cite",
         "data-n",
+        "data-cite-start",
       ],
       // Text direction of blocks (lib/text-direction.ts), only its values.
       ...Object.fromEntries(

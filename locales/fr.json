@@ -3050,7 +3050,7 @@
   "Delete the print preset “{0}”?": "Supprimer le modèle d’impression « {0} » ?",
   "Delete the property “{0}” with all its values?": "Supprimer la propriété « {0} » avec toutes ses valeurs ?",
   "Delete the tag “{0}”? It is removed from {1}.": "Supprimer l’étiquette « {0} » ? Elle sera retirée de {1}.",
-  "Delete the transcript? The summary stays; its references ①② then point nowhere. Undo with ⌘Z / Ctrl+Z.": "Supprimer la transcription ? Le résumé reste ; ses renvois ①② ne mènent alors plus nulle part. Annulez avec ⌘Z / Ctrl+Z.",
+  "Delete the transcript? The summary stays; its source references then point nowhere. Undo with ⌘Z / Ctrl+Z.": "Supprimer la transcription ? Le résumé reste ; ses renvois aux sources ne mènent alors plus nulle part. Annulez avec ⌘Z / Ctrl+Z.",
   "Delete the view “{0}”? The records are kept.": "Supprimer la vue « {0} » ? Les enregistrements sont conservés.",
   "Delete the webhook? No more events are sent to the address.": "Supprimer le webhook ? Plus aucun événement ne sera envoyé à l’adresse.",
   "Delete this inbound address?": "Supprimer cette adresse de réception ?",

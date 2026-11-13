@@ -16,7 +16,7 @@ import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from 
 import { ct } from "./content-locale";
 import { footnoteText } from "./footnotes";
 import { captionCounter, captionText } from "./block-captions";
-import { circled } from "./meeting-core";
+import { citeScope } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
 import { exportName } from "./export-name";
 import { collectExportContent, documentNode, withExportLookups, type ExportContent, type ExportPage } from "./export-content";
@@ -128,6 +128,7 @@ const macroBody = (text: string, name: string) => text.replace(new RegExp(`\\{($
 export function documentJira(html: string, context: TextExportContext): string {
   const doc = documentNode(html);
   const notes: string[] = [];
+  const cites = citeScope();
   const nextLabel = captionCounter(!!context.captionNumbers, ct);
   const caption = (node: Node) => {
     const label = nextLabel(node),
@@ -172,7 +173,7 @@ export function documentJira(html: string, context: TextExportContext): string {
       case "mention":
         return jiraText(`@${String(node.attrs.label || "")}`);
       case "meetingCite":
-        return jiraText(circled(Number(node.attrs.n)));
+        return jiraText(cites.label(node.attrs));
       case "mathInline":
         return `{{${jiraText(String(node.attrs.expression || ""))}}}`;
     }
@@ -344,7 +345,7 @@ export function documentJira(html: string, context: TextExportContext): string {
       case "toggle":
         return panel(String(node.attrs.title || "Details"), children(node));
       case "meeting":
-        return panel(String(node.attrs.title || ct("Besprechung", "Meeting")), children(node));
+        return cites.within(node, () => panel(String(node.attrs.title || ct("Besprechung", "Meeting")), children(node)));
       case "meetingSummary":
       case "meetingAgenda":
       case "meetingTranscript": {
