@@ -89,7 +89,7 @@ import { one, all, run, id, audit, sql } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace, recentlyVisited } from "@/lib/search-index";
 import { recordSearchVisit } from "@/lib/search-visits";
-import { listCollections, previewQuery, runCollection } from "@/lib/collections";
+import { COLLECTION_RESULTS, COLLECTION_RESULTS_MAX, listCollections, previewQuery, runCollection } from "@/lib/collections";
 import { tagListing } from "@/lib/page-properties-server";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
@@ -390,7 +390,16 @@ async function handleGET(
           await previewQuery(user, z.uuid().parse(url.searchParams.get("workspace")), z.string().max(1000).parse(url.searchParams.get("q") || ""), { timeZone }),
           { headers },
         );
-      if (path[1]) return NextResponse.json(await runCollection(user, z.uuid().parse(path[1]), { timeZone }), { headers });
+      // Paged (#270): `offset` where to start, `limit` how many (default 500).
+      if (path[1])
+        return NextResponse.json(
+          await runCollection(user, z.uuid().parse(path[1]), {
+            timeZone,
+            offset: z.coerce.number().int().min(0).catch(0).parse(url.searchParams.get("offset") ?? 0),
+            limit: z.coerce.number().int().min(1).max(COLLECTION_RESULTS_MAX).catch(COLLECTION_RESULTS).parse(url.searchParams.get("limit") ?? COLLECTION_RESULTS),
+          }),
+          { headers },
+        );
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       await requireMember(user, wid);
       return NextResponse.json(await listCollections(user, wid), { headers });

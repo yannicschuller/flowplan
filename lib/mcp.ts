@@ -279,12 +279,14 @@ async function collections(user: Identity, args: { workspaceId: string }) {
   await requireMember(user, args.workspaceId);
   return { collections: await listCollections(user, args.workspaceId) };
 }
-async function collectionResults(user: Identity, args: { collectionId: string; timeZone?: string }) {
-  const result = await runCollection(user, args.collectionId, { timeZone: args.timeZone });
+async function collectionResults(user: Identity, args: { collectionId: string; timeZone?: string; offset?: number }) {
+  const result = await runCollection(user, args.collectionId, { timeZone: args.timeZone, offset: args.offset });
   return {
     collection: result.collection,
     total: result.total,
+    offset: result.offset,
     truncated: result.truncated,
+    nextOffset: result.nextOffset,
     encryptedLeftOut: result.encryptedLeftOut,
     results: result.items.map((i) => ({ ...i, url: i.rowId ? `${pageLink(i.pageId)}&row=${i.rowId}` : pageLink(i.pageId) })),
   };
@@ -534,10 +536,12 @@ const tools: Tool[] = [
   {
     name: "run_collection",
     title: "Run a collection",
-    description: "The pages and database records that match a collection now, as this person may read them (latest change first, at most 500).",
+    description:
+      "The pages and database records that match a collection now, as this person may read them (latest change first, 500 at a time; when truncated, call again with offset = nextOffset for the next ones).",
     input: z.object({
       collectionId: id("Collection ID from list_collections"),
       timeZone: z.string().max(100).optional().describe("IANA time zone for relative dates (default UTC)"),
+      offset: z.number().int().min(0).optional().describe("Skip this many results (nextOffset of the previous call)"),
     }),
     write: false,
     run: collectionResults as Tool["run"],

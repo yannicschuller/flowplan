@@ -3,7 +3,8 @@
 // that match its query now, as a list or a table (title, type, space, tags,
 // updated, creator – sortable). Worked out again on opening and whenever
 // the workspace changes (the shell's refresh hands over a new bootstrap).
-import { useEffect, useMemo, useState } from "react";
+// 500 at a time; "Load more" appends the next page (#270).
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, CaretUp, Copy, FunnelSimple, ListBullets, PencilSimple, Rows, ShareNetwork, Table, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api, PageIcon } from "./ui";
@@ -14,7 +15,7 @@ import type { PageTag } from "@/lib/page-properties";
 import type { CollectionInfo, CollectionItem } from "@/lib/collections";
 import type { Bootstrap } from "@/lib/types";
 
-type Results = { collection: CollectionInfo; items: CollectionItem[]; total: number; truncated: boolean; encryptedLeftOut: boolean };
+type Results = { collection: CollectionInfo; items: CollectionItem[]; total: number; truncated: boolean; nextOffset?: number | null; encryptedLeftOut: boolean };
 type SortKey = "title" | "type" | "space" | "tags" | "updated" | "creator";
 type T = Awaited<ReturnType<typeof useT>>;
 
@@ -26,6 +27,19 @@ const zone = () => {
   }
 };
 const VIEW_KEY = "flowplan:collection-view";
+// One page of results; a refresh fetches everything loaded so far at once
+// (up to the server's maximum per request).
+const PAGE = 500,
+  REFRESH_MAX = 5000;
+const itemKey = (i: CollectionItem) => (i.rowId ? `${i.pageId}:${i.rowId}` : i.pageId);
+const resultsUrl = (collectionId: string, offset: number, limit: number) =>
+  `/api/collections/${collectionId}?${new URLSearchParams({ tz: zone(), offset: String(offset), limit: String(limit) })}`;
+// Later pages after the first, without repeating one already there (the
+// workspace may change between two pages).
+function appendPage(prev: Results, next: Results): Results {
+  const seen = new Set(prev.items.map(itemKey));
+  return { ...next, items: [...prev.items, ...next.items.filter((i) => !seen.has(itemKey(i)))] };
+}
 function readView(): "list" | "table" {
   try {
     return localStorage.getItem(VIEW_KEY) === "table" ? "table" : "list";
@@ -72,25 +86,62 @@ export function CollectionView({
   const [results, setResults] = useState<Results | null>(null),
     [failed, setFailed] = useState(false),
     [view, setView] = useState<"list" | "table">("list"),
-    [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "updated", desc: true });
+    [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "updated", desc: true }),
+    [loadingMore, setLoadingMore] = useState(false),
+    [moreFailed, setMoreFailed] = useState(false);
+  // How many results are shown (a refresh keeps them all), and which
+  // request is current (a page answered after a refresh is dropped).
+  const loaded = useRef(PAGE),
+    generation = useRef(0);
   useEffect(() => setView(readView()), []);
+  // A collection opened anew starts without the old one's results.
+  useEffect(() => {
+    loaded.current = PAGE;
+    setResults(null);
+  }, [collectionId]);
   // Again whenever the bootstrap changes (a change in the workspace, the
   // regular refresh) or the query does.
   useEffect(() => {
     let live = true;
-    api<Results>(`/api/collections/${collectionId}?tz=${encodeURIComponent(zone())}`)
+    const run = ++generation.current;
+    (async () => {
+      const want = Math.max(PAGE, Math.ceil(loaded.current / PAGE) * PAGE);
+      let r = await api<Results>(resultsUrl(collectionId, 0, Math.min(want, REFRESH_MAX)));
+      while (live && r.nextOffset && r.items.length < want) r = appendPage(r, await api<Results>(resultsUrl(collectionId, r.nextOffset, Math.min(want - r.items.length, REFRESH_MAX))));
+      return r;
+    })()
       .then((r) => {
-        if (!live) return;
+        if (!live || run !== generation.current) return;
         setResults(r);
         setFailed(false);
+        setLoadingMore(false);
       })
-      .catch(() => live && setFailed(true));
+      .catch(() => {
+        if (!live) return;
+        setFailed(true);
+        setLoadingMore(false);
+      });
     return () => {
       live = false;
     };
   }, [collectionId, boot, collection?.query]);
-  // A collection opened anew starts without the old one's results.
-  useEffect(() => setResults(null), [collectionId]);
+  const loadMore = () => {
+    if (!results?.nextOffset || loadingMore) return;
+    const run = generation.current;
+    setLoadingMore(true);
+    setMoreFailed(false);
+    api<Results>(resultsUrl(collectionId, results.nextOffset, PAGE))
+      .then((next) => {
+        if (run !== generation.current) return;
+        setResults((prev) => {
+          const merged = prev ? appendPage(prev, next) : next;
+          loaded.current = merged.items.length;
+          return merged;
+        });
+      })
+      .catch(() => run === generation.current && setMoreFailed(true))
+      .finally(() => run === generation.current && setLoadingMore(false));
+  };
   const tags = useMemo(() => new Map((boot.taxonomy?.tags ?? []).map((x) => [x.id, x])), [boot.taxonomy]);
   const spaceName = (id: string) => boot.spaces.find((s) => s.id === id)?.name ?? "";
   const items = useMemo(() => {
@@ -288,9 +339,15 @@ export function CollectionView({
         </div>
       )}
       {results?.truncated && (
-        <p className="muted collection-more">
-          {t(`Die ${results.items.length} zuletzt geänderten von ${results.total} Treffern.`, `The ${results.items.length} most recently changed of ${results.total} matches.`)}
-        </p>
+        <div className="collection-load-more">
+          <p className="muted collection-more" aria-live="polite">
+            {t(`${results.items.length} von ${results.total} Treffern`, `${results.items.length} of ${results.total} matches`)}
+            {moreFailed && ` · ${t("Weitere Treffer konnten nicht geladen werden.", "More matches could not be loaded.")}`}
+          </p>
+          <button type="button" className="button compact" onClick={loadMore} disabled={loadingMore} aria-busy={loadingMore}>
+            {loadingMore ? t("Wird geladen …", "Loading …") : t("Mehr laden", "Load more")}
+          </button>
+        </div>
       )}
       {collection.shared && !collection.mine && (
         <p className="muted collection-more">
