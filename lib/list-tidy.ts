@@ -8,6 +8,12 @@
 // - Two task or bullet lists that end up side by side become one list,
 //   whatever caused it (a deleted paragraph, a paste, an older document).
 //   Ordered lists are left alone: joined they would renumber.
+// - Enter in an empty item moves that item one level up, like Shift+Tab
+//   (#254): its siblings keep their level and the list stays one list; an
+//   empty item at the top level becomes a paragraph.
+// - Tab and Shift+Tab never leave the text (#254): where nothing can be
+//   indented or outdented, nothing happens instead of the browser moving
+//   the focus on.
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { canJoin } from "@tiptap/pm/transform";
@@ -38,6 +44,16 @@ export function deleteEmptyItemBackward(state: EditorState, dispatch?: (tr: Tran
     dispatch(tr);
   }
   return true;
+}
+
+// The empty item under the caret (its type), when the caret sits in the
+// empty first line of a list item or task.
+export function emptyItemType(state: EditorState) {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.depth < 2 || $from.parent.type.name !== "paragraph" || $from.parent.content.size > 0) return null;
+  const item = $from.node($from.depth - 1);
+  if (!ITEMS.includes(item.type.name) || $from.index($from.depth - 1) !== 0) return null;
+  return item.type.name;
 }
 
 // Joins every pair of same-kind lists that sit next to each other; returns
@@ -73,6 +89,12 @@ export const ListTidy = Extension.create({
   addKeyboardShortcuts() {
     return {
       Backspace: () => deleteEmptyItemBackward(this.editor.state, this.editor.view.dispatch),
+      // Splitting would lift the item's siblings with it: what Shift+Tab
+      // does, for this item only.
+      Enter: () => {
+        const type = emptyItemType(this.editor.state);
+        return !!type && this.editor.commands.liftListItem(type);
+      },
     };
   },
   addProseMirrorPlugins() {
@@ -90,3 +112,16 @@ export function listTidyPlugin() {
     },
   });
 }
+
+// Last of all Tab handlers (lists, tasks, tables, code, toggles and the
+// indent go first): a Tab nobody took stays in the editor.
+export const TabStaysInText = Extension.create({
+  name: "tabStaysInText",
+  priority: 1,
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => this.editor.isEditable,
+      "Shift-Tab": () => this.editor.isEditable,
+    };
+  },
+});
