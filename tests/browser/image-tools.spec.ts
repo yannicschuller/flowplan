@@ -47,8 +47,15 @@ test("images: a corner toolbar with caption, download, full screen and more", as
   const image = editor.locator("img").first();
   await expect(image).toBeVisible({ timeout: 30_000 });
   const toolbar = page.getByRole("toolbar", { name: "Bild", exact: true });
-  if (info.project.name === "mobile") await image.tap();
-  else await image.hover();
+  // The toolbar on a phone: a tap on the picture – not while it shows, a
+  // second tap soon after would be a double tap (it opens "Bild markieren").
+  const showToolbar = async () => {
+    if (info.project.name !== "mobile") return image.hover();
+    if (await toolbar.isVisible()) return;
+    await page.waitForTimeout(600);
+    await image.tap();
+  };
+  await showToolbar();
   await expect(toolbar).toBeVisible();
   // In the picture's top right corner.
   const bar = (await toolbar.boundingBox())!,
@@ -70,8 +77,7 @@ test("images: a corner toolbar with caption, download, full screen and more", as
   expect((await download).suggestedFilename()).toBe("foto.png");
 
   // Full screen: the picture alone, Escape closes.
-  if (info.project.name === "mobile") await image.tap();
-  else await image.hover();
+  await showToolbar();
   await toolbar.getByRole("button", { name: "Vollbild" }).click();
   const viewer = page.getByRole("dialog", { name: "foto.png" });
   await expect(viewer.locator("img")).toBeVisible();
@@ -80,15 +86,13 @@ test("images: a corner toolbar with caption, download, full screen and more", as
   await expect(viewer).toHaveCount(0);
 
   // Caption from the toolbar.
-  if (info.project.name === "mobile") await image.tap();
-  else await image.hover();
+  await showToolbar();
   await toolbar.getByRole("button", { name: "Beschriftung" }).click();
   await page.keyboard.type("Ein blaues Bild");
   await expect(editor.locator(".block-caption-field").first()).toHaveValue("Ein blaues Bild");
 
   // "…": centred.
-  if (info.project.name === "mobile") await image.tap();
-  else await image.hover();
+  await showToolbar();
   await toolbar.getByRole("button", { name: "Weitere Bildaktionen" }).click();
   const more = page.getByRole("menu", { name: "Bild" }).or(page.locator(".block-menu-sheet"));
   for (const name of ["Links", "Mitte", "Rechts", "Bild markieren", "Bild kopieren", "Link zum Block kopieren", "Löschen"])
@@ -100,8 +104,7 @@ test("images: a corner toolbar with caption, download, full screen and more", as
   expect(Math.abs(centred.x + centred.width / 2 - (text.x + text.width / 2))).toBeLessThan(30);
 
   // Replace: a new picture in the same place; the caption stays.
-  if (info.project.name === "mobile") await image.tap();
-  else await image.hover();
+  await showToolbar();
   const chooser = page.waitForEvent("filechooser");
   await toolbar.getByRole("button", { name: "Bild ersetzen" }).click();
   await (await chooser).setFiles({ name: "rot.png", mimeType: "image/png", buffer: other });

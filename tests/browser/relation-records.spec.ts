@@ -148,8 +148,8 @@ test("relation cells show record icons and open related records on top of the ta
 
   // Ctrl/⌘-click keeps the link: the customer in its database, in a new tab.
   const [tab] = await Promise.all([context.waitForEvent("page"), link("Acme").click({ modifiers: ["ControlOrMeta"] })]);
-  await tab.waitForLoadState();
-  expect(tab.url()).toMatch(new RegExp(`page=${customers}.*row=${acme}`));
+  // (A new tab starts at about:blank before it navigates.)
+  await tab.waitForURL(new RegExp(`page=${customers}.*row=${acme}`));
   await tab.close();
   await expect(page).toHaveURL(new RegExp(`#page=${tasks}$`));
   await expect(entry).toBeHidden();

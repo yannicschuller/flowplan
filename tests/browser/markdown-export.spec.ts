@@ -85,7 +85,9 @@ test("Markdown downloads flush pending edits and ZIP exports include children an
   });
   await page.route("**/api/command", async (route) => {
     const data = route.request().postDataJSON();
-    if (data.action === "document.sync" && data.html !== undefined) await gate;
+    // Only the typed text is held back (a phone's editor may save the
+    // empty document once when it opens).
+    if (data.action === "document.sync" && data.html?.includes("Unsaved export text")) await gate;
     await route.continue();
   });
   try {

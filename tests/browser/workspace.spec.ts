@@ -2512,6 +2512,10 @@ test("feed views show rich documents, load more entries and preserve searchable 
     "aria-label",
     "Feed Beta",
   );
+  // Saved, and the entries have glided to their places (FLIP): the drop
+  // below aims at the top edge of "Feed Beta".
+  await expect(page.locator('[role="status"]', { hasText: /^Reihenfolge in/ })).toContainText("gespeichert");
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
   const alphaMove = alpha.getByRole("button", {
     name: "Eintrag verschieben: Feed Alpha",
     exact: true,
