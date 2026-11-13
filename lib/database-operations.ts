@@ -109,11 +109,14 @@ export function validateImportedCells(fields: Field[], cells: Record<string, unk
     }
   }
 }
+// `before`: the record's cells as stored, when it exists – links to
+// records hidden from this person that it already has may stay.
 export async function validateCellPatch(
   user: Identity,
   page: Page,
   fields: Field[],
   input: unknown,
+  before?: Record<string, unknown>,
 ) {
   const patch = z.record(z.string(), z.unknown()).parse(input),
     result: Record<string, unknown> = {};
@@ -171,16 +174,20 @@ export async function validateCellPatch(
       if (!f.relationPage && ids.length)
         throw new HttpError(400, "Relationsziel fehlt.");
       if (f.relationPage) {
-        await requirePage(user, f.relationPage);
-        for (const rid of ids)
-          if (
-            !(await one(
-              "SELECT id FROM rows WHERE id=? AND page_id=?",
-              rid,
-              f.relationPage,
-            ))
-          )
+        const target = await requirePage(user, f.relationPage);
+        // Only records this person may read (lib/row-access.ts): a link
+        // shows the linked record's title wherever the record is shown.
+        const readable = await rowRoleResolver(user, target);
+        const kept = new Set(Array.isArray(before?.[key]) ? (before[key] as unknown[]) : []);
+        for (const rid of ids) {
+          const row = await one<{ id: string; access: string; created_by: string | null }>(
+            "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
+            rid,
+            f.relationPage,
+          );
+          if (!row || (!readable(row) && !kept.has(rid)))
             throw new HttpError(400, "Verknüpfter Eintrag fehlt.");
+        }
       }
       result[key] = [...new Set(ids)];
     } else {

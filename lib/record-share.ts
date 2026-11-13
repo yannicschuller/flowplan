@@ -29,8 +29,8 @@
 import { z } from "zod";
 import { all, audit, id, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
-import { requirePage } from "./permissions";
-import { assertRowAccess } from "./row-access";
+import { pageRole, requirePage } from "./permissions";
+import { assertRowAccess, rowRoleResolver } from "./row-access";
 import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED, requireUnlocked } from "./journal-extras";
 import { privateRecordPageIds, recordSubPageIds, recordSubTree } from "./record-pages";
 import { checkShareProtection, protectionChanges } from "./share-access";
@@ -42,6 +42,7 @@ import { fileIdOf, fileUrls } from "./file-cells";
 import { isEncryptedPage } from "./e2ee-server";
 import { dropLiveProjections } from "./shared-live";
 import { securityEvent } from "./security-events";
+import { behindJournalPin, runnerIdentity } from "./workflows/runner";
 import type { Field, Identity, Page, Row } from "./types";
 
 export type RecordShareRole = "viewer" | "commenter" | "editor";
@@ -109,6 +110,29 @@ async function chosenFields(rowId: string) {
 const databaseFields = async (pageId: string): Promise<Field[]> =>
   JSON.parse(String((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]"));
 
+// ---- Linked records ----
+
+// The database a relation points to, if `who` may read it: in the same
+// workspace, not deleted, not end-to-end encrypted and not in a journal
+// with a PIN (shares have no unlocked session). null otherwise.
+async function readableRelationTarget(who: Identity | null, workspaceId: string, pageId: string | undefined) {
+  if (!who || !pageId) return null;
+  const target = await one<Page>("SELECT * FROM pages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", pageId, workspaceId);
+  if (!target || !(await pageRole(who, target)) || (await behindJournalPin(target)) || (await isEncryptedPage(target))) return null;
+  return target;
+}
+// Relations show the titles of other records, so a share shows them only
+// as far as the person who made it may read them – loaded fresh, without
+// admin rights (runnerIdentity); none when that person is unknown or gone.
+async function withReadableRelations(createdBy: string | null, workspaceId: string, shown: Field[]) {
+  if (!shown.some((f) => f.type === "relation")) return shown;
+  const who = await runnerIdentity(createdBy);
+  const kept: Field[] = [];
+  for (const f of shown)
+    if (f.type !== "relation" || (await readableRelationTarget(who, workspaceId, f.relationPage))) kept.push(f);
+  return kept;
+}
+
 // ---- Visitors ----
 
 // null: `token` is no record share (a page link, a publication or nothing).
@@ -136,7 +160,7 @@ export async function recordScope(token: string, options: { protect?: boolean } 
     role: share.kind === "publication" ? "viewer" : share.role,
     fields,
     titleField: fields[0],
-    shown: recordShownFields(fields, await chosenFields(row.id)),
+    shown: await withReadableRelations(share.created_by, page.workspace_id, recordShownFields(fields, await chosenFields(row.id))),
   };
 }
 // The record's cells as visitors may know them: the title and the shown
@@ -234,10 +258,12 @@ export function recordTitle(scope: RecordScope) {
   return typeof value === "string" ? value : Array.isArray(value) ? value.join(", ") : value == null ? "" : String(value);
 }
 // Display values of relations and people that were chosen to be shown:
-// titles of the linked records (not private ones; no links) and the names
-// of members of the workspace.
+// titles of the linked records (not private ones, and only what the
+// share's creator may read; no links) and the names of members of the
+// workspace.
 export async function recordReferenceNames(scope: RecordScope) {
   const cells = recordCells(scope);
+  const creator = scope.shown.some((f) => f.type === "relation") ? await runnerIdentity(scope.share.created_by) : null;
   const relations: Record<string, string[]> = {};
   const people: Record<string, string[]> = {};
   for (const f of scope.shown) {
@@ -246,21 +272,23 @@ export async function recordReferenceNames(scope: RecordScope) {
       .slice(0, 50);
     if (!ids.length) continue;
     if (f.type === "relation" && f.relationPage) {
+      const names: string[] = [];
+      relations[f.id] = names;
+      const targetPage = await readableRelationTarget(creator, scope.page.workspace_id, f.relationPage);
+      if (!targetPage || !creator) continue;
+      const mayRead = await rowRoleResolver(creator, targetPage);
       const target = await databaseFields(f.relationPage);
       const titleId = target[0]?.id || "title";
-      const names: string[] = [];
       for (const rid of ids) {
-        const r = await one<{ cells: string }>(
-          "SELECT r.cells FROM rows r JOIN pages p ON p.id=r.page_id WHERE r.id=? AND r.page_id=? AND r.access!='private' AND p.deleted_at IS NULL AND p.workspace_id=?",
+        const r = await one<{ id: string; access: string; created_by: string | null; cells: string }>(
+          "SELECT id,access,created_by,cells FROM rows WHERE id=? AND page_id=? AND access!='private'",
           rid,
-          f.relationPage,
-          scope.page.workspace_id,
+          targetPage.id,
         );
-        if (!r) continue;
+        if (!r || !mayRead(r)) continue;
         const title = (JSON.parse(r.cells) as Record<string, unknown>)[titleId];
         names.push(typeof title === "string" && title.trim() ? title : "—");
       }
-      relations[f.id] = names;
     }
     if (["person", "created_by", "updated_by"].includes(f.type)) {
       const names: string[] = [];
@@ -444,8 +472,11 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
       const fields = z.array(z.string().max(100)).max(500).nullable().parse(b.fields);
       if (fields === null) await run("DELETE FROM record_share_fields WHERE row_id=?", row.id);
       else {
-        // Only what can be shown at all is stored.
-        const eligible = new Set(recordEligibleFields(await databaseFields(page.id)).map((f) => f.id));
+        // Only what can be shown at all is stored – relations only to
+        // databases this person may read.
+        const eligible = new Set(
+          (await withReadableRelations(user.id, page.workspace_id, recordEligibleFields(await databaseFields(page.id)))).map((f) => f.id),
+        );
         const list = JSON.stringify([...new Set(fields)].filter((f) => eligible.has(f)));
         await run(
           "INSERT INTO record_share_fields(row_id,fields) VALUES(?,?) ON CONFLICT(row_id) DO UPDATE SET fields=excluded.fields",

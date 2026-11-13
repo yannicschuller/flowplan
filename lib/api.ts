@@ -2654,7 +2654,7 @@ async function runCommand(
             "Dokumentinhalt über den Dokumenteditor bearbeiten.",
           );
         const fieldsNow = (await database(pid())).fields;
-        const patch = await validateCellPatch(user, p, fieldsNow, b.cells || {});
+        const patch = await validateCellPatch(user, p, fieldsNow, b.cells || {}, before);
         const cells = await contactCellsFor(pid(), fieldsNow, before, { ...before, ...patch }, Object.keys(patch));
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
