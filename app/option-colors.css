@@ -112,7 +112,8 @@
   color: var(--secondary);
 }
 /* The chosen colour in its menu. */
-.dropdown-item[role="menuitemradio"][aria-checked="true"]::after {
+/* Block menus (components/block-menu.tsx) draw their own check. */
+.dropdown-item:not(.block-menu-item)[role="menuitemradio"][aria-checked="true"]::after {
   content: "✓";
   margin-left: auto;
   padding-left: 12px;

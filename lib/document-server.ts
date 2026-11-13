@@ -13,7 +13,7 @@ import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
 import { isPageBreakStyle } from "./page-break-node";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
-// Block colours (#238, lib/block-colors.ts) and toggle headings: only their names.
+// Block and cell colours (#238, #240, lib/block-colors.ts) and toggle headings: only their names.
 const blockColorAttr = { name: "data-block-color", multiple: false, values: BLOCK_COLOR_VALUES };
 const toggleHeadingAttr = { name: "data-heading", multiple: false, values: ["1", "2", "3", "4"] };
 // cleanHtml with a transform that awaits (database lookups, #127): the
@@ -158,11 +158,12 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       // A callout's own symbol and colour name (checked in transformTags).
       aside: [dir, "data-callout-icon", "data-callout-color"],
       a: ["href", "name", "target", "rel"],
-      img: ["src", "alt", "width", "height", "data-original", "data-annotations"],
+      img: ["src", "alt", "width", "height", "data-original", "data-annotations", { name: "data-align", multiple: false, values: ["center", "right"] }],
       input: ["type", "checked", "disabled"],
       ol: ["start", dir],
-      td: ["colspan", "rowspan", "colwidth", dir],
-      th: ["colspan", "rowspan", "colwidth", dir],
+      // Cell colours (#240): only the names, like blocks.
+      td: ["colspan", "rowspan", "colwidth", dir, blockColorAttr],
+      th: ["colspan", "rowspan", "colwidth", dir, blockColorAttr],
       details: ["open", dir, blockColorAttr, toggleHeadingAttr],
       video: ["src", "controls", "preload"],
       audio: ["src", "controls", "preload"],

@@ -12,7 +12,7 @@ import { fenceLanguage } from "./code-languages";
 import { circled } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
 import { markdownSymbol } from "./task-status";
-import { blockColorComment } from "./block-colors";
+import { blockColorComment, cellColorsComment } from "./block-colors";
 import { toggleHeading } from "./document-schema";
 // Captions (lib/block-captions.ts) in Markdown: an image's as its title,
 // ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
@@ -276,7 +276,7 @@ export function htmlToMarkdown(
     const keep =
       !MARKDOWN_BLOCKS.has(node.type.name) ||
       (node.type.name === "table" && !plainTable(node)) ||
-      (node.type.name === "image" && !!(node.attrs.width || node.attrs.height || node.attrs.annotations || node.attrs.title));
+      (node.type.name === "image" && !!(node.attrs.width || node.attrs.height || node.attrs.annotations || node.attrs.title || node.attrs.align));
     if (!keep) return null;
     const index = source.blocks.length;
     const label = (blockLabels[node.type.name]?.() || node.type.name).replace(/-{2,}|>/g, " ");
@@ -579,6 +579,8 @@ export function htmlToMarkdown(
       case "table": {
         const grid: string[][] = [],
           occupied = new Set<string>();
+        // Cell colours (#240): a comment before the table, by grid place.
+        const colors: { row: number; column: number; color: unknown }[] = [];
         let width = 0;
         if (node.childCount > 1000)
           throw new Error("Markdown-Tabelle überschreitet 1.000 Zeilen.");
@@ -593,6 +595,7 @@ export function htmlToMarkdown(
               throw new Error(
                 "Markdown-Tabelle überschreitet 1.000 Zeilen oder Spalten.",
               );
+            if (cell.attrs.blockColor) colors.push({ row: rowIndex, column, color: cell.attrs.blockColor });
             grid[rowIndex][column] = children(cell, true).replace(
               /\n/g,
               "<br>",
@@ -623,7 +626,8 @@ export function htmlToMarkdown(
         )
           lines.unshift("| " + " | ".repeat(width - 1) + " |");
         lines.splice(1, 0, "| " + Array(width).fill("---").join(" | ") + " |");
-        return lines.join("\n") + (inTable ? "" : captionLine(node));
+        const colorLine = inTable ? "" : cellColorsComment(colors);
+        return (colorLine ? `${colorLine}\n` : "") + lines.join("\n") + (inTable ? "" : captionLine(node));
       }
       default:
         return children(node, inTable);

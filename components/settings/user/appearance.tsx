@@ -29,6 +29,8 @@ import { pageIconPref, setPageIconPrefLocal, usePageIconPref } from "@/lib/page-
 import { externalLinkIcon, setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 import type { QuoteShortcutPref } from "@/lib/quote-shortcut-pref";
 import { quoteShortcut, setQuoteShortcutLocal, useQuoteShortcut } from "@/lib/quote-shortcut-pref-client";
+import type { FormattingToolbarPref } from "@/lib/toolbar-pref";
+import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
 
@@ -94,6 +96,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.quoteShortcut", quoteShortcut: value });
       } catch (e) {
         setQuoteShortcutLocal(before);
+        throw e;
+      }
+    });
+  };
+  const toolbar = useFormattingToolbar();
+  const [toolbarStatus, runToolbar] = useSaveState();
+  const chooseToolbar = (value: FormattingToolbarPref) => {
+    const before = formattingToolbar();
+    setFormattingToolbarLocal(value);
+    void runToolbar(async () => {
+      try {
+        await mutate({ action: "profile.formattingToolbar", formattingToolbar: value });
+      } catch (e) {
+        setFormattingToolbarLocal(before);
         throw e;
       }
     });
@@ -234,6 +250,28 @@ export default function AppearanceSection() {
             ).map(([value, label]) => (
               <label key={value} data-active={textMenu === value}>
                 <input type="radio" name="text-menu" checked={textMenu === value} onChange={() => chooseTextMenu(value)} /> {label}
+              </label>
+            ))}
+          </div>
+        </SettingRow>
+        <SettingRow
+          anchor="formatting-toolbar"
+          label={t("Formatierungsleiste", "Formatting toolbar")}
+          description={t(
+            "Die feste Leiste über dem Text von Seiten und Einträgen. Ausgeblendet bietet das Menü über markiertem Text alle Formatierungen, wie im Fokusmodus. Auf dem Handy bleibt die Leiste über der Tastatur. Gilt auf allen Geräten.",
+            "The fixed bar above the text of pages and records. Hidden, the menu above selected text offers all formatting, as in focus mode. On a phone the bar above the keyboard stays. Applies on all devices.",
+          )}
+        >
+          <SaveState status={toolbarStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Formatierungsleiste", "Formatting toolbar")}>
+            {(
+              [
+                ["show", t("Anzeigen", "Show")],
+                ["hide", t("Ausblenden", "Hide")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={toolbar === value}>
+                <input type="radio" name="formatting-toolbar" checked={toolbar === value} onChange={() => chooseToolbar(value)} /> {label}
               </label>
             ))}
           </div>

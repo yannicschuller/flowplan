@@ -11,7 +11,7 @@ import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
 import { taskList } from "./task-list-html";
 import { PAGE_BREAK_HTML } from "./page-break-node";
-import { BLOCK_COLOR_COMMENT, blockColor } from "./block-colors";
+import { BLOCK_COLOR_COMMENT, CELL_COLORS_COMMENT, blockColor, parseCellColors } from "./block-colors";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -335,6 +335,9 @@ export function markdownToRawHtml(
         // block takes as its attribute below.
         const color = BLOCK_COLOR_COMMENT.exec(text.trim());
         if (color) return blockColor(color[1]) ? `<!--flowplan-color:${color[1]}-->` : "";
+        // Cell colours of the table that follows (#240).
+        const cellColors = CELL_COLORS_COMMENT.exec(text.trim());
+        if (cellColors) return `<!--flowplan-cells:${[...parseCellColors(cellColors[1])].map(([at, value]) => `${at}=${value}`).join(" ")}-->`;
         if (/^<\/details>\s*$/i.test(text)) return "</div></details>";
         if (/^<\/?(?:u|mark|sup|sub|strong|em|s)>$|^<br\s*\/?>$/i.test(text)) return text;
         // A page break as lib/markdown.ts writes it (and Pandoc, Typora):
@@ -362,6 +365,25 @@ export function markdownToRawHtml(
       /<li\b([^>]*)>((?:(?!<\/?(?:li|ul|ol)\b)[\s\S])*?)\s*<!--flowplan-color:([a-z-]+)-->/g,
       (_, attrs: string, before: string, color: string) => `<li${attrs} data-block-color="${color}">${before}`,
     )
-    .replace(/<!--flowplan-color:[a-z-]+-->/g, "");
+    .replace(/<!--flowplan-color:[a-z-]+-->/g, "")
+    // Cell colours (#240): onto the cells of the table right after the marker.
+    .replace(/<!--flowplan-cells:([^>]*)-->\s*(<table>[\s\S]*?<\/table>)/g, (_, spec: string, table: string) => colorCells(table, parseCellColors(spec)))
+    .replace(/<!--flowplan-cells:[^>]*-->/g, "");
   return html;
+}
+
+// Gives the cells of a table's HTML their colours by "row.column" (the
+// Markdown grid: merged cells do not exist there).
+function colorCells(table: string, colors: Map<string, string>) {
+  let row = -1;
+  return table.replace(/<tr>([\s\S]*?)<\/tr>/g, (_whole, inner: string) => {
+    row++;
+    let column = -1;
+    const cells = inner.replace(/<(td|th)\b([^>]*)>/g, (_cell, tag: string, attrs: string) => {
+      column++;
+      const color = colors.get(`${row}.${column}`);
+      return color ? `<${tag}${attrs} data-block-color="${color}">` : `<${tag}${attrs}>`;
+    });
+    return `<tr>${cells}</tr>`;
+  });
 }

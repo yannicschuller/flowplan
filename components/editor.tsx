@@ -30,7 +30,9 @@ import { meetingNode, MeetingTranscriptView, type MeetingContext } from "./meeti
 import { MeetingAgenda, MeetingCite, MeetingSegmentNode, MeetingSummary } from "@/lib/meeting-schema";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
-import { TableTools } from "./table-tools";
+import { TableControls } from "./table-controls";
+import { ImageTools } from "./image-tools";
+import { TableShortcuts } from "@/lib/table-commands";
 import { AiWriter, blocksFromHtml, type AiWriterRequest } from "./ai-writer";
 import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
@@ -96,6 +98,8 @@ import { togglesAround, withTitleFocus } from "@/lib/toggle-view";
 import { toggleDocumentKey } from "@/lib/toggle-memory";
 import { ShortcutBlockquote } from "@/lib/quote-shortcut";
 import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
+import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
+import { showsFormattingToolbar } from "@/lib/toolbar-pref";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
   commentMarkedNodeView,
@@ -324,6 +328,9 @@ export default function DocumentEditor({
   // its end closes the keyboard to see what it covered (#120).
   const keyboardOpen = useSoftKeyboard();
   const touchPhone = useTouchPhone();
+  // "Formatierungsleiste" (#235, lib/toolbar-pref.ts): hidden, the text
+  // menu offers the whole set; the row docked on a phone's keyboard stays.
+  const toolbarShown = showsFormattingToolbar(useFormattingToolbar(), touchPhone);
   // A record's toolbar docks (and offers the button) only while one writes
   // in that record (app/globals.css, .row-document … :focus-within); a
   // document's toolbar is docked anyway.
@@ -766,6 +773,8 @@ export default function DocumentEditor({
         ShortcutBlockquote.configure({ creates: quoteShortcut }),
         EditableCodeBlock,
         BlockShortcuts,
+        // Rows and columns of tables: move and duplicate the selected ones (#240).
+        TableShortcuts,
         PlainNewLine,
         TaskList,
         FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }) }),
@@ -2314,6 +2323,30 @@ export default function DocumentEditor({
   function moveBlock(direction: -1 | 1) {
     moveSelectedBlock(editor, direction);
   }
+  // A new file for an image (#240, its corner toolbar): uploaded like a
+  // dropped one, the image keeps its place, width, caption and alignment;
+  // markings belonged to the old picture and go.
+  async function replaceImage(pos: number, original: File) {
+    if (!editor || !original.type.startsWith("image/")) return;
+    try {
+      const file = await compressImage(original);
+      const form = new FormData();
+      form.set("pageId", pageId);
+      form.set("file", file);
+      const r = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
+      const data = await r.json();
+      if (!r.ok) throw new Error(serverMessage(data.error));
+      primePlaceholder(data.url, data.placeholder);
+      if (editor.isDestroyed) return;
+      const node = editor.state.doc.nodeAt(pos);
+      if (node?.type.name !== "image") return;
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: data.url, alt: original.name, original: null, annotations: null, height: null }),
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  }
   // Marks up the selected image (toolbar button).
   function annotateSelectedImage() {
     if (!editor) return;
@@ -2642,7 +2675,7 @@ export default function DocumentEditor({
       }
     >
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
-        {editable && !embedded && !source && (
+        {editable && !embedded && !source && toolbarShown && (
           <div
             className="editor-toolbar"
             role="toolbar"
@@ -3076,6 +3109,30 @@ export default function DocumentEditor({
           />
         )}
         <div className="editor-content-holder" hidden={source && !embedded}>
+          {/* The corner toolbar of images (#240). */}
+          {editor && !embedded && (
+            <ImageTools
+              editor={editor}
+              editable={editable}
+              onReplace={(pos, file) => void replaceImage(pos, file)}
+              onAnnotate={(pos) => {
+                editor.chain().focus().setNodeSelection(pos).run();
+                annotateSelectedImage();
+              }}
+              onCopyImage={(pos) => {
+                editor.chain().focus().setNodeSelection(pos).run();
+                void copySelectedImage();
+              }}
+              onCopyLink={(pos) => void copyBlockLink.current(pos)}
+            />
+          )}
+          {/* The handles, menus and "+" bars of tables (#240). */}
+          {editor && editable && (
+            <TableControls
+              editor={editor}
+              convert={canCreatePages && !embedded && !draft ? { run: () => void convertTableToDatabase(), busy: convertingTable } : undefined}
+            />
+          )}
           {embedded ? (
             <EditorContent editor={editor} />
           ) : (
@@ -3099,16 +3156,6 @@ export default function DocumentEditor({
           )}
         </div>
         <TaskStatusMenu editor={editor} target={statusMenu} onClose={() => setStatusMenu(null)} />
-        {editor?.isActive("table") && editable && (
-          <TableTools
-            editor={editor}
-            convert={
-              canCreatePages && !embedded && !draft
-                ? { run: () => void convertTableToDatabase(), busy: convertingTable }
-                : undefined
-            }
-          />
-        )}
       </div>
       {!embedded && (
       <InlineComments
@@ -3187,6 +3234,15 @@ export default function DocumentEditor({
           ai={aiWrite}
           aiHint={aiBlockedHint}
           onAi={() => openAi.current()}
+          tools={{
+            inlineMath: openInlineMath,
+            suggesting,
+            setSuggesting,
+            authors: authorsOn,
+            setAuthors: setAuthorsOn,
+            outline: outline.toggle,
+            moveBlock,
+          }}
           onLink={() => {
             setLinkUrl(editor?.getAttributes("link").href || "");
             setLink(true);

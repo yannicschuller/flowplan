@@ -12,6 +12,9 @@ export const BLOCK_COLOR_NAMES = ["gray", "brown", "orange", "yellow", "green", 
 export type BlockColorName = (typeof BLOCK_COLOR_NAMES)[number];
 // The blocks that take a colour; a list takes it on its items.
 export const BLOCK_COLOR_TYPES = ["paragraph", "heading", "listItem", "taskItem", "blockquote", "toggle"];
+// Table cells take the same names (#240, lib/table-commands.ts): a row,
+// column or cell selection is coloured cell by cell.
+export const CELL_COLOR_TYPES = ["tableCell", "tableHeader"];
 
 // A valid colour value, or null.
 export function blockColor(value: unknown): string | null {
@@ -41,7 +44,7 @@ export const BlockColorAttribute = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: BLOCK_COLOR_TYPES,
+        types: [...BLOCK_COLOR_TYPES, ...CELL_COLOR_TYPES],
         attributes: {
           blockColor: {
             default: null,
@@ -63,3 +66,26 @@ export const blockColorComment = (value: unknown) => {
   return color ? `<!-- flowplan:color ${color} -->` : "";
 };
 export const BLOCK_COLOR_COMMENT = /^<!-- flowplan:color ([a-z]+(?:-background)?) -->\s*$/;
+
+// Cell colours of a table in Markdown (#240): one comment before the table
+// lists them by row and column of the Markdown grid, e.g.
+// <!-- flowplan:cells 0.1=red-background 2.0=blue --> (lib/markdown.ts,
+// lib/markdown-html.ts).
+export function cellColorsComment(colors: { row: number; column: number; color: unknown }[]) {
+  const parts = colors.flatMap(({ row, column, color }) => {
+    const value = blockColor(color);
+    return value ? [`${row}.${column}=${value}`] : [];
+  });
+  return parts.length ? `<!-- flowplan:cells ${parts.join(" ")} -->` : "";
+}
+export const CELL_COLORS_COMMENT = /^<!-- flowplan:cells ((?:\d{1,4}\.\d{1,4}=[a-z]+(?:-background)?\s*)+)-->\s*$/;
+// "0.1=red-background 2.0=blue" → the valid ones by "row.column".
+export function parseCellColors(spec: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const part of spec.trim().split(/\s+/)) {
+    const [at, value] = part.split("=");
+    const color = blockColor(value);
+    if (color && /^\d+\.\d+$/.test(at)) result.set(at, color);
+  }
+  return result;
+}
