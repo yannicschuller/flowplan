@@ -312,6 +312,10 @@ export type Bootstrap = {
   quoteShortcut?: import("./quote-shortcut-pref").QuoteShortcutPref;
   // "Formatierungsleiste" (#235, lib/toolbar-pref.ts).
   formattingToolbar?: import("./toolbar-pref").FormattingToolbarPref;
+  // "Animationen" (#260, lib/motion-pref.ts).
+  motion?: import("./motion-pref").MotionPref;
+  // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).
+  fullWidthPages?: boolean;
   // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts).
   updateNotes?: import("./update-notes-pref").UpdateNotesBoot;
   spaces: Space[];

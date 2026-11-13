@@ -1,9 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // View transitions of the shell (lib/view-transition.ts): opening a page
-// cross-fades the main pane, the icon and title fly from the page tree, a
-// board card grows into its record. Quick successive changes and taps
-// never wait for an animation. document.startViewTransition is observed
+// cross-fades the main pane – opacity only, nothing flies from the page tree
+// and no card grows into its record (#260). Quick successive changes and
+// taps never wait for an animation. document.startViewTransition is observed
 // (not replaced) to see what was captured.
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -82,7 +82,7 @@ const slowDown = (page: Page) =>
     content: "::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation-duration:4s!important}",
   });
 
-test("opening a page from the tree: the pane cross-fades, icon and title fly to their place", async ({ page }, info) => {
+test("opening a page from the tree: only the pane cross-fades, the title appears in its place", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const mobile = info.project.name === "mobile";
@@ -99,6 +99,26 @@ test("opening a page from the tree: the pane cross-fades, icon and title fly to 
   // Past the window in which changes count as rapid.
   await page.waitForTimeout(500);
   await forget(page);
+  // The animations the transition runs, by pseudo-element, with the
+  // properties their keyframes change.
+  if (!mobile)
+    await page.evaluate(() => {
+      const w = window as unknown as { __vtAnimations: { pseudo: string; properties: string[]; duration: number }[] };
+      w.__vtAnimations = [];
+      const sample = () => {
+        for (const a of document.getAnimations()) {
+          const effect = a.effect as KeyframeEffect | null;
+          const pseudo = effect?.pseudoElement || "";
+          if (!pseudo.startsWith("::view-transition") || w.__vtAnimations.some((s) => s.pseudo === pseudo)) continue;
+          const properties = new Set<string>();
+          for (const frame of effect!.getKeyframes())
+            for (const key of Object.keys(frame)) if (!["offset", "computedOffset", "easing", "composite"].includes(key)) properties.add(key);
+          w.__vtAnimations.push({ pseudo, properties: [...properties].sort(), duration: Number(effect!.getTiming().duration) });
+        }
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
 
   await (await treeEntry(page, `Zweite ${stamp}`, mobile)).click();
   await expect(pageTitle(page)).toHaveValue(`Zweite ${stamp}`);
@@ -113,14 +133,19 @@ test("opening a page from the tree: the pane cross-fades, icon and title fly to 
     const [transition] = await seen(page);
     expect(transition.kind).toBe("page");
     expect(transition.main).toBe("fp-main");
-    // Old view: the tree entry's icon and title; new view: the page header's.
-    expect(transition.old).toEqual(expect.arrayContaining([expect.stringMatching(/^fp-page-title:span\.page-nav-label/), expect.stringMatching(/^fp-page-icon:/)]));
-    await expect.poll(async () => (await seen(page))[0].fresh).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^fp-page-title:textarea\.page-title/), expect.stringMatching(/^fp-page-icon:button\.large-page-icon/)]),
-    );
-    expect((await seen(page))[0].fresh!.some((name) => name.includes("page-nav-label"))).toBe(false);
-    // Afterwards nothing stays named.
+    // No element of the old or the new view is named: no title, icon or
+    // card flies anywhere (#260).
+    expect(transition.old).toEqual([]);
+    await expect.poll(async () => (await seen(page))[0].fresh).toEqual([]);
     await expect.poll(async () => (await seen(page))[0].done).toBe(true);
+    // Only the main pane animates, by opacity, in about 100 ms.
+    const animations = await page.evaluate(() => (window as unknown as { __vtAnimations: { pseudo: string; properties: string[]; duration: number }[] }).__vtAnimations);
+    expect(animations.some((a) => a.pseudo === "::view-transition-new(fp-main)")).toBe(true);
+    for (const a of animations) {
+      expect(a.pseudo).toMatch(/\((fp-main|root)\)$/);
+      if (/-(old|new)\(/.test(a.pseudo)) expect(a.properties).toEqual(["opacity"]);
+      if (a.pseudo.includes("fp-main")) expect(a.duration).toBeLessThanOrEqual(100);
+    }
     expect(await page.evaluate(() => document.documentElement.dataset.viewTransition)).toBeUndefined();
     expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("*")].filter((el) => el.style?.viewTransitionName).length)).toBe(0);
   }
@@ -202,7 +227,7 @@ test("with reduced motion pages change without a transition", async ({ page }) =
   expect(await seen(page)).toEqual([]);
 });
 
-test("a board card grows into its record and back", async ({ page }, info) => {
+test("a board card opens its record as a dialog: no morph, it fades and scales in", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const mobile = info.project.name === "mobile";
@@ -229,22 +254,17 @@ test("a board card grows into its record and back", async ({ page }, info) => {
   await card.click();
   const dialog = page.getByRole("dialog", { name: "Eintrag" });
   await expect(dialog).toBeVisible();
+  expect(await seen(page)).toEqual([]);
   if (mobile) {
     // Phones keep their bottom sheet (its own rise, swiped to close).
     await expect(dialog).toHaveClass(/modal-sheet/);
-    expect((await seen(page)).filter((t) => t.kind === "record")).toEqual([]);
     return;
   }
-  await expect.poll(async () => (await seen(page)).map((t) => t.kind)).toEqual(["record"]);
-  const [open] = await seen(page);
-  expect(open.old).toEqual([expect.stringMatching(/^fp-record:button\.record-card/)]);
-  await expect.poll(async () => (await seen(page))[0].fresh).toEqual([expect.stringMatching(/^fp-record:div\.modal/)]);
-  await expect.poll(async () => (await seen(page))[0].done).toBe(true);
+  expect(await dialog.evaluate((el) => getComputedStyle(el).animationName)).toBe("modal-in");
   await page.waitForTimeout(400);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect.poll(async () => (await seen(page)).map((t) => t.kind)).toEqual(["record", "record"]);
-  await expect.poll(async () => (await seen(page))[1].fresh).toEqual([expect.stringMatching(/^fp-record:button\.record-card/)]);
+  expect(await seen(page)).toEqual([]);
   // The keyboard is back on the card.
   await expect(card).toBeFocused();
   expect(errors).toEqual([]);

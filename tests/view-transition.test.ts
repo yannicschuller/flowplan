@@ -1,6 +1,6 @@
 // View transitions of the shell (lib/view-transition.ts) against a small
 // stand-in for the browser: when they run, the order of changes, rapid
-// changes, shared elements and taps that end them.
+// changes, the "Animationen" setting (#260) and taps that end them.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -41,6 +41,7 @@ function runUpdate(fake: Fake) {
 Object.assign(globalThis, {
   document: doc,
   window: {
+    document: doc,
     matchMedia: () => ({ matches: reduced }),
     addEventListener: (type: string, fn: (e: unknown) => void) => listeners.set(type, [...(listeners.get(type) || []), fn]),
   },
@@ -112,28 +113,28 @@ test("quick successive changes keep their order and go without a transition", as
   runUpdate(transitions[0]);
   assert.deepEqual(log, ["first", "second"]);
   // A third change right after: still no transition.
-  transitionView(() => log.push("third"), { kind: "record" });
+  transitionView(() => log.push("third"), { kind: "page" });
   assert.deepEqual(log, ["first", "second", "third"]);
   assert.equal(transitions.length, 1);
 });
 
-test("shared elements: named in the old view, then in the new one, then cleared", async () => {
+test("“Animationen: Aus” changes at once; “Reduziert” keeps the cross-fade", async () => {
   supportTransitions();
-  const card = new FakeElement(),
-    dialog = new FakeElement();
-  let targetSeen: unknown = null;
-  transitionView(() => {}, {
-    kind: "record",
-    morph: [{ name: "fp-record", from: card as unknown as Element, to: () => dialog as unknown as Element, onTarget: (el) => (targetSeen = el) }],
-  });
-  assert.equal(card.style.viewTransitionName, "fp-record");
-  runUpdate(transitions[0]);
-  assert.equal(card.style.viewTransitionName, "", "unique in the new view");
-  assert.equal(dialog.style.viewTransitionName, "fp-record");
-  assert.equal(targetSeen, dialog);
-  transitions[0].finish();
-  await later(0);
-  assert.equal(dialog.style.viewTransitionName, "");
+  let value = 0;
+  doc.documentElement.dataset.motion = "off";
+  try {
+    transitionView(() => value++, { kind: "page" });
+    assert.equal(value, 1);
+    assert.equal(transitions.length, 0);
+    await later(RAPID_MS + 20);
+    doc.documentElement.dataset.motion = "reduced";
+    transitionView(() => value++, { kind: "page" });
+    assert.equal(transitions.length, 1, "a fade of the main pane only");
+    runUpdate(transitions[0]);
+    assert.equal(value, 2);
+  } finally {
+    delete doc.documentElement.dataset.motion;
+  }
 });
 
 test("a tap or a key during a transition ends it", async () => {

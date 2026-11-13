@@ -1,3 +1,4 @@
+import { prefersReducedMotion } from "./motion";
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { Plugin, type Transaction } from "@tiptap/pm/state";
 import { Extension, type Editor } from "@tiptap/core";
@@ -27,7 +28,7 @@ function prepareSlide(editor: Editor, transaction: Transaction) {
   if (
     !move ||
     typeof root.animate !== "function" ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    prefersReducedMotion()
   )
     return null;
   const base = () => root.getBoundingClientRect();

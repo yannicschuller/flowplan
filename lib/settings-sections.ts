@@ -96,6 +96,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Sprache", en: "Language" } },
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
+      {
+        title: { de: "Animationen", en: "Animations" },
+        keywords: { de: "bewegung animation reduziert aus übergänge einblenden barrierefreiheit", en: "motion animation reduced off transitions fade accessibility" },
+        anchor: "motion",
+      },
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
       {
         title: { de: "Seitensymbol", en: "Page icon" },
@@ -111,6 +116,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         title: { de: "Menü bei Textauswahl", en: "Menu on text selection" },
         keywords: { de: "textmenü markieren auswahl popup reaktionen formatieren handy tablet", en: "text menu select selection popup reactions formatting phone tablet" },
         anchor: "text-menu",
+      },
+      {
+        title: { de: "Seiten in voller Breite anzeigen", en: "Show pages at full width" },
+        keywords: { de: "volle breite breit seitenbreite layout einträge standard", en: "full width wide page width layout records default" },
+        anchor: "full-width-pages",
       },
       {
         title: { de: "Formatierungsleiste", en: "Formatting toolbar" },

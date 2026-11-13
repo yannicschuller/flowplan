@@ -1,6 +1,7 @@
 "use client";
 // The gesture of a sheet dragged down to close it (components/sheet-drag.ts
 // loads it when a sheet opens; lib/sheet-drag.ts has the arithmetic).
+import { prefersReducedMotion } from "@/lib/motion";
 import { backdropOpacity, dragOffset, releaseVelocity, settleDuration, shouldDismiss, type Sample } from "@/lib/sheet-drag";
 import { SHEET_HANDLE, type SheetDragOptions } from "./sheet-drag";
 
@@ -11,7 +12,8 @@ const OWN_GESTURES = 'textarea, select, .fp-select, [contenteditable="true"], in
 const SPRING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const LEAVE = "cubic-bezier(0.2, 0.7, 0.4, 1)";
 
-const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+// The system's "reduce motion" and the person's "Animationen" (#260).
+const reducedMotion = () => prefersReducedMotion();
 
 function scrollerOf(target: Element, sheet: HTMLElement): HTMLElement | null {
   for (let el: Element | null = target; el; el = el.parentElement) {

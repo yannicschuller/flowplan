@@ -1,4 +1,5 @@
 "use client";
+import { useFullWidthPages } from "@/lib/page-width-pref-client";
 import { rowChanges } from "@/lib/row-queue";
 import { patchBase } from "@/lib/row-patch";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
@@ -87,7 +88,6 @@ import { cardFields } from "@/lib/card-fields";
 import { GalleryCover } from "./gallery-cover";
 import { CoverFrame } from "./cover-frame";
 import { primePlaceholder } from "./image-placeholder";
-import { transitionView } from "@/lib/view-transition";
 import { ScrollFade } from "./scroll-fade";
 import type { PageImage } from "@/lib/page-appearance";
 import {
@@ -198,7 +198,7 @@ import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
-import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
@@ -495,26 +495,10 @@ export default function DatabaseView({
       else leaveTo(hash);
     }
   }
-  // Board and gallery cards grow into the record and back (a view
-  // transition, lib/view-transition.ts). Phones keep their bottom sheet.
-  const recordDialog = () => document.querySelector<HTMLElement>(".modal.record-dialog");
-  const morphsRecords = () => !window.matchMedia(SHEET_MEDIA).matches;
-  function openRecordFrom(card: HTMLElement, id: string) {
-    // A record as a page (#231) replaces the view: no card morph.
-    if (!morphsRecords() || (routeNavigation && !record && viewRecordMode === "full")) return setRowId(id);
-    transitionView(() => setRowId(id), {
-      kind: "record",
-      // The dialog's own rise would run on top of the morph.
-      morph: [{ name: "fp-record", from: card, to: recordDialog, onTarget: (dialog) => (dialog.style.animation = "none") }],
-    });
-  }
+  // Board and gallery cards open their record as a dialog, which fades and
+  // scales in like every dialog (#260: nothing flies from the card).
   function closeRecord() {
-    const card = lastOpened.current
-      ? boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"] .record-card`)
-      : null;
-    const box = card?.getBoundingClientRect();
-    if (!card || !box || box.bottom < 0 || box.top > window.innerHeight || !morphsRecords() || pageRecord) return setRowId(null);
-    transitionView(() => setRowId(null), { kind: "record", morph: [{ name: "fp-record", from: recordDialog(), to: () => card }] });
+    setRowId(null);
   }
   const ownHash = useRef("");
   useEffect(() => {
@@ -672,6 +656,10 @@ export default function DatabaseView({
       } catch {}
       return !wide;
     });
+  // "Seiten in voller Breite anzeigen" (#257): every record as a page at
+  // full width for this person; the switch then shows as on and locked.
+  const allWide = useFullWidthPages();
+  const recordFullWidth = recordWide || allWide;
   const [rowIconPicker, setRowIconPicker] = useState(false),
     [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
     [rowCoverPicker, setRowCoverPicker] = useState(false);
@@ -942,10 +930,15 @@ export default function DatabaseView({
         {recordMode === "full" && (
           <button
             type="button"
-            className={`icon-button${recordWide ? " active" : ""}`}
-            aria-pressed={recordWide}
+            className={`icon-button${recordFullWidth ? " active" : ""}`}
+            aria-pressed={recordFullWidth}
             aria-label={t("Volle Breite", "Full width")}
-            title={t("Volle Breite", "Full width")}
+            title={
+              allWide
+                ? t("Volle Breite – deine Einstellung „Seiten in voller Breite anzeigen“ ist an", "Full width – your setting “Show pages at full width” is on")
+                : t("Volle Breite", "Full width")
+            }
+            disabled={allWide}
             onClick={toggleRecordWide}
           >
             <ArrowsOutLineHorizontal size={17} />
@@ -2312,7 +2305,7 @@ export default function DatabaseView({
             if (plainBoard && groupKey !== undefined) beginCardDrag(e, r, groupKey);
             else beginRowDrag(e, r, groupKey, "none");
           }}
-          onClick={(e) => openRecordFrom(e.currentTarget, r.id)}
+          onClick={() => setRowId(r.id)}
         >
           {galleryCovers && (
             <GalleryCover
@@ -6295,7 +6288,7 @@ export default function DatabaseView({
         );
         if (pageRecord && selected)
           return (
-            <section className={`record-page${recordWide ? " record-page-wide" : ""}`} aria-label={t("Eintrag", "Record")}>
+            <section className={`record-page${recordFullWidth ? " record-page-wide" : ""}`} aria-label={t("Eintrag", "Record")}>
               <div className="record-page-bar">
                 <div className="modal-heading-actions">{recordActions(selected)}</div>
               </div>
@@ -6321,7 +6314,7 @@ export default function DatabaseView({
         actions={selected && recordActions(selected)}
         className={`record-dialog ${
           recordMode === "full"
-            ? `modal-full${recordWide ? " modal-full-wide" : ""}`
+            ? `modal-full${recordFullWidth ? " modal-full-wide" : ""}`
             : recordMode === "side"
               ? "modal-side"
               : recordLayout.properties === "side"

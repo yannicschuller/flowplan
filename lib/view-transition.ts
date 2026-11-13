@@ -1,10 +1,10 @@
-// View transitions of the app shell (View Transitions API): opening a page,
-// another screen, a record. The old view is captured, React draws the new
-// one at once (flushSync) and the browser animates between them – the main
-// pane fades and rises a little; a page title and icon from the page tree
-// or a board card can fly to their place in the new view (shared elements,
-// "morph"). Off when the browser cannot, when the system asks for reduced
-// motion or the tab is hidden.
+// View transitions of the app shell (View Transitions API): opening a page
+// or another screen. The old view is captured, React draws the new one at
+// once (flushSync) and the browser cross-fades the main pane – opacity
+// only, about 100 ms (app/globals.css). Nothing travels: no title, icon or
+// card flies to its place, everything appears where it ends (#260). Off
+// when the browser cannot, with "Animationen: Aus" or the system's reduced
+// motion (lib/motion.ts), or when the tab is hidden.
 //
 // Nothing waits for an animation: a tap or key during one ends it at once
 // (the page below stays clickable, app/globals.css), and a change that
@@ -13,19 +13,9 @@
 // A change still waiting for its old picture to be taken is applied first,
 // so changes never overtake each other.
 import { flushSync } from "react-dom";
-import { prefersReducedMotion } from "./motion";
+import { motionLevel } from "./motion";
 
-export type ViewKind = "page" | "record";
-export type Morph = {
-  /** The view-transition-name of the pair. */
-  name: string;
-  /** The element in the old view (named until the old view is captured). */
-  from?: Element | null;
-  /** Finds the element in the new view. */
-  to?: () => Element | null | undefined;
-  /** Called with the new element (e.g. to stop its own entry animation). */
-  onTarget?: (element: HTMLElement) => void;
-};
+export type ViewKind = "page";
 
 /** Changes closer together than this go without a transition. */
 export const RAPID_MS = 350;
@@ -49,7 +39,7 @@ function start(): StartViewTransition | null {
 
 /** Whether a transition would run now (support, motion settings, tab). */
 export function viewTransitionsEnabled() {
-  return !!start() && !prefersReducedMotion() && document.visibilityState === "visible";
+  return !!start() && motionLevel() !== "off" && document.visibilityState === "visible";
 }
 
 /** Runs `fn` with changes applied at once (e.g. what the app shows when it
@@ -108,7 +98,7 @@ function settlePending() {
  * fits; otherwise at once. Returns `flush()`, which applies the update now
  * if it is still waiting (call it before anything that depends on it).
  */
-export function transitionView(update: () => void, { kind, morph = [] }: { kind: ViewKind; morph?: Morph[] }) {
+export function transitionView(update: () => void, { kind }: { kind: ViewKind }) {
   install();
   settlePending();
   const now = performance.now();
@@ -122,42 +112,24 @@ export function transitionView(update: () => void, { kind, morph = [] }: { kind:
   }
   const job = { run: update, done: false };
   state.pending = job;
-  const named: HTMLElement[] = [];
-  const name = (element: Element | null | undefined, value: string) => {
-    if (!(element instanceof HTMLElement || element instanceof SVGElement)) return null;
-    (element as HTMLElement).style.viewTransitionName = value;
-    named.push(element as HTMLElement);
-    return element as HTMLElement;
-  };
-  const unname = () => {
-    for (const element of named.splice(0)) element.style.viewTransitionName = "";
-  };
-  for (const pair of morph) name(pair.from, pair.name);
   const root = document.documentElement;
   root.dataset.viewTransition = kind;
   let transition: Transition;
   try {
     transition = begin(() => {
-      unname();
       if (!job.done) {
         job.done = true;
         if (state.pending === job) state.pending = null;
         flushSync(update);
       }
-      for (const pair of morph) {
-        const target = name(pair.to?.(), pair.name);
-        if (target) pair.onTarget?.(target);
-      }
     });
   } catch {
-    unname();
     delete root.dataset.viewTransition;
     settlePending();
     return { flush: () => {}, transition: null };
   }
   state.active = transition;
   const done = () => {
-    unname();
     if (state.active === transition) {
       state.active = null;
       delete root.dataset.viewTransition;
