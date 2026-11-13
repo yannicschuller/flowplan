@@ -172,3 +172,26 @@ test("Enter in an empty sub-item with siblings after it outdents like Shift+Tab;
   assert.equal(shown(editor), "UL[li(A, UL[li(B), li(_)]), li(_, UL[li(C)])]");
   editor.destroy();
 });
+
+test("Enter at the end of an item with sub-items starts a new first sub-item; the sub-items stay where they are", () => {
+  for (const [list, item, l, i] of [
+    ["ul", "li", "UL", "li"],
+    ["ul data-type=\"taskList\"", "li data-type=\"taskItem\"", "TL", "task"],
+  ]) {
+    const end = (tag: string) => `</${tag.split(" ")[0]}>`;
+    const li = (text: string, ...children: string[]) =>
+      `<${item}><p>${text}</p>${children.length ? `<${list}>${children.join("")}${end(list)}` : ""}${end(item)}`;
+    const editor = editorWith(`<${list}>${li("A", li("B", li("B1")), li("C"))}${end(list)}`);
+    editor.commands.setTextSelection(at(editor.state.doc, "A", 1));
+    assert.equal(press(editor, "Enter"), true);
+    assert.equal(shown(editor), `${l}[${i}(A, ${l}[${i}(_), ${i}(B, ${l}[${i}(B1)]), ${i}(C)])]`);
+    assert.equal(editor.state.selection.$from.parent.content.size, 0, "the caret in the new sub-item");
+    editor.commands.insertContent("Neu");
+    assert.equal(shown(editor), `${l}[${i}(A, ${l}[${i}(Neu), ${i}(B, ${l}[${i}(B1)]), ${i}(C)])]`);
+    // In the middle of the text it still splits as usual.
+    editor.commands.setTextSelection(at(editor.state.doc, "Neu", 1));
+    assert.equal(press(editor, "Enter"), true);
+    assert.equal(shown(editor), `${l}[${i}(A, ${l}[${i}(N), ${i}(eu), ${i}(B, ${l}[${i}(B1)]), ${i}(C)])]`);
+    editor.destroy();
+  }
+});
