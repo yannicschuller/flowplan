@@ -11,7 +11,7 @@ import { enhanceCodeBlock } from "./code-block-static";
 import { citedWorks, parseItemAttribute, referenceText } from "@/lib/citations";
 import { tr } from "@/lib/locale-tag";
 import { emptyBibliography, renderReferences } from "./citation-views";
-import { finishDocumentHtml } from "@/lib/document-html";
+import { finishDocumentHtml, wrapTables } from "@/lib/document-html";
 import { mountPluginBlock } from "./plugin-block";
 import { mountWorkflowButton } from "./workflow-button";
 import { decorateLinkIcons, setLinkTargetPages } from "./page-link-icons";
@@ -45,6 +45,7 @@ export function ReadOnlyDocument({
     if (!root) return;
     // Right-to-left blocks and footnotes (numbers, list at the end).
     finishDocumentHtml(root, { captionNumbers });
+    wrapTables(root);
     // Page links: the target's own icon in front (#96).
     if (linkPages) setLinkTargetPages(linkPages, "share");
     const undecorate = decorateLinkIcons(root);
