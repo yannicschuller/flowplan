@@ -307,6 +307,42 @@ export function htmlState(html: string) {
   doc.destroy();
   return state;
 }
+// Merges a saved update into the stored document. A new page starts as a
+// single empty paragraph (htmlState("") when it is first opened). Content
+// written from scratch for it – "Umwandeln in → Seite", scripts and tests
+// that build a document on their own – does not build on that paragraph,
+// so Yjs keeps both, and the random client ids decide whether the empty
+// line ends up above or below the content. Such an update replaces the
+// blank page instead: the empty paragraph is deleted (a tombstone, so a
+// copy of it that comes back later stays deleted). Updates of editors that
+// loaded the page refer to its paragraph and merge as usual.
+export function applyDocumentUpdate(doc: Y.Doc, update: Uint8Array) {
+  const fragment = doc.getXmlFragment("default");
+  const only = fragment.length === 1 ? fragment.get(0) : null;
+  const blank = only instanceof Y.XmlElement && only.nodeName === "paragraph" && only.length === 0;
+  if (blank && independentUpdate(doc, update)) {
+    doc.transact(() => {
+      fragment.delete(0, 1);
+      Y.applyUpdate(doc, update);
+    });
+    // Nothing came with it: the page keeps a paragraph.
+    if (!fragment.length) fragment.insert(0, [new Y.XmlElement("paragraph")]);
+    return;
+  }
+  Y.applyUpdate(doc, update);
+}
+// Whether an update neither contains nor refers to anything of `doc`.
+function independentUpdate(doc: Y.Doc, update: Uint8Array) {
+  const known = Y.decodeStateVector(Y.encodeStateVector(doc));
+  const ours = (id: unknown) => id instanceof Y.ID && known.has(id.client);
+  const { structs, ds } = Y.decodeUpdate(update);
+  if (!structs.length || [...ds.clients.keys()].some((client) => known.has(client))) return false;
+  return structs.every(
+    (s) =>
+      !known.has(s.id.client) &&
+      !(s instanceof Y.Item && (ours(s.origin) || ours(s.rightOrigin) || ours(s.parent))),
+  );
+}
 export function stateHtml(doc: Y.Doc) {
   return cleanHtml(jsonHtml(yDocToProsemirrorJSON(doc, "default")));
 }

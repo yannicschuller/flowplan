@@ -252,6 +252,7 @@ import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
 import {
+  applyDocumentUpdate,
   cleanHtml,
   htmlState,
   stateHtml,
@@ -1969,7 +1970,7 @@ async function runCommand(
         try {
           if (existing?.state) Y.applyUpdate(d, existing.state);
           const before = Y.encodeStateVector(d);
-          Y.applyUpdate(d, Buffer.from(update, "base64"));
+          applyDocumentUpdate(d, Buffer.from(update, "base64"));
           // Who wrote what: the editor sessions in this update are this person's.
           await recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
           const merged = Y.encodeStateAsUpdate(d);

@@ -7,7 +7,7 @@ import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
 import { hiddenFieldsFor, stripCells, unwritableFieldIds } from "./field-access";
 import { requireUnlocked } from "./journal-extras";
-import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
+import { applyDocumentUpdate, cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
 import type { Identity, Page, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
 import { recordDocumentAuthors } from "./document-authors";
@@ -103,7 +103,7 @@ export async function syncRowDocument(
   try {
     Y.applyUpdate(doc, previous.state);
     const before = Y.encodeStateVector(doc);
-    Y.applyUpdate(doc, Buffer.from(encoded, "base64"));
+    applyDocumentUpdate(doc, Buffer.from(encoded, "base64"));
     const state = Y.encodeStateAsUpdate(doc);
     // Refused above the size cap (lib/document-size.ts) before anything is written.
     requireDocumentSize(state, previous.state.byteLength);
