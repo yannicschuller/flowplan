@@ -20,6 +20,10 @@
   width: 100%;
   min-width: 0;
 }
+.marketplace-form .marketplace-hint {
+  font-size: 12px;
+  font-weight: 400;
+}
 .marketplace-form textarea {
   resize: vertical;
   min-height: 0;

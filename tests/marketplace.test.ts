@@ -27,7 +27,7 @@ const { saveWorkspaceLinkRules, workspaceLinkRules } = await import("../lib/auto
 const { saveBoardTemplate, listBoardTemplates } = await import("../lib/whiteboard-user-templates");
 
 const status = (code: number) => (e: unknown) => (e as { status?: number }).status === code;
-const meta = (title: string, extra: Record<string, unknown> = {}) => ({ title, summary: { de: `${title} auf Deutsch.`, en: `${title} in English.` }, category: "projects", tags: ["test"], language: "multi", ...extra });
+const meta = (title: string, extra: Record<string, unknown> = {}) => ({ titles: { en: title }, summary: { de: `${title} auf Deutsch.`, en: `${title} in English.` }, category: "projects", tags: ["test"], language: "multi", ...extra });
 // The other instance: its own owner and workspace.
 const other = await user("other-owner");
 const target = await createWorkspace(other.id, "Ziel");
@@ -350,6 +350,52 @@ test("guests and strangers never publish; the details and pictures are checked",
   await assert.rejects(() => pkgs.buildPackage(owner, { kind: "document", workspaceId: wid, id: tpl }, meta("x"), [Buffer.concat([PNG, Buffer.alloc(1024 * 1024)])]), status(413));
   const audited = await all("SELECT 1 FROM audit WHERE action='marketplace.package'");
   assert.ok(audited.length >= 5, "building is in the activity log");
+});
+
+test("titles: the English one is required, the German one optional; `title` is the one in the content's language", async () => {
+  const page = (await act({ action: "page.create", workspaceId: wid, spaceId: space, title: "Wochenplan" })).id;
+  const tpl = (await act({ action: "template.save", pageId: page, name: "Wochenplan" })).id;
+  const source = { kind: "document" as const, workspaceId: wid, id: tpl };
+  const manifestOf = async (m: Record<string, unknown>) => {
+    const built = await pkgs.buildPackage(owner, source, m);
+    return { name: built.name, manifest: JSON.parse((await readZip(built.bytes, { foreign: true })).get("template.json")!.toString()) };
+  };
+  // Without an English title (what an older dialog or API caller sends): refused, with a message in both languages.
+  for (const titles of [undefined, { de: "Wochenplan" }, { de: "Wochenplan", en: "  " }])
+    await assert.rejects(() => pkgs.buildPackage(owner, source, { ...meta("x"), titles, title: "Wochenplan" }), (e: { status?: number; message?: string }) => e.status === 400 && e.message === "Bitte einen englischen Titel angeben.");
+  const { englishMessage } = await import("../lib/i18n-errors");
+  assert.equal(englishMessage("Bitte einen englischen Titel angeben."), "Please enter an English title.");
+
+  // German content with both: `title` German, `titles` both.
+  let r = await manifestOf(meta("x", { titles: { de: " Wochenplan ", en: "Weekly plan" }, language: "de" }));
+  assert.equal(r.manifest.title, "Wochenplan");
+  assert.deepEqual(r.manifest.titles, { de: "Wochenplan", en: "Weekly plan" });
+  assert.equal(r.name, "Wochenplan.flowplan-template");
+  // English only: `titles` without de, `title` English – a `title` sent along is ignored.
+  r = await manifestOf(meta("x", { titles: { de: "", en: "Weekly plan" }, title: "Alt", language: "de" }));
+  assert.equal(r.manifest.title, "Weekly plan");
+  assert.deepEqual(r.manifest.titles, { en: "Weekly plan" });
+  // Other content languages: the English one.
+  r = await manifestOf(meta("x", { titles: { de: "Wochenplan", en: "Weekly plan" }, language: "en" }));
+  assert.equal(r.manifest.title, "Weekly plan");
+  // The reader keeps both, and still reads packages without `titles` (older ones).
+  const back = await pkgs.readPackage((await pkgs.buildPackage(owner, source, meta("x", { titles: { de: "Wochenplan", en: "Weekly plan" } }))).bytes);
+  assert.deepEqual(back.manifest.titles, { de: "Wochenplan", en: "Weekly plan" });
+  assert.equal(pkgs.packageManifestSchema.safeParse({ ...r.manifest, titles: undefined }).success, true);
+});
+
+test("publish dialog: title fields prefilled in the interface language, the payload it sends", () => {
+  assert.deepEqual(hand.publishTitles("de", " Wochenplan "), { de: "Wochenplan", en: "" });
+  assert.deepEqual(hand.publishTitles("en", "Weekly plan"), { de: "", en: "Weekly plan" });
+  assert.deepEqual(hand.publishTitles("fr", "Plan"), { de: "", en: "Plan" }, "other languages: the required English field");
+  assert.equal(hand.publishTitles("de", "x".repeat(200)).de.length, 120);
+  const sent = hand.publishMeta({ titleDe: " Wochenplan ", titleEn: " Weekly plan ", summaryDe: " Kurz ", summaryEn: "", category: "planning", tags: "team, Team, planung, , team", language: "de" });
+  assert.deepEqual(sent, { titles: { de: "Wochenplan", en: "Weekly plan" }, summary: { de: "Kurz", en: "" }, category: "planning", tags: ["team", "Team", "planung"], language: "de" });
+  assert.equal("title" in sent, false, "the server derives `title`");
+  assert.equal(pkgs.packageMetaSchema.parse(sent).titles.en, "Weekly plan");
+  assert.equal(hand.packageTitle("de", sent.titles), "Wochenplan");
+  assert.equal(hand.packageTitle("de", { de: "", en: "Weekly plan" }), "Weekly plan");
+  assert.equal(hand.packageTitle("multi", sent.titles), "Weekly plan");
 });
 
 /* ---------- Malicious packages ---------- */

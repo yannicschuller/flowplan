@@ -21,7 +21,7 @@ const { identityFromApiToken } = await import("../lib/api-tokens");
 const { saveWorkspaceLinkRules } = await import("../lib/auto-link-rules");
 
 const status = (code: number) => (e: unknown) => (e as { status?: number }).status === code;
-const meta = (title: string) => ({ title, summary: { de: `${title}.`, en: `${title}.` }, category: "projects", tags: [], language: "multi" });
+const meta = (title: string) => ({ titles: { en: title }, summary: { de: `${title}.`, en: `${title}.` }, category: "projects", tags: [], language: "multi" });
 const build = async (kind: string, id: string | null) => (await pkgs.buildPackage(owner, { kind: kind as never, workspaceId: wid, id }, meta(`Paket ${kind}`))).bytes;
 const tokenFor = async (scope: "read" | "write" | "clipper", marketplaceCheck: boolean) => {
   const { token } = (await command(owner, { action: "token.create", name: `T ${scope} ${marketplaceCheck}`, scope, marketplaceCheck })) as { token: string };

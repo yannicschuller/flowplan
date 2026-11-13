@@ -118,5 +118,27 @@ export async function checksumMatches(message: TemplateMessage) {
   return (await sha256Hex(message.bytes)) === message.sha256;
 }
 
+// template.json `title` of a package built here: the title in the
+// template's own language – the German one for German content when there
+// is one, else the English one (which every new package has, `titles.en`).
+export const packageTitle = (language: string, titles: { de?: string; en?: string }) => ((language === "de" && titles.de?.trim()) || titles.en?.trim() || titles.de?.trim() || "").slice(0, 120);
+
+// The publish dialog's title fields, prefilled from the page's title: into
+// the field of the interface language – German for German, English for
+// every other one (the English title is the required one).
+export const publishTitles = (locale: string, name: string) => {
+  const title = name.trim().slice(0, 120);
+  return locale === "de" ? { de: title, en: "" } : { de: "", en: title };
+};
+// What the publish dialog sends to /api/marketplace/package as `meta`.
+export type PublishFields = { titleDe: string; titleEn: string; summaryDe: string; summaryEn: string; category: string; tags: string; language: string };
+export const publishMeta = (f: PublishFields) => ({
+  titles: { de: f.titleDe.trim(), en: f.titleEn.trim() },
+  summary: { de: f.summaryDe.trim(), en: f.summaryEn.trim() },
+  category: f.category,
+  tags: [...new Set(f.tags.split(",").map((x) => x.trim()).filter(Boolean))].slice(0, 10).map((x) => x.slice(0, 32)),
+  language: f.language,
+});
+
 // A safe file name for "Als Datei herunterladen".
 export const packageFileName = (title: string) => `${(title.replace(/[\u0000-\u001f\u007f\\/:*?"<>|]+/g, "-").trim() || "vorlage").slice(0, 80)}${PACKAGE_EXTENSION}`;

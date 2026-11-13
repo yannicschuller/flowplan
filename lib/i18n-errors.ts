@@ -21,6 +21,7 @@ const exact: Record<string, string> = {
   "Alle Linkregeln gibt es im Arbeitsbereich schon.": "Every link rule is already in the workspace.",
   "Der Marketplace ist auf dieser Instanz ausgeschaltet.": "The marketplace is switched off on this instance.",
   "Bitte eine Kurzbeschreibung angeben.": "Please enter a summary.",
+  "Bitte einen englischen Titel angeben.": "Please enter an English title.",
   "Bitte einen Bereich wählen.": "Please choose a space.",
   "Das Erscheinungsbild ist ungültig.": "The appearance is invalid.",
   "Das Paket enthält keine Linkregeln.": "The package contains no link rules.",
