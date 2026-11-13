@@ -24,14 +24,25 @@ import { Decoration, DecorationSet, type EditorView, type NodeView, type ViewMut
 import { tr } from "./locale-tag";
 import { browserStorage, readClosedToggles, writeClosedToggles } from "./toggle-memory";
 import { emptyTitleToParagraph, titleToParagraph, toggleAfter } from "./toggle-commands";
+import { nestToggle } from "./toggle-nesting";
+import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { linkableBlocks, newBlockId, validBlockId } from "./block-ids";
 import { blockIdsKey } from "./block-ids-plugin";
 
 // `restoring`: remembered closed toggles not seen in the document yet (it
 // arrives through Yjs after the editor started).
-type ToggleState = { closed: ReadonlySet<string>; restoring: ReadonlySet<string>; focusTitle: number | null; decorations: DecorationSet };
-// `title`: the caret goes into the title of the (new) toggle at that position.
-type ToggleMeta = { toggle: number; focusTitle?: boolean } | { open: number[] } | { title: number };
+// `focusOffset`: where in the title the caret goes (its end without one).
+type ToggleState = {
+  closed: ReadonlySet<string>;
+  restoring: ReadonlySet<string>;
+  focusTitle: number | null;
+  focusOffset: number | null;
+  decorations: DecorationSet;
+};
+// `title`: the caret goes into the title of the (new) toggle at that
+// position (at `offset`, else its end); with `open` too (a toggle moved by
+// Tab into a closed one, #246).
+type ToggleMeta = { toggle: number; focusTitle?: boolean } | { open: number[]; title?: number; offset?: number } | { title: number; offset?: number };
 export const toggleKey = new PluginKey<ToggleState>("toggleBlocks");
 
 // How a toggle is known: its block id, or its position ("@12").
@@ -138,6 +149,7 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
           closed,
           restoring: new Set(stored.filter((id) => !present.has(id))),
           focusTitle: null,
+          focusOffset: null,
           decorations: buildDecorations(state.doc, closed),
         };
       },
@@ -162,6 +174,7 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
         // leaving), so the view sees it.
         let focusTitle: number | null =
           trn.getMeta("appendedTransaction") && value.focusTitle !== null ? trn.mapping.map(value.focusTitle) : null;
+        let focusOffset = focusTitle === null ? null : value.focusOffset;
         const meta = trn.getMeta(toggleKey) as ToggleMeta | undefined;
         if (meta && "toggle" in meta) {
           const node = trn.doc.nodeAt(meta.toggle);
@@ -171,13 +184,21 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
             if (next.has(id)) next.delete(id);
             else {
               next.add(id);
-              if (meta.focusTitle) focusTitle = meta.toggle;
+              if (meta.focusTitle) {
+                focusTitle = meta.toggle;
+                focusOffset = null;
+              }
             }
             closed = next;
           }
-        } else if (meta && "title" in meta) {
+        } else if (meta && !("open" in meta)) {
           focusTitle = meta.title;
+          focusOffset = meta.offset ?? null;
         } else if (meta && "open" in meta) {
+          if (typeof meta.title === "number") {
+            focusTitle = meta.title;
+            focusOffset = meta.offset ?? null;
+          }
           const next = new Set(closed);
           for (const pos of meta.open) {
             const node = trn.doc.nodeAt(pos);
@@ -202,11 +223,12 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
             closed = next;
           }
         }
-        if (closed === value.closed && !trn.docChanged && focusTitle === value.focusTitle) return value;
+        if (closed === value.closed && !trn.docChanged && focusTitle === value.focusTitle && focusOffset === value.focusOffset) return value;
         return {
           closed,
           restoring,
           focusTitle,
+          focusOffset,
           decorations: rebuild
             ? buildDecorations(trn.doc, closed)
             : closed === value.closed && trn.docChanged
@@ -273,9 +295,10 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
           if (typeof pos !== "number") return;
           const title = titleElement(view, pos);
           if (!title) return;
-          focusEnd(title);
+          const offset = value.focusOffset;
+          focusEnd(title, offset);
           requestAnimationFrame(() => {
-            if (title.isConnected && title.ownerDocument.activeElement !== title) focusEnd(title);
+            if (title.isConnected && title.ownerDocument.activeElement !== title) focusEnd(title, offset);
           });
         },
       };
@@ -283,13 +306,19 @@ export function toggleBlocksPlugin({ storageKey = null }: { storageKey?: string 
   });
 }
 
-function focusEnd(el: HTMLElement) {
+// The caret into an element's text: at `offset` (characters), else at its end.
+function focusEnd(el: HTMLElement, offset: number | null = null) {
   el.focus({ preventScroll: true });
   const selection = el.ownerDocument.getSelection();
   if (!selection) return;
   const range = el.ownerDocument.createRange();
   range.selectNodeContents(el);
   range.collapse(false);
+  const text = el.firstChild;
+  if (offset !== null && text?.nodeType === 3) {
+    range.setStart(text, Math.min(offset, (text.textContent || "").length));
+    range.collapse(true);
+  }
   selection.removeAllRanges();
   selection.addRange(range);
 }
@@ -304,6 +333,19 @@ function caretAtEnd(el: HTMLElement) {
   rest.selectNodeContents(el);
   rest.setStart(range.endContainer, range.endOffset);
   return rest.toString() === "";
+}
+
+// How many characters of an element's text come before the caret (null
+// when it is not in it).
+function caretOffset(el: HTMLElement) {
+  const selection = el.ownerDocument.getSelection();
+  if (!selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.startContainer)) return null;
+  const before = el.ownerDocument.createRange();
+  before.selectNodeContents(el);
+  before.setEnd(range.startContainer, range.startOffset);
+  return before.toString().length;
 }
 
 // A collapsed caret before the first character (nothing selected).
@@ -426,6 +468,10 @@ export function toggleNodeView({
   // Only when it changes: setting it again blurs a focused title.
   const syncEditable = () => {
     const want = editable();
+    // Tab moves the toggle in the text (#246), not the focus to the next
+    // summary; read-only, the summary stays reachable by keyboard (↵ opens).
+    if (want) summary.tabIndex = -1;
+    else summary.removeAttribute("tabindex");
     if (want === title.isContentEditable) return;
     if (!want) {
       title.contentEditable = "false";
@@ -502,6 +548,22 @@ export function toggleNodeView({
       flip();
       return;
     }
+    // Tab / ⇧Tab (#246): the toggle into the toggle or list before it, or
+    // out of the one it is in; the caret stays in its title. Tab never
+    // leaves the document from here.
+    if (e.key === "Tab" && !e.altKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      if (e.isComposing || !editable()) return;
+      commit();
+      const made = nestToggle(view.state, pos, e.shiftKey);
+      if (!made) return;
+      const at = made.positions[0];
+      const closedInto = made.into.filter((p) => isToggleClosed(view.state, p));
+      const undo = yUndoPluginKey.getState(view.state)?.undoManager;
+      undo?.stopCapturing();
+      view.dispatch(made.tr.setMeta(toggleKey, { open: closedInto, title: at, offset: caretOffset(title) ?? undefined } satisfies ToggleMeta).scrollIntoView());
+      return;
+    }
     // Esc: back to the document, the caret where it was.
     if (e.key === "Escape") {
       e.preventDefault();
@@ -575,4 +637,16 @@ export function toggleNodeView({
       return mutation.type === "attributes" && mutation.target === dom;
     },
   };
+}
+
+// The whole toggle at `pos` (title and content) tinted, while its block
+// handle is under the mouse (#246, components/document-block-controls.tsx);
+// its arrow does the same in the stylesheet. Returns the element marked,
+// to unmark it later. A class on the node view's own element: no change of
+// the document (ignoreMutation above).
+export function markToggleScope(view: EditorView, pos: number): HTMLElement | null {
+  const dom = view.state.doc.nodeAt(pos)?.type.name === "toggle" ? view.nodeDOM(pos) : null;
+  if (!(dom instanceof HTMLElement) || !dom.classList.contains("toggle-block")) return null;
+  dom.classList.add("toggle-scope");
+  return dom;
 }

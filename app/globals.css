@@ -2002,22 +2002,58 @@ aside[data-callout][data-callout-color="blue"] { --callout: #1c7ed6; }
 aside[data-callout][data-callout-color="purple"] { --callout: #8f4ad9; }
 aside[data-callout][data-callout-color="pink"] { --callout: #d6336c; }
 aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
+/* Toggles (#246): the normal spacing of blocks, and their content indented
+   by the same step as a Tab indent (1.75em, [data-indent] below) – what is
+   indented is inside. Registered, the step is a length worked out on the
+   toggle itself, so a toggle heading's larger title lines up with it too. */
+@property --toggle-indent {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 26.25px;
+}
 .document-editor details {
-  margin: 18px 0;
+  --toggle-indent: 1.75em;
+  margin: 0 0 12px;
+  border-radius: 5px;
+  transition:
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .document-editor summary {
   cursor: pointer;
   font-weight: 600;
 }
 .document-editor details > div {
-  padding: 10px 0 0 19px;
+  padding-block: 4px 0;
+  padding-inline: var(--toggle-indent) 0;
+}
+.document-editor details > div > :last-child {
+  margin-bottom: 0;
+}
+/* What belongs to a toggle, while its arrow or its block handle is under
+   the mouse (components/document-block-controls.tsx): title and content
+   lightly tinted, a little beyond its edges. */
+.document-editor .toggle-block.toggle-scope {
+  --toggle-scope: color-mix(in srgb, var(--text) 5%, transparent);
+  background-color: var(--toggle-scope);
+  box-shadow: 0 0 0 4px var(--toggle-scope);
+}
+/* Not on touch screens, where a tapped arrow would keep its hover. */
+@media (hover: hover) {
+  .document-editor .toggle-block:has(> summary > .toggle-arrow:hover) {
+    --toggle-scope: color-mix(in srgb, var(--text) 5%, transparent);
+    background-color: var(--toggle-scope);
+    box-shadow: 0 0 0 4px var(--toggle-scope);
+  }
 }
 /* The editor's toggle (lib/toggle-view.ts, #137): an arrow of its own that
    opens and closes, the title edited in place. */
 .document-editor summary.toggle-summary {
   display: flex;
   align-items: flex-start;
-  gap: 2px;
+  /* The title starts where the content does: after the arrow (20 px, 3 px
+     into the margin), one indent step from the toggle's edge. */
+  gap: max(2px, calc(var(--toggle-indent) - 17px));
   list-style: none;
   cursor: default;
 }
@@ -2083,7 +2119,8 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .toggle-arrow svg {
+  .toggle-arrow svg,
+  .document-editor details {
     transition: none;
   }
 }

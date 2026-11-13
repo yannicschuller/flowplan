@@ -75,6 +75,8 @@ import {
   mapBlockSelection,
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
+import { nestBlocks } from "@/lib/toggle-nesting";
+import { markToggleScope, toggleKey } from "@/lib/toggle-view";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType, toggleHeading } from "@/lib/document-schema";
 import {
@@ -993,6 +995,16 @@ export function DocumentBlockControls({
     } catch {
       return;
     }
+    // Into the toggle before them, out of the one around them (#246): any
+    // blocks, code and tables too; they stay chosen where they went.
+    const nested = nestBlocks(editor.state, range.from, range.to, out);
+    if (nested) {
+      // A closed toggle opens (as with the caret in the text).
+      applyBlockChange(editor, nested.into.length ? nested.tr.setMeta(toggleKey, { open: nested.into }) : nested.tr);
+      (editor.view.dom as HTMLElement).blur();
+      startSelection(nested.positions);
+      return;
+    }
     const marks = captureBlockSelection(editor, selected.current);
     const from = Selection.findFrom(editor.state.doc.resolve(range.from), 1, true),
       to = Selection.findFrom(editor.state.doc.resolve(range.to), -1, true);
@@ -1811,6 +1823,9 @@ export function DocumentBlockControls({
   // before, and so does a pointer on a handle or "+".
   const hoverRef = useRef(hovered);
   hoverRef.current = hovered;
+  // The toggle tinted while its handle is under the mouse (#246).
+  const scoped = useRef<HTMLElement | null>(null);
+  useEffect(() => () => scoped.current?.classList.remove("toggle-scope"), []);
   useEffect(() => {
     if (!editor?.isEditable || picking) return;
     const move = (event: PointerEvent) => {
@@ -1819,6 +1834,11 @@ export function DocumentBlockControls({
       if (!host) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest(".document-block-handle, .document-block-add")) return;
+      // Off the handle (also when it went away under the mouse): untinted.
+      if (scoped.current && !target?.closest(".document-block-handle")) {
+        scoped.current.classList.remove("toggle-scope");
+        scoped.current = null;
+      }
       const box = host.getBoundingClientRect();
       // The page column and its margin: inside the area that scrolls with
       // the page, not in the sidebar or a menu above it.
@@ -1970,6 +1990,16 @@ export function DocumentBlockControls({
                 title={t("Ziehen zum Verschieben · Klicken für Menü", "Drag to move · Click to open menu")}
                 onPointerDown={(event) => pointerDown(event, block)}
                 onPointerMove={pointerMove}
+                // A toggle's handle shows what belongs to it (#246).
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "touch" || !editor || block.node.type.name !== "toggle") return;
+                  scoped.current?.classList.remove("toggle-scope");
+                  scoped.current = markToggleScope(editor.view, block.pos);
+                }}
+                onPointerLeave={() => {
+                  scoped.current?.classList.remove("toggle-scope");
+                  scoped.current = null;
+                }}
                 onPointerUp={(event) => {
                   const drag = dragging.current;
                   if (!drag || drag.pointer !== event.pointerId) return;
