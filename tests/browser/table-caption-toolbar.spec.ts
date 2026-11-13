@@ -1,8 +1,10 @@
 import { test, expect } from "@playwright/test";
 
-// The table toolbar sits below the table's "Add caption" button (or its
-// caption), never on top of it.
-test("the table toolbar does not cover the caption or its add button", async ({ page }, info) => {
+// A table's caption comes from its row and column menus (#240: the old bar
+// under the table and the "Add caption" button are gone); the "+" bar
+// under the table never covers the caption.
+test("the table caption is added from the handle menu and stays clear of the + bar", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "pointing with a mouse");
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const command = async (data: Record<string, unknown>) => {
@@ -25,26 +27,21 @@ test("the table toolbar does not cover the caption or its add button", async ({ 
   await command({ action: "document.sync", pageId: host.id, generation, update: Buffer.from(htmlState(html)).toString("base64") });
   await page.goto(`/#page=${host.id}`);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
-  await editor.locator("td", { hasText: "b" }).click();
-  const tools = page.getByRole("toolbar", { name: "Tabelle", exact: true });
-  await expect(tools).toBeVisible();
-  const add = editor.locator(".block-caption-add").first();
-  await expect(add).toBeVisible();
-  const overlap = async () => {
-    const a = (await add.boundingBox())!;
-    const b = (await tools.boundingBox())!;
-    return a.y < b.y + b.height && b.y < a.y + a.height && a.x < b.x + b.width && b.x < a.x + a.width;
-  };
-  await expect.poll(overlap).toBe(false);
-  // With a caption, too.
-  await add.click();
+  await expect(editor.locator("table")).toBeVisible({ timeout: 30_000 });
+  await expect(editor.locator(".block-caption-add:visible")).toHaveCount(0);
+  await editor.locator("td", { hasText: "b" }).hover();
+  await page.getByRole("button", { name: "Zeile 3", exact: true }).click();
+  await page.getByRole("menu", { name: "Zeile" }).getByRole("menuitem", { name: "Beschriftung" }).click();
   await page.keyboard.type("Seite 31");
-  await editor.locator("td", { hasText: "b" }).click();
-  await expect(tools).toBeVisible();
   const caption = editor.locator(".block-caption-field").first();
-  await expect.poll(async () => {
-    const a = (await caption.boundingBox())!;
-    const b = (await tools.boundingBox())!;
-    return a.y < b.y + b.height && b.y < a.y + a.height;
-  }).toBe(false);
+  await expect(caption).toHaveValue("Seite 31");
+  await editor.locator("td", { hasText: "b" }).hover();
+  const add = page.getByRole("button", { name: "Zeile hinzufügen" });
+  await expect(add).toBeVisible();
+  const a = (await add.boundingBox())!;
+  const b = (await caption.boundingBox())!;
+  expect(a.y + a.height <= b.y || b.y + b.height <= a.y, JSON.stringify({ a, b })).toBe(true);
+  // Nor the text after the table.
+  const after = (await editor.locator("p", { hasText: "Danach." }).boundingBox())!;
+  expect(a.y + a.height).toBeLessThanOrEqual(after.y);
 });

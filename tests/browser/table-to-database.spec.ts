@@ -51,9 +51,10 @@ test("a table turns into a database below the document; undo brings the table ba
   const table = editor.locator(".tableWrapper");
   await expect(table).toHaveCount(1);
   await editor.locator("td", { hasText: "Schreiben" }).click();
-  const tools = page.getByRole("toolbar", { name: "Tabelle", exact: true });
-  await expect(tools).toBeVisible();
-  await tools.getByRole("button", { name: "Weitere Tabellenbefehle" }).click();
+  // The row's handle (#240) opens its menu with the table's commands.
+  const handle = page.locator(".table-handle.row");
+  await expect(handle).toBeVisible();
+  await handle.click();
   const item = page.getByRole("menuitem", { name: "In Datenbank umwandeln", exact: true });
   await expect(item).toBeVisible();
   if (shots) {

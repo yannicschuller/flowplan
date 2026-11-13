@@ -20,6 +20,8 @@
   --focus-border: #8ab4f4;
   --focus-ring: #3b3fd81a;
   --cell-selection: #3b3fd81f;
+  /* A selected row, column or block of cells (#240): clearly marked. */
+  --cell-selection-strong: #3b3fd833;
   --primary-hover: #2468cf;
   --signal: #f0663a;
   /* Inline code (#241): an accent colour on a light grey, as in Notion;
@@ -1678,26 +1680,131 @@ kbd,
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
+/* The corner toolbar of images (#240, components/image-tools.tsx): on a
+   layer over the editor's content, inside the picture's top right corner. */
+.editor-content-holder > .image-tools-layer {
+  position: relative;
+  z-index: 7;
+  height: 0;
+}
+.image-tools {
+  position: absolute;
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 4px 14px -4px #1d1a1440;
+  color: var(--secondary);
+  animation: menu-in 0.12s var(--ease-out) both;
+}
+.image-tools > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+}
+.image-tools > button:hover,
+.image-tools > button[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+@media (pointer: coarse) {
+  .image-tools > button {
+    width: 36px;
+    height: 36px;
+  }
+}
+/* Its full-screen view. */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: calc(24px + var(--safe-top, 0px)) calc(24px + var(--safe-right, 0px)) calc(24px + var(--safe-bottom, 0px)) calc(24px + var(--safe-left, 0px));
+  background: rgba(15, 14, 20, 0.88);
+  animation: menu-in 0.15s var(--ease-out) both;
+}
+.image-viewer img {
+  max-width: 100%;
+  max-height: calc(100dvh - 48px);
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 20px 60px -20px #000;
+}
+.image-viewer-close {
+  position: fixed;
+  top: calc(14px + var(--safe-top, 0px));
+  right: calc(14px + var(--safe-right, 0px));
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.image-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+/* An image's alignment (#240): centred or right; in read-only views too. */
+.document-editor [data-resize-container]:has(img[data-align="center"]) {
+  justify-content: center;
+}
+.document-editor [data-resize-container]:has(img[data-align="right"]) {
+  justify-content: flex-end;
+}
+:is(.document-editor, .public-embed) img[data-align="center"] {
+  display: block;
+  margin-inline: auto;
+}
+:is(.document-editor, .public-embed) img[data-align="right"] {
+  display: block;
+  margin-inline-start: auto;
+}
+/* Compact tables as in Notion (#240): rows of about 35 px, the header
+   left-aligned, a table only as wide as its content (a new one starts with
+   columns of a useful width; dragged widths stay as they were). */
 .document-editor table {
   border-collapse: collapse;
   table-layout: fixed;
-  width: 100%;
-  margin: 15px 0;
+  width: auto;
+  margin: 15px 0 20px;
 }
 .document-editor td,
 .document-editor th {
   border: 1px solid var(--border);
-  padding: 7px 10px;
+  padding: 6px 8px;
   vertical-align: top;
-  min-width: 80px;
+  min-width: 120px;
   position: relative;
+  line-height: 1.5;
+  text-align: start;
+}
+.document-editor :is(td, th) > :is(p, ul, ol, blockquote, pre) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.document-editor :is(td, th) > * + * {
+  margin-top: 6px;
 }
 .document-editor th {
   background: var(--surface);
   font-weight: 600;
 }
+/* Coloured cells (#240): the block colours' names, without the rounding
+   and spacing a coloured paragraph gets. */
+.document-editor :is(td, th)[data-block-color] {
+  border-radius: 0;
+  padding: 6px 8px;
+  margin: 0;
+}
 .document-editor .selectedCell:after {
-  background: var(--cell-selection);
+  background: var(--cell-selection-strong, var(--cell-selection));
   position: absolute;
   inset: 0;
   content: "";
@@ -1757,7 +1864,7 @@ kbd,
   margin: 6px 0 14px;
 }
 .block-caption[data-kind="table"] {
-  margin-top: -9px;
+  margin-top: -2px;
 }
 .block-caption[data-state="none"] {
   display: none;
@@ -1768,9 +1875,11 @@ kbd,
   height: 0;
   margin: 0;
 }
-.block-caption[data-kind="table"][data-state="add"] {
-  margin-top: -15px;
-  height: 15px;
+/* Images and tables offer their caption in their own tools (#240: the
+   image's corner toolbar, the table's row and column menus) – no button
+   over the next block. */
+.block-caption:is([data-kind="figure"], [data-kind="table"])[data-state="add"] {
+  display: none;
 }
 .block-caption-add {
   position: absolute;
@@ -1794,22 +1903,12 @@ kbd,
   top: 2px;
 }
 /* The button sits inside the block's bottom corner, never over the first
-   line of the block after it (#241). Its own place for now; an image
-   toolbar can take it over later. */
+   line of the block after it (#241); images and tables have their own
+   tools for it (#240). */
 .block-caption[data-state="add"] .block-caption-add {
   top: auto;
   bottom: 0;
   left: 8px;
-}
-/* Images: inside the picture, clear of its corner resize handle. */
-.block-caption[data-kind="figure"][data-state="add"] .block-caption-add {
-  bottom: 16px;
-  left: 22px;
-}
-/* Tables: at the right, away from the first column's text. */
-.block-caption[data-kind="table"][data-state="add"] .block-caption-add {
-  left: auto;
-  right: 8px;
 }
 *:hover + .block-caption[data-state="add"] .block-caption-add,
 .block-caption[data-state="add"]:hover .block-caption-add,
@@ -2097,44 +2196,121 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   border-radius: 6px;
   margin: 15px 0;
 }
-/* The commands of a table, next to it while the cursor is inside
-   (components/table-tools.tsx). */
-.table-tools {
+/* The controls of tables (#240, components/table-controls.tsx): a layer
+   over the editor's content with the row and column handles on the
+   table's edges, the "+" bars outside its bottom and right edge, the
+   selection's outline and the drop line while dragging. */
+.editor-content-holder > .table-controls {
+  position: relative;
+  z-index: 6;
+  height: 0;
+}
+.table-controls > * {
   position: absolute;
-  z-index: 35;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  box-shadow: 0 8px 24px -10px rgba(29, 28, 34, 0.3);
-  color: var(--secondary);
 }
-.table-tools > button {
-  display: inline-grid;
+.table-handle {
+  display: grid;
   place-items: center;
-  width: 32px;
-  height: 30px;
   padding: 0;
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  box-shadow: 0 1px 3px #1d1a1418;
+  cursor: grab;
+  touch-action: none;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
-.table-tools > button:hover,
-.table-tools > button[data-state="open"] {
+.table-handle.row {
+  width: 16px;
+  height: 24px;
+}
+.table-handle.column {
+  width: 24px;
+  height: 16px;
+}
+.table-handle:hover,
+.table-handle[aria-expanded="true"] {
   background: var(--hover);
   color: var(--text);
 }
-.table-tools-gap {
-  width: 1px;
-  height: 18px;
-  margin: 0 3px;
-  background: var(--border);
+.table-handle.selected {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+.table-controls.dragging,
+.table-controls.dragging .table-handle {
+  cursor: grabbing;
+}
+/* The "+" bars: quiet until pointed at. */
+.table-add {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.55;
+  transition: background-color 0.1s ease, opacity 0.1s ease;
+}
+.table-add.row {
+  height: 14px;
+}
+.table-add.column {
+  width: 14px;
+}
+.table-add:hover {
+  background: var(--hover);
+  color: var(--text);
+  opacity: 1;
+}
+/* A selected row, column or block of cells: a clear accent outline. */
+.table-selection-outline {
+  border: 2px solid var(--blue);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.table-drop-indicator {
+  border-radius: 2px;
+  background: var(--blue);
+  pointer-events: none;
+}
+.table-cells-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--blue);
+  box-shadow: 0 2px 6px #1d1a1420;
+}
+.table-cells-button:hover {
+  background: var(--blue-light);
 }
 @media (pointer: coarse) {
-  .table-tools > button {
-    width: 40px;
-    height: 38px;
+  /* Big enough for a finger, still on the edge. */
+  .table-handle.row {
+    width: 22px;
+    height: 32px;
+    margin: -4px 0 0 -3px;
+  }
+  .table-handle.column {
+    width: 32px;
+    height: 22px;
+    margin: -3px 0 0 -4px;
+  }
+  .table-add {
+    opacity: 0.8;
+  }
+  .table-add.row {
+    height: 20px;
+  }
+  .table-add.column {
+    width: 20px;
   }
 }
 .dropdown .dropdown-item.danger {
@@ -18148,7 +18324,8 @@ h3 .block-reactions {
   .unlinked-mentions,
   .subpages,
   .backlinks,
-  .table-tools,
+  .table-controls,
+  .image-tools,
   .document-outline,
   .outline-toggle,
   .block-reaction-add,

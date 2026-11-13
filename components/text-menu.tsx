@@ -70,6 +70,7 @@ import {
   Check,
 } from "@phosphor-icons/react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { CellSelection } from "@tiptap/pm/tables";
 import { blockToMath, blockToToggle } from "@/lib/block-turn";
 import { highlightColors, textColors } from "@/lib/text-marks";
 import { CLEARED_MARKS, currentTextBlock, sameKind, type TextBlockKind } from "@/lib/text-menu-turn";
@@ -188,6 +189,8 @@ export function TextMenu({
       if (!showsMenuOnSelection(textMenuPref(), lastInput)) return;
       const { empty, from, to } = editor.state.selection;
       if (empty || !editor.view.hasFocus()) return;
+      // Selected table cells have their own menu (#240, components/table-controls.tsx).
+      if (editor.state.selection instanceof CellSelection) return;
       if (!editor.state.doc.textBetween(from, to, " ").trim()) return;
       const start = editor.view.coordsAtPos(from);
       const end = editor.view.coordsAtPos(to);

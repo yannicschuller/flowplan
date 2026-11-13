@@ -42,6 +42,9 @@ import { BlockColorAttribute } from "./block-colors";
 import { ListTidy } from "./list-tidy";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { blockFigcaption, captionAttribute, captionText } from "./block-captions";
+export const IMAGE_ALIGNS = ["center", "right"] as const;
+export const imageAlign = (value: unknown): (typeof IMAGE_ALIGNS)[number] | null =>
+  IMAGE_ALIGNS.includes(value as (typeof IMAGE_ALIGNS)[number]) ? (value as (typeof IMAGE_ALIGNS)[number]) : null;
 // Images that were marked up keep their original and the markings
 // (components/image-annotator.tsx), so they can be edited again. A caption
 // (lib/block-captions.ts) makes the image a <figure> with <figcaption>.
@@ -60,6 +63,16 @@ export const AnnotatedImage = Image.extend({
         renderHTML: (attrs) => (attrs.annotations ? { "data-annotations": attrs.annotations } : {}),
       },
       caption: captionAttribute(),
+      // Where the image sits in the line (#240): centred or right, the
+      // default on the left. Only these names.
+      align: {
+        default: null,
+        parseHTML: (el) => imageAlign(el.getAttribute("data-align")),
+        renderHTML: (attrs) => {
+          const align = imageAlign(attrs.align);
+          return align ? { "data-align": align } : {};
+        },
+      },
     };
   },
   parseHTML() {

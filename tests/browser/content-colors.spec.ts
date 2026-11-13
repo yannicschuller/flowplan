@@ -146,6 +146,12 @@ test("“Add caption” below an image, a table and a code block never covers th
     for (const { block, next, name } of cases) {
       await block.hover();
       const add = next.locator("xpath=preceding-sibling::*[1]").locator(".block-caption-add");
+      // Images and tables offer the caption in their own tools (#240):
+      // the image's corner toolbar, the table's handle menus.
+      if (name !== "code") {
+        await expect(add).toBeHidden();
+        continue;
+      }
       await expect(add).toBeVisible();
       const a = (await add.boundingBox())!;
       const n = (await next.boundingBox())!;
