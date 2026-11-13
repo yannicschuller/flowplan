@@ -214,7 +214,11 @@ async function main() {
       return id;
     };
 
-    const launched = await launchChromium();
+    // A German browser, not only German pages: Playwright's `locale` sets
+    // navigator.language and Accept-Language, but Chromium draws native
+    // fields (the "tt.mm.jjjj" of <input type="date">) in the language of
+    // the browser itself, which on Linux comes from the process locale.
+    const launched = await launchChromium({ env: { ...process.env, LANG: "de_DE.UTF-8", LANGUAGE: "de", LC_ALL: "de_DE.UTF-8" } });
     if (!launched.browser) throw new Error(`No Chromium starts: ${launched.error}. Run \`npx playwright install chromium\`.`);
     browser = launched.browser as Browser;
 

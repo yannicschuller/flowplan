@@ -14,6 +14,7 @@ import { useStatusLabel, useT } from "./i18n";
 import { api, PageIcon, PageSkeleton, reportError } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import { readModeIds } from "@/lib/read-mode";
+import { shownPageIcon } from "@/lib/page-link-icons";
 import type { Page, Role, User } from "@/lib/types";
 import type { AiStatus } from "@/lib/ai/features";
 
@@ -259,7 +260,7 @@ export function SplitPane({
   return (
     <section className="split-pane" aria-label={t(`Geteilte Ansicht: ${page?.title || "Seite"}`, `Split view: ${page?.title || "Page"}`)}>
       <header className="split-pane-header">
-        <PageIcon name={page?.kind === "database" ? "table" : page?.icon || "file"} size={16} />
+        <PageIcon name={shownPageIcon(page?.icon, page?.kind)} size={16} />
         <strong title={page?.title}>{page?.title || t("Ohne Titel", "Untitled")}</strong>
         {data?.page.kind === "document" && <span className="split-pane-status">{statusLabel(status)}</span>}
         <button
@@ -287,7 +288,7 @@ export function SplitPane({
         >
           {data && data.page.kind !== "whiteboard" && (
             <h1 className="split-page-title">
-              <PageIcon name={data.page.icon} size={26} /> {data.page.title || t("Ohne Titel", "Untitled")}
+              <PageIcon name={shownPageIcon(data.page.icon, data.page.kind)} size={26} /> {data.page.title || t("Ohne Titel", "Untitled")}
             </h1>
           )}
           <ViewBoundary key={pageId}>{body}</ViewBoundary>
