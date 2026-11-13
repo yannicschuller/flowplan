@@ -19,10 +19,19 @@
   margin: 0 0 18px;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--border);
   border-radius: 0;
+  /* The line under the tabs, inside the box: the active tab's underline
+     covers it without reaching past the bottom edge. */
   background: none;
-  overflow-x: auto;
+  box-shadow: inset 0 -1px 0 var(--border);
+  /* Sideways only. overflow-x: auto alone makes overflow-y auto too, and
+     the tabs pulled 1px over a bottom border (margin-bottom: -1px) were
+     taller than the box: an iPhone dragged the strip up and down and cut
+     the labels in half. With overflow-y hidden a vertical swipe on the
+     strip scrolls the page (touch-action stays auto: pan-x would block
+     exactly that). */
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 .settings-detail[data-detail="users"] .settings-rail::-webkit-scrollbar {
@@ -42,7 +51,6 @@
   gap: 4px;
 }
 .settings-detail[data-detail="users"] .settings-rail a {
-  margin-bottom: -1px;
   padding: 9px 12px;
   border-radius: 0;
   border-bottom: 2px solid transparent;

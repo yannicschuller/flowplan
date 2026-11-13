@@ -954,7 +954,8 @@
     display: flex;
     margin: 0 calc(-1 * var(--pd-x));
     padding: 2px var(--pd-x) 4px;
-    overflow-x: auto;
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
     scroll-padding: 0 var(--pd-x);
     scrollbar-width: none;
   }

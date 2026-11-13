@@ -160,7 +160,8 @@
 .wb-lib-sheet .wb-lib-sets {
   margin: 8px 0 4px;
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
   padding-bottom: 2px;
 }
 .wb-lib-sheet .wb-lib-sets button {

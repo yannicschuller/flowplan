@@ -128,7 +128,8 @@
 .marketplace-shots {
   display: flex;
   gap: 8px;
-  overflow-x: auto;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
   padding-bottom: 4px;
 }
 .marketplace-shots img {
