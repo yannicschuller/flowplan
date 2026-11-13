@@ -1,4 +1,6 @@
 import type { DOMOutputSpec, Mark, Node } from "@tiptap/pm/model";
+import { tabTitle } from "./tabs-commands";
+import { tabsMarkdown, type MarkdownTab } from "./tabs-markdown";
 import { calloutType, documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { cleanHtml, htmlJson, jsonHtml } from "./document-server";
@@ -156,6 +158,9 @@ const MARKDOWN_BLOCKS = new Set([
   "blockquote",
   "callout",
   "toggle",
+  // Tabs (#272) as the Obsidian Tabs plugin writes them.
+  "tabs",
+  "tab",
   "table",
   "tableRow",
   "tableCell",
@@ -542,6 +547,13 @@ export function htmlToMarkdown(
           ),
         );
         return columns.join("\n\n");
+      }
+      // Tabs (#272): the Obsidian Tabs plugin's code block
+      // (lib/tabs-markdown.ts), read back by lib/markdown-html.ts.
+      case "tabs": {
+        const tabs: MarkdownTab[] = [];
+        node.forEach((tab) => tabs.push({ title: tabTitle(tab.attrs.title), body: children(tab, inTable) }));
+        return tabsMarkdown(tabs);
       }
       case "whiteboardEmbed": {
         const board = context.whiteboard?.(String(node.attrs.pageId || ""));

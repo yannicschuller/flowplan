@@ -47,6 +47,8 @@ export const BLOCK_ID_TYPES = [
   "drawBlock",
   "syncedBlock",
   "columns",
+  // The tabs block (#272): the tab shown is remembered by its id.
+  "tabs",
   "bibliography",
   // The meeting block (#199): its reminder opens the page there.
   "meeting",
@@ -68,11 +70,16 @@ export function newBlockId() {
 // The opening tag up to its ">" in one match, checked in the callback: a
 // lookahead from each "<details" would rescan the rest of an unclosed tag
 // (quadratic in the length of the HTML).
+// Tabs blocks (#272) likewise: the tab shown is remembered by block id.
 const DETAILS_TAG = /<details\b[^>]*/gi;
-export const withToggleIds = (html: string) =>
-  html.includes("<details")
-    ? html.replace(DETAILS_TAG, (tag) => (/\sdata-block-id=/.test(tag) ? tag : `${tag.slice(0, 8)} data-block-id="${newBlockId()}"${tag.slice(8)}`))
-    : html;
+const TABS_TAG = /<div data-tabs\b[^>]*/gi;
+export const withToggleIds = (html: string) => {
+  if (html.includes("<details"))
+    html = html.replace(DETAILS_TAG, (tag) => (/\sdata-block-id=/.test(tag) ? tag : `${tag.slice(0, 8)} data-block-id="${newBlockId()}"${tag.slice(8)}`));
+  if (html.includes("<div data-tabs"))
+    html = html.replace(TABS_TAG, (tag) => (/\sdata-block-id=/.test(tag) ? tag : `${tag.slice(0, 4)} data-block-id="${newBlockId()}"${tag.slice(4)}`));
+  return html;
+};
 
 // Schema part (server and editor): the attribute on every linkable block.
 // A block split in two (Enter) leaves the id with the first part.

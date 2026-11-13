@@ -7,6 +7,7 @@
 // toggles, panel for meetings, <ac:task-list> for tasks, <ac:image> with an
 // <ri:url> for pictures, tables in a <tbody>. Links and pictures keep
 // absolute addresses of this instance.
+import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
 import { taskStatusOf } from "./task-status";
@@ -72,6 +73,12 @@ export function documentConfluence(html: string, context: TextExportContext): st
         case "columns": {
           let result = "";
           node.forEach((column) => (result += render.children(column)));
+          return result;
+        }
+        // Tabs (#272): each tab's title as a heading, its content below.
+        case "tabs": {
+          let result = "";
+          node.forEach((tab) => (result += `<h4>${xml(tabTitle(tab.attrs.title))}</h4>${render.children(tab)}`));
           return result;
         }
         case "taskList":

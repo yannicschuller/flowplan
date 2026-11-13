@@ -4,6 +4,7 @@
 // tables, pictures as media parts, callouts as shaded paragraphs, code in
 // a monospace style and footnotes as real footnotes – packed as a ZIP
 // (lib/archive.ts).
+import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { STATUS_BOX, taskStatusOf } from "./task-status";
 import { audit } from "./db";
@@ -528,6 +529,12 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         return children(node, block);
       case "columns":
         return node.forEach((column) => children(column, block));
+      // Tabs (#272): each tab's title as a heading, its content below.
+      case "tabs":
+        return node.forEach((tab) => {
+          paragraph(run({ text: tabTitle(tab.attrs.title) }), paragraphProps(null, block, "Heading4"));
+          children(tab, block);
+        });
       case "whiteboardEmbed": {
         const board = options.whiteboard?.(String(node.attrs.pageId || ""));
         return board

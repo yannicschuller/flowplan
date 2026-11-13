@@ -10,6 +10,7 @@ import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
 import { taskList } from "./task-list-html";
+import { splitTabs } from "./tabs-markdown";
 import { PAGE_BREAK_HTML } from "./page-break-node";
 import { BLOCK_COLOR_COMMENT, CELL_COLORS_COMMENT, blockColor, parseCellColors } from "./block-colors";
 
@@ -296,6 +297,17 @@ export function markdownToRawHtml(
         const { text } = token;
         const { language: written, meta } = splitInfo(token.lang);
         const language = written.toLowerCase();
+        // Tabs (#272): the Obsidian Tabs plugin's code block, each tab's
+        // content Markdown of its own (lib/tabs-markdown.ts).
+        if (language === "tabs") {
+          const tabs = splitTabs(text);
+          if (!tabs.length) return "";
+          const sections = tabs.map(
+            (tab) =>
+              `<section data-tab="true"><h4 class="editor-tab-title">${escaped(tab.title)}</h4><div data-tab-body="true">${tab.body ? (marked.parse(tab.body) as string) : "<p></p>"}</div></section>`,
+          );
+          return `<div data-tabs="true">${sections.join("")}</div>\n`;
+        }
         if (language === "math") return `<div data-math="${escaped(text)}">${escaped(text)}</div>`;
         // A draw.io diagram as lib/markdown.ts writes it outside ZIP
         // exports: the block again, its picture drawn on the next edit.

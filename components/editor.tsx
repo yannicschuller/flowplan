@@ -58,7 +58,7 @@ import {
   type BlockTarget,
 } from "@/lib/block-ids";
 import { BlockIds, HeadingLinks } from "@/lib/block-ids-plugin";
-import { showToast } from "./toast";
+import { showToast, showUndo } from "./toast";
 import { copyImage } from "@/lib/copy-image";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { drawBlockNode } from "./ink/draw-block";
@@ -97,6 +97,8 @@ import { registerDocumentFlush } from "@/lib/document-flush";
 import { HeadingFolds } from "@/lib/heading-folds-plugin";
 import { togglesAround, withTitleFocus } from "@/lib/toggle-view";
 import { toggleDocumentKey } from "@/lib/toggle-memory";
+import { Tab, Tabs } from "@/lib/tabs-block";
+import { newTabs } from "@/lib/tabs-commands";
 import { ShortcutBlockquote } from "@/lib/quote-shortcut";
 import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
@@ -173,6 +175,7 @@ import {
   Warning,
   Lightbulb,
   CaretRight,
+  Tabs as TabsIcon,
   Function as FunctionIcon,
   TextAlignLeft,
   TextAlignCenter,
@@ -871,6 +874,13 @@ export default function DocumentEditor({
         PageLinkIcons,
         Columns,
         Column,
+        // Tabs (#272): the tab shown is remembered per person and device,
+        // like closed toggles; a deleted tab can be taken back.
+        Tabs.configure({
+          storageKey: embedded || !pageId ? null : toggleDocumentKey(userId, pageId, rowId),
+          onTabDeleted: (title, undo) => showUndo(t(`Tab „${title}“ gelöscht`, `Tab “${title}” deleted`), undo),
+        }),
+        Tab,
         withPdfView(Media),
         LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
@@ -2151,6 +2161,26 @@ export default function DocumentEditor({
         const { $from } = editor.state.selection;
         for (let depth = $from.depth; depth > 0; depth--)
           if ($from.node(depth).type.name === "columns") {
+            editor.commands.setTextSelection($from.before(depth) + 3);
+            break;
+          }
+      },
+    },
+    {
+      id: "tabs",
+      group: "blocks",
+      name: t("Tabs", "Tabs"),
+      keywords: ["tabs", "reiter", "registerkarten"],
+      description: t("Inhalte in Tabs umschalten", "Switch between content in tabs"),
+      icon: TabsIcon,
+      run: () => {
+        if (!editor) return;
+        const tabs = newTabs(editor.schema, [t("Tab 1", "Tab 1"), t("Tab 2", "Tab 2")]);
+        if (!editor.chain().focus().insertContent(tabs.toJSON()).run()) return;
+        // Writing starts in the first tab.
+        const { $from } = editor.state.selection;
+        for (let depth = $from.depth; depth > 0; depth--)
+          if ($from.node(depth).type.name === "tabs") {
             editor.commands.setTextSelection($from.before(depth) + 3);
             break;
           }
