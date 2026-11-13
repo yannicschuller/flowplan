@@ -283,6 +283,7 @@ import { ENCRYPTED_TITLE } from "@/lib/e2ee";
 import { CalendarX, Compass, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
+import { WorkspaceFavicon } from "./workspace-favicon";
 import { setAutoLinkRules } from "@/lib/auto-link-plugin";
 import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
 import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
@@ -3280,6 +3281,7 @@ export default function WorkspaceApp({
       <ActivityPing />
       {/* The workspace's look (#196), unless this person chose Flowplan's own. */}
       <WorkspaceThemeStyle look={boot.plainLook ? null : boot.look} />
+      <WorkspaceFavicon theme={boot.plainLook ? null : boot.look?.theme} />
       {focusMode && screen === "page" && data && (
         <FocusBar
           pageId={data.page.id}

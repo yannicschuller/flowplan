@@ -395,10 +395,12 @@ kbd,
   color: var(--muted);
   margin-top: 1px;
 }
+/* The workspace's letter tile: a tint of the accent when the workspace has
+   one (#277); the border then disappears into the tint. */
 .workspace-letter {
-  background: #ece9f5;
-  color: #797198;
-  border: 1px solid #e0dbea;
+  background: var(--accent-soft, #ece9f5);
+  color: var(--accent, #797198);
+  border: 1px solid var(--accent-soft, #e0dbea);
   border-radius: 7px;
   width: 32px;
   height: 32px;
@@ -764,7 +766,11 @@ kbd,
   border-radius: 50%;
   font-size: 11px;
   font-weight: 600;
-  color: #5d6478;
+  /* Initials on the pastel of the name (components/ui.tsx Avatar), or on a
+     workspace's accent with white or dark text, whichever reaches 4.5:1
+     (#277, lib/workspace-theme.ts readableOn). */
+  background-color: var(--avatar-bg, var(--avatar-tint));
+  color: var(--avatar-ink, #5d6478);
   flex-shrink: 0;
 }
 .avatar.small {
@@ -780,6 +786,7 @@ kbd,
    and after the picture arrives. Rings that separate overlapping avatars
    (.presence) come later and keep their border. */
 .avatar.has-picture {
+  background-color: var(--avatar-tint);
   overflow: hidden;
   padding: 0;
   border-width: 0;
@@ -6503,9 +6510,9 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   filter: brightness(0.8);
 }
 [data-theme="dark"] .workspace-letter {
-  background: #34303f;
-  color: #b8add3;
-  border-color: #45404f;
+  background: var(--accent-soft, #34303f);
+  color: var(--accent, #b8add3);
+  border-color: var(--accent-soft, #45404f);
 }
 @keyframes fade-in {
   from {
@@ -11222,7 +11229,7 @@ img.inline-comment-mark {
 }
 .comment-format-tools button:focus-visible,
 .comment-mention-picker button:focus-visible {
-  outline: 2px solid #6371de;
+  outline: 2px solid var(--accent, #6371de);
   outline-offset: 1px;
 }
 .comment-format-tools svg {
@@ -11274,12 +11281,12 @@ img.inline-comment-mark {
 }
 .comment-input a,
 .comment-rich-body a {
-  color: #5561c7;
+  color: var(--accent, #5561c7);
   text-decoration: underline;
 }
 .comment-mention {
-  color: #5561c7;
-  background: #747dde16;
+  color: var(--accent, #5561c7);
+  background: var(--accent-soft, #747dde16);
   padding: 1px 3px;
   border-radius: 3px;
 }
@@ -14017,9 +14024,11 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   background: #fbecec;
   color: #a43c3f;
 }
+/* Info follows a workspace's accent (#277: the account's "E-Mail-Konto",
+   "Admin", "Geplant"); the default stays this softer blue. */
 .status-badge.info {
-  background: #e9f0fc;
-  color: #3f6aa8;
+  background: var(--accent-soft, #e9f0fc);
+  color: var(--accent, #3f6aa8);
 }
 [data-theme="dark"] .status-badge {
   background: rgba(170, 175, 190, 0.18);
@@ -14039,8 +14048,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   color: #f3b0b0;
 }
 [data-theme="dark"] .status-badge.info {
-  background: rgba(110, 140, 240, 0.2);
-  color: #b4c6f5;
+  background: var(--accent-soft, rgba(110, 140, 240, 0.2));
+  color: var(--accent, #b4c6f5);
 }
 /* Detail page */
 .settings-detail-bar {
@@ -15367,7 +15376,21 @@ pre,
   display: block;
   flex-shrink: 0;
   border-radius: 28%;
-  box-shadow: 0 1px 2px #1d1a4a26, 0 4px 12px -4px #4146e659;
+  box-shadow: 0 1px 2px #1d1a4a26, 0 4px 12px -4px var(--logo-glow, #4146e659);
+}
+/* A workspace's accent (#277, lib/workspace-theme.ts logoColors); CSS wins
+   over the SVG's presentation attributes, the fallbacks equal them. */
+.brand-mark .brand-mark-from {
+  stop-color: var(--logo-from, #4146e6);
+}
+.brand-mark .brand-mark-to {
+  stop-color: var(--logo-to, #6a3fe0);
+}
+.brand-mark path.brand-mark-ink {
+  fill: var(--logo-ink, #fff);
+}
+.brand-mark g.brand-mark-ink {
+  stroke: var(--logo-ink, #fff);
 }
 .brand,
 .login-brand {
@@ -31885,10 +31908,10 @@ label.ws-search input {
   gap: 5px;
   max-width: 320px;
   padding: 4px 10px;
-  border: 1px solid #3b3fd855;
+  border: 1px solid color-mix(in srgb, var(--accent, #3b3fd8) 33.333%, transparent);
   border-radius: 14px;
-  background: #ecebfcee;
-  color: #2b2fb8;
+  background: color-mix(in srgb, var(--accent-soft, #ecebfc) 93.333%, transparent);
+  color: var(--accent, #2b2fb8);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
@@ -31903,9 +31926,9 @@ label.ws-search input {
 }
 .notebook-link-area {
   position: absolute;
-  border: 1.5px dashed #3b3fd899;
+  border: 1.5px dashed color-mix(in srgb, var(--accent, #3b3fd8) 60%, transparent);
   border-radius: 6px;
-  background: #3b3fd80d;
+  background: color-mix(in srgb, var(--accent, #3b3fd8) 5.098%, transparent);
 }
 .notebook-link-hit {
   position: absolute;
@@ -31923,8 +31946,8 @@ label.ws-search input {
   width: 22px;
   height: 22px;
   border-radius: 11px;
-  background: #3b3fd8;
-  color: #fff;
+  background: var(--accent, #3b3fd8);
+  color: var(--accent-ink, #fff);
   pointer-events: auto;
   touch-action: none;
 }
@@ -31951,7 +31974,7 @@ label.ws-search input {
   bottom: -7px;
   width: 14px;
   height: 14px;
-  border: 2px solid #3b3fd8;
+  border: 2px solid var(--accent, #3b3fd8);
   border-radius: 7px;
   background: #fff;
   cursor: nwse-resize;

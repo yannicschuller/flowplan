@@ -96,6 +96,57 @@ test("dark mode uses a light version of the accent with dark text on it", () => 
   assert.equal(theme.derivePalette("#3b3fd8", "dark", "sepia").onAccent, theme.backgroundPreset("sepia").dark.sidebar);
 });
 
+test("default avatars: white or dark initials on the accent, whichever reaches 4.5:1 (#277)", () => {
+  assert.deepEqual(theme.readableOn("#3b3fd8"), { bg: "#3b3fd8", ink: "#ffffff" });
+  assert.deepEqual(theme.readableOn("#FFD43B"), { bg: "#ffd43b", ink: theme.INK }, "a light accent gets dark initials, the colour stays");
+  assert.equal(theme.readableOn("#15803d").ink, "#ffffff");
+  assert.equal(theme.readableOn("#f08c00").ink, theme.INK);
+  for (const pick of [...PICKS, "#f08c00", "#2f9e44", "#1098ad", "#e8590c", "#7f7f7f", "#6b8e23"]) {
+    const { bg, ink } = theme.readableOn(pick);
+    assert.ok(theme.contrast(bg, ink) >= 4.5, `${pick}: ${ink} on ${bg}`);
+    // Mid-tones move in lightness only; the hue stays.
+    const [a, b] = [theme.hexToOklch(pick), theme.hexToOklch(bg)];
+    if (a.c > 0.05) assert.ok(Math.abs(a.h - b.h) < 6, `${pick}: hue kept`);
+  }
+});
+
+test("the mark and the tab's icon in the accent; Flowplan's own is public/icon.svg (#277)", () => {
+  assert.equal(theme.logoSvg(), readFileSync("public/icon.svg", "utf8").trim(), "logoSvg() draws public/icon.svg");
+  assert.equal(theme.faviconHref(null), null);
+  assert.equal(theme.faviconHref({ fonts: { ui: "inter" } }), null, "no accent, Flowplan's icon");
+  const green = theme.faviconHref({ accent: "#15803d" })!;
+  assert.match(green, /^data:image\/svg\+xml,/);
+  const svg = decodeURIComponent(green.slice("data:image/svg+xml,".length));
+  const colors = theme.logoColors("#15803d");
+  assert.equal(svg, theme.logoSvg(colors));
+  assert.ok(svg.includes(`stop-color="${colors.from}"`) && svg.includes(`stop-color="${colors.to}"`));
+  assert.ok(!/[<>"]/.test(green.slice(5)), "the data URL is encoded");
+  // Flowplan's accent gives Flowplan's mark (within rounding).
+  const own = theme.logoColors("#3b3fd8");
+  assert.ok(theme.contrast(own.from, theme.DEFAULT_LOGO.from) < 1.05 && theme.contrast(own.to, theme.DEFAULT_LOGO.to) < 1.05, JSON.stringify(own));
+  assert.equal(own.ink, "#ffffff");
+  // A light accent gets the dark glyph; hue turns a little from one stop to the other.
+  assert.equal(theme.logoColors("#ffd43b").ink, theme.INK);
+  assert.ok(Math.abs(theme.hexToOklch(colors.to).h - theme.hexToOklch(colors.from).h - 15) < 3);
+});
+
+test("a look with an accent recolours logo, avatars and the legacy accent literals; without one nothing is set (#277)", () => {
+  for (const mode of ["light", "dark"] as const) {
+    const vars = theme.themeVariables({ accent: "#c2410c" }, mode);
+    const p = theme.derivePalette("#c2410c", mode);
+    assert.equal(vars["--accent"], p.blue);
+    assert.equal(vars["--accent-soft"], p.blueLight);
+    assert.equal(vars["--accent-ink"], p.onAccent);
+    assert.equal(vars["--logo-from"], theme.logoColors("#c2410c").from);
+    assert.equal(vars["--avatar-bg"], theme.readableOn("#c2410c").bg);
+    assert.equal(vars["--avatar-ink"], theme.readableOn("#c2410c").ink);
+    // The info badge (accent on its soft tint) stays readable.
+    assert.ok(theme.contrast(vars["--accent"]!, vars["--accent-soft"]!) >= 4.5);
+    const fontsOnly = theme.themeVariables({ fonts: { ui: "inter" } }, mode);
+    for (const name of ["--accent", "--logo-from", "--avatar-bg"]) assert.equal(fontsOnly[name], undefined, name);
+  }
+});
+
 test("OKLCH round trip and the WCAG contrast formula", () => {
   for (const hex of PICKS) assert.equal(theme.oklchToHex(theme.hexToOklch(hex)), hex);
   assert.equal(Math.round(theme.contrast("#ffffff", "#000000") * 100) / 100, 21);

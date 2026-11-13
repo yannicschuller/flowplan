@@ -61,13 +61,13 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #3b3fd8;
-  color: #ffffff;
+  background: var(--accent, #3b3fd8);
+  color: var(--accent-ink, #ffffff);
   box-shadow: 0 1px 3px #0003;
   cursor: pointer;
 }
 .wb-link-badge:hover {
-  background: #2f33b8;
+  background: var(--accent-hover, #2f33b8);
 }
 .wb-card-excerpt {
   display: -webkit-box;
@@ -222,7 +222,7 @@
   transition: opacity 0.2s;
 }
 .wb-item.wb-tagged > * {
-  filter: drop-shadow(0 0 6px #3b3fd8aa);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent, #3b3fd8) 66.667%, transparent));
 }
 .wb-item.wb-offstage {
   opacity: 0;
@@ -262,8 +262,8 @@
   outline-offset: 2px;
 }
 .wb-minimap-view {
-  fill: #3b3fd81a;
-  stroke: #3b3fd8;
+  fill: color-mix(in srgb, var(--accent, #3b3fd8) 10.196%, transparent);
+  stroke: var(--accent, #3b3fd8);
   stroke-width: 1.5;
 }
 /* Next to the frames panel instead of under it. */

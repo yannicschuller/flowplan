@@ -182,6 +182,53 @@ export function derivePalette(accent: string, mode: Mode, background: Background
   };
 }
 
+// ---- The accent beyond text: logo, favicon, default avatars (#277) ----
+
+// Flowplan's ink (--text in light mode), the dark alternative to white.
+export const INK = "#1d1c22";
+const WHITE = "#ffffff";
+
+// Text on a colour: white or Flowplan's ink, whichever reads better. Where
+// neither reaches 4.5:1 (mid-tones), the colour's lightness moves away from
+// the ink until it does; the hue stays.
+export function readableOn(color: string): { bg: string; ink: string } {
+  const bg = toHex(parseHex(color));
+  const ink = contrast(bg, WHITE) >= contrast(bg, INK) ? WHITE : INK;
+  if (contrast(bg, ink) >= MIN_CONTRAST) return { bg, ink };
+  const fitted = fitLightness(hexToOklch(bg), ink === WHITE ? -0.005 : 0.005, (hex) => contrast(hex, ink) >= MIN_CONTRAST);
+  return { bg: fitted.hex, ink };
+}
+
+// The mark's tile: a gradient from the accent to a slightly lighter,
+// further-turned version of it – the relation of Flowplan's own two stops
+// to its accent (#3b3fd8 → #4146e6 → #6a3fe0). The glyph is white, or ink
+// on a light accent. The same in light and dark (as Flowplan's own mark).
+export type LogoColors = { from: string; to: string; ink: string };
+export const DEFAULT_LOGO: LogoColors = { from: "#4146e6", to: "#6a3fe0", ink: "#fff" };
+export function logoColors(accent: string): LogoColors {
+  const base = hexToOklch(accent);
+  const from = oklchToHex({ l: base.l + 0.027, c: base.c * 1.036, h: base.h });
+  const to = oklchToHex({ l: base.l + 0.043, c: base.c, h: (base.h + 15) % 360 });
+  const worst = (ink: string) => Math.min(contrast(from, ink), contrast(to, ink));
+  return { from, to, ink: worst(WHITE) >= worst(INK) ? WHITE : INK };
+}
+// The mark as an SVG document; with the default colours it is
+// public/icon.svg byte for byte (tests/workspace-theme.test.ts), and
+// components/brand-mark.tsx draws the same shapes.
+export function logoSvg({ from, to, ink }: LogoColors = DEFAULT_LOGO) {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs>` +
+    `<rect width="32" height="32" rx="9" fill="url(#g)"/><path d="M16 6.8 25.2 11.4 16 16 6.8 11.4Z" fill="${ink}"/>` +
+    `<g fill="none" stroke="${ink}" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 16 16 20.6 25.2 16" opacity=".72"/><path d="M6.8 20.6 16 25.2 25.2 20.6" opacity=".42"/></g></svg>`
+  );
+}
+// The browser tab's icon for a look with an accent (null: Flowplan's own,
+// /icon.svg). Installed apps keep their icons (manifest, apple-touch-icon).
+export function faviconHref(theme: WorkspaceTheme | null | undefined) {
+  if (!theme?.accent) return null;
+  return `data:image/svg+xml,${encodeURIComponent(logoSvg(logoColors(theme.accent)))}`;
+}
+
 // ---- The stored look ----
 
 const hex = z
@@ -267,6 +314,23 @@ export function themeVariables(theme: WorkspaceTheme | null, mode: Mode, fonts: 
       "--focus-ring": p.focusRing,
       "--cell-selection": p.cellSelection,
       "--primary-hover": p.accentStrong,
+      // Only set by a look: places whose default colour predates #196 and
+      // differs a little from --blue write var(--accent, <their colour>),
+      // so Flowplan's own look stays exactly as it was (#277).
+      "--accent": p.blue,
+      "--accent-soft": p.blueLight,
+      "--accent-ink": p.onAccent,
+      "--accent-hover": p.accentStrong,
+    });
+    const logo = logoColors(theme.accent);
+    const avatar = readableOn(theme.accent);
+    Object.assign(vars, {
+      "--logo-from": logo.from,
+      "--logo-to": logo.to,
+      "--logo-ink": logo.ink,
+      "--logo-glow": `${logo.from}59`,
+      "--avatar-bg": avatar.bg,
+      "--avatar-ink": avatar.ink,
     });
   }
   for (const slot of FONT_SLOTS) {
