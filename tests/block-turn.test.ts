@@ -127,7 +127,7 @@ test("toggle headings and block colours survive storage, HTML cleaning and Markd
   assert.match(markdown, /<!-- flowplan:color blue-background -->\n\n### Blau/);
   assert.match(markdown, /- Grün <!-- flowplan:color green -->/);
   const back = roundTrip(markdownToHtml(markdown));
-  assert.match(back, /<details data-heading="2"[^>]*><summary>Kapitel<\/summary>/);
+  assert.match(back, /<details[^>]* data-heading="2"[^>]*><summary>Kapitel<\/summary>/);
   assert.match(back, /<p data-block-color="red">Rot<\/p>/);
   assert.match(back, /<h3 data-block-color="blue-background">Blau<\/h3>/);
   assert.match(back, /<li data-block-color="green"><p>Grün<\/p><\/li><li><p>Normal<\/p><\/li>/);
@@ -139,7 +139,7 @@ test("toggle headings and block colours survive storage, HTML cleaning and Markd
   assert.match(task, /data-due="2026-05-04"/);
   assert.doesNotMatch(task, /flowplan:color/);
   // A toggle heading written by hand (GitHub style).
-  assert.match(roundTrip(markdownToHtml("<details>\n<summary><h3>Hand</h3></summary>\n\nText\n\n</details>")), /<details data-heading="3"[^>]*><summary>Hand<\/summary>/);
+  assert.match(roundTrip(markdownToHtml("<details>\n<summary><h3>Hand</h3></summary>\n\nText\n\n</details>")), /<details[^>]* data-heading="3"[^>]*><summary>Hand<\/summary>/);
 });
 
 test("block colours: names only, lists through their items, default clears", () => {
