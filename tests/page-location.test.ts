@@ -7,6 +7,7 @@ import {
   parsePageLocation,
   notificationUrl,
   loginReturnPath,
+  inAppPageHash,
 } from "../lib/page-location";
 const pageId = "11111111-1111-4111-8111-111111111111",
   rowId = "22222222-2222-4222-8222-222222222222",
@@ -130,4 +131,28 @@ test("login return targets preserve exact internal discussions without open redi
     "/api/admin",
   ])
     assert.equal(loginReturnPath(input), "/");
+});
+
+test("read-only documents open only this app's page links in the same window (#274)", () => {
+  const base = `https://flow.example/#page=${threadId}`;
+  assert.equal(inAppPageHash(`/#page=${pageId}`, base), `#page=${pageId}`);
+  assert.equal(inAppPageHash(`#page=${pageId}`, base), `#page=${pageId}`);
+  assert.equal(inAppPageHash(`https://flow.example/#page=${pageId}`, base), `#page=${pageId}`);
+  // Record and block links keep their target.
+  assert.equal(inAppPageHash(`/#page=${pageId}&row=${rowId}`, base), `#page=${pageId}&row=${rowId}`);
+  assert.equal(inAppPageHash(`/#page=${pageId}&block=b1`, base), `#page=${pageId}&block=b1`);
+  for (const href of [
+    // Another Flowplan instance, another path (published pages), queries.
+    `https://other.example/#page=${pageId}`,
+    `//other.example/#page=${pageId}`,
+    `/s/token#page=${pageId}`,
+    `/?x=1#page=${pageId}`,
+    // Not a page location.
+    "/#page=invalid",
+    `/#page=${pageId}&evil=1`,
+    "https://example.com/",
+    "javascript:alert(1)//#page=x",
+    "",
+  ])
+    assert.equal(inAppPageHash(href, base), null, href);
 });
