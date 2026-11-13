@@ -497,7 +497,9 @@ export function Avatar({
       title={name}
       className={`avatar ${small ? "small" : ""} ${src && broken !== src ? "has-picture" : ""}`}
       style={{
-        backgroundColor: tint,
+        // The pastel by name; a workspace's accent takes its place for the
+        // initials (--avatar-bg, globals.css .avatar, #277).
+        ["--avatar-tint" as string]: tint,
         // The thin ring around a picture (globals.css .avatar.has-picture).
         outlineColor: tint,
         ...placeholder.frameStyle,

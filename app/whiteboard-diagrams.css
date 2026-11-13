@@ -366,8 +366,8 @@
 .wb-hotspot:hover,
 .wb-hotspot:focus-visible,
 .wb-player-stage.hint .wb-hotspot {
-  fill: #3b3fd826;
-  stroke: #3b3fd8;
+  fill: color-mix(in srgb, var(--accent, #3b3fd8) 14.902%, transparent);
+  stroke: var(--accent, #3b3fd8);
 }
 .wb-hotspot.broken:hover,
 .wb-player-stage.hint .wb-hotspot.broken {
