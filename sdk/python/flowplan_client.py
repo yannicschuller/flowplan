@@ -1846,6 +1846,8 @@ CollectionsQuery = TypedDict("CollectionsQuery", {
 
 RunCollectionQuery = TypedDict("RunCollectionQuery", {
     "tz": str,  # IANA time zone for relative dates (default UTC)
+    "offset": int,  # Skip this many results (default 0)
+    "limit": int,  # Results per page (1–5000, default 500)
 }, total=False)
 
 PreviewCollectionQuery = TypedDict("PreviewCollectionQuery", {
@@ -2459,7 +2461,7 @@ class FlowplanClient:
         return self._json("GET", "/api/collections", query=dict(query) if query else None, headers=headers)
 
     def run_collection(self, id: str, query: Optional["RunCollectionQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Run a collection — The collection and its current results: `items` (pages and database records with `pageId`, `rowId`, `type`, `title`, `icon`, `spaceId`, `database`, `tags`, `createdAt`, `updatedAt`, `createdBy`, `creatorName`; latest change first, at most 500), `total`, `truncated` and `encryptedLeftOut` (end-to-end encrypted spaces the reader may read are not searched). Results follow the reader's own permissions, also for collections shared by others. Answered with `Cache-Control: no-store`. (GET /api/collections/{id})"""
+        """Run a collection — The collection and its current results: `items` (pages and database records with `pageId`, `rowId`, `type`, `title`, `icon`, `spaceId`, `database`, `tags`, `createdAt`, `updatedAt`, `createdBy`, `creatorName`; latest change first, ties by ID), `total` (all matches the reader may read), `offset`, `truncated` (more follow), `nextOffset` (the `offset` of the next page, null on the last) and `encryptedLeftOut` (end-to-end encrypted spaces the reader may read are not searched). Paged: `limit` results (default 500) from `offset` on; the order is stable, so following `nextOffset` reaches every match once while nothing changes. Results follow the reader's own permissions, also for collections shared by others; `total` and the pages count only those. Answered with `Cache-Control: no-store`. (GET /api/collections/{id})"""
         return self._json("GET", "/api/collections/" + _p(id), query=dict(query) if query else None, headers=headers)
 
     def preview_collection(self, query: "PreviewCollectionQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

@@ -3236,8 +3236,8 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>[]>("GET", `/api/collections`, { query }, options);
   }
 
-  /** Run a collection — The collection and its current results: `items` (pages and database records with `pageId`, `rowId`, `type`, `title`, `icon`, `spaceId`, `database`, `tags`, `createdAt`, `updatedAt`, `createdBy`, `creatorName`; latest change first, at most 500), `total`, `truncated` and `encryptedLeftOut` (end-to-end encrypted spaces the reader may read are not searched). Results follow the reader's own permissions, also for collections shared by others. Answered with `Cache-Control: no-store`. (GET /api/collections/{id}) */
-  async runCollection(id: string, query?: { tz?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+  /** Run a collection — The collection and its current results: `items` (pages and database records with `pageId`, `rowId`, `type`, `title`, `icon`, `spaceId`, `database`, `tags`, `createdAt`, `updatedAt`, `createdBy`, `creatorName`; latest change first, ties by ID), `total` (all matches the reader may read), `offset`, `truncated` (more follow), `nextOffset` (the `offset` of the next page, null on the last) and `encryptedLeftOut` (end-to-end encrypted spaces the reader may read are not searched). Paged: `limit` results (default 500) from `offset` on; the order is stable, so following `nextOffset` reaches every match once while nothing changes. Results follow the reader's own permissions, also for collections shared by others; `total` and the pages count only those. Answered with `Cache-Control: no-store`. (GET /api/collections/{id}) */
+  async runCollection(id: string, query?: { tz?: string; offset?: number; limit?: number }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/collections/${encodeURIComponent(id)}`, { query }, options);
   }
 

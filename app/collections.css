@@ -132,6 +132,17 @@
   margin-top: 12px;
   font-size: 12px;
 }
+.collection-load-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.collection-load-more .collection-more {
+  margin-top: 0;
+}
 .collection-table-wrap {
   max-width: 100%;
   overflow-x: auto;

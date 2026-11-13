@@ -50,8 +50,12 @@ import { everyAsync, filterAsync, forEachAsync, mapAsync, someAsync } from "./ea
 
 export const MAX_COLLECTIONS = 100,
   MAX_SHARED_COLLECTIONS = 100,
-  // Results of one collection (newest change first).
+  // Results of one collection per request (newest change first); further
+  // ones with `offset` (#270).
   COLLECTION_RESULTS = 500,
+  // At most this many in one request (`limit`), so a view that loaded
+  // several pages can refresh them at once.
+  COLLECTION_RESULTS_MAX = 5000,
   COLLECTION_TRASH_DAYS = 30;
 
 export type CollectionInfo = {
@@ -85,8 +89,13 @@ export type CollectionItem = {
 };
 export type CollectionResults = {
   items: CollectionItem[];
+  // All matches the reader may read (not only this page).
   total: number;
+  // Where this page starts in the whole list.
+  offset: number;
+  // More matches follow this page; `nextOffset` fetches them.
   truncated: boolean;
+  nextOffset: number | null;
   // Spaces the reader may read but the server cannot search.
   encryptedLeftOut: boolean;
 };
@@ -285,7 +294,7 @@ type Item = CollectionItem & {
   cells?: Record<string, unknown>;
   fields?: Field[];
 };
-export type EvalOptions = { timeZone?: string; now?: Date; limit?: number; spaceId?: string; types?: ItemType[]; excludeDays?: boolean };
+export type EvalOptions = { timeZone?: string; now?: Date; limit?: number; offset?: number; spaceId?: string; types?: ItemType[]; excludeDays?: boolean };
 
 const fold = (s: string) => s.toLocaleLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 const validZone = (zone: string | undefined) => {
@@ -329,12 +338,15 @@ async function textMatches(workspaceId: string, phrase: string): Promise<Set<str
 }
 
 // The pages and records of a workspace that match a query, as the person
-// may read them, latest change first.
+// may read them, latest change first. Paged with `offset` and `limit`:
+// the permission filter runs before, and the order is total (ties by key),
+// so consecutive pages neither repeat nor skip a match (#270).
 export async function evaluateQuery(user: Identity, workspaceId: string, input: string | QueryNode | null, options: EvalOptions = {}): Promise<CollectionResults> {
   const node = typeof input === "string" ? parseQuery(input).node : input;
   const timeZone = validZone(options.timeZone);
   const now = options.now ?? new Date();
-  const limit = options.limit ?? COLLECTION_RESULTS;
+  const limit = Math.max(0, Math.floor(options.limit ?? COLLECTION_RESULTS));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0)) || 0;
   // Keep the index current for this request (as the search does).
   await refreshSearchIndex();
   const conds = conditions(node);
@@ -589,9 +601,12 @@ export async function evaluateQuery(user: Identity, workspaceId: string, input: 
     return texts.get(phrase)!.has(key);
   };
   const matched = node ? (await filterAsync(items, async (item) => await test(item, node))) : items;
-  matched.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+  // Latest change first; equal times by key so the order is the same on
+  // every request (pages stay consistent).
+  matched.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const end = offset + limit;
   return {
-    items: matched.slice(0, limit).map(
+    items: matched.slice(offset, end).map(
       (i): CollectionItem => ({
         pageId: i.pageId,
         ...(i.rowId ? { rowId: i.rowId } : {}),
@@ -609,7 +624,9 @@ export async function evaluateQuery(user: Identity, workspaceId: string, input: 
       }),
     ),
     total: matched.length,
-    truncated: matched.length > limit,
+    offset,
+    truncated: matched.length > end,
+    nextOffset: matched.length > end ? end : null,
     encryptedLeftOut,
   };
 }
@@ -623,5 +640,5 @@ export async function runCollection(user: Identity, collectionId: string, option
 // The results of a query not saved yet (the editor's preview).
 export async function previewQuery(user: Identity, workspaceId: string, query: string, options: EvalOptions = {}) {
   await requireMember(user, workspaceId);
-  return { query: normalizeQuery(query.slice(0, 1000)), ...(await evaluateQuery(user, workspaceId, query.slice(0, 1000), { ...options, limit: Math.min(options.limit ?? 50, 50) })) };
+  return { query: normalizeQuery(query.slice(0, 1000)), ...(await evaluateQuery(user, workspaceId, query.slice(0, 1000), { ...options, offset: 0, limit: Math.min(options.limit ?? 50, 50) })) };
 }
