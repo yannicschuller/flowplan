@@ -20,6 +20,7 @@ import {
   Code,
   Columns,
   Copy,
+  CopySimple,
   DotsThree,
   FileText,
   Info,
@@ -28,6 +29,7 @@ import {
   MathOperations,
   Palette,
   Plus,
+  Scissors,
   Smiley,
   SmileyXEyes,
   Sparkle,
@@ -93,6 +95,7 @@ import { Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
 import { BlockMenu, usePhone, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
+import { showToast } from "./toast";
 import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
 import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
@@ -1071,6 +1074,75 @@ export function DocumentBlockControls({
       return null;
     }
   }
+  // The chosen blocks as the clipboard holds them: HTML that the editor
+  // reads back as the same blocks (also in another page), and plain text
+  // for other apps.
+  function clipboardData() {
+    const slice = chosenSlice();
+    if (!editor || !slice) return null;
+    const { dom, text } = editor.view.serializeForClipboard(slice);
+    return { html: dom.innerHTML, text };
+  }
+  // "Kopieren" and "Ausschneiden" in the block menu and the bar of the
+  // selection mode (#263): what ⌘C and ⌘X do with chosen blocks.
+  function toClipboard(cut: boolean) {
+    if (!editor) return;
+    const data = clipboardData();
+    if (!data) return;
+    if (cut && !editor.isEditable) return;
+    const count = selected.current.length;
+    const done = () => {
+      showToast({
+        text: cut
+          ? count === 1
+            ? t("1 Block ausgeschnitten", "1 block cut")
+            : t(`${count} Blöcke ausgeschnitten`, `${count} blocks cut`)
+          : count === 1
+            ? t("1 Block kopiert", "1 block copied")
+            : t(`${count} Blöcke kopiert`, `${count} blocks copied`),
+      });
+      if (!cut) return;
+      // The choice ends (as after ⌘X); the caret goes where they were.
+      const positions = [...selected.current];
+      if (selectingRef.current) endSelection(false);
+      remember(positions);
+      perform("delete");
+      if (pickingRef.current) select([]);
+      else remember([]);
+      setTick((n) => n + 1);
+    };
+    // The copy event of the click itself (synchronous, works in every
+    // browser and the apps' web views) …
+    let written = false;
+    const write = (event: ClipboardEvent) => {
+      if (!event.clipboardData) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      event.clipboardData.clearData();
+      event.clipboardData.setData("text/html", data.html);
+      event.clipboardData.setData("text/plain", data.text);
+      written = true;
+    };
+    document.addEventListener("copy", write, true);
+    try {
+      document.execCommand("copy");
+    } catch {
+    } finally {
+      document.removeEventListener("copy", write, true);
+    }
+    if (written) return done();
+    // … else the asynchronous clipboard.
+    const failed = () => setError(t("Die Zwischenablage ist nicht verfügbar.", "The clipboard is not available."));
+    if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return failed();
+    navigator.clipboard
+      .write([
+        new ClipboardItem({
+          "text/html": new Blob([data.html], { type: "text/html" }),
+          "text/plain": new Blob([data.text], { type: "text/plain" }),
+        }),
+      ])
+      .then(done, failed);
+  }
   // Tab / ⇧Tab: what the keys do in the text, for the text of all chosen
   // blocks (lists nest, paragraphs and headings indent); the same blocks
   // stay chosen.
@@ -1192,13 +1264,12 @@ export function DocumentBlockControls({
       if (menu || !selectingRef.current || !event.clipboardData) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest("input, textarea, [contenteditable='true']")) return;
-      const slice = chosenSlice();
-      if (!slice) return;
-      const { dom, text } = editor.view.serializeForClipboard(slice);
+      const data = clipboardData();
+      if (!data) return;
       event.preventDefault();
       event.clipboardData.clearData();
-      event.clipboardData.setData("text/html", dom.innerHTML);
-      event.clipboardData.setData("text/plain", text);
+      event.clipboardData.setData("text/html", data.html);
+      event.clipboardData.setData("text/plain", data.text);
       if (cut && editor.isEditable) {
         const first = Math.min(...selected.current);
         perform("delete");
@@ -1781,6 +1852,23 @@ export function DocumentBlockControls({
     };
     if (!views.move.items.length) views.move.note = t("Keine andere Stelle möglich.", "No other place available.");
     items.push("separator");
+    // Copy and cut (#263): as ⌘C and ⌘X on chosen blocks.
+    items.push({
+      icon: <CopySimple />,
+      label: t("Kopieren", "Copy"),
+      keywords: "copy kopieren clipboard zwischenablage",
+      disabled: !rangeValid,
+      run: () => toClipboard(false),
+      shortcut: "Mod+C",
+    });
+    items.push({
+      icon: <Scissors />,
+      label: t("Ausschneiden", "Cut"),
+      keywords: "cut ausschneiden clipboard zwischenablage",
+      disabled: !rangeValid || !editor.isEditable,
+      run: () => toClipboard(true),
+      shortcut: "Mod+X",
+    });
     items.push({
       icon: <Copy />,
       label: t("Duplizieren", "Duplicate"),
@@ -2288,6 +2376,9 @@ export function DocumentBlockControls({
               </button>
               <button type="button" className="icon-button" disabled={!down} aria-label={t("Nach unten", "Move down")} title={t("Nach unten", "Move down")} onClick={() => shift(1)}>
                 <ArrowDown size={18} />
+              </button>
+              <button type="button" className="icon-button" disabled={!rangeValid} aria-label={t("Kopieren", "Copy")} title={t("Kopieren", "Copy")} onClick={() => toClipboard(false)}>
+                <CopySimple size={18} />
               </button>
               <button type="button" className="icon-button" disabled={!rangeValid || !copyAllowed} aria-label={t("Duplizieren", "Duplicate")} title={t("Duplizieren", "Duplicate")} onClick={() => perform("duplicate")}>
                 <Copy size={18} />
