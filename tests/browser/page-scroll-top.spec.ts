@@ -58,11 +58,11 @@ test("a page opened from the sidebar, the address or back starts at its top; a b
   await expect(editor.getByText("Weit Absatz 79", { exact: true })).toBeAttached();
   await expect.poll(() => scrollTop(page)).toBe(0);
 
-  // Back to A: at its top as well (Flowplan keeps no scroll positions).
+  // Back to A: where it was left in that step (#262), not where B was.
   await page.locator(".main-scroll").first().evaluate((el) => (el.scrollTop = 900));
   await page.goBack();
   await expect(title(page)).toHaveValue(`Lang ${stamp}`);
-  await expect.poll(() => scrollTop(page)).toBe(0);
+  await expect.poll(async () => Math.abs((await scrollTop(page)) - editing)).toBeLessThan(50);
 
   // Databases opened again show their kept copy at full height at once:
   // the case that kept the position before.

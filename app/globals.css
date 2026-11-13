@@ -1810,6 +1810,33 @@ kbd,
   content: "";
   pointer-events: none;
 }
+/* Column resizing (#258): prosemirror-tables puts a
+   <div class="column-resize-handle"> at the end of every cell of the column
+   whose border is pointed at. Unstyled it was a block in the cell's flow
+   (and got the 6 px gap between a cell's blocks), so every row grew while
+   the pointer was on a border. Now it is the visible line on that border,
+   out of the flow and of the pointer's way (the plugin tracks the pointer
+   on the editor itself). */
+.document-editor .column-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: -1px;
+  right: -2px;
+  width: 4px;
+  margin: 0;
+  background: var(--blue);
+  pointer-events: none;
+  z-index: 2;
+}
+/* The last column's line stays inside the table's scroll area (no 2 px of
+   sideways scrolling while its border is pointed at). */
+.document-editor :is(td, th):last-child > .column-resize-handle {
+  right: 0;
+}
+.document-editor.resize-cursor,
+.document-editor .resize-cursor {
+  cursor: col-resize;
+}
 .document-editor .tableWrapper {
   overflow: auto;
 }
@@ -7371,11 +7398,19 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding-right: 236px;
   }
 }
+/* The head (title, fold buttons, close) stays at the top while a long list
+   scrolls below it (#259: the close button scrolled out of reach). It
+   covers the list's top padding too, so no entry shows above it. */
 .document-outline-head {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin: -12px 0 0;
+  padding: 12px 0 6px;
+  background: var(--bg);
 }
 .document-outline-head strong {
   display: flex;

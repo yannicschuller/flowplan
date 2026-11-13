@@ -6,6 +6,7 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { foldAllSections } from "@/lib/heading-folds";
 import { findSection, parseSettingsHash } from "@/lib/settings-sections";
 import { connectDesktop, goBack, goForward, installHistory, installMouseButtons, rememberedTitle } from "@/lib/history-nav";
+import { usePaneScroll } from "@/lib/pane-scroll";
 import { HistoryButtons, type StepLook } from "./history-buttons";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
@@ -1926,17 +1927,18 @@ export default function WorkspaceApp({
   useDrawerSwipe(mobile, setMobile);
   // Only the panes scroll, never the document (no rubber band under the bars).
   useShellDocument();
-  // Another page – or another place of the app – starts at its top (#224).
-  // The pane keeps its position across renders: a page whose kept copy
-  // (lib/swr-cache.ts) came in at full height at once showed up as far down
-  // as the page before. A block or comment link scrolls to its target after
-  // this (lib/jump.ts); the same page re-rendered keeps its position; the
-  // right page of the split view scrolls on its own.
+  // Another page – or another place of the app – starts at its top (#224,
+  // #262); back and forward bring a place back where it was left in that
+  // step (lib/pane-scroll.ts). The pane keeps its position across renders:
+  // a page whose kept copy (lib/swr-cache.ts) came in at full height at once
+  // showed up as far down as the page before. A block or comment link
+  // scrolls to its target after this (lib/jump.ts); the same page
+  // re-rendered keeps its position; the right page of the split view
+  // scrolls on its own.
   const mainScroll = useRef<HTMLDivElement>(null);
-  const shownPlace = screen === "page" ? `page:${data?.page.id ?? ""}` : `${screen}:${collectionId ?? ""}`;
-  useLayoutEffect(() => {
-    if (mainScroll.current) mainScroll.current.scrollTop = 0;
-  }, [shownPlace]);
+  // A page still loading is no place yet (null).
+  const shownPlace = screen === "page" ? (data ? `page:${data.page.id}` : null) : `${screen}:${collectionId ?? ""}`;
+  usePaneScroll(mainScroll, shownPlace);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
   // The record open in the database page (components/database-view.tsx,

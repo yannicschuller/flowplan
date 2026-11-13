@@ -186,6 +186,14 @@ function update() {
 export function historySteps(): Steps {
   return steps;
 }
+
+// The current entry of the tab's history, the same on every return to it by
+// back and forward and new for every new step (the Navigation API's key;
+// null without it). components/workspace-app.tsx keeps the pane's scroll
+// position per entry with it (#262).
+export function currentEntryKey(): string | null {
+  return navigationApi()?.currentEntry?.key ?? null;
+}
 export function subscribeHistory(listener: () => void) {
   listeners.add(listener);
   return () => void listeners.delete(listener);
