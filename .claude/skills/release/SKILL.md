@@ -27,8 +27,7 @@ Watch it with **Monitor** until it finishes. Red → read the job log, root-caus
 1. `mcp__github__get_latest_release` – check tag, notes (no internal noise that shouldn't be public), and that the Docker part of the run is green including the Trivy `scan` job.
 2. `git pull --ff-only origin main` locally (the release commit), then force-push the session branch to it.
 3. **Docs version markers:** the docs site turns "New in X.Y.Z · in the :beta image" into "Since X.Y.Z" by itself once the release exists (it reads the latest release tag at build time) – redeploy the docs (`deploy.yml` in flowplan-docs, or push any docs commit) so the badges update right away, and check one marked page.
-4. **Marketplace English title:** once a release with the publish dialog's English title field is out (first one after 0.9.5), remind Yannic once to set `MARKETPLACE_REQUIRE_ENGLISH_TITLE=on` for the marketplace in Coolify; then drop this line.
-5. Issues that are `status: done` and whose last comment said "will be in the next release": optional one-line note "Released in vX.Y.Z" only if Yannic asks for it – don't spam.
+4. Issues that are `status: done` and whose last comment said "will be in the next release": optional one-line note "Released in vX.Y.Z" only if Yannic asks for it – don't spam.
 
 ## 4. Report (German, short)
 
