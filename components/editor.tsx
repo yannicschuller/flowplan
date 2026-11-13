@@ -239,7 +239,7 @@ import { BlockDirectionExtension } from "@/lib/text-direction";
 import { BlockColorAttribute } from "@/lib/block-colors";
 import { blockRange } from "@/lib/document-blocks";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { ListTidy } from "@/lib/list-tidy";
+import { ListTidy, TabStaysInText } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
@@ -779,6 +779,8 @@ export default function DocumentEditor({
         TaskList,
         FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }) }),
         ListTidy,
+        // Last of the Tab handlers: Tab never leaves the text (#254).
+        TabStaysInText,
         TaskDue,
         CalcHint.configure({ locale }),
         TicketRefs.configure({ pageId }),

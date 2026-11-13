@@ -41,7 +41,7 @@ import { meetingExtensions } from "./meeting-schema";
 import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
 import { BlockColorAttribute } from "./block-colors";
-import { ListTidy } from "./list-tidy";
+import { ListTidy, TabStaysInText } from "./list-tidy";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { blockFigcaption, captionAttribute, captionText } from "./block-captions";
 export const IMAGE_ALIGNS = ["center", "right"] as const;
@@ -796,6 +796,7 @@ export const documentExtensions = [
   TaskList,
   FlowTaskItem.configure({ nested: true }),
   ListTidy,
+  TabStaysInText,
   BlockReactionAttribute,
   BlockIdAttribute,
   SyncedBlock,
