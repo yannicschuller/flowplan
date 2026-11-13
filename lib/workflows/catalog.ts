@@ -311,6 +311,13 @@ const NODE_TEXT: Record<string, { name: [string, string]; description: [string, 
       "Writes Markdown with placeholders into today’s, yesterday’s or a given day of a journal – at the end or below a heading. A missing day is created as opening it would.",
     ],
   },
+  "action.journal.read": {
+    name: ["Journaltag lesen", "Read journal day"],
+    description: [
+      "Liest den heutigen, gestrigen oder einen bestimmten Tag eines Journals – seinen Text und was „An diesem Tag erledigt“ wurde – zum Beispiel für einen KI-Schritt. Ändert nichts.",
+      "Reads today’s, yesterday’s or a given day of a journal – its text and what was “Completed this day” – for an AI step, for example. Changes nothing.",
+    ],
+  },
   "notify.person": {
     name: ["Person benachrichtigen", "Notify person"],
     description: ["Benachrichtigung in der App, per Push, E-Mail oder Chat-App.", "A notification in the app, by push, email or chat app."],
@@ -358,6 +365,9 @@ const OUT: Record<string, [string, string]> = {
   attachments: ["Anhänge", "Attachments"],
   authenticated: ["Absender geprüft", "Sender verified"],
   day: ["Tagesseite", "Day page"],
+  completed: ["An diesem Tag erledigt", "Completed this day"],
+  content: ["Inhalt mit Erledigtem", "Content with completed"],
+  found: ["Tag vorhanden", "Day exists"],
   journal: ["Journal", "Journal"],
   results: ["Ergebnisse", "Results"],
   waitedUntil: ["Gewartet bis", "Waited until"],
@@ -379,6 +389,9 @@ const OUT: Record<string, [string, string]> = {
   assignee: ["Zuständig", "Assignee"],
   created: ["Tag neu angelegt", "Day newly created"],
 };
+// A journal day's "An diesem Tag erledigt" (#273): "Title (page or database)"
+// each, as the run's person sees the list (lib/workflows/nodes/journal.ts).
+const completedOut: OutputField = { key: "completed", label: OUT.completed, type: "list", item: "text" };
 
 // Typed fields that an AI answer fills (ai.extract, ai.prompt as JSON).
 export const aiFieldSchema = z.object({
@@ -646,7 +659,7 @@ export const NODE_TYPES: NodeSpec[] = [
     event: "journal.day",
     config: z.object({ journal: z.string().max(100).default("") }),
     ports: out,
-    outputs: [pageOut("day", OUT.day), { key: "date", label: OUT.date, type: "date" }, pageOut("journal", OUT.journal)],
+    outputs: [pageOut("day", OUT.day), { key: "date", label: OUT.date, type: "date" }, pageOut("journal", OUT.journal), completedOut],
   }),
   /* ---------- Logic ---------- */
   spec({
@@ -903,7 +916,29 @@ export const NODE_TYPES: NodeSpec[] = [
       heading: z.string().max(200).default(""),
     }),
     ports: out,
-    outputs: [pageOut("day", OUT.day), { key: "date", label: OUT.date, type: "date" }, pageOut("journal", OUT.journal), { key: "created", label: OUT.created, type: "boolean" }],
+    outputs: [pageOut("day", OUT.day), { key: "date", label: OUT.date, type: "date" }, pageOut("journal", OUT.journal), { key: "created", label: OUT.created, type: "boolean" }, completedOut],
+  }),
+  // A journal day to read (#273): the same choice of day as appending; a
+  // day not made yet reads as empty text (its completed list still counts).
+  spec({
+    type: "action.journal.read",
+    category: "pages",
+    icon: "Notebook",
+    inline: false,
+    config: z.object({
+      journal: z.string().max(100).default(""),
+      day: z.enum(["today", "yesterday", "date"]).default("today"),
+      date: shortTmpl.default(""),
+    }),
+    ports: out,
+    outputs: [
+      { key: "content", label: OUT.content, type: "text" },
+      completedOut,
+      pageOut("day", OUT.day),
+      { key: "date", label: OUT.date, type: "date" },
+      pageOut("journal", OUT.journal),
+      { key: "found", label: OUT.found, type: "boolean" },
+    ],
   }),
   /* ---------- Notify ---------- */
   spec({

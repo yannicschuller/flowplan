@@ -5,6 +5,8 @@ import { one } from "../../db";
 import { cellText } from "../../cell-text";
 import { hiddenFieldsFor } from "../../field-access";
 import type { Identity, Page } from "../../types";
+import type { Locale } from "../../i18n";
+import { completedValue } from "./journal-completed";
 import type { WorkflowScope } from "../catalog";
 import { databaseFields, pageValue, personValue, recordValue } from "./data";
 
@@ -116,7 +118,7 @@ export async function triggerMatches(type: string, config: Payload, event: Workf
 // another person sees it: the record again with their read rules, and
 // nothing derived from a property hidden from them (old values, the list of
 // changed properties, form answers, the date of a hidden date property).
-export async function outputFor(type: string, output: Payload, who: Identity, config: Record<string, unknown> = {}): Promise<Payload> {
+export async function outputFor(type: string, output: Payload, who: Identity, config: Record<string, unknown> = {}, options: { timeZone?: string; locale?: Locale } = {}): Promise<Payload> {
   const ref = output.record as { id?: string } | null | undefined;
   if (ref?.id) {
     const rec = await recordValue(who, ref.id);
@@ -136,10 +138,22 @@ export async function outputFor(type: string, output: Payload, who: Identity, co
   }
   const pageRef = output.page as { id?: string } | null | undefined;
   if (pageRef?.id) return { ...output, page: await pageValue(pageRef.id) };
+  // A journal day's "An diesem Tag erledigt" (#273): built again for them.
+  if (type === "trigger.journal.day" && "completed" in output) {
+    const day = output.day as { id?: string } | null | undefined;
+    return { ...output, completed: await completedValue(who, day?.id, options.timeZone || "UTC", options.locale) };
+  }
   return output;
 }
 
-export async function triggerOutput(type: string, event: Pick<WorkflowEvent, "workspace_id" | "page_id" | "row_id" | "actor_id">, payload: Payload, who: Identity | null): Promise<Payload> {
+// `options`: the workflow's time zone and language (a journal day's `completed`).
+export async function triggerOutput(
+  type: string,
+  event: Pick<WorkflowEvent, "workspace_id" | "page_id" | "row_id" | "actor_id">,
+  payload: Payload,
+  who: Identity | null,
+  options: { timeZone?: string; locale?: Locale } = {},
+): Promise<Payload> {
   const actor = await personValue(event.actor_id, event.workspace_id);
   const record = async () => (event.row_id ? await recordValue(who, event.row_id) : null);
   switch (type) {
@@ -206,6 +220,7 @@ export async function triggerOutput(type: string, event: Pick<WorkflowEvent, "wo
         day: event.page_id ? await pageValue(event.page_id) : null,
         date: payload.date ?? null,
         journal: typeof payload.journal === "string" ? await pageValue(payload.journal, { text: false }) : null,
+        completed: await completedValue(who, event.page_id, options.timeZone || "UTC", options.locale),
       };
   }
   return {};

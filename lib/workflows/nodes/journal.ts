@@ -21,6 +21,8 @@ import { isEncryptedPage } from "../../e2ee-server";
 import { ensureJournalDay } from "../../journal";
 import { placeBlocks } from "../../journal-place";
 import type { Page } from "../../types";
+import { aiCompletedItems, completedLine, completedSection } from "../../ai/journal-completed";
+import { completedValue } from "./journal-completed";
 import { evaluatePlaceholder, parseTemplate, valueText, type RenderScope } from "../placeholders";
 import { behindJournalPin } from "../runner";
 import { pageValue } from "./data";
@@ -112,7 +114,7 @@ const zonedDay = (timeZone: string) => {
 };
 // The date of the day: today or yesterday in the workflow's time zone (as
 // $today), or a date (a placeholder on one, a moment's day in that zone).
-function targetDate(ctx: NodeRun, c: JournalAppendConfig) {
+function targetDate(ctx: NodeRun, c: Pick<JournalAppendConfig, "day" | "date">) {
   const today = typeof ctx.scope.values.$today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ctx.scope.values.$today) ? ctx.scope.values.$today : zonedDay(ctx.scope.timeZone || "UTC");
   const day = c.day || "today";
   if (day === "today") return { date: today, today };
@@ -125,6 +127,42 @@ function targetDate(ctx: NodeRun, c: JournalAppendConfig) {
   if (!date) throw new StepError("Kein Datum für den Journaltag.", "validation");
   return { date, today };
 }
+
+// "Journaltag lesen" (#273): a day's text and its list "An diesem Tag
+// erledigt" for the steps after it – a workflow started by hand or on a
+// schedule has no journal day of its own, and an AI step only knows what
+// its prompt carries. As the person it runs as: the journal must be
+// readable for them, journals behind a PIN and encrypted spaces are
+// refused. The completed list as in `completedValue`; the AI step checks the
+// day (or the journal) again through its sources. A day not made yet reads
+// as empty text with the day's completed list. Changes nothing.
+export const journalRead: NodeImpl = async (ctx) => {
+  const c = ctx.config as Pick<JournalAppendConfig, "journal" | "day" | "date">;
+  if (!ctx.runner) throw new StepError("Keine ausführende Person.", "permission");
+  const runner = ctx.runner;
+  const journal = c.journal ? await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", String(c.journal)) : undefined;
+  if (!journal || journal.kind !== "journal" || journal.workspace_id !== ctx.run.workspaceId || !(await pageRole(runner, journal)))
+    throw new StepError("Das Journal gibt es nicht (mehr).", "validation");
+  if (await behindJournalPin(journal)) throw new StepError("Dieses Journal ist mit einer PIN gesperrt – Workflows lesen es nicht.", "permission");
+  if (await isEncryptedPage(journal)) throw new StepError("Das Journal liegt in einem verschlüsselten Bereich, dort kann der Server nichts lesen.", "validation");
+  const { date } = targetDate(ctx, c);
+  const existing = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL", journal.id, date);
+  const day = existing && (await pageRole(runner, existing)) ? existing : null;
+  const dayValue = day ? await pageValue(day.id) : null;
+  const list = await aiCompletedItems(runner, day || { id: "", workspace_id: journal.workspace_id, parent_id: journal.id, journal_date: date }, ctx.scope.timeZone || "UTC");
+  const section = completedSection(list, ctx.scope.locale);
+  return {
+    port: "out",
+    output: {
+      content: [dayValue?.text.trim() || "", section].filter(Boolean).join("\n\n"),
+      completed: list ? list.items.map((item) => completedLine(item, ctx.scope.locale)) : [],
+      day: dayValue,
+      date,
+      journal: await pageValue(journal.id, { text: false }),
+      found: !!day,
+    },
+  };
+};
 
 export const journalAppend: NodeImpl = async (ctx) => {
   const c = ctx.config as JournalAppendConfig;
@@ -147,7 +185,7 @@ export const journalAppend: NodeImpl = async (ctx) => {
   if (dryRun(ctx))
     return {
       port: "out",
-      output: { wouldAppend: { journal: journal.id, date, newDay: !existing, blocks: blocks.length, place: place.at, heading: place.heading ?? "" }, day: existing ? await pageValue(existing.id) : null, date, journal: await pageValue(journal.id, { text: false }) },
+      output: { wouldAppend: { journal: journal.id, date, newDay: !existing, blocks: blocks.length, place: place.at, heading: place.heading ?? "" }, day: existing ? await pageValue(existing.id) : null, date, journal: await pageValue(journal.id, { text: false }), completed: await completedValue(runner, existing?.id, ctx.scope.timeZone, ctx.scope.locale) },
     };
   let dayId: string;
   let created = false;
@@ -166,5 +204,5 @@ export const journalAppend: NodeImpl = async (ctx) => {
     const empty = children.length === 1 && children[0].type.name === "paragraph" && !children[0].content.size;
     return doc.type.create(doc.attrs, placeBlocks(empty ? [] : children, added, place, "end"));
   });
-  return { port: "out", output: { day: await pageValue(dayId), date, journal: await pageValue(journal.id, { text: false }), created } };
+  return { port: "out", output: { day: await pageValue(dayId), date, journal: await pageValue(journal.id, { text: false }), created, completed: await completedValue(runner, dayId, ctx.scope.timeZone, ctx.scope.locale) } };
 };

@@ -326,6 +326,7 @@ export function nodeSummary(node: WorkflowNode, ws: Workspace, ctx: DisplayConte
       return c.address ? t("an eine Workflow-Adresse", "to a workflow address") : t("Adresse wählen", "Choose an address");
     case "trigger.journal.day":
       return c.journal ? `„${page(c.journal)}“` : t("jedes Journal", "any journal");
+    case "action.journal.read":
     case "action.journal.append": {
       if (!c.journal) return t("Journal wählen", "Choose a journal");
       const day = c.day === "yesterday" ? t("gestern", "yesterday") : c.day === "date" ? showText(String(c.date || ""), ctx).slice(0, 40) || "…" : t("heute", "today");

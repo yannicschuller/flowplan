@@ -42,7 +42,7 @@ import { helpCandidates, helpTitle, helpUrl } from "./help";
 import type { ChatMessage } from "./providers";
 import { requireAi } from "./run";
 import { isLocalProvider, resolveAi } from "./resolve";
-import { aiPageMarkdown } from "./content";
+import { aiPageParts } from "./content";
 import { semanticCandidates, semanticQueryVector } from "./semantic";
 import { nameLookup, pageSubtree, sourceText } from "./sources";
 import { databaseContext, type DatabaseData } from "./database-context";
@@ -85,6 +85,8 @@ export const askInput = z.object({
     .default({ kind: "workspace" }),
   // "Diese Seite": the open page goes along in full.
   page: z.object({ pageId: z.uuid() }).optional(),
+  // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
+  zone: z.string().max(100).optional(),
 });
 export type AskInput = z.input<typeof askInput>;
 
@@ -226,9 +228,12 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
     const page = await requirePage(user, input.page.pageId);
     if (page.workspace_id !== input.workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
     const limit = resolved.config.kind === "ollama" || isLocalProvider(resolved.config) ? ASK_LIMITS.pageChars.local : ASK_LIMITS.pageChars.remote;
-    const markdown = await aiPageMarkdown(user, page);
-    const truncated = markdown.length > limit;
-    current = { page, markdown: truncated ? markdown.slice(0, limit).replace(/\n[^\n]*$/, "") : markdown, truncated };
+    // A journal day's completed list (#273) stays whole: the document is cut.
+    const { body, completed } = await aiPageParts(user, page, null, { zone: input.zone, maxChars: Math.floor(limit / 2) });
+    const room = limit - (completed ? completed.length + 2 : 0);
+    const truncated = body.length > room;
+    const text = truncated ? body.slice(0, room).replace(/\n[^\n]*$/, "") : body;
+    current = { page, markdown: [text, completed].filter(Boolean).join("\n\n"), truncated };
   }
   const across = input.scope.kind === "all";
   const onlyHelp = input.scope.kind === "help";

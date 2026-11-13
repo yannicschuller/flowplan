@@ -41,6 +41,14 @@ export type StreamAiOptions = {
   onText?: (piece: string, text: string) => void;
 };
 
+function browserZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 // Streams the answer; resolves with the whole text. Rejects with
 // AiRequestError (localized message), or an AbortError when aborted.
 export async function streamAi({ signal, onText, ...body }: StreamAiOptions): Promise<string> {
@@ -58,7 +66,9 @@ export async function streamAiFrom(
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    // The reader's time zone: which day a journal day's "An diesem Tag
+    // erledigt" covers when the page goes along (#273).
+    body: JSON.stringify({ zone: browserZone(), ...body }),
     signal,
   });
   if (!response.ok || !response.body) {

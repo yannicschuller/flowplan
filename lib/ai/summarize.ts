@@ -113,6 +113,8 @@ const input = z.object({
   // A voice note's summary: link relevant existing pages (lib/ai/links.ts).
   links: z.boolean().optional(),
   locale: z.enum(["de", "en", "fr"]).default("de"),
+  // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
+  zone: z.string().max(100).optional(),
 });
 
 // POST /api/ai/summarize → the summary as a text stream (lib/ai/run.ts),
@@ -151,7 +153,7 @@ export async function aiSummaryResponse(user: Identity, raw: unknown, signal: Ab
           : `These are all ${data.total} records of the view.`,
     };
   } else {
-    plan = { kind: "page", content: await aiPageMarkdown(user, page), title: page.title, locale: b.locale };
+    plan = { kind: "page", content: await aiPageMarkdown(user, page, null, { zone: b.zone }), title: page.title, locale: b.locale };
   }
   if (!plan.content.trim()) throw new HttpError(400, "Hier steht noch nichts, das sich zusammenfassen ließe.");
   const reduced = await reduceContent(plan, chunkChars, (prompt) => aiComplete(user, "summarize", prompt, options));

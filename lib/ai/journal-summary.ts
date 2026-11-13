@@ -19,7 +19,7 @@ import { stillOpenTasks } from "../journal-summary";
 import { reviewPeriod } from "../journal-nav";
 import type { Identity, Page } from "../types";
 import { aiReadablePages } from "./access";
-import { aiPageMarkdown } from "./content";
+import { aiPageParts } from "./content";
 import { journalSummaryPrompt, type AiLocale } from "./prompts";
 import { isLocalProvider } from "./resolve";
 import { aiComplete, aiStreamResponse, requireAi, type AiRunOptions } from "./run";
@@ -31,6 +31,8 @@ export const journalSummaryInput = z.object({
   from: journalDay,
   to: journalDay,
   locale: z.enum(["de", "en", "fr", "zh"]).default("de"),
+  // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
+  zone: z.string().max(100).optional(),
 });
 
 const weekday = new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" });
@@ -39,7 +41,7 @@ const number = (value: number) => String(Math.round(value * 10) / 10);
 const MAX_TASKS = 100;
 
 // The period's content for the prompt: only what the AI may read.
-export async function journalSummaryContent(user: Identity, journal: Page, from: string, to: string) {
+export async function journalSummaryContent(user: Identity, journal: Page, from: string, to: string, zone?: string) {
   const review = await journalReview(journal, from, to);
   const readable = await aiReadablePages(user, review.days.map((day) => day.id));
   const days = review.days.filter((day) => readable.has(day.id));
@@ -95,8 +97,10 @@ export async function journalSummaryContent(user: Identity, journal: Page, from:
     });
     if (values.length) lines.push(`Trackers: ${values.join(" · ")}`);
     if (entry.place) lines.push(`Place: ${entry.place}`);
-    const text = await aiPageMarkdown(user, page);
-    lines.push(text || "(no text)", "");
+    // The day's text and its list "An diesem Tag erledigt" (#273), a level below the day.
+    const { body, completed } = await aiPageParts(user, page, null, { zone, maxChars: 4000 });
+    lines.push(body || "(no text)", "");
+    if (completed) lines.push(completed.replace(/^## /, "#### "), "");
   }
   return { content: lines.join("\n").trim(), included: days.length, total: review.days.length };
 }
@@ -116,7 +120,7 @@ export async function aiJournalSummaryResponse(user: Identity, raw: unknown, sig
   const resolved = await requireAi(user, "summarize", options);
   const local = resolved.config.kind === "ollama" || isLocalProvider(resolved.config);
   const chunkChars = local ? SUMMARY_LIMITS.chunkChars.local : SUMMARY_LIMITS.chunkChars.remote;
-  const data = await journalSummaryContent(user, journal, b.from, b.to);
+  const data = await journalSummaryContent(user, journal, b.from, b.to, b.zone);
   if (!data.total) throw new HttpError(400, "In diesem Zeitraum gibt es keine Einträge.");
   if (!data.included) throw new HttpError(403, "Die Tage dieses Zeitraums sind für die KI gesperrt.");
   const locale = b.locale as AiLocale;

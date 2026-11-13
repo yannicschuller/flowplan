@@ -588,7 +588,7 @@ export async function startTestRun(user: Identity, raw: unknown) {
     triggerValue = await triggerOutput(node.type, { workspace_id: page.workspace_id, page_id: row.page_id, row_id: row.id, actor_id: user.id }, { via: "app" }, tester);
   } else if (d.kind === "page") {
     if (!(await mayObserve(tester, d.pageId))) throw new HttpError(404, "Seite nicht gefunden.");
-    triggerValue = await triggerOutput(node.type, { workspace_id: page.workspace_id, page_id: d.pageId, row_id: null, actor_id: user.id }, {}, tester);
+    triggerValue = await triggerOutput(node.type, { workspace_id: page.workspace_id, page_id: d.pageId, row_id: null, actor_id: user.id }, {}, tester, { timeZone: graph.settings.timeZone });
   } else {
     // The last real event – only when the tester may see what it is about.
     const wf = await workflowRow(page.id);
@@ -598,7 +598,7 @@ export async function startTestRun(user: Identity, raw: unknown) {
     const pageRef = output.record?.database?.id ?? output.page?.id;
     if (pageRef && !(await mayObserve(tester, pageRef, output.record?.id))) throw new HttpError(404, "Noch kein echtes Ereignis.");
     // Built for the runner: rebuilt for the tester, without what their read rules hide.
-    triggerValue = await outputFor(node.type, output as Record<string, unknown>, tester, node.config);
+    triggerValue = await outputFor(node.type, output as Record<string, unknown>, tester, node.config, { timeZone: graph.settings.timeZone });
   }
   const runId = await createRun({
     workflow: { page_id: page.id, workspace_id: page.workspace_id, runner_id: user.id },

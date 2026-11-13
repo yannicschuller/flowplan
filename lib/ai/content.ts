@@ -12,10 +12,26 @@ import { cellText } from "../cell-text";
 import { markdownSymbol } from "../task-status";
 import type { Field, Identity, Page, Row } from "../types";
 import { aiFilter, requireAiRead } from "./access";
+import { aiCompletedSection } from "./journal-completed";
 
 // A page (without its title heading) or one record of a database
-// (properties as frontmatter, then the document) as Markdown.
-export async function aiPageMarkdown(user: Identity, page: Page, rowId?: string | null) {
+// (properties as frontmatter, then the document) as Markdown. A journal day
+// gets its list "An diesem Tag erledigt" at the end (#273,
+// lib/ai/journal-completed.ts); `zone` is the reader's time zone for it.
+export async function aiPageMarkdown(user: Identity, page: Page, rowId?: string | null, options: { zone?: string } = {}) {
+  const { body, completed } = await aiPageParts(user, page, rowId, options);
+  return [body, completed].filter(Boolean).join("\n\n");
+}
+
+// The same in two parts – the document and the list of a journal day – for
+// callers that cut the document to a budget and keep the list whole.
+export async function aiPageParts(user: Identity, page: Page, rowId?: string | null, options: { zone?: string; maxChars?: number } = {}) {
+  const body = await aiDocumentMarkdown(user, page, rowId);
+  const completed = rowId ? "" : await aiCompletedSection(user, page, options);
+  return { body, completed };
+}
+
+async function aiDocumentMarkdown(user: Identity, page: Page, rowId?: string | null) {
   await requireAiRead(user, page.id, rowId);
   const { bytes } = await exportMarkdown(user, {
     pageId: page.id,

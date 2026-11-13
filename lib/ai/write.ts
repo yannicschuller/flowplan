@@ -16,7 +16,7 @@ import { one } from "../db";
 import { requirePage } from "../permissions";
 import { requireRow } from "../row-documents";
 import type { Identity } from "../types";
-import { aiPageMarkdown } from "./content";
+import { aiPageParts } from "./content";
 import { databaseContext, databaseNotes } from "./database-context";
 import { DATABASES_HEADER, encodeDatabaseNotes } from "./database-note";
 import { asksForPageList, encodeLinkTargets, findLinkCandidates } from "./link-candidates";
@@ -49,6 +49,8 @@ const input = z.object({
   // stays as typed (lib/ai/prompts.ts CAPTURE_RULES).
   capture: z.boolean().optional(),
   locale: z.enum(["de", "en", "fr", "zh"]).default("de"),
+  // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
+  zone: z.string().max(100).optional(),
 });
 
 // POST /api/ai/write → the answer as a text stream (lib/ai/run.ts).
@@ -66,8 +68,10 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
   let context: { title: string; markdown: string } | null = null;
   if (b.context && b.action === "prompt") {
     const limit = local ? WRITE_LIMITS.contextChars.local : WRITE_LIMITS.contextChars.remote;
-    const markdown = await aiPageMarkdown(user, page, b.rowId);
-    context = { title: page.title, markdown: markdown.length > limit ? markdown.slice(0, limit) + "\n\n[…]" : markdown };
+    // A journal day's completed list (#273) stays whole: the document is cut.
+    const { body, completed } = await aiPageParts(user, page, b.rowId, { zone: b.zone, maxChars: Math.floor(limit / 2) });
+    const room = limit - (completed ? completed.length + 2 : 0);
+    context = { title: page.title, markdown: [body.length > room ? body.slice(0, room) + "\n\n[…]" : body, completed].filter(Boolean).join("\n\n") };
   }
   // Records of databases the instruction names or links (#80) – within the
   // same budget as the page context. Links in the open page count when the
