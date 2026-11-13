@@ -1352,6 +1352,7 @@ export type CommandSpaceCreate = {
   name: string;
   /** Only visible to its owner */
   private?: boolean;
+  /** Emoji, icon name, `icon:<name>:<colour>` or a square image as data URL (`data:image/png|jpeg|webp;base64,…`, at most 150,000 characters); default `folder` */
   icon?: string;
   iconColor?: string;
 };

@@ -885,7 +885,7 @@ CommandSpaceCreate = TypedDict("CommandSpaceCreate", {
     "workspaceId": Required[str],
     "name": Required[str],
     "private": bool,  # Only visible to its owner
-    "icon": str,
+    "icon": str,  # Emoji, icon name, `icon:<name>:<colour>` or a square image as data URL (`data:image/png|jpeg|webp;base64,…`, at most 150,000 characters); default `folder`
     "iconColor": str,
 }, total=False)
 

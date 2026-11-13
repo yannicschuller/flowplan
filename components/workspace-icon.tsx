@@ -43,8 +43,9 @@ export function WorkspaceIcon({
   return <span className={className}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
-// Scales an image to a square of 128 px (cropped to the centre).
-async function squareImage(file: File) {
+// Scales an image to a square of 128 px (cropped to the centre); also for
+// space symbols (components/space-appearance.tsx).
+export async function squareImage(file: File) {
   const bitmap = await createImageBitmap(file).catch(() => {
     throw new Error(tr("Das Bild konnte nicht gelesen werden.", "The image could not be read."));
   });
