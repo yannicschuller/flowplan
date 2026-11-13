@@ -1,7 +1,8 @@
 // Marketplace packages (docs: Marketplace): one `*.flowplan-template` file,
 // a ZIP with
 //
-//   template.json   {format: "flowplan-marketplace-1", kind, title, titles?,
+//   template.json   {format: "flowplan-marketplace-1", kind, title, titles?
+//                    (always with `en` in packages built here; optional when reading),
 //                    summary, description?, category, tags, minVersion, language,
 //                    payload, license?, author?, marketplace?}  (≤ 64 KB)
 //   payload/…       the kind's own exchange format, unchanged:
@@ -39,7 +40,7 @@ import { importLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { AUTO_LINK_LIMITS, autoLinkRuleSchema, ruleProblems } from "./auto-link";
 import { packageMinVersion } from "./marketplace-config";
 import { referenceGaps, workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
-import { MAX_PACKAGE_BYTES, packageFileName } from "./marketplace-handover";
+import { MAX_PACKAGE_BYTES, packageFileName, packageTitle } from "./marketplace-handover";
 import type { Identity } from "./types";
 
 export const MARKETPLACE_FORMAT = "flowplan-marketplace-1";
@@ -92,9 +93,14 @@ export const packageManifestSchema = z
   .passthrough();
 export type PackageManifest = z.infer<typeof packageManifestSchema>;
 
-// What the person sets in the publish dialog.
+// What the person sets in the publish dialog. The English title is required
+// (the marketplace refuses packages without `titles.en`), the German one
+// optional; `title` follows from them (packageTitle). A `title` sent along
+// by an older caller is ignored.
+const titleText = z.string().trim().max(PACKAGE_LIMITS.title).default("");
 export const packageMetaSchema = z.object({
-  title: z.string().trim().min(1).max(PACKAGE_LIMITS.title),
+  title: z.string().optional(),
+  titles: z.object({ de: titleText, en: titleText }).default({ de: "", en: "" }),
   summary: z.object({ de: z.string().trim().max(PACKAGE_LIMITS.summary).default(""), en: z.string().trim().max(PACKAGE_LIMITS.summary).default("") }),
   description: z.object({ de: z.string().max(PACKAGE_LIMITS.description).default(""), en: z.string().max(PACKAGE_LIMITS.description).default("") }).optional(),
   category: z.enum(templateCategoryIds).catch("other"),
@@ -241,7 +247,9 @@ export async function packageDraft(user: Identity, source: PackageSource) {
 
 export async function buildPackage(user: Identity, source: PackageSource, rawMeta: unknown, previewBytes: Buffer[] = []) {
   const meta = packageMetaSchema.parse(rawMeta);
+  if (!meta.titles.en) throw fail("Bitte einen englischen Titel angeben.");
   if (!meta.summary.de && !meta.summary.en) throw fail("Bitte eine Kurzbeschreibung angeben.");
+  const title = packageTitle(meta.language, meta.titles);
   const previews = checkPreviews(previewBytes);
   const payload = await payloadFor(user, source);
   const drop = (o: { de?: string; en?: string } | undefined) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => typeof v === "string" && v.trim()));
@@ -249,7 +257,9 @@ export async function buildPackage(user: Identity, source: PackageSource, rawMet
   const manifest = {
     format: MARKETPLACE_FORMAT,
     kind: payload.kind,
-    title: meta.title,
+    // For readers that only know `title` (older marketplaces and Flowplans).
+    title,
+    titles: drop(meta.titles),
     summary: drop(meta.summary),
     ...(Object.keys(description).length ? { description } : {}),
     category: meta.category,
@@ -265,7 +275,7 @@ export async function buildPackage(user: Identity, source: PackageSource, rawMet
   const bytes = await writeZip(entries);
   if (bytes.length > PACKAGE_LIMITS.packageBytes) throw fail("Das Paket wäre größer als 25 MB.", 413);
   await audit(user.id, "marketplace.package", source.workspaceId, `${payload.kind}${source.id ? ` ${source.id}` : ""}`);
-  return { name: packageFileName(meta.title), bytes, kind: payload.kind };
+  return { name: packageFileName(title), bytes, kind: payload.kind };
 }
 
 // ---- Reading (marketplace or file → instance) ----

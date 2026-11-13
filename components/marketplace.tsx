@@ -33,6 +33,9 @@ import {
   isSubmitReady,
   packageFileName,
   packageMessage,
+  packageTitle,
+  publishMeta,
+  publishTitles,
   parseTemplateMessage,
   submitAddress,
   trustedSource,
@@ -169,7 +172,8 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
   const locale = useLocale();
   const [draft, setDraft] = useState<Draft | null>(null),
     [loadError, setLoadError] = useState(""),
-    [title, setTitle] = useState(""),
+    [titleDe, setTitleDe] = useState(""),
+    [titleEn, setTitleEn] = useState(""),
     [summaryDe, setSummaryDe] = useState(""),
     [summaryEn, setSummaryEn] = useState(""),
     [category, setCategory] = useState("other"),
@@ -190,7 +194,11 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
         if (!live) return;
         setDraft(d);
         const name = d.title || source.title || (d.kind === "appearance" ? t("Erscheinungsbild", "Appearance") : d.kind === "link-rules" ? t("Automatische Links", "Automatic links") : "");
-        setTitle(name.slice(0, 120));
+        // The page's title goes into the field of the interface language
+        // (English for every language but German); the other one stays to fill in.
+        const prefill = publishTitles(locale, name);
+        setTitleDe(prefill.de);
+        setTitleEn(prefill.en);
         const s = defaultSummary(d.kind, name);
         setSummaryDe(s.de.slice(0, 300));
         setSummaryEn(s.en.slice(0, 300));
@@ -224,13 +232,8 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
     setPictures(next);
   }
 
-  const meta = () => ({
-    title: title.trim(),
-    summary: { de: summaryDe.trim(), en: summaryEn.trim() },
-    category,
-    tags: [...new Set(tags.split(",").map((x) => x.trim()).filter(Boolean))].slice(0, 10).map((x) => x.slice(0, 32)),
-    language,
-  });
+  const meta = () => publishMeta({ titleDe, titleEn, summaryDe, summaryEn, category, tags, language });
+  const title = packageTitle(language, { de: titleDe, en: titleEn });
   async function build() {
     const body = new FormData();
     body.set("kind", source.kind);
@@ -242,7 +245,7 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
     if (!response.ok) throw new Error(await readError(response, t));
     return { name: packageFileName(title.trim()), bytes: await response.arrayBuffer() };
   }
-  const valid = !!title.trim() && !!(summaryDe.trim() || summaryEn.trim()) && !!draft;
+  const valid = !!titleEn.trim() && !!(summaryDe.trim() || summaryEn.trim()) && !!draft;
 
   async function download() {
     setSending({ step: "building" });
@@ -354,8 +357,15 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
           }}
         >
           <label>
-            {t("Titel", "Title")}
-            <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} required />
+            {t("Titel (Deutsch, optional)", "Title (German, optional)")}
+            <input value={titleDe} onChange={(e) => setTitleDe(e.target.value)} maxLength={120} lang="de" />
+          </label>
+          <label>
+            {t("Titel (Englisch)", "Title (English)")}
+            <input value={titleEn} onChange={(e) => setTitleEn(e.target.value)} maxLength={120} lang="en" required aria-describedby="marketplace-title-en-hint" />
+            <span id="marketplace-title-en-hint" className="muted marketplace-hint">
+              {t("Pflicht – der Marketplace zeigt ihn auf englischen Seiten, den deutschen auf deutschen.", "Required – the marketplace shows it on English pages, the German one on German pages.")}
+            </span>
           </label>
           <label>
             {t("Kurzbeschreibung (Deutsch)", "Summary (German)")}
