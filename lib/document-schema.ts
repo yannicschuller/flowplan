@@ -3,6 +3,8 @@ import { Suggestion } from "./suggestions";
 import { BlockReactionAttribute } from "./block-reactions";
 import { BlockIdAttribute } from "./block-ids";
 import { focusToggleTitle, titleAbove, toggleBlocksPlugin, toggleNodeView, toggleOpen, togglesAround } from "./toggle-view";
+import { nestSelection } from "./toggle-nesting";
+import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange, getAttributesFromExtensions, getRenderedAttributes } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -705,6 +707,16 @@ export const Indent = Extension.create({
       syncSelection();
       const { state, view } = this.editor;
       const { from, to, $from } = state.selection;
+      // Into the toggle right before, out of the one around (#246): indented
+      // means inside. One undo step of its own (with the ids the moved
+      // blocks may get right after, lib/block-ids-plugin.ts).
+      const nested = nestSelection(state, by < 0);
+      if (nested) {
+        const undo = yUndoPluginKey.getState(state)?.undoManager;
+        undo?.stopCapturing();
+        view.dispatch(nested.scrollIntoView());
+        return true;
+      }
       // Inside lists, tasks, tables and code the other handlers decide.
       for (let d = $from.depth; d > 0; d--)
         if (["listItem", "taskItem", "tableCell", "tableHeader"].includes($from.node(d).type.name))
