@@ -67,6 +67,8 @@ mark { background: #fff3a3; }
 hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }
 .page-break { page-break-after: always; break-after: page; height: 0; margin: 0; }
 .columns .column { margin-bottom: 1em; }
+.tabs .tab { margin: 1em 0; padding-left: 1em; border-left: 2px solid #ccc; }
+.tab-title { margin: 0 0 0.4em; font-size: 1em; }
 .placeholder, .media, .linked-database, .whiteboard { color: #555; font-style: italic; }
 .footnotes { margin-top: 2em; padding-top: 0.5em; border-top: 1px solid #ccc; font-size: 0.85em; }
 .footnote-ref a { text-decoration: none; }

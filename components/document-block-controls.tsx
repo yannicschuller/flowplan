@@ -19,6 +19,7 @@ import {
   CheckSquare,
   Code,
   Columns,
+  Tabs as TabsIcon,
   Copy,
   CopySimple,
   DotsThree,
@@ -55,6 +56,7 @@ import {
 import { flushSync } from "react-dom";
 import { touchHold } from "./pointer-drag";
 import { blockToMath, blockToToggle, blocksToColumns, colorable, setBlockColors, toggleToBlock, type TitleBlock } from "@/lib/block-turn";
+import { blocksToTabs, tabsToBlocks } from "@/lib/tabs-commands";
 import { BLOCK_COLOR_NAMES, blockColor, blockColorLabels, type BlockColorName } from "@/lib/block-colors";
 import type { Editor } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
@@ -1581,6 +1583,17 @@ export function DocumentBlockControls({
         { label: t("Code", "Code"), en: "code", icon: <Code key="i" />, change: into({ type: "codeBlock" }) },
         { label: t("Formel", "Block equation"), en: "block equation math formula", icon: <MathOperations key="i" />, change: into({ type: "mathBlock" }) },
       ];
+    } else if (name === "tabs") {
+      // Tabs (#272) back into plain blocks: each title a heading, its
+      // content below.
+      turns = [
+        {
+          label: t("Überschriften mit Inhalt", "Headings with content"),
+          en: "headings content text untabbed überschriften",
+          icon: <TextHThree key="i" />,
+          change: (c) => c.command(({ tr }) => tabsToBlocks(tr, block.pos)),
+        },
+      ];
     }
     const items: BlockMenuItem[] = turns.map(({ label, en, icon, active, change, shortcut }) => ({
       label,
@@ -1591,7 +1604,7 @@ export function DocumentBlockControls({
       disabled: !!active,
       // A toggle is changed by its position, not through a text selection.
       run:
-        name === "toggle"
+        name === "toggle" || name === "tabs"
           ? () => {
               if (!editor.isEditable) return;
               if (change(editor.chain()).run()) focusEditor();
@@ -1638,6 +1651,28 @@ export function DocumentBlockControls({
             focusEditor();
           },
         });
+    // Tabs (#272): each heading among the blocks starts a tab.
+    const tabsFit = (() => {
+      try {
+        return blocksToTabs(editor.state.tr, range.from, range.to, (n) => t(`Tab ${n}`, `Tab ${n}`));
+      } catch {
+        return false;
+      }
+    })();
+    if (tabsFit)
+      items.push({
+        icon: <TabsIcon />,
+        label: t("Tabs", "Tabs"),
+        keywords: "tabs reiter registerkarten",
+        run: () => {
+          if (!editor.isEditable) return;
+          const tr = editor.state.tr;
+          if (!blocksToTabs(tr, range.from, range.to, (n) => t(`Tab ${n}`, `Tab ${n}`)))
+            return setError(t("Diese Blöcke lassen sich nicht in Tabs setzen.", "These blocks cannot be put into tabs."));
+          applyBlockChange(editor, tr.scrollIntoView());
+          focusEditor();
+        },
+      });
     return items;
   }
   // "Farbe" (#238): text or background colour of the blocks, ten each.

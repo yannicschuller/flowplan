@@ -1,0 +1,246 @@
+/* The tabs block (#272, lib/tabs-block.ts, lib/tabs-view.ts).
+   Stored, published and exported: every tab one after another with its
+   title as a heading. In the editor: a tab strip and one tab at a time. */
+.editor-tabs {
+  margin: 18px 0;
+}
+.editor-tab {
+  margin: 0;
+}
+.editor-tab + .editor-tab {
+  margin-top: 14px;
+}
+/* Read-only and published pages: the tabs one after another, each with its
+   title and a line on the side. */
+.editor-tabs > .editor-tab {
+  padding-inline-start: 14px;
+  border-inline-start: 2px solid var(--border);
+}
+.editor-tab-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+.editor-tab-body > :first-child {
+  margin-top: 0;
+}
+.editor-tab-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* The editor: strip above, the tab shown below. */
+.editor-tabs:has(> .tabs-strip) {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.tabs-strip {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 4px 0;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tabs-list {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.tabs-strip button {
+  margin: 0;
+  font: inherit;
+  box-shadow: none;
+}
+.tabs-tab {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  max-width: 240px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.tabs-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabs-tab-label.untitled {
+  font-style: italic;
+}
+.tabs-tab:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.tabs-tab.active {
+  color: var(--text);
+  font-weight: 600;
+}
+.tabs-tab.active::after {
+  content: "";
+  position: absolute;
+  inset-inline: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--blue);
+}
+.tabs-strip button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.tabs-tab.dragging {
+  opacity: 0.5;
+}
+.tabs-tab.drop-before {
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+.tabs-tab.drop-after {
+  box-shadow: inset -2px 0 0 var(--blue);
+}
+.tabs-rename {
+  flex: none;
+  align-self: center;
+  height: 28px;
+  margin: 0 2px;
+  padding: 0 8px;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.tabs-add,
+.tabs-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-height: 30px;
+  align-self: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tabs-add:hover,
+.tabs-more:hover,
+.tabs-more[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--hover);
+}
+.tabs-add[hidden],
+.tabs-more[hidden] {
+  display: none;
+}
+.tabs-menu {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: grid;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.tabs-menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  text-align: start;
+  cursor: pointer;
+}
+.tabs-menu button:hover,
+.tabs-menu button:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.tabs-menu button.danger {
+  color: var(--danger, #b42318);
+}
+.tabs-menu button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+.tabs-panels {
+  padding: 8px 14px 10px;
+}
+/* In the editor the title is in the strip; only the tab shown is there. */
+.tabs-panels > .editor-tab {
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.tabs-panels > .editor-tab > .editor-tab-title,
+.tabs-panels > .editor-tab-hidden {
+  display: none;
+}
+@media (pointer: coarse) {
+  .tabs-tab {
+    min-height: 40px;
+  }
+  .tabs-add,
+  .tabs-more {
+    width: 40px;
+    min-height: 40px;
+  }
+}
+
+/* Printed (and "Save as PDF" from the editor): every tab with its title,
+   no strip. */
+@media print {
+  .editor-tabs:has(> .tabs-strip) {
+    border: 0;
+    background: none;
+  }
+  .tabs-strip {
+    display: none;
+  }
+  .tabs-panels {
+    padding: 0;
+  }
+  .tabs-panels > .editor-tab-hidden {
+    display: block;
+  }
+  .tabs-panels > .editor-tab {
+    padding-inline-start: 14px;
+    border-inline-start: 2px solid #ccc;
+  }
+  .tabs-panels > .editor-tab + .editor-tab {
+    margin-top: 14px;
+  }
+  .tabs-panels > .editor-tab > .editor-tab-title {
+    display: block;
+  }
+  .editor-tab {
+    break-inside: auto;
+  }
+  .editor-tab-title {
+    break-after: avoid;
+  }
+}

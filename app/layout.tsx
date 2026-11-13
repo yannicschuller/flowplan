@@ -22,6 +22,7 @@ import "./workspace-look.css";
 import "./link-rules.css";
 import "./print-options.css";
 import "./page-icon-inline.css";
+import "./tabs-block.css";
 import "./whats-new.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";

@@ -2,6 +2,7 @@
 // view (lib/export-pdf.ts). Walks the ProseMirror tree of the sanitised HTML
 // (lib/export-content.ts), so every block gets a plain, self-contained form:
 // no scripts, no app classes, pictures where the context allows them.
+import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
 import { STATUS_BOX, taskStatusOf, taskSymbolOf } from "./task-status";
@@ -300,6 +301,12 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         let result = "";
         node.forEach((column) => (result += `<div class="column">${children(column)}</div>`));
         return `<div class="columns">${result}</div>`;
+      }
+      // Tabs (#272): every tab one after another, its title as a heading.
+      case "tabs": {
+        let result = "";
+        node.forEach((tab) => (result += `<section class="tab"><h4 class="tab-title">${xml(tabTitle(tab.attrs.title))}</h4>${children(tab)}</section>`));
+        return `<div class="tabs">${result}</div>`;
       }
       case "whiteboardEmbed": {
         const board = context.whiteboard?.(String(node.attrs.pageId || ""));

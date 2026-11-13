@@ -108,7 +108,7 @@ export async function ensureBlockIds(user: Identity, pageId: string, rowId: stri
   }
 }
 
-const CONTAINERS = ["bulletList", "orderedList", "taskList", "blockquote", "callout", "toggle", "columns"];
+const CONTAINERS = ["bulletList", "orderedList", "taskList", "blockquote", "callout", "toggle", "columns", "tabs"];
 export type BlockHit = { pageId: string; pageTitle: string; blockId: string | null; index: number; text: string; level: number | null };
 // "@" in the editor: headings and blocks of other pages that match. "Page ›
 // Heading" (or "Page#Heading") searches the headings of the pages whose

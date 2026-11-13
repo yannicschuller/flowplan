@@ -79,6 +79,8 @@ ${listLevelCss(".print-book")}
 .print-book .page-break { break-after: page; page-break-after: always; height: 0; margin: 0; border: 0; }
 .print-book .columns { display: flex; gap: 1.5em; }
 .print-book .columns .column { flex: 1; min-width: 0; }
+.print-book .tabs .tab { margin: 1em 0; padding-left: 1em; border-left: 2px solid #ccc; }
+.print-book .tab-title { margin: 0 0 0.4em; font-size: 11pt; font-family: Helvetica, Arial, sans-serif; break-after: avoid; page-break-after: avoid; }
 .print-book .placeholder, .print-book .media, .print-book .linked-database, .print-book .whiteboard { color: #555; font-style: italic; }
 .print-book .footnotes { margin-top: 2em; padding-top: 0.5em; border-top: 1px solid #ccc; font-size: 9pt; }
 .print-book .footnotes a::after { content: none; }

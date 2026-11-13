@@ -35,6 +35,7 @@ const names: Record<string, string> = {
   mermaidBlock: tr("Diagramm", "Diagram"),
   drawioBlock: tr("draw.io-Diagramm", "draw.io diagram"),
   columns: tr("Spalten", "Columns"),
+  tabs: tr("Tabs", "Tabs"),
   media: tr("Medium", "Media"),
   linkedDatabase: tr("Verknüpfte Datenbank", "Linked database"),
   horizontalRule: tr("Trennlinie", "Divider"),
@@ -44,7 +45,7 @@ const names: Record<string, string> = {
 // Containers without a handle of their own: a column belongs to its
 // layout, the parts of a meeting (#252) to the meeting – their blocks keep
 // their handles.
-const WITHOUT_HANDLE = ["column", "meetingSummary", "meetingAgenda", "meetingTranscript"];
+const WITHOUT_HANDLE = ["column", "tab", "meetingSummary", "meetingAgenda", "meetingTranscript"];
 // The kind of a block in words ("Aufgabenliste"), for the heading of its
 // menu (#253): a list item by its list, as the list is what one turns into.
 export function blockTypeName(node: Node, parent?: Node | null) {
@@ -72,6 +73,8 @@ export function documentBlocks(doc: Node): DocumentBlock[] {
         // A toggle by its title (its content may be closed), a meeting too.
         const text = String(
           (["toggle", "meeting"].includes(node.type.name) && node.attrs.title) ||
+            // Tabs by their titles (one tab shows at a time).
+            (node.type.name === "tabs" && Array.from({ length: node.childCount }, (_, i) => node.child(i).attrs.title).filter(Boolean).join(" · ")) ||
             node.textContent ||
             node.attrs.title ||
             node.attrs.expression ||

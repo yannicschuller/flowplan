@@ -13,6 +13,7 @@ export const DROP_CONTAINERS = [
   "callout",
   "blockquote",
   "column",
+  "tab",
 ];
 export function dropContainer(doc: Node, target: number): { pos: number; node: Node } | null {
   if (target < 0 || target > doc.content.size) return null;

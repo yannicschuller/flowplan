@@ -8,6 +8,7 @@
 // {info} {tip} {note} {warning}, toggles and meetings as {panel}, ----.
 // Text is escaped so that it shows as typed. Links and pictures keep
 // absolute addresses of this instance (Jira cannot reach the files).
+import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { audit } from "./db";
 import { calloutType, type CalloutType } from "./document-schema";
@@ -362,6 +363,12 @@ export function documentJira(html: string, context: TextExportContext): string {
         const parts: string[] = [];
         node.forEach((column) => parts.push(children(column)));
         return parts.filter(Boolean).join("\n\n");
+      }
+      // Tabs (#272): each tab's title as a heading, its content below.
+      case "tabs": {
+        const parts: string[] = [];
+        node.forEach((tab) => parts.push([`h4. ${jiraText(tabTitle(tab.attrs.title))}`, children(tab)].filter(Boolean).join("\n\n")));
+        return parts.join("\n\n");
       }
       case "whiteboardEmbed": {
         const board = context.whiteboard?.(String(node.attrs.pageId || ""));

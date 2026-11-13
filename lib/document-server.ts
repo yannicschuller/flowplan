@@ -116,6 +116,10 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-mention",
         "data-columns",
         "data-column",
+        // The tabs block (#272, lib/tabs-block.ts).
+        "data-tabs",
+        "data-tab",
+        "data-tab-body",
         "data-link-card",
         "data-link-title",
         "data-link-provider",

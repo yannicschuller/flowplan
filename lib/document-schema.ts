@@ -44,6 +44,7 @@ import { BlockColorAttribute } from "./block-colors";
 import { ListTidy, TabStaysInText } from "./list-tidy";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { blockFigcaption, captionAttribute, captionText } from "./block-captions";
+import { Tab, Tabs } from "./tabs-block";
 export const IMAGE_ALIGNS = ["center", "right"] as const;
 export const imageAlign = (value: unknown): (typeof IMAGE_ALIGNS)[number] | null =>
   IMAGE_ALIGNS.includes(value as (typeof IMAGE_ALIGNS)[number]) ? (value as (typeof IMAGE_ALIGNS)[number]) : null;
@@ -1039,4 +1040,4 @@ export const LinkCard = Node.create({
     ];
   },
 });
-documentExtensions.push(Mention, Columns, Column, Media, LinkCard, Citation, Bibliography, ...meetingExtensions);
+documentExtensions.push(Mention, Columns, Column, Tabs, Tab, Media, LinkCard, Citation, Bibliography, ...meetingExtensions);
