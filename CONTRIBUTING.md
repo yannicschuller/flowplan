@@ -28,6 +28,22 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 - Update the documentation ([flowplan-docs](https://github.com/yannicschuller/flowplan-docs)) when behaviour changes.
 - New UI strings are written in German and English side by side (`t("Anmelden", "Sign in")`). Run `npm run i18n` afterwards: it adds them to the catalogues in `locales/`, where further languages (French and Simplified Chinese so far) translate the English text; missing translations show in English.
 
+## UI gallery
+
+`npm run gallery` puts every page, dialog, menu and popover of the app on one local HTML page – desktop and phone, light and dark – to spot quickly where something does not fit. It starts the production build with an empty data directory (built once with `npm run build` if there is none; `--build` rebuilds), seeds an account with example content like the visual tests, clicks through the scenes in `scripts/gallery/scenes.ts` with Playwright and writes `gallery-out/index.html` (git-ignored; open it in the browser or pass `--open`). Nothing of it is served by the app.
+
+| Flag | |
+| --- | --- |
+| `--only <text>` | Scenes whose id, title or group contains the text (repeatable, comma-separated), e.g. `--only dialogs,record` |
+| `--desktop`, `--phone`, `--light`, `--dark` | Only these variants (default all four) |
+| `--concurrency <n>` | Scenes in parallel (default 4) |
+| `--out <dir>` | Output directory (default `gallery-out/`) |
+| `--url <origin>` (or `--dev`) | A running server, e.g. `npm run dev`, instead of the build; signs up a new account there (sign-up must be open; the admin scenes need the first account) |
+| `--serve`, `--session <file>` | `--serve` starts and seeds a server and waits; other runs reuse it with `--session gallery-out/session.json` – quick while writing a scene |
+| `--list` | List the scenes |
+
+The page filters by text and group, shows one variant or all four side by side, and opens a screenshot full size (← → to step through). A scene that fails does not stop the run: its tile is red with the error and shows what was on screen. Each scene is `{ id, group, title, path, steps }` – `steps` clicks its way there with the same accessible locators as `tests/browser` – and names the component files it shows in `covers`. `tests/gallery-coverage.test.ts` fails when a component renders a dialog, menu or popover (`<Modal>`, `role="dialog"`/`"menu"`) that neither a scene covers nor `scripts/gallery/uncovered.json` lists: add a scene for a new dialog, or list it there.
+
 ## Translations
 
 Every language beyond German and English is a JSON catalogue in `locales/`, keyed by the English text. To add one, run `npm run i18n -- --add it`, translate `locales/it.json` (by hand or with any tool that reads JSON key-value files, using `locales/en.json` as the source) and register the language in `lib/i18n.ts` and `lib/i18n-catalogs.ts`. Keep placeholders like `{0}` and HTML tags unchanged; `npm run i18n -- --check` reports progress and broken placeholders. Details: [Languages and translations](https://docs.flowplan.org/languages).

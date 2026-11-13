@@ -8,3 +8,4 @@ test-results/
 *.tsbuildinfo
 __pycache__/
 extensions/browser/dist/
+gallery-out/
