@@ -39,7 +39,18 @@ const names: Record<string, string> = {
   linkedDatabase: tr("Verknüpfte Datenbank", "Linked database"),
   horizontalRule: tr("Trennlinie", "Divider"),
   pageBreak: tr("Seitenumbruch", "Page break"),
+  meeting: tr("Besprechung", "Meeting"),
 };
+// Containers without a handle of their own: a column belongs to its
+// layout, the parts of a meeting (#252) to the meeting – their blocks keep
+// their handles.
+const WITHOUT_HANDLE = ["column", "meetingSummary", "meetingAgenda", "meetingTranscript"];
+// The kind of a block in words ("Aufgabenliste"), for the heading of its
+// menu (#253): a list item by its list, as the list is what one turns into.
+export function blockTypeName(node: Node, parent?: Node | null) {
+  const name = ["listItem", "taskItem"].includes(node.type.name) && parent ? parent.type.name : node.type.name;
+  return names[name] || names[node.type.name] || name;
+}
 export function documentBlocks(doc: Node): DocumentBlock[] {
   const blocks: DocumentBlock[] = [];
   // Diagrams are named after the heading above them, not their source.
@@ -57,10 +68,10 @@ export function documentBlocks(doc: Node): DocumentBlock[] {
         index === 0 &&
         node.type.name === "paragraph" &&
         ["listItem", "taskItem"].includes(parent.type.name);
-      if (node.type.name !== "column" && !firstListParagraph) {
-        // A toggle by its title (its content may be closed).
+      if (!WITHOUT_HANDLE.includes(node.type.name) && !firstListParagraph) {
+        // A toggle by its title (its content may be closed), a meeting too.
         const text = String(
-          (node.type.name === "toggle" && node.attrs.title) ||
+          (["toggle", "meeting"].includes(node.type.name) && node.attrs.title) ||
             node.textContent ||
             node.attrs.title ||
             node.attrs.expression ||

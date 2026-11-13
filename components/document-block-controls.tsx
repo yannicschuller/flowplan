@@ -66,6 +66,7 @@ import {
   changeBlocks,
   columnBlocks,
   documentBlocks,
+  blockTypeName,
   hasLinkedBlocks,
   MAX_COLUMNS,
   type DocumentBlock,
@@ -76,7 +77,7 @@ import {
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { nestBlocks } from "@/lib/toggle-nesting";
-import { markToggleScope, toggleKey } from "@/lib/toggle-view";
+import { isToggleClosed, markToggleScope, toggleKey } from "@/lib/toggle-view";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType, toggleHeading } from "@/lib/document-schema";
 import {
@@ -118,13 +119,35 @@ const parseFromClipboard = (pmView as unknown as {
 // The glide a handle plays with its block, by handle.
 const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
 // Boxes whose first line is the first line of their content (a toggle has a
-// title line of its own).
-const BOXES = ["callout", "blockquote"];
+// title line of its own); their blocks take the pointer only right of the
+// box's handle. A meeting (#252) too: its handle sits at its header.
+const BOXES = ["callout", "blockquote", "meeting"];
+// A block inside a closed toggle has no handle (#252): Chrome still lays out
+// the content of a closed <details> and reports its rectangles, so the
+// handle of a hidden block showed up over the visible blocks below. Closed
+// is the toggle's state (also restored after a reload) or its element.
+function inClosedToggle(editor: Editor, pos: number) {
+  const $pos = editor.state.doc.resolve(pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    if ($pos.node(d).type.name !== "toggle") continue;
+    const at = $pos.before(d);
+    if (isToggleClosed(editor.state, at)) return true;
+    const dom = editor.view.nodeDOM(at);
+    if (dom instanceof HTMLElement && ((dom instanceof HTMLDetailsElement && !dom.open) || dom.classList.contains("toggle-closed"))) return true;
+  }
+  return false;
+}
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
 function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect, dom: HTMLElement) {
   // A toggle: the line of its title (its content may be closed).
-  const summary = block.node.type.name === "toggle" ? dom.querySelector(":scope > summary") : null;
+  // A meeting (#252): the row of its title, not the first line of its summary.
+  const summary =
+    block.node.type.name === "toggle"
+      ? dom.querySelector(":scope > summary")
+      : block.node.type.name === "meeting"
+        ? dom.querySelector(".meeting-head-row") || dom.querySelector(".meeting-title")
+        : null;
   if (summary) {
     const line = summary.getBoundingClientRect();
     if (line.height) return line.top + Math.min(line.height, 28) / 2;
@@ -286,6 +309,7 @@ export function DocumentBlockControls({
       };
       const origin = host.getBoundingClientRect();
       const next = documentBlocks(editor.state.doc).flatMap((b) => {
+        if (inClosedToggle(editor, b.pos)) return [];
         const dom = editor.view.nodeDOM(b.pos);
         if (!(dom instanceof HTMLElement)) return [];
         const rect = dom.getBoundingClientRect();
@@ -1716,6 +1740,14 @@ export function DocumentBlockControls({
     };
     return views;
   }
+  // The kind of the chosen block over its menu (#253), or how many.
+  function menuHeading() {
+    const count = selected.current.length;
+    if (count > 1) return t(`${count} Blöcke`, `${count} blocks`);
+    const only = count === 1 ? byPos.get(selected.current[0]) : undefined;
+    if (!only || !editor) return undefined;
+    return blockTypeName(only.node, editor.state.doc.resolve(only.pos).parent);
+  }
   // The text of a block (its first text block), for comments and the AI.
   function textRange(block: DocumentBlock) {
     let from = block.pos + 1,
@@ -2083,6 +2115,9 @@ export function DocumentBlockControls({
           key={`${menu.view}-${menu.anchor.top}-${menu.anchor.left}`}
           searchable={menu.view === "main"}
           flyouts
+          // Left of the handle (#253), right of it for right-to-left blocks.
+          placement={menu.handle?.classList.contains("rtl") ? "beside" : "before"}
+          heading={menuHeading()}
           anchor={menu.anchor}
           views={menuViews()}
           initial={menu.view}

@@ -8,6 +8,7 @@ import {
   changeBlocks,
   adjacentBlockTarget,
   selectedDocumentBlock,
+  blockTypeName,
   BLOCK_SELECTION_META,
 } from "../lib/document-blocks";
 const schema = documentSchema();
@@ -315,4 +316,36 @@ test("drops by level (#239): into the end of a list item as its child, and copie
   const copiedItem = changeBlocks(s, [two.pos], "copy", s.doc.content.size);
   assert.equal(copiedItem.doc.lastChild!.type.name, "bulletList", "a copied item stays an item of its kind");
   assert.equal(copiedItem.doc.firstChild!.childCount, 3, "the original list keeps it");
+});
+test("the meeting block (#252): one handle for the whole block, none for its parts, its inner blocks keep theirs", () => {
+  const meeting = schema.nodes.meeting.create(
+    { meetingId: "00000000-0000-4000-8000-000000000001", title: "Wochentermin" },
+    [
+      schema.nodes.meetingSummary.create(null, [schema.nodes.heading.create({ level: 3 }, schema.text("Aufgaben")), p("Budget umsetzen")]),
+      schema.nodes.meetingAgenda.create(null, p("Budget")),
+      schema.nodes.meetingTranscript.create(null, schema.nodes.meetingSegment.create({ sid: "s1" }, schema.text("Hallo"))),
+    ],
+  );
+  const s = state(p("Davor"), meeting, p("Danach"));
+  const blocks = documentBlocks(s.doc);
+  const names = blocks.map((b) => b.node.type.name);
+  for (const part of ["meetingSummary", "meetingAgenda", "meetingTranscript"]) assert.ok(!names.includes(part), part);
+  assert.ok(names.includes("heading"));
+  const block = blocks.find((b) => b.node.type.name === "meeting")!;
+  assert.match(block.label, /^(Besprechung|Meeting) · Wochentermin$/);
+  // The whole block moves, duplicates and goes as one.
+  const moved = s.apply(changeBlocks(s, [block.pos], "move", s.doc.content.size));
+  assert.equal(moved.doc.lastChild!.type.name, "meeting");
+  const removed = s.apply(changeBlocks(s, [block.pos], "delete"));
+  assert.deepEqual(
+    Array.from({ length: removed.doc.childCount }, (_, i) => removed.doc.child(i).type.name),
+    ["paragraph", "paragraph"],
+  );
+});
+test("the heading of a block menu (#253) names the kind of block, a list item by its list", () => {
+  const tasks = schema.nodes.taskList.create(null, schema.nodes.taskItem.create(null, p("Offen")));
+  assert.match(blockTypeName(tasks.firstChild!, tasks), /^(Aufgabenliste|Task list)$/);
+  const bullets = list("One");
+  assert.match(blockTypeName(bullets.firstChild!, bullets), /^(Aufzählung|Bulleted list)$/);
+  assert.match(blockTypeName(p("x")), /^(Absatz|Paragraph)$/);
 });

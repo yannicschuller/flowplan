@@ -10263,6 +10263,17 @@ details[data-heading] > summary {
   font-weight: 600;
   color: var(--muted);
 }
+/* The kind of block over its menu (#253), right below the search field. */
+.block-menu-kind {
+  padding-top: 0;
+}
+/* With a mouse the rows of the block menu sit a little closer (#253, about
+   28 px); touch keeps the roomier rows. */
+@media (hover: hover) and (pointer: fine) {
+  .block-menu .block-menu-item {
+    padding-block: 6px;
+  }
+}
 .block-menu-shortcut {
   flex: none;
   margin-inline-start: auto;
