@@ -9942,15 +9942,15 @@ tr.order-drop-after > td {
   background: var(--hover);
   color: var(--text);
 }
-/* Only where it is wanted (#138): the block under the mouse, the block with
-   the caret – or every block (Settings › Appearance › Editor, "Always show
+/* Only where it is wanted (#138): the block under the mouse – not the block
+   with the caret while typing (#255, like Notion; on touch screens it is,
+   below) – or every block (Settings › Appearance › Editor, "Always show
    block handles"). A handle reached by keyboard always shows, with a ring. */
 .always-handles .document-block-handle {
   opacity: 0.25;
   transition: none;
 }
-.document-block-handle.hovered,
-.document-block-handle.active {
+.document-block-handle.hovered {
   opacity: 1;
 }
 .document-block-handle:hover,
@@ -10024,13 +10024,33 @@ tr.order-drop-after > td {
   z-index: 3;
   pointer-events: none;
 }
+/* The block that receives the drop (#255): the list item, list, toggle,
+   callout, quote or column, lightly tinted; it moves with the line. */
+:root {
+  --drop-container: color-mix(in srgb, var(--blue) 7%, transparent);
+}
+[data-theme="dark"] {
+  --drop-container: color-mix(in srgb, var(--blue) 15%, transparent);
+}
+.document-block-drop-container {
+  position: absolute;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  box-sizing: content-box;
+  border-radius: 6px;
+  background: var(--drop-container);
+  transition: top 0.08s ease-out, left 0.08s ease-out, width 0.08s ease-out, height 0.08s ease-out;
+  z-index: 1;
+  pointer-events: none;
+}
 /* ⌥ while dragging: a copy lands, the cursor says so. */
 .dragging-blocks-copy,
 .dragging-blocks-copy * {
   cursor: copy !important;
 }
 @media (prefers-reduced-motion: reduce) {
-  .document-block-drop {
+  .document-block-drop,
+  .document-block-drop-container {
     transition: none;
   }
 }
@@ -10262,6 +10282,17 @@ details[data-heading] > summary {
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
+}
+/* The kind of block over its menu (#253), right below the search field. */
+.block-menu-kind {
+  padding-top: 0;
+}
+/* With a mouse the rows of the block menu sit a little closer (#253, about
+   28 px); touch keeps the roomier rows. */
+@media (hover: hover) and (pointer: fine) {
+  .block-menu .block-menu-item {
+    padding-block: 6px;
+  }
 }
 .block-menu-shortcut {
   flex: none;

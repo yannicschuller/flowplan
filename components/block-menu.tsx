@@ -6,6 +6,11 @@
 // meeting block's settings, #229): placed below their button, with a value
 // beside an entry, entries that stay open (switches) and levels with a form.
 //
+// The block menu of a handle opens left of it (#253, "before"), like Notion:
+// over the page margin, not over the block; its flyouts open further left,
+// or over the menu where there is no room. Only where the menu itself has
+// no room left of the handle it goes right.
+//
 // The block menu itself (#238) has a search field over all its entries
 // (typing filters, ↵ runs the first hit) and, with a mouse, opens its
 // levels as flyouts beside the entry instead of in place; on phones the
@@ -83,6 +88,7 @@ export function BlockMenu({
   className = "",
   searchable = false,
   flyouts = false,
+  heading,
 }: {
   // The handle (or button) the menu belongs to, in window coordinates.
   anchor: DOMRect;
@@ -92,8 +98,10 @@ export function BlockMenu({
   owner?: HTMLElement | null;
   onClose: (reason?: BlockMenuClose) => void;
   // "below": under the button, its right edges aligned (above it when there
-  // is no room below), following it when the page scrolls.
-  placement?: "beside" | "below";
+  // is no room below), following it when the page scrolls. "beside": right
+  // of the anchor (left without room); "before": left of it (right without
+  // room), its flyouts opening further left.
+  placement?: "beside" | "before" | "below";
   // The menu's name on every level, when it differs from the titles.
   label?: string;
   className?: string;
@@ -101,6 +109,9 @@ export function BlockMenu({
   searchable?: boolean;
   // Levels as flyouts beside their entry (not on phones).
   flyouts?: boolean;
+  // A small heading over the entries of the first level (the kind of
+  // block, #253); not on phones, where the sheet has its title.
+  heading?: string;
 }) {
   const t = useT();
   const phone = usePhone();
@@ -113,7 +124,7 @@ export function BlockMenu({
   const menu = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const hoverTimer = useRef(0);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  const [place, setPlace] = useState<{ left: number; top: number; leftward?: boolean } | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
   const side = flyouts && !phone;
@@ -138,11 +149,14 @@ export function BlockMenu({
         setPlace({ left, top: Math.max(8 + safe.top, top) });
         return;
       }
-      let left = anchor.right + 6;
-      if (left + width > window.innerWidth - 8 - safe.right) left = anchor.left - width - 6;
-      left = Math.max(8 + safe.left, left);
+      const right = anchor.right + 6,
+        before = anchor.left - width - 6;
+      const fitsRight = right + width <= window.innerWidth - 8 - safe.right,
+        fitsLeft = before >= 8 + safe.left;
+      const leftward = placement === "before" ? fitsLeft || !fitsRight : !fitsRight;
+      const left = Math.max(8 + safe.left, leftward ? before : right);
       const top = Math.max(8 + safe.top, Math.min(anchor.top - 4, window.innerHeight - height - 8 - safe.bottom));
-      setPlace({ left, top });
+      setPlace({ left, top, leftward });
     };
     position();
     if (placement !== "below") return;
@@ -423,6 +437,11 @@ export function BlockMenu({
         style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0 }}
       >
         {!back && searchField}
+        {!back && heading && !searching && (
+          <div className="block-menu-heading block-menu-kind" role="presentation">
+            {heading}
+          </div>
+        )}
         {back && (
           <button type="button" className="block-menu-back" onClick={back}>
             <CaretLeft size={13} aria-hidden />
@@ -439,7 +458,7 @@ export function BlockMenu({
           if (!level) return null;
           return (
             <Fragment key={`${index}-${flyout.view}`}>
-              <Flyout entry={flyout.entry} level={index + 1} title={level.title} className={className} onKeyDown={keys(index + 1, closeFlyout(index + 1))}>
+              <Flyout entry={flyout.entry} leftward={!!place?.leftward} level={index + 1} title={level.title} className={className} onKeyDown={keys(index + 1, closeFlyout(index + 1))}>
                 {items(level.items, flyout.view, index + 1)}
                 {level.note && <p className="block-menu-note">{level.note}</p>}
               </Flyout>
@@ -450,9 +469,12 @@ export function BlockMenu({
   );
 }
 
-// A level beside its entry: right of it, or left where there is no room.
+// A level beside its entry: right of it, or left where there is no room –
+// left first when the menu opened left of its anchor (#253), and over the
+// menu where there is no room left of it either.
 function Flyout({
   entry,
+  leftward,
   level,
   title,
   className,
@@ -460,6 +482,7 @@ function Flyout({
   children,
 }: {
   entry: DOMRect;
+  leftward: boolean;
   level: number;
   title: string;
   className: string;
@@ -467,19 +490,32 @@ function Flyout({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  const [place, setPlace] = useState<{ left: number; top: number; maxHeight?: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const safe = safeInsets();
     const width = el.offsetWidth,
       height = el.offsetHeight;
-    let left = entry.right + 4;
-    if (left + width > window.innerWidth - 8 - safe.right) left = entry.left - width - 4;
-    left = Math.max(8 + safe.left, left);
-    const top = Math.max(8 + safe.top, Math.min(entry.top - 6, window.innerHeight - height - 8 - safe.bottom));
-    setPlace({ left, top });
-  }, [entry]);
+    const right = entry.right + 4,
+      before = entry.left - width - 4;
+    const fitsRight = right + width <= window.innerWidth - 8 - safe.right,
+      fitsLeft = before >= 8 + safe.left;
+    const bottom = window.innerHeight - 8 - safe.bottom;
+    const beside = (left: number) =>
+      setPlace({ left: Math.max(8 + safe.left, left), top: Math.max(8 + safe.top, Math.min(entry.top - 6, bottom - height)) });
+    if (!leftward) return beside(fitsRight ? right : before);
+    if (fitsLeft) return beside(before);
+    // A menu left of its handle without room further left (#253): the
+    // level opens over the menu, not over the block – below its entry,
+    // which stays visible (scrolling when the window is short), or, with
+    // too little room below, at the menu's right edge beside the start of
+    // the entry.
+    const below = entry.bottom + 2;
+    if (bottom - below >= Math.min(height, 200))
+      return setPlace({ left: Math.max(8 + safe.left, entry.left - 4), top: below, maxHeight: bottom - below });
+    beside(entry.right + 4 - width);
+  }, [entry, leftward]);
   return (
     <div
       ref={ref}
@@ -489,7 +525,7 @@ function Flyout({
       role="menu"
       aria-label={title}
       tabIndex={-1}
-      style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0 }}
+      style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0, maxHeight: place?.maxHeight }}
     >
       <div className="block-menu-items" onKeyDown={onKeyDown}>
         {children}

@@ -66,6 +66,7 @@ import {
   changeBlocks,
   columnBlocks,
   documentBlocks,
+  blockTypeName,
   hasLinkedBlocks,
   MAX_COLUMNS,
   type DocumentBlock,
@@ -76,8 +77,9 @@ import {
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { nestBlocks } from "@/lib/toggle-nesting";
-import { markToggleScope, toggleKey } from "@/lib/toggle-view";
+import { isToggleClosed, markToggleScope, toggleKey } from "@/lib/toggle-view";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
+import { dropContainer } from "@/lib/drop-container";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType, toggleHeading } from "@/lib/document-schema";
 import {
   CALLOUT_COLORS,
@@ -108,6 +110,9 @@ type Positioned = DocumentBlock & {
   // the box, so its handle sits closer to its text, inside the box's
   // padding, and it has no "+" (that place is the box's handle).
   boxed: boolean;
+  // A paragraph or heading indented with Tab (#246): how far its text
+  // starts from its edge; the handle sits there (#255).
+  indent: number;
 };
 // ProseMirror's own reading of pasted HTML and text (what a paste in the
 // editor does), for pasting copied blocks after chosen ones (#237). Exported
@@ -118,13 +123,35 @@ const parseFromClipboard = (pmView as unknown as {
 // The glide a handle plays with its block, by handle.
 const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
 // Boxes whose first line is the first line of their content (a toggle has a
-// title line of its own).
-const BOXES = ["callout", "blockquote"];
+// title line of its own); their blocks take the pointer only right of the
+// box's handle. A meeting (#252) too: its handle sits at its header.
+const BOXES = ["callout", "blockquote", "meeting"];
+// A block inside a closed toggle has no handle (#252): Chrome still lays out
+// the content of a closed <details> and reports its rectangles, so the
+// handle of a hidden block showed up over the visible blocks below. Closed
+// is the toggle's state (also restored after a reload) or its element.
+function inClosedToggle(editor: Editor, pos: number) {
+  const $pos = editor.state.doc.resolve(pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    if ($pos.node(d).type.name !== "toggle") continue;
+    const at = $pos.before(d);
+    if (isToggleClosed(editor.state, at)) return true;
+    const dom = editor.view.nodeDOM(at);
+    if (dom instanceof HTMLElement && ((dom instanceof HTMLDetailsElement && !dom.open) || dom.classList.contains("toggle-closed"))) return true;
+  }
+  return false;
+}
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
 function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect, dom: HTMLElement) {
   // A toggle: the line of its title (its content may be closed).
-  const summary = block.node.type.name === "toggle" ? dom.querySelector(":scope > summary") : null;
+  // A meeting (#252): the row of its title, not the first line of its summary.
+  const summary =
+    block.node.type.name === "toggle"
+      ? dom.querySelector(":scope > summary")
+      : block.node.type.name === "meeting"
+        ? dom.querySelector(".meeting-head-row") || dom.querySelector(".meeting-title")
+        : null;
   if (summary) {
     const line = summary.getBoundingClientRect();
     if (line.height) return line.top + Math.min(line.height, 28) / 2;
@@ -241,11 +268,14 @@ export function DocumentBlockControls({
       editor.off("focus", focus);
     };
   }, [editor]);
+  type Box = { top: number; left: number; width: number; height: number };
   const [drop, setDrop] = useState<{
     top: number;
     left: number;
     width: number;
     height?: number;
+    // The block that receives the drop, tinted (#255).
+    container?: Box | null;
   } | null>(null);
   useEffect(() => {
     if (!editor || !surface.current) return;
@@ -286,6 +316,7 @@ export function DocumentBlockControls({
       };
       const origin = host.getBoundingClientRect();
       const next = documentBlocks(editor.state.doc).flatMap((b) => {
+        if (inClosedToggle(editor, b.pos)) return [];
         const dom = editor.view.nodeDOM(b.pos);
         if (!(dom instanceof HTMLElement)) return [];
         const rect = dom.getBoundingClientRect();
@@ -312,6 +343,7 @@ export function DocumentBlockControls({
             height: rect.height,
             handleTop: firstLineCenter(editor, b, rect, dom) - origin.top - 14 - dy,
             glide: glide?.animation,
+            indent: b.node.attrs.indent ? parseFloat(getComputedStyle(dom).paddingInlineStart) || 0 : 0,
             boxed: (() => {
               const $pos = editor.state.doc.resolve(b.pos);
               for (let d = $pos.depth; d > 0; d--) if (BOXES.includes($pos.node(d).type.name)) return true;
@@ -455,6 +487,18 @@ export function DocumentBlockControls({
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+  // Where the receiving block of a drop is on the surface (#255).
+  function containerBox(target: number): Box | null {
+    const host = surface.current;
+    if (!editor || !host) return null;
+    const found = dropContainer(editor.state.doc, target);
+    const dom = found && editor.view.nodeDOM(found.pos);
+    if (!(dom instanceof HTMLElement)) return null;
+    const rect = dom.getBoundingClientRect(),
+      origin = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return { top: rect.top - origin.top, left: rect.left - origin.left, width: rect.width, height: rect.height };
   }
   function locate(clientX: number, clientY: number) {
     const drag = dragging.current,
@@ -618,7 +662,7 @@ export function DocumentBlockControls({
       const placed = place(candidate);
       if (!placed) continue;
       drag.target = placed.target;
-      setDrop({ top: placed.top, left: placed.left, width: placed.width });
+      setDrop({ top: placed.top, left: placed.left, width: placed.width, container: containerBox(placed.target) });
       return;
     }
     drag.target = undefined;
@@ -1716,6 +1760,14 @@ export function DocumentBlockControls({
     };
     return views;
   }
+  // The kind of the chosen block over its menu (#253), or how many.
+  function menuHeading() {
+    const count = selected.current.length;
+    if (count > 1) return t(`${count} Blöcke`, `${count} blocks`);
+    const only = count === 1 ? byPos.get(selected.current[0]) : undefined;
+    if (!only || !editor) return undefined;
+    return blockTypeName(only.node, editor.state.doc.resolve(only.pos).parent);
+  }
   // The text of a block (its first text block), for comments and the AI.
   function textRange(block: DocumentBlock) {
     let from = block.pos + 1,
@@ -1869,11 +1921,19 @@ export function DocumentBlockControls({
       if (under && under.pos !== hoverRef.current) setHovered(under.pos);
     };
     const leave = () => hoverRef.current !== null && setHovered(null);
+    // Typing hides the handle (#255, like Notion) until the mouse moves again.
+    const typing = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || ["Shift", "Control", "Alt", "Meta", "CapsLock", "Escape", "Tab"].includes(event.key)) return;
+      leave();
+    };
+    const dom = editor.view.dom;
     window.addEventListener("pointermove", move, { passive: true });
     document.documentElement.addEventListener("pointerleave", leave);
+    dom.addEventListener("keydown", typing);
     return () => {
       window.removeEventListener("pointermove", move);
       document.documentElement.removeEventListener("pointerleave", leave);
+      dom.removeEventListener("keydown", typing);
     };
   }, [editor, picking]);
   // "+" (#236): an empty block below the block (⌥/Alt: above) with the "/"
@@ -1959,7 +2019,7 @@ export function DocumentBlockControls({
                       data-block-pos={block.pos}
                       className={`document-block-pick${on ? " checked" : ""}`}
                       style={{
-                        left: block.rtl ? block.right + 2 : Math.max(0, block.left - 25),
+                        left: block.rtl ? block.right - block.indent + 2 : Math.max(0, block.left + block.indent - 25),
                         top: block.handleTop,
                       }}
                       aria-label={block.label}
@@ -1981,7 +2041,7 @@ export function DocumentBlockControls({
                 // Placed at the edge of the text; the gap to it is the
                 // stylesheet's (wider with a mouse than on touch screens).
                 style={{
-                  left: block.rtl ? block.right : block.left,
+                  left: block.rtl ? block.right - block.indent : block.left + block.indent,
                   top: block.handleTop,
                 }}
                 aria-label={t(`Blockaktionen: ${block.label}`, `Block actions: ${block.label}`)}
@@ -2050,7 +2110,7 @@ export function DocumentBlockControls({
                 // Reached by the keyboard with ↵ and "/" in the text instead.
                 tabIndex={-1}
                 className={`document-block-add${adding.rtl ? " rtl" : ""}`}
-                style={{ left: adding.rtl ? adding.right : adding.left, top: adding.handleTop }}
+                style={{ left: adding.rtl ? adding.right - adding.indent : adding.left + adding.indent, top: adding.handleTop }}
                 aria-label={t(`Block darunter einfügen: ${adding.label}`, `Add a block below: ${adding.label}`)}
                 title={t("Klicken: Block darunter einfügen · ⌥-Klick: darüber", "Click to add a block below · ⌥-click to add above")}
                 onPointerDown={(event) => event.preventDefault()}
@@ -2063,10 +2123,13 @@ export function DocumentBlockControls({
             {band &&
               typeof document !== "undefined" &&
               createPortal(<div className="block-select-band" style={band} aria-hidden="true" />, document.body)}
+            {drop?.container && (
+              <div className="document-block-drop-container" style={drop.container} aria-hidden="true" />
+            )}
             {drop && (
               <div
                 className="document-block-drop"
-                style={drop}
+                style={{ top: drop.top, left: drop.left, width: drop.width, height: drop.height }}
                 aria-hidden="true"
               />
             )}
@@ -2083,6 +2146,9 @@ export function DocumentBlockControls({
           key={`${menu.view}-${menu.anchor.top}-${menu.anchor.left}`}
           searchable={menu.view === "main"}
           flyouts
+          // Left of the handle (#253), right of it for right-to-left blocks.
+          placement={menu.handle?.classList.contains("rtl") ? "beside" : "before"}
+          heading={menuHeading()}
           anchor={menu.anchor}
           views={menuViews()}
           initial={menu.view}
