@@ -9863,6 +9863,7 @@
   "The next days from calendar views and connected calendars.": "从日历视图和已连接的日历中的接下来的几天。",
   "The notice appears before every recording and can be read aloud.": "每次录音前都会显示提示，并可朗读。",
   "The number is outside the supported range.": "该数字超出支持的范围。",
+  "The offline copy could not be stored.": "无法保存离线副本。",
   "The offline copy is being updated right now.": "离线副本正在更新。",
   "The offline copy needs HTTPS – this instance runs without it.": "离线副本需要 HTTPS——此实例在没有它的情况下运行。",
   "The old instance could not be notified; it stays read-only without a notice of the new address.": "无法通知旧实例；它保持只读，但不显示新地址的通知。",

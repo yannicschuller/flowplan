@@ -9863,6 +9863,7 @@
   "The next days from calendar views and connected calendars.": "Les prochains jours issus des vues calendrier et des calendriers connectés.",
   "The notice appears before every recording and can be read aloud.": "L’avis s’affiche avant chaque enregistrement et peut être lu à voix haute.",
   "The number is outside the supported range.": "Le nombre est en dehors de la plage prise en charge.",
+  "The offline copy could not be stored.": "La copie hors ligne n’a pas pu être enregistrée.",
   "The offline copy is being updated right now.": "La copie hors ligne est en cours de mise à jour.",
   "The offline copy needs HTTPS – this instance runs without it.": "La copie hors ligne nécessite HTTPS – cette instance fonctionne sans.",
   "The old instance could not be notified; it stays read-only without a notice of the new address.": "L’ancienne instance n’a pas pu être prévenue ; elle reste en lecture seule sans avis de la nouvelle adresse.",

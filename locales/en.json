@@ -9863,6 +9863,7 @@
   "The next days from calendar views and connected calendars.": "The next days from calendar views and connected calendars.",
   "The notice appears before every recording and can be read aloud.": "The notice appears before every recording and can be read aloud.",
   "The number is outside the supported range.": "The number is outside the supported range.",
+  "The offline copy could not be stored.": "The offline copy could not be stored.",
   "The offline copy is being updated right now.": "The offline copy is being updated right now.",
   "The offline copy needs HTTPS – this instance runs without it.": "The offline copy needs HTTPS – this instance runs without it.",
   "The old instance could not be notified; it stays read-only without a notice of the new address.": "The old instance could not be notified; it stays read-only without a notice of the new address.",
