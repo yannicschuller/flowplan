@@ -104,6 +104,26 @@ export function moveSelectedBlock(editor: Editor | null, direction: -1 | 1) {
     return false;
   }
 }
+// ⌘D / Ctrl+D (#238): a copy of the block with the caret right after it
+// (a folded heading with its hidden section); the caret stays in the
+// original. Not for blocks with linked databases (guest editors refuse
+// copying them, components/document-block-controls.tsx).
+export function duplicateSelectedBlock(editor: Editor | null) {
+  if (!editor?.isEditable) return false;
+  const block = selectedDocumentBlock(editor.state);
+  if (!block) return false;
+  const positions = foldedBlockPositions(editor.state, [block.pos]);
+  try {
+    const { selection } = editor.state;
+    const tr = changeBlocks(editor.state, positions, "duplicate");
+    // The caret where it was (the copy comes after it).
+    tr.setSelection(selection.map(tr.doc, tr.mapping)).setMeta(BLOCK_SELECTION_META, []);
+    applyBlockChange(editor, tr);
+    return true;
+  } catch {
+    return false;
+  }
+}
 export const BlockShortcuts = Extension.create({
   name: "blockShortcuts",
   addKeyboardShortcuts() {
@@ -113,6 +133,7 @@ export const BlockShortcuts = Extension.create({
       "Mod-End": () => this.editor.commands.focus("end"),
       "Mod-Shift-ArrowUp": () => moveSelectedBlock(this.editor, -1),
       "Mod-Shift-ArrowDown": () => moveSelectedBlock(this.editor, 1),
+      "Mod-d": () => duplicateSelectedBlock(this.editor),
     };
   },
 });

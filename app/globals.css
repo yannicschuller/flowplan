@@ -1374,6 +1374,10 @@ kbd,
   font-size: 19px;
   margin: 22px 0 8px;
 }
+.document-editor h4 {
+  font-size: 16px;
+  margin: 18px 0 6px;
+}
 .document-editor > h2:first-child {
   margin-top: 0;
 }
@@ -9662,19 +9666,68 @@ tr.order-drop-after > td {
      (WCAG 2.5.8). */
   width: 24px;
   height: 28px;
+  /* Placed at the edge of the block's text (left in the style attribute);
+     with a mouse 14 px apart from it (#236), so selecting text at the
+     start of a line never grabs the handle; the "+" is left of it. */
+  margin-left: -38px;
   padding: 0;
   /* The dots (an SVG, #226) on the button's centre – which is the centre
      of the block's first text line – whatever the font. */
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   cursor: grab;
   opacity: 0;
   border-radius: 4px;
   z-index: 2;
   user-select: none;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+.document-block-handle.rtl {
+  margin-left: 14px;
+}
+/* Inside a callout or quote: in the box's padding, next to its text. */
+.document-block-handle.boxed {
+  margin-left: -25px;
+}
+.document-block-handle.boxed.rtl {
+  margin-left: 1px;
+}
+/* "+" (#236): adds a block below (⌥: above) with the "/" menu open. Only
+   at the block under the mouse. */
+.document-block-add {
+  position: absolute;
+  pointer-events: auto;
+  width: 24px;
+  height: 28px;
+  margin-left: -62px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  z-index: 2;
+  user-select: none;
+  animation: block-add-in 0.12s ease;
+}
+.document-block-add.rtl {
+  margin-left: 38px;
+}
+@keyframes block-add-in {
+  from {
+    opacity: 0;
+  }
+}
+.document-block-add:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 /* Only where it is wanted (#138): the block under the mouse, the block with
    the caret – or every block (Settings › Appearance › Editor, "Always show
@@ -9685,13 +9738,16 @@ tr.order-drop-after > td {
 }
 .document-block-handle.hovered,
 .document-block-handle.active {
-  opacity: 0.45;
+  opacity: 1;
 }
 .document-block-handle:hover,
 .document-block-handle:focus-visible,
 .document-block-handle.selected {
   opacity: 1;
-  background: var(--surface);
+  background: var(--hover);
+  color: var(--text);
+}
+.document-block-handle.selected {
   color: var(--blue);
 }
 .document-block-handle:focus-visible {
@@ -9701,15 +9757,244 @@ tr.order-drop-after > td {
 .document-block-handle:active {
   cursor: grabbing;
 }
+/* The block a menu applies to (#236), and blocks chosen with the mouse or
+   the keyboard: a light tint over the whole block, nothing moves. */
+.document-block-marked {
+  position: absolute;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+/* Choosing blocks (#237): the rectangle dragged from the margin, no text
+   selection meanwhile; the chosen blocks' handles stay calm (the tint
+   shows the choice); the focus target is invisible. */
+.block-select-band {
+  position: fixed;
+  z-index: 40;
+  border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  pointer-events: none;
+}
+.selecting-blocks-band,
+.selecting-blocks-band * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.selecting-blocks .document-block-handle.selected:not(:hover, :focus-visible, .hovered) {
+  opacity: 0;
+}
+.block-selection-focus {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  outline: none;
+  pointer-events: none;
+}
+[data-theme="dark"] .document-block-marked {
+  background: color-mix(in srgb, var(--blue) 24%, transparent);
+}
+/* The drop line (#239): 4 px, soft, indented to the level the blocks land
+   on; it glides between levels and gaps. */
 .document-block-drop {
   position: absolute;
-  height: 3px;
-  margin-top: -1.5px;
-  border-radius: 3px;
-  transition: top 0.08s ease-out;
-  background: var(--blue);
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  transition: top 0.08s ease-out, left 0.08s ease-out, width 0.08s ease-out;
+  background: color-mix(in srgb, var(--blue) 55%, transparent);
   z-index: 3;
   pointer-events: none;
+}
+/* ⌥ while dragging: a copy lands, the cursor says so. */
+.dragging-blocks-copy,
+.dragging-blocks-copy * {
+  cursor: copy !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-block-drop {
+    transition: none;
+  }
+}
+/* Block colours (#238, lib/block-colors.ts): a text or background colour
+   for a whole block, by name, shaded by the theme. */
+:root {
+  --block-gray: #8b8a92;
+  --block-gray-bg: #ecebe8;
+  --block-brown: #b5703c;
+  --block-brown-bg: #f4e6db;
+  --block-orange: #ec6c0e;
+  --block-orange-bg: #ffe8cc;
+  --block-yellow: #d9a400;
+  --block-yellow-bg: #fff3bf;
+  --block-green: #2f9e44;
+  --block-green-bg: #d3f9d8;
+  --block-blue: #1c7ed6;
+  --block-blue-bg: #d0ebff;
+  --block-purple: #8f4ad9;
+  --block-purple-bg: #ece0fb;
+  --block-pink: #d6336c;
+  --block-pink-bg: #fde2ec;
+  --block-red: #e03131;
+  --block-red-bg: #ffe3e3;
+}
+[data-theme="dark"] {
+  --block-gray: #a7a6ad;
+  --block-gray-bg: rgba(190, 186, 178, 0.18);
+  --block-brown: #d08a55;
+  --block-brown-bg: rgba(180, 120, 80, 0.24);
+  --block-orange: #ff8c3a;
+  --block-orange-bg: rgba(240, 140, 30, 0.22);
+  --block-yellow: #f0c030;
+  --block-yellow-bg: rgba(230, 190, 20, 0.2);
+  --block-green: #51c066;
+  --block-green-bg: rgba(60, 170, 90, 0.22);
+  --block-blue: #4dabf7;
+  --block-blue-bg: rgba(60, 140, 230, 0.24);
+  --block-purple: #b07ef0;
+  --block-purple-bg: rgba(150, 100, 230, 0.24);
+  --block-pink: #f06595;
+  --block-pink-bg: rgba(230, 80, 140, 0.22);
+  --block-red: #ff6b6b;
+  --block-red-bg: rgba(230, 70, 70, 0.22);
+}
+[data-block-color="gray"],
+[data-block-color-swatch="gray"] {
+  color: var(--block-gray);
+}
+[data-block-color="gray-background"],
+.block-menu-color.background[data-block-color-swatch="gray"] {
+  background-color: var(--block-gray-bg);
+}
+[data-block-color="brown"],
+[data-block-color-swatch="brown"] {
+  color: var(--block-brown);
+}
+[data-block-color="brown-background"],
+.block-menu-color.background[data-block-color-swatch="brown"] {
+  background-color: var(--block-brown-bg);
+}
+[data-block-color="orange"],
+[data-block-color-swatch="orange"] {
+  color: var(--block-orange);
+}
+[data-block-color="orange-background"],
+.block-menu-color.background[data-block-color-swatch="orange"] {
+  background-color: var(--block-orange-bg);
+}
+[data-block-color="yellow"],
+[data-block-color-swatch="yellow"] {
+  color: var(--block-yellow);
+}
+[data-block-color="yellow-background"],
+.block-menu-color.background[data-block-color-swatch="yellow"] {
+  background-color: var(--block-yellow-bg);
+}
+[data-block-color="green"],
+[data-block-color-swatch="green"] {
+  color: var(--block-green);
+}
+[data-block-color="green-background"],
+.block-menu-color.background[data-block-color-swatch="green"] {
+  background-color: var(--block-green-bg);
+}
+[data-block-color="blue"],
+[data-block-color-swatch="blue"] {
+  color: var(--block-blue);
+}
+[data-block-color="blue-background"],
+.block-menu-color.background[data-block-color-swatch="blue"] {
+  background-color: var(--block-blue-bg);
+}
+[data-block-color="purple"],
+[data-block-color-swatch="purple"] {
+  color: var(--block-purple);
+}
+[data-block-color="purple-background"],
+.block-menu-color.background[data-block-color-swatch="purple"] {
+  background-color: var(--block-purple-bg);
+}
+[data-block-color="pink"],
+[data-block-color-swatch="pink"] {
+  color: var(--block-pink);
+}
+[data-block-color="pink-background"],
+.block-menu-color.background[data-block-color-swatch="pink"] {
+  background-color: var(--block-pink-bg);
+}
+[data-block-color="red"],
+[data-block-color-swatch="red"] {
+  color: var(--block-red);
+}
+[data-block-color="red-background"],
+.block-menu-color.background[data-block-color-swatch="red"] {
+  background-color: var(--block-red-bg);
+}
+/* A background reaches a little beyond the text, without moving it. */
+[data-block-color$="-background"] {
+  border-radius: 4px;
+}
+p[data-block-color$="-background"],
+:is(h1, h2, h3, h4, h5, h6)[data-block-color$="-background"] {
+  padding-inline: 4px;
+  margin-inline: -4px;
+}
+/* A coloured item colours its marker as well; its sub-items keep their own. */
+li[data-block-color]:not([data-block-color$="-background"]) li:not([data-block-color]) {
+  color: var(--text);
+}
+/* The swatches of the block menu: an "A" in the colour. */
+.block-menu-color {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.block-menu-item > .block-menu-color {
+  flex: none;
+}
+/* The colour level: 20 entries, closer together. */
+.block-menu-flyout .block-menu-item:has(> .block-menu-color) {
+  min-height: 0;
+  padding-block: 3px;
+}
+.block-menu-color[data-block-color-swatch="default"] {
+  color: var(--text);
+}
+/* Toggle headings (#238): the title of a toggle as a heading. */
+.toggle-block[data-heading] > summary {
+  font-weight: 700;
+  line-height: 1.3;
+}
+.toggle-block[data-heading="1"] > summary {
+  font-size: 30px;
+  margin-top: 20px;
+}
+.toggle-block[data-heading="2"] > summary {
+  font-size: 24px;
+  margin-top: 18px;
+}
+.toggle-block[data-heading="3"] > summary {
+  font-size: 19px;
+  margin-top: 14px;
+}
+.toggle-block[data-heading="4"] > summary {
+  font-size: 16px;
+  margin-top: 10px;
+}
+details[data-heading] > summary {
+  font-weight: 700;
 }
 /* The menu of a block (components/block-menu.tsx). */
 .block-menu {
@@ -9719,6 +10004,74 @@ tr.order-drop-after > td {
 }
 .block-menu-items {
   display: grid;
+}
+/* The block menu's parts (#238): a wrapper for the menu and its flyouts, the
+   search field, headings inside a level, the shortcut of an entry. */
+.block-menu-root {
+  display: contents;
+}
+.block-menu:has(> .block-menu-search) {
+  width: 290px;
+}
+.block-menu-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 2px 6px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.block-menu-search:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 20%, transparent);
+}
+.block-menu-search input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+  color: var(--text);
+}
+.block-menu-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.block-menu-heading {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.block-menu-shortcut {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.block-menu-context {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.block-menu-item.open {
+  background: var(--hover);
+  color: var(--text);
+}
+.block-menu-flyout {
+  width: 240px;
+  overflow-y: auto;
 }
 .block-menu-item > span {
   flex: 1;
@@ -9938,6 +10291,14 @@ tr.order-drop-after > td {
   .document-block-handle {
     height: 44px;
     margin-top: -8px;
+    /* Right next to the text: phones have no margin to spare. */
+    margin-left: -25px;
+  }
+  .document-block-handle.rtl {
+    margin-left: 1px;
+  }
+  .document-block-add {
+    display: none;
   }
   .document-block-handle::before {
     content: "";
@@ -9951,6 +10312,11 @@ tr.order-drop-after > td {
   .document-block-handle.active,
   .always-handles .document-block-handle {
     opacity: 0.65;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-block-add {
+    animation: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -34173,12 +34539,13 @@ label.ws-search input {
 [dir="rtl"] > .heading-fold[aria-expanded="false"] svg {
   transform: scaleX(-1);
 }
+/* Left of the block's "+" and handle (#236). */
 .block-editor-surface.with-block-handles .heading-fold {
-  left: -50px;
+  left: -88px;
 }
 .block-editor-surface.with-block-handles [dir="rtl"] > .heading-fold {
   left: auto;
-  right: -50px;
+  right: -88px;
 }
 .document-editor > :hover > .heading-fold,
 .heading-fold[aria-expanded="false"] {

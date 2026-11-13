@@ -158,6 +158,7 @@ import {
   TextHOne,
   TextHTwo,
   TextHThree,
+  TextHFour,
   Minus,
   FileDashed,
   Plus,
@@ -231,6 +232,9 @@ import { BibliographyView, CitationView } from "./citation-views";
 import { CitationDialog } from "./citation-dialog";
 import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
 import { BlockDirectionExtension } from "@/lib/text-direction";
+import { BlockColorAttribute } from "@/lib/block-colors";
+import { blockRange } from "@/lib/document-blocks";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { ListTidy } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
@@ -475,6 +479,69 @@ export default function DocumentEditor({
       .run();
     setBoardPicker(false);
   }
+  // "Umwandeln in → Seite" (#238): the chosen blocks become a sub-page of
+  // this page – a single text block its title, a toggle its title and
+  // content, other blocks its content – and a link to the new page takes
+  // their place, in one step (undo brings the blocks back; the page stays).
+  const turnIntoPage = useRef(async (_positions: number[]) => {});
+  turnIntoPage.current = async (positions: number[]) => {
+    if (!editor || editor.isDestroyed) return;
+    const host = pages.find((p) => p.id === pageId);
+    if (!host) throw new Error(t("Die Seite wurde nicht gefunden.", "The page was not found."));
+    const range = blockRange(editor.state.doc, positions);
+    const first = range.blocks[0].node;
+    const single = range.blocks.length === 1;
+    let title = "",
+      content: PMNode[] = range.blocks.map((b) => b.node);
+    if (single && (first.type.name === "paragraph" || first.type.name === "heading")) {
+      title = first.textContent.replace(/\s+/g, " ").trim();
+      content = [];
+    } else if (single && first.type.name === "toggle") {
+      title = String(first.attrs.title || "").trim();
+      content = first.content.content as PMNode[];
+    } else title = first.textContent.replace(/\s+/g, " ").trim();
+    title = title.slice(0, 200) || t("Unbenannt", "Untitled");
+    const created = await api<{ id: string }>("/api/command", {
+      action: "page.create",
+      workspaceId: host.workspace_id,
+      spaceId: host.space_id,
+      ...(rowId ? {} : { parentId: host.id }),
+      title,
+      kind: "document",
+    });
+    if (content.length) {
+      const { prosemirrorJSONToYDoc } = await import("@tiptap/y-tiptap");
+      const json = { type: "doc", content: content.map((node) => node.toJSON()) };
+      const fresh = await api<{ generation: string }>(`/api/pages/${created.id}`);
+      await api("/api/command", {
+        action: "document.sync",
+        pageId: created.id,
+        generation: fresh.generation,
+        update: bytesTo64(Y.encodeStateAsUpdate(prosemirrorJSONToYDoc(editor.schema, json, "default"))),
+      });
+    }
+    window.dispatchEvent(new Event("flowplan:pages-changed"));
+    const open = () => {
+      window.location.hash = `page=${created.id}`;
+    };
+    // The blocks again – unchanged in the meantime, else they stay.
+    const now = range.blocks.every((b) => editor.state.doc.nodeAt(b.pos)?.eq(b.node));
+    if (!now || editor.isDestroyed) {
+      showToast({
+        text: t("Die Blöcke wurden inzwischen geändert.", "The blocks have changed in the meantime."),
+        detail: t("Die neue Seite liegt als Unterseite bereit.", "The new page is ready as a sub-page."),
+        action: { label: t("Seite öffnen", "Open page"), run: open },
+      });
+      return;
+    }
+    const link = editor.schema.nodes.paragraph.create(
+      first.isTextblock ? { blockId: first.attrs.blockId } : null,
+      editor.schema.text(title, [editor.schema.marks.link.create({ href: `/#page=${created.id}` })]),
+    );
+    const tr = editor.state.tr.replaceWith(range.from, range.to, link);
+    editor.view.dispatch(tr.scrollIntoView());
+    showToast({ text: t("In eine Seite umgewandelt.", "Turned into a page."), action: { label: t("Seite öffnen", "Open page"), run: open } });
+  };
   // "In Datenbank umwandeln" (#118): the table around the cursor becomes a
   // database below this document (the server creates it with its records);
   // an embedded view of it takes the table's place in one step, so undo
@@ -805,6 +872,7 @@ export default function DocumentEditor({
         drawBlockNode({ pageId, enabled: !rowId }),
         Footnote.configure({ edit: (target) => openFootnote.current(target) }),
         BlockDirectionExtension.configure({ auto: true }),
+        BlockColorAttribute,
         // Folding headings, per person and device (not in a synced block).
         HeadingFolds.configure({ pageId, rowId, enabled: !embedded }),
         Collaboration.configure({ document: doc }),
@@ -1639,6 +1707,15 @@ export default function DocumentEditor({
       description: t("Kleine Überschrift", "Small heading"),
       icon: TextHThree,
       run: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
+    },
+    {
+      id: "h4",
+      group: "text",
+      name: t("Überschrift 4", "Heading 4"),
+      keywords: ["h4", "####", "heading4"],
+      description: t("Kleinste Überschrift", "Smallest heading"),
+      icon: TextHFour,
+      run: () => editor?.chain().focus().toggleHeading({ level: 4 }).run(),
     },
     {
       id: "todo",
@@ -3002,7 +3079,21 @@ export default function DocumentEditor({
           {embedded ? (
             <EditorContent editor={editor} />
           ) : (
-            <DocumentBlockControls editor={editor} onCopyLink={(pos) => void copyBlockLink.current(pos)}>
+            <DocumentBlockControls
+              editor={editor}
+              onCopyLink={(pos) => void copyBlockLink.current(pos)}
+              onTurnIntoPage={editable && canCreatePages && !rowId ? (positions) => turnIntoPage.current(positions) : undefined}
+              onAskAi={
+                aiWrite !== "hidden"
+                  ? (from, to) => {
+                      if (!editor || editor.isDestroyed) return;
+                      editor.chain().focus().setTextSelection({ from, to }).run();
+                      openAi.current();
+                    }
+                  : undefined
+              }
+              comments
+            >
               <EditorContent editor={editor} />
             </DocumentBlockControls>
           )}

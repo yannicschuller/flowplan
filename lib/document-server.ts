@@ -6,12 +6,16 @@ import * as Y from "yjs";
 import sanitize from "sanitize-html";
 import { documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
+import { BLOCK_COLOR_VALUES } from "./block-colors";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes } from "./code-block-options";
 import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
 import { isPageBreakStyle } from "./page-break-node";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
+// Block colours (#238, lib/block-colors.ts) and toggle headings: only their names.
+const blockColorAttr = { name: "data-block-color", multiple: false, values: BLOCK_COLOR_VALUES };
+const toggleHeadingAttr = { name: "data-heading", multiple: false, values: ["1", "2", "3", "4"] };
 // cleanHtml with a transform that awaits (database lookups, #127): the
 // tags are collected in a first pass, transformed one after the other, and
 // the results applied in a second pass over the same HTML – sanitize-html
@@ -146,7 +150,10 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       ],
       // Text direction of blocks (lib/text-direction.ts), only its values.
       ...Object.fromEntries(
-        ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "li", "table", "tr"].map((tag) => [tag, [dir]]),
+        ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "li", "table", "tr"].map((tag) => [
+          tag,
+          ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "li"].includes(tag) ? [dir, blockColorAttr] : [dir],
+        ]),
       ),
       // A callout's own symbol and colour name (checked in transformTags).
       aside: [dir, "data-callout-icon", "data-callout-color"],
@@ -156,7 +163,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       ol: ["start", dir],
       td: ["colspan", "rowspan", "colwidth", dir],
       th: ["colspan", "rowspan", "colwidth", dir],
-      details: ["open", dir],
+      details: ["open", dir, blockColorAttr, toggleHeadingAttr],
       video: ["src", "controls", "preload"],
       audio: ["src", "controls", "preload"],
       iframe: ["src", "title", "allowfullscreen", "sandbox", "loading"],

@@ -49,6 +49,9 @@ async function dragBlock(
   from: import("@playwright/test").Locator,
   to: import("@playwright/test").Locator,
   mobile: boolean,
+  // How far into the target the pointer goes; far right over a list item
+  // drops as its child (#239).
+  into = 80,
 ) {
   await from.scrollIntoViewIfNeeded();
   const start = (await from.boundingBox())!,
@@ -57,7 +60,7 @@ async function dragBlock(
       x: start.x + start.width / 2,
       y: start.y + Math.min(start.height / 2, 12),
     },
-    b = { x: end.x + Math.min(end.width / 2, 80), y: end.y + end.height - 2 };
+    b = { x: end.x + Math.min(end.width / 2, into), y: end.y + end.height - 2 };
   if (mobile) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Input.dispatchTouchEvent", {
@@ -254,6 +257,8 @@ test("record and guest editors reorder blocks while guest duplication preserves 
   await entry
     .getByRole("button", { name: "Blockaktionen: Absatz · First", exact: true })
     .click();
+  // With a mouse, moving is in the "Verschieben" flyout (#238).
+  if (info.project.name !== "mobile") await page.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
   await page.getByRole("menuitem", { name: "Nach unten", exact: true }).click();
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect
@@ -300,6 +305,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
       name: "Blockaktionen: Absatz · First",
       exact: true,
     });
+    if (info.project.name !== "mobile") await guest.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
     await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
     await caret(guestFirst());
     await firstHandle.first().click();
@@ -315,6 +321,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
     await expect(
       guest.getByRole("menuitem", { name: "Duplizieren", exact: true }),
     ).toBeDisabled();
+    if (info.project.name !== "mobile") await guest.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
     await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
     await guest
       .getByRole("button", { name: "Änderungen speichern", exact: true })
@@ -519,8 +526,8 @@ test("handles stay centred on large headings after a move and tasks adapt when d
   expect(glide.length).toBeGreaterThan(3);
   // The handle plays the heading's own glide: no lag in any frame.
   expect(Math.max(...glide)).toBeLessThan(3);
-  // A paragraph dropped onto a task becomes a task of that list.
-  await dragBlock(page, handleFor("Omega"), editor.locator("li", { hasText: "Zwei" }), false);
+  // A paragraph dropped onto a task (at its level) becomes a task of that list.
+  await dragBlock(page, handleFor("Omega"), editor.locator("li", { hasText: "Zwei" }), false, 6);
   await expect(page.getByText("An dieser Position kann der Block nicht abgelegt werden.")).toHaveCount(0);
   await expect(editor.locator('li:has(input[type=checkbox])')).toHaveCount(3);
   await expect(editor.locator('li:has(input[type=checkbox])', { hasText: "Omega" })).toHaveCount(1);
