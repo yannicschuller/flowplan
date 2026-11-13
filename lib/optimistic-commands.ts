@@ -274,6 +274,18 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
       const ids = Array.isArray(b.pageIds) ? b.pageIds.filter((x): x is string => typeof x === "string") : [];
       if (!ids.length) return null;
       if (b.operation === "delete") return { boot: (boot) => ({ ...boot, pages: trashPages(boot.pages, ids, now) }) };
+      // Favourites only need read rights: every selected page (#275).
+      // Locking waits for the server, which skips pages without edit rights.
+      if (b.operation === "favorite" || b.operation === "unfavorite")
+        return {
+          boot: (boot) => ({
+            ...boot,
+            favorites:
+              b.operation === "favorite"
+                ? [...new Set([...boot.favorites, ...ids])]
+                : boot.favorites.filter((id) => !ids.includes(id)),
+          }),
+        };
       if (b.operation === "move")
         return {
           boot: (boot) => ({

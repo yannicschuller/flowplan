@@ -150,6 +150,13 @@ test("page tree: rename, favourite, trash with sub-pages, move like the server",
   assert.deepEqual(movePages(pages, { pageId: "a", targetId: "a1", placement: "inside" }), pages);
   const bulk = commandOverlay({ action: "pages.bulk", operation: "move", pageIds: ["b", "c"], parentId: "a" }, ctx)!.boot!(boot(pages));
   assert.deepEqual(level(bulk.pages, "a"), ["a1", "a2", "b", "c"]);
+  // Favourites of a selection show at once (#275); locking waits for the
+  // server, which skips pages without edit rights.
+  const starred = commandOverlay({ action: "pages.bulk", operation: "favorite", pageIds: ["b", "c"] }, ctx)!.boot!({ ...boot(pages), favorites: ["b"] });
+  assert.deepEqual(starred.favorites, ["b", "c"]);
+  const unstarred = commandOverlay({ action: "pages.bulk", operation: "unfavorite", pageIds: ["b"] }, ctx)!.boot!(starred);
+  assert.deepEqual(unstarred.favorites, ["c"]);
+  assert.equal(commandOverlay({ action: "pages.bulk", operation: "lock", pageIds: ["b"] }, ctx), null);
 });
 
 test("inbox: mark one, all, remove", () => {
