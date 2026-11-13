@@ -2497,7 +2497,10 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   align-items: center;
   gap: 6px;
   border-bottom: 1px solid var(--border);
-  overflow: auto;
+  /* Sideways only (a strip, not a box): see .settings-rail in
+     app/admin-users.css. */
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
 }
 .database-tabs > button {
   border-radius: 0;
@@ -6686,7 +6689,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     width: auto;
     margin: 0;
     flex-wrap: nowrap;
-    overflow-x: auto;
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
     border-radius: 0;
     border-width: 1px 0 0;
     /* Over the keyboard the home indicator's room is not needed. */
@@ -12611,7 +12615,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
    symbol only. */
 .wb-zoom {
   max-width: calc(100% - 24px - var(--wb-inset-left, 0px) - var(--wb-inset-right, 0px));
-  overflow-x: auto;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 .wb-zoom > * {
@@ -20517,7 +20522,8 @@ h3 .block-reactions {
 }
 .ink-selection-bar {
   max-width: calc(100% - 8px);
-  overflow-x: auto;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   z-index: 2;
 }
@@ -20969,7 +20975,8 @@ h3 .block-reactions {
     flex-wrap: nowrap;
     gap: 4px 6px;
     padding: 4px 8px;
-    overflow-x: auto;
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
   .ink-status {
@@ -23029,12 +23036,17 @@ h3 .block-reactions {
   gap: 4px 12px;
   border-bottom: 1px solid var(--border);
 }
+/* Sideways only; the strip, not each tab, reaches over the bar's bottom
+   border, so the tabs fit the scrolling box (see .settings-rail in
+   app/admin-users.css). */
 .survey-tabs {
   display: flex;
-  overflow-x: auto;
+  align-self: flex-end;
+  margin-bottom: -1px;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
 }
 .survey-tabs button {
-  margin-bottom: -1px;
   padding: 9px 12px;
   border-bottom: 2px solid transparent;
   color: var(--secondary);
@@ -25183,7 +25195,8 @@ h3 .block-reactions {
   }
   .onboarding-tour-grid [role="tablist"] {
     display: flex;
-    overflow-x: auto;
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
   }
   .onboarding-tour-grid [role="tab"] {
     flex: none;
@@ -28658,7 +28671,8 @@ tr:hover .row-open-mark,
     width: auto;
     margin: 0;
     flex-wrap: nowrap;
-    overflow-x: auto;
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
     border-radius: 0;
     border-width: 1px 0 0;
     padding: 4px 8px;
@@ -33930,7 +33944,8 @@ label.ws-search input {
   display: flex;
   flex: 1 1 100%;
   gap: 6px;
-  overflow-x: auto;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   /* A scrolling row clips on both axes: room for the pills' borders and
      focus ring (on iPhone the bottom edge was cut by a fraction of a
