@@ -9946,6 +9946,12 @@ tr.order-drop-after > td {
   background: var(--hover);
   color: var(--text);
 }
+/* The caret between two blocks without text (#261, ProseMirror's gap
+   cursor): a blinking line as wide as a handle, in the colour of the text. */
+.ProseMirror .ProseMirror-gapcursor::after {
+  width: 28px;
+  border-top: 2px solid var(--text);
+}
 /* Only where it is wanted (#138): the block under the mouse – not the block
    with the caret while typing (#255, like Notion; on touch screens it is,
    below) – or every block (Settings › Appearance › Editor, "Always show

@@ -493,3 +493,32 @@ export function columnBlocks(
   }
   return finish(tr, start + 1, range.content);
 }
+// An empty block next to a block (#236, #261): a paragraph below it
+// (`above`: before it), a new item beside a list item – for every kind of
+// block, tables, images and embeds included. An empty paragraph is itself
+// the place: nothing is inserted. `caret` is where the caret goes; null
+// where no paragraph may stand.
+export function emptyBlockNear(state: EditorState, block: { pos: number; node: Node }, above = false) {
+  const { schema } = state;
+  const name = block.node.type.name;
+  if (name === "paragraph" && block.node.childCount === 0) return { tr: state.tr, caret: block.pos + 1 };
+  const item = LIST_ITEMS.includes(name);
+  const paragraph = schema.nodes.paragraph.create();
+  const node = item ? schema.nodes[name].create(null, paragraph) : paragraph;
+  const at = above ? block.pos : block.pos + block.node.nodeSize;
+  const $at = state.doc.resolve(at);
+  if (!$at.parent.canReplaceWith($at.index(), $at.index(), node.type)) return null;
+  return { tr: state.tr.insert(at, node), caret: at + (item ? 2 : 1) };
+}
+// The block the toolbar's "+" adds below (#261): the innermost block with a
+// handle around the caret (a table for a caret in a cell, a list item for
+// its text) – or null when the caret is in an empty paragraph, which the
+// chosen block then fills (like Notion).
+export function blockForInsert(state: EditorState) {
+  const { selection } = state;
+  if (!(selection instanceof NodeSelection)) {
+    const parent = selection.$from.parent;
+    if (selection.empty && parent.type.name === "paragraph" && parent.childCount === 0) return null;
+  }
+  return selectedDocumentBlock(state) ?? null;
+}

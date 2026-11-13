@@ -69,6 +69,7 @@ import {
   columnBlocks,
   documentBlocks,
   blockTypeName,
+  emptyBlockNear,
   hasLinkedBlocks,
   MAX_COLUMNS,
   type DocumentBlock,
@@ -109,9 +110,9 @@ type Positioned = DocumentBlock & {
   rtl: boolean;
   right: number;
   glide?: Animation;
-  // Inside a callout or quote (#236): the block shares its first line with
-  // the box, so its handle sits closer to its text, inside the box's
-  // padding, and it has no "+" (that place is the box's handle).
+  // Inside a callout, quote or column (#236, #261): the block shares its
+  // first line with the box, so its handle sits closer to its text, inside
+  // the box's padding, and it has no "+" (that place is the box's handle).
   boxed: boolean;
   // A paragraph or heading indented with Tab (#246): how far its text
   // starts from its edge; the handle sits there (#255).
@@ -127,8 +128,10 @@ const parseFromClipboard = (pmView as unknown as {
 const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
 // Boxes whose first line is the first line of their content (a toggle has a
 // title line of its own); their blocks take the pointer only right of the
-// box's handle. A meeting (#252) too: its handle sits at its header.
-const BOXES = ["callout", "blockquote", "meeting"];
+// box's handle. A meeting (#252) too: its handle sits at its header. And
+// a column (#261): the handle of the whole layout and its "+" (a block
+// below the columns) sat under the handle of the first block inside.
+const BOXES = ["callout", "blockquote", "meeting", "column"];
 // A block inside a closed toggle has no handle (#252): Chrome still lays out
 // the content of a closed <details> and reports its rectangles, so the
 // handle of a hidden block showed up over the visible blocks below. Closed
@@ -1882,6 +1885,23 @@ export function DocumentBlockControls({
       items.push({ icon: <ArrowsDownUp />, label: t("Verschieben", "Move"), keywords: "move", view: "moveTo" });
       views.moveTo = { title: t("Verschieben", "Move"), items: moves };
     }
+    // An empty block below or above (#261): what "+" beside the handle
+    // does, also on touch screens (no "+" there) and for every kind of
+    // block.
+    if (only && editor.isEditable) {
+      items.push({
+        icon: <Plus />,
+        label: t("Block darunter einfügen", "Add block below"),
+        keywords: "add insert new block below darunter einfügen neu",
+        run: () => setTimeout(() => editor && !editor.isDestroyed && addBlock(only, false), 60),
+      });
+      items.push({
+        icon: <ArrowLineUp />,
+        label: t("Block darüber einfügen", "Add block above"),
+        keywords: "add insert new block above darüber einfügen neu",
+        run: () => setTimeout(() => editor && !editor.isDestroyed && addBlock(only, true), 60),
+      });
+    }
     // Comment on the block and ask the AI about it (#238).
     const target = only && editor.isEditable ? only : undefined;
     if (target && comments)
@@ -2102,26 +2122,15 @@ export function DocumentBlockControls({
   // takes the "/".
   function addBlock(block: DocumentBlock, above: boolean) {
     if (!editor?.isEditable) return;
-    const { state, view } = editor;
-    const { schema } = state;
-    const name = block.node.type.name;
-    const tr = state.tr;
-    let caretAt: number;
-    if (name === "paragraph" && block.node.childCount === 0) caretAt = block.pos + 1;
-    else {
-      const item = listItems.includes(name);
-      const paragraph = schema.nodes.paragraph.create();
-      const node = item ? schema.nodes[name].create(null, paragraph) : paragraph;
-      const at = above ? block.pos : block.end;
-      const $at = state.doc.resolve(at);
-      if (!$at.parent.canReplaceWith($at.index(), $at.index(), node.type)) {
-        setError(t("Hier kann kein Block eingefügt werden.", "A block cannot be inserted here."));
-        return;
-      }
-      tr.insert(at, node);
-      caretAt = at + (item ? 2 : 1);
+    const { view } = editor;
+    // Every kind of block, tables, images and embeds too (#261).
+    const placed = emptyBlockNear(editor.state, block, above);
+    if (!placed) {
+      setError(t("Hier kann kein Block eingefügt werden.", "A block cannot be inserted here."));
+      return;
     }
-    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, caretAt)).scrollIntoView());
+    const { tr, caret } = placed;
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, caret)).scrollIntoView());
     view.focus();
     const pos = view.state.selection.from;
     const insert = () => view.state.tr.insertText("/", pos, pos);
