@@ -29,6 +29,9 @@ const EDIT_ORDER = ["Projektbriefing", "Projekte", "Willkommen bei Flowplan", "T
 function fixEditTimes(dataDir: string) {
   const db = new DatabaseSync(join(dataDir, "flowplan.sqlite"));
   try {
+    // The running server may be writing just then (data steps and background
+    // jobs right after the start): wait for its lock instead of failing.
+    db.exec("PRAGMA busy_timeout = 15000");
     const set = db.prepare("UPDATE pages SET updated_at=? WHERE title=? AND deleted_at IS NULL");
     EDIT_ORDER.forEach((title, i) => {
       const at = new Date(FIXED_TIME.getTime() - (i + 1) * 5000).toISOString().slice(0, 19).replace("T", " ");
