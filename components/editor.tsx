@@ -96,6 +96,8 @@ import { togglesAround, withTitleFocus } from "@/lib/toggle-view";
 import { toggleDocumentKey } from "@/lib/toggle-memory";
 import { ShortcutBlockquote } from "@/lib/quote-shortcut";
 import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
+import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
+import { showsFormattingToolbar } from "@/lib/toolbar-pref";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
   commentMarkedNodeView,
@@ -324,6 +326,9 @@ export default function DocumentEditor({
   // its end closes the keyboard to see what it covered (#120).
   const keyboardOpen = useSoftKeyboard();
   const touchPhone = useTouchPhone();
+  // "Formatierungsleiste" (#235, lib/toolbar-pref.ts): hidden, the text
+  // menu offers the whole set; the row docked on a phone's keyboard stays.
+  const toolbarShown = showsFormattingToolbar(useFormattingToolbar(), touchPhone);
   // A record's toolbar docks (and offers the button) only while one writes
   // in that record (app/globals.css, .row-document … :focus-within); a
   // document's toolbar is docked anyway.
@@ -2642,7 +2647,7 @@ export default function DocumentEditor({
       }
     >
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
-        {editable && !embedded && !source && (
+        {editable && !embedded && !source && toolbarShown && (
           <div
             className="editor-toolbar"
             role="toolbar"
@@ -3187,6 +3192,15 @@ export default function DocumentEditor({
           ai={aiWrite}
           aiHint={aiBlockedHint}
           onAi={() => openAi.current()}
+          tools={{
+            inlineMath: openInlineMath,
+            suggesting,
+            setSuggesting,
+            authors: authorsOn,
+            setAuthors: setAuthorsOn,
+            outline: outline.toggle,
+            moveBlock,
+          }}
           onLink={() => {
             setLinkUrl(editor?.getAttributes("link").href || "");
             setLink(true);

@@ -3,6 +3,7 @@ import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
 import { setUserQuoteShortcut, userQuoteShortcut } from "./user-quote-shortcut";
+import { setUserFormattingToolbar, userFormattingToolbar } from "./user-formatting-toolbar";
 import { recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
@@ -370,6 +371,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     externalLinkIcon: await userExternalLinkIcon(user.id),
     // "`>` erzeugt" (#230, lib/quote-shortcut-pref.ts).
     quoteShortcut: await userQuoteShortcut(user.id),
+    // "Formatierungsleiste" (#235, lib/toolbar-pref.ts).
+    formattingToolbar: await userFormattingToolbar(user.id),
     // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts): the level
     // and, once after an update, the release notes to show.
     updateNotes: await userUpdateNotes(user),
@@ -931,6 +934,10 @@ async function runCommand(
       // lib/quote-shortcut-pref.ts).
       case "profile.quoteShortcut":
         result = await setUserQuoteShortcut(user, b.quoteShortcut);
+        break;
+      // The fixed formatting toolbar shown or hidden (#235, lib/toolbar-pref.ts).
+      case "profile.formattingToolbar":
+        result = await setUserFormattingToolbar(user, b.formattingToolbar);
         break;
       // "Neuigkeiten nach Updates" and the dialog closed (#223,
       // lib/user-update-notes.ts).

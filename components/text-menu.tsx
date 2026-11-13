@@ -50,7 +50,29 @@ import {
   Sparkle,
   TextAa,
   BookOpen,
+  CaretDown,
+  CaretRight,
+  DotsThree,
+  Function as FunctionIcon,
+  Info,
+  Palette,
+  TextAlignCenter,
+  TextAlignLeft,
+  TextAlignRight,
+  TextSuperscript,
+  TextSubscript,
+  EyeSlash,
+  PencilLine,
+  UsersThree,
+  ArrowUp,
+  ArrowDown,
+  TextTSlash,
+  Check,
 } from "@phosphor-icons/react";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { blockToMath, blockToToggle } from "@/lib/block-turn";
+import { highlightColors, textColors } from "@/lib/text-marks";
+import { CLEARED_MARKS, currentTextBlock, sameKind, type TextBlockKind } from "@/lib/text-menu-turn";
 import type { AiAvailability } from "./ai-context";
 import { hasLatexText } from "@/lib/chat-paste";
 import { latexToFormulas } from "@/lib/latex-convert";
@@ -95,6 +117,18 @@ function surroundings(editor: Editor) {
   const bar = toolbarOf(editor);
   return { minTop, toolbar: bar ? rectOf(bar) : null, bars };
 }
+// What the editor lends the text menu where no formatting toolbar is shown
+// (#235: focus mode, or the toolbar hidden in the settings): the toolbar's
+// rarer actions, offered in the menu's "…".
+export type TextMenuTools = {
+  inlineMath: () => void;
+  suggesting: boolean;
+  setSuggesting: (on: boolean) => void;
+  authors: boolean;
+  setAuthors: (on: boolean) => void;
+  outline: () => void;
+  moveBlock: (direction: -1 | 1) => void;
+};
 // A misspelled word under the pointer and what the spell checker suggests.
 type Spelling = { word: string; from: number; to: number; suggestions: string[] };
 
@@ -106,6 +140,7 @@ export function TextMenu({
   ai = "hidden",
   aiHint = "",
   onAi,
+  tools,
 }: {
   editor: Editor | null;
   userId: string;
@@ -116,6 +151,8 @@ export function TextMenu({
   ai?: AiAvailability;
   aiHint?: string;
   onAi?: () => void;
+  // The toolbar's other actions, for the full menu (#235).
+  tools?: TextMenuTools;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -257,10 +294,14 @@ export function TextMenu({
   useEffect(() => {
     if (!place) return;
     const outside = (event: MouseEvent) => {
-      if (!menu.current?.contains(event.target as Node)) close();
+      const target = event.target as HTMLElement | null;
+      // Its lists open beside it (components/text-menu.tsx subMenu).
+      if (!menu.current?.contains(target) && !target?.closest?.(".text-menu-sub")) close();
     };
-    const key = (event: KeyboardEvent) => event.key === "Escape" && close();
+    const key = (event: KeyboardEvent) => event.key === "Escape" && !(event.target as HTMLElement | null)?.closest?.(".text-menu-sub") && close();
     const typing = (event: KeyboardEvent) => {
+      // Not for keys in the menu's own lists (their type-ahead).
+      if (menu.current?.contains(event.target as Node) || (event.target as HTMLElement | null)?.closest?.(".text-menu-sub")) return;
       if (place.mode === "selection" && !event.shiftKey && event.key.length === 1) close();
     };
     document.addEventListener("mousedown", outside, true);
@@ -379,8 +420,12 @@ export function TextMenu({
   );
   const task = editable ? taskAtSelection(editor.view) : null;
   // Underline, strikethrough and highlight only where the toolbar is not
-  // shown (#210): it has them, and they keep their shortcuts.
-  const marks = new Set(textMenuMarks(!!toolbarOf(editor)));
+  // shown (#210): it has them, and they keep their shortcuts. Without the
+  // toolbar (focus mode, or hidden in the settings, #235) the menu is the
+  // full set: "Umwandeln in", every mark, colour, formula, clearing, and
+  // the toolbar's rarer actions in "…".
+  const full = !toolbarOf(editor);
+  const marks = new Set(textMenuMarks(!full));
   const run = (fn: () => void) => () => {
     fn();
     close();
@@ -398,6 +443,93 @@ export function TextMenu({
     >
       {icon}
     </button>
+  );
+  // Lists of the menu (Turn into, colour, "…") take the focus; what they
+  // change is the selection the menu was opened for.
+  const kept = { from, to };
+  const chain = () => {
+    const c = editor.chain().focus();
+    return kept.to <= editor.state.doc.content.size ? c.setTextSelection(kept) : c;
+  };
+  const current = currentTextBlock(editor.state);
+  const turnLabels: [TextBlockKind, string, React.ReactNode][] = [
+    [{ type: "paragraph" }, t("Text", "Text"), <TextT key="t" size={16} />],
+    [{ type: "heading", level: 1 }, t("Überschrift 1", "Heading 1"), <TextHOne key="1" size={16} />],
+    [{ type: "heading", level: 2 }, t("Überschrift 2", "Heading 2"), <TextHTwo key="2" size={16} />],
+    [{ type: "heading", level: 3 }, t("Überschrift 3", "Heading 3"), <TextHThree key="3" size={16} />],
+    [{ type: "bulletList" }, t("Aufzählung", "Bulleted list"), <ListBullets key="b" size={16} />],
+    [{ type: "orderedList" }, t("Nummerierte Liste", "Numbered list"), <ListNumbers key="o" size={16} />],
+    [{ type: "taskList" }, t("Aufgabenliste", "Task list"), <CheckSquare key="k" size={16} />],
+    [{ type: "toggle", heading: null }, t("Aufklappbarer Block", "Toggle"), <CaretRight key="g" size={16} />],
+    [{ type: "blockquote" }, t("Zitat", "Quote"), <Quotes key="q" size={16} />],
+    [{ type: "callout" }, t("Hinweis", "Callout"), <Info key="i" size={16} />],
+    [{ type: "codeBlock" }, t("Code", "Code"), <CodeBlock key="c" size={16} />],
+  ];
+  const currentLabel = current ? turnLabels.find(([kind]) => sameKind(kind, current.kind))?.[1] || t("Text", "Text") : t("Text", "Text");
+  // Out of the current type first (list, quote, heading), then into the
+  // new one – as the right-click row does; a toggle and a formula through
+  // lib/block-turn.ts like the block menu (#238).
+  const turnInto = (kind: TextBlockKind) => {
+    if (current && sameKind(kind, current.kind)) return;
+    const c = chain();
+    switch (kind.type) {
+      case "paragraph":
+        return c.clearNodes().run();
+      case "heading":
+        return c.clearNodes().setHeading({ level: kind.level as 1 | 2 | 3 }).run();
+      case "bulletList":
+        return c.clearNodes().toggleBulletList().run();
+      case "orderedList":
+        return c.clearNodes().toggleOrderedList().run();
+      case "taskList":
+        return c.clearNodes().toggleTaskList().run();
+      case "blockquote":
+        return c.clearNodes().toggleBlockquote().run();
+      case "callout":
+        return c.clearNodes().wrapIn("callout", { type: "note" }).run();
+      case "codeBlock":
+        return c.clearNodes().setCodeBlock().run();
+      case "toggle": {
+        const at = currentTextBlock(editor.state);
+        if (at) c.command(({ tr }) => blockToToggle(tr, at.pos, null)).run();
+        return;
+      }
+    }
+  };
+  const subMenu = (props: { label: string; trigger: React.ReactNode; className?: string; title?: string; children: React.ReactNode }) => (
+    <Dropdown.Root modal={false}>
+      <Dropdown.Trigger asChild>
+        <button type="button" className={props.className} aria-label={props.label} title={props.title ?? props.label} onMouseDown={(e) => e.preventDefault()}>
+          {props.trigger}
+        </button>
+      </Dropdown.Trigger>
+      <Dropdown.Portal>
+        <Dropdown.Content
+          className="dropdown text-menu-sub"
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          {props.children}
+        </Dropdown.Content>
+      </Dropdown.Portal>
+    </Dropdown.Root>
+  );
+  const subItem = (label: string, icon: React.ReactNode, action: () => void, active = false, key?: string) => (
+    <Dropdown.Item
+      key={key ?? label}
+      className={`dropdown-item text-menu-sub-item${active ? " active" : ""}`}
+      onSelect={() => {
+        action();
+        close();
+      }}
+    >
+      {icon}
+      <span>{label}</span>
+      {active && <Check size={14} className="text-menu-sub-check" aria-hidden />}
+    </Dropdown.Item>
   );
   return (
     <div
@@ -461,22 +593,160 @@ export function TextMenu({
         </div>
       )}
       {editable && (
-        <div className="text-menu-format" role="group" aria-label={t("Formatieren", "Format")}>
+        <div className={`text-menu-format${full ? " full" : ""}`} role="group" aria-label={t("Formatieren", "Format")}>
+          {full &&
+            current &&
+            subMenu({
+              label: t(`Umwandeln in: ${currentLabel}`, `Turn into: ${currentLabel}`),
+              title: t("Umwandeln in", "Turn into"),
+              className: "text-menu-turn-button",
+              trigger: (
+                <>
+                  <span>{currentLabel}</span>
+                  <CaretDown size={11} weight="bold" aria-hidden />
+                </>
+              ),
+              children: (
+                <>
+                  <Dropdown.Label className="text-menu-sub-label">{t("Umwandeln in", "Turn into")}</Dropdown.Label>
+                  {turnLabels.map(([kind, label, icon]) => subItem(label, icon, () => turnInto(kind), sameKind(kind, current.kind)))}
+                  <Dropdown.Item
+                    className="dropdown-item text-menu-sub-item"
+                    onSelect={() => {
+                      const at = currentTextBlock(editor.state);
+                      if (at) chain().command(({ tr }) => blockToMath(tr, at.pos)).run();
+                      close();
+                    }}
+                  >
+                    <MathOperations size={16} />
+                    <span>{t("Formel", "Block equation")}</span>
+                  </Dropdown.Item>
+                </>
+              ),
+            })}
           {mark("bold", t("Fett", "Bold"), <TextB size={16} />, () => editor.chain().focus().toggleBold().run())}
           {mark("italic", t("Kursiv", "Italic"), <TextItalic size={16} />, () => editor.chain().focus().toggleItalic().run())}
           {marks.has("underline") &&
             mark("underline", t("Unterstrichen", "Underline"), <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
           {marks.has("strike") &&
             mark("strike", t("Durchgestrichen", "Strikethrough"), <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
+          {mark("code", "Code", <Code size={16} />, () => editor.chain().focus().toggleCode().run())}
           {marks.has("highlight") &&
             mark("highlight", t("Markieren", "Highlight"), <HighlighterCircle size={16} />, () => editor.chain().focus().toggleHighlight().run())}
-          {mark("code", "Code", <Code size={16} />, () => editor.chain().focus().toggleCode().run())}
+          {full &&
+            subMenu({
+              label: t("Text- und Hintergrundfarbe", "Text and background colour"),
+              title: t("Farbe", "Colour"),
+              trigger: <Palette size={16} />,
+              children: (
+                <div className="color-menu">
+                  <div className="color-menu-label">{t("Textfarbe", "Text colour")}</div>
+                  <div className="color-swatches">
+                    {textColors.map(([name, color]) => (
+                      <Dropdown.Item
+                        key={color}
+                        className="color-swatch"
+                        aria-label={t(`Textfarbe ${name}`, `Text colour ${name}`)}
+                        title={name}
+                        style={{ color }}
+                        onSelect={() => {
+                          chain().setTextColor(color).run();
+                          close();
+                        }}
+                      >
+                        A
+                      </Dropdown.Item>
+                    ))}
+                  </div>
+                  <div className="color-menu-label">{t("Hintergrund", "Background")}</div>
+                  <div className="color-swatches">
+                    {highlightColors.map(([name, color]) => (
+                      <Dropdown.Item
+                        key={color}
+                        className="color-swatch"
+                        aria-label={t(`Hintergrund ${name}`, `Background ${name}`)}
+                        title={name}
+                        style={{ background: color }}
+                        onSelect={() => {
+                          chain().setHighlight({ color }).run();
+                          close();
+                        }}
+                      >
+                        A
+                      </Dropdown.Item>
+                    ))}
+                  </div>
+                  <Dropdown.Item
+                    className="dropdown-item"
+                    onSelect={() => {
+                      chain().unsetTextColor().unsetHighlight().run();
+                      close();
+                    }}
+                  >
+                    {t("Farben entfernen", "Remove colours")}
+                  </Dropdown.Item>
+                </div>
+              ),
+            })}
           <button type="button" aria-label="Link" title="Link" onClick={run(onLink)}>
             <LinkSimple size={16} />
           </button>
+          {full && tools && (
+            <button
+              type="button"
+              aria-label={t("Inline-Formel", "Inline formula")}
+              title={t("Inline-Formel", "Inline formula")}
+              onClick={run(() => tools.inlineMath())}
+            >
+              <FunctionIcon size={16} />
+            </button>
+          )}
+          {full && (
+            <button
+              type="button"
+              aria-label={t("Formatierung entfernen", "Clear formatting")}
+              title={t("Formatierung entfernen", "Clear formatting")}
+              onClick={run(() => {
+                let c = chain();
+                for (const name of CLEARED_MARKS) if (editor.schema.marks[name]) c = c.unsetMark(name);
+                c.run();
+              })}
+            >
+              <TextTSlash size={16} />
+            </button>
+          )}
+          {full &&
+            tools &&
+            subMenu({
+              label: t("Weitere Formatierungen", "More formatting"),
+              trigger: <DotsThree size={16} weight="bold" />,
+              children: (
+                <>
+                  {subItem(t("Hochgestellt", "Superscript"), <TextSuperscript size={16} />, () => chain().toggleSuperscript().run(), editor.isActive("superscript"))}
+                  {subItem(t("Tiefgestellt", "Subscript"), <TextSubscript size={16} />, () => chain().toggleSubscript().run(), editor.isActive("subscript"))}
+                  {subItem(t("Verdecken (Spoiler)", "Hide (spoiler)"), <EyeSlash size={16} />, () => chain().toggleMark("spoiler").run(), editor.isActive("spoiler"))}
+                  <Dropdown.Separator className="dropdown-separator" />
+                  {subItem(t("Linksbündig", "Align left"), <TextAlignLeft size={16} />, () => chain().unsetTextAlign().run())}
+                  {subItem(t("Zentrieren", "Centre"), <TextAlignCenter size={16} />, () => chain().setTextAlign("center").run(), editor.isActive({ textAlign: "center" }))}
+                  {subItem(t("Rechtsbündig", "Align right"), <TextAlignRight size={16} />, () => chain().setTextAlign("right").run(), editor.isActive({ textAlign: "right" }))}
+                  <Dropdown.Separator className="dropdown-separator" />
+                  {subItem(t("Block nach oben", "Move block up"), <ArrowUp size={16} />, () => tools.moveBlock(-1))}
+                  {subItem(t("Block nach unten", "Move block down"), <ArrowDown size={16} />, () => tools.moveBlock(1))}
+                  <Dropdown.Separator className="dropdown-separator" />
+                  {subItem(
+                    tools.suggesting ? t("Vorschlagen beenden", "Stop suggesting") : t("Vorschlagen", "Suggest"),
+                    <PencilLine size={16} />,
+                    () => tools.setSuggesting(!tools.suggesting),
+                    tools.suggesting,
+                  )}
+                  {subItem(t("Autoren anzeigen", "Show authors"), <UsersThree size={16} />, () => tools.setAuthors(!tools.authors), tools.authors)}
+                  {subItem(t("Inhaltsverzeichnis", "Table of contents"), <ListBullets size={16} />, () => tools.outline())}
+                </>
+              ),
+            })}
         </div>
       )}
-      {editable && place.mode === "context" && (
+      {editable && place.mode === "context" && !full && (
         <div className="text-menu-format text-menu-turn" role="group" aria-label={t("Umwandeln in", "Turn into")}>
           {(
             [

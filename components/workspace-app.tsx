@@ -286,6 +286,7 @@ import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
 import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
 import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
+import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
 import { WhatsNew } from "./whats-new";
@@ -582,6 +583,8 @@ export default function WorkspaceApp({
   useEffect(() => setExternalLinkIconLocal(boot.externalLinkIcon), [boot.externalLinkIcon]);
   // "`>` erzeugt" (#230, lib/quote-shortcut-pref.ts): the editor's "> " rule.
   useEffect(() => setQuoteShortcutLocal(boot.quoteShortcut), [boot.quoteShortcut]);
+  // "Formatierungsleiste" (#235): the editors read it.
+  useEffect(() => setFormattingToolbarLocal(boot.formattingToolbar), [boot.formattingToolbar]);
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
     const root = document.documentElement;

@@ -12,6 +12,7 @@ import { printOptionsSchema, printPresetSchema, printPresetsSchema } from "./pri
 import { pageIconPrefSchema } from "./page-icon-pref";
 import { externalLinkIconSchema } from "./external-link-icon-pref";
 import { quoteShortcutSchema } from "./quote-shortcut-pref";
+import { formattingToolbarSchema } from "./toolbar-pref";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { releaseNoteItemSchema } from "./release-notes";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
@@ -63,7 +64,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -227,6 +228,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: what typing \"> \" at the start of an empty line in the editor creates – a toggle (\"toggle\", the default) or a quote as in Markdown (\"quote\"). Only that typing shortcut: pasted and imported Markdown \"> text\" stays a quote, and documents and exports do not change.",
     input: z.object({ action: z.literal("profile.quoteShortcut"), quoteShortcut: quoteShortcutSchema }),
     result: z.object({ quoteShortcut: quoteShortcutSchema }),
+  },
+  {
+    action: "profile.formattingToolbar",
+    summary: "Show or hide the fixed formatting toolbar of pages and records",
+    description: "For the caller, on all devices: show (the default) or hide. Hidden, the text menu over a selection offers the whole formatting set; on a phone the formatting row on the keyboard stays.",
+    input: z.object({ action: z.literal("profile.formattingToolbar"), formattingToolbar: formattingToolbarSchema }),
+    result: z.object({ formattingToolbar: formattingToolbarSchema }),
   },
   {
     action: "profile.updateNotes",

@@ -1343,6 +1343,11 @@ function migrate(d: DatabaseSync) {
   // older version ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "quote_shortcut"))
     d.exec("ALTER TABLE users ADD COLUMN quote_shortcut TEXT");
+  // "Formatierungsleiste" per person (#235, lib/toolbar-pref.ts):
+  // users.formatting_toolbar, NULL = the default ('show'), or 'hide'. An
+  // older version ignores the column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "formatting_toolbar"))
+    d.exec("ALTER TABLE users ADD COLUMN formatting_toolbar TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

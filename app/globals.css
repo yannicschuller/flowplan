@@ -19050,6 +19050,52 @@ h3 .block-reactions {
   color: var(--blue);
   background: var(--blue-light);
 }
+/* The full menu without the toolbar (#235): "Turn into" at its start
+   shows the block's type ("Text ⌄"), set apart from the marks. */
+.text-menu-format .text-menu-turn-button {
+  display: inline-flex;
+  gap: 4px;
+  width: auto;
+  padding: 0 7px 0 8px;
+  margin-right: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text);
+  box-shadow: 1px 0 0 var(--border);
+  border-radius: 7px 0 0 7px;
+}
+.text-menu-format .text-menu-turn-button svg {
+  color: var(--muted);
+}
+.text-menu-format button[data-state="open"] {
+  background: var(--hover);
+  color: var(--text);
+}
+/* Its lists: Turn into, colour, "…". */
+.text-menu-sub {
+  z-index: 90;
+  min-width: 200px;
+  max-height: min(420px, calc(100dvh - 24px));
+  overflow-y: auto;
+}
+.text-menu-sub .text-menu-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.text-menu-sub .text-menu-sub-item > span {
+  flex: 1;
+}
+.text-menu-sub .text-menu-sub-item.active {
+  color: var(--blue);
+}
+.text-menu-sub-label {
+  padding: 4px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
 .text-menu-actions {
   display: flex;
   gap: 2px;
