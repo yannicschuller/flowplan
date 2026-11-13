@@ -139,7 +139,9 @@ test("on a computer the mouse selection shows the menu by default; with Never on
   await expect(menu).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
-  // Shift + arrow keys select too.
+  // Shift + arrow keys select too. (Escape in a block selects the block since
+  // #237, so the caret goes back into the text first.)
+  await page.mouse.click(word.x, word.y);
   await page.keyboard.press("End");
   await page.keyboard.press("Shift+ArrowLeft");
   await page.keyboard.press("Shift+ArrowLeft");
