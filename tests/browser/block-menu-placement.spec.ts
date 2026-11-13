@@ -48,14 +48,43 @@ test("the block menu opens left of the handle, its flyouts further left, with th
   const row = (await menu.getByRole("menuitem", { name: "Duplizieren" }).boundingBox())!;
   expect(row.height).toBeGreaterThanOrEqual(26);
   expect(row.height).toBeLessThanOrEqual(31);
-  // Over the sidebar there is no room for a flyout further left: it opens
-  // right of the menu, never over the menu itself.
-  await menu.getByRole("menuitem", { name: "Umwandeln in …" }).hover();
+  // At 1440 px with the sidebar there is no room for a flyout further left:
+  // it opens over the menu, below its entry – never over the block's text.
+  const text = (await editor.getByText("Alpha", { exact: true }).boundingBox())!;
+  const overlaps = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(overlaps(m, text)).toBe(false);
+  const entry = menu.getByRole("menuitem", { name: "Umwandeln in …" });
+  await entry.hover();
   const flyout = page.getByRole("menu", { name: "Umwandeln in …" });
   await expect(flyout).toBeVisible();
+  await page.waitForTimeout(300); // its opening animation
   let f = (await flyout.boundingBox())!;
-  expect(f.x + f.width <= m.x + 1 || f.x >= m.x + m.width - 1).toBe(true);
+  expect(overlaps(f, text)).toBe(false);
+  expect(f.x).toBeGreaterThanOrEqual(m.x - 1);
+  expect(f.x + f.width).toBeLessThanOrEqual(m.x + m.width + 1);
+  // Its entry stays visible above it.
+  const e = (await entry.boundingBox())!;
+  expect(f.y).toBeGreaterThanOrEqual(e.y + e.height - 1);
+  await page.screenshot({ path: `${RESULTS}/block-menu-left-1440.png` });
+  // The pointer goes straight down into it and it stays open.
+  await flyout.getByRole("menuitemradio", { name: /^Überschrift 1/ }).hover();
+  await page.waitForTimeout(300);
+  await expect(flyout).toBeVisible();
+  // By keyboard: → opens it with the focus inside, ← goes back to the entry.
+  await entry.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(flyout).toBeVisible();
+  await expect(flyout.locator(":focus")).toHaveCount(1);
+  await page.keyboard.press("ArrowLeft");
+  await expect(flyout).toHaveCount(0);
+  await expect(entry).toBeFocused();
+  // Escape: back from the flyout, then the menu closes.
+  await page.keyboard.press("ArrowRight");
+  await expect(flyout).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(flyout).toHaveCount(0);
+  await expect(entry).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
 

@@ -7,8 +7,9 @@
 // beside an entry, entries that stay open (switches) and levels with a form.
 //
 // The block menu of a handle opens left of it (#253, "before"), like Notion:
-// over the page margin, not over the block; its flyouts open further left.
-// Only where there is no room it goes right.
+// over the page margin, not over the block; its flyouts open further left,
+// or over the menu where there is no room. Only where the menu itself has
+// no room left of the handle it goes right.
 //
 // The block menu itself (#238) has a search field over all its entries
 // (typing filters, ↵ runs the first hit) and, with a mouse, opens its
@@ -469,7 +470,8 @@ export function BlockMenu({
 }
 
 // A level beside its entry: right of it, or left where there is no room –
-// left first when the menu opened left of its anchor (#253).
+// left first when the menu opened left of its anchor (#253), and over the
+// menu where there is no room left of it either.
 function Flyout({
   entry,
   leftward,
@@ -488,7 +490,7 @@ function Flyout({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  const [place, setPlace] = useState<{ left: number; top: number; maxHeight?: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -499,9 +501,20 @@ function Flyout({
       before = entry.left - width - 4;
     const fitsRight = right + width <= window.innerWidth - 8 - safe.right,
       fitsLeft = before >= 8 + safe.left;
-    const left = Math.max(8 + safe.left, (leftward ? fitsLeft || !fitsRight : !fitsRight) ? before : right);
-    const top = Math.max(8 + safe.top, Math.min(entry.top - 6, window.innerHeight - height - 8 - safe.bottom));
-    setPlace({ left, top });
+    const bottom = window.innerHeight - 8 - safe.bottom;
+    const beside = (left: number) =>
+      setPlace({ left: Math.max(8 + safe.left, left), top: Math.max(8 + safe.top, Math.min(entry.top - 6, bottom - height)) });
+    if (!leftward) return beside(fitsRight ? right : before);
+    if (fitsLeft) return beside(before);
+    // A menu left of its handle without room further left (#253): the
+    // level opens over the menu, not over the block – below its entry,
+    // which stays visible (scrolling when the window is short), or, with
+    // too little room below, at the menu's right edge beside the start of
+    // the entry.
+    const below = entry.bottom + 2;
+    if (bottom - below >= Math.min(height, 200))
+      return setPlace({ left: Math.max(8 + safe.left, entry.left - 4), top: below, maxHeight: bottom - below });
+    beside(entry.right + 4 - width);
   }, [entry, leftward]);
   return (
     <div
@@ -512,7 +525,7 @@ function Flyout({
       role="menu"
       aria-label={title}
       tabIndex={-1}
-      style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0 }}
+      style={{ position: "fixed", left: place?.left ?? -9999, top: place?.top ?? 0, maxHeight: place?.maxHeight }}
     >
       <div className="block-menu-items" onKeyDown={onKeyDown}>
         {children}
