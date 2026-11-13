@@ -948,6 +948,8 @@ function Setup({ d }: { d: Overview }) {
     admin_new_device: t("Admin meldet sich mit einem Gerät an, das 90 Tage nicht dabei war", "An admin signs in with a device not seen for 90 days"),
     impossible_travel: t("Zwei Länder innerhalb von 2 Stunden (braucht FLOWPLAN_COUNTRY_HEADER)", "Two countries within 2 hours (needs FLOWPLAN_COUNTRY_HEADER)"),
     privilege_change: t("Adminrechte, LDAP/SCIM, Wiederherstellung, Erweiterungen, Domains", "Admin rights, LDAP/SCIM, restore, extensions, domains"),
+    e2ee_reset: t("Ein Konto setzt seinen Schlüssel für verschlüsselte Bereiche zurück", "An account resets its key for encrypted spaces"),
+    e2ee_mass_reset: t(`${th.e2eeResetAccounts} Konten setzen ihren Verschlüsselungsschlüssel in ${minutes(th.e2eeResetWindow)} Minuten zurück`, `${th.e2eeResetAccounts} accounts reset their encryption key within ${minutes(th.e2eeResetWindow)} minutes`),
     mass_export: t(`Mehr als ${th.exportsPerHour} Exporte einer Person in einer Stunde`, `More than ${th.exportsPerHour} exports by one person in an hour`),
     probing: t(`${th.probes} abgewiesene API-Anfragen (401/403/404) einer Adresse in ${minutes(th.probeWindow)} Minuten`, `${th.probes} refused API requests (401/403/404) from one address in ${minutes(th.probeWindow)} minutes`),
     injection_attempts: t(`${th.contentAttempts} abgewehrte Skripte oder interne Adressen in einer Stunde`, `${th.contentAttempts} refused scripts or internal addresses in an hour`),

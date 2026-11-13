@@ -153,6 +153,10 @@ function incidentScope(i: { rule: string; key: string; actor_id: string | null; 
     case "impossible_travel":
     case "admin_new_device":
       return { where: "(e.actor_id=? OR (e.address_key<>'' AND e.address_key=?))", args: [i.actor_id ?? "", i.address_key], before: i.rule === "impossible_travel" ? T.travelWindow : T.window };
+    case "e2ee_reset":
+      return { where: "e.actor_id=?", args: [i.actor_id ?? ""], before: HOUR };
+    case "e2ee_mass_reset":
+      return { where: "e.kind='admin.settings' AND e.detail LIKE 'e2ee.identity.reset%'", args: [], before: HOUR };
     case "privilege_change":
       return { where: "(e.actor_id=? OR e.id=?)", args: [i.actor_id ?? "", Number(i.key.replace(/^event:/, "")) || 0], before: 10 * MINUTE };
   }
@@ -171,6 +175,8 @@ function ruleReason(rule: SecurityRule) {
     admin_new_device: ["Ein Admin hat sich von einem Gerät angemeldet, das in den letzten 90 Tagen nicht benutzt wurde.", "An admin signed in from a device not used in the last 90 days."],
     impossible_travel: [`Zwei Anmeldungen desselben Kontos aus verschiedenen Ländern innerhalb von ${min(T.travelWindow)} Minuten.`, `Two sign-ins of the same account from different countries within ${min(T.travelWindow)} minutes.`],
     privilege_change: ["Adminrechte wurden vergeben oder etwas geändert, das bestimmt, wer sich anmelden darf (Verzeichnis, Provisionierung, Wiederherstellung, Erweiterungen, Domains).", "Admin rights were granted or something changed that decides who may sign in (directory, provisioning, restore, extensions, domains)."],
+    e2ee_reset: ["Ein Konto hat seinen Schlüssel für verschlüsselte Bereiche zurückgesetzt („Passphrase und Wiederherstellungsschlüssel vergessen“).", "An account reset its key for encrypted spaces (“passphrase and recovery key lost”)."],
+    e2ee_mass_reset: [`Mindestens ${T.e2eeResetAccounts} Konten haben innerhalb von ${min(T.e2eeResetWindow)} Minuten ihren Schlüssel für verschlüsselte Bereiche zurückgesetzt.`, `At least ${T.e2eeResetAccounts} accounts reset their key for encrypted spaces within ${min(T.e2eeResetWindow)} minutes.`],
     mass_export: [`Mindestens ${T.exportsPerHour} Exporte in einer Stunde und ein Vielfaches des Üblichen dieser Person in den letzten 30 Tagen.`, `At least ${T.exportsPerHour} exports in an hour and many times this person's usual amount over the last 30 days.`],
     probing: [`Mindestens ${T.probes} Anfragen an die API mit der Antwort 401, 403 oder 404 von derselben Adresse innerhalb von ${min(T.probeWindow)} Minuten – jemand probiert Adressen, IDs oder Zugänge durch.`, `At least ${T.probes} API requests answered with 401, 403 or 404 from the same address within ${min(T.probeWindow)} minutes – someone is trying addresses, IDs or access.`],
     injection_attempts: [`Mindestens ${T.contentAttempts} abgewiesene Versuche in einer Stunde, über Inhalte interne Adressen (SSRF) oder gefährliches Markup einzuschleusen.`, `At least ${T.contentAttempts} refused attempts within an hour to sneak in internal addresses (SSRF) or dangerous markup through content.`],

@@ -25,6 +25,9 @@ export const SECURITY_THRESHOLDS = {
   contentAttempts: 5,
   probes: 60,
   probeWindow: 10 * MINUTE,
+  // Encryption keys reset by this many accounts within the window.
+  e2eeResetAccounts: 3,
+  e2eeResetWindow: HOUR,
 } as const;
 const T = SECURITY_THRESHOLDS;
 
@@ -43,8 +46,13 @@ export async function detectSecurity(e: SecurityEvent) {
     case "admin.settings":
       // Who may sign in and with which rights: directory, provisioning,
       // restores, extensions and domains that run in the instance.
-      if (/^(ldap|scim|instance\.restore|plugin\.register|domain\.add|e2ee\.identity\.reset)/.test(e.detail))
+      if (/^(ldap|scim|instance\.restore|plugin\.register|domain\.add)/.test(e.detail))
         return await openIncident("privilege_change", `event:${e.id}`, e, e.detail);
+      // Someone started over with their own encryption key (passphrase and
+      // recovery key lost): it only takes away their own access to
+      // encrypted spaces, so a warning – unless several accounts do it in
+      // a short time, which a taken-over admin or a script would.
+      if (/^e2ee\.identity\.reset/.test(e.detail)) return await e2eeReset(e);
       return;
     case "data.export":
       return await exports(e);
@@ -54,6 +62,16 @@ export async function detectSecurity(e: SecurityEvent) {
     case "blocked.content":
       return await attempts(e);
   }
+}
+
+async function e2eeReset(e: SecurityEvent) {
+  const opened = await openIncident("e2ee_reset", `account:${e.actorId ?? e.addressKey}`, e, e.detail);
+  const accounts = await count(
+    "SELECT COUNT(DISTINCT actor_id) n FROM security_events WHERE kind='admin.settings' AND detail LIKE 'e2ee.identity.reset%' AND actor_id IS NOT NULL AND at>=?",
+    e.at - T.e2eeResetWindow,
+  );
+  if (accounts >= T.e2eeResetAccounts) return await openIncident("e2ee_mass_reset", "instance", e, `${accounts}`);
+  return opened;
 }
 
 const ATTEMPTS = "kind IN ('login.failure','login.refused')";

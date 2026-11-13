@@ -65,6 +65,8 @@ export const securityRules = {
   admin_new_device: { severity: "warn", de: "Admin meldet sich von neuem Gerät an", en: "Admin signs in from a new device" },
   impossible_travel: { severity: "critical", de: "Anmeldungen aus zwei Ländern kurz nacheinander", en: "Sign-ins from two countries in a short time" },
   privilege_change: { severity: "critical", de: "Rechte oder Anmeldung der Instanz geändert", en: "Rights or sign-in of the instance changed" },
+  e2ee_reset: { severity: "warn", de: "Verschlüsselungsschlüssel zurückgesetzt", en: "Encryption key reset" },
+  e2ee_mass_reset: { severity: "critical", de: "Mehrere Verschlüsselungsschlüssel zurückgesetzt", en: "Several encryption keys reset" },
   mass_export: { severity: "warn", de: "Ungewöhnlich viele Exporte", en: "Unusually many exports" },
   probing: { severity: "warn", de: "Abtasten von Adressen und IDs", en: "Probing of addresses and IDs" },
   injection_attempts: { severity: "warn", de: "Wiederholte Angriffsversuche über Inhalte", en: "Repeated attack attempts through content" },

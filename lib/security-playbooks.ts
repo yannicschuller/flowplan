@@ -148,6 +148,36 @@ export const securityPlaybooks: Record<SecurityRule, Playbook> = {
       RESOLVE,
     ],
   },
+  e2ee_reset: {
+    meaning: {
+      de: "Ein Konto hat seinen Schlüssel für verschlüsselte Bereiche zurückgesetzt – das macht man, wenn Passphrase und Wiederherstellungsschlüssel verloren sind. Dabei gehen nur die eigenen Schlüssel dieser Person verloren: Sie kommt nicht mehr in ihre verschlüsselten Bereiche, bis ein Mitglied sie wieder hinzufügt. Niemand bekommt dadurch Zugriff auf Inhalte oder Rechte.",
+      en: "An account reset its key for encrypted spaces – done when the passphrase and the recovery key are lost. Only this person's own keys are lost: they can no longer open their encrypted spaces until a member adds them again. Nobody gains access to content or rights through it.",
+    },
+    harmless: { de: "Die Person hat ihre Passphrase vergessen oder die Verschlüsselung ausprobiert.", en: "The person forgot their passphrase or tried out encryption." },
+    steps: [
+      { de: "Die Person fragen, ob sie das war.", en: "Ask the person whether it was them." },
+      {
+        de: "War sie es: Ein Mitglied der verschlüsselten Bereiche fügt sie dort wieder hinzu (Bereich → Mitglieder), sobald sie einen neuen Schlüssel eingerichtet hat.",
+        en: "If it was: a member of the encrypted spaces adds them there again (space → members) once they have set up a new key.",
+      },
+      { de: "War sie es nicht: Alle Sitzungen des Kontos beenden und das Passwort ändern lassen – jemand hatte Zugriff auf eine angemeldete Sitzung.", en: "If it wasn't: end all sessions of the account and have the password changed – someone had access to a signed-in session.", action: "sessions" },
+      RESOLVE,
+    ],
+  },
+  e2ee_mass_reset: {
+    meaning: {
+      de: "Mehrere Konten haben kurz nacheinander ihren Schlüssel für verschlüsselte Bereiche zurückgesetzt. Einzeln ist das harmlos; gehäuft kann es heißen, dass jemand mit übernommenen Sitzungen oder einem Skript Personen aus ihren verschlüsselten Bereichen aussperrt.",
+      en: "Several accounts reset their key for encrypted spaces in a short time. One at a time this is harmless; many at once can mean someone with taken-over sessions or a script is locking people out of their encrypted spaces.",
+    },
+    harmless: { de: "Eine Schulung oder ein Test, bei dem mehrere Personen die Verschlüsselung neu eingerichtet haben.", en: "A training or a test where several people set up encryption again." },
+    steps: [
+      { de: "Im Verlauf nachsehen, welche Konten betroffen sind, und bei den Personen nachfragen.", en: "See in the timeline which accounts are affected and ask the people." },
+      { de: "Bei Konten, die es nicht selbst waren: Sitzungen beenden und Passwörter ändern lassen.", en: "For accounts that didn't do it themselves: end their sessions and have their passwords changed.", link: PEOPLE },
+      { de: "Kamen die Resets von einer fremden Adresse, diese sperren.", en: "If the resets came from an unknown address, block it.", action: "block" },
+      { de: "Die Personen in ihren verschlüsselten Bereichen wieder hinzufügen lassen.", en: "Have the people added to their encrypted spaces again." },
+      RESOLVE,
+    ],
+  },
   mass_export: {
     meaning: {
       de: "Ein Konto hat in kurzer Zeit ungewöhnlich viel exportiert – ein Hinweis auf möglichen Datenabfluss, etwa mit einem gestohlenen Konto oder Token.",

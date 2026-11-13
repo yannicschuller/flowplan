@@ -299,3 +299,33 @@ test("every rule has steps, and every link of a step leads to a real section", a
     }
   }
 });
+
+test("an encryption key reset is a warning of its own; several in an hour are critical", async () => {
+  await reset();
+  const a = await person("Ada");
+  await audit(a.id, "e2ee.identity.reset", a.id);
+  await settle();
+  const one1 = await all<{ rule: string; severity: string }>("SELECT rule,severity FROM security_incidents");
+  assert.deepEqual(one1, [{ rule: "e2ee_reset", severity: "warn" }]);
+  assert.equal(await one("SELECT 1 FROM security_incidents WHERE rule='privilege_change'"), undefined);
+  // The same account again: the same incident, counted.
+  await audit(a.id, "e2ee.identity.reset", a.id);
+  await settle();
+  assert.equal((await all("SELECT 1 FROM security_incidents WHERE rule='e2ee_reset'")).length, 1);
+  // Two more accounts within the hour: one critical incident for the instance.
+  for (const name of ["Ben", "Cleo"]) {
+    const p = await person(name);
+    await audit(p.id, "e2ee.identity.reset", p.id);
+  }
+  await settle();
+  const critical = await all<{ severity: string }>("SELECT severity FROM security_incidents WHERE rule='e2ee_mass_reset'");
+  assert.deepEqual(critical, [{ severity: "critical" }]);
+  assert.equal((await all("SELECT 1 FROM security_incidents WHERE rule='e2ee_reset'")).length, 3);
+  assert.equal(SECURITY_THRESHOLDS.e2eeResetAccounts, 3);
+  // Both incident pages load, with their own explanation and the events behind them.
+  for (const rule of ["e2ee_reset", "e2ee_mass_reset"]) {
+    const row = await one<{ id: string }>("SELECT id FROM security_incidents WHERE rule=? LIMIT 1", rule);
+    const d = await securityIncident(row!.id);
+    assert.ok(JSON.stringify(d).includes("e2ee.identity.reset"), rule);
+  }
+});
