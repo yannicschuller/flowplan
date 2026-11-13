@@ -13,6 +13,20 @@ export function finishDocumentHtml(root: HTMLElement, options: FinishOptions = {
   renderFootnotes(root, options);
   if (options.captionNumbers) numberCaptions(root);
 }
+// Wide tables scroll sideways in a box of their own, as in the editor
+// (Tiptap's .tableWrapper, app/globals.css), instead of pushing the whole
+// read-only page wider than the screen (#256). Linked databases on public
+// pages (.public-embed) scroll in their own frame. Again on the same DOM
+// changes nothing.
+export function wrapTables(root: HTMLElement) {
+  for (const table of root.querySelectorAll<HTMLTableElement>("table")) {
+    if (table.parentElement?.classList.contains("tableWrapper") || table.closest(".public-embed")) continue;
+    const wrapper = table.ownerDocument.createElement("div");
+    wrapper.className = "tableWrapper";
+    table.replaceWith(wrapper);
+    wrapper.append(table);
+  }
+}
 // "Abbildung 1:" in front of the captions of images, tables and code
 // blocks, counted per kind in document order (lib/block-captions.ts).
 export function numberCaptions(root: HTMLElement) {

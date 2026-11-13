@@ -1863,8 +1863,12 @@ kbd,
   align-items: baseline;
   margin: 6px 0 14px;
 }
+/* A table's caption starts below its scroll area (.tableWrapper), never
+   over it: the wrapper's bottom is the horizontal scrollbar of a wide
+   table (#256 – in 0.9.4 the caption line covered it, and the scrollbar
+   could not be dragged or clicked). */
 .block-caption[data-kind="table"] {
-  margin-top: -2px;
+  margin-top: 0;
 }
 .block-caption[data-state="none"] {
   display: none;

@@ -108,7 +108,13 @@ function measure(editor: Editor, tablePos: number, origin: DOMRect) {
     box ||= cellBox(0, c);
     columns.push({ left: box?.left ?? 0, right: box?.right ?? 0 });
   }
-  return { table, box: rel(element.getBoundingClientRect()), clip: rel(wrapper.getBoundingClientRect()), rows, columns };
+  // Where the scroll area's own horizontal scrollbar starts (#256): with
+  // classic scrollbars (Windows, Linux) it takes the bottom of the wrapper,
+  // and nothing of the layer may lie over it – a press there must reach
+  // the scrollbar. Null without one (overlay scrollbars, no overflow).
+  const clip = rel(wrapper.getBoundingClientRect());
+  const scrollbar = wrapper !== element && wrapper.offsetHeight - wrapper.clientTop - wrapper.clientHeight > 1 ? clip.top + wrapper.clientTop + wrapper.clientHeight : null;
+  return { table, box: rel(element.getBoundingClientRect()), clip, scrollbar, rows, columns };
 }
 
 function GripDots({ across }: { across: boolean }) {
@@ -452,7 +458,7 @@ export function TableControls({
   const bars: React.ReactNode[] = [];
   let indicator: Box | null = null;
   if (grid && target && editor.isEditable) {
-    const { box, clip, rows, columns, table } = grid;
+    const { box, clip, scrollbar, rows, columns, table } = grid;
     const left = Math.max(box.left, clip.left),
       right = Math.min(box.right, clip.right);
     const row = rows[target.row],
@@ -517,7 +523,9 @@ export function TableControls({
           type="button"
           tabIndex={-1}
           className="table-add row"
-          style={{ left, top: box.bottom + 3, width: Math.max(0, right - left) }}
+          // Between the table and its scrollbar, never over the scrollbar
+          // (the bar is taller on touch screens than the gap there).
+          style={{ left, top: box.bottom + 3, width: Math.max(0, right - left), ...(scrollbar !== null ? { maxHeight: Math.max(0, scrollbar - box.bottom - 3) } : {}) }}
           aria-label={t("Zeile hinzufügen", "Add row")}
           title={t("Zeile hinzufügen", "Add row")}
           onMouseDown={keep}
