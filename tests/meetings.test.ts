@@ -176,6 +176,89 @@ test("citation numbers count in order of first appearance and are reused", () =>
   assert.equal(core.circled(51), "(51)");
 });
 
+test("citation chips show the time of their segment (#199)", () => {
+  assert.equal(core.citeTime(0), "00:00");
+  assert.equal(core.citeTime(497.6), "08:17");
+  assert.equal(core.citeTime(3599), "59:59");
+  assert.equal(core.citeTime(3600), "1:00:00");
+  assert.equal(core.citeTime(3725), "1:02:05");
+  // The segment decides; then the time stored on the chip; older chips
+  // whose segment is gone keep their number.
+  assert.equal(core.citeLabel({ n: 5, start: 12 }, { start: 497 }), "08:17");
+  assert.equal(core.citeLabel({ n: 5, start: 12 }, null), "00:12");
+  assert.equal(core.citeLabel({ n: 5, start: null }), "⑤");
+  assert.equal(core.citeLabel({ n: "51" }), "(51)");
+  assert.equal(core.citeLabel({ n: 5, start: 0 }), "00:00");
+  assert.equal(core.citeAria("08:17", "  Ich schicke   das Angebot.", "Quelle"), "Quelle 08:17: Ich schicke das Angebot.");
+  assert.equal(core.citeAria("08:17", "x".repeat(100), "Source"), `Source 08:17: ${"x".repeat(80)}…`);
+  assert.equal(core.citeAria("⑤", "", "Quelle"), "Quelle ⑤");
+});
+
+test("chips of stored summaries – new and the older numbered ones – are drawn from their segment (#199)", async () => {
+  const { htmlJson, jsonHtml } = await import("../lib/document-server");
+  const { Window } = await import("happy-dom");
+  const meeting = (id: string, summary: string, transcript: string) =>
+    `<div data-meeting="${id}" data-meeting-title="Weekly" class="meeting-block"><p class="meeting-title">Weekly</p><div class="meeting-parts">` +
+    `<div data-meeting-part="summary">${summary}</div><div data-meeting-part="agenda"><p></p></div><div data-meeting-part="transcript">${transcript}</div></div></div>`;
+  const html =
+    meeting(
+      "00000000-0000-4000-8000-000000000001",
+      // Older format: only a running number. Newer: the time as well.
+      '<p>Alt <sup data-meeting-cite="1m0" data-n="37">㊲</sup> Neu <sup data-meeting-cite="1o4" data-n="2" data-cite-start="3725">1:02:05</sup> Weg <sup data-meeting-cite="1m9" data-n="51">(51)</sup></p>',
+      '<p data-segment="1m0" data-start="497.4" data-end="500" data-speaker="Ada" data-track="me" data-session="1">Ich schicke das Angebot bis Freitag.</p>' +
+        '<p data-segment="1o4" data-start="3725" data-end="3730" data-speaker="Andere" data-track="others" data-session="1">Gut.</p>',
+    ) +
+    // The same segment id in another meeting block has its own time.
+    meeting("00000000-0000-4000-8000-000000000002", '<p>Zweite <sup data-meeting-cite="1m0" data-n="1">①</sup></p>', '<p data-segment="1m0" data-start="5" data-end="6" data-track="me" data-session="1">Hallo</p>');
+  const json = htmlJson(html);
+  const cites: Record<string, unknown>[] = [];
+  const walk = (node: { type: string; attrs?: Record<string, unknown>; content?: unknown[] }) => {
+    if (node.type === "meetingCite") cites.push(node.attrs!);
+    for (const child of (node.content || []) as (typeof node)[]) walk(child);
+  };
+  walk(json as never);
+  assert.deepEqual(cites.map((c) => [c.sid, c.n, c.start]), [
+    ["1m0", 37, null],
+    ["1o4", 2, 3725],
+    ["1m9", 51, null],
+    ["1m0", 1, null],
+  ]);
+  // Stored HTML keeps the reference; nothing is rewritten in it.
+  const stored = jsonHtml(json);
+  assert.match(stored, /<sup data-meeting-cite="1m0" data-n="37" class="meeting-cite">㊲<\/sup>/);
+  assert.match(stored, /data-cite-start="3725"/);
+  // Read-only pages and the HTML export draw the times from the segments.
+  const { labelMeetingCites } = core;
+  const window = new Window();
+  const root = window.document.createElement("div");
+  root.innerHTML = stored;
+  labelMeetingCites(root as unknown as ParentNode, "Quelle");
+  const chips = [...root.querySelectorAll("sup[data-meeting-cite]")];
+  assert.deepEqual(chips.map((c) => c.textContent), ["08:17", "1:02:05", "(51)", "00:05"]);
+  assert.equal(chips[0].getAttribute("aria-label"), "Quelle 08:17: Ich schicke das Angebot bis Freitag.");
+  assert.equal(chips[2].getAttribute("aria-label"), "Quelle (51)");
+  labelMeetingCites(root as unknown as ParentNode, "Quelle");
+  assert.deepEqual([...root.querySelectorAll("sup[data-meeting-cite]")].map((c) => c.textContent), ["08:17", "1:02:05", "(51)", "00:05"]);
+  await window.happyDOM.close();
+  // Markdown, EPUB/print (XHTML) and Jira show the same times.
+  const { htmlToMarkdown } = await import("../lib/markdown");
+  const markdown = htmlToMarkdown(stored, { url: () => null, linked: () => null });
+  assert.match(markdown, /Alt `08:17` Neu `1:02:05` Weg `\(51\)`/);
+  assert.match(markdown, /Zweite `00:05`/);
+  const { documentXhtml } = await import("../lib/export-xhtml");
+  const xhtml = documentXhtml(stored, { url: () => null, image: () => null });
+  assert.match(xhtml, /Alt <sup class="meeting-cite">08:17<\/sup> Neu <sup class="meeting-cite">1:02:05<\/sup> Weg <sup class="meeting-cite">\(51\)<\/sup>/);
+  assert.match(xhtml, /Zweite <sup class="meeting-cite">00:05<\/sup>/);
+  const { documentJira } = await import("../lib/export-jira");
+  const jira = documentJira(stored, { url: () => null, image: () => null });
+  assert.match(jira, /Alt 08:17 Neu 1:02:05 Weg \(51\)/);
+  assert.match(jira, /Zweite 00:05/);
+  const { documentConfluence } = await import("../lib/export-confluence");
+  const confluence = documentConfluence(stored, { url: () => null, image: () => null });
+  assert.match(confluence, /Alt <sup class="meeting-cite">08:17<\/sup>/);
+  assert.match(confluence, /Zweite <sup class="meeting-cite">00:05<\/sup>/);
+});
+
 test("echoes of the call in the microphone are dropped, own speech stays", () => {
   const others = [{ start: 10, end: 16, text: "Kannst du bis Freitag das Angebot schicken?" }];
   const me = [
@@ -202,7 +285,10 @@ test("the summary becomes tasks with owner mention and due date, then decisions,
     topics: [{ title: "Budget", points: [{ text: "Bleibt gleich", sources: [1] }] }],
     open: [{ text: "Termin offen" }],
   });
-  const segments = [{ sid: "1o0" }, { sid: "1m1" }];
+  const segments = [
+    { sid: "1o0", start: 12.34 },
+    { sid: "1m1", start: 497 },
+  ];
   const { nodes, numbers } = core.summaryNodes(summary, segments, { language: "de", members: [{ id: "u-ben", name: "Ben Becker" }] });
   assert.equal(nodes[0].type, "heading");
   assert.equal(nodes[0].content![0].text, "Aufgaben");
@@ -211,13 +297,18 @@ test("the summary becomes tasks with owner mention and due date, then decisions,
   const first = tasks[0].content![0].content!;
   assert.ok(first.some((n) => n.type === "mention" && n.attrs!.userId === "u-ben"));
   assert.deepEqual(first.filter((n) => n.type === "meetingCite").map((n) => n.attrs!.n), [1, 2]);
+  // A chip keeps its segment and that segment's time.
+  assert.deepEqual(first.filter((n) => n.type === "meetingCite").map((n) => [n.attrs!.sid, n.attrs!.start]), [
+    ["1m1", 497],
+    ["1o0", 12.3],
+  ]);
   // An invalid date is dropped, a non-member stays as text, an unknown segment is no chip.
   assert.equal(tasks[1].attrs!.due, undefined);
   assert.ok(tasks[1].content![0].content!.some((n) => n.text?.includes("Externe Person")));
   assert.ok(!tasks[1].content![0].content!.some((n) => n.type === "meetingCite"));
-  // Nobody named: the task says so and is nobody's.
-  assert.ok(tasks[2].content![0].content!.some((n) => n.text === " (Zuständig: unklar)"));
-  assert.ok(!tasks[2].content![0].content!.some((n) => n.type === "mention"));
+  // No owner: the task says nothing about one and is nobody's.
+  assert.deepEqual(tasks[2].content![0].content, [{ type: "text", text: "Protokoll verteilen" }]);
+  assert.ok(!JSON.stringify(nodes).includes("unklar"));
   // Fixed order: action items, decisions (reason below), open questions (the
   // earlier "open" shape), the summary by topic.
   assert.deepEqual(nodes.map((n) => n.type), ["heading", "taskList", "heading", "bulletList", "heading", "bulletList", "heading", "heading", "bulletList"]);
@@ -254,7 +345,10 @@ test("the summary prompt asks for the fixed order, never guessed owners, and rea
   const order = ['"actions"', '"decisions"', '"questions"', '"topics"'].map((key) => system.indexOf(key));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.ok(order.every((i) => i > 0));
-  assert.match(system, /never guess an owner/);
+  assert.match(system, /Never guess an owner otherwise/);
+  // Who commits to a task in the first person owns it: the speaker of that segment.
+  assert.match(system, /commit to the task in the first person \('I'll do X', 'I'll send the estimate', 'ich kümmere mich darum'\) – then the owner is that segment's speaker name/);
+  assert.match(system, /null when there is none, never a word like 'unclear'/);
   assert.match(system, /subtitle credits/);
   assert.match(system, /1–3 transcript segments \(S1, S2 …\) that best support the item/);
   assert.match(String(prompt.messages[0].content), /Notes:\nRaum klären/);
@@ -271,6 +365,19 @@ test("an item cites at most three segments (#199)", () => {
   // Already stored lists are cut when numbered as well.
   const { items } = core.numberCitations([["a", "b", "c", "d", "e"]]);
   assert.deepEqual(items, [[1, 2, 3]]);
+});
+
+test("a task without an owner says nothing about one, whatever placeholder the model writes (#199)", () => {
+  const summary = core.meetingSummarySchema.parse({
+    actions: ["unclear", "Unklar", "(unklar)", "n/a", "未明确", "", "?", "Ada", "Andere 2"].map((owner, i) => ({ text: `Aufgabe ${i}`, owner })),
+  });
+  assert.deepEqual(summary.actions.map((a) => a.owner), [null, null, null, null, null, null, null, "Ada", "Andere 2"]);
+  for (const language of ["de", "en", "fr", "zh"] as const) {
+    const { nodes } = core.summaryNodes(summary, [], { language, members: [] });
+    const texts = nodes[1].content!.map((task) => task.content![0].content!.map((n) => n.text).join(""));
+    assert.deepEqual(texts.slice(0, 7), [0, 1, 2, 3, 4, 5, 6].map((i) => `Aufgabe ${i}`));
+    assert.equal(texts[7], `Aufgabe 7 (${core.MEETING_TEXT[language].owner}: Ada)`);
+  }
 });
 
 test("speaker names come from the tracks", () => {
@@ -292,7 +399,10 @@ test("two tracks: transcript with Ada and Andere, echo removed, summary with tas
   const speakers = status.transcript.map((s) => `${s.speaker}@${s.start}`);
   assert.deepEqual(speakers, ["Ada@2", "Andere@10", "Andere@40", "Ada@60"]);
   const html = await docHtml(pageId);
-  assert.match(html, /data-meeting-cite="[^"]+" data-n="1"/);
+  assert.match(html, /data-meeting-cite="[^"]+" data-n="1" data-cite-start="\d+(\.\d)?" class="meeting-cite">\d\d:\d\d<\/sup>/);
+  // The summary as text (Ask, My tasks) carries the times, never "unclear".
+  assert.match(status.summary, /`\d\d:\d\d`/);
+  assert.doesNotMatch(status.summary, /unklar|unclear/);
   assert.match(html, /data-type="taskItem"[^>]*data-due="2026-11-13"|data-due="2026-11-13"[^>]*data-type="taskItem"/);
   assert.match(status.summary, /Angebot an den Kunden schicken @Ben/);
   // The prompt saw numbered segments and the agenda section.
@@ -484,7 +594,8 @@ test("Markdown export carries the meeting with chips and transcript", async () =
   ).replace('<div data-meeting-part="summary"><p></p></div>', '<div data-meeting-part="summary"><p>Punkt <sup data-meeting-cite="1m0" data-n="1">①</sup></p></div>');
   const markdown = htmlToMarkdown(html, { url: () => null, linked: () => null });
   assert.match(markdown, /### Export/);
-  assert.match(markdown, /Punkt ①/);
+  // An older chip with a number shows its segment's time.
+  assert.match(markdown, /Punkt `01:05`/);
   assert.match(markdown, /`01:05` \*\*Ada:\*\* Hallo/);
 });
 

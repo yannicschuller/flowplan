@@ -59,7 +59,7 @@ async function openMeeting(page: Page, options: Options = {}) {
   ] as const;
   const html =
     `<div data-meeting="${meetingId}" data-meeting-title="Wochentermin" data-meeting-date="${date}" data-meeting-attendees='[{"name":"Gast Grace"}]' data-meeting-instructions="auto" class="meeting-block"><p class="meeting-title">Wochentermin</p><div class="meeting-parts">` +
-    `<div data-meeting-part="summary"><h3>Aufgaben</h3><ul><li><p>Budget umsetzen <sup data-meeting-cite="s2" data-n="1">①</sup></p></li></ul></div>` +
+    `<div data-meeting-part="summary"><h3>Aufgaben</h3><ul><li><p>Budget umsetzen <sup data-meeting-cite="s2" data-n="1">①</sup> <sup data-meeting-cite="s1" data-n="2" data-cite-start="3">00:03</sup> <sup data-meeting-cite="gone" data-n="3" data-cite-start="3725">1:02:05</sup></p></li></ul></div>` +
     `<div data-meeting-part="agenda"><p>Budget</p></div><div data-meeting-part="transcript">` +
     segments
       .map(([sid, start, text, hidden]) => `<p data-segment="${sid}" data-start="${start}" data-end="${start + 8}" data-speaker="Ada" data-track="me" data-session="1"${hidden ? ' data-hallucination="1"' : ""}>${text}</p>`)
@@ -242,6 +242,24 @@ test("the transcript is locked until switched on; edited passages are marked; hi
   // Locked again.
   await toggle.click();
   await expect(transcript).toHaveAttribute("contenteditable", "false");
+});
+
+test("citation chips show their passage's time – also older numbered ones – and open the transcript there (#199)", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers it.");
+  const { block } = await openMeeting(page);
+  const chips = block.locator('[data-meeting-part="summary"] sup[data-meeting-cite]');
+  // ① of an older summary is drawn from its segment (14 s), a newer chip
+  // from its segment as well, one whose passage is gone keeps its stored time.
+  await expect(chips).toHaveText(["00:14", "00:03", "1:02:05"]);
+  await expect(chips.nth(0)).toHaveAttribute("aria-label", "Quelle 00:14: Das Budget ist freigegeben.");
+  await expect(chips.nth(2)).toHaveAttribute("aria-label", "Quelle 1:02:05");
+  await chips.nth(0).hover();
+  const popover = block.locator(".meeting-cite-popover");
+  await expect(popover).toContainText("00:14 · Ada");
+  await expect(popover).toContainText("Das Budget ist freigegeben.");
+  await chips.nth(0).click();
+  await expect(block.getByRole("tab", { name: "Transkript" })).toHaveAttribute("aria-selected", "true");
+  await expect(block.locator('[data-meeting-part="transcript"] [data-segment="s2"]')).toBeInViewport();
 });
 
 test("notes keep their place as a tab and stay editable after the recording", async ({ page }, testInfo) => {

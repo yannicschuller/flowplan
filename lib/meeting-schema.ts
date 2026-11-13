@@ -12,12 +12,16 @@
 //                        when it is no speech (hallucination) or a person
 //                        corrected it (edited, hash of the original)
 //
-// Citation chips (meetingCite, ①②…) in the summary point at a segment by
-// its id. The recording, its processing and the kept audio are in the
+// Citation chips (meetingCite, "08:17") in the summary point at a segment
+// by its id and show its start time – drawn from the segment wherever the
+// chip is drawn (editor: components/meeting-block.tsx, read-only pages and
+// HTML export: labelMeetingCites, Markdown/XHTML/Jira: their exporters);
+// chips of older summaries stored only a number (①②…) and get their time
+// the same way. The recording, its processing and the kept audio are in the
 // meetings table (lib/meetings.ts), keyed by the block's meetingId. The
 // editor draws the block with components/meeting-block.tsx.
 import { Node } from "@tiptap/core";
-import { circled } from "./meeting-core";
+import { citeLabel } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
 import { validBlockId } from "./block-ids";
 
@@ -156,10 +160,29 @@ export const MeetingCite = Node.create({
     return {
       n: { default: 1, parseHTML: (el: HTMLElement) => num(el.getAttribute("data-n")) || 1, renderHTML: () => ({}) },
       sid: attr("data-meeting-cite"),
+      // The segment's start (seconds) when the chip was written; null on
+      // older chips. Shown only when the segment is gone.
+      start: {
+        default: null,
+        parseHTML: (el: HTMLElement) => {
+          const value = el.getAttribute("data-cite-start");
+          return value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
+        },
+        renderHTML: () => ({}),
+      },
     };
   },
   parseHTML: () => [{ tag: "sup[data-meeting-cite]", priority: 1000 }],
-  renderHTML: ({ node }) => ["sup", { "data-meeting-cite": node.attrs.sid, "data-n": String(node.attrs.n), class: "meeting-cite" }, circled(Number(node.attrs.n))],
+  renderHTML: ({ node }) => [
+    "sup",
+    {
+      "data-meeting-cite": node.attrs.sid,
+      "data-n": String(node.attrs.n),
+      ...(node.attrs.start !== null && node.attrs.start !== undefined ? { "data-cite-start": String(node.attrs.start) } : {}),
+      class: "meeting-cite",
+    },
+    citeLabel(node.attrs),
+  ],
 });
 
 export const meetingExtensions = [Meeting, MeetingSummary, MeetingAgenda, MeetingTranscript, MeetingSegmentNode, MeetingCite];

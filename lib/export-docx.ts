@@ -19,6 +19,7 @@ import { exportName } from "./export-name";
 import { CAPTION_KINDS, captionCounter, captionText, type CaptionKind } from "./block-captions";
 import { collectExportContent, withExportLookups, documentNode, imageExtension, type ExportFile } from "./export-content";
 import type { Identity } from "./types";
+import { citeScope } from "./meeting-core";
 
 export type DocxSection = {
   title: string;
@@ -225,6 +226,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
   };
 
   const cited: { key: string; item: string }[] = [];
+  const cites = citeScope();
   function inline(node: Node, block: Block): string {
     const base: RunProps = block.bold ? { b: true } : {};
     if (node.type.name === "hardBreak") return "<w:r><w:br/></w:r>";
@@ -238,6 +240,8 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
       return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${id}"/></w:r>`;
     }
     if (node.type.name === "mention") return run({ text: `@${String(node.attrs.label || "")}`, props: base });
+    // A meeting summary's citation chip (#199): its segment's time.
+    if (node.type.name === "meetingCite") return run({ text: cites.label(node.attrs), props: base });
     if (node.type.name === "mathInline") return run({ text: String(node.attrs.expression || ""), props: { ...base, rStyle: "CodeChar" } });
     if (!node.isText) {
       let result = "";
@@ -432,7 +436,10 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     // caption or an empty one.
     if (!captionParagraph(node, block)) body.push("<w:p/>");
   }
-  function blockNode(node: Node, block: Block) {
+  function blockNode(node: Node, block: Block): ReturnType<typeof blockOf> {
+    return node.type.name === "meeting" ? cites.within(node, () => blockOf(node, block)) : blockOf(node, block);
+  }
+  function blockOf(node: Node, block: Block) {
     switch (node.type.name) {
       case "paragraph":
         return paragraph(inline(node, block), paragraphProps(node, block));

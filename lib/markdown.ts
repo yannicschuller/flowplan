@@ -9,7 +9,7 @@ import { ct as tr } from "./content-locale";
 import { captionText } from "./block-captions";
 import { fenceMeta, type CodeBlockOptions } from "./code-block-options";
 import { fenceLanguage } from "./code-languages";
-import { circled } from "./meeting-core";
+import { citeScope } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
 import { markdownSymbol } from "./task-status";
 import { blockColorComment, cellColorsComment } from "./block-colors";
@@ -270,6 +270,7 @@ export function htmlToMarkdown(
   };
   const source = options.source;
   const notes: string[] = [];
+  const cites = citeScope();
   // Whole blocks Markdown cannot hold, as a marker (source view only).
   function placeholder(node: Node) {
     if (!source) return null;
@@ -315,8 +316,12 @@ export function htmlToMarkdown(
     }
     if (node.type.name === "mention")
       return markdownText("@" + String(node.attrs.label || ""));
-    // A citation chip of a meeting summary (#199): its number.
-    if (node.type.name === "meetingCite") return circled(Number(node.attrs.n));
+    // A citation chip of a meeting summary (#199): its segment's time, like
+    // the transcript's lines.
+    if (node.type.name === "meetingCite") {
+      const label = cites.label(node.attrs);
+      return label ? `\`${label}\`` : "";
+    }
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");
       return inTable && htmlCodeInTable(value)
@@ -515,7 +520,7 @@ export function htmlToMarkdown(
       }
       // The meeting block (#199): title, then its three parts.
       case "meeting":
-        return [`### ${markdownText(String(node.attrs.title || ct("Besprechung", "Meeting")))}`, children(node, inTable)].filter(Boolean).join("\n\n");
+        return cites.within(node, () => [`### ${markdownText(String(node.attrs.title || ct("Besprechung", "Meeting")))}`, children(node, inTable)].filter(Boolean).join("\n\n"));
       case "meetingSummary":
       case "meetingAgenda":
       case "meetingTranscript": {

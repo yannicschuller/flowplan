@@ -26,8 +26,8 @@ import {
   SuggestChanges,
 } from "@/lib/suggestions";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
-import { meetingNode, MeetingTranscriptView, type MeetingContext } from "./meeting-block";
-import { MeetingAgenda, MeetingCite, MeetingSegmentNode, MeetingSummary } from "@/lib/meeting-schema";
+import { meetingNode, MeetingCiteView, MeetingTranscriptView, type MeetingContext } from "./meeting-block";
+import { MeetingAgenda, MeetingSegmentNode, MeetingSummary } from "@/lib/meeting-schema";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
 import { TableControls } from "./table-controls";
@@ -877,7 +877,7 @@ export default function DocumentEditor({
         MeetingAgenda,
         MeetingTranscriptView,
         MeetingSegmentNode,
-        MeetingCite,
+        MeetingCiteView,
         whiteboardEmbedNode(),
         // Handwriting; the ink is stored per page (not in record documents).
         drawBlockNode({ pageId, enabled: !rowId }),

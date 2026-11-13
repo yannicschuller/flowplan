@@ -12,7 +12,7 @@ import { footnoteText, URL_PATTERN } from "./footnotes";
 import { documentNode } from "./export-content";
 import { captionCounter, captionText } from "./block-captions";
 import { sanitizeDrawioSvg } from "./drawio-svg";
-import { circled } from "./meeting-core";
+import { citeScope } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
 
 export type XhtmlContext = {
@@ -76,6 +76,7 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
   const doc = documentNode(html);
   const prefix = context.prefix ? `${context.prefix}-` : "";
   const notes: string[] = [];
+  const cites = citeScope();
   // Captions of images, tables and code (lib/block-captions.ts).
   const nextLabel = captionCounter(!!context.captionNumbers, ct);
   const caption = (node: Node) => {
@@ -121,7 +122,7 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       return `<sup class="footnote-ref" id="${prefix}fnref-${number}"><a href="#${prefix}fn-${number}">${number}</a></sup>`;
     }
     if (node.type.name === "mention") return `<span class="mention">@${xml(String(node.attrs.label || ""))}</span>`;
-    if (node.type.name === "meetingCite") return `<sup class="meeting-cite">${xml(circled(Number(node.attrs.n)))}</sup>`;
+    if (node.type.name === "meetingCite") return `<sup class="meeting-cite">${xml(cites.label(node.attrs))}</sup>`;
     if (node.type.name === "mathInline") return `<code class="math">${xml(String(node.attrs.expression || ""))}</code>`;
     if (!node.isText) {
       let result = "";
@@ -179,6 +180,12 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
     return result;
   }
   function block(node: Node): string {
+    // Within a meeting block its chips show their segments' times (also
+    // where a format writes the block itself, as Confluence does).
+    if (node.type.name === "meeting") return cites.within(node, () => ownOrDefault(node));
+    return ownOrDefault(node);
+  }
+  function ownOrDefault(node: Node): string {
     const own = context.block?.(node, render);
     return own != null ? own : defaultBlock(node);
   }

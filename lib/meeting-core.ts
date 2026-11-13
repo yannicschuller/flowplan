@@ -9,12 +9,15 @@
 //   same words are in both tracks. The system track only ever holds the
 //   others, so a microphone segment that overlaps a system segment in time
 //   and says nearly the same is that echo and is dropped (removeEchoes).
-// - Citations: every item of the summary ends with numbered chips ①②…; the
-//   numbers count per meeting in the order they first appear, one number is
-//   one transcript segment and is reused wherever that segment is cited
-//   again (numberCitations).
+// - Citations: every item of the summary ends with 1–3 chips that show the
+//   start time of the transcript segment they cite ("08:17", citeTime) –
+//   read from the segment itself wherever the chip is drawn, so chips of
+//   older summaries (stored with a running number ①②…) show their time as
+//   well; only a chip whose segment is gone falls back to its stored time
+//   or number (citeLabel).
 // - Summary: the model answers with JSON (meetingSummarySchema): action
-//   items ("owner: task", the owner only when one was named), decisions
+//   items (the owner only when one was named or committed to the task in
+//   the first person – nothing when there is none), decisions
 //   with their reason, open questions with their context, then the summary
 //   by topic; summaryNodes turns that into document content in this order –
 //   action items become real tasks (lib/doc-tasks.ts picks them up like
@@ -98,7 +101,6 @@ export const MEETING_TEXT: Record<
     tooShort: string;
     noSpeech: string;
     owner: string;
-    ownerUnclear: string;
     title: string;
   }
 > = {
@@ -113,7 +115,6 @@ export const MEETING_TEXT: Record<
     tooShort: "Für eine Zusammenfassung braucht es mindestens eine Minute Aufnahme.",
     noSpeech: "In der Aufnahme wurde keine Sprache erkannt.",
     owner: "Zuständig",
-    ownerUnclear: "unklar",
     title: "Neue Besprechung",
   },
   en: {
@@ -127,7 +128,6 @@ export const MEETING_TEXT: Record<
     tooShort: "A summary needs at least one minute of recording.",
     noSpeech: "No speech was recognised in the recording.",
     owner: "Owner",
-    ownerUnclear: "unclear",
     title: "New meeting",
   },
   fr: {
@@ -141,7 +141,6 @@ export const MEETING_TEXT: Record<
     tooShort: "Un résumé nécessite au moins une minute d’enregistrement.",
     noSpeech: "Aucune parole n’a été reconnue dans l’enregistrement.",
     owner: "Responsable",
-    ownerUnclear: "non précisé",
     title: "Nouvelle réunion",
   },
   zh: {
@@ -155,7 +154,6 @@ export const MEETING_TEXT: Record<
     tooShort: "生成摘要至少需要一分钟的录音。",
     noSpeech: "录音中未识别到语音。",
     owner: "负责人",
-    ownerUnclear: "未明确",
     title: "新会议",
   },
 };
@@ -163,13 +161,84 @@ export const meetingLanguage = (value: unknown): MeetingLanguage => (MEETING_LAN
 
 // ---- Citation chips ----
 
-// 1 → "①" … 50 → "㊿", beyond that "(51)".
+// 1 → "①" … 50 → "㊿", beyond that "(51)". Only the fallback of chips
+// stored with a number whose segment is gone.
 export function circled(n: number) {
   if (!Number.isInteger(n) || n < 1) return "";
   if (n <= 20) return String.fromCodePoint(0x2460 + n - 1);
   if (n <= 35) return String.fromCodePoint(0x3251 + n - 21);
   if (n <= 50) return String.fromCodePoint(0x32b1 + n - 36);
   return `(${n})`;
+}
+
+// A chip's text: the start of its segment as the transcript shows it
+// ("08:17", "1:02:05" from an hour on; the segment's own time, counted from
+// the meeting's start).
+export const citeTime = (seconds: number) => formatTimestamp(seconds);
+// What a chip shows: its segment's time when the segment is known (`segment`
+// – looked up by the chip's sid in its meeting), else the time stored on the
+// chip, else (older chips without a time) its number.
+export function citeLabel(attrs: { n?: unknown; start?: unknown }, segment?: { start: number } | null) {
+  if (segment && Number.isFinite(segment.start)) return citeTime(segment.start);
+  const stored = attrs.start === null || attrs.start === undefined || attrs.start === "" ? NaN : Number(attrs.start);
+  if (Number.isFinite(stored) && stored >= 0) return citeTime(stored);
+  return circled(Number(attrs.n));
+}
+// "Quelle 08:17: Das Budget ist …" – the chip's name for screen readers.
+export function citeAria(label: string, text: string | null | undefined, source: string) {
+  const passage = (text || "").replace(/\s+/g, " ").trim();
+  const start = passage.length > 80 ? `${passage.slice(0, 80).trimEnd()}…` : passage;
+  return start ? `${source} ${label}: ${start}` : `${source} ${label}`;
+}
+// The segments of a meeting block by id (a ProseMirror node or anything
+// with `descendants`): what its chips point at.
+export type CitedSegment = { start: number; text: string };
+type Walkable = { descendants: (f: (node: { type: { name: string }; attrs: Record<string, unknown>; textContent: string }) => boolean | void) => void };
+export function meetingSegmentIndex(meeting: Walkable) {
+  const index = new Map<string, CitedSegment>();
+  meeting.descendants((node) => {
+    if (node.type.name === "meetingSummary" || node.type.name === "meetingAgenda") return false;
+    if (node.type.name !== "meetingSegment") return;
+    const sid = String(node.attrs.sid || "");
+    if (sid && !index.has(sid)) index.set(sid, { start: Number(node.attrs.start) || 0, text: node.textContent });
+    return false;
+  });
+  return index;
+}
+// For exporters that walk the document: `within` the meeting block being
+// written, `label` gives a chip the time of its segment.
+export function citeScope() {
+  let index: Map<string, CitedSegment> | null = null;
+  return {
+    within<T>(meeting: Walkable, write: () => T): T {
+      const outer = index;
+      index = meetingSegmentIndex(meeting);
+      try {
+        return write();
+      } finally {
+        index = outer;
+      }
+    },
+    label: (attrs: { sid?: unknown; n?: unknown; start?: unknown }) => citeLabel(attrs, index?.get(String(attrs.sid || ""))),
+  };
+}
+// Draws the chips of exported or read-only HTML: within each meeting block,
+// every chip shows its segment's time and is named for screen readers
+// (older chips with a number included). Again on the same DOM changes
+// nothing.
+export function labelMeetingCites(root: ParentNode, source: string) {
+  for (const chip of root.querySelectorAll<HTMLElement>("sup[data-meeting-cite]")) {
+    const sid = chip.getAttribute("data-meeting-cite") || "";
+    const block = chip.closest("[data-meeting]");
+    const segment = sid && block ? [...block.querySelectorAll<HTMLElement>('[data-meeting-part="transcript"] [data-segment]')].find((el) => el.getAttribute("data-segment") === sid) : undefined;
+    const label = citeLabel(
+      { n: chip.getAttribute("data-n"), start: chip.getAttribute("data-cite-start") },
+      segment ? { start: Number(segment.getAttribute("data-start")) || 0 } : null,
+    );
+    if (!label) continue;
+    if (chip.textContent !== label) chip.textContent = label;
+    chip.setAttribute("aria-label", citeAria(label, segment?.textContent, source));
+  }
 }
 
 // Numbers for the cited segments of a summary: in the order of the items
@@ -352,13 +421,24 @@ const cites = z
   .catch([])
   .transform((numbers) => [...new Set(numbers)].slice(0, MAX_SOURCES));
 const item = z.object({ text: z.string().trim().min(1).max(1000), sources: cites.optional().default([]) });
+// What a model writes when there is no owner – the same as none: the task
+// then says nothing about one.
+const NO_OWNER =
+  /^(|-+|\?+|unclear|unknown|unassigned|not specified|none|nobody|no one|n\/?a|tbd|tba|unklar|unbekannt|offen|niemand|keine?r?|nicht genannt|non précisé|non precise|inconnu|personne|aucun|未明确|未知|无|待定)$/i;
 const aside = z.string().trim().max(1000).nullable().optional().catch(null);
 export const meetingSummarySchema = z
   .object({
     actions: z
       .array(
         item.extend({
-          owner: z.string().trim().max(200).nullable().optional().catch(null),
+          owner: z
+            .string()
+            .trim()
+            .max(200)
+            .nullable()
+            .optional()
+            .catch(null)
+            .transform((owner) => (owner && !NO_OWNER.test(owner.replace(/[()[\]."'„“”]/g, "").trim()) ? owner : null)),
           due: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -412,7 +492,7 @@ export function meetingPrompt(input: {
     input.instructions,
     "Answer only with JSON, no other text, in this order:",
     '{"actions":[{"text":"…","owner":"name or null","due":"YYYY-MM-DD or null","sources":[3,7]}],"decisions":[{"text":"…","reason":"… or null","sources":[5]}],"questions":[{"text":"…","context":"… or null","sources":[12]}],"topics":[{"title":"…","points":[{"text":"…","sources":[1]}]}]}',
-    "- actions: concrete action items agreed in the meeting. owner: only a person who was explicitly named as responsible (in the transcript or the notes), as named there; never guess an owner from who spoke or from context – null when nobody was named. due: only when a date or deadline was said (resolve relative dates like 'next Friday' from today's date), otherwise null.",
+    "- actions: concrete action items agreed in the meeting. owner: a person who was explicitly named as responsible (in the transcript or the notes), as named there; or the speaker of a segment in which they commit to the task in the first person ('I'll do X', 'I'll send the estimate', 'ich kümmere mich darum') – then the owner is that segment's speaker name as the transcript shows it (or the attendee it clearly refers to). Never guess an owner otherwise (not from who spoke about it, not from context, not from a segment without a speaker name) – null when there is none, never a word like 'unclear'. due: only when a date or deadline was said (resolve relative dates like 'next Friday' from today's date), otherwise null.",
     "- decisions: what was decided; reason: why, in one short sentence, only when it was said (otherwise null).",
     "- questions: questions and points left open; context: what they relate to or what is needed to answer them (otherwise null).",
     "- topics: a summary by topic – the subjects discussed, each with a short title and 1–6 concise points (facts, results). Do not repeat the action items, decisions and questions there.",
@@ -463,8 +543,16 @@ export function matchMember(owner: string | null | undefined, members: Person[])
 }
 
 const text = (value: string): JsonNode[] => (value ? [{ type: "text", text: value }] : []);
-const citeNodes = (numbers: number[], sidOf: Map<number, string>): JsonNode[] =>
-  numbers.flatMap((n) => [{ type: "text", text: " " }, { type: "meetingCite", attrs: { n, sid: sidOf.get(n) || "" } }]).slice(1);
+// A chip keeps its segment's id (what it is drawn from), its time (shown
+// should the segment be gone) and its number (for editors of older
+// versions).
+const citeNodes = (numbers: number[], sidOf: Map<number, string>, startOf: Map<string, number>): JsonNode[] =>
+  numbers
+    .flatMap((n) => {
+      const sid = sidOf.get(n) || "";
+      return [{ type: "text", text: " " }, { type: "meetingCite", attrs: { n, sid, start: startOf.get(sid) ?? null } }];
+    })
+    .slice(1);
 const paragraph = (content: JsonNode[]): JsonNode => (content.length ? { type: "paragraph", content } : { type: "paragraph" });
 const heading = (title: string, level = 3): JsonNode => ({ type: "heading", attrs: { level }, content: text(title) });
 // A reason or context below its item.
@@ -475,10 +563,12 @@ const sub = (value: string | null | undefined): JsonNode[] =>
 // open questions, the summary by topic. `segments` are the transcript's
 // segments in the order the prompt numbered them (S1 = segments[0]);
 // `members` those who may become owners (people who can read the page).
-// Only an owner the meeting named becomes a mention (and gets the task in
-// My tasks); without one the item says "Zuständig: unklar".
-export function summaryNodes(summary: MeetingSummary, segments: Pick<MeetingSegment, "sid">[], options: { language: MeetingLanguage; members: Person[] }) {
+// An owner who is a member becomes a mention (and gets the task in My
+// tasks), anyone else stays as text; without an owner the task says
+// nothing about one.
+export function summaryNodes(summary: MeetingSummary, segments: (Pick<MeetingSegment, "sid"> & { start?: number })[], options: { language: MeetingLanguage; members: Person[] }) {
   const sidOfSource = (n: number) => segments[n - 1]?.sid || "";
+  const startOf = new Map(segments.filter((s) => s.sid && Number.isFinite(s.start)).map((s) => [s.sid, Math.round(Number(s.start) * 10) / 10]));
   const lists: string[][] = [
     ...summary.actions.map((a) => a.sources.map(sidOfSource)),
     ...summary.decisions.map((d) => d.sources.map(sidOfSource)),
@@ -490,7 +580,7 @@ export function summaryNodes(summary: MeetingSummary, segments: Pick<MeetingSegm
   const labels = MEETING_TEXT[options.language];
   let next = 0;
   const line = (value: string, extra: JsonNode[] = []) => {
-    const chips = citeNodes(items[next++] || [], sidOf);
+    const chips = citeNodes(items[next++] || [], sidOf, startOf);
     return paragraph([...text(value), ...extra, ...(chips.length ? [{ type: "text", text: " " }, ...chips] : [])]);
   };
   const nodes: JsonNode[] = [];
@@ -499,10 +589,13 @@ export function summaryNodes(summary: MeetingSummary, segments: Pick<MeetingSegm
     nodes.push({
       type: "taskList",
       content: summary.actions.map((a) => {
-        const member = matchMember(a.owner, options.members);
+        const named = (a.owner || "").trim();
+        const member = matchMember(named, options.members);
         const owner: JsonNode[] = member
           ? [{ type: "text", text: " " }, { type: "mention", attrs: { userId: member.id, label: member.name } }]
-          : text(` (${labels.owner}: ${a.owner || labels.ownerUnclear})`);
+          : named
+            ? text(` (${labels.owner}: ${named})`)
+            : [];
         return { type: "taskItem", attrs: { checked: false, ...(a.due ? { due: a.due } : {}) }, content: [line(a.text, owner)] };
       }),
     });
