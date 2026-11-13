@@ -892,15 +892,20 @@ test("saved page templates create complete independent databases from the galler
   await expect(
     page.getByRole("textbox", { name: "Seitentitel", exact: true }),
   ).toHaveValue(name);
+  // The records' own titles (related pages below the table may name them
+  // too: "ähnlicher Titel").
   await expect(
-    page.getByText("Start milestone", { exact: true }),
+    page.locator(".row-title-text").getByText("Start milestone", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Launch milestone", { exact: true }),
+    page.locator(".row-title-text").getByText("Launch milestone", { exact: true }),
   ).toBeVisible();
   const copiedId = new URL(page.url()).hash.replace("#page=", "");
   expect(copiedId).not.toBe(source.id);
-  await page.getByText("Start milestone", { exact: true }).click();
+  await page
+    .locator(".row-title-text")
+    .getByText("Start milestone", { exact: true })
+    .click();
   await expect(page.locator(".row-document .tiptap")).toContainText(
     "Reusable project instructions",
   );
