@@ -154,15 +154,20 @@ function inClosedToggle(editor: Editor, pos: number) {
 function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect, dom: HTMLElement) {
   // A toggle: the line of its title (its content may be closed).
   // A meeting (#252): the row of its title, not the first line of its summary.
+  // Tabs (#272): the tab strip – the first text line belongs to the first
+  // tab, which is hidden while another tab shows, so the handle would jump.
   const summary =
     block.node.type.name === "toggle"
       ? dom.querySelector(":scope > summary")
       : block.node.type.name === "meeting"
         ? dom.querySelector(".meeting-head-row") || dom.querySelector(".meeting-title")
-        : null;
+        : block.node.type.name === "tabs"
+          ? dom.querySelector(".tabs-strip")
+          : null;
   if (summary) {
     const line = summary.getBoundingClientRect();
-    if (line.height) return line.top + Math.min(line.height, 28) / 2;
+    // The tab strip is taller than a text line: the middle of the strip.
+    if (line.height) return line.top + (block.node.type.name === "tabs" ? line.height : Math.min(line.height, 28)) / 2;
   }
   let text = block.node.isTextblock ? block.pos : -1;
   if (text < 0 && !block.node.isAtom)
