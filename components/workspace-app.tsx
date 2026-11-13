@@ -1868,12 +1868,12 @@ export default function WorkspaceApp({
         return {
           title: title || kept?.title || t("Eintrag", "Record"),
           detail: pageTitle || undefined,
-          icon: <PageIcon name={page?.icon || kept?.icon || ""} size={16} />,
+          icon: <PageIcon name={page ? shownPageIcon(page.icon, page.kind) : kept?.icon || ""} size={16} />,
           remember: title ? { title, icon: page?.icon } : undefined,
         };
       }
       const title = pageTitle || kept?.title || t("Seite", "Page");
-      return { title, icon: <PageIcon name={page?.icon || kept?.icon || ""} size={16} />, remember: page ? { title, icon: page.icon } : undefined };
+      return { title, icon: <PageIcon name={page ? shownPageIcon(page.icon, page.kind) : kept?.icon || ""} size={16} />, remember: page ? { title, icon: page.icon } : undefined };
     }
     const settings = parseSettingsHash(hash);
     if (settings) {
@@ -4341,7 +4341,7 @@ export default function WorkspaceApp({
             <span>
               {screen === "page" && data ? (
                 <>
-                  <PageIcon name={data.page.kind === "database" ? "table" : data.page.icon} size={15} />
+                  <PageIcon name={shownPageIcon(data.page.icon, data.page.kind)} size={15} />
                   {data.page.title || t("Ohne Titel", "Untitled")}
                 </>
               ) : (
@@ -4448,7 +4448,7 @@ export default function WorkspaceApp({
                       onClick={() => editable && !data.draft && setIconPicker(true)}
                     >
                       <PageIcon
-                        name={data.page.icon}
+                        name={shownPageIcon(data.page.icon, data.page.kind)}
                         size={iconPixels[data.page.icon_size || ""]}
                       />
                     </button>

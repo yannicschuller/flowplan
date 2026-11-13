@@ -32,6 +32,7 @@ import { formatNumber } from "@/lib/field-format";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 import { notificationUrl, parsePageLocation, type PageLocation } from "@/lib/page-location";
+import { shownPageIcon } from "@/lib/page-link-icons";
 import { dueLabel, dueState } from "@/lib/task-due-plugin";
 import { useCaptureTargets } from "../capture-target";
 import { Select } from "../select";
@@ -342,7 +343,7 @@ function RecentWidget({ widget, config }: Props<"recent">) {
           {shown.map(({ page: p, at }, i) => (
             <button key={p.id} type="button" className="recent-card" data-prefetch-page={p.id} onClick={() => env.openPage(p.id)}>
               <div className={`recent-illustration illustration-${i % 4}`}>
-                <PageIcon name={p.kind === "database" ? "table" : p.icon} size={38} />
+                <PageIcon name={shownPageIcon(p.icon, p.kind)} size={38} />
                 {p.kind === "database" ? (
                   <div className="mini-board" aria-hidden>
                     <i />

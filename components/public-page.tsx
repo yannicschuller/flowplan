@@ -4,6 +4,7 @@ import { choiceChipClass } from "@/lib/option-colors";
 import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
+import { shownPageIcon } from "@/lib/page-link-icons";
 import { ReadOnlyDocument } from "./read-only-document";
 import { WhiteboardStatic } from "./whiteboard/render";
 import { PublicNotebook } from "./notebook/public-notebook";
@@ -309,7 +310,7 @@ async function renderPublishedPage({
           )}
         </div>
       )}
-      {!record && <PageIcon name={iconUrl} size={40} />}
+      {!record && <PageIcon name={shownPageIcon(iconUrl, page.kind)} size={40} />}
       <h1>{record ? cellText(record.cells["title"]) : page.title}</h1>
       {d && !record && publicViews.length > 1 && (
         <nav className="public-views" aria-label={t("Ansichten", "Views")}>
