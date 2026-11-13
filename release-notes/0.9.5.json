@@ -1,11 +1,138 @@
 {
+  "security": [
+    {
+      "de": "Ein Freigabelink für einen Eintrag zeigt verknüpfte Einträge nur noch, wenn die Person, die ihn erstellt hat, sie selbst lesen darf. Verknüpfungen zu Einträgen, die man nicht lesen darf, lassen sich nicht mehr setzen.",
+      "en": "A record's share link only names linked records that the person who created it may read, and links to records you can't read can no longer be set."
+    },
+    {
+      "de": "Ist ein Eintrag schreibgeschützt, können Gäste mit einem Bearbeitungslink seine Unterseiten nur noch kommentieren.",
+      "en": "Guests with an edit link can only comment on the sub-pages of a read-only record."
+    },
+    {
+      "de": "Präparierte Markdown-Texte, Notion-ZIPs oder aufklappbare Blöcke können den Server nicht mehr lange blockieren.",
+      "en": "Crafted Markdown, Notion ZIP files or toggles can no longer keep the server busy for a long time."
+    }
+  ],
+  "features": [
+    {
+      "de": "Blöcke wie in Notion: „+“ am Griff, Blockmenü mit Suche und Untermenüs, vollständiges „Umwandeln in“, Blockfarben, Blöcke mit Maus oder Tastatur auswählen, beim Ziehen die Ebene wählen, mit ⌥ kopieren.",
+      "en": "Blocks like in Notion: “+” at the handle, a block menu with search and flyouts, a complete “Turn into”, block colours, selecting blocks with the mouse or keyboard, choosing the level while dragging, ⌥ to copy.",
+      "issues": [236, 237, 238, 239, 244]
+    },
+    {
+      "de": "Aufklappbare Blöcke ohne Dialog: „> “ erstellt einen, Tab verschachtelt Blöcke hinein, zugeklappte bleiben nach dem Neuladen zu, aufklappbare Überschriften 1–4.",
+      "en": "Toggles without a dialog: “> ” makes one, Tab nests blocks into it, closed toggles stay closed after a reload, toggle headings 1–4.",
+      "issues": [230, 244, 246]
+    },
+    {
+      "de": "Tabellen mit Griffen für Zeilen und Spalten, Menüs, Ziehen, „+“-Leisten und Zellfarben; Bilder mit Werkzeugleiste in der Ecke.",
+      "en": "Tables with row and column handles, menus, dragging, “+” bars and cell colours; images with a corner toolbar.",
+      "issues": [240]
+    },
+    {
+      "de": "Eigene Farben für die Optionen von Auswahl-Eigenschaften.",
+      "en": "Colours of their own for the options of select and multi-select properties.",
+      "issues": [242]
+    },
+    {
+      "de": "Schnellsuche sortiert nach deinen Besuchen, zeigt Pfad und Datum je Treffer und listet zuletzt angesehene Seiten nach Tagen.",
+      "en": "Quick search ranks by your visits, shows each hit's path and date and lists recently viewed pages by day.",
+      "issues": [243]
+    },
+    {
+      "de": "Einträge als eigene Seite mit Adresse und vollständigem Pfad, einzeln teilen und veröffentlichen, mit Unterseiten.",
+      "en": "Records as pages of their own with an address and the full path, shared and published on their own, with sub-pages.",
+      "issues": [231]
+    },
+    {
+      "de": "Journal: Übernommene Aufgaben landen wahlweise oben, nach der Vorlage oder unter einer Überschrift. Neuer Workflow-Schritt „An Journaltag anhängen“.",
+      "en": "Journal: carried-over tasks go at the top, after the template or below a heading. New workflow step “Append to journal day”.",
+      "issues": [247, 250]
+    },
+    {
+      "de": "Fälligkeitsdatum pro Datenbank wählbar; Status- und Fälligkeitswörter in allen Sprachen erkannt.",
+      "en": "Choose the due date per database; status and due words are recognised in every language.",
+      "issues": [248]
+    },
+    {
+      "de": "Bereiche können ein hochgeladenes Bild als Symbol haben.",
+      "en": "Spaces can use an uploaded image as their icon.",
+      "issues": [251]
+    },
+    {
+      "de": "Die feste Formatierungsleiste lässt sich ausblenden; das Textmenü hat dann alle Werkzeuge.",
+      "en": "The fixed formatting toolbar can be hidden; the text menu then has every tool.",
+      "issues": [235]
+    },
+    {
+      "de": "Besprechungsblock: Live-Transkription, neu transkribieren und strukturierte Zusammenfassung.",
+      "en": "Meeting block: live transcription, retranscribing and a structured summary.",
+      "issues": [199, 225]
+    },
+    {
+      "de": "Verschachtelte Listen mit 1. → a. → i. und • → ◦ → ▪.",
+      "en": "Nested lists with 1. → a. → i. and • → ◦ → ▪.",
+      "issues": [234]
+    }
+  ],
   "improvements": [
     {
       "de": "„Einträge öffnen als → Ganze Seite“ zeigt Datensätze jetzt als echte Seite mit eigener Adresse statt als großen Dialog – auch in Datenbanken, die schon so eingestellt sind (z. B. „Dokumente“, „Kontakte“). Für den Dialog die Datenbank oder Ansicht auf „Mittig“ stellen.",
       "en": "“Open records as → Full page” now shows records as a real page with its own address instead of a large dialog – also in databases already set that way (e.g. “Documents”, “Contacts”). For the dialog, set the database or view to “Centred”.",
-      "issues": [
-        231
-      ]
+      "issues": [231]
+    },
+    {
+      "de": "Das Blockmenü öffnet sich links vom Griff. Griffe erscheinen nur beim Darüberfahren und sitzen am eingerückten Text. Beim Ziehen wird der Zielblock getönt.",
+      "en": "The block menu opens left of the handle, handles only show on hover and sit at indented text, and the target block is tinted while dragging.",
+      "issues": [253, 255]
+    },
+    {
+      "de": "Dunkelmodus: Hervorhebungen und Mermaid-Diagramme passen sich an; Inline-Code ist besser erkennbar und kann fett sein.",
+      "en": "Dark mode: highlights and Mermaid diagrams follow it; inline code is easier to spot and can be bold.",
+      "issues": [241]
+    },
+    {
+      "de": "50 weitere offizielle Vorlagen im Marktplatz.",
+      "en": "50 more official templates in the marketplace."
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Listen: Tab springt nicht mehr in andere Blöcke, Enter in einem leeren Punkt rückt nur diesen aus, Ablegen erzeugt keine leeren Punkte.",
+      "en": "Lists: Tab no longer jumps to other blocks, Enter in an empty item outdents only that item, and drops create no empty items.",
+      "issues": [254]
+    },
+    {
+      "de": "Griffe von Blöcken in zugeklappten Bereichen erscheinen nicht mehr an falscher Stelle; der Besprechungsblock lässt sich am Griff fassen.",
+      "en": "Handles of blocks inside closed toggles no longer show in the wrong place, and the meeting block can be grabbed by its handle.",
+      "issues": [252]
+    },
+    {
+      "de": "Erledigte Aufgaben bleiben unter „An diesem Tag erledigt“, auch wenn man ihren Text ändert.",
+      "en": "Done tasks stay under “Completed this day” when their text is changed.",
+      "issues": [249]
+    },
+    {
+      "de": "Das Inhaltsverzeichnis liegt nicht mehr über Einträgen, die als Seite geöffnet sind; Dialoge scrollen nicht mehr seitlich.",
+      "en": "The table of contents no longer covers records opened as a page, and dialogs no longer scroll sideways.",
+      "issues": [245]
+    },
+    {
+      "de": "Zwei Änderungen an einer Datenbank-Ansicht direkt hintereinander scheitern nicht mehr mit „wurde geändert“.",
+      "en": "Two quick changes to a database view in a row no longer fail with “was changed”."
+    },
+    {
+      "de": "Lange Aufnahmen werden transkribiert, statt mit „nicht erreichbar“ abzubrechen.",
+      "en": "Long recordings are transcribed instead of failing with “not reachable”.",
+      "issues": [225]
+    },
+    {
+      "de": "Profilbilder und die Breite der Seitenleiste stimmen schon beim ersten Laden.",
+      "en": "Profile pictures and the sidebar width are right from the first paint."
+    },
+    {
+      "de": "Datenbankseiten zeigen das Tabellen-Symbol im Kopf; Beschriftungen im Whiteboard-Menü am Handy werden nur zwischen Wörtern umbrochen.",
+      "en": "Database pages show the table icon in their header, and whiteboard menu labels on phones wrap only between words."
     }
   ]
 }
