@@ -20,6 +20,7 @@ import {
   Code,
   Columns,
   Copy,
+  CopySimple,
   DotsThree,
   FileText,
   Info,
@@ -28,6 +29,7 @@ import {
   MathOperations,
   Palette,
   Plus,
+  Scissors,
   Smiley,
   SmileyXEyes,
   Sparkle,
@@ -67,6 +69,7 @@ import {
   columnBlocks,
   documentBlocks,
   blockTypeName,
+  emptyBlockNear,
   hasLinkedBlocks,
   MAX_COLUMNS,
   type DocumentBlock,
@@ -92,7 +95,8 @@ import {
 import { Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
-import { BlockMenu, usePhone, type BlockMenuItem, type BlockMenuView } from "./block-menu";
+import { BlockMenu, usePhone, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
+import { showToast } from "./toast";
 import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
 import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
@@ -106,9 +110,9 @@ type Positioned = DocumentBlock & {
   rtl: boolean;
   right: number;
   glide?: Animation;
-  // Inside a callout or quote (#236): the block shares its first line with
-  // the box, so its handle sits closer to its text, inside the box's
-  // padding, and it has no "+" (that place is the box's handle).
+  // Inside a callout, quote or column (#236, #261): the block shares its
+  // first line with the box, so its handle sits closer to its text, inside
+  // the box's padding, and it has no "+" (that place is the box's handle).
   boxed: boolean;
   // A paragraph or heading indented with Tab (#246): how far its text
   // starts from its edge; the handle sits there (#255).
@@ -124,8 +128,10 @@ const parseFromClipboard = (pmView as unknown as {
 const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
 // Boxes whose first line is the first line of their content (a toggle has a
 // title line of its own); their blocks take the pointer only right of the
-// box's handle. A meeting (#252) too: its handle sits at its header.
-const BOXES = ["callout", "blockquote", "meeting"];
+// box's handle. A meeting (#252) too: its handle sits at its header. And
+// a column (#261): the handle of the whole layout and its "+" (a block
+// below the columns) sat under the handle of the first block inside.
+const BOXES = ["callout", "blockquote", "meeting", "column"];
 // A block inside a closed toggle has no handle (#252): Chrome still lays out
 // the content of a closed <details> and reports its rectangles, so the
 // handle of a hidden block showed up over the visible blocks below. Closed
@@ -865,22 +871,60 @@ export function DocumentBlockControls({
     }
     select(positions.length ? promote(positions) : []);
   }
+  // The menu was opened by a click on a handle, which chose its block
+  // (#264): the choice ends with the menu, unless Esc closed it.
+  const menuChose = useRef(false);
   function openMenu(handle: HTMLElement, block?: DocumentBlock, view = "main") {
     if (menu?.handle === handle) return closeMenu();
-    // A handle of chosen blocks (#237): the menu for all of them.
+    // A handle of chosen blocks (#237): the menu for all of them. Another
+    // handle chooses its block, like Notion (#264): the keys (⇧↑/↓, ⌘A,
+    // Esc) act on the chosen blocks once the menu is closed with Esc.
     if (block && !(selectingRef.current && selected.current.includes(block.pos))) {
-      if (selectingRef.current) endSelection(false);
-      select([block.pos]);
+      if (pickingRef.current) select([block.pos]);
+      else {
+        startSelection([block.pos], block.pos, block.pos, false);
+        menuChose.current = true;
+      }
     }
     setMenu({ anchor: handle.getBoundingClientRect(), handle, view });
   }
-  function closeMenu() {
+  function closeMenu(reason?: BlockMenuClose) {
     const handle = menu?.handle;
+    const chose = menuChose.current;
+    menuChose.current = false;
     setMenu(null);
-    if (!pickingRef.current && !selectingRef.current) {
+    if (selectingRef.current) {
+      // "Select several" in the menu: the circles take over the choice.
+      if (pickingRef.current) {
+        selectingRef.current = false;
+        setSelecting(false);
+        anchorRef.current = headRef.current = null;
+        return;
+      }
+      // Esc: the blocks stay chosen and the keys act on them (#264). Not in
+      // the sheet of a phone, where a tap beside it closes it the same way.
+      if (reason === "escape" && !phone) {
+        requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+        return;
+      }
+      if (chose) {
+        endSelection(false);
+        // After an action back to the text, as before (#236): the keys
+        // (⌘Z for the action) go to the editor again.
+        if (reason === "select") focusEditor();
+      } else {
+        // Chosen with the keyboard or the mouse before ("/"): they stay.
+        requestAnimationFrame(() => {
+          if (selectingRef.current && (!document.activeElement || document.activeElement === document.body))
+            focusTarget.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+    } else if (!pickingRef.current) {
       remember([]);
       setTick((t) => t + 1);
     }
+    if (reason === "select") return;
     // Back to the handle when the menu closed without an action.
     requestAnimationFrame(() => {
       if (handle?.isConnected && (!document.activeElement || document.activeElement === document.body))
@@ -919,7 +963,7 @@ export function DocumentBlockControls({
   const headRef = useRef<number | null>(null);
   const focusTarget = useRef<HTMLDivElement>(null);
   const [band, setBand] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-  function startSelection(positions: number[], anchor = positions[0], head = positions[positions.length - 1]) {
+  function startSelection(positions: number[], anchor = positions[0], head = positions[positions.length - 1], focus = true) {
     if (!editor || !positions.length) return;
     select(positions);
     anchorRef.current = anchor;
@@ -930,10 +974,15 @@ export function DocumentBlockControls({
     // (The text selection itself stays: the editor keeps track of it, and
     // a later click into the text must not find it changed behind its back.)
     if (editor.view.hasFocus()) (editor.view.dom as HTMLElement).blur();
-    requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+    // Nor its highlight (#264): only the tint shows what is chosen.
+    const dom = window.getSelection();
+    if (dom?.rangeCount && dom.anchorNode && editor.view.dom.contains(dom.anchorNode)) dom.removeAllRanges();
+    // (A menu opened with the choice takes the focus itself.)
+    if (focus) requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
   }
   function endSelection(caret: boolean) {
     const first = selected.current.length ? Math.min(...selected.current) : null;
+    menuChose.current = false;
     selectingRef.current = false;
     setSelecting(false);
     anchorRef.current = headRef.current = null;
@@ -1028,6 +1077,75 @@ export function DocumentBlockControls({
       return null;
     }
   }
+  // The chosen blocks as the clipboard holds them: HTML that the editor
+  // reads back as the same blocks (also in another page), and plain text
+  // for other apps.
+  function clipboardData() {
+    const slice = chosenSlice();
+    if (!editor || !slice) return null;
+    const { dom, text } = editor.view.serializeForClipboard(slice);
+    return { html: dom.innerHTML, text };
+  }
+  // "Kopieren" and "Ausschneiden" in the block menu and the bar of the
+  // selection mode (#263): what ⌘C and ⌘X do with chosen blocks.
+  function toClipboard(cut: boolean) {
+    if (!editor) return;
+    const data = clipboardData();
+    if (!data) return;
+    if (cut && !editor.isEditable) return;
+    const count = selected.current.length;
+    const done = () => {
+      showToast({
+        text: cut
+          ? count === 1
+            ? t("1 Block ausgeschnitten", "1 block cut")
+            : t(`${count} Blöcke ausgeschnitten`, `${count} blocks cut`)
+          : count === 1
+            ? t("1 Block kopiert", "1 block copied")
+            : t(`${count} Blöcke kopiert`, `${count} blocks copied`),
+      });
+      if (!cut) return;
+      // The choice ends (as after ⌘X); the caret goes where they were.
+      const positions = [...selected.current];
+      if (selectingRef.current) endSelection(false);
+      remember(positions);
+      perform("delete");
+      if (pickingRef.current) select([]);
+      else remember([]);
+      setTick((n) => n + 1);
+    };
+    // The copy event of the click itself (synchronous, works in every
+    // browser and the apps' web views) …
+    let written = false;
+    const write = (event: ClipboardEvent) => {
+      if (!event.clipboardData) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      event.clipboardData.clearData();
+      event.clipboardData.setData("text/html", data.html);
+      event.clipboardData.setData("text/plain", data.text);
+      written = true;
+    };
+    document.addEventListener("copy", write, true);
+    try {
+      document.execCommand("copy");
+    } catch {
+    } finally {
+      document.removeEventListener("copy", write, true);
+    }
+    if (written) return done();
+    // … else the asynchronous clipboard.
+    const failed = () => setError(t("Die Zwischenablage ist nicht verfügbar.", "The clipboard is not available."));
+    if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return failed();
+    navigator.clipboard
+      .write([
+        new ClipboardItem({
+          "text/html": new Blob([data.html], { type: "text/html" }),
+          "text/plain": new Blob([data.text], { type: "text/plain" }),
+        }),
+      ])
+      .then(done, failed);
+  }
   // Tab / ⇧Tab: what the keys do in the text, for the text of all chosen
   // blocks (lists nest, paragraphs and headings indent); the same blocks
   // stay chosen.
@@ -1069,15 +1187,33 @@ export function DocumentBlockControls({
   });
   const keyActions = useRef<(event: KeyboardEvent) => void>(() => {});
   keyActions.current = (event: KeyboardEvent) => {
-    if (!editor || !selectingRef.current || menu) return;
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("input, textarea, select, [contenteditable='true'], [role='menu'], [role='dialog'] [role='dialog']")) return;
+    if (!editor || !selectingRef.current) return;
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key;
     const done = () => {
       event.preventDefault();
       event.stopPropagation();
     };
+    if (menu) {
+      // ⇧↑/↓ while the menu is open (#264): it closes, the choice grows.
+      if ((key === "ArrowUp" || key === "ArrowDown") && event.shiftKey && !mod && !event.altKey && !pickingRef.current) {
+        done();
+        menuChose.current = false;
+        setMenu(null);
+        step(key === "ArrowUp" ? -1 : 1, true);
+        requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+      }
+      // Esc before the focus reached the menu: the menu closes (not the
+      // record dialog around it, which hears Esc before the menu).
+      const inMenu = event.target instanceof Element && event.target.closest("[data-layer], [role='menu']");
+      if (key === "Escape" && !inMenu) {
+        done();
+        closeMenu("escape");
+      }
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable='true'], [role='menu'], [role='dialog'] [role='dialog']")) return;
     if (key === "Escape") {
       done();
       endSelection(false);
@@ -1131,13 +1267,12 @@ export function DocumentBlockControls({
       if (menu || !selectingRef.current || !event.clipboardData) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest("input, textarea, [contenteditable='true']")) return;
-      const slice = chosenSlice();
-      if (!slice) return;
-      const { dom, text } = editor.view.serializeForClipboard(slice);
+      const data = clipboardData();
+      if (!data) return;
       event.preventDefault();
       event.clipboardData.clearData();
-      event.clipboardData.setData("text/html", dom.innerHTML);
-      event.clipboardData.setData("text/plain", text);
+      event.clipboardData.setData("text/html", data.html);
+      event.clipboardData.setData("text/plain", data.text);
       if (cut && editor.isEditable) {
         const first = Math.min(...selected.current);
         perform("delete");
@@ -1233,14 +1368,26 @@ export function DocumentBlockControls({
         },
       }),
     );
+    // ⌘A (#264, like Notion): first the text of the block with the caret,
+    // then all blocks of the page – only their tint, no text highlight.
     const all = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "a") return;
-      if (selectingRef.current || !editor.view.dom.contains(event.target as Node)) return;
-      const { from, to } = editor.state.selection;
-      const size = editor.state.doc.content.size;
-      if (from > 1 || to < size - 1) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (selectingRef.current || !target || !editor.view.dom.contains(target)) return;
+      // Fields inside a block (a caption, a code editor) keep their own ⌘A.
+      if (target.closest("input, textarea, select") || target.closest("[contenteditable]") !== editor.view.dom) return;
+      const { selection } = editor.state;
+      const { $from, $to } = selection;
       event.preventDefault();
       event.stopPropagation();
+      if (selection instanceof TextSelection && $from.parent.isTextblock && $from.sameParent($to)) {
+        const start = $from.start(),
+          end = $from.end();
+        if (selection.from > start || selection.to < end) {
+          editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end)));
+          return;
+        }
+      }
       live.current.startSelection(documentBlocks(editor.state.doc).filter((b) => b.parentPos === -1).map((b) => b.pos));
     };
     host.addEventListener("keydown", all, true);
@@ -1708,6 +1855,23 @@ export function DocumentBlockControls({
     };
     if (!views.move.items.length) views.move.note = t("Keine andere Stelle möglich.", "No other place available.");
     items.push("separator");
+    // Copy and cut (#263): as ⌘C and ⌘X on chosen blocks.
+    items.push({
+      icon: <CopySimple />,
+      label: t("Kopieren", "Copy"),
+      keywords: "copy kopieren clipboard zwischenablage",
+      disabled: !rangeValid,
+      run: () => toClipboard(false),
+      shortcut: "Mod+C",
+    });
+    items.push({
+      icon: <Scissors />,
+      label: t("Ausschneiden", "Cut"),
+      keywords: "cut ausschneiden clipboard zwischenablage",
+      disabled: !rangeValid || !editor.isEditable,
+      run: () => toClipboard(true),
+      shortcut: "Mod+X",
+    });
     items.push({
       icon: <Copy />,
       label: t("Duplizieren", "Duplicate"),
@@ -1720,6 +1884,23 @@ export function DocumentBlockControls({
     else {
       items.push({ icon: <ArrowsDownUp />, label: t("Verschieben", "Move"), keywords: "move", view: "moveTo" });
       views.moveTo = { title: t("Verschieben", "Move"), items: moves };
+    }
+    // An empty block below or above (#261): what "+" beside the handle
+    // does, also on touch screens (no "+" there) and for every kind of
+    // block.
+    if (only && editor.isEditable) {
+      items.push({
+        icon: <Plus />,
+        label: t("Block darunter einfügen", "Add block below"),
+        keywords: "add insert new block below darunter einfügen neu",
+        run: () => setTimeout(() => editor && !editor.isDestroyed && addBlock(only, false), 60),
+      });
+      items.push({
+        icon: <ArrowLineUp />,
+        label: t("Block darüber einfügen", "Add block above"),
+        keywords: "add insert new block above darüber einfügen neu",
+        run: () => setTimeout(() => editor && !editor.isDestroyed && addBlock(only, true), 60),
+      });
     }
     // Comment on the block and ask the AI about it (#238).
     const target = only && editor.isEditable ? only : undefined;
@@ -1941,26 +2122,15 @@ export function DocumentBlockControls({
   // takes the "/".
   function addBlock(block: DocumentBlock, above: boolean) {
     if (!editor?.isEditable) return;
-    const { state, view } = editor;
-    const { schema } = state;
-    const name = block.node.type.name;
-    const tr = state.tr;
-    let caretAt: number;
-    if (name === "paragraph" && block.node.childCount === 0) caretAt = block.pos + 1;
-    else {
-      const item = listItems.includes(name);
-      const paragraph = schema.nodes.paragraph.create();
-      const node = item ? schema.nodes[name].create(null, paragraph) : paragraph;
-      const at = above ? block.pos : block.end;
-      const $at = state.doc.resolve(at);
-      if (!$at.parent.canReplaceWith($at.index(), $at.index(), node.type)) {
-        setError(t("Hier kann kein Block eingefügt werden.", "A block cannot be inserted here."));
-        return;
-      }
-      tr.insert(at, node);
-      caretAt = at + (item ? 2 : 1);
+    const { view } = editor;
+    // Every kind of block, tables, images and embeds too (#261).
+    const placed = emptyBlockNear(editor.state, block, above);
+    if (!placed) {
+      setError(t("Hier kann kein Block eingefügt werden.", "A block cannot be inserted here."));
+      return;
     }
-    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, caretAt)).scrollIntoView());
+    const { tr, caret } = placed;
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, caret)).scrollIntoView());
     view.focus();
     const pos = view.state.selection.from;
     const insert = () => view.state.tr.insertText("/", pos, pos);
@@ -2153,7 +2323,7 @@ export function DocumentBlockControls({
           views={menuViews()}
           initial={menu.view}
           owner={menu.handle}
-          onClose={closeMenu}
+          onClose={(reason) => closeMenu(reason)}
         />
       )}
       {symbolFor !== null && editor && (
@@ -2215,6 +2385,9 @@ export function DocumentBlockControls({
               </button>
               <button type="button" className="icon-button" disabled={!down} aria-label={t("Nach unten", "Move down")} title={t("Nach unten", "Move down")} onClick={() => shift(1)}>
                 <ArrowDown size={18} />
+              </button>
+              <button type="button" className="icon-button" disabled={!rangeValid} aria-label={t("Kopieren", "Copy")} title={t("Kopieren", "Copy")} onClick={() => toClipboard(false)}>
+                <CopySimple size={18} />
               </button>
               <button type="button" className="icon-button" disabled={!rangeValid || !copyAllowed} aria-label={t("Duplizieren", "Duplicate")} title={t("Duplizieren", "Duplicate")} onClick={() => perform("duplicate")}>
                 <Copy size={18} />

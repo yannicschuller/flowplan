@@ -99,10 +99,14 @@ test("“+” adds a block below or above with the slash menu, the handle keeps 
   expect(Math.abs(m.y - b.y)).toBeLessThan(4);
   expect(Math.abs(m.height - b.height)).toBeLessThan(6);
   await page.screenshot({ path: "test-results/block-handle-plus-marked.png" });
+  // Esc closes the menu and keeps the block chosen (#264); a second Esc
+  // ends the choice.
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(marked).toHaveCount(1);
+  await expect(page.locator(".block-selection-focus")).toBeFocused();
+  await page.keyboard.press("Escape");
   await expect(marked).toHaveCount(0);
-  await expect(grip).toBeFocused();
   expect(errors).toEqual([]);
 });
 

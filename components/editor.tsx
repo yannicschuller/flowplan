@@ -89,6 +89,7 @@ import {
   applyBlockChange,
   moveSelectedBlock,
 } from "@/lib/block-shortcuts";
+import { BlockGaps } from "@/lib/block-gaps";
 import { useCanCreatePages } from "./create-rights";
 import { readTable, tableTitle } from "@/lib/table-read";
 import { TABLE_DATABASE_LIMITS } from "@/lib/table-database";
@@ -112,7 +113,7 @@ import {
   type LinkedEditorContext,
 } from "./linked-database";
 import { freshLinkedIds } from "@/lib/linked-paste";
-import { NodeSelection, Selection } from "@tiptap/pm/state";
+import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
@@ -237,7 +238,7 @@ import { CitationDialog } from "./citation-dialog";
 import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import { BlockColorAttribute } from "@/lib/block-colors";
-import { blockRange } from "@/lib/document-blocks";
+import { blockForInsert, blockRange, emptyBlockNear } from "@/lib/document-blocks";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { ListTidy, TabStaysInText } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
@@ -773,6 +774,8 @@ export default function DocumentEditor({
         ShortcutBlockquote.configure({ creates: quoteShortcut }),
         EditableCodeBlock,
         BlockShortcuts,
+        // Room for a new block between tables, images and embeds (#261).
+        BlockGaps,
         // Rows and columns of tables: move and duplicate the selected ones (#240).
         TableShortcuts,
         PlainNewLine,
@@ -2949,6 +2952,12 @@ export default function DocumentEditor({
               title={t("Block hinzufügen", "Add block")}
               onClick={() => {
                 if (!editor) return;
+                // A new block below the current one (#261), not the current
+                // one turned into another ("Turn into" in the block menu
+                // does that); an empty paragraph is itself the place.
+                const block = blockForInsert(editor.state);
+                const placed = block && editor.isEditable ? emptyBlockNear(editor.state, block) : null;
+                if (placed) editor.view.dispatch(placed.tr.setSelection(TextSelection.create(placed.tr.doc, placed.caret)).scrollIntoView());
                 setSlash({
                   from: editor.state.selection.from,
                   mode: "button",
