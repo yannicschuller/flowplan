@@ -6,6 +6,7 @@
 // slide holds speaker notes, shown in the presenter view – a second window
 // (app/presenter) kept in step over a BroadcastChannel. The slides print as
 // one landscape page each through the usual print path.
+import { prefersReducedMotion } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, CornersOut, Moon, Notepad, Printer, Sun, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -203,7 +204,7 @@ export function Presentation({ html, title, onClose }: { html: string; title: st
     const view = window.open(url, "flowplan-presenter", "popup,width=1100,height=720");
     if (!view) location.assign(url);
   };
-  const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reducedMotion = prefersReducedMotion();
   const slide = deck.slides[index];
   const interactive = (target: EventTarget | null) =>
     !!(target as HTMLElement | null)?.closest?.("a, button, input, textarea, select, summary, video, audio, iframe, details, .presentation-controls");

@@ -18,7 +18,7 @@ import { saveStatusOf } from "@/lib/save-status";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
-import { holdViewTransitions, transitionView, withoutViewTransition, type Morph } from "@/lib/view-transition";
+import { holdViewTransitions, transitionView, withoutViewTransition } from "@/lib/view-transition";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
@@ -287,6 +287,8 @@ import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-clie
 import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
+import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
+import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
 import { WhatsNew } from "./whats-new";
@@ -408,17 +410,6 @@ type Screen =
   | "tags"
   // A collection's results (#86, components/collection-view.tsx): #collection/<id>.
   | "collection";
-// Page tree → page header: the icon and the title of the page opened fly
-// to their place (lib/view-transition.ts). Without a header yet (the page
-// is still loading) they simply fade.
-function pageMorph(source: { icon: Element | null; title: Element | null } | null): Morph[] {
-  if (!source) return [];
-  const header = () => document.querySelector(".split-primary .document-header");
-  return [
-    { name: "fp-page-icon", from: source.icon, to: () => header()?.querySelector(".large-page-icon") },
-    { name: "fp-page-title", from: source.title, to: () => header()?.querySelector(".page-title") },
-  ];
-}
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -585,6 +576,12 @@ export default function WorkspaceApp({
   useEffect(() => setQuoteShortcutLocal(boot.quoteShortcut), [boot.quoteShortcut]);
   // "Formatierungsleiste" (#235): the editors read it.
   useEffect(() => setFormattingToolbarLocal(boot.formattingToolbar), [boot.formattingToolbar]);
+  // "Animationen" (#260, lib/motion-pref.ts): data-motion on <html>, which
+  // menus and dialogs outside the app's root follow; the root carries it
+  // too, so the server-rendered first paint has it. Gone when the app is left.
+  useEffect(() => setMotionPrefLocal(boot.motion), [boot.motion]);
+  useEffect(() => () => void delete document.documentElement.dataset.motion, []);
+  const motion = useMotionPref(motionPrefOf(boot.motion));
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
     const root = document.documentElement;
@@ -1377,8 +1374,6 @@ export default function WorkspaceApp({
         : { pageId: data.page.id, value: data.sinceVisit || null },
     );
   }, [data]);
-  // The page tree entry a page is opened from (its icon and title fly).
-  const navigationSource = useRef<{ icon: Element | null; title: Element | null } | null>(null);
   // For "Retry" on a page that failed to open.
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
@@ -1400,10 +1395,8 @@ export default function WorkspaceApp({
         setRevalidating(true);
         return true;
       };
-      // The new page comes in with a view transition (lib/view-transition.ts);
-      // opened from the page tree, its icon and title fly to their place.
-      const source = navigationSource.current;
-      navigationSource.current = null;
+      // The new page comes in with a short cross-fade of the main pane
+      // (lib/view-transition.ts); its title appears in its place (#260).
       const view = transitionView(
         () => {
           setMobile(false);
@@ -1419,7 +1412,7 @@ export default function WorkspaceApp({
             if (busyRef.current) showKept(appCache().get<PageData>(pageKey(id))?.value);
           });
         },
-        { kind: "page", morph: pageMorph(source) },
+        { kind: "page" },
       );
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
@@ -2863,8 +2856,6 @@ export default function WorkspaceApp({
                     toggleSelected(p.id, e.shiftKey);
                     return;
                   }
-                  const entry = e.currentTarget;
-                  navigationSource.current = { icon: entry.firstElementChild, title: entry.querySelector(".page-nav-label") };
                   void openPage(p.id);
                 }}
               >
@@ -3263,6 +3254,7 @@ export default function WorkspaceApp({
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
     <div
+      data-motion={motionAttribute(motion)}
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? (askNarrowWindow && !askPinned ? " ask-overlay" : " ask-open") : ""}`}
       style={
         sidebarWidth || askWidth

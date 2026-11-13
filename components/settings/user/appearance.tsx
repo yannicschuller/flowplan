@@ -8,6 +8,7 @@
 // profile, all devices), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
+// "Animationen" (#260, profile, all devices),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
 // "Was ist neu" (#223, profile, all devices).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
@@ -31,6 +32,8 @@ import type { QuoteShortcutPref } from "@/lib/quote-shortcut-pref";
 import { quoteShortcut, setQuoteShortcutLocal, useQuoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import type { FormattingToolbarPref } from "@/lib/toolbar-pref";
 import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } from "@/lib/toolbar-pref-client";
+import type { MotionPref } from "@/lib/motion-pref";
+import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
 
@@ -114,6 +117,20 @@ export default function AppearanceSection() {
       }
     });
   };
+  const motion = useMotionPref(boot.motion);
+  const [motionStatus, runMotion] = useSaveState();
+  const chooseMotion = (value: MotionPref) => {
+    const before = motionPref();
+    setMotionPrefLocal(value);
+    void runMotion(async () => {
+      try {
+        await mutate({ action: "profile.motion", motion: value });
+      } catch (e) {
+        setMotionPrefLocal(before);
+        throw e;
+      }
+    });
+  };
   const notesLevel = useUpdateNotesLevel();
   const [notesStatus, runNotes] = useSaveState();
   const chooseNotesLevel = (value: UpdateNotesLevel) => {
@@ -170,6 +187,29 @@ export default function AppearanceSection() {
               <input type="radio" name="profile-theme" checked={theme === "dark"} onChange={() => setTheme("dark")} />
               <Moon size={15} aria-hidden /> {t("Dunkel", "Dark")}
             </label>
+          </div>
+        </SettingRow>
+        <SettingRow
+          anchor="motion"
+          label={t("Animationen", "Animations")}
+          description={t(
+            "Normal: Menüs und Dialoge blenden kurz ein, Seitenleisten gleiten herein. Reduziert: nur kurzes Einblenden, nichts gleitet oder wächst. Aus: nichts bewegt sich. Ist auf dem Gerät „Bewegung reduzieren“ an, bleiben Animationen immer aus. Gilt auf allen Geräten.",
+            "Normal: menus and dialogs fade in briefly, side panels slide in. Reduced: only a short fade, nothing slides or grows. Off: nothing moves. With “Reduce motion” on in the device's settings, animations always stay off. Applies on all devices.",
+          )}
+        >
+          <SaveState status={motionStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Animationen", "Animations")}>
+            {(
+              [
+                ["normal", t("Normal", "Normal")],
+                ["reduced", t("Reduziert", "Reduced")],
+                ["off", t("Aus", "Off")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={motion === value}>
+                <input type="radio" name="motion" checked={motion === value} onChange={() => chooseMotion(value)} /> {label}
+              </label>
+            ))}
           </div>
         </SettingRow>
         <SettingRow

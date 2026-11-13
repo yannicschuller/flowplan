@@ -1348,6 +1348,11 @@ function migrate(d: DatabaseSync) {
   // older version ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "formatting_toolbar"))
     d.exec("ALTER TABLE users ADD COLUMN formatting_toolbar TEXT");
+  // "Animationen" per person (#260, lib/motion-pref.ts): users.motion,
+  // NULL = the default ('normal'), 'reduced' or 'off'. An older version
+  // ignores the column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "motion"))
+    d.exec("ALTER TABLE users ADD COLUMN motion TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

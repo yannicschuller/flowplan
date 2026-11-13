@@ -30,7 +30,7 @@
     padding: 0 calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));
     overscroll-behavior-y: contain;
     /* Backwards only: a held translate would capture fixed children (#75). */
-    animation: sheet-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+    animation: sheet-in var(--motion-slow) var(--ease-standard) backwards;
   }
   .modal.modal-sheet > .sheet-handle {
     display: block;
@@ -93,9 +93,11 @@
   user-select: none;
   -webkit-user-select: none;
 }
+/* Slides up from the bottom edge (#260); with "Reduziert" it only fades. */
 @keyframes sheet-in {
   from {
-    translate: 0 100%;
+    opacity: calc(1 - var(--motion-move));
+    translate: 0 calc(100% * var(--motion-move));
   }
 }
 @media (prefers-reduced-motion: reduce) {

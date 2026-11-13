@@ -818,7 +818,7 @@
   @keyframes wb-device-card-in {
     from {
       opacity: 0;
-      transform: translateY(3px);
+      transform: translateY(calc(3px * var(--motion-move)));
     }
   }
 }

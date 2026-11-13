@@ -6,6 +6,7 @@
 // unit-tested in tests/motion.test.ts.
 
 import { unfoldElement } from "./heading-folds";
+import { effectiveMotion, motionPrefOf, type MotionPref } from "./motion-pref";
 
 export const EASE_OUT = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 /** Durations in ms: UI changes stay short, camera moves may take longer. */
@@ -13,18 +14,29 @@ export const DURATION = { fast: 150, base: 200, slow: 250, camera: 360 } as cons
 /** Lists with more items than this jump instead of gliding. */
 export const FLIP_LIMIT = 150;
 
-type MediaWindow = { matchMedia?: (query: string) => { matches: boolean } };
+type MediaWindow = {
+  matchMedia?: (query: string) => { matches: boolean };
+  document?: { documentElement?: { dataset?: Record<string, string | undefined> } };
+};
+const currentWindow = () => (typeof window === "undefined" ? undefined : (window as MediaWindow));
 
-/** True when the system asks for reduced motion (and on the server). */
-export function prefersReducedMotion(
-  win: MediaWindow | undefined = typeof window === "undefined" ? undefined : (window as MediaWindow),
-): boolean {
-  if (!win || typeof win.matchMedia !== "function") return true;
+/** How much may move (#260): the person's "Animationen" (data-motion on
+ *  <html>, lib/motion-pref-client.ts), turned off by the system's "reduce
+ *  motion"; "off" on the server. */
+export function motionLevel(win: MediaWindow | undefined = currentWindow()): MotionPref {
+  if (!win || typeof win.matchMedia !== "function") return "off";
+  let reduce = true;
   try {
-    return win.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  } catch {
-    return true;
-  }
+    reduce = win.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {}
+  return effectiveMotion(motionPrefOf(win.document?.documentElement?.dataset?.motion), reduce);
+}
+
+/** True when nothing should glide, slide or scale: the system asks for
+ *  reduced motion, or the person chose "Reduziert" or "Aus" (and on the
+ *  server). Short fades may still run with "Reduziert" (CSS). */
+export function prefersReducedMotion(win: MediaWindow | undefined = currentWindow()): boolean {
+  return motionLevel(win) !== "normal";
 }
 
 // ---- input guards ----

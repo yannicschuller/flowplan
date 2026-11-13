@@ -1697,7 +1697,7 @@ kbd,
   background: var(--bg);
   box-shadow: 0 4px 14px -4px #1d1a1440;
   color: var(--secondary);
-  animation: menu-in 0.12s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .image-tools > button {
   display: grid;
@@ -1727,7 +1727,7 @@ kbd,
   place-items: center;
   padding: calc(24px + var(--safe-top, 0px)) calc(24px + var(--safe-right, 0px)) calc(24px + var(--safe-bottom, 0px)) calc(24px + var(--safe-left, 0px));
   background: rgba(15, 14, 20, 0.88);
-  animation: menu-in 0.15s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .image-viewer img {
   max-width: 100%;
@@ -5946,7 +5946,7 @@ mark[data-color],
   border-radius: 12px;
   background: var(--bg);
   box-shadow: var(--shadow);
-  animation: save-bar-in 0.2s var(--ease-out);
+  animation: save-bar-in var(--motion-base) var(--ease-standard);
 }
 .save-bar > span {
   flex: 1;
@@ -5956,7 +5956,7 @@ mark[data-color],
 @keyframes save-bar-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(calc(8px * var(--motion-move)));
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -7303,12 +7303,12 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   background: var(--bg);
   box-shadow: var(--shadow);
   font-size: 13px;
-  animation: outline-in 0.18s var(--ease-out);
+  animation: outline-in var(--motion-base) var(--ease-standard);
 }
 @keyframes outline-in {
   from {
     opacity: 0;
-    transform: translateX(8px);
+    translate: calc(8px * var(--motion-move)) 0;
   }
 }
 @container main (min-width: 1194px) {
@@ -7336,13 +7336,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   right: var(--outline-right, 20px);
   width: min(280px, calc(100vw - 24px));
   max-height: min(60dvh, calc(100dvh - var(--outline-top, 110px) - 16px));
-  animation-name: outline-pop;
-}
-@keyframes outline-pop {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
+  /* A popover: fades and scales from its button's corner (#260). */
+  transform-origin: top right;
+  animation-name: menu-in;
+  animation-duration: var(--motion-fast);
 }
 @media (prefers-reduced-motion: reduce) {
   .document-outline {
@@ -10469,12 +10466,14 @@ details[data-heading] > summary {
   border-radius: 14px;
   background: var(--bg);
   box-shadow: var(--shadow);
-  animation: block-select-bar-in 0.18s ease-out;
+  animation: block-select-bar-in var(--motion-base) var(--ease-standard);
 }
+/* Rises from the bottom edge with translate; the bar is placed with
+   transform, which the animation leaves alone (#260). */
 @keyframes block-select-bar-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 12px);
+    translate: 0 calc(12px * var(--motion-move));
   }
 }
 .block-select-count {
@@ -10505,12 +10504,6 @@ details[data-heading] > summary {
     justify-content: space-between;
     gap: 4px 6px;
     padding: 6px 8px;
-  }
-  @keyframes block-select-bar-in {
-    from {
-      opacity: 0;
-      transform: translateY(12px);
-    }
   }
   .block-select-count {
     flex-basis: 100%;
@@ -11112,7 +11105,8 @@ img.inline-comment-mark {
   border-radius: 999px;
   background: var(--bg);
   box-shadow: var(--shadow);
-  animation: reaction-pop 0.14s var(--ease-out);
+  transform-origin: bottom left;
+  animation: reaction-pop var(--motion-fast) var(--ease-standard);
 }
 .reaction-picker button {
   width: 30px;
@@ -11128,7 +11122,7 @@ img.inline-comment-mark {
 @keyframes reaction-pop {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.96);
+    scale: var(--motion-scale);
   }
 }
 .inline-comment-error {
@@ -11698,17 +11692,20 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
     0 2px 6px #1424440f;
   font-size: 13px;
   transform-origin: top center;
-  animation: select-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 /* In a dialog: against the window, so it neither scrolls the dialog nor is
    cut off by it (#219, components/select.tsx). */
 .fp-select-list.fixed {
   position: fixed;
 }
+/* Above its field: moved up by its own height with transform, which the
+   opening animation (scale only) leaves alone (#260). The origin is in the
+   box's own coordinates before that move – its top is the bottom edge on
+   screen, next to the field. */
 .fp-select-list.up {
   transform: translateY(-100%);
-  transform-origin: bottom center;
-  animation-name: select-in-up;
+  transform-origin: top center;
 }
 .fp-select-option {
   display: flex;
@@ -11739,21 +11736,6 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
-}
-@keyframes select-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-}
-@keyframes select-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(calc(-100% + 4px)) scale(0.98);
-  }
-  to {
-    transform: translateY(-100%);
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .fp-select-list {
@@ -11849,12 +11831,43 @@ tr.row-sliding > td {
   bottom: -9.5px;
 }
 
-/* ---------- Motion ----------
-   Short, soft transitions everywhere; nothing moves for people who ask
-   their system to reduce motion. */
+/* ---------- Motion (#260) ----------
+   One standard for the whole app:
+   - Opening a page, a record or another screen: a short cross-fade of the
+     main pane only (lib/view-transition.ts) – nothing travels.
+   - Menus, popovers, the text menu, tooltips: opacity and a scale from
+     98 % at their anchor (transform-origin), --motion-fast in, closing at
+     once.
+   - Dialogs: opacity and scale from 98 %, no overshoot, --motion-base.
+   - Side panels, drawers and sheets: slide in from their edge,
+     --motion-slow at most.
+   - Inline changes (toggles, the drop line, presence) keep their own.
+   Opening animations change only opacity and scale – never translate or
+   transform, which many of these elements use for their position – so a
+   keyframe cannot move an element away from its place.
+   "Animationen" (Settings → Appearance, lib/motion-pref.ts) sets
+   data-motion on <html> and the app's root: "reduced" keeps short fades
+   (no scale, no slide: --motion-scale and --motion-move), "off" – like the
+   system's "reduce motion" – lets nothing animate. --ease-spring stays
+   out of menus and dialogs. */
 :root {
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-slow: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Where entering elements start: 98 % of their size, and the full
+     distance of a slide (a factor). */
+  --motion-scale: 0.98;
+  --motion-move: 1;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+[data-motion="reduced"] {
+  --motion-fast: 70ms;
+  --motion-base: 100ms;
+  --motion-slow: 120ms;
+  --motion-scale: 1;
+  --motion-move: 0;
 }
 button,
 .dropdown-item,
@@ -11877,20 +11890,20 @@ textarea {
     border-color 0.15s ease,
     box-shadow 0.15s ease;
 }
-/* Dialogs rise in; side panels slide in from the right. Only backwards
-   fill: a scale or translate held after the end would make the dialog the
-   containing block of its fixed children (#75, see .modal). */
+/* Dialogs fade and scale in; side panels slide in from the right. Only
+   backwards fill: a scale or translate held after the end would make the
+   dialog the containing block of its fixed children (#75, see .modal). */
 .modal-overlay {
-  animation: fade-in 0.18s ease both;
+  animation: fade-in var(--motion-base) ease both;
 }
 .modal {
-  animation: modal-in 0.2s var(--ease-spring) backwards;
+  animation: modal-in var(--motion-base) var(--ease-standard) backwards;
 }
 .modal.modal-side {
-  animation: side-in 0.24s var(--ease-out) backwards;
+  animation: side-in var(--motion-slow) var(--ease-standard) backwards;
 }
 .modal.modal-full {
-  animation: fade-in 0.18s ease both;
+  animation: fade-in var(--motion-base) ease both;
 }
 /* Phones: dialogs and record pages scroll only up and down. */
 @media (max-width: 600px) {
@@ -11902,55 +11915,48 @@ textarea {
 @keyframes modal-in {
   from {
     opacity: 0;
-    scale: 0.96;
+    scale: var(--motion-scale);
   }
 }
 @keyframes side-in {
   from {
-    opacity: 0.4;
-    translate: 40px 0;
+    opacity: 0;
+    translate: calc(40px * var(--motion-move)) 0;
   }
 }
-/* Menus unfold from where they open. */
+/* Menus unfold from where they open: opacity and scale only. */
 .dropdown {
   transform-origin: var(--radix-dropdown-menu-content-transform-origin, top);
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 @keyframes menu-in {
   from {
     opacity: 0;
-    scale: 0.96;
-    translate: 0 -4px;
+    scale: var(--motion-scale);
   }
 }
+/* Toasts are placed with transform; they rise with translate. */
 .toast {
-  animation: toast-in 0.25s var(--ease-spring) both;
+  animation: toast-in var(--motion-base) var(--ease-standard) both;
 }
 @keyframes toast-in {
   from {
     opacity: 0;
-    translate: 0 14px;
+    translate: 0 calc(14px * var(--motion-move));
   }
 }
-/* Pages and panels appear softly. */
-/* Only while it runs: a lasting transform would trap fixed children. */
+/* A page appears in its place: a short fade, nothing rises (#260). */
 .page-layout {
-  animation: page-in 0.28s var(--ease-out) backwards;
-}
-@keyframes page-in {
-  from {
-    opacity: 0;
-    translate: 0 6px;
-  }
+  animation: fade-in var(--motion-fast) ease backwards;
 }
 .comments-panel,
 .inline-comment-panel {
-  animation: panel-in 0.22s var(--ease-out) backwards;
+  animation: panel-in var(--motion-slow) var(--ease-standard) backwards;
 }
 @keyframes panel-in {
   from {
     opacity: 0;
-    translate: 16px 0;
+    translate: calc(16px * var(--motion-move)) 0;
   }
 }
 .link-preview,
@@ -11958,7 +11964,7 @@ textarea {
 .recent-card,
 .row-access-panel,
 .record-layout {
-  animation: fade-in 0.2s ease both;
+  animation: fade-in var(--motion-base) ease both;
 }
 /* Cards lift slightly under the pointer. */
 .record-card,
@@ -11979,18 +11985,47 @@ textarea {
 .fp-select-caret {
   transition: transform 0.2s var(--ease-out);
 }
+/* Nothing animates with the system's "reduce motion" or "Animationen:
+   Aus": every animation and transition ends at once (still firing their
+   end events, which some components wait for); toggles, drag and drop and
+   panels work as before, they only appear without moving. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
   .record-card:hover,
   .recent-card:hover {
     translate: none;
   }
+}
+[data-motion="off"],
+[data-motion="off"] *,
+[data-motion="off"] *::before,
+[data-motion="off"] *::after,
+:root[data-motion="off"]::view-transition-group(*),
+:root[data-motion="off"]::view-transition-old(*),
+:root[data-motion="off"]::view-transition-new(*) {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+[data-motion="off"] .record-card:hover,
+[data-motion="off"] .recent-card:hover,
+[data-motion="reduced"] .record-card:hover,
+[data-motion="reduced"] .recent-card:hover {
+  translate: none;
 }
 /* ---------- Purposeful motion (lib/motion.ts, components/motion.tsx) ----------
    Shows what moved, where a jump landed and what just changed. Only
@@ -12128,68 +12163,32 @@ textarea {
 }
 ::view-transition-group(.db-view-in),
 ::view-transition-group(.db-view-out) {
-  animation-duration: 0.2s;
+  animation-duration: var(--motion-base);
 }
 ::view-transition-new(.db-view-in) {
-  animation: db-view-in 0.2s var(--ease-out) both;
+  animation: fade-in var(--motion-base) var(--ease-standard) both;
 }
 ::view-transition-old(.db-view-out) {
-  animation: fade-out 0.15s ease both;
+  animation: fade-out var(--motion-fast) ease both;
 }
-@keyframes db-view-in {
-  from {
-    opacity: 0;
-    translate: 0 4px;
-  }
-}
-/* Opening a page or another screen, a record (lib/view-transition.ts): the
-   main pane fades and rises a little; the page's icon and title from the
-   tree and a board card fly to their place. The page below stays usable –
-   a tap ends the transition. */
+/* Opening a page or another screen (lib/view-transition.ts): the main
+   pane cross-fades – opacity only, about 100 ms. Nothing travels: the
+   title and icon appear where they end (#260). The page below stays
+   usable – a tap ends the transition. */
 ::view-transition {
   pointer-events: none;
 }
 html[data-view-transition="page"] .split-primary > .main-scroll {
   view-transition-name: fp-main;
 }
+::view-transition-group(fp-main) {
+  animation-duration: var(--motion-fast);
+}
 ::view-transition-old(fp-main) {
-  animation: fade-out 0.12s ease both;
+  animation: fade-out var(--motion-fast) ease both;
 }
 ::view-transition-new(fp-main) {
-  animation: fp-main-in 0.22s var(--ease-out) both;
-}
-@keyframes fp-main-in {
-  from {
-    opacity: 0;
-    translate: 0 6px;
-  }
-}
-::view-transition-group(fp-page-icon),
-::view-transition-group(fp-page-title),
-::view-transition-group(fp-record) {
-  animation-duration: 0.24s;
-  animation-timing-function: var(--ease-out);
-}
-::view-transition-old(fp-page-title),
-::view-transition-new(fp-page-title) {
-  /* Text of different sizes: scaled as a whole, never stretched. */
-  height: 100%;
-  object-fit: contain;
-  object-position: left center;
-}
-/* The card's picture gives way early, the record's comes in while the
-   box grows (scaled pictures of text look odd for long). */
-::view-transition-old(fp-record),
-::view-transition-new(fp-record) {
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-}
-::view-transition-old(fp-record) {
-  animation: fade-out 0.1s ease both;
-}
-::view-transition-new(fp-record) {
-  animation: fade-in 0.18s ease both;
+  animation: fade-in var(--motion-fast) var(--ease-standard) both;
 }
 @keyframes fade-out {
   to {
@@ -12233,13 +12232,13 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 @keyframes presence-pop {
   from {
     opacity: 0;
-    scale: 0.6;
+    scale: calc(1 - 0.4 * var(--motion-move));
   }
 }
 @keyframes presence-out {
   to {
     opacity: 0;
-    scale: 0.6;
+    scale: calc(1 - 0.4 * var(--motion-move));
   }
 }
 
@@ -12531,7 +12530,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   z-index: 3;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-zoom {
   position: absolute;
@@ -12631,7 +12630,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   font-size: 13px;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-plus-search {
   display: flex;
@@ -12807,7 +12806,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   box-shadow: var(--shadow);
   z-index: 4;
   font-size: 12px;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-style-bar .fp-select {
   padding: 4px 8px;
@@ -13015,7 +13014,9 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   top: auto;
   bottom: 16px;
   translate: -50% 0;
-  animation: toast-in 0.25s var(--ease-spring) both;
+  /* Placed with translate: fades and scales, never slides (#260). */
+  transform-origin: bottom center;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-present span {
   padding: 0 8px;
@@ -13192,7 +13193,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   box-shadow: var(--shadow);
   font-size: 13px;
   user-select: text;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-comment-head {
   display: flex;
@@ -13271,7 +13272,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   color: var(--bg);
   font-size: 13px;
   box-shadow: var(--shadow);
-  animation: toast-in 0.25s var(--ease-spring) both;
+  transform-origin: top center;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-timer strong {
   font-variant-numeric: tabular-nums;
@@ -13312,7 +13314,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   font-size: 13px;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-panel p {
   margin: 0;
@@ -13482,7 +13484,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   background: var(--bg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-sheet h3 {
   margin: 0 6px 4px;
@@ -13550,7 +13552,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   font-size: 13px;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .whiteboard.wb-layout-dock .wb-actions {
   left: auto;
@@ -16985,7 +16987,7 @@ label.task-due {
 @keyframes since-visit-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(calc(-4px * var(--motion-move)));
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -17009,13 +17011,8 @@ label.task-due {
     0 0 0 1px var(--border),
     0 18px 40px -12px #1d1a1440;
   overflow: hidden;
-  animation: slash-in 0.14s var(--ease-out, ease) both;
-}
-@keyframes slash-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
+  transform-origin: top left;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .slash-menu input {
   margin: 8px 8px 0;
@@ -17646,7 +17643,8 @@ h3:hover > .block-reactions .block-reaction-add {
   border-radius: 999px;
   background: var(--bg);
   box-shadow: var(--shadow);
-  animation: reaction-pop 0.14s var(--ease-out);
+  transform-origin: bottom left;
+  animation: reaction-pop var(--motion-fast) var(--ease-standard);
 }
 .block-reaction-picker button {
   width: 30px;
@@ -18602,7 +18600,7 @@ h3 .block-reactions {
   color: var(--bg);
   font-size: 13px;
   box-shadow: var(--shadow);
-  animation: menu-in 0.18s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-presenting button {
   padding: 3px 10px;
@@ -18635,7 +18633,7 @@ h3 .block-reactions {
   background: var(--bg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .wb-arrange-menu small {
   padding: 6px 6px 2px;
@@ -19264,13 +19262,22 @@ h3 .block-reactions {
   border-radius: 12px;
   background: var(--bg);
   box-shadow: 0 12px 32px -8px #1d1a1440, 0 2px 6px #1d1a1418;
-  animation: menu-in 0.12s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
+/* Placed with translate (and left/top from the script); the opening
+   animation scales from the anchor and never touches translate (#260):
+   above the selection from its bottom centre, below it from its top
+   centre, a right-click menu from its top left corner. */
 .text-menu.selection {
   translate: -50% calc(-100% - 10px);
+  transform-origin: bottom center;
+}
+.text-menu.selection.below {
+  transform-origin: top center;
 }
 .text-menu.context {
   translate: 2px 2px;
+  transform-origin: top left;
 }
 .text-menu-reactions,
 .text-menu-format {
@@ -19758,7 +19765,7 @@ h3 .block-reactions {
 @keyframes not-found-in {
   from {
     opacity: 0;
-    translate: 0 8px;
+    translate: 0 calc(8px * var(--motion-move));
   }
 }
 /* Tasks of the other workspaces, below the current one's. */
@@ -25574,12 +25581,12 @@ h3 .block-reactions {
   box-shadow:
     0 0 0 1px var(--border),
     0 18px 40px -12px #1d1a1440;
-  animation: ai-panel-in 0.18s var(--ease-out, ease) both;
+  animation: ai-panel-in var(--motion-fast) var(--ease-standard) both;
 }
 @keyframes ai-panel-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    scale: var(--motion-scale);
   }
 }
 .ai-writer-ask {
@@ -25881,7 +25888,7 @@ h3 .block-reactions {
   border-radius: 12px;
   background: var(--bg);
   box-shadow: 0 0 0 1px var(--border);
-  animation: ai-panel-in 0.18s var(--ease-out, ease) both;
+  animation: ai-panel-in var(--motion-fast) var(--ease-standard) both;
 }
 .quick-capture-ai .ai-preview {
   max-height: min(34vh, 320px);
@@ -26066,7 +26073,7 @@ h3 .block-reactions {
   padding: 0 calc(16px + var(--safe-right, 0px)) 14px 16px;
   border-left: 1px solid var(--border);
   background: var(--bg);
-  animation: ask-panel-in 0.22s var(--ease-out) backwards;
+  animation: ask-panel-in var(--motion-slow) var(--ease-standard) backwards;
 }
 .ask-panel[hidden] {
   display: none !important;
@@ -26191,7 +26198,7 @@ h3 .block-reactions {
 @keyframes ask-panel-in {
   from {
     opacity: 0;
-    translate: 16px 0;
+    translate: calc(16px * var(--motion-move)) 0;
   }
 }
 /* Its width: 420 px or as dragged, between 320 px and 45 % of the window
@@ -26257,7 +26264,7 @@ h3 .block-reactions {
     border-top: 1px solid var(--border);
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -10px 34px #1d1a1424;
-    animation: ask-sheet-in 0.3s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+    animation: ask-sheet-in var(--motion-slow) var(--ease-standard) backwards;
   }
   .ask-panel > .sheet-handle {
     display: block;
@@ -26346,7 +26353,7 @@ h3 .block-reactions {
     box-shadow: var(--shadow);
     font-size: 14px;
     font-weight: 600;
-    animation: ask-pill-in 0.2s var(--ease-out) backwards;
+    animation: ask-pill-in var(--motion-fast) var(--ease-standard) backwards;
   }
   .ask-panel-pill > svg {
     color: var(--accent-strong);
@@ -26355,15 +26362,17 @@ h3 .block-reactions {
     animation: ask-pill-pulse 1.4s ease-in-out infinite;
   }
 }
+/* Slides up from the bottom edge; with "Reduziert" it only fades. */
 @keyframes ask-sheet-in {
   from {
-    translate: 0 100%;
+    opacity: calc(1 - var(--motion-move));
+    translate: 0 calc(100% * var(--motion-move));
   }
 }
 @keyframes ask-pill-in {
   from {
     opacity: 0;
-    scale: 0.9;
+    scale: var(--motion-scale);
   }
 }
 @keyframes ask-pill-pulse {
@@ -26986,7 +26995,7 @@ td.ai-filled {
 @keyframes ai-chip-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(calc(4px * var(--motion-move)));
   }
   to {
     opacity: 1;
@@ -27673,7 +27682,7 @@ td.ai-filled {
   font-size: 13px;
   text-align: left;
   transform-origin: top left;
-  animation: menu-in 0.14s var(--ease-out) both;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
 .chip-popover:focus {
   outline: none;

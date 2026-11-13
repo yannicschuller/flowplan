@@ -87,7 +87,6 @@ import { cardFields } from "@/lib/card-fields";
 import { GalleryCover } from "./gallery-cover";
 import { CoverFrame } from "./cover-frame";
 import { primePlaceholder } from "./image-placeholder";
-import { transitionView } from "@/lib/view-transition";
 import { ScrollFade } from "./scroll-fade";
 import type { PageImage } from "@/lib/page-appearance";
 import {
@@ -198,7 +197,7 @@ import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
-import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
@@ -495,26 +494,10 @@ export default function DatabaseView({
       else leaveTo(hash);
     }
   }
-  // Board and gallery cards grow into the record and back (a view
-  // transition, lib/view-transition.ts). Phones keep their bottom sheet.
-  const recordDialog = () => document.querySelector<HTMLElement>(".modal.record-dialog");
-  const morphsRecords = () => !window.matchMedia(SHEET_MEDIA).matches;
-  function openRecordFrom(card: HTMLElement, id: string) {
-    // A record as a page (#231) replaces the view: no card morph.
-    if (!morphsRecords() || (routeNavigation && !record && viewRecordMode === "full")) return setRowId(id);
-    transitionView(() => setRowId(id), {
-      kind: "record",
-      // The dialog's own rise would run on top of the morph.
-      morph: [{ name: "fp-record", from: card, to: recordDialog, onTarget: (dialog) => (dialog.style.animation = "none") }],
-    });
-  }
+  // Board and gallery cards open their record as a dialog, which fades and
+  // scales in like every dialog (#260: nothing flies from the card).
   function closeRecord() {
-    const card = lastOpened.current
-      ? boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"] .record-card`)
-      : null;
-    const box = card?.getBoundingClientRect();
-    if (!card || !box || box.bottom < 0 || box.top > window.innerHeight || !morphsRecords() || pageRecord) return setRowId(null);
-    transitionView(() => setRowId(null), { kind: "record", morph: [{ name: "fp-record", from: recordDialog(), to: () => card }] });
+    setRowId(null);
   }
   const ownHash = useRef("");
   useEffect(() => {
@@ -2312,7 +2295,7 @@ export default function DatabaseView({
             if (plainBoard && groupKey !== undefined) beginCardDrag(e, r, groupKey);
             else beginRowDrag(e, r, groupKey, "none");
           }}
-          onClick={(e) => openRecordFrom(e.currentTarget, r.id)}
+          onClick={() => setRowId(r.id)}
         >
           {galleryCovers && (
             <GalleryCover

@@ -96,6 +96,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Sprache", en: "Language" } },
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
+      {
+        title: { de: "Animationen", en: "Animations" },
+        keywords: { de: "bewegung animation reduziert aus übergänge einblenden barrierefreiheit", en: "motion animation reduced off transitions fade accessibility" },
+        anchor: "motion",
+      },
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
       {
         title: { de: "Seitensymbol", en: "Page icon" },

@@ -4,6 +4,7 @@
 // sinks and shrinks a little, a dialog or the navigation drawer moves
 // towards the edge, the page slides aside. Letting go goes back (the app
 // then calls back()); cancelling springs everything into place again.
+import { prefersReducedMotion } from "./motion";
 import { backPreview } from "./sheet-drag";
 
 export type BackPhase = "start" | "progress" | "cancel" | "commit";
@@ -12,7 +13,8 @@ export type BackTarget = { kind: "sheet" | "dialog" | "drawer" | "page"; el: HTM
 
 const SETTLE = "transform 200ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1)";
 
-const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+// The system's "reduce motion" and the person's "Animationen" (#260).
+const reducedMotion = () => prefersReducedMotion();
 
 // One preview at a time; `find` names what back would close when the
 // gesture starts.

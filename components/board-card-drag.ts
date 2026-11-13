@@ -5,6 +5,7 @@
 // drag started, so the layout cannot shift under the pointer and flicker.
 // After the drop the preview settles into the gap; the caller then commits
 // the move and calls `settle()` in the same frame as the re-render.
+import { prefersReducedMotion } from "@/lib/motion";
 
 export type BoardDropHint = {
   id: string;
@@ -54,7 +55,7 @@ export function startBoardCardDrag(options: {
   onHint: (hint: BoardDropHint | null) => void;
 }) {
   const { board, wrap, rowId, onHint } = options;
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = prefersReducedMotion();
   const scroller = verticalScroller(board);
   const scroll0 = { x: board.scrollLeft, y: scroller?.scrollTop ?? 0 };
   // Pointer and boxes are compared in the coordinates of the drag start.

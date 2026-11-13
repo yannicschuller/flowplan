@@ -537,7 +537,8 @@ export function TextMenu({
   return (
     <div
       ref={menu}
-      className={`text-menu ${place.mode}`}
+      // Below the selection it unfolds from its top edge (app/globals.css).
+      className={`text-menu ${place.mode}${place.mode === "selection" && shift.y > 0 ? " below" : ""}`}
       role="menu"
       aria-label={t("Textmenü", "Text menu")}
       style={{
