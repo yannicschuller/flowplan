@@ -145,7 +145,8 @@ test("whiteboard cards can be covered for everyone and uncovered again", async (
   await expect(canvas).toBeVisible();
   const box = (await canvas.boundingBox())!;
   await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator(".wb textarea, textarea").first()).toBeFocused();
+  // The card's text field (not the page title above the board).
+  await expect(page.getByRole("textbox", { name: "Text bearbeiten", exact: true })).toBeFocused();
   await page.keyboard.type("Geheime Idee");
   await page.keyboard.press("Escape");
   const card = page.locator(".wb-item.wb-sticky").first();

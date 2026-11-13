@@ -35,6 +35,14 @@ test("Mermaid diagrams validate, render several types, edit, undo, persist and r
   );
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // The development server's badge covers the phone toolbar's undo button.
+  await page.addInitScript(() =>
+    addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "nextjs-portal { display: none !important; }";
+      document.head.append(style);
+    }),
+  );
   await page.goto(`/#page=${f.host.id}`);
   await page
     .getByRole("button", { name: "Block hinzufügen", exact: true })

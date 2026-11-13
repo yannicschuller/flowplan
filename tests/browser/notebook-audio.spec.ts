@@ -72,9 +72,16 @@ test("record while writing, upload, play back in step, jump to a stroke", async 
   expect(list.recordings).toHaveLength(1);
   const recording = list.recordings[0];
   expect(recording.durationMs).toBeGreaterThan(2500);
-  const data = await (await page.request.get(`/api/pages/${id}`)).json();
-  const [first] = data.notebook.sheets.map((s: { id: string }) => s.id);
-  const stroke = data.notebook.sheets[0].ink.pages[first][0];
+  // The ink is saved on its own schedule ("Wird gespeichert …"), maybe after
+  // the recording.
+  type Sheet = { id: string; ink: { pages: Record<string, { rec: { id: string; t: number } }[]> } };
+  const firstStroke = async () => {
+    const data = await (await page.request.get(`/api/pages/${id}`)).json();
+    const sheet: Sheet = data.notebook.sheets[0];
+    return sheet.ink?.pages?.[sheet.id]?.[0];
+  };
+  await expect.poll(firstStroke, { timeout: 15_000 }).toBeTruthy();
+  const stroke = (await firstStroke())!;
   expect(stroke.rec.id).toBe(recording.id);
   expect(stroke.rec.t).toBeGreaterThan(1500);
   // The audio is served with ranges.

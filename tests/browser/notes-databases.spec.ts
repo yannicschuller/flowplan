@@ -91,6 +91,8 @@ test("a page moves into a database; records and databases export from their menu
     expect(response.ok(), await response.text()).toBe(true);
     return response.json();
   };
+  // A new account would see the introduction first (a fresh test server).
+  await command({ action: "profile.onboarded" });
   const stamp = String(Date.now());
   const create = (title: string, kind: string, extra: Record<string, unknown> = {}) =>
     command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, kind, ...extra });

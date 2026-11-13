@@ -53,7 +53,7 @@ test("a record opens as a page of its own, with its address, history and favouri
   await expect(dialog).toHaveCount(0);
   // No database behind it: neither its views nor its title.
   await expect(page.getByRole("group", { name: "Ansichten" })).toHaveCount(0);
-  await expect(page.getByLabel("Seitentitel")).toHaveCount(0);
+  await expect(page.getByLabel("Seitentitel", { exact: true })).toHaveCount(0);
   await expect(record.locator(".row-title-input")).toHaveValue(`U3a ${tag}`);
   // Everything of the dialog: properties, document, comments.
   await expect(record.locator(".row-properties")).toBeVisible();
@@ -165,7 +165,7 @@ test("a long path folds into …; guests see no titles of private pages above", 
   await page.screenshot({ path: "test-results/record-full-page-collapsed.png" });
   await page.getByRole("menuitem", { name: `Ebene 3 ${tag}` }).click();
   await expect(page).toHaveURL(new RegExp(`#page=${chain[2].id}$`));
-  await expect(page.getByLabel("Seitentitel")).toHaveValue(`Ebene 3 ${tag}`);
+  await expect(page.getByLabel("Seitentitel", { exact: true })).toHaveValue(`Ebene 3 ${tag}`);
   await expect(path.getByRole("link")).toHaveText([`Privat ${tag}`, `Ebene 2 ${tag}`, `Ebene 3 ${tag}`]);
 
   // A guest with a share on "Geteilt" (and so its sub-pages).

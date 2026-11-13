@@ -248,8 +248,12 @@ test("the Diagramm-Seite template creates a full-width page with a diagram and o
     await create.getByPlaceholder("Wie heißt deine Seite?").fill(title);
     await create.getByRole("button", { name: "Seite erstellen" }).click();
   } else {
-    // From the public gallery ("In meinem Arbeitsbereich verwenden").
+    // From the public gallery ("In meinem Arbeitsbereich verwenden"): "Neue
+    // Seite" with the template chosen (#213).
     await page.goto("/?useTemplate=starter:diagram");
+    const create = page.getByRole("dialog", { name: "Neue Seite" });
+    await create.getByPlaceholder("Wie heißt deine Seite?").fill(title);
+    await create.getByRole("button", { name: "Seite erstellen" }).click();
   }
   const dialog = page.getByRole("dialog", { name: "draw.io-Diagramm", exact: true });
   await expect(dialog).toBeVisible({ timeout: 20_000 });
@@ -267,7 +271,7 @@ test("the Diagramm-Seite template creates a full-width page with a diagram and o
   await expect.poll(async () => ((await read()).html as string).match(/data-drawio=/g)?.length, { timeout: 20_000 }).toBe(1);
   expect((await read()).html).toContain("erste");
   expect((await read()).page.full_width).toBe(1);
-  if (info.project.name === "desktop") expect((await read()).page.title).toBe(title);
+  expect((await read()).page.title).toBe(title);
   // Opening the page again does not open draw.io again.
   await page.reload();
   await expect(blocks).toHaveAttribute("data-drawio-state", "ready");

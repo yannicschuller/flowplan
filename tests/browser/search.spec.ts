@@ -61,7 +61,9 @@ test("quick search finds compound words and records, filters by kind and opens e
   });
   await expect(hit).toBeVisible();
   await expect(hit.locator("mark")).toHaveCount(1);
-  await expect(hit).toContainText(`Eintrag in Suchziel ${tag}`);
+  // The path to the record and when it was edited (#243).
+  await expect(hit.locator(".palette-path")).toContainText(`Suchziel ${tag}`);
+  await expect(hit.locator(".palette-path")).toContainText("Bearbeitet");
   await page.screenshot({
     path: `test-results/search-verification/${testInfo.project.name}-results.png`,
   });

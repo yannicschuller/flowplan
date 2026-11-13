@@ -56,7 +56,7 @@ test("offline use is opt-in per device and its copies are removable", async ({
   expect(await shell()).not.toContain('data-signed-out=""');
   await page.context().clearCookies();
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible();
   expect(await shell()).not.toContain('data-signed-out=""');
   expect(await shell()).not.toBe("");
   await page.request.post("/api/auth/demo", { headers: { origin } });

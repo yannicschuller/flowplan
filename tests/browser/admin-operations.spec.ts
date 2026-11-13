@@ -72,7 +72,8 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
     await admin.goto(`${origin}/#admin/monitoring`);
     // The live dashboard: health of each part, charts, queues.
     const health = admin.getByRole("region", { name: "Zustand" });
-    await expect(health).toContainText("Datenbank");
+    // (The dev server may compile the dashboard on first use.)
+    await expect(health).toContainText("Datenbank", { timeout: 20_000 });
     await expect(health).toContainText("Hintergrunddienste");
     await expect(admin.getByRole("region", { name: "Warteschlangen" })).toContainText("Suchindex");
     await expect(admin.getByRole("region", { name: "Anfragen & Fehler" })).toBeVisible();
@@ -81,6 +82,9 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
       path: `test-results/admin-verification/${testInfo.project.name}-metrics.png`,
     });
     await admin.goto(`${origin}/#admin/workspaces`);
+    // Every account starts with a workspace of the same name (this admin's
+    // too): the demo account's, found by its owner.
+    await admin.getByRole("searchbox", { name: "Arbeitsbereiche suchen" }).fill(boot.user.email);
     const quota = admin.getByLabel(`Kontingent ${boot.workspace.name}`).first();
     await quota.fill("1");
     await quota.blur();

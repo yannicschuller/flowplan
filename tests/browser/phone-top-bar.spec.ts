@@ -26,7 +26,8 @@ test("the phone top bar leaves the room to the title", async ({ page }, info) =>
   await expect(bar.getByRole("button")).toHaveCount(2);
   await expect(bar.getByRole("button", { name: "Navigation öffnen", exact: true })).toBeVisible();
   await expect(bar.getByRole("button", { name: "Seitenaktionen", exact: true })).toBeVisible();
-  const crumb = bar.locator(".breadcrumb > span:last-child");
+  // The current segment of the path (#231), not cut off.
+  const crumb = bar.locator(".breadcrumb-current .breadcrumb-link > span");
   await expect(crumb).toHaveText(title);
   await expect.poll(() => crumb.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   // While everything is saved the cloud is there for screen readers only.

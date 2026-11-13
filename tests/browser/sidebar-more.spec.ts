@@ -56,10 +56,11 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(sheet(page).getByRole("button", { name: "Administration" })).toHaveCount(0);
 
   // The account menu is part of the sheet (#197): no "⋯" in the profile
-  // row; design and about below a line, signing out last and apart.
+  // row; design, about and what's new (#223) below a line, signing out
+  // last and apart.
   await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeHidden();
   const account = sheet(page).getByRole("group", { name: "Konto" });
-  await expect(account.locator("button, a")).toHaveText(["Dunkles Design", "Über Flowplan", "Abmelden"]);
+  await expect(account.locator("button, a")).toHaveText(["Dunkles Design", "Über Flowplan", "Was ist neu", "Abmelden"]);
   for (const entry of await account.locator("button, a").all()) expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   // (Measured at one moment: the sheet may still be sliding in.)
   const gaps = await account.evaluate((group) => {

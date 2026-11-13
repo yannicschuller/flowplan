@@ -25,7 +25,8 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
     setDemo(false);
     await page.goto("/demo");
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
+    // The sign-in page (the fastest way first, the form behind a button).
+    await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible();
 
     setDemo(true);
     await page.goto("/demo");
@@ -54,7 +55,7 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
       await ended;
     }).toPass({ timeout: 30_000 });
     // Back on the sign-in page (the start page moved to the website).
-    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible({ timeout: 15_000 });
     expect(db.prepare("SELECT 1 FROM users WHERE id=?").get(uid)).toBeUndefined();
     expect(db.prepare("SELECT 1 FROM workspaces WHERE id=?").get(ws)).toBeUndefined();
     expect(errors).toEqual([]);

@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { openPageMenu, phoneTopBar } from "./page-top-bar";
 
 // Idempotency keys (lib/idempotency.ts): a double submit – the same request
 // with the same key, also at the same time – applies the change once.
@@ -45,8 +46,10 @@ test("the same comment sent twice at once with one key: one comment, the same an
 test("double submit in the comment form posts the comment once", async ({ page }, testInfo) => {
   const created = await setup(page.request, `Doppelt ${testInfo.project.name} ${Date.now()}`);
   await page.goto(`/#page=${created.id}`);
-  // The page's own button (pages of other specs may be called "Kommentare …").
-  await page.getByRole("button", { name: "Kommentare", exact: true }).click();
+  // The page's own button (pages of other specs may be called "Kommentare …");
+  // on phones "Kommentare" is in the ⋯ menu until there is a comment.
+  if (phoneTopBar(page)) await (await openPageMenu(page)).getByRole("menuitem", { name: "Kommentare", exact: true }).click();
+  else await page.getByRole("button", { name: "Kommentare", exact: true }).click();
   const field = page.getByPlaceholder("Schreibe einen Kommentar …");
   await field.fill("Doppelklick");
   // Ctrl+Enter and the button right after each other, before the answer.

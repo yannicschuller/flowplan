@@ -885,6 +885,10 @@ test("saved page templates create complete independent databases from the galler
     .getByRole("button", { name: "Verwenden", exact: true })
     .click();
   await expect(gallery).not.toBeVisible();
+  // "Neue Seite" with the template chosen, its name to start with (#213).
+  const create = page.getByRole("dialog", { name: "Neue Seite" });
+  await expect(create.getByLabel("Name", { exact: true })).toHaveValue(name);
+  await create.getByRole("button", { name: "Seite erstellen" }).click();
   await expect(
     page.getByRole("textbox", { name: "Seitentitel", exact: true }),
   ).toHaveValue(name);
@@ -1579,7 +1583,7 @@ test("bidirectional relations create an inverse property and synchronize both ed
     })
     .toEqual([]);
   await record.getByRole("button", { name: "Schließen", exact: true }).click();
-  await page.getByRole("button", { name: "≡ Projekte", exact: true }).click();
+  await page.getByRole("button", { name: "Projekte", exact: true }).click();
   const edit = page.getByRole("dialog", {
     name: "Eigenschaft bearbeiten",
     exact: true,
@@ -2934,6 +2938,14 @@ test("inline math edits in sentences, validates, supports undo and renders on sh
     expect(response.ok(), await response.text()).toBe(true);
     return response.json();
   };
+  // The development server's badge covers the phone toolbar's undo button.
+  await page.addInitScript(() =>
+    addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "nextjs-portal { display: none !important; }";
+      document.head.append(style);
+    }),
+  );
   const p = await command({
     action: "page.create",
     workspaceId: boot.workspace.id,

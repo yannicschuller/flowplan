@@ -140,7 +140,7 @@ test("admins see the push relay's state: tile, monitoring and detail page", asyn
   await expect(page.locator("#channels")).toContainText("Nur verschlüsselt");
   await expect(page.locator("#channels")).toContainText("Von Flowplan erzeugt");
   await expect(page.locator('a[href="#settings/notifications/push-test"]').first()).toBeVisible();
-  await expect(page.locator('a[href^="https://docs.flowplan.org/de/configuration#push-relay"]').first()).toBeVisible();
+  await expect(page.locator('a[href^="https://docs.flowplan.org/de/configuration-ai-push#push-relay"]').first()).toBeVisible();
   // No "Aktualisieren" next to the title: the page has its own check.
   await expect(page.getByRole("button", { name: "Aktualisieren" })).toHaveCount(0);
   await shot("detail");

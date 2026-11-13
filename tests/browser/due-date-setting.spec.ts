@@ -24,7 +24,7 @@ test("due date setting under status rules and done", async ({ page }, info) => {
     version: first.database.version,
     fields: [
       { id: "title", name: "Nom", type: "text" },
-      { id: "state", name: "Statut", type: "select", options: ["Actif", "Utilisé", "Expiré"] },
+      { id: "state", name: "Statut", type: "select", options: ["Actif", "Fermé", "Expiré"] },
       { id: "buy", name: "Date d'achat", type: "date" },
       { id: "end", name: "Fin de validité", type: "date" },
     ],
@@ -43,8 +43,8 @@ test("due date setting under status rules and done", async ({ page }, info) => {
   const due = dialog.getByRole("combobox", { name: "Eigenschaft für das Fälligkeitsdatum" });
   // Automatic guesses the end of validity, not the purchase date.
   await expect(due.locator("option:checked")).toHaveText("Automatisch (zurzeit „Fin de validité“)");
-  // "Utilisé" counts as done without any setting.
-  await expect(dialog.getByRole("checkbox", { name: "Utilisé" })).toBeChecked();
+  // "Fermé" counts as done without any setting; "Expiré" does not.
+  await expect(dialog.getByRole("checkbox", { name: "Fermé" })).toBeChecked();
   await expect(dialog.getByRole("checkbox", { name: "Expiré" })).not.toBeChecked();
   if (process.env.SHOT_DIR) {
     await dialog.screenshot({ path: `${process.env.SHOT_DIR}/due-setting-light.png` });
