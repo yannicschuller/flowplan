@@ -11,13 +11,14 @@ export function chromiumCandidates() {
   return [...(existsSync("/opt/pw-browsers/chromium") ? ["/opt/pw-browsers/chromium"] : []), undefined];
 }
 
-// The first candidate that starts, or the reason none did.
-export async function launchChromium() {
+// The first candidate that starts, or the reason none did. `env`: the
+// browser process's environment (default: this one's).
+export async function launchChromium({ env } = {}) {
   const { chromium } = await import("@playwright/test");
   let last;
   for (const executablePath of chromiumCandidates()) {
     try {
-      return { browser: await chromium.launch({ executablePath, headless: true }), executablePath };
+      return { browser: await chromium.launch({ executablePath, headless: true, env }), executablePath };
     } catch (error) {
       last = error;
     }
