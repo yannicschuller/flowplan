@@ -2,6 +2,144 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.9.5 – 2026-11-13
+
+### Security
+
+- A record's share link only names linked records that the person who created it may read, and links to records you can't read can no longer be set.
+- Guests with an edit link can only comment on the sub-pages of a read-only record.
+- Crafted Markdown, Notion ZIP files or toggles can no longer keep the server busy for a long time.
+
+### New
+
+- Blocks like in Notion: “+” at the handle, a block menu with search and flyouts, a complete “Turn into”, block colours, selecting blocks with the mouse or keyboard, choosing the level while dragging, ⌥ to copy ([#236](https://github.com/yannicschuller/flowplan/issues/236), [#237](https://github.com/yannicschuller/flowplan/issues/237), [#238](https://github.com/yannicschuller/flowplan/issues/238), [#239](https://github.com/yannicschuller/flowplan/issues/239), [#244](https://github.com/yannicschuller/flowplan/issues/244)).
+- Toggles without a dialog: “> ” makes one, Tab nests blocks into it, closed toggles stay closed after a reload, toggle headings 1–4 ([#230](https://github.com/yannicschuller/flowplan/issues/230), [#244](https://github.com/yannicschuller/flowplan/issues/244), [#246](https://github.com/yannicschuller/flowplan/issues/246)).
+- Tables with row and column handles, menus, dragging, “+” bars and cell colours; images with a corner toolbar ([#240](https://github.com/yannicschuller/flowplan/issues/240)).
+- Colours of their own for the options of select and multi-select properties ([#242](https://github.com/yannicschuller/flowplan/issues/242)).
+- Quick search ranks by your visits, shows each hit's path and date and lists recently viewed pages by day ([#243](https://github.com/yannicschuller/flowplan/issues/243)).
+- Records as pages of their own with an address and the full path, shared and published on their own, with sub-pages ([#231](https://github.com/yannicschuller/flowplan/issues/231)).
+- Journal: carried-over tasks go at the top, after the template or below a heading. New workflow step “Append to journal day” ([#247](https://github.com/yannicschuller/flowplan/issues/247), [#250](https://github.com/yannicschuller/flowplan/issues/250)).
+- Choose the due date per database; status and due words are recognised in every language ([#248](https://github.com/yannicschuller/flowplan/issues/248)).
+- Spaces can use an uploaded image as their icon ([#251](https://github.com/yannicschuller/flowplan/issues/251)).
+- The fixed formatting toolbar can be hidden; the text menu then has every tool ([#235](https://github.com/yannicschuller/flowplan/issues/235)).
+- Meeting block: live transcription, retranscribing and a structured summary ([#199](https://github.com/yannicschuller/flowplan/issues/199), [#225](https://github.com/yannicschuller/flowplan/issues/225)).
+- Nested lists with 1. → a. → i. and • → ◦ → ▪ ([#234](https://github.com/yannicschuller/flowplan/issues/234)).
+
+### Improved
+
+- “Open records as → Full page” now shows records as a real page with its own address instead of a large dialog – also in databases already set that way (e.g. “Documents”, “Contacts”). For the dialog, set the database or view to “Centred” ([#231](https://github.com/yannicschuller/flowplan/issues/231)).
+- The block menu opens left of the handle, handles only show on hover and sit at indented text, and the target block is tinted while dragging ([#253](https://github.com/yannicschuller/flowplan/issues/253), [#255](https://github.com/yannicschuller/flowplan/issues/255)).
+- Dark mode: highlights and Mermaid diagrams follow it; inline code is easier to spot and can be bold ([#241](https://github.com/yannicschuller/flowplan/issues/241)).
+- 50 more official templates in the marketplace.
+
+### Bug fixes
+
+- Wide tables scroll sideways again, also by dragging the scrollbar; on published pages only the table scrolls, not the whole page ([#256](https://github.com/yannicschuller/flowplan/issues/256)).
+- Lists: Tab no longer jumps to other blocks, Enter in an empty item outdents only that item, and drops create no empty items ([#254](https://github.com/yannicschuller/flowplan/issues/254)).
+- Handles of blocks inside closed toggles no longer show in the wrong place, and the meeting block can be grabbed by its handle ([#252](https://github.com/yannicschuller/flowplan/issues/252)).
+- Done tasks stay under “Completed this day” when their text is changed ([#249](https://github.com/yannicschuller/flowplan/issues/249)).
+- The table of contents no longer covers records opened as a page, and dialogs no longer scroll sideways ([#245](https://github.com/yannicschuller/flowplan/issues/245)).
+- Two quick changes to a database view in a row no longer fail with “was changed”.
+- Long recordings are transcribed instead of failing with “not reachable” ([#225](https://github.com/yannicschuller/flowplan/issues/225)).
+- Profile pictures and the sidebar width are right from the first paint.
+- Database pages show the table icon in their header, and whiteboard menu labels on phones wrap only between words.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes 0.9.5: wide tables scroll sideways again (#256) ([df42032](https://github.com/yannicschuller/flowplan/commit/df4203287d9848941ac7ac564a304dbd081c05d5))
+- Wide tables: nothing over the table's horizontal scrollbar (#256) ([90a314d](https://github.com/yannicschuller/flowplan/commit/90a314dc197a226b15b6032934e088d909186afd))
+- Release notes 0.9.5: everything since 0.9.4 ([5ec4229](https://github.com/yannicschuller/flowplan/commit/5ec4229c3ea7eddab0a80f2bd06cb4d6dfaad40f))
+- Run the UI gallery's Chromium with a German process locale ([05e513b](https://github.com/yannicschuller/flowplan/commit/05e513ba3fa67638c8c891d24f601c4fb7cf96a0))
+- Show the table icon for databases without an icon of their own ([61a13e8](https://github.com/yannicschuller/flowplan/commit/61a13e88b05bdb6400998a189942892e435ecb22))
+- Break whiteboard sheet labels only between words on phones ([733e4ed](https://github.com/yannicschuller/flowplan/commit/733e4edaf2b9b44f4a88486e9aee066b66af45b6))
+- Add a local UI gallery of all pages, dialogs and menus ([8e19aa6](https://github.com/yannicschuller/flowplan/commit/8e19aa6bc98a1f0c473918cf9025b6df4e728152))
+- Toggle ids: linear-time insertion ([5a9e5f9](https://github.com/yannicschuller/flowplan/commit/5a9e5f9f4034c9277a5aba049e6ac1f59aa20096))
+- Documents: keep the meeting block's language when cleaning ([a34952e](https://github.com/yannicschuller/flowplan/commit/a34952ec8762862374d2ae44ebbd80ef9595ffe4))
+- Page links: a read-only record lets guest editors only comment on its sub-pages ([83e1fbc](https://github.com/yannicschuller/flowplan/commit/83e1fbc43622c642b939f8db52d875b9f671e708))
+- Record shares: name linked records only as far as the creator may read them ([cd0eb66](https://github.com/yannicschuller/flowplan/commit/cd0eb66b76e9de5bb430047e267943c7903dbeaa))
+- Notion import: linear-time detection of Notion's HTML pages ([407149d](https://github.com/yannicschuller/flowplan/commit/407149d7364b9e92961cb655e1924ed4707f6859))
+- Markdown: linear-time list item colours ([bbe235d](https://github.com/yannicschuller/flowplan/commit/bbe235db903a27be84a255ab85a9a2c614eec0d8))
+- Help docs: space images and the block docs for #252–#255 ([f1f73a6](https://github.com/yannicschuller/flowplan/commit/f1f73a69049e44c07193184344af11551b8c53e3))
+- Lists: Tab stays in the page editor too, Enter before sub-items starts a first sub-item (#254) ([1d9f1c3](https://github.com/yannicschuller/flowplan/commit/1d9f1c395e2a2827f6b2944a5ea3cd2a8ba9bbed))
+- Block handles only on hover, at the indented text, and a tinted drop target (#255) ([fdf861a](https://github.com/yannicschuller/flowplan/commit/fdf861ad9a0bf6ae9a7dc2c3982c979883a72596))
+- Block menu placement spec: measure menus once they stop moving ([8024c8c](https://github.com/yannicschuller/flowplan/commit/8024c8c19cb6df26aa88fe3e56af4b9e264123ae))
+- Block drops into lists: no empty items, the level of the drop line (#254) ([65e2231](https://github.com/yannicschuller/flowplan/commit/65e223136fdd89b28d9a15dd9f2d61ea7e452fda))
+- Lists: Tab stays in the text, Enter in an empty item lifts only that item (#254) ([dede50e](https://github.com/yannicschuller/flowplan/commit/dede50ea861e5986bae0c18214695e022f7437c1))
+- Block menu flyouts open over the menu where there is no room further left (#253) ([89e2b29](https://github.com/yannicschuller/flowplan/commit/89e2b294fe887da58b18d4ccc623f3a24cc6768b))
+- Spaces: an uploaded image as the space icon (#251) ([cad24fa](https://github.com/yannicschuller/flowplan/commit/cad24fa7e3a347416409c4f21892bef51d0825f4))
+- Block handles skip closed toggles, meeting handle at its header, block menu left of the handle (#252, #253) ([cf13fb8](https://github.com/yannicschuller/flowplan/commit/cf13fb85ec2b2898caaa6143bb4128d930d4d743))
+- Browser specs: new tabs, phone double taps, the gated save, a fresh account ([94d3861](https://github.com/yannicschuller/flowplan/commit/94d3861cb18dee8c963cb0f4f7c2cffae30590fe))
+- Workspace spec: the template copy's records by their own titles ([daf1d62](https://github.com/yannicschuller/flowplan/commit/daf1d629a912026e8db2d01901dfcff47649f6fd))
+- Browser specs: follow the changes since the last run of the workflow ([addfa08](https://github.com/yannicschuller/flowplan/commit/addfa08c7fb335a6dd1d6f4747d28104bd097da4))
+- Phones: path segments in the top bar are 44px touch targets ([6b124f8](https://github.com/yannicschuller/flowplan/commit/6b124f89e0b996cfe02f4e6836fa37705f06e9b4))
+- Database views: a drag or a second view setting right after a save no longer conflicts ([7d92980](https://github.com/yannicschuller/flowplan/commit/7d9298071cd8d7177d75777c00e8e435e866e432))
+- Visual baselines from ubuntu-latest ([52d8a75](https://github.com/yannicschuller/flowplan/commit/52d8a75641af0d120c00011ebdff2b1c1e8d4961))
+- Visual setup: wait for the server's database lock ([192e546](https://github.com/yannicschuller/flowplan/commit/192e546a6aa961778ac7224aa457d5897cdbe633))
+- Help docs: blocks page and the docs for #235–#250 ([a049dc8](https://github.com/yannicschuller/flowplan/commit/a049dc826d306000e54935316000d4e0fe140f87))
+- Text menu spec: back into the text after Escape (block selection since #237) ([92bf025](https://github.com/yannicschuller/flowplan/commit/92bf02576b365d3bab121801faf2ae1d8183408a))
+- Tables: row and column handles, menus, drag, + bars, cell colours; image corner toolbar (#240) ([a48388e](https://github.com/yannicschuller/flowplan/commit/a48388e2b06fa3453c637ce019c0f283594d326c))
+- Tab nests blocks into toggles, like Notion (#246) ([90d682d](https://github.com/yannicschuller/flowplan/commit/90d682d6154739a589d5817fc78b4bcaf440c1e8))
+- Setting to hide the fixed formatting toolbar; full text menu (#235) ([055d5e0](https://github.com/yannicschuller/flowplan/commit/055d5e08d9acd0767bdbd9ac5170104379d85748))
+- Toggle heading test: imported toggles carry a block id first (#230) ([be87a15](https://github.com/yannicschuller/flowplan/commit/be87a15ed472ea58c9f62f4d6401eed608258bbf))
+- Drag & drop: nesting level by horizontal position, ⌥ copies (#239) ([cceba36](https://github.com/yannicschuller/flowplan/commit/cceba3632161bbd7501253f09bc77965f41f867c))
+- Translate the journal workflow step's error messages (#250) ([28c0c82](https://github.com/yannicschuller/flowplan/commit/28c0c82d030d2c9664a309ea17c56de609001740))
+- Block selection with the mouse and the keyboard, like Notion (#237) ([ab8ca5e](https://github.com/yannicschuller/flowplan/commit/ab8ca5e0273e1a92ebde16d0de614bcc4b751bcd))
+- Block menu: search, flyouts, complete "Turn into", block colours (#238, #244) ([82f3549](https://github.com/yannicschuller/flowplan/commit/82f3549b2967ce98fab8858abe83cd0ff00d1abc))
+- Block handle: "+", gap to the text, full colour, marked block, nested handles (#236) ([07e824c](https://github.com/yannicschuller/flowplan/commit/07e824c1542da3d14cb99935e9f2d96752a1468e))
+- Journal settings: fix the German hint of "Übernommene Aufgaben" (#247) ([3ac3424](https://github.com/yannicschuller/flowplan/commit/3ac3424aef4c906876c47c9ad46896781d00e847))
+- Journal: a tick saved together with the last letters still counts (#249) ([eced834](https://github.com/yannicschuller/flowplan/commit/eced834795e23b6437a6e8c0919595addc30a1dd))
+- Done words: leave out "Utilisé" ([1b173de](https://github.com/yannicschuller/flowplan/commit/1b173ded88b38f705a57ead07f763362596e2e7c))
+- Due date setting per database; due and done guesses in every UI language (#248) ([6846c6c](https://github.com/yannicschuller/flowplan/commit/6846c6c394f9bbac845121ec64a2ff79152a65b3))
+- Workflows: new step "Append to journal day" (#250) ([18f3778](https://github.com/yannicschuller/flowplan/commit/18f37789892f40ebf86e670739c17139b4cb1057))
+- Journal: choose where carried-over tasks go in a new day (#247) ([41ee9f7](https://github.com/yannicschuller/flowplan/commit/41ee9f7daaa5a7da1ea613f64f6fe703dc45a198))
+- Journal: a done task keeps its place under "Completed this day" when reworded (#249) ([3356718](https://github.com/yannicschuller/flowplan/commit/3356718c01d9ab799c4c12b29df8c2f2e7d87f90))
+- Option colours: undo beside "Assign colours automatically" (#242) ([7b2a4a6](https://github.com/yannicschuller/flowplan/commit/7b2a4a6de0cde836d3c022b6637880d13ebb7f48))
+- Record pages keep out from under the open table of contents (#245) ([7825e8a](https://github.com/yannicschuller/flowplan/commit/7825e8a1d11b03a4435930f57900f4e3cd1777ed))
+- Keep the pastel ring around profile pictures ([40bad63](https://github.com/yannicschuller/flowplan/commit/40bad632abd5fb4e0dbb3e9d5b3d5a06f3831bb7))
+- Toggle: Backspace at the start of the title turns it into text (#244) ([a4f3390](https://github.com/yannicschuller/flowplan/commit/a4f3390439e46fd03079b5459d3e83dea0f8190c))
+- Per-option colours for select and multi-select properties (#242) ([2de24ec](https://github.com/yannicschuller/flowplan/commit/2de24ec359bcbd6eaa9e3f06a9e6b3ce1b0611ec))
+- Render the stored sidebar width in the first paint ([da17888](https://github.com/yannicschuller/flowplan/commit/da178882b9db32d5e3a334f5a3a2250bd46cc909))
+- Show profile pictures correctly from the first paint ([0ed6d46](https://github.com/yannicschuller/flowplan/commit/0ed6d4678224f393a5741d4c9b21cf5a4b1eff23))
+- Dark-mode highlights and Mermaid, inline code accent, bold code, caption button, toggle ids (#241, #230) ([1d9912d](https://github.com/yannicschuller/flowplan/commit/1d9912db812af3fedf4c51d7d90044affb5a8743))
+- Quick search: personal frecency ranking, path and date per hit, recently visited by day (#243) ([45f3147](https://github.com/yannicschuller/flowplan/commit/45f31471c400e09824ed885d5eb887d2c3e2af97))
+- Dialogs no longer scroll sideways ([a73b534](https://github.com/yannicschuller/flowplan/commit/a73b53416c6eec15ada0a575b8f6b1c498cebc2d))
+- Record pages: no own sub-pages as related, one sidebar highlight (#231) ([f47bbb6](https://github.com/yannicschuller/flowplan/commit/f47bbb6ef40b072eee426dafbdd6dd773ec90141))
+- Help docs: sub-pages under records (#231) ([c7f3ed3](https://github.com/yannicschuller/flowplan/commit/c7f3ed35da8b95fe88b097f8bfd1734aa8191019))
+- Sub-pages under records (#231, wave 3) ([ec5b3a5](https://github.com/yannicschuller/flowplan/commit/ec5b3a5bd4d491e160265cb8632debea3b26aa7d))
+- Help docs: share a single record (#231) ([70be232](https://github.com/yannicschuller/flowplan/commit/70be232a9a292e26d6499128b5a58e196f59d935))
+- Share and publish a single record (#231, wave 2) ([060d723](https://github.com/yannicschuller/flowplan/commit/060d7232961dc38e05e4aa48be6e913dc21fe525))
+- Issue form: docs site problems go to the Documentation form ([34ac5b3](https://github.com/yannicschuller/flowplan/commit/34ac5b32aa2ae5a7464c97fa319b33f1bc67ad97))
+- Release notes 0.9.5: keep the line within 300 characters ([137ed52](https://github.com/yannicschuller/flowplan/commit/137ed52536d33790b399e76629634fc2312a396f))
+- Release notes 0.9.5: records open as real pages with "Full page" (#231) ([9c0d901](https://github.com/yannicschuller/flowplan/commit/9c0d90100019da41e73dcd35eff9aea5feff0ff5))
+- Help docs: docs wave 4 (split pages, env vars) ([3d56518](https://github.com/yannicschuller/flowplan/commit/3d565188a681e9b3409bf262549c4dbd439bfed8))
+- Help docs: records as pages, path (#231) ([2e8cc79](https://github.com/yannicschuller/flowplan/commit/2e8cc79f4bed3adbff64c846e343bc9031760d9d))
+- Records as pages of their own and the full path in the top bar (#231, wave 1) ([3501226](https://github.com/yannicschuller/flowplan/commit/350122665cdf13caab39d59ec3a002619b82d3b5))
+- Visual baselines from ubuntu-latest ([b7a393b](https://github.com/yannicschuller/flowplan/commit/b7a393bef3ac6d595dfd824691cac3ecff7af925))
+- Help docs: list levels, Notion HTML import (#234) ([d3eaaa6](https://github.com/yannicschuller/flowplan/commit/d3eaaa65be243286d8360e0acbeac023d721cfa6))
+- Nested lists 1. → a. → i. and • → ◦ → ▪, readable list rhythm, Notion HTML import (#234) ([b9ead62](https://github.com/yannicschuller/flowplan/commit/b9ead62708bb6feb409430dbae6d6c6fd26a30f2))
+- Menus in record dialogs, nested lists in tasks, fewer meeting citations (#232, #233, #199) ([4fdd622](https://github.com/yannicschuller/flowplan/commit/4fdd622ee4ad4e8e79b2660d03348f4a571a9922))
+- Help docs: toggles (#230) ([813c087](https://github.com/yannicschuller/flowplan/commit/813c08796cda694c00bcde50bda53cd795ca7d30))
+- Toggles without a dialog, "> " makes a toggle, closed toggles remembered (#230) ([3a1a074](https://github.com/yannicschuller/flowplan/commit/3a1a074f88a44f6768ff91e53e65c524cf51460e))
+- Help docs: read the docs' new syntax (counts, reference tables, steps, tabs, keys, callouts) ([688b950](https://github.com/yannicschuller/flowplan/commit/688b950e88725fc1ab56d45fd6c2543ab2d247aa))
+- Marketplace check: steps completed on import are hints, not errors ([b363fbe](https://github.com/yannicschuller/flowplan/commit/b363fbed5f7080b8f7f763f80b3c40e93c88c56c))
+- Help docs: marketplace check ([42812e9](https://github.com/yannicschuller/flowplan/commit/42812e93b38b5f64bbc9b95af555ed0fcb8af295))
+- Help docs: refresh after the 2FA wording ([b98ec8f](https://github.com/yannicschuller/flowplan/commit/b98ec8fd923298553e4c49dd722cd69ba0d76807))
+- Help docs from the split docs pages ([55ce116](https://github.com/yannicschuller/flowplan/commit/55ce1164534a76a2aa1485cbc801e4f3a13ac0cb))
+- Point docs links at the split docs pages; skip front matter in help docs ([b8bb2be](https://github.com/yannicschuller/flowplan/commit/b8bb2bef908dffc3e93a5760b21490fb6859eac8))
+- Marketplace: import check of a package, for API tokens with the new "Marketplace check" permission ([6721603](https://github.com/yannicschuller/flowplan/commit/672160355adab33dd44a5bd1cd06462d22527a38))
+- Meeting block: wire the pipeline – keep or replace corrections, record everyone in Chrome/Edge, one track, live levels ([c9b840f](https://github.com/yannicschuller/flowplan/commit/c9b840fc780dfd4041f9277991731ea7cb4b69f6))
+- Another page opens at its top, not as far down as the page before (#224) ([463bc18](https://github.com/yannicschuller/flowplan/commit/463bc184f02ccbbd6f4a24681b6242aea917a5e5))
+- Marketplace: 50 more official templates, every category at 17-18 ([9de396a](https://github.com/yannicschuller/flowplan/commit/9de396a69f8f3159bddfafabc01cc20f3441dc6f))
+- Meeting block: anchored menus, calm state after recording, pickers, notes and transcript lock ([efef163](https://github.com/yannicschuller/flowplan/commit/efef163442725523d775e7b39451d9758129dfd0))
+- Marketplace publishing: file fallback where no opener can exist ([952381e](https://github.com/yannicschuller/flowplan/commit/952381ed0cb89df8a51de70a47a1d6807a455a9e))
+- Meetings: live transcription, retranscribe, hallucination filter, structured summary (#199, #225) ([c6acf2b](https://github.com/yannicschuller/flowplan/commit/c6acf2b6c34ee625e1f283f073f73337af3a1ddb))
+- Transcription: long recordings no longer fail with "not reachable" (#225) ([fb928f4](https://github.com/yannicschuller/flowplan/commit/fb928f4f6be52ccae4a8bc2efe63ed08ebd4d6dd))
+- Command palette: emoji icons keep their slot, titles line up (#227) ([ba206a4](https://github.com/yannicschuller/flowplan/commit/ba206a49dcf7cddb99640a98fd072a148ba0bd28))
+- Block handles: the dots sit on the middle of the text line (#226) ([12f2009](https://github.com/yannicschuller/flowplan/commit/12f20092558c54862b246d85a649ae67539e5962))
+
+</details>
+
 ## v0.9.4 – 2026-11-12
 
 ### Security
