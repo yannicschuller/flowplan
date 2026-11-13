@@ -160,6 +160,7 @@ import {
   NotePencil,
   Notebook,
   Lock,
+  LockOpen,
   Copy,
   DownloadSimple,
   ShieldCheck,
@@ -2226,6 +2227,65 @@ export default function WorkspaceApp({
     setSelecting(false);
     lastSelected.current = null;
   }
+  const pagesLabel = (n: number) => (n === 1 ? t("1 Seite", "1 page") : t(`${n} Seiten`, `${n} pages`));
+  // More actions for the selected pages (#275): in the selection bar's
+  // "…" menu and in the context menu of a selected page. Locking is offered
+  // like the single "Seite sperren" (members who may create pages); the
+  // server skips the pages the person may not change.
+  function selectionMenuItems() {
+    const chosen = selectedPages
+      .map((id) => activePages.find((p) => p.id === id))
+      .filter((p): p is Page => !!p);
+    const n = chosen.length;
+    const toLock = chosen.filter((p) => !p.locked).length,
+      toStar = chosen.filter((p) => !boot.favorites.includes(p.id)).length;
+    const count = (k: number, all: string, some: string) => (k === n ? all : some);
+    return (
+      <>
+        {canCreate && toLock > 0 && (
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("lock")}>
+            <Lock />
+            {count(toLock, t("Seiten sperren", "Lock pages"), t(`${pagesLabel(toLock)} sperren`, `Lock ${pagesLabel(toLock)}`))}
+          </Dropdown.Item>
+        )}
+        {canCreate && toLock < n && (
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("unlock")}>
+            <LockOpen />
+            {count(n - toLock, t("Seiten entsperren", "Unlock pages"), t(`${pagesLabel(n - toLock)} entsperren`, `Unlock ${pagesLabel(n - toLock)}`))}
+          </Dropdown.Item>
+        )}
+        {toStar > 0 && (
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("favorite")}>
+            <Star />
+            {count(toStar, t("Zu Favoriten", "Add to favourites"), t(`${pagesLabel(toStar)} zu Favoriten`, `Add ${pagesLabel(toStar)} to favourites`))}
+          </Dropdown.Item>
+        )}
+        {toStar < n && (
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("unfavorite")}>
+            <Star />
+            {count(n - toStar, t("Aus Favoriten entfernen", "Remove from favourites"), t(`${pagesLabel(n - toStar)} aus Favoriten entfernen`, `Remove ${pagesLabel(n - toStar)} from favourites`))}
+          </Dropdown.Item>
+        )}
+        <Dropdown.Item
+          className="dropdown-item"
+          disabled={!n}
+          onSelect={async () => {
+            // One link per line, in the order the pages were selected.
+            const links = chosen.map((p) => `${location.origin}${location.pathname}${pageLocationHash({ pageId: p.id })}`);
+            try {
+              await navigator.clipboard.writeText(links.join("\n"));
+              notify(t("Links kopiert", "Links copied"));
+            } catch {
+              notifyError(t("Links konnten nicht kopiert werden.", "The links could not be copied."));
+            }
+          }}
+        >
+          <LinkIcon />
+          {t("Links kopieren", "Copy links")}
+        </Dropdown.Item>
+      </>
+    );
+  }
   // Moves by drag and drop and of several pages: into another space, the
   // tags and properties of the source space they use are resolved first
   // (page.moveCheck); `run` then moves with the choices.
@@ -2249,7 +2309,7 @@ export default function WorkspaceApp({
     setMetaMove({ items: [...found.values()], target: boot.spaces.find((sp) => sp.id === target)?.name ?? "", run });
   }
   async function bulkPages(
-    operation: "delete" | "duplicate" | "move",
+    operation: "delete" | "duplicate" | "move" | "lock" | "unlock" | "favorite" | "unfavorite",
     destination?: string,
     meta?: MetaPlan,
   ): Promise<unknown> {
@@ -2282,7 +2342,23 @@ export default function WorkspaceApp({
             ? { spaceId: destination.slice(6) }
             : {}),
       });
-      if (result) {
+      if (result && ["lock", "unlock", "favorite", "unfavorite"].includes(operation)) {
+        // The selection stays: another action for the same pages may follow.
+        const { count = 0, skipped = 0 } = result as { count?: number; skipped?: number };
+        const done =
+          operation === "lock"
+            ? t(`${pagesLabel(count)} gesperrt.`, `${pagesLabel(count)} locked.`)
+            : operation === "unlock"
+              ? t(`${pagesLabel(count)} entsperrt.`, `${pagesLabel(count)} unlocked.`)
+              : operation === "favorite"
+                ? t(`${pagesLabel(count)} zu den Favoriten hinzugefügt.`, `${pagesLabel(count)} added to favourites.`)
+                : t(`${pagesLabel(count)} aus den Favoriten entfernt.`, `${pagesLabel(count)} removed from favourites.`);
+        notify(
+          skipped
+            ? `${done} ${t(`${pagesLabel(skipped)} ohne Bearbeitungsrechte übersprungen.`, `${pagesLabel(skipped)} without edit rights skipped.`)}`
+            : done,
+        );
+      } else if (result) {
         setBulkDialog(null);
         clearSelection();
         // Deleting and moving offer "Rückgängig" instead (lib/undo.ts).
@@ -3548,6 +3624,29 @@ export default function WorkspaceApp({
               >
                 {t("Papierkorb", "Trash")}
               </button>
+              <Dropdown.Root modal={false}>
+                <Dropdown.Trigger asChild>
+                  <button
+                    className="text-button"
+                    disabled={!selectedPages.length || bulkBusy}
+                    aria-label={t("Weitere Aktionen für die Auswahl", "More actions for the selection")}
+                    title={t("Weitere Aktionen", "More actions")}
+                  >
+                    <DotsThree size={16} />
+                  </button>
+                </Dropdown.Trigger>
+                <Dropdown.Portal>
+                  <Dropdown.Content
+                    className="dropdown"
+                    align="end"
+                    sideOffset={4}
+                    collisionPadding={safeCollisionPadding()}
+                    aria-label={t("Weitere Aktionen für die Auswahl", "More actions for the selection")}
+                  >
+                    {selectionMenuItems()}
+                  </Dropdown.Content>
+                </Dropdown.Portal>
+              </Dropdown.Root>
               <button className="text-button" onClick={clearSelection}>
                 {t("Fertig", "Done")}
               </button>
@@ -6255,10 +6354,42 @@ export default function WorkspaceApp({
               align="start"
               sideOffset={2}
               collisionPadding={safeCollisionPadding()}
-              aria-label={t(`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`, `Actions for ${pageMenu.page.title || "Untitled"}`)}
+              aria-label={
+                selectedPages.length > 1 && selectedPages.includes(pageMenu.page.id)
+                  ? t(`Aktionen für ${pagesLabel(selectedPages.length)}`, `Actions for ${pagesLabel(selectedPages.length)}`)
+                  : t(`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`, `Actions for ${pageMenu.page.title || "Untitled"}`)
+              }
             >
               {(() => {
                 const target = pageMenu.page;
+                // A page of a selection of several (#275): the actions for
+                // all selected pages, as in the selection bar.
+                if (selectedPages.length > 1 && selectedPages.includes(target.id))
+                  return (
+                    <>
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        disabled={bulkBusy}
+                        onSelect={() => {
+                          setBulkTarget("");
+                          setBulkDialog("move");
+                        }}
+                      >
+                        <ArrowRight />
+                        {t("Verschieben", "Move")}
+                      </Dropdown.Item>
+                      <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("duplicate")}>
+                        <Copy />
+                        {t("Duplizieren", "Duplicate")}
+                      </Dropdown.Item>
+                      {selectionMenuItems()}
+                      <Dropdown.Separator className="dropdown-separator" />
+                      <Dropdown.Item className="dropdown-item danger" disabled={bulkBusy} onSelect={() => setBulkDialog("delete")}>
+                        <Trash />
+                        {t("In den Papierkorb", "Move to trash")}
+                      </Dropdown.Item>
+                    </>
+                  );
                 // Dialogs of the page menu work on the open page: open it
                 // first, then show the dialog.
                 const openThen = async (show: () => void) => {

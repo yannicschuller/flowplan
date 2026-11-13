@@ -1494,11 +1494,45 @@ async function runCommand(
       case "pages.bulk": {
         // Runs the single-page actions inside this transaction: all or nothing.
         const operation = z
-          .enum(["delete", "duplicate", "move"])
+          .enum(["delete", "duplicate", "move", "lock", "unlock", "favorite", "unfavorite"])
           .parse(b.operation);
         const ids = [
           ...new Set(z.array(uuid).min(1).max(100).parse(b.pageIds)),
         ];
+        if (operation === "lock" || operation === "unlock" || operation === "favorite" || operation === "unfavorite") {
+          // Locking and favourites of a selection (#275): page by page with
+          // the single command (its rights, checks and audit entry). Pages
+          // the person may not change are skipped and counted instead of
+          // refusing the whole selection; only the selected pages
+          // themselves change, not what is below them.
+          const locking = operation === "lock" || operation === "unlock";
+          let count = 0,
+            skipped = 0;
+          for (const pageId of ids) {
+            let p: Page;
+            try {
+              p = await requirePage(user, pageId, locking);
+              if (locking) await requireUnlocked(user, p);
+            } catch (e) {
+              if (e instanceof HttpError && [403, 404, 423].includes(e.status)) {
+                skipped++;
+                continue;
+              }
+              throw e;
+            }
+            if (p.workspace_id !== wid())
+              throw new HttpError(400, "Seiten aus einem anderen Arbeitsbereich.");
+            if (locking) {
+              const locked = operation === "lock";
+              if (!!p.locked === locked) continue;
+              await command(user, { action: "page.update", pageId, patch: { locked } }, true);
+            } else
+              await command(user, { action: "favorite", pageId, value: operation === "favorite" }, true);
+            count++;
+          }
+          result = { ok: true, count, skipped, created: [] };
+          break;
+        }
         const pages = await mapAsync(ids, async (pid) => {
           const p = await requirePage(user, pid, true);
           if (p.workspace_id !== wid())
@@ -3763,7 +3797,9 @@ async function runCommand(
         "workflow.validate",
         "notification.read",
         "favorite",
-      ].includes(action)
+      ].includes(action) &&
+      // Favourites of a selection: as unaudited as a single favourite.
+      !(action === "pages.bulk" && (b.operation === "favorite" || b.operation === "unfavorite"))
     )
       await audit(
         user.id,
