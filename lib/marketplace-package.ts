@@ -1,8 +1,8 @@
 // Marketplace packages (docs: Marketplace): one `*.flowplan-template` file,
 // a ZIP with
 //
-//   template.json   {format: "flowplan-marketplace-1", kind, title, summary,
-//                    description?, category, tags, minVersion, language,
+//   template.json   {format: "flowplan-marketplace-1", kind, title, titles?,
+//                    summary, description?, category, tags, minVersion, language,
 //                    payload, license?, author?, marketplace?}  (≤ 64 KB)
 //   payload/…       the kind's own exchange format, unchanged:
 //                     document, database  payload/template.zip  (flowplan-template-1, lib/template-exchange.ts)
@@ -72,6 +72,8 @@ export const packageManifestSchema = z
     format: z.literal(MARKETPLACE_FORMAT),
     kind: z.enum(MARKETPLACE_KINDS),
     title: z.string().trim().min(1).max(PACKAGE_LIMITS.title),
+    // The title per interface language (the marketplace shows the visitor's); `title` is the fallback.
+    titles: localized(PACKAGE_LIMITS.title).optional().catch(undefined),
     summary: localized(PACKAGE_LIMITS.summary),
     description: localized(PACKAGE_LIMITS.description).optional(),
     category: z.enum(templateCategoryIds).catch("other"),

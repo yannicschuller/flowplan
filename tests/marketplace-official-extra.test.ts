@@ -76,6 +76,7 @@ test("the manifests: both languages, CC0, a description, a fitting language", as
     assert.ok(m.description?.de?.includes(x.description.de) && m.description?.en?.includes(x.description.en), `${p.file}: descriptions`);
     assert.ok(m.tags.length >= 4 && m.tags.length <= 10, `${p.file}: tags`);
     assert.ok(x.title.de && x.title.en, `${p.file}: titles`);
+    assert.deepEqual(m.titles, { de: x.title.de, en: x.title.en }, `${p.file}: both titles in the package`);
   }
 });
 
