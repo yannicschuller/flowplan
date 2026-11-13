@@ -384,7 +384,7 @@ export async function startLiveRun(input: {
   }
   if (!input.skipObserve && !(await mayObserve(runner, input.event.page_id, input.event.row_id))) return null;
   if ((await admitLiveRun(input.page.id, input.workflow.workspace_id, input.graph, input.event.depth)) !== "ok") return null;
-  const triggerValue = await triggerOutput(input.node.type, input.event, input.payload, runner);
+  const triggerValue = await triggerOutput(input.node.type, input.event, input.payload, runner, { timeZone: input.graph.settings.timeZone, locale: input.graph.settings.locale as Locale | undefined });
   return await createRun({
     workflow: input.workflow,
     page: input.page,
@@ -424,7 +424,7 @@ export async function startInlineRun(input: {
   }
   if (!(await mayObserve(runner, input.record.page.id, input.record.rowId))) return false;
   if ((await admitLiveRun(page.id, workflow.workspace_id, input.graph, input.event.depth)) !== "ok") return false;
-  const triggerValue = await triggerOutput(input.node.type, input.event, input.payload, runner);
+  const triggerValue = await triggerOutput(input.node.type, input.event, input.payload, runner, { timeZone: input.graph.settings.timeZone, locale: input.graph.settings.locale as Locale | undefined });
   const runId = await createRunWithoutSuccessors({ workflow, page, graph: input.graph, node: input.node, triggerValue, runner: runner!, event: input.event });
   const triggerStep = (await one<{ id: string }>("SELECT id FROM workflow_steps WHERE run_id=? AND node_id=?", runId, input.node.id))!.id;
   const info: RunInfo = { id: runId, page, workspaceId: workflow.workspace_id, mode: "live", depth: input.event.depth, triggerNodeId: input.node.id, runner, graph: input.graph };

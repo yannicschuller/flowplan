@@ -70,15 +70,17 @@ export function dayBounds(date: string, zone: string) {
 
 // `dayId`: databases placed on the day page itself show there already.
 // `mine`: only the reader's records (see above); everything they may see
-// otherwise.
+// otherwise. `limit`: how many items the list holds (the AI context,
+// lib/ai/journal-completed.ts, filters first and cuts itself).
 export async function completedOn(
   user: Identity,
   workspaceId: string,
   date: string,
   zone: string,
-  options: { dayId?: string; mine?: boolean } = {},
+  options: { dayId?: string; mine?: boolean; limit?: number } = {},
 ): Promise<CompletedList> {
   const { dayId } = options;
+  const limit = options.limit ?? COMPLETED_LIMIT;
   const mine = !!options.mine;
   if (!validZone(zone)) zone = "UTC";
   const { start, end } = dayBounds(date, zone);
@@ -142,7 +144,7 @@ export async function completedOn(
     items.push(task.item);
   }
   items.sort((a, b) => a.at - b.at);
-  return { items: items.slice(0, COMPLETED_LIMIT), more: Math.max(0, items.length - COMPLETED_LIMIT), mine, all: everything };
+  return { items: items.slice(0, limit), more: Math.max(0, items.length - limit), mine, all: everything };
 }
 
 // Tasks ticked off in documents that day (task_done_log, written by

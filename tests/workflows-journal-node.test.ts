@@ -91,7 +91,7 @@ test("the catalogue, the AI builder and the API list the node; the check finds w
   const spec = nodeSpec("action.journal.append")!;
   assert.equal(spec.category, "pages");
   assert.deepEqual(spec.name, ["An Journaltag anhängen", "Append to journal day"]);
-  assert.deepEqual(spec.outputs.map((o) => o.key), ["day", "date", "journal", "created"]);
+  assert.deepEqual(spec.outputs.map((o) => o.key), ["day", "date", "journal", "created", "completed"]);
   assert.ok(catalogJson().some((n) => n.type === "action.journal.append"));
   assert.match(compactCatalog(), /action\.journal\.append \[out\].*journal:string.*day:today\|yesterday\|date/);
   // A new node (the form's start) is incomplete, not invalid.

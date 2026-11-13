@@ -82,6 +82,12 @@
 //     Client: askAi, citationParts. Conversations stay in the browser.
 //     With { page: { pageId } } ("Diese Seite", #135) the open page goes
 //     along in full as source 1 (X-Flowplan-Page: full | truncated).
+//   journal days (lib/ai/journal-completed.ts, #273): wherever a day goes
+//     along through aiPageMarkdown / aiPageParts (Ask "Diese Seite", the
+//     writing assistant's context, page and journal summaries), its list
+//     "An diesem Tag erledigt" comes at the end – as the reader sees it,
+//     through aiFilter, at most 200 items. The client sends `zone` (the
+//     browser's time zone) with every stream request (streamAiFrom).
 //   POST /api/ai/ask/suggest { workspaceId, pageId, history } – the
 //     conversation as suggested changes in the open page (lib/ai/page-edit.ts,
 //     lib/ai/page-edits.ts): numbered blocks in, edit tags out, applied as

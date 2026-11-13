@@ -128,6 +128,15 @@ export async function validateGraph(graph: WorkflowGraph, ctx: { workspaceId: st
       if (!String(c.content || "").trim()) issues.push({ level: "error", code: "no_journal_content", nodeId: n.id });
       if (c.place === "heading" && !String(c.heading || "").trim()) issues.push({ level: "warning", code: "no_journal_heading", nodeId: n.id });
     }
+    // "Journaltag lesen" (#273): a journal the runner may read, no PIN.
+    if (n.type === "action.journal.read") {
+      const jid = String(c.journal || "");
+      const j = UUID.test(jid) ? await pageOf(jid) : null;
+      if (!jid) issues.push({ level: "error", code: "no_journal", nodeId: n.id });
+      else if (!j || j.kind !== "journal" || j.workspace_id !== ctx.workspaceId || (await behindJournalPin(j)) || (await isEncryptedPage(j)) || (ctx.runner && !(await pageRole(ctx.runner, j))))
+        issues.push({ level: "error", code: "unknown_journal", nodeId: n.id });
+      if (c.day === "date" && !String(c.date || "").trim()) issues.push({ level: "error", code: "no_journal_date", nodeId: n.id });
+    }
     if (n.type === "notify.person")
       for (const to of (c.to as string[]) || [])
         if (UUID.test(to) && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", ctx.workspaceId, to)))
