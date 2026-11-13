@@ -248,6 +248,7 @@ import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { blockPaste, syncDomSelection } from "@/lib/block-paste";
 // A touch screen as wide as a phone: where the toolbar docks at the bottom,
 // above the on-screen keyboard (app/globals.css, max-width: 767px).
 const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
@@ -925,9 +926,15 @@ export default function DocumentEditor({
         // With the on-screen keyboard docked, the caret stays above it and
         // its toolbar (#181, components/keep-caret.ts).
         handleScrollToSelection: (view) => keepCaretAboveKeyboard(view),
+        // The caret moved by a key just before ⌘V/⌘C/⌘X (lib/block-paste.ts).
+        handleDOMEvents: {
+          paste: syncDomSelection,
+          copy: syncDomSelection,
+          cut: syncDomSelection,
+        },
         // Images and files from the clipboard or dropped on the page are
         // uploaded and inserted where the caret is.
-        handlePaste: (_view, event) => {
+        handlePaste: (_view, event, slice) => {
           const data = event.clipboardData;
           const files = [...(data?.files || [])];
           // Answers copied from ChatGPT & co. as text: formulas, lists and
@@ -951,6 +958,14 @@ export default function DocumentEditor({
           ) {
             event.preventDefault();
             _view.pasteHTML(chatTextToHtml(plain));
+            return true;
+          }
+          // Copied or cut blocks: above, in place of or below the text
+          // (lib/block-paste.ts).
+          const blocks = editable && !files.length ? blockPaste(_view.state, slice) : null;
+          if (blocks) {
+            event.preventDefault();
+            _view.dispatch(blocks.setMeta("paste", true).setMeta("uiEvent", "paste"));
             return true;
           }
           if (!editable || !files.length) return false;
