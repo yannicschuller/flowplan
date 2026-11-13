@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // Fewer block handles (#138): with a mouse the ⠿ handle shows at the block
-// under the pointer, the block with the caret and a handle with keyboard
-// focus; on touch screens only at the block with the caret, large enough to
+// under the pointer and a handle with keyboard focus (not the block with
+// the caret, #255); on touch screens only at the block with the caret, large enough to
 // tap. Empty paragraphs have none unless they have the caret. "Always show
 // block handles" (Settings › Appearance › Editor) brings back every handle.
 async function fixture(page: Page, title: string) {
@@ -29,7 +29,7 @@ async function fixture(page: Page, title: string) {
 const opacity = (page: Page, name: string) =>
   page.getByRole("button", { name: `Blockaktionen: ${name}`, exact: true }).evaluate((el) => Number(getComputedStyle(el).opacity));
 
-test("block handles show at the hovered block, the caret's block and with keyboard focus – or always, by choice", async ({ page }, info) => {
+test("block handles show at the hovered block and with keyboard focus – or always, by choice", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Touch: the next test.");
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -48,11 +48,12 @@ test("block handles show at the hovered block, the caret's block and with keyboa
   await expect(page.getByRole("button", { name: "Blockaktionen: Absatz · Bravo", exact: true })).toHaveClass(/hovered/);
   await expect.poll(() => opacity(page, "Absatz · Bravo")).toBeGreaterThan(0.3);
   await expect.poll(() => opacity(page, "Absatz · Alpha")).toBe(0);
-  // The caret's block keeps its handle when the mouse leaves.
+  // The caret's block shows no handle once the mouse leaves (#255, like
+  // Notion): with a mouse only the hovered block has one.
   await paragraph("Charlie").click();
   await page.mouse.move(5, 5);
   await expect(page.getByRole("button", { name: "Blockaktionen: Absatz · Charlie", exact: true })).toHaveClass(/active/);
-  await expect.poll(() => opacity(page, "Absatz · Charlie")).toBeGreaterThan(0.3);
+  await expect.poll(() => opacity(page, "Absatz · Charlie")).toBe(0);
   await expect.poll(() => opacity(page, "Absatz · Bravo")).toBe(0);
   // The empty paragraph with the caret has its handle.
   await page.keyboard.press("ArrowUp");
