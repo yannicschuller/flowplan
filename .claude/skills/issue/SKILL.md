@@ -82,6 +82,7 @@ Set labels now – the type label (categorise if missing, see Labels) plus the s
 1. Merge the agents' branches (merge commit if `main` moved; never rewrite others' history). Resolve conflicts properly.
 2. Run the checks of every touched repo (table above). Restore `next-env.d.ts` after Next tooling. UI changes: look at them (Playwright screenshot with `executablePath: '/opt/pw-browsers/chromium'`).
 3. **Docs** in `flowplan-docs`, German **and** English, natural wording, the matching existing page. Then in `flowplan` run `npm run help-docs` and commit the result.
+   - The docs go live on every push, before the release. Mark every new or changed section with the docs' version marker for the **next** server release (syntax in the flowplan-docs README; the next version is the latest `vX.Y.Z` tag plus one patch, unless a minor release is planned). The site shows "New in X.Y.Z · in the :beta image" until that version is released and "Since X.Y.Z" afterwards. Desktop- and app-only docs carry no server version marker.
 4. Visual tests that change on purpose: run `visual.yml` with `update=true`, then fast-forward `origin/visual-baselines` into main.
 
 Commit messages end with the trailers from CLAUDE.md (`Co-Authored-By: Yannic Schuller …`, `Co-Authored-By: Claude …`) plus the attribution lines the session's system prompt gives.
