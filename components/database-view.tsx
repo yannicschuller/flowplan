@@ -1363,6 +1363,13 @@ export default function DatabaseView({
   // so a newer version that changed only other properties does not refuse it.
   const rowsNow = useRef(data.rows);
   rowsNow.current = data.rows;
+  // The database's version as last loaded: a drag ends in a later render
+  // than it began (its own previous move may have been saved meanwhile).
+  const versionNow = useRef(data.database.version);
+  versionNow.current = data.database.version;
+  // The database's version once this person's last change of the schema
+  // is saved (see updateSchema).
+  const expectedVersion = useRef(0);
   const rowChange = <T,>(b: Record<string, unknown>, send: (body: Record<string, unknown>) => Promise<T>) => {
     const rowId = typeof b.rowId === "string" ? b.rowId : null;
     const shown = () => rowsNow.current.find((r) => r.id === rowId)?.version;
@@ -1398,8 +1405,12 @@ export default function DatabaseView({
     optionRenames?: OptionRename[],
   ) {
     setSchemaBusy(true);
+    // Sent: the views shown carry it at once (lib/optimistic-commands.ts),
+    // the server counts one version on when it takes it (a relation may
+    // change more); a refused change leaves the version to the data.
+    if (!relation) expectedVersion.current = Math.max(expectedVersion.current, version + 1);
     try {
-      return await act({
+      const result = await act({
         action: "database.update",
         version,
         fields: nextFields,
@@ -1407,6 +1418,8 @@ export default function DatabaseView({
         relation,
         ...(optionRenames?.length ? { optionRenames } : {}),
       });
+      if (!result) expectedVersion.current = 0;
+      return result;
     } finally {
       setSchemaBusy(false);
     }
@@ -1448,6 +1461,11 @@ export default function DatabaseView({
       data.database.views.map((v) =>
         v.id === view.id ? { ...v, ...patch } : v,
       ),
+      undefined,
+      // Two settings in a row: the views shown already carry the first
+      // while its reload, and with it the database's new version, may still
+      // be on its way.
+      Math.max(data.database.version, expectedVersion.current),
     );
   }
   const moveRow = data.rows.find((r) => r.id === moveDialog?.id);
@@ -1504,12 +1522,14 @@ export default function DatabaseView({
     });
   }
   // A record dropped at `drop`: the same move (and group change) as the
-  // position dialog. `version` is the database's when the drag began.
+  // position dialog. The drop is placed on the layout when it ends, so it
+  // goes with the database's version then – not the one when the drag
+  // began, which the save of a move just before may have replaced.
   function commitRowDrop(
     row: Row,
     from: string | undefined,
     drop: RowDrop,
-    version = data.database.version,
+    version = versionNow.current,
   ) {
     if (drop.targetId === row.id) return;
     const change =
@@ -1606,7 +1626,6 @@ export default function DatabaseView({
     if (!editable || !viewEditable) return;
     const item = e.currentTarget.closest<HTMLElement>("[data-row-id]");
     if (!item) return;
-    const version = data.database.version;
     let over: string | null = null;
     const clear = () => {
       setDropHint(null);
@@ -1643,7 +1662,7 @@ export default function DatabaseView({
         clear();
         if (!drop) return;
         if ("page" in drop) return dropOnPage(row, drop.page, point.altKey);
-        void commitRowDrop(row, groupKey, drop, version);
+        void commitRowDrop(row, groupKey, drop);
       },
       onCancel: clear,
     });
@@ -1811,7 +1830,7 @@ export default function DatabaseView({
         cardLanding.current = { drag: landed, rows: latestRows.current };
         void submitMove({
           viewId: view.id,
-          version: data.database.version,
+          version: versionNow.current,
           rowId: row.id,
           rowVersion: row.version,
           targetId: drop.targetId,
