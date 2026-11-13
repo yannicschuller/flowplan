@@ -144,14 +144,15 @@ process.stdin.on("data", (d) => (input += d)).on("end", () => {
 
 // Signs up the first account of the instance (it becomes the admin) through
 // a Playwright APIRequestContext, which keeps the session cookie, and seeds
-// the content. Returns the ids of the pages.
-export async function seedAccount(request, origin) {
+// the content. Returns the ids of the pages. Another account than ACCOUNT
+// signs up on a server that has accounts already (the UI gallery's --url).
+export async function seedAccount(request, origin, account = ACCOUNT) {
   const post = async (path, data) => {
     const response = await request.post(path, { headers: { origin }, data });
     if (!response.ok()) throw new Error(`${path} ${data?.action ?? ""}: ${response.status()} ${await response.text()}`);
     return response.json();
   };
-  await post("/api/auth/register", ACCOUNT);
+  await post("/api/auth/register", account);
   const boot = await (await request.get("/api/bootstrap")).json();
   const command = (data) => post("/api/command", data);
   await command({ action: "profile.onboarded" }).catch(() => {});
@@ -200,5 +201,5 @@ export async function seedAccount(request, origin) {
       edges: [{ id: "e_1", from: { node: "n_quality1", port: "out" }, to: { node: "n_quality2", port: "in" } }],
     },
   });
-  return { workspaceId, documentId: doc.id, databaseId: db.id, workflowId: workflow.id };
+  return { workspaceId, spaceId, documentId: doc.id, databaseId: db.id, workflowId: workflow.id };
 }
