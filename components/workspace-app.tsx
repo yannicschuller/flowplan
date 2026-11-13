@@ -91,6 +91,7 @@ import {
   registerServiceWorker,
 } from "./offline";
 import { useOfflineRefresh } from "./offline-refresh";
+import { useAppOfflineOffer } from "./app-offline-offer";
 import { appCopyUnreachable } from "@/lib/offline-store";
 import SavedTemplates from "./saved-templates";
 import { MarketplaceLink, MarketplaceReceiver } from "./marketplace";
@@ -1685,6 +1686,9 @@ export default function WorkspaceApp({
   }, [useTemplate]);
   // The offline copy follows the workspace while the app is open.
   const offlineNotice = useOfflineRefresh(boot.user.id, online, !signedOut);
+  // The iPhone, iPad and Android app offers offline use once and switches it
+  // on through the page (lib/app-offline-offer.ts).
+  const appOfflineNotice = useAppOfflineOffer(boot.user.id, boot.workspace.id, !!boot.workspace.guest, !!boot.user.demo);
   // The service worker serves offline copies once enabled in the settings.
   useEffect(() => {
     void registerServiceWorker()
@@ -3843,6 +3847,7 @@ export default function WorkspaceApp({
           </div>
         )}
         {offlineNotice}
+        {appOfflineNotice}
         {signedOut && (
           <div className="offline-banner signed-out-banner" role="alert">
             {t("Du wurdest abgemeldet – melde dich erneut an, um deine Änderungen zu behalten.", "You were signed out – sign in again to keep your changes.")}{" "}

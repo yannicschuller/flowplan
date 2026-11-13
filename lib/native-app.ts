@@ -50,6 +50,11 @@ type FlowplanApp = {
   // password form sends it, so the sign-in lasts as long as the app's
   // (lib/app-devices.ts).
   deviceKey?: AppDeviceKey;
+  // Where offline use stands on this device (apps newer than 1.0.11): the
+  // app offers to switch it on once and shows it in its settings; it asks
+  // with the events "flowplan:offline-enable" / "flowplan:offline-status"
+  // (lib/app-offline-offer.ts).
+  offlineStatus?: (status: import("./app-offline-offer").AppOfflineStatus) => void;
 };
 // Made by the app per instance on first launch, kept in the system's key
 // store: a public id and its secret.
