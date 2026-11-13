@@ -10,7 +10,7 @@
 import { Extension, getChangedRanges } from "@tiptap/core";
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import { ySyncPluginKey } from "@tiptap/y-tiptap";
+import { ySyncPluginKey, yUndoPluginKey } from "@tiptap/y-tiptap";
 import { linkableBlocks, newBlockId, validBlockId } from "./block-ids";
 import { tr } from "./locale-tag";
 
@@ -51,12 +51,42 @@ const gliding = (dom: HTMLElement | undefined) =>
     (a) => a.playState === "running" && !("animationName" in a) && !("transitionProperty" in a),
   );
 
+// Dispatches the ids as part of the undo step of the change that needed
+// them, however long after it they come. Yjs joins a change with the last
+// undo step only within its capture time (half a second) and not after
+// stopCapturing() (lib/block-shortcuts.ts): ids that came later – the
+// browser busy right after a change, as after turning a block into a
+// toggle – were an undo step of their own, so the first ⌘Z only took the
+// ids back and the change itself needed a second one. Ids for changes
+// kept out of undo, or after an undo in between, stay out of it. Either
+// way the capture time stays as it was, so typing on is grouped as without
+// the ids.
+function dispatchIds(view: EditorView, change: Transaction, joinLastStep: boolean) {
+  const undo = yUndoPluginKey.getState(view.state)?.undoManager;
+  if (!undo) {
+    view.dispatch(change);
+    return;
+  }
+  const last = undo.lastChange;
+  if (joinLastStep && undo.undoStack.length) undo.lastChange = Date.now();
+  else change.setMeta("addToHistory", false);
+  try {
+    view.dispatch(change);
+  } finally {
+    undo.lastChange = last;
+  }
+}
+
 // Collects where local changes happened and names the blocks there right
 // after the change, in a transaction of its own: appended to the typing
 // itself, the Yjs binding could not follow it (its position tracking
 // expects the synced text of the previous change).
 export function blockIdsPlugin() {
   let ranges: Range[] = [];
+  // Whether a change behind `ranges` is in the undo history, and whether
+  // an undo or redo came after it (its step is no longer the last one).
+  let tracked = false;
+  let undone = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   return new Plugin({
     key: blockIdsKey,
@@ -64,8 +94,13 @@ export function blockIdsPlugin() {
       for (const t of transactions) {
         if (!t.docChanged) continue;
         ranges = ranges.map((r) => ({ from: t.mapping.map(r.from, -1), to: t.mapping.map(r.to, 1) }));
-        if (t.getMeta(blockIdsKey) || t.getMeta(ySyncPluginKey)?.isChangeOrigin) continue;
-        ranges.push(...getChangedRanges(t).map((r) => r.newRange));
+        const sync = t.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean; isUndoRedoOperation?: boolean } | undefined;
+        if (sync?.isUndoRedoOperation && ranges.length) undone = true;
+        if (t.getMeta(blockIdsKey) || sync?.isChangeOrigin) continue;
+        const changed = getChangedRanges(t).map((r) => r.newRange);
+        if (!changed.length) continue;
+        ranges.push(...changed);
+        if (t.getMeta("addToHistory") !== false) tracked = true;
       }
       return null;
     },
@@ -89,8 +124,10 @@ export function blockIdsPlugin() {
             return;
           }
           const change = blockIdTransaction(view.state, ranges);
+          const joinLastStep = tracked && !undone;
           ranges = [];
-          if (change) view.dispatch(change);
+          tracked = undone = false;
+          if (change) dispatchIds(view, change, joinLastStep);
         };
         timer = setTimeout(run, 0);
       },
