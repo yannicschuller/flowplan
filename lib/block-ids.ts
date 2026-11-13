@@ -65,9 +65,14 @@ export function newBlockId() {
 // toggles are remembered by block id (lib/toggle-memory.ts), also for
 // readers who cannot change the document. A <details> that already has one
 // keeps it; ids only need to be unique within their document.
-const DETAILS_WITHOUT_ID = /<details\b(?![^>]*\sdata-block-id=)/gi;
+// The opening tag up to its ">" in one match, checked in the callback: a
+// lookahead from each "<details" would rescan the rest of an unclosed tag
+// (quadratic in the length of the HTML).
+const DETAILS_TAG = /<details\b[^>]*/gi;
 export const withToggleIds = (html: string) =>
-  html.includes("<details") ? html.replace(DETAILS_WITHOUT_ID, (start) => `${start} data-block-id="${newBlockId()}"`) : html;
+  html.includes("<details")
+    ? html.replace(DETAILS_TAG, (tag) => (/\sdata-block-id=/.test(tag) ? tag : `${tag.slice(0, 8)} data-block-id="${newBlockId()}"${tag.slice(8)}`))
+    : html;
 
 // Schema part (server and editor): the attribute on every linkable block.
 // A block split in two (Enter) leaves the id with the first part.

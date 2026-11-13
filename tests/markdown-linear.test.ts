@@ -28,3 +28,14 @@ test("list item colours still land on their item, whitespace before the marker d
   assert.match(html, /<li>Normal\n?<ul>\n?<li data-block-color="blue">Innen<\/li>/);
   assert.doesNotMatch(html, /flowplan-color/);
 });
+
+test("toggles get their block ids in linear time, existing ids kept", async () => {
+  const { withToggleIds } = await import("../lib/block-ids");
+  const start = performance.now();
+  withToggleIds("<details".repeat(50_000));
+  const ms = performance.now() - start;
+  assert.ok(ms < 1500, `took ${Math.round(ms)} ms`);
+  const html = withToggleIds('<details open><summary>A</summary></details><DETAILS data-block-id="keep1234"><summary>B</summary></DETAILS>');
+  assert.match(html, /^<details data-block-id="[^"]+" open><summary>A/);
+  assert.match(html, /<DETAILS data-block-id="keep1234">/);
+});
