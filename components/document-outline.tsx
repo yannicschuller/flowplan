@@ -251,6 +251,22 @@ export function DocumentOutline({
       id={popover ? OUTLINE_POPOVER_ID : undefined}
       className={`document-outline${popover ? " outline-popover" : ""}`}
       aria-label={t("Inhaltsverzeichnis", "Table of contents")}
+      // Beside the text: Escape in the list closes it as well (#259) and
+      // goes back to its toggle (the popover has its own handler above).
+      onKeyDown={
+        popover
+          ? undefined
+          : (e) => {
+              if (e.key !== "Escape" || e.defaultPrevented) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const toggle = nav?.parentElement?.querySelector<HTMLElement>(":scope > .outline-toggle");
+              onClose();
+              // The toggle is hidden while the list is open beside the text:
+              // focusable again once the list has gone.
+              requestAnimationFrame(() => requestAnimationFrame(() => toggle?.focus({ preventScroll: true })));
+            }
+      }
     >
       <div className="document-outline-head">
         <strong>

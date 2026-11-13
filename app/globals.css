@@ -7398,11 +7398,19 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding-right: 236px;
   }
 }
+/* The head (title, fold buttons, close) stays at the top while a long list
+   scrolls below it (#259: the close button scrolled out of reach). It
+   covers the list's top padding too, so no entry shows above it. */
 .document-outline-head {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin: -12px 0 0;
+  padding: 12px 0 6px;
+  background: var(--bg);
 }
 .document-outline-head strong {
   display: flex;
