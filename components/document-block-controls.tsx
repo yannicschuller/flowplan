@@ -92,7 +92,7 @@ import {
 import { Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
-import { BlockMenu, usePhone, type BlockMenuItem, type BlockMenuView } from "./block-menu";
+import { BlockMenu, usePhone, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
 import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
@@ -865,22 +865,60 @@ export function DocumentBlockControls({
     }
     select(positions.length ? promote(positions) : []);
   }
+  // The menu was opened by a click on a handle, which chose its block
+  // (#264): the choice ends with the menu, unless Esc closed it.
+  const menuChose = useRef(false);
   function openMenu(handle: HTMLElement, block?: DocumentBlock, view = "main") {
     if (menu?.handle === handle) return closeMenu();
-    // A handle of chosen blocks (#237): the menu for all of them.
+    // A handle of chosen blocks (#237): the menu for all of them. Another
+    // handle chooses its block, like Notion (#264): the keys (⇧↑/↓, ⌘A,
+    // Esc) act on the chosen blocks once the menu is closed with Esc.
     if (block && !(selectingRef.current && selected.current.includes(block.pos))) {
-      if (selectingRef.current) endSelection(false);
-      select([block.pos]);
+      if (pickingRef.current) select([block.pos]);
+      else {
+        startSelection([block.pos], block.pos, block.pos, false);
+        menuChose.current = true;
+      }
     }
     setMenu({ anchor: handle.getBoundingClientRect(), handle, view });
   }
-  function closeMenu() {
+  function closeMenu(reason?: BlockMenuClose) {
     const handle = menu?.handle;
+    const chose = menuChose.current;
+    menuChose.current = false;
     setMenu(null);
-    if (!pickingRef.current && !selectingRef.current) {
+    if (selectingRef.current) {
+      // "Select several" in the menu: the circles take over the choice.
+      if (pickingRef.current) {
+        selectingRef.current = false;
+        setSelecting(false);
+        anchorRef.current = headRef.current = null;
+        return;
+      }
+      // Esc: the blocks stay chosen and the keys act on them (#264). Not in
+      // the sheet of a phone, where a tap beside it closes it the same way.
+      if (reason === "escape" && !phone) {
+        requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+        return;
+      }
+      if (chose) {
+        endSelection(false);
+        // After an action back to the text, as before (#236): the keys
+        // (⌘Z for the action) go to the editor again.
+        if (reason === "select") focusEditor();
+      } else {
+        // Chosen with the keyboard or the mouse before ("/"): they stay.
+        requestAnimationFrame(() => {
+          if (selectingRef.current && (!document.activeElement || document.activeElement === document.body))
+            focusTarget.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+    } else if (!pickingRef.current) {
       remember([]);
       setTick((t) => t + 1);
     }
+    if (reason === "select") return;
     // Back to the handle when the menu closed without an action.
     requestAnimationFrame(() => {
       if (handle?.isConnected && (!document.activeElement || document.activeElement === document.body))
@@ -919,7 +957,7 @@ export function DocumentBlockControls({
   const headRef = useRef<number | null>(null);
   const focusTarget = useRef<HTMLDivElement>(null);
   const [band, setBand] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-  function startSelection(positions: number[], anchor = positions[0], head = positions[positions.length - 1]) {
+  function startSelection(positions: number[], anchor = positions[0], head = positions[positions.length - 1], focus = true) {
     if (!editor || !positions.length) return;
     select(positions);
     anchorRef.current = anchor;
@@ -930,10 +968,15 @@ export function DocumentBlockControls({
     // (The text selection itself stays: the editor keeps track of it, and
     // a later click into the text must not find it changed behind its back.)
     if (editor.view.hasFocus()) (editor.view.dom as HTMLElement).blur();
-    requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+    // Nor its highlight (#264): only the tint shows what is chosen.
+    const dom = window.getSelection();
+    if (dom?.rangeCount && dom.anchorNode && editor.view.dom.contains(dom.anchorNode)) dom.removeAllRanges();
+    // (A menu opened with the choice takes the focus itself.)
+    if (focus) requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
   }
   function endSelection(caret: boolean) {
     const first = selected.current.length ? Math.min(...selected.current) : null;
+    menuChose.current = false;
     selectingRef.current = false;
     setSelecting(false);
     anchorRef.current = headRef.current = null;
@@ -1069,15 +1112,33 @@ export function DocumentBlockControls({
   });
   const keyActions = useRef<(event: KeyboardEvent) => void>(() => {});
   keyActions.current = (event: KeyboardEvent) => {
-    if (!editor || !selectingRef.current || menu) return;
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("input, textarea, select, [contenteditable='true'], [role='menu'], [role='dialog'] [role='dialog']")) return;
+    if (!editor || !selectingRef.current) return;
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key;
     const done = () => {
       event.preventDefault();
       event.stopPropagation();
     };
+    if (menu) {
+      // ⇧↑/↓ while the menu is open (#264): it closes, the choice grows.
+      if ((key === "ArrowUp" || key === "ArrowDown") && event.shiftKey && !mod && !event.altKey && !pickingRef.current) {
+        done();
+        menuChose.current = false;
+        setMenu(null);
+        step(key === "ArrowUp" ? -1 : 1, true);
+        requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+      }
+      // Esc before the focus reached the menu: the menu closes (not the
+      // record dialog around it, which hears Esc before the menu).
+      const inMenu = event.target instanceof Element && event.target.closest("[data-layer], [role='menu']");
+      if (key === "Escape" && !inMenu) {
+        done();
+        closeMenu("escape");
+      }
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable='true'], [role='menu'], [role='dialog'] [role='dialog']")) return;
     if (key === "Escape") {
       done();
       endSelection(false);
@@ -1233,14 +1294,26 @@ export function DocumentBlockControls({
         },
       }),
     );
+    // ⌘A (#264, like Notion): first the text of the block with the caret,
+    // then all blocks of the page – only their tint, no text highlight.
     const all = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "a") return;
-      if (selectingRef.current || !editor.view.dom.contains(event.target as Node)) return;
-      const { from, to } = editor.state.selection;
-      const size = editor.state.doc.content.size;
-      if (from > 1 || to < size - 1) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (selectingRef.current || !target || !editor.view.dom.contains(target)) return;
+      // Fields inside a block (a caption, a code editor) keep their own ⌘A.
+      if (target.closest("input, textarea, select") || target.closest("[contenteditable]") !== editor.view.dom) return;
+      const { selection } = editor.state;
+      const { $from, $to } = selection;
       event.preventDefault();
       event.stopPropagation();
+      if (selection instanceof TextSelection && $from.parent.isTextblock && $from.sameParent($to)) {
+        const start = $from.start(),
+          end = $from.end();
+        if (selection.from > start || selection.to < end) {
+          editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end)));
+          return;
+        }
+      }
       live.current.startSelection(documentBlocks(editor.state.doc).filter((b) => b.parentPos === -1).map((b) => b.pos));
     };
     host.addEventListener("keydown", all, true);
@@ -2153,7 +2226,7 @@ export function DocumentBlockControls({
           views={menuViews()}
           initial={menu.view}
           owner={menu.handle}
-          onClose={closeMenu}
+          onClose={(reason) => closeMenu(reason)}
         />
       )}
       {symbolFor !== null && editor && (
