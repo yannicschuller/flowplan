@@ -350,3 +350,44 @@ test("a shared or published database leaves out the pages of its private records
   assert.equal((await publicPage(link, openPage)).page.id, openPage);
   await fails(() => publicPage(link, secretPage), 404);
 });
+
+test("on a page link a read-only record lets guest editors only comment on its sub-pages", async () => {
+  const { mutateSharedContent } = await import("../lib/shared-content");
+  const carol = await user("carol"),
+    dave = await user("dave");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, carol.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, dave.id, "editor");
+  const db = await database("Linked");
+  const rid = id();
+  await run("INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)", rid, db, JSON.stringify({ title: "Carol's" }), carol.id);
+  const sub = await page({ parentId: db, parentRowId: rid, title: "Notes" }, carol);
+  const subSub = await page({ parentId: sub, title: "Details" }, carol);
+  const loose = await page({ parentId: db, title: "Database notes" });
+  const { token } = (await command(dave, { action: "share.create", pageId: db, name: "Guests", role: "editor", includeChildren: true })) as { token: string };
+  const save = async (pid: string, title: string) => {
+    const data = await sharedContent(token, pid);
+    return await mutateSharedContent(token, { action: "save", pageId: pid, version: data.version, title, html: "<p>Replaced</p>" });
+  };
+  await save(sub, "Renamed while open");
+  assert.equal((await stored(sub)).title, "Renamed while open");
+  // Carol makes her record read-only: its sub-pages (and below) take comments only.
+  await command(carol, { action: "row.access", pageId: db, rowId: rid, access: "readonly", grants: [] });
+  for (const pid of [sub, subSub]) {
+    assert.equal((await publicPage(token, pid)).role, "commenter");
+    assert.equal((await sharedContent(token, pid)).role, "commenter");
+    await fails(() => save(pid, "Renamed by guest"), 403);
+    await fails(() => shareAccess(token, pid), 403);
+  }
+  assert.equal((await stored(sub)).title, "Renamed while open");
+  assert.equal((await stored(subSub)).title, "Details");
+  await mutateSharedContent(token, { action: "comment", pageId: sub, name: "Guest", body: "Still possible" });
+  // Pages not below the record keep the link's role.
+  assert.equal((await publicPage(token, loose)).role, "editor");
+  assert.equal((await publicPage(token, db)).role, "editor");
+  // A link to the sub-page itself: the record above it counts too.
+  const { token: direct } = (await command(owner, { action: "share.create", pageId: subSub, name: "Direct", role: "editor", includeChildren: true })) as { token: string };
+  assert.equal((await publicPage(direct, subSub)).role, "commenter");
+  await command(carol, { action: "row.access", pageId: db, rowId: rid, access: "inherit", grants: [] });
+  assert.equal((await publicPage(token, sub)).role, "editor");
+  assert.equal((await publicPage(direct, subSub)).role, "editor");
+});

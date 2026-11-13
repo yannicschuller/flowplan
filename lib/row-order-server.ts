@@ -270,7 +270,7 @@ export async function moveRow(
     if (Object.keys(patch).length) {
       const cells = {
         ...row.cells,
-        ...(await validateCellPatch(user, page, d.fields, patch)),
+        ...(await validateCellPatch(user, page, d.fields, patch, row.cells)),
       };
       if (JSON.stringify(cells).length > 200000)
         throw new HttpError(413, "Datensatz zu groß.");

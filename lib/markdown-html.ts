@@ -361,9 +361,12 @@ export function markdownToRawHtml(
     // Block colours (#238): the marker before a block (or at the start of
     // a list item's text) becomes the block's attribute; others are dropped.
     .replace(/<!--flowplan-color:([a-z-]+)-->\s*<(p|h[1-6]|blockquote|details)\b/g, (_, color: string, tag: string) => `<${tag} data-block-color="${color}"`)
+    // The whitespace before the marker is trimmed in the callback: a "\s*"
+    // after the lazy body would rescan every run of spaces from each of
+    // its characters (quadratic in the item's length).
     .replace(
-      /<li\b([^>]*)>((?:(?!<\/?(?:li|ul|ol)\b)[\s\S])*?)\s*<!--flowplan-color:([a-z-]+)-->/g,
-      (_, attrs: string, before: string, color: string) => `<li${attrs} data-block-color="${color}">${before}`,
+      /<li\b([^>]*)>((?:(?!<\/?(?:li|ul|ol)\b)[\s\S])*?)<!--flowplan-color:([a-z-]+)-->/g,
+      (_, attrs: string, before: string, color: string) => `<li${attrs} data-block-color="${color}">${before.trimEnd()}`,
     )
     .replace(/<!--flowplan-color:[a-z-]+-->/g, "")
     // Cell colours (#240): onto the cells of the table right after the marker.

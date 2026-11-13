@@ -214,3 +214,17 @@ test("find and replace across one transcript, marking the passages; clearing the
   assert.equal(meeting.childCount, 3);
   assert.equal(edit.touchesLockedTranscript(edit.clearTranscript(state, pos)!, () => true), false);
 });
+
+test("the meeting's language survives the server's cleaning, only as one of its languages", async () => {
+  const { cleanHtml, htmlJson } = await import("../lib/document-server");
+  const withLanguage = (value: string) => meetingHtml({ meetingId: MID, title: "Weekly" }).replace("<div data-meeting=", `<div data-meeting-language="${value}" data-meeting=`);
+  const kept = cleanHtml(withLanguage("fr"));
+  assert.match(kept, /data-meeting-language="fr"/);
+  assert.equal((htmlJson(kept) as { content: { attrs: { language: string } }[] }).content[0].attrs.language, "fr");
+  // Other values are emptied (the reader's language, as without one).
+  for (const value of ["xx", "EN", "de-DE", "<b>", ""]) {
+    const cleaned = cleanHtml(withLanguage(value));
+    assert.doesNotMatch(cleaned, /data-meeting-language="[^"]/);
+    assert.ok(!(htmlJson(cleaned) as { content: { attrs: { language: string } }[] }).content[0].attrs.language);
+  }
+});

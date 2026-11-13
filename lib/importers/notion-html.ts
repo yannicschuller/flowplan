@@ -242,8 +242,19 @@ export function notionHtmlPage(source: string): NotionPage {
   return { title, html: blocks(body.children) };
 }
 
-// Notion's own page files (an export may hold other HTML too).
-export const isNotionHtml = (source: string) => /<div[^>]*\bclass="[^"]*\bpage-body\b/.test(source) || /<article[^>]*\bclass="page\b/.test(source);
+// Notion's own page files (an export may hold other HTML too): a
+// <div class="… page-body …"> or an <article class="page …">. Tag by tag
+// (an opening tag ends at the next "<" or ">"), so the check stays linear
+// in the length of the file, whatever it holds.
+export function isNotionHtml(source: string) {
+  if (!source.includes("page-body") && !/<article\b/i.test(source)) return false;
+  for (const tag of source.matchAll(/<(div|article)\b([^<>]*)>/g)) {
+    const classes = /\bclass="([^"]*)"/.exec(tag[2])?.[1];
+    if (classes === undefined) continue;
+    if (tag[1] === "div" ? /\bpage-body\b/.test(classes) : /^page\b/.test(classes)) return true;
+  }
+  return false;
+}
 
 // Colours of select and multi-select values (#242): Notion writes each
 // value as <span class="selected-value select-value-color-blue">, in the

@@ -86,6 +86,19 @@ test("callouts, colours, images, formulas and bookmarks; scripts and handlers go
   assert.equal(isNotionHtml("<html><body><p>x</p></body></html>"), false);
 });
 
+test("Notion HTML detection is linear and still finds Notion's page files", () => {
+  // The start of an export entry (the ZIP import reads 64 KB of each).
+  for (const crafted of ["<div".repeat(16_000), "<div".repeat(16_000) + " page-body", '<div class="'.repeat(5_000) + "page-body", "<article".repeat(8_000)]) {
+    const start = performance.now();
+    assert.equal(isNotionHtml(crafted), false);
+    const ms = performance.now() - start;
+    assert.ok(ms < 200, `took ${Math.round(ms)} ms`);
+  }
+  assert.equal(isNotionHtml('<html><body><div id="x" class="page-body wide"><p>x</p></div></body></html>'), true);
+  assert.equal(isNotionHtml('<html><body><article id="a" class="page sans"><p>x</p></article></body></html>'), true);
+  assert.equal(isNotionHtml('<html><body><article class="other page"><div class="body">page-body</div></article></body></html>'), false);
+});
+
 async function account(name: string) {
   const uid = id();
   await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);

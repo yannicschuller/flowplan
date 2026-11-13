@@ -199,3 +199,49 @@ export async function privateRecordPageIds(pages: Pick<Page, "id" | "parent_id" 
   }
   return out;
 }
+// Pages of `pages` whose nearest record above is read-only – the record a
+// page sits below directly (parent_row_id) or through its parents, also
+// above the first page of the list: on links a read-only record covers its
+// sub-pages, so guest editors only comment there (as recordSubPage does for
+// record links).
+export async function readonlyRecordPageIds(pages: Pick<Page, "id" | "parent_id" | "parent_row_id">[]) {
+  const out = new Set<string>();
+  if (!pages.length) return out;
+  type Link = Pick<Page, "id" | "parent_id" | "parent_row_id">;
+  const known = new Map<string, Link>(pages.map((p) => [p.id, p]));
+  const nearest = new Map<string, string | null>();
+  async function recordOf(start: Link) {
+    const chain: string[] = [];
+    let current: Link | undefined = start,
+      found: string | null = null;
+    while (current) {
+      if (nearest.has(current.id)) {
+        found = nearest.get(current.id)!;
+        break;
+      }
+      if (chain.includes(current.id)) break;
+      chain.push(current.id);
+      if (current.parent_row_id) {
+        found = current.parent_row_id;
+        break;
+      }
+      if (!current.parent_id) break;
+      const parentId: string = current.parent_id;
+      current = known.get(parentId) ?? (await one<Link>("SELECT id,parent_id,parent_row_id FROM pages WHERE id=?", parentId));
+      if (current) known.set(current.id, current);
+    }
+    for (const id of chain) nearest.set(id, found);
+    return found;
+  }
+  for (const p of pages) await recordOf(p);
+  const rowIds = [...new Set(pages.map((p) => nearest.get(p.id)).filter((r): r is string => !!r))];
+  if (!rowIds.length) return out;
+  const readonly = new Set(
+    (await all<{ id: string }>(
+      `SELECT id FROM rows WHERE access='readonly' AND id IN (${rowIds.map(() => "?").join(",")})`,
+      ...rowIds,
+    )).map((r) => r.id),
+  );
+  for (const p of pages) if (readonly.has(nearest.get(p.id) || "")) out.add(p.id);
+  return out;
+}

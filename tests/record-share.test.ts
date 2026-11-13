@@ -360,3 +360,108 @@ test("own and administrators' overviews list record links and revoke them", asyn
   await securityAction(admin, { action: "share.revoke", id: token.slice(0, 12) }, new Headers());
   assert.equal(await recordScope(token), null);
 });
+
+test("relations on a record link show only titles the link's creator may read", async () => {
+  // Alice keeps salaries in her private space; a team record links to one
+  // of them (set by someone who sees both). Bob edits the team record but
+  // has no access to Alice's space.
+  const alice = await user("alice"),
+    bob = await user("bob");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, alice.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, bob.id, "editor");
+  const privateSpace = ((await command(alice, { action: "space.create", workspaceId: wid, name: "Alice", private: true })) as { id: string }).id;
+  const salaries = ((await command(alice, { action: "page.create", workspaceId: wid, spaceId: privateSpace, title: "Salaries", kind: "database" })) as { id: string }).id;
+  const team = await page({ kind: "database", title: "Team" });
+  const visible = await page({ kind: "database", title: "Contacts" });
+  await run(
+    "UPDATE databases SET fields=? WHERE page_id=?",
+    JSON.stringify([
+      { id: "title", name: "Name", type: "text" },
+      { id: "pay", name: "Pay", type: "relation", relationPage: salaries },
+      { id: "contact", name: "Contact", type: "relation", relationPage: visible },
+    ]),
+    team,
+  );
+  const salary = id(),
+    contact = id(),
+    hiddenContact = id(),
+    record = id();
+  await run("INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)", salary, salaries, JSON.stringify({ title: "CEO salary 400k" }), alice.id);
+  await run("INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)", contact, visible, JSON.stringify({ title: "Grace" }), owner.id);
+  // A read-only record is still named.
+  await run("INSERT INTO rows(id,page_id,cells,created_by,access) VALUES(?,?,?,?,'readonly')", hiddenContact, visible, JSON.stringify({ title: "Readable" }), owner.id);
+  await run(
+    "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
+    record,
+    team,
+    JSON.stringify({ title: "Hiring", pay: [salary], contact: [contact, hiddenContact] }),
+    owner.id,
+  );
+  const token = await share(team, record, "viewer", {}, bob);
+  // Bob cannot choose the relation into Alice's space; the other one he can.
+  await command(bob, { action: "record.share.fields", pageId: team, rowId: record, fields: ["pay", "contact"] });
+  const stored = JSON.parse((await one<{ fields: string }>("SELECT fields FROM record_share_fields WHERE row_id=?", record))!.fields);
+  assert.deepEqual(stored, ["contact"]);
+  // Chosen by someone who may read it, it still stays hidden on Bob's link.
+  await command(alice, { action: "record.share.fields", pageId: team, rowId: record, fields: ["pay", "contact"] });
+  const scope = (await recordScope(token))!;
+  assert.deepEqual(scope.shown.map((f) => f.id), ["contact"]);
+  const names = await recordReferenceNames(scope);
+  assert.equal(names.relations.pay, undefined);
+  assert.deepEqual(names.relations.contact, ["Grace", "Readable"]);
+  assert.ok(!JSON.stringify(await sharedContent(token, team, record)).includes("400k"));
+  // Even with the relation shown, no title of a database the creator cannot open.
+  assert.deepEqual((await recordReferenceNames({ ...scope, shown: scope.fields.slice(1) })).relations.pay, []);
+  // On Alice's own link the salary is named.
+  const own = await share(team, record, "viewer", {}, alice);
+  assert.deepEqual((await recordReferenceNames((await recordScope(own))!)).relations.pay, ["CEO salary 400k"]);
+  // A link whose creator is gone shows no relation titles.
+  await run("UPDATE record_shares SET created_by=NULL WHERE token=?", own);
+  const orphan = (await recordScope(own))!;
+  assert.deepEqual(orphan.shown.map((f) => f.id), []);
+  assert.deepEqual((await recordReferenceNames({ ...orphan, shown: orphan.fields.slice(1) })).relations, { pay: [], contact: [] });
+});
+
+test("a relation cell takes only records the writer may read", async () => {
+  const carol = await user("carol");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, carol.id, "editor");
+  const privateSpace = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Owner only", private: true })) as { id: string }).id;
+  const closed = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: privateSpace, title: "Closed", kind: "database" })) as { id: string }).id;
+  const people = await page({ kind: "database", title: "People" });
+  const team = await page({ kind: "database", title: "Team" });
+  await run(
+    "UPDATE databases SET fields=? WHERE page_id=?",
+    JSON.stringify([
+      { id: "title", name: "Name", type: "text" },
+      { id: "who", name: "Who", type: "relation", relationPage: people },
+      { id: "closed", name: "Closed", type: "relation", relationPage: closed },
+    ]),
+    team,
+  );
+  const open = id(),
+    secret = id(),
+    hidden = id(),
+    record = id();
+  await run("INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)", open, people, JSON.stringify({ title: "Open" }), owner.id);
+  await run("INSERT INTO rows(id,page_id,cells,created_by,access) VALUES(?,?,?,?,'private')", secret, people, JSON.stringify({ title: "Secret" }), owner.id);
+  await run("INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)", hidden, closed, JSON.stringify({ title: "Hidden" }), owner.id);
+  await run("INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)", record, team, JSON.stringify({ title: "Task" }), owner.id);
+  const update = async (who: Identity, cells: Record<string, unknown>) =>
+    await command(who, {
+      action: "row.update",
+      pageId: team,
+      rowId: record,
+      version: Number((await one<{ version: number }>("SELECT version FROM rows WHERE id=?", record))!.version),
+      cells,
+    });
+  const cells = async () => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", record))!.cells);
+  // A private record of someone else, a database Carol cannot open.
+  await fails(() => update(carol, { who: [open, secret] }), 400);
+  await fails(() => update(carol, { closed: [hidden] }), 403);
+  await update(carol, { who: [open] });
+  assert.deepEqual((await cells()).who, [open]);
+  // A link set by someone who may read it stays when Carol edits the cell.
+  await update(owner, { who: [open, secret] });
+  await update(carol, { who: [secret] });
+  assert.deepEqual((await cells()).who, [secret]);
+});

@@ -11,7 +11,7 @@ import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 import { recordFile, recordScope, recordSharePages, recordSubPage } from "./record-share";
-import { privateRecordPageIds } from "./record-pages";
+import { privateRecordPageIds, readonlyRecordPageIds } from "./record-pages";
 import { parsePageLocation } from "./page-location";
 
 export async function publicationSettings(pageId: string) {
@@ -247,6 +247,11 @@ export async function publicPage(token: string, pageId?: string) {
   const tree = await publicTree(token),
     page = tree.pages.find((p) => p.id === (pageId || tree.root.id));
   if (!page) throw new HttpError(404, "Seite nicht veröffentlicht.");
+  // Below a read-only record (#231, lib/record-pages.ts) guest editors
+  // comment only – what serves or changes a page of the link (content,
+  // guest edits, live editing, uploads) takes its role from here.
+  if (tree.role === "editor" && (await readonlyRecordPageIds(tree.pages)).has(page.id))
+    return { ...tree, page, role: "commenter" as const };
   return { ...tree, page };
 }
 export async function publicFile(token: string, fileId: string) {
