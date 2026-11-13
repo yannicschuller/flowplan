@@ -9,8 +9,9 @@
 // the template's key and example dates relative to a fixed day – running it
 // again only changes the files whose content changed.
 //
-// The content is German (language "de"); the English name and description
-// go into the English summary and description. Licence CC0-1.0.
+// The content is German (language "de"); the English name goes into
+// `titles.en`, the English description into the English summary and
+// description. Licence CC0-1.0.
 // Workflows keep their gaps as "$ask:<gap>" tokens plus a `gaps` list
 // (labels); the import clears what is still open and lists it
 // (lib/marketplace-package.ts). Next to it payload/workflow-meta.json
@@ -81,16 +82,18 @@ async function envelope(m: Meta, version: string, previews: Map<string, Buffer>)
   // The marketplace takes the file name as the template's slug: kebab case.
   const key = `${m.kind}-${m.id}`;
   const file = key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  const englishOnly = m.titleEn && m.titleEn !== m.title;
   const language = m.language ?? "de";
   const descriptionDe = `${m.description?.de ?? m.summary.de}\n\nDiese Vorlage gehört zu Flowplan und ist gemeinfrei (CC0).`;
   const descriptionEn = m.description
-    ? `${englishOnly ? `**${m.titleEn}**\n\n` : ""}${m.description.en}\n\nThis template comes with Flowplan and is in the public domain (CC0).${language === "de" ? " Its content is in German." : ""}`
-    : `${englishOnly ? `**${m.titleEn}** – ` : ""}${m.summary.en}\n\nThis template comes with Flowplan and is in the public domain (CC0). Its content is in German.`;
+    ? `${m.description.en}\n\nThis template comes with Flowplan and is in the public domain (CC0).${language === "de" ? " Its content is in German." : ""}`
+    : `${m.summary.en}\n\nThis template comes with Flowplan and is in the public domain (CC0). Its content is in German.`;
   const manifest = {
     format: MARKETPLACE_FORMAT,
     kind: m.kind,
     title: m.title.slice(0, 120),
+    // The marketplace shows the title in the visitor's language; `title`
+    // stays the one in the content's language (older readers use only it).
+    titles: { de: m.title.slice(0, 120), en: (m.titleEn || m.title).slice(0, 120) },
     summary: { de: m.summary.de.slice(0, 300), en: m.summary.en.slice(0, 300) },
     // Package text, not interface text (kept out of the language catalogues).
     description: { de: descriptionDe, en: descriptionEn },

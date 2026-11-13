@@ -432,6 +432,11 @@ test("official packages: every built-in template, deterministic, valid, and each
     assert.equal(m.license, "CC0-1.0");
     assert.equal(m.minVersion, "0.9.4");
     assert.ok(m.summary.de && m.summary.en, `${pkg.file}: summaries in both languages`);
+    // The title in both interface languages (#276); `title` stays the German one.
+    assert.ok(m.titles?.de && m.titles?.en, `${pkg.file}: titles in both languages`);
+    assert.equal(m.titles.de, m.title);
+    // Not repeated at the top of the English description any more.
+    assert.ok(!m.description?.en?.startsWith("**"), `${pkg.file}: English description`);
     // Every template of a kind imports (workflows: one page each is enough).
     if (pkg.kind === "workflow" && imported.has("workflow")) continue;
     const result = await pkgs.importPackage(other, parsed, { workspaceId: target, spaceId: targetSpace });
@@ -444,6 +449,11 @@ test("official packages: every built-in template, deterministic, valid, and each
     } else assert.ok(result.templateId, pkg.file);
   }
   assert.deepEqual([...imported].sort(), ["database", "document", "whiteboard", "workflow"]);
+  // The English titles are the English names (catalog, gallery, workflow gallery).
+  const titleOf = async (file: string) => (await pkgs.readPackage(every.find((p) => p.file === file)!.bytes)).manifest.titles;
+  assert.deepEqual(await titleOf("workflow-overdue-digest.flowplan-template"), { de: "Tägliche Übersicht überfälliger Einträge", en: "Daily digest of overdue records" });
+  assert.deepEqual(await titleOf("whiteboard-swot.flowplan-template"), { de: "SWOT-Analyse", en: "SWOT analysis" });
+  assert.deepEqual(await titleOf("database-tasks.flowplan-template"), { de: "Aufgabenliste", en: "Task list" });
   // The other workflows build a valid graph with their gaps cleared as well.
   for (const pkg of first.filter((p) => p.kind === "workflow")) {
     const parsed = await pkgs.readPackage(pkg.bytes);
