@@ -12,10 +12,13 @@ import { importedCodeAttributes } from "./code-block-options";
 import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
 import { isPageBreakStyle } from "./page-break-node";
+import { MEETING_LANGUAGES } from "./meeting-core";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 // Block and cell colours (#238, #240, lib/block-colors.ts) and toggle headings: only their names.
 const blockColorAttr = { name: "data-block-color", multiple: false, values: BLOCK_COLOR_VALUES };
 const toggleHeadingAttr = { name: "data-heading", multiple: false, values: ["1", "2", "3", "4"] };
+// A meeting's language (lib/meeting-schema.ts): only the languages it offers.
+const meetingLanguageAttr = { name: "data-meeting-language", multiple: false, values: [...MEETING_LANGUAGES] };
 // cleanHtml with a transform that awaits (database lookups, #127): the
 // tags are collected in a first pass, transformed one after the other, and
 // the results applied in a second pass over the same HTML – sanitize-html
@@ -165,6 +168,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       td: ["colspan", "rowspan", "colwidth", dir, blockColorAttr],
       th: ["colspan", "rowspan", "colwidth", dir, blockColorAttr],
       details: ["open", dir, blockColorAttr, toggleHeadingAttr],
+      // The meeting block's language (on its <div data-meeting>).
+      div: [meetingLanguageAttr],
       video: ["src", "controls", "preload"],
       audio: ["src", "controls", "preload"],
       iframe: ["src", "title", "allowfullscreen", "sandbox", "loading"],
