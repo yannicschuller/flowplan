@@ -96,3 +96,25 @@ export function loginReturnPath(value: unknown): string {
   const target = parsePageLocation(value.slice(1));
   return target ? `/${pageLocationHash(target)}` : "/";
 }
+
+/**
+ * The in-app page location a link leads to, as its hash ("#page=…"), when
+ * the link stays in this app: same origin, the app's root path and a valid
+ * page location. Null
+ * for every other link (another instance, a web address, a broken hash).
+ * Read-only documents use it to open page links in the same window (#274).
+ */
+export function inAppPageHash(href: string, base: string): string | null {
+  if (!href || !href.includes("#page=")) return null;
+  let url: URL, from: URL;
+  try {
+    url = new URL(href, base);
+    from = new URL(base);
+  } catch {
+    return null;
+  }
+  // The app lives at the root; other paths (published pages …) are not it.
+  if (url.origin !== from.origin || url.pathname !== "/" || url.search) return null;
+  const target = parsePageLocation(url.hash);
+  return target ? pageLocationHash(target) : null;
+}

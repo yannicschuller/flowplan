@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { linkTargetInfo } from "./page-link-icons";
-import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import { parsePageLocation, pageLocationHash, inAppPageHash } from "@/lib/page-location";
 import type { ContactCardData } from "@/lib/contacts-io";
 import { ContactAvatar } from "./contacts";
 
@@ -207,7 +207,21 @@ export function LinkPreview({
         event.preventDefault();
         return;
       }
-      if (!target.closest('[contenteditable="true"]')) return;
+      if (!target.closest('[contenteditable="true"]')) {
+        // Read-only text in the app (locked pages, reading mode, pages and
+        // records one may only read): links to pages, blocks and records
+        // open here like in editable text, with history (#274) – their
+        // stored target="_blank" would open a new tab (a new window in the
+        // desktop app). Modifier clicks stay with the browser; presentations
+        // are not left by a click.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (!target.matches('a[target="_blank"]') || target.closest(".presentation-document, .presenter-notes-text")) return;
+        const hash = inAppPageHash(target.getAttribute("href") || "", location.href);
+        if (!hash) return;
+        event.preventDefault();
+        location.hash = hash;
+        return;
+      }
       const selection = window.getSelection();
       // Text selected in the link is no click on it. Ctrl/⌘-click makes the
       // editor select the clicked node: still a link click. A selection
