@@ -316,3 +316,70 @@ test("drops by level (#239): into the end of a list item as its child, and copie
   assert.equal(copiedItem.doc.lastChild!.type.name, "bulletList", "a copied item stays an item of its kind");
   assert.equal(copiedItem.doc.firstChild!.childCount, 3, "the original list keeps it");
 });
+
+test("drops into a list (#254): no empty items, the level of the drop line, other blocks as children of the item before", () => {
+  const li = (text: string, ...children: import("@tiptap/pm/model").Node[]) =>
+    schema.nodes.listItem.create(null, [p(text), ...children]);
+  const ul = (...items: import("@tiptap/pm/model").Node[]) => schema.nodes.bulletList.create(null, items);
+  const table = schema.nodes.table.create(null, schema.nodes.tableRow.create(null, schema.nodes.tableCell.create(null, p("Zelle"))));
+  // The document from the issue: a list "Punkt A ◦ Ebene 2, Punkt A.1",
+  // "Listenpunkt 1" after it; further down "Listenpunkt 2", a paragraph and a table.
+  const s = state(
+    ul(li("Punkt A", ul(li("Ebene 2"), li("Punkt A.1"))), li("Listenpunkt 1")),
+    p("Zwischen"),
+    ul(li("Listenpunkt 2")),
+    p("Absatz"),
+    table,
+    p("Ende"),
+  );
+  const blocks = documentBlocks(s.doc);
+  const find = (text: string, type = "listItem") =>
+    blocks.find((b) => b.node.type.name === type && b.node.firstChild?.textContent === text) ||
+    blocks.find((b) => b.node.type.name === type && b.node.textContent === text)!;
+  const moved = [s.doc.child(0).nodeSize + s.doc.child(1).nodeSize, find("Absatz", "paragraph").pos, find("Zelle", "table").pos];
+  assert.equal(s.doc.nodeAt(moved[0])!.type.name, "bulletList");
+  const outline = (node: import("@tiptap/pm/model").Node): string =>
+    node.type.name === "bulletList"
+      ? `UL[${node.content.content.map(outline).join(", ")}]`
+      : node.type.name === "listItem"
+        ? `li(${node.content.content.map(outline).join(", ")})`
+        : node.type.name === "table"
+          ? "table"
+          : node.textContent || "_";
+  const shown = (doc: import("@tiptap/pm/model").Node) => doc.content.content.map(outline).join(", ");
+  const noEmptyItems = (doc: import("@tiptap/pm/model").Node) =>
+    doc.descendants((n) => {
+      if (n.type.name === "listItem") assert.ok(n.firstChild!.content.size > 0, `an empty item in ${shown(doc)}`);
+    });
+  // The drop line above "Listenpunkt 1" at the level of "Punkt A.1" (level 2).
+  let tr = changeBlocks(s, moved, "move", find("Punkt A.1").end);
+  noEmptyItems(tr.doc);
+  assert.equal(shown(tr.doc), "UL[li(Punkt A, UL[li(Ebene 2), li(Punkt A.1), li(Listenpunkt 2), li(Absatz, table)]), li(Listenpunkt 1)], Zwischen, Ende");
+  // At the level of "Punkt A" (level 1).
+  tr = changeBlocks(s, moved, "move", find("Punkt A").end);
+  noEmptyItems(tr.doc);
+  assert.equal(shown(tr.doc), "UL[li(Punkt A, UL[li(Ebene 2), li(Punkt A.1)]), li(Listenpunkt 2), li(Absatz, table), li(Listenpunkt 1)], Zwischen, Ende");
+  // Inside "Punkt A.1" (its children): blocks as they are.
+  tr = changeBlocks(s, moved, "move", find("Punkt A.1").end - 1);
+  noEmptyItems(tr.doc);
+  assert.equal(shown(tr.doc), "UL[li(Punkt A, UL[li(Ebene 2), li(Punkt A.1, UL[li(Listenpunkt 2)], Absatz, table)]), li(Listenpunkt 1)], Zwischen, Ende");
+  // At block level: plain blocks next to the list.
+  tr = changeBlocks(s, moved, "move", 0);
+  assert.equal(shown(tr.doc), "UL[li(Listenpunkt 2)], Absatz, table, UL[li(Punkt A, UL[li(Ebene 2), li(Punkt A.1)]), li(Listenpunkt 1)], Zwischen, Ende");
+  // The selection marks the moved blocks where they went.
+  tr = changeBlocks(s, moved, "move", find("Punkt A").end);
+  const chosen = tr.getMeta(BLOCK_SELECTION_META) as number[];
+  assert.deepEqual(chosen.map((pos) => tr.doc.nodeAt(pos)!.textContent), ["Listenpunkt 2", "AbsatzZelle"]);
+  // A table alone between items: a child of the item before, no empty item.
+  const tablePos = find("Zelle", "table").pos;
+  tr = changeBlocks(s, [tablePos], "move", find("Ebene 2").end);
+  noEmptyItems(tr.doc);
+  assert.equal(shown(tr.doc), "UL[li(Punkt A, UL[li(Ebene 2, table), li(Punkt A.1)]), li(Listenpunkt 1)], Zwischen, UL[li(Listenpunkt 2)], Absatz, Ende");
+  assert.equal(tr.doc.nodeAt((tr.getMeta(BLOCK_SELECTION_META) as number[])[0])!.type.name, "table");
+  // … and with no item before it, it cannot go there (the drop line picks another level).
+  assert.throws(() => changeBlocks(s, [tablePos], "move", find("Ebene 2").pos), /passen nicht/);
+  // A copy follows the same rules.
+  tr = changeBlocks(s, moved, "copy", find("Punkt A.1").end);
+  noEmptyItems(tr.doc);
+  assert.match(shown(tr.doc), /^UL\[li\(Punkt A, UL\[li\(Ebene 2\), li\(Punkt A\.1\), li\(Listenpunkt 2\), li\(Absatz, table\)\]\)/);
+});

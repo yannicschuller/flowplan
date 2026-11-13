@@ -131,13 +131,21 @@ export function hasLinkedBlocks(node: Node) {
 export const BLOCK_SELECTION_META = "flowplanBlockSelection";
 // Where moved blocks came from, for the slide animation.
 export const BLOCK_MOVE_META = "flowplanBlockMove";
-function finish(tr: Transaction, start: number, content?: Fragment) {
+function finish(tr: Transaction, start: number, content?: Fragment, lead?: { pos: number; content: Fragment }) {
   tr.doc.check();
   const positions: number[] = [];
+  // Blocks that went to the end of the item before (see placeFitted).
+  lead?.content.forEach((node, offset) => {
+    positions.push(lead.pos + offset);
+  });
   if (content)
     content.forEach((node, offset) => {
       positions.push(start + offset);
     });
+  if (lead?.content.size) {
+    content = lead.content;
+    start = lead.pos;
+  }
   const pos = Math.min(start, tr.doc.content.size);
   tr.setSelection(
     content && NodeSelection.isSelectable(content.firstChild!)
@@ -189,9 +197,10 @@ export function changeBlocks(
     const $at = state.doc.resolve(target);
     const $first = state.doc.resolve(range.from);
     const kind = range.blocks.every((b) => LIST_ITEMS.includes(b.node.type.name)) ? $first.parent : null;
-    const content = fitBlocks($at.parent, $at.index(), copy, kind ? kind.type.create(kind.attrs) : null);
-    if (!content) throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
-    return finish(state.tr.insert(target, content), target, content);
+    const tr = state.tr;
+    const placed = placeFitted(tr, target, fitInto($at.parent, $at.index(), copy, kind ? kind.type.create(kind.attrs) : null));
+    if (!placed) throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
+    return finish(tr, placed.start, placed.content, placed.lead);
   }
   // List items moved out of their list keep it: the list they came from
   // (kind, attributes; a numbered item its number).
@@ -209,16 +218,16 @@ export function changeBlocks(
   const tr = state.tr.deleteRange(range.from, range.to),
     mapped = tr.mapping.map(target, target < range.from ? -1 : 1),
     $target = tr.doc.resolve(mapped);
-  const content = fitBlocks($target.parent, $target.index(), range.content, origin);
-  if (!content)
+  const placed = placeFitted(tr, mapped, fitInto($target.parent, $target.index(), range.content, origin));
+  if (!placed)
     throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
-  tr.insert(mapped, content);
+  const content = placed.content;
   const wrapped =
-    origin && content.childCount === 1 && content.firstChild!.type === origin.type
+    !placed.lead && origin && content.childCount === 1 && content.firstChild!.type === origin.type
       ? content.firstChild!
       : null;
   if (!wrapped)
-    return finish(tr, mapped, content).setMeta(BLOCK_MOVE_META, {
+    return finish(tr, placed.start, content, placed.lead).setMeta(BLOCK_MOVE_META, {
       from: range.from,
       to: range.to,
     });
@@ -236,6 +245,26 @@ export function changeBlocks(
   });
 }
 const LIST_ITEMS = ["listItem", "taskItem"];
+const LISTS = ["bulletList", "orderedList", "taskList"];
+type Fitted = { content: Fragment; lead?: Fragment };
+// Inserts what fitInto gave at `pos`: blocks that lead it go to the end of
+// the item before (children of that item, never an empty item of their
+// own). Undefined when they have no item to go to.
+function placeFitted(tr: Transaction, pos: number, fitted: Fitted | undefined) {
+  if (!fitted) return undefined;
+  const { content, lead } = fitted;
+  if (!lead?.size) {
+    tr.insert(pos, content);
+    return { start: pos, content };
+  }
+  const $pos = tr.doc.resolve(pos);
+  const before = $pos.nodeBefore;
+  if (!before || !LIST_ITEMS.includes(before.type.name) || !before.type.validContent(before.content.append(lead)))
+    return undefined;
+  if (content.size) tr.insert(pos, content);
+  tr.insert(pos - 1, lead);
+  return { start: pos + lead.size, content, lead: { pos: pos - 1, content: lead } };
+}
 // Moved blocks adapt to where they land, like in a word processor: a
 // paragraph dropped into a task list becomes a task, items switch between
 // list kinds, and items dropped outside any list stay items of a list of
@@ -246,8 +275,21 @@ export function fitBlocks(
   content: Fragment,
   origin?: Node | null,
 ) {
+  const fitted = fitInto(parent, index, content, origin);
+  return fitted && !fitted.lead?.size ? fitted.content : undefined;
+}
+// Into a list (#254): items stay items at the level of the drop, the items
+// of a moved list become items there too, paragraphs become items, and
+// other blocks (a table, a heading …) become children of the item before
+// them – of the list's item before the drop when they come first (`lead`).
+function fitInto(
+  parent: Node,
+  index: number,
+  content: Fragment,
+  origin?: Node | null,
+): Fitted | undefined {
   const fits = (f: Fragment) => parent.canReplace(index, index, f);
-  if (fits(content)) return content;
+  if (fits(content)) return { content };
   const nodes: Node[] = [];
   content.forEach((n) => nodes.push(n));
   // Items to another list kind, or out of the list.
@@ -258,38 +300,41 @@ export function fitBlocks(
   if (!itemType && origin && nodes.every((n) => LIST_ITEMS.includes(n.type.name)))
     try {
       const list = Fragment.from(origin.type.createChecked(origin.attrs, nodes));
-      if (fits(list)) return list;
+      if (fits(list)) return { content: list };
     } catch {}
-  const unwrapped = nodes.flatMap((n) =>
-    LIST_ITEMS.includes(n.type.name) ? (n.content.content as Node[]) : [n],
-  );
   try {
-    const converted = Fragment.fromArray(
-      itemType
-        ? nodes.map((n) =>
-            LIST_ITEMS.includes(n.type.name)
-              ? itemType.createChecked(
-                  itemType.name === "taskItem"
-                    ? { checked: !!n.attrs.checked }
-                    : null,
-                  n.content,
-                )
-              : wrapIn(itemType, n),
-          )
-        : unwrapped,
+    if (itemType) {
+      const { items, lead } = asItems(itemType, nodes);
+      const converted = Fragment.fromArray(items);
+      if ((converted.size || lead.length) && fits(converted))
+        return { content: converted, lead: lead.length ? Fragment.fromArray(lead) : undefined };
+      return undefined;
+    }
+    const unwrapped = Fragment.fromArray(
+      nodes.flatMap((n) => (LIST_ITEMS.includes(n.type.name) ? (n.content.content as Node[]) : [n])),
     );
-    if (converted.size && fits(converted)) return converted;
+    if (unwrapped.size && fits(unwrapped)) return { content: unwrapped };
   } catch {}
   return undefined;
 }
-function wrapIn(itemType: NodeType, node: Node) {
-  // Items start with a paragraph; other blocks are nested below an empty one.
-  if (itemType.contentMatch.matchType(node.type))
-    return itemType.createChecked(null, node);
-  return itemType.createChecked(null, [
-    itemType.schema.nodes.paragraph.create(),
-    node,
-  ]);
+function asItems(itemType: NodeType, nodes: Node[]) {
+  const items: Node[] = [],
+    lead: Node[] = [];
+  const item = (n: Node) =>
+    n.type === itemType
+      ? n
+      : itemType.createChecked(itemType.name === "taskItem" ? { checked: !!n.attrs.checked } : null, n.content);
+  for (const n of nodes) {
+    if (LISTS.includes(n.type.name)) n.forEach((child) => items.push(item(child)));
+    else if (LIST_ITEMS.includes(n.type.name)) items.push(item(n));
+    // Items start with a paragraph.
+    else if (itemType.contentMatch.matchType(n.type)) items.push(itemType.createChecked(null, n));
+    else if (items.length) {
+      const last = items.pop()!;
+      items.push(last.type.createChecked(last.attrs, last.content.addToEnd(n), last.marks));
+    } else lead.push(n);
+  }
+  return { items, lead };
 }
 export function adjacentBlockTarget(
   state: EditorState,
