@@ -10691,6 +10691,23 @@ details[data-heading] > summary {
 .space-appearance-controls .button {
   min-height: 38px;
 }
+.space-appearance-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* An uploaded image as the space symbol (#251) fills the square. */
+.space-icon.has-image {
+  overflow: hidden;
+}
+.space-icon.has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.space-appearance .field-error {
+  margin: 8px 0 0;
+}
 .space-appearance .emoji-picker {
   margin-top: 16px;
 }

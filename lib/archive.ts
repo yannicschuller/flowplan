@@ -23,6 +23,7 @@ import { quotaCheckpoint } from "./instance-ops";
 import { instanceSettings } from "./instance-settings";
 import { mapFileCell } from "./file-cells";
 import { spaceColorSchema } from "./space-appearance";
+import { MAX_WORKSPACE_IMAGE, workspaceImage } from "./workspace-icon";
 import {
   archivedThreadsSchema,
   exportInlineComments,
@@ -133,6 +134,8 @@ async function archiveFileLimit() {
   return Math.max(10, (await instanceSettings()).maxUploadMb) * 1024 * 1024;
 }
 const str = z.string().max(500),
+  // Workspace and space symbols: short text, or an inline image (#251).
+  symbol = z.string().max(MAX_WORKSPACE_IMAGE).refine((icon) => icon.length <= 500 || workspaceImage(icon)),
   uid = z.string().uuid(),
   html = z.string().max(2_000_000);
 const cells = z.record(z.string().max(500), z.unknown());
@@ -208,7 +211,7 @@ export const archiveSchema = z.object({
   exportedAt: str,
   // Who exported: their assignments and mentions become the importer's.
   exportedBy: uid.optional(),
-  workspace: z.object({ name: str, icon: str }),
+  workspace: z.object({ name: str, icon: symbol }),
   favorites: z.array(uid).max(500).default([]),
   // The workspace's tags and property definitions (#70), also those no
   // exported page uses.
@@ -279,7 +282,7 @@ export const archiveSchema = z.object({
       z.object({
         id: uid,
         name: str,
-        icon: str,
+        icon: symbol,
         icon_color: spaceColorSchema.default("none"),
         visibility: z.enum(["team", "private"]),
         // Archives from before schema 67 have none: their list order counts.

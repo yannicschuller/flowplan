@@ -277,7 +277,7 @@ export const commandActions: ActionDoc[] = [
       workspaceId: uuid,
       name: str,
       private: z.boolean().optional().describe("Only visible to its owner"),
-      icon: z.string().max(100).optional(),
+      icon: z.string().max(150_000).optional().describe("Emoji, icon name, `icon:<name>:<colour>` or a square image as data URL (`data:image/png|jpeg|webp;base64,…`, at most 150,000 characters); default `folder`"),
       iconColor: z.string().max(40).optional(),
     }),
     result: idResult,
