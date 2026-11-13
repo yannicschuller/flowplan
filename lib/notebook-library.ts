@@ -169,7 +169,7 @@ async function roomForSticker(user: Identity, workspaceId: string, bytes: number
   if (n >= NOTEBOOK_LIBRARY_LIMITS.stickersPerPerson) throw new HttpError(409, `Höchstens ${NOTEBOOK_LIBRARY_LIMITS.stickersPerPerson} eigene Sticker.`);
   if (bytes) {
     await enforceQuota(workspaceId, bytes);
-    await enforceUserStorage(user, bytes);
+    await enforceUserStorage(user, bytes, workspaceId);
   }
 }
 // Ink as a sticker: its items moved to the top left (0, 0). Pictures of
@@ -343,7 +343,7 @@ export async function createTemplate(user: Identity, input: { pageId: unknown; n
   if (count >= NOTEBOOK_LIBRARY_LIMITS.templatesPerWorkspace)
     throw new HttpError(409, `Dieser Arbeitsbereich hat schon ${NOTEBOOK_LIBRARY_LIMITS.templatesPerWorkspace} Papiervorlagen.`);
   await enforceQuota(page.workspace_id, data.length);
-  await enforceUserStorage(user, data.length);
+  await enforceUserStorage(user, data.length, page.workspace_id);
   const templateId = id();
   const name = nameSchema.catch(sanitizeFileName(input.file.name).replace(/\.[^.]+$/, "").slice(0, 120) || "Vorlage").parse(input.name);
   const fit = PAPER_FITS.includes(input.fit as PaperFit) ? (input.fit as PaperFit) : "stretch";

@@ -462,7 +462,7 @@ export async function importZip(
           ext = target.split(".").pop()!.toLowerCase();
         bytesAdded += data.length;
         await enforceQuota(workspaceId, bytesAdded);
-        await enforceUserStorage(user, bytesAdded);
+        await enforceUserStorage(user, bytesAdded, workspaceId);
         mkdirSync(dir, { recursive: true });
         writeFileSync(resolve(dir, fid), data);
         onTransactionRollback(() => unlinkSync(resolve(dir, fid)));

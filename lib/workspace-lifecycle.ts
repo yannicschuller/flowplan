@@ -4,6 +4,7 @@ import { placeAfter } from "./space-order";
 import { claimTicketPrefix } from "./ticket-refs";
 import { z } from "zod";
 import { all, one, run, id, nowText, lockMembership } from "./db";
+import { handOverWorkspaceCreator } from "./user-limits";
 import { removePages } from "./search-store";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
@@ -314,6 +315,8 @@ export async function removeFromWorkspace(userId: string, wid: string, spacesTo?
   await run("DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?", wid, userId);
   await run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=?", wid, userId);
   await run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, userId);
+  // The workspace's creator left: its storage passes on ("owner" accounting).
+  await handOverWorkspaceCreator(wid, spacesTo);
 }
 
 export async function duplicateSpace(user: Identity, input: Record<string, unknown>) {

@@ -1,0 +1,23 @@
+{
+  "description": "Test vector for the upgrade link token (lib/upgrade-link.ts). token = base64url(JSON.stringify({u,e,n,i,exp})) + '.' + base64url(HMAC-SHA256(secret, first part)); base64url without padding, JSON in this key order, UTF-8.",
+  "secret": "flowplan-upgrade-test-secret-0123456789abcdef",
+  "nowMs": 1794571200000,
+  "person": {
+    "id": "6f1c2b9e-4d3a-4c8e-9b7a-2e5f1d0c3a41",
+    "email": "jana.muster@example.org",
+    "name": "Jana Müster"
+  },
+  "origin": "https://app.example.org",
+  "claims": {
+    "u": "6f1c2b9e-4d3a-4c8e-9b7a-2e5f1d0c3a41",
+    "e": "jana.muster@example.org",
+    "n": "Jana Müster",
+    "i": "https://app.example.org",
+    "exp": 1794572100
+  },
+  "payloadJson": "{\"u\":\"6f1c2b9e-4d3a-4c8e-9b7a-2e5f1d0c3a41\",\"e\":\"jana.muster@example.org\",\"n\":\"Jana Müster\",\"i\":\"https://app.example.org\",\"exp\":1794572100}",
+  "payload": "eyJ1IjoiNmYxYzJiOWUtNGQzYS00YzhlLTliN2EtMmU1ZjFkMGMzYTQxIiwiZSI6ImphbmEubXVzdGVyQGV4YW1wbGUub3JnIiwibiI6IkphbmEgTcO8c3RlciIsImkiOiJodHRwczovL2FwcC5leGFtcGxlLm9yZyIsImV4cCI6MTc5NDU3MjEwMH0",
+  "signature": "wRpUO4c-x18sU3sYUUFWOxBCP-yxPsy95gFhi2hZzqw",
+  "token": "eyJ1IjoiNmYxYzJiOWUtNGQzYS00YzhlLTliN2EtMmU1ZjFkMGMzYTQxIiwiZSI6ImphbmEubXVzdGVyQGV4YW1wbGUub3JnIiwibiI6IkphbmEgTcO8c3RlciIsImkiOiJodHRwczovL2FwcC5leGFtcGxlLm9yZyIsImV4cCI6MTc5NDU3MjEwMH0.wRpUO4c-x18sU3sYUUFWOxBCP-yxPsy95gFhi2hZzqw",
+  "url": "https://flowplan.example/upgrade?t=eyJ1IjoiNmYxYzJiOWUtNGQzYS00YzhlLTliN2EtMmU1ZjFkMGMzYTQxIiwiZSI6ImphbmEubXVzdGVyQGV4YW1wbGUub3JnIiwibiI6IkphbmEgTcO8c3RlciIsImkiOiJodHRwczovL2FwcC5leGFtcGxlLm9yZyIsImV4cCI6MTc5NDU3MjEwMH0.wRpUO4c-x18sU3sYUUFWOxBCP-yxPsy95gFhi2hZzqw"
+}

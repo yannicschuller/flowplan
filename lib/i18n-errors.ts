@@ -841,6 +841,10 @@ const exact: Record<string, string> = {
   "Nur wer den Bereich besitzt, richtet den Git-Export ein.": "Only the owner of the space sets up the Git export.",
   "Ungültiger Branch-Name.": "Invalid branch name.",
   "Ungültiger Benutzername.": "Invalid user name.",
+  // The admin API of hosted offerings (lib/admin-api.ts).
+  "Zu viele ungültige Anfragen. Bitte in 15 Minuten erneut versuchen.": "Too many invalid requests. Please try again in 15 minutes.",
+  "Zugriff verweigert.": "Access denied.",
+  "Methode nicht erlaubt.": "Method not allowed.",
   "Ungültiges Token.": "Invalid token.",
   "Für eine neue Adresse bitte das Zugangstoken neu eingeben.": "Please enter the access token again for a new address.",
   "Bitte ein Zugangstoken mit Schreibrechten eingeben.": "Please enter an access token with write access.",
@@ -1548,6 +1552,10 @@ const patterns: [RegExp, string][] = [
   [/^Dein Speicher ist voll \((.+) von (\d+) MB belegt\)\.$/, "Your storage is full ($1 of $2 MB used)."],
   [/^Dein Speicher reicht dafür nicht \((.+) von (\d+) MB belegt, benötigt zusätzlich (.+)\)\.$/, "Your storage is not enough for this ($1 of $2 MB used, $3 more needed)."],
   [/^Du kannst höchstens (\d+) eigene Arbeitsbereiche anlegen\.$/, "You can create at most $1 workspaces of your own."],
+  // Storage counted for the workspace's creator (lib/user-limits.ts, "owner" accounting).
+  [/^Der Speicher von „(.+)“ \(Eigentümer dieses Arbeitsbereichs\) ist voll\.$/, "The storage of “$1” (owner of this workspace) is full."],
+  [/^Der Speicher von „(.+)“ \(Eigentümer des Arbeitsbereichs\) reicht dafür nicht\.$/, "The storage of “$1” (owner of the workspace) is not enough for this."],
+  [/^Dein Speicher reicht dafür nicht \((\d+) MB, belegt wären (.+)\)\.$/, "Your storage is not enough for this ($1 MB, $2 would be used)."],
   [/^Von „(.+)“ nach „(.+)“ ist im Workflow nicht vorgesehen\.$/, "Changing from “$1” to “$2” is not part of the workflow."],
   [/^„(.+)“ braucht: (.+)\.$/, "“$1” needs: $2."],
   [/^„(.+)“ dürfen nur Verantwortliche der Datenbank setzen\.$/, "Only owners of the database may set “$1”."],

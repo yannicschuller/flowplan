@@ -33,6 +33,16 @@ export const instanceSettingsSchema = z.object({
   // Defaults for every account without its own limits (0 = unlimited).
   defaultUserStorageMb: z.number().int().min(0).max(10_000_000).nullable().default(null),
   defaultUserWorkspaces: z.number().int().min(0).max(10_000).nullable().default(null),
+  // AI for every account without its own setting (lib/user-limits.ts):
+  // allowed (the default, as before) and the AI tokens per calendar month
+  // through the instance's provider (null or 0 = unlimited).
+  defaultUserAi: z.boolean().default(true),
+  defaultUserAiTokensPerMonth: z.number().int().min(0).max(1_000_000_000).nullable().default(null),
+  // Whose storage limit a file counts against: the person who uploads it
+  // ("uploader", as before) or the person who created the workspace it is
+  // stored in ("owner", for hosted offerings). null follows
+  // FLOWPLAN_STORAGE_ACCOUNTING (default "uploader"; lib/user-limits.ts).
+  storageAccounting: z.enum(["uploader", "owner"]).nullable().default(null),
   // Two-factor sign-in for accounts with e-mail and password: not required,
   // required for administrators, or for everyone (lib/two-factor-policy.ts).
   twoFactor: z.enum(["off", "admins", "all"]).default("off"),
@@ -80,6 +90,9 @@ const defaults: InstanceSettings = {
   deleteInactiveDays: null,
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,
+  defaultUserAi: true,
+  defaultUserAiTokensPerMonth: null,
+  storageAccounting: null,
   twoFactor: "off",
   pluginsAnyOrigin: false,
   customDomains: false,

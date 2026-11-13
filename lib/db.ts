@@ -1432,6 +1432,11 @@ function migrate(d: DatabaseSync) {
   // number stays.
   if (!(d.prepare("PRAGMA table_info(doc_tasks)").all() as { name: string }[]).some((c) => c.name === "block_id"))
     d.exec("ALTER TABLE doc_tasks ADD COLUMN block_id TEXT");
+  // AI tokens per account and calendar month (UTC, "YYYY-MM") through the
+  // instance's provider (lib/user-limits.ts, limits.aiTokensPerMonth and
+  // the admin API of hosted offerings). Written only where a budget or the
+  // admin API reads it. A new table only – the schema number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS ai_usage_monthly(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,month TEXT NOT NULL,tokens INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,month));`);
   // Schema 104 – sub-pages under records (#231, part 3): a page whose
   // parent is a database page may name one of its records in
   // pages.parent_row_id; it then sits under that record (sidebar,

@@ -147,7 +147,7 @@ export async function uploadWorkspaceFont(user: Identity, workspaceId: string, i
   const count = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workspace_fonts WHERE workspace_id=?", workspaceId))?.n ?? 0);
   if (count >= FONT_LIMITS.perWorkspace) throw new HttpError(409, `Dieser Arbeitsbereich hat schon ${FONT_LIMITS.perWorkspace} eigene Schriften.`);
   await enforceQuota(workspaceId, input.file.bytes.length);
-  await enforceUserStorage(user, input.file.bytes.length);
+  await enforceUserStorage(user, input.file.bytes.length, workspaceId);
   const fallback = sanitizeFileName(input.file.name, "Schrift").replace(/\.[^.]+$/, "").slice(0, FONT_LIMITS.nameLength) || "Schrift";
   const name = z.string().trim().min(1).max(FONT_LIMITS.nameLength).catch(fallback).parse(input.name);
   const fontId = id();
@@ -260,7 +260,7 @@ export async function importLook(user: Identity, workspaceId: string, look: { th
     }
     try {
       await enforceQuota(workspaceId, font.data.length);
-      await enforceUserStorage(user, font.data.length);
+      await enforceUserStorage(user, font.data.length, workspaceId);
     } catch (e) {
       if (!(e instanceof HttpError)) throw e;
       result.droppedFonts++;

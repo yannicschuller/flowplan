@@ -42,7 +42,7 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { enforceQuota, workspaceBytes, workspaceQuotaMb } from "./instance-ops";
-import { effectiveUserLimits, enforceUserStorage, userBytes } from "./user-limits";
+import { enforceUserStorage, storageRoom } from "./user-limits";
 import { recordingMime, sanitizeFileName } from "./upload-safety";
 import { webmDurationPatch } from "./webm-duration";
 import {
@@ -100,10 +100,9 @@ export async function recordingRoom(user: Identity, page: Pick<Page, "workspace_
   const limits: number[] = [];
   const quota = await workspaceQuotaMb(page.workspace_id);
   if (quota) limits.push(quota * MB - (await workspaceBytes(page.workspace_id)));
-  if (!user.isAdmin) {
-    const { storageMb } = await effectiveUserLimits(user.id);
-    if (storageMb) limits.push(storageMb * MB - (await userBytes(user.id)));
-  }
+  // The person's storage, or the workspace creator's (lib/user-limits.ts).
+  const room = await storageRoom(user, page.workspace_id);
+  if (room !== null) limits.push(room);
   return limits.length ? Math.max(0, Math.min(...limits)) : null;
 }
 
@@ -327,7 +326,7 @@ export async function finishRecording(user: Identity, pageId: string, input: unk
     try {
       await transaction(async () => {
         await enforceQuota(page.workspace_id, stored);
-        await enforceUserStorage(user, stored);
+        await enforceUserStorage(user, stored, page.workspace_id);
         // Synchronous: a SQLite transaction awaits only the database.
         renameSync(part, final);
         onTransactionRollback(() => {

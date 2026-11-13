@@ -116,7 +116,11 @@ export type AiReason =
   | "user-off"
   | "user-feature-off"
   | "no-provider"
-  | "key-unreadable";
+  | "key-unreadable"
+  // The account's limits (lib/user-limits.ts): AI off for it, or its AI
+  // tokens of this month used up.
+  | "account-off"
+  | "budget";
 // i18n-table: 1 – [German, English] pairs
 export const AI_REASON_TEXT: Record<AiReason, readonly [string, string]> = {
   "unknown-feature": ["Unbekannte KI-Funktion.", "Unknown AI feature."],
@@ -130,7 +134,11 @@ export const AI_REASON_TEXT: Record<AiReason, readonly [string, string]> = {
   "user-feature-off": ["Du hast diese KI-Funktion in deinen Einstellungen ausgeschaltet.", "You switched this AI feature off in your settings."],
   "no-provider": ["Es ist kein KI-Anbieter eingerichtet.", "No AI provider is set up."],
   "key-unreadable": ["Der gespeicherte API-Schlüssel lässt sich nicht entschlüsseln. Bitte neu eingeben.", "The stored API key cannot be decrypted. Please enter it again."],
+  "account-off": ["KI ist für dein Konto nicht enthalten.", "AI is not included for your account."],
+  budget: ["Dein KI-Kontingent für diesen Monat ist aufgebraucht.", "Your AI allowance for this month is used up."],
 };
+// Refusals the person could lift by upgrading their account (lib/upgrade-link.ts).
+export const AI_UPGRADE_REASONS: readonly AiReason[] = ["account-off", "budget"];
 
 // What the browser learns (bootstrap → ai, GET /api/ai/settings → status).
 export type AiStatus = {

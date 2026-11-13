@@ -21,7 +21,7 @@ export async function storeUpload(
   mkdirSync(dir, { recursive: true });
   await transaction(async () => {
     await enforceQuota(page.workspace_id, file.content.length);
-    await enforceUserStorage(user, file.content.length);
+    await enforceUserStorage(user, file.content.length, page.workspace_id);
     // Synchronous: a SQLite transaction awaits only the database.
     writeFileSync(path, file.content, { flag: "wx" });
     onTransactionRollback(() => {

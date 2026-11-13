@@ -213,7 +213,7 @@ export async function saveCapture(user: Identity, raw: unknown, files: UploadFil
   const size = prepared.reduce((sum, f) => sum + f.content.length, 0);
   if (size) {
     await enforceQuota(page.workspace_id, size);
-    await enforceUserStorage(user, size);
+    await enforceUserStorage(user, size, page.workspace_id);
   }
   const title = titleOf(input, text, link, prepared);
   const recognized = input.recognized?.trim() || "";
@@ -224,7 +224,7 @@ export async function saveCapture(user: Identity, raw: unknown, files: UploadFil
     // Again with the insert: parallel uploads take turns (locks of both).
     if (size) {
       await enforceQuota(page.workspace_id, size);
-      await enforceUserStorage(user, size);
+      await enforceUserStorage(user, size, page.workspace_id);
     }
     const append = async (pageId: string, rowId: string | null) => {
       const nodes = contentNodes(text, link, prepared);

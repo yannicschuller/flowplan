@@ -181,6 +181,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "e2ee_space_keys.sealed_by": "move",
   "ai_access_rules.user_id": "move",
   "ai_user_policy.user_id": "move",
+  // AI tokens per month (lib/user-limits.ts); the target's month row wins.
+  "ai_usage_monthly.user_id": "move",
   "ai_cell_jobs.user_id": "move",
   "ai_cell_meta.computed_by": "move",
   "ai_blocks.created_by": "move",

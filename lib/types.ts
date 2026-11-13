@@ -349,7 +349,7 @@ export type Bootstrap = {
   sidebar?: { keys: string[]; updatedAt: number } | null;
   // The start page: layout, where it comes from, what "Reset" leads to.
   home?: import("./home-layout").HomeState;
-  myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
+  myLimits?: { storageMb: number; workspaces: number; uploadMb: number; ai: boolean; aiTokensPerMonth: number; usedBytes: number; ownedWorkspaces: number; accounting: "uploader" | "owner"; aiTokensThisMonth: number; upgrade: boolean } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;
   // New account: show the introduction (components/onboarding.tsx).

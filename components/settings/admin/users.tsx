@@ -751,6 +751,8 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
     storage: data.settings.defaultUserStorageMb ? `${data.settings.defaultUserStorageMb} MB` : t("unbegrenzt", "unlimited"),
     workspaces: data.settings.defaultUserWorkspaces ? String(data.settings.defaultUserWorkspaces) : t("unbegrenzt", "unlimited"),
     upload: `${data.settings.maxUploadMb} MB`,
+    ai: data.settings.defaultUserAi === false ? t("aus", "off") : t("an", "on"),
+    aiTokens: data.settings.defaultUserAiTokensPerMonth ? data.settings.defaultUserAiTokensPerMonth.toLocaleString(LOCALE_TAG) : t("unbegrenzt", "unlimited"),
   };
   const run = async (body: Record<string, unknown>, done?: string) => {
     setNote("");
@@ -907,6 +909,32 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
               unit="MB"
               placeholder={defaults.upload}
               onChange={(uploadMb) => setLimits({ ...limits, uploadMb })}
+            />
+          </PanelRow>
+          <PanelRow label={t("KI", "AI")} htmlFor={`limit-ai-${u.id}`} hint={t(`Standard: ${defaults.ai}`, `Default: ${defaults.ai}`)}>
+            <Select
+              id={`limit-ai-${u.id}`}
+              className="ux-select"
+              value={limits.ai === true ? "on" : limits.ai === false ? "off" : ""}
+              onChange={(e) => setLimits({ ...limits, ai: e.target.value === "" ? null : e.target.value === "on" })}
+            >
+              <option value="">{t(`Standard (${defaults.ai})`, `Default (${defaults.ai})`)}</option>
+              <option value="on">{t("an", "on")}</option>
+              <option value="off">{t("aus", "off")}</option>
+            </Select>
+          </PanelRow>
+          <PanelRow
+            label={t("KI-Tokens je Monat", "AI tokens per month")}
+            htmlFor={`limit-ai-tokens-${u.id}`}
+            hint={t(`Standard: ${defaults.aiTokens} · diesen Monat ${(usage?.aiTokens ?? 0).toLocaleString(LOCALE_TAG)}`, `Default: ${defaults.aiTokens} · this month ${(usage?.aiTokens ?? 0).toLocaleString(LOCALE_TAG)}`)}
+          >
+            <NumberField
+              id={`limit-ai-tokens-${u.id}`}
+              label={t(`KI-Tokens je Monat für ${u.name}`, `AI tokens per month for ${u.name}`)}
+              value={limits.aiTokensPerMonth}
+              max={1_000_000_000}
+              placeholder={defaults.aiTokens}
+              onChange={(aiTokensPerMonth) => setLimits({ ...limits, aiTokensPerMonth })}
             />
           </PanelRow>
           <p className="ux-more-note muted">{t("Leer = Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = instance default, 0 = unlimited. Admins are not limited.")}</p>

@@ -1642,7 +1642,7 @@ type Op = {
   body?: { content: string; schema: Json; description?: string; required?: boolean };
   ok?: { status?: number; content?: string; schema?: Json; description: string };
   errors?: number[];
-  security?: "token" | "none" | "metrics" | "device";
+  security?: "token" | "none" | "metrics" | "device" | "adminApi";
   write?: boolean;
 };
 const errorText: Record<number, string> = {
@@ -1665,7 +1665,16 @@ const q = (name: string, description: string, schema: Json = { type: "string" },
 const workspace = q("workspace", "Workspace ID", { type: "string", format: "uuid" }, true);
 const noStore = "Answered with `Cache-Control: no-store`.";
 
-const operations: { path: string; method: "get" | "post"; op: Op }[] = [
+// The admin API of hosted offerings (lib/admin-api.ts): its own token, off by default.
+const adminApiLimits = { type: "object", properties: { storageMb: { type: ["integer", "null"], minimum: 0 }, workspaces: { type: ["integer", "null"], minimum: 0 }, ai: { type: ["boolean", "null"] }, aiTokensPerMonth: { type: ["integer", "null"], minimum: 0 } } };
+const adminApiNote = "Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429).";
+const adminUser = { type: "object", description: "An account: stored limits (null = instance default), the limits in effect (0 = unlimited) and its usage (storage as counted by the instance's storage accounting, own workspaces, AI tokens of the current calendar month through the instance's provider).", properties: { id: { type: "string", format: "uuid" }, email: { type: "string" }, name: { type: "string" }, createdAt: { type: ["string", "null"], format: "date-time" }, limits: adminApiLimits, effective: { type: "object", properties: { storageMb: { type: "integer" }, workspaces: { type: "integer" }, ai: { type: "boolean" }, aiTokensPerMonth: { type: "integer" } }, required: ["storageMb", "workspaces", "ai", "aiTokensPerMonth"] }, usage: { type: "object", properties: { usedBytes: { type: "integer" }, ownedWorkspaces: { type: "integer" }, aiTokensThisMonth: { type: "integer" } }, required: ["usedBytes", "ownedWorkspaces", "aiTokensThisMonth"] } }, required: ["id", "email", "name", "createdAt", "limits", "effective", "usage"] };
+
+const operations: { path: string; method: "get" | "post" | "put"; op: Op }[] = [
+  // Admin API (hosted offerings)
+  { path: "/api/admin-api/users", method: "get", op: { id: "adminApiFindUsers", tag: "Admin API", security: "adminApi", summary: "Find accounts by e-mail", description: `Exact, case-insensitive match of the e-mail address. ${adminApiNote} ${noStore}`, params: [q("email", "E-mail address", { type: "string" }, true)], ok: { schema: { type: "object", properties: { users: { type: "array", items: adminUser } }, required: ["users"] }, description: "Matching accounts" }, errors: [400, 401, 404, 429] } },
+  { path: "/api/admin-api/users/{id}", method: "get", op: { id: "adminApiUser", tag: "Admin API", security: "adminApi", summary: "One account with limits and usage", description: `${adminApiNote} ${noStore}`, params: [p("id", "Account ID")], ok: { schema: adminUser, description: "The account" }, errors: [401, 404, 429] } },
+  { path: "/api/admin-api/users/{id}/limits", method: "put", op: { id: "adminApiSetLimits", tag: "Admin API", security: "adminApi", summary: "Set an account's limits", description: `Fields left out stay as they are; \`null\` goes back to the instance default; \`0\` means unlimited for \`storageMb\`, \`workspaces\` and \`aiTokensPerMonth\`. Idempotent; a change is written to the audit log with the actor \`admin-api\`. Over a limit nothing is deleted – only new uploads, workspaces or AI requests are refused. ${adminApiNote}`, params: [p("id", "Account ID")], body: { content: "application/json", schema: { ...adminApiLimits, additionalProperties: false }, required: true }, ok: { schema: adminUser, description: "The account with its new limits" }, errors: [400, 401, 404, 429] } },
   // Instance
   { path: "/api/health", method: "get", op: { id: "health", tag: "Instance", summary: "Liveness and readiness", description: "No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator.", security: "none", ok: { schema: ref("Health"), description: "Healthy" }, errors: [503] } },
   { path: "/api/site-info", method: "get", op: { id: "siteInfo", tag: "Instance", summary: "Whether sign-up, the demo and SSO are open", security: "none", ok: { schema: ref("SiteInfo"), description: "Public facts" }, errors: [] } },
@@ -1892,6 +1901,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/fonts/[fontId]/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",
+  "app/api/upgrade/route.ts": "The upgrade link of hosted offerings: a redirect with a signed token for the signed-in browser session (FLOWPLAN_UPGRADE_URL, FLOWPLAN_UPGRADE_SECRET; 404 without them)",
   "app/api/transcribe/[...path]/route.ts": "Voice notes of the browser app (chunked upload to the transcription service; tokens need “AI and transcription”)",
   "app/api/whiteboards/[id]/facilitation/route.ts": "Workshop facilitation on whiteboards (private mode, planning poker, gathering everyone) of the browser app",
   "app/api/webhooks/slack/[id]/route.ts": "Slack Event Subscriptions of a Slack webhook, signed with its signing secret",
@@ -1957,7 +1967,7 @@ function operation(o: Op): Json {
     ...(params.length ? { parameters: params.map((prm) => ({ name: prm.name, in: prm.in, required: !!prm.required, ...(prm.description ? { description: prm.description } : {}), schema: prm.schema })) } : {}),
     ...(o.body ? { requestBody: { required: o.body.required !== false, ...(o.body.description ? { description: o.body.description } : {}), content: { [o.body.content]: { schema: o.body.schema } } } } : {}),
     responses,
-    security: o.security === "none" ? [] : o.security === "metrics" ? [{ metricsToken: [] }] : o.security === "device" ? [{ deviceToken: [] }] : [{ bearerAuth: [] }],
+    security: o.security === "none" ? [] : o.security === "metrics" ? [{ metricsToken: [] }] : o.security === "device" ? [{ deviceToken: [] }] : o.security === "adminApi" ? [{ adminApiToken: [] }] : [{ bearerAuth: [] }],
     ...(o.write ? { "x-write-token": true } : {}),
     ...(idempotent ? { "x-idempotent": true } : {}),
   };
@@ -1982,6 +1992,7 @@ export function openApiDocument(options: { exactVersion?: boolean } = {}): Json 
     { name: "MCP", description: "The Model Context Protocol server for AI assistants." },
     { name: "Extensions", description: "Block extensions (plugins rendered in sandboxed frames) and custom domains for publications." },
     { name: "Workflows", description: "Workflow pages: their graphs, drafts, versions, runs, approvals, export and import. A draft never runs until a person (or a write token) activates it." },
+    { name: "Admin API", description: "For hosted offerings, off by default: a billing service reads an account's limits and usage and sets its limits, with the instance's own `FLOWPLAN_ADMIN_API_TOKEN` (404 without it). Never with a session or a personal API token." },
     { name: "Mobile widgets", description: "Widgets, Live Activities and Shortcuts of the mobile apps: configurable per widget instance, signed in with the app's device token (`fpd_…`), never with a personal API token." },
   ];
   return {
@@ -2012,6 +2023,7 @@ export function openApiDocument(options: { exactVersion?: boolean } = {}): Json 
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "fp_…", description: "A personal API token with read, write or clipper scope. AI features, transcription and meeting notes additionally need the token permission “AI and transcription” (chosen when the token is created, off by default; the administration can switch it off for the instance). Such requests count against the same AI limits as the interface. The import check of marketplace packages (POST /api/marketplace/check) needs the token permission “Marketplace check” (off by default; also for read tokens – it never imports)." },
         metricsToken: { type: "http", scheme: "bearer", description: "`FLOWPLAN_METRICS_TOKEN` of the instance (Prometheus, and the details of the health check)." },
+        adminApiToken: { type: "http", scheme: "bearer", description: "`FLOWPLAN_ADMIN_API_TOKEN` of the instance (at least 32 characters; the admin API answers 404 without it). For hosted offerings only." },
         deviceToken: { type: "http", scheme: "bearer", bearerFormat: "fpd_…", description: "The device token of a mobile app installation (POST /api/mobile/register from the signed-in app). Lives as long as the session it was registered with; using it keeps a remembered session alive, and signing in again in the app moves it to the new session." },
       },
       schemas,

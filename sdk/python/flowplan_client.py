@@ -1767,6 +1767,10 @@ Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorks
 
 # ---- Parameters of the operations ----
 
+AdminApiFindUsersQuery = TypedDict("AdminApiFindUsersQuery", {
+    "email": Required[str],  # E-mail address
+}, total=False)
+
 BootstrapQuery = TypedDict("BootstrapQuery", {
     "workspace": str,  # Workspace ID (default: the first)
 }, total=False)
@@ -2373,6 +2377,18 @@ class FlowplanClient:
 
     def _bytes(self, method: str, path: str, **kwargs: Any) -> bytes:
         return self.request(method, path, **kwargs)[2]
+
+    def admin_api_find_users(self, query: "AdminApiFindUsersQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Find accounts by e-mail — Exact, case-insensitive match of the e-mail address. Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429). Answered with `Cache-Control: no-store`. (GET /api/admin-api/users)"""
+        return self._json("GET", "/api/admin-api/users", query=dict(query) if query else None, headers=headers)
+
+    def admin_api_user(self, id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """One account with limits and usage — Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429). Answered with `Cache-Control: no-store`. (GET /api/admin-api/users/{id})"""
+        return self._json("GET", "/api/admin-api/users/" + _p(id), headers=headers)
+
+    def admin_api_set_limits(self, id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Set an account's limits — Fields left out stay as they are; `null` goes back to the instance default; `0` means unlimited for `storageMb`, `workspaces` and `aiTokensPerMonth`. Idempotent; a change is written to the audit log with the actor `admin-api`. Over a limit nothing is deleted – only new uploads, workspaces or AI requests are refused. Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429). (PUT /api/admin-api/users/{id}/limits)"""
+        return self._json("PUT", "/api/admin-api/users/" + _p(id) + "/limits", json_body=body, headers=headers)
 
     def health(self, headers: Optional[dict[str, str]] = None) -> "Health":
         """Liveness and readiness — No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator. (GET /api/health)"""

@@ -122,7 +122,7 @@ async function handlePOST(
       // nobody (so no personal limit counts them later).
       let bytes = 0;
       for (const files of buffers.values()) for (const { data } of files) bytes += data.length;
-      if (bytes && user) await enforceUserStorage(user, bytes);
+      if (bytes && user) await enforceUserStorage(user, bytes, form.workspace_id);
       if (bytes && (!user || form.anonymous)) await takeAnonymousBudget(`form:${token}`, bytes);
       const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       if (buffers.size) mkdirSync(dir, { recursive: true });

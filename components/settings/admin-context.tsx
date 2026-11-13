@@ -35,10 +35,14 @@ export type AdminData = {
     bytes: number;
     // Own workspaces (owner role) and every workspace the person is in.
     workspaces: number;
+    // AI tokens of this month (lib/user-limits.ts; counted only with a budget or the admin API).
+    aiTokens?: number;
     memberOf?: string[];
-    limits: { storageMb?: number | null; workspaces?: number | null; uploadMb?: number | null };
-    effective: { storageMb: number; workspaces: number; uploadMb: number };
+    limits: { storageMb?: number | null; workspaces?: number | null; uploadMb?: number | null; ai?: boolean | null; aiTokensPerMonth?: number | null };
+    effective: { storageMb: number; workspaces: number; uploadMb: number; ai: boolean; aiTokensPerMonth: number };
   }[];
+  // Storage accounting: the one in effect and FLOWPLAN_STORAGE_ACCOUNTING's.
+  storageAccounting?: { current: "uploader" | "owner"; env: "uploader" | "owner" };
   oidcConfigured: boolean;
   // SSO groups mapped to workspaces (lib/sso-mappings.ts).
   ssoMappings?: SsoMappingRow[];

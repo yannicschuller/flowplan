@@ -6,7 +6,9 @@ import { HttpError } from "../auth";
 import { limitAi } from "../action-limits";
 import type { Identity } from "../types";
 import { requireAiRead } from "./access";
-import { AI_REASON_TEXT, type AiFeature } from "./features";
+import { AI_REASON_TEXT, AI_UPGRADE_REASONS, type AiFeature, type AiReason } from "./features";
+import { LimitError } from "../upgrade-link";
+import { addAiTokens, aiTokensCounted } from "../user-limits";
 import { streamChat, type ChatMessage, type TokenUsage } from "./providers";
 import { estimateTokens, noteAiUsage } from "../metrics";
 import { redactSecrets } from "./redact";
@@ -66,10 +68,15 @@ const inputSchema = z.object({
 
 const running = new Map<string, number>();
 
+// The error for a reason the feature is not available.
+export function aiRefusal(reason: AiReason) {
+  const status = reason === "no-provider" || reason === "key-unreadable" ? 409 : reason === "budget" ? 429 : 403;
+  return AI_UPGRADE_REASONS.includes(reason) ? new LimitError(status, AI_REASON_TEXT[reason][0]) : new HttpError(status, AI_REASON_TEXT[reason][0]);
+}
 // Throws the reason when the feature is not available for this person.
 export async function requireAi(user: Identity, feature: AiFeature, options: AiRunOptions = {}) {
   const resolved = await resolveAi(user, feature, { workspaceId: options.workspaceId });
-  if (!resolved.ok) throw new HttpError(resolved.reason === "no-provider" || resolved.reason === "key-unreadable" ? 409 : 403, AI_REASON_TEXT[resolved.reason][0]);
+  if (!resolved.ok) throw aiRefusal(resolved.reason);
   if (options.pageId) await requireAiRead(user, options.pageId, options.rowId);
   return resolved;
 }
@@ -101,6 +108,14 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
         tokensOut = usage.output ?? estimateTokens(written);
       noteAiUsage(feature, tokensIn, tokensOut);
       options.onUsage?.(tokensIn, tokensOut);
+      // The account's AI tokens of this month (lib/user-limits.ts): only the
+      // instance's provider, only where a budget or the admin API reads them.
+      if (resolved.source === "instance" && !user.demo)
+        try {
+          if (await aiTokensCounted(user)) await addAiTokens(user.id, tokensIn + tokensOut);
+        } catch (error) {
+          console.error("KI-Verbrauch nicht gezählt:", redactSecrets(String((error as Error)?.message || error)));
+        }
     }
     const left = (running.get(user.id) || 1) - 1;
     if (left > 0) running.set(user.id, left);

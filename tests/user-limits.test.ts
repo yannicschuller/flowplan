@@ -28,11 +28,11 @@ const file = async (userId: string, size: number) => {
 
 test("own limits win over the defaults; empty means the default, 0 unlimited", async () => {
   const user = await person();
-  assert.deepEqual(await limits.effectiveUserLimits(user.id), { storageMb: 0, workspaces: 0, uploadMb: (await instanceSettings()).maxUploadMb });
+  assert.deepEqual(await limits.effectiveUserLimits(user.id), { storageMb: 0, workspaces: 0, uploadMb: (await instanceSettings()).maxUploadMb, ai: true, aiTokensPerMonth: 0 });
   await saveInstanceSettings({ ...(await instanceSettings()), defaultUserStorageMb: 50, defaultUserWorkspaces: 2 });
   assert.equal((await limits.effectiveUserLimits(user.id)).storageMb, 50);
   await limits.setUserLimits(user.id, { storageMb: 5, uploadMb: 3 });
-  assert.deepEqual(await limits.effectiveUserLimits(user.id), { storageMb: 5, workspaces: 2, uploadMb: 3 });
+  assert.deepEqual(await limits.effectiveUserLimits(user.id), { storageMb: 5, workspaces: 2, uploadMb: 3, ai: true, aiTokensPerMonth: 0 });
   await limits.setUserLimits(user.id, { storageMb: null, uploadMb: null });
   assert.equal((await limits.effectiveUserLimits(user.id)).storageMb, 50);
   assert.deepEqual(await limits.storedUserLimits(user.id), {});
@@ -42,15 +42,15 @@ test("storage per person counts files across workspaces and refuses growth beyon
   const user = await person();
   await limits.setUserLimits(user.id, { storageMb: 1 });
   await file(user.id, 700 * 1024);
-  await assert.doesNotReject(async () => await limits.enforceUserStorage(user, 200 * 1024));
-  await assert.rejects(async () => await limits.enforceUserStorage(user, 400 * 1024), /Speicher ist voll/);
+  await assert.doesNotReject(async () => await limits.enforceUserStorage(user, 200 * 1024, null));
+  await assert.rejects(async () => await limits.enforceUserStorage(user, 400 * 1024, null), /Speicher ist voll/);
   const check = await limits.userStorageCheckpoint(user);
   await file(user.id, 400 * 1024);
   await assert.rejects(check, /reicht dafür nicht/);
   // Admins are not limited.
   const admin = await person(true);
   await limits.setUserLimits(admin.id, { storageMb: 1 });
-  await assert.doesNotReject(async () => await limits.enforceUserStorage(admin, 5 * 1024 * 1024));
+  await assert.doesNotReject(async () => await limits.enforceUserStorage(admin, 5 * 1024 * 1024, null));
 });
 
 test("a person owns at most as many workspaces as allowed", async () => {

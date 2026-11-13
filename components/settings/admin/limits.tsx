@@ -6,7 +6,7 @@ import { useT } from "../../i18n";
 import { SettingGroup } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
-import { AdminStatus, InstanceNumber } from "./parts";
+import { AdminStatus, InstanceNumber, InstanceSelect, InstanceSwitch } from "./parts";
 import { WorkflowLimits } from "./workflow-limits";
 
 export default function LimitsSection() {
@@ -16,6 +16,10 @@ export default function LimitsSection() {
   const s = data.settings;
   const unlimited = t("unbegrenzt", "unlimited");
   const quota = s.defaultQuotaMb ?? data.metrics.defaultQuotaMb;
+  const owner = data.storageAccounting?.current === "owner";
+  const envAccounting = data.storageAccounting?.env ?? "uploader";
+  const accountingLabel = (mode: "uploader" | "owner") =>
+    mode === "owner" ? t("Eigentümer des Arbeitsbereichs", "Workspace owner") : t("Hochladende Person", "Uploader");
   return (
     <>
       <AdminStatus
@@ -60,14 +64,35 @@ export default function LimitsSection() {
         <InstanceNumber
           field="defaultUserStorageMb"
           label={t("Speicher je Person", "Storage per person")}
-          description={t("Alles, was eine Person hochlädt oder kopiert – über alle Arbeitsbereiche.", "Everything a person uploads or copies – across all workspaces.")}
+          description={
+            owner
+              ? t("Alle Dateien in den Arbeitsbereichen, die eine Person angelegt hat – egal, wer sie hochlädt.", "All files in the workspaces a person created – whoever uploads them.")
+              : t("Alles, was eine Person hochlädt oder kopiert – über alle Arbeitsbereiche.", "Everything a person uploads or copies – across all workspaces.")
+          }
           unit="MB"
           placeholder={unlimited}
+        />
+        <InstanceSelect
+          field="storageAccounting"
+          label={t("Speicher zählt bei", "Storage counts for")}
+          description={t(
+            "Wessen Speicher eine Datei belegt: die Person, die sie hochlädt, oder die Person, die den Arbeitsbereich angelegt hat (für gehostete Angebote).",
+            "Whose storage a file uses: the person who uploads it, or the person who created the workspace (for hosted offerings).",
+          )}
+          standard={t(`Wie in der Umgebung (${accountingLabel(envAccounting)})`, `As in the environment (${accountingLabel(envAccounting)})`)}
+          options={[
+            { value: "uploader", label: accountingLabel("uploader") },
+            { value: "owner", label: accountingLabel("owner") },
+          ]}
         />
         <InstanceNumber
           field="defaultUserWorkspaces"
           label={t("Eigene Arbeitsbereiche je Person", "Own workspaces per person")}
-          description={t("Wie viele Arbeitsbereiche eine Person besitzen darf.", "How many workspaces a person may own.")}
+          description={
+            owner
+              ? t("Wie viele Arbeitsbereiche eine Person anlegen darf.", "How many workspaces a person may create.")
+              : t("Wie viele Arbeitsbereiche eine Person besitzen darf.", "How many workspaces a person may own.")
+          }
           max={10000}
           placeholder={unlimited}
         />
@@ -82,6 +107,18 @@ export default function LimitsSection() {
           min={1}
           max={1024}
           fallback={10}
+        />
+        <InstanceSwitch
+          field="defaultUserAi"
+          label={t("KI je Person", "AI per person")}
+          description={t("Ob Personen ohne eigene Einstellung KI nutzen dürfen (Administration → KI regelt den Rest).", "Whether people without their own setting may use AI (Administration → AI decides the rest).")}
+        />
+        <InstanceNumber
+          field="defaultUserAiTokensPerMonth"
+          label={t("KI-Tokens je Person und Monat", "AI tokens per person and month")}
+          description={t("Über den KI-Anbieter der Instanz, je Kalendermonat. Leer oder 0 = unbegrenzt.", "Through the instance's AI provider, per calendar month. Empty or 0 = unlimited.")}
+          max={1_000_000_000}
+          placeholder={unlimited}
         />
       </SettingGroup>
       <SettingGroup

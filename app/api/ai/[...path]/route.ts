@@ -38,6 +38,7 @@ import { improveCapture, IMPROVE_LIMITS } from "@/lib/ai/capture-improve";
 import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
 import { aiDraftWorkflow } from "@/lib/workflows/ai-builder";
 import { HANDWRITING_BODY_LIMIT, recognizeHandwriting } from "@/lib/ai/handwriting";
+import { isLimitError, upgradeConfigured } from "@/lib/upgrade-link";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ function error(e: unknown) {
     return NextResponse.json({ error: "Ungültige Eingabe.", details: e.issues.map((i) => i.message) }, { status: 400 });
   if (!(e instanceof HttpError)) console.error("KI:", redactSecrets(String((e as Error)?.message || e)));
   return NextResponse.json(
-    { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
+    { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden.", ...(isLimitError(e) && upgradeConfigured() ? { upgrade: true } : {}) },
     { status: e instanceof HttpError ? (e.status === 499 ? 400 : e.status) : 500 },
   );
 }

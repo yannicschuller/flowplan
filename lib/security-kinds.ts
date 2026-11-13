@@ -46,6 +46,8 @@ export const securityKinds = {
   "security.unblock": { severity: "info", de: "Sperre aufgehoben", en: "Block lifted" },
   "instance.move": { severity: "critical", de: "Instanzumzug", en: "Instance move" },
   "instance.move_refused": { severity: "warn", de: "Umzugstoken abgewiesen", en: "Move token refused" },
+  // The admin API of hosted offerings (lib/admin-api.ts).
+  "admin_api.refused": { severity: "warn", de: "Admin-API-Token abgewiesen", en: "Admin API token refused" },
   "security.blocked_request": { severity: "warn", de: "Anfrage einer gesperrten Adresse", en: "Request from a blocked address" },
   // Workflows (#168, docs/specs/workflows.md §9.9).
   "workflow.hook.refused": { severity: "warn", de: "Workflow-Webhook abgewiesen (Signatur oder Token)", en: "Workflow webhook refused (signature or token)" },

@@ -150,7 +150,7 @@ import { ARCHIVE_LIMIT, jsonExportWorkspace } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
 import { plainHttpInstance } from "@/lib/instance-https";
 import { updateStatus } from "@/lib/update-check";
-import { enforceUserStorage, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
+import { enforceUserStorage, envStorageAccounting, maxUploadMbFor, storageAccounting, usersUsage } from "@/lib/user-limits";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
 import {
   enforceQuota,
@@ -162,6 +162,7 @@ import { onShutdown } from "@/lib/cluster/runtime";
 import { workflowGet } from "@/lib/workflows/commands";
 import { workflowPost } from "@/lib/workflows/rest";
 import { withReadMemo } from "@/lib/read-memo";
+import { isLimitError, upgradeConfigured } from "@/lib/upgrade-link";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -177,6 +178,8 @@ function error(e: unknown) {
         e instanceof HttpError
           ? e.message
           : "Die Anfrage konnte nicht verarbeitet werden.",
+      // A limit the person could lift with the upgrade link (lib/upgrade-link.ts).
+      ...(isLimitError(e) && upgradeConfigured() ? { upgrade: true } : {}),
     },
     { status: e instanceof HttpError ? e.status : 500 },
   );
@@ -1094,6 +1097,7 @@ async function handleGET(
         update: await updateStatus(),
         plainHttp: plainHttpInstance(),
         userUsage: await usersUsage(),
+        storageAccounting: { current: await storageAccounting(), env: envStorageAccounting() },
         users: await all(
           "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
         ),
@@ -1846,7 +1850,7 @@ async function handlePOST(
       if (file.size > maxUpload * 1024 * 1024)
         throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
       await enforceQuota(p.workspace_id, file.size);
-      await enforceUserStorage(user, file.size);
+      await enforceUserStorage(user, file.size, p.workspace_id);
       if (
         data.get("purpose") === "cover" &&
         !imageMimes.includes(file.type as (typeof imageMimes)[number])

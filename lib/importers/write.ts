@@ -177,7 +177,7 @@ export async function previewImport(user: Identity, workspaceId: string, spaceId
   const icons = pages.filter((p) => importIcon(p.icon)).length + (mode === "pages" ? records.filter((r) => importIcon(r.icon)).length : 0);
   try {
     await enforceQuota(workspaceId, bytes);
-    await enforceUserStorage(user, bytes);
+    await enforceUserStorage(user, bytes, workspaceId);
   } catch (error) {
     if (error instanceof HttpError) warnings.push(error.message);
     else throw error;
@@ -219,7 +219,7 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
   if (preview.tooMany)
     throw new HttpError(413, mode === "database" ? tooManyRecords(preview.pages) : tooManyPages(pagesFor(tree, mode).length));
   await enforceQuota(workspaceId, preview.bytes);
-  await enforceUserStorage(user, preview.bytes);
+  await enforceUserStorage(user, preview.bytes, workspaceId);
   const used = referencedFiles(tree, mode);
   const pagesOf = pagesFor(tree, mode);
   const byKey = new Map(pagesOf.map((p) => [p.key, p]));

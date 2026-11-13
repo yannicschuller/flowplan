@@ -274,7 +274,7 @@ export async function desktopCaptureSave(user: Identity, raw: unknown, files: Up
     const { page, journal, properties } = await resolveTarget(user, input.targetId, input.today, true);
     if (size) {
       await enforceQuota(page.workspace_id, size);
-      await enforceUserStorage(user, size);
+      await enforceUserStorage(user, size, page.workspace_id);
     }
     const parsed = input.parse
       ? parseCapture(text, { today: input.today, locale: input.locale, literal: input.literal, properties, members: await members(page.workspace_id), task: input.task })

@@ -3066,6 +3066,162 @@ export class FlowplanClient {
     return new FlowplanError(response.status, message, details, retry > 0 ? retry : undefined);
   }
 
+  /** Find accounts by e-mail — Exact, case-insensitive match of the e-mail address. Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429). Answered with `Cache-Control: no-store`. (GET /api/admin-api/users) */
+  async adminApiFindUsers(query: { email: string }, options?: RequestOptions): Promise<{
+    users: ({
+      id: string;
+      email: string;
+      name: string;
+      createdAt: string | null;
+      limits: {
+        storageMb?: number | null;
+        workspaces?: number | null;
+        ai?: boolean | null;
+        aiTokensPerMonth?: number | null;
+      };
+      effective: {
+        storageMb: number;
+        workspaces: number;
+        ai: boolean;
+        aiTokensPerMonth: number;
+      };
+      usage: {
+        usedBytes: number;
+        ownedWorkspaces: number;
+        aiTokensThisMonth: number;
+      };
+    })[];
+  }> {
+    return this.json<{
+    users: ({
+      id: string;
+      email: string;
+      name: string;
+      createdAt: string | null;
+      limits: {
+        storageMb?: number | null;
+        workspaces?: number | null;
+        ai?: boolean | null;
+        aiTokensPerMonth?: number | null;
+      };
+      effective: {
+        storageMb: number;
+        workspaces: number;
+        ai: boolean;
+        aiTokensPerMonth: number;
+      };
+      usage: {
+        usedBytes: number;
+        ownedWorkspaces: number;
+        aiTokensThisMonth: number;
+      };
+    })[];
+  }>("GET", `/api/admin-api/users`, { query }, options);
+  }
+
+  /** One account with limits and usage — Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429). Answered with `Cache-Control: no-store`. (GET /api/admin-api/users/{id}) */
+  async adminApiUser(id: string, options?: RequestOptions): Promise<{
+    id: string;
+    email: string;
+    name: string;
+    createdAt: string | null;
+    limits: {
+      storageMb?: number | null;
+      workspaces?: number | null;
+      ai?: boolean | null;
+      aiTokensPerMonth?: number | null;
+    };
+    effective: {
+      storageMb: number;
+      workspaces: number;
+      ai: boolean;
+      aiTokensPerMonth: number;
+    };
+    usage: {
+      usedBytes: number;
+      ownedWorkspaces: number;
+      aiTokensThisMonth: number;
+    };
+  }> {
+    return this.json<{
+    id: string;
+    email: string;
+    name: string;
+    createdAt: string | null;
+    limits: {
+      storageMb?: number | null;
+      workspaces?: number | null;
+      ai?: boolean | null;
+      aiTokensPerMonth?: number | null;
+    };
+    effective: {
+      storageMb: number;
+      workspaces: number;
+      ai: boolean;
+      aiTokensPerMonth: number;
+    };
+    usage: {
+      usedBytes: number;
+      ownedWorkspaces: number;
+      aiTokensThisMonth: number;
+    };
+  }>("GET", `/api/admin-api/users/${encodeURIComponent(id)}`, {}, options);
+  }
+
+  /** Set an account's limits — Fields left out stay as they are; `null` goes back to the instance default; `0` means unlimited for `storageMb`, `workspaces` and `aiTokensPerMonth`. Idempotent; a change is written to the audit log with the actor `admin-api`. Over a limit nothing is deleted – only new uploads, workspaces or AI requests are refused. Only when `FLOWPLAN_ADMIN_API_TOKEN` (at least 32 characters) is set – otherwise 404 – and only with that token as bearer token; session cookies and personal API tokens never reach it. Wrong tokens are security events; ten within 15 minutes lock the address out for 15 minutes (429). (PUT /api/admin-api/users/{id}/limits) */
+  async adminApiSetLimits(id: string, body: {
+    storageMb?: number | null;
+    workspaces?: number | null;
+    ai?: boolean | null;
+    aiTokensPerMonth?: number | null;
+  }, options?: RequestOptions): Promise<{
+    id: string;
+    email: string;
+    name: string;
+    createdAt: string | null;
+    limits: {
+      storageMb?: number | null;
+      workspaces?: number | null;
+      ai?: boolean | null;
+      aiTokensPerMonth?: number | null;
+    };
+    effective: {
+      storageMb: number;
+      workspaces: number;
+      ai: boolean;
+      aiTokensPerMonth: number;
+    };
+    usage: {
+      usedBytes: number;
+      ownedWorkspaces: number;
+      aiTokensThisMonth: number;
+    };
+  }> {
+    return this.json<{
+    id: string;
+    email: string;
+    name: string;
+    createdAt: string | null;
+    limits: {
+      storageMb?: number | null;
+      workspaces?: number | null;
+      ai?: boolean | null;
+      aiTokensPerMonth?: number | null;
+    };
+    effective: {
+      storageMb: number;
+      workspaces: number;
+      ai: boolean;
+      aiTokensPerMonth: number;
+    };
+    usage: {
+      usedBytes: number;
+      ownedWorkspaces: number;
+      aiTokensThisMonth: number;
+    };
+  }>("PUT", `/api/admin-api/users/${encodeURIComponent(id)}/limits`, { json: body }, options);
+  }
+
   /** Liveness and readiness — No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator. (GET /api/health) */
   async health(options?: RequestOptions): Promise<Health> {
     return this.json<Health>("GET", `/api/health`, {}, options);

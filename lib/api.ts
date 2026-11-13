@@ -27,7 +27,8 @@ import { knownUpdate } from "./update-check";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
 import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
-import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
+import { accountedBytes, aiTokensThisMonth, assertMayCreateWorkspace, effectiveUserLimits, handOverWorkspaceCreator, ownedWorkspaces, setUserLimits, storageAccounting, userStorageCheckpoint } from "./user-limits";
+import { upgradeConfigured } from "./upgrade-link";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
@@ -439,7 +440,16 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // What applies to me: limits with my usage, and my fixed language.
     myLimits: user.isAdmin
       ? null
-      : { ...(await effectiveUserLimits(user.id)), usedBytes: await userBytes(user.id), ownedWorkspaces: await ownedWorkspaces(user.id) },
+      : {
+          ...(await effectiveUserLimits(user.id)),
+          usedBytes: await accountedBytes(user.id),
+          ownedWorkspaces: await ownedWorkspaces(user.id),
+          // "uploader" or "owner" (lib/user-limits.ts): what usedBytes counts.
+          accounting: await storageAccounting(),
+          aiTokensThisMonth: await aiTokensThisMonth(user.id),
+          // The upgrade link of hosted offerings (GET /api/upgrade, lib/upgrade-link.ts).
+          upgrade: upgradeConfigured() && !user.demo,
+        },
     language: await fixedLanguage(user.id),
     // New accounts see the introduction once (components/onboarding.tsx).
     onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
@@ -3272,6 +3282,9 @@ async function runCommand(
             wid(),
             target,
           );
+          // A demoted creator hands the workspace's storage on ("owner"
+          // accounting, lib/user-limits.ts) – to the owner who demoted them.
+          if (old?.role === "owner" && role !== "owner") await handOverWorkspaceCreator(wid(), user.id);
           securityEvent("role.changed", { actorId: user.id, severity: role === "owner" ? "warn" : "info", detail: `${target} → ${role} in workspace ${wid()}` });
           // An SSO-managed membership keeps its source: the next SSO
           // sign-in sets the mapped role again (lib/sso-mappings.ts).

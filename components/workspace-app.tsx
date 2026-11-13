@@ -95,6 +95,7 @@ import SavedTemplates from "./saved-templates";
 import { MarketplaceLink, MarketplaceReceiver } from "./marketplace";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
+import { openUpgrade, upgradeOffered } from "@/lib/upgrade-hint";
 import { commandOverlay } from "@/lib/optimistic-commands";
 import { dropSpace, moveSpaceBy } from "@/lib/space-moves";
 import { useSidebarFolds } from "./sidebar-folds-state";
@@ -906,7 +907,11 @@ export default function WorkspaceApp({
           tone: "error",
           // Errors stay a little longer; one with a retry until it is used.
           duration: retry ? 12000 : 8000,
-          ...(retry ? { action: { label: tr("Erneut versuchen", "Retry"), run: retry } } : {}),
+          ...(retry
+            ? { action: { label: tr("Erneut versuchen", "Retry"), run: retry } }
+            : upgradeOffered(view.detail, view.title)
+              ? { action: { label: tr("Speicher erweitern / Upgrade", "Get more / Upgrade"), run: openUpgrade } }
+              : {}),
         });
       }),
     [],

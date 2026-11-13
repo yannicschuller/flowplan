@@ -66,14 +66,39 @@ export default function AccountSection() {
           <div className="setting-row wide">
             <div className="limits-overview">
               <UsageMeter
-                label={t("Speicher (deine Dateien und Bilder)", "Storage (your files and images)")}
+                label={
+                  boot.myLimits.accounting === "owner"
+                    ? t("Speicher (alle Dateien in deinen Arbeitsbereichen)", "Storage (all files in your workspaces)")
+                    : t("Speicher (deine Dateien und Bilder)", "Storage (your files and images)")
+                }
                 used={boot.myLimits.usedBytes}
                 limit={boot.myLimits.storageMb * 1024 * 1024}
                 format={(n) => `${(n / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: n < 10 * 1024 * 1024 ? 1 : 0 })} MB`}
               />
               <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={boot.myLimits.ownedWorkspaces} limit={boot.myLimits.workspaces} format={(n) => String(n)} />
+              {boot.myLimits.ai && boot.myLimits.aiTokensPerMonth > 0 && (
+                <UsageMeter
+                  label={t("KI-Tokens in diesem Monat", "AI tokens this month")}
+                  used={boot.myLimits.aiTokensThisMonth}
+                  limit={boot.myLimits.aiTokensPerMonth}
+                  format={(n) => n.toLocaleString(LOCALE_TAG)}
+                />
+              )}
             </div>
           </div>
+          {!boot.myLimits.ai && (
+            <SettingRow label={t("KI-Funktionen", "AI features")}>
+              <strong className="setting-value">{t("nicht enthalten", "not included")}</strong>
+            </SettingRow>
+          )}
+          {boot.myLimits.upgrade && (
+            <SettingRow label={t("Mehr Speicher, Arbeitsbereiche oder KI", "More storage, workspaces or AI")}>
+              {/* A fresh signed link on every click (GET /api/upgrade, lib/upgrade-link.ts). */}
+              <a className="button compact" href="/api/upgrade" target="_blank" rel="noopener">
+                {t("Speicher erweitern / Upgrade", "Get more / Upgrade")}
+              </a>
+            </SettingRow>
+          )}
           <SettingRow label={t("Größte Datei beim Hochladen", "Largest upload")}>
             <strong className="setting-value">{boot.myLimits.uploadMb} MB</strong>
           </SettingRow>

@@ -31,7 +31,7 @@ test("every operation has a unique operationId, a known tag, responses and resol
   const ids = new Set<string>();
   const tags = new Set((doc.tags as { name: string }[]).map((t) => t.name));
   for (const { path, method, op } of operations) {
-    assert.match(method, /^(get|post)$/, path);
+    assert.match(method, op.tags && (op.tags as string[]).includes("Admin API") ? /^(get|put)$/ : /^(get|post)$/, path);
     const id = String(op.operationId);
     assert.ok(id && !ids.has(id), `${method} ${path}: operationId ${id}`);
     ids.add(id);

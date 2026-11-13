@@ -999,7 +999,7 @@ async function keepOrDropAudio(actor: Identity, row: MeetingRow, session: Meetin
       try {
         await transaction(async () => {
           await enforceQuota(page.workspace_id, audio.length);
-          await enforceUserStorage(actor, audio.length);
+          await enforceUserStorage(actor, audio.length, page.workspace_id);
           renameSync(part, final);
           onTransactionRollback(() => {
             try {

@@ -144,7 +144,7 @@ async function captureUpload(user: Identity, input: z.infer<(typeof actionSchema
   if (input.type === "photo" ? !/^image\/(png|jpeg|gif|webp|avif|heic|heif)$/.test(mime) : !/^audio\//.test(mime))
     throw new HttpError(400, input.type === "photo" ? ct("Bitte ein Foto senden.", "Please send a photo.") : ct("Bitte eine Sprachnotiz senden.", "Please send a voice memo."));
   await enforceQuota(page.workspace_id, file.bytes.length);
-  await enforceUserStorage(user, file.bytes.length);
+  await enforceUserStorage(user, file.bytes.length, page.workspace_id);
   const content = input.type === "photo" ? stripLocation(file.bytes, mime) : file.bytes;
   const name = sanitizeFileName(file.name || (input.type === "photo" ? "foto.jpg" : "sprachnotiz.m4a"));
   // Voice memos become text where the instance has a transcription service;
@@ -171,7 +171,7 @@ async function captureUpload(user: Identity, input: z.infer<(typeof actionSchema
   const result = await transaction(async () => {
     // Again with the insert: parallel uploads take turns (locks of both).
     await enforceQuota(page.workspace_id, content.length);
-    await enforceUserStorage(user, content.length);
+    await enforceUserStorage(user, content.length, page.workspace_id);
     const store = async (ownerId: string) => {
       const path = resolve(dir, fileId);
       writeFileSync(path, content);
@@ -226,7 +226,7 @@ async function captureShare(user: Identity, input: z.infer<(typeof actionSchemas
   const total = kept.reduce((sum, file) => sum + file.bytes.length, 0);
   if (total) {
     await enforceQuota(page.workspace_id, total);
-    await enforceUserStorage(user, total);
+    await enforceUserStorage(user, total, page.workspace_id);
   }
   const title = (
     input.title ||
@@ -253,7 +253,7 @@ async function captureShare(user: Identity, input: z.infer<(typeof actionSchemas
     // Again with the insert: parallel uploads take turns (locks of both).
     if (total) {
       await enforceQuota(page.workspace_id, total);
-      await enforceUserStorage(user, total);
+      await enforceUserStorage(user, total, page.workspace_id);
     }
     const store = async (ownerId: string) => {
       for (const file of stored) {

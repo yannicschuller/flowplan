@@ -20,6 +20,7 @@
 // re-application, so one set of mappings serves OIDC, SCIM and LDAP.
 import { z } from "zod";
 import { all, id, one, run, transaction, lockFor, lockMembership } from "./db";
+import { handOverWorkspaceCreator } from "./user-limits";
 import { HttpError } from "./auth";
 import { removeFromWorkspace } from "./workspace-lifecycle";
 import type { Role } from "./types";
@@ -71,8 +72,10 @@ async function applyWorkspace(userId: string, workspaceId: string, matched: SsoM
     } else {
       // Also a membership added or changed by hand: the mapping wins.
       const lastOwner = member.role === "owner" && (await owners(workspaceId)) <= 1;
-      if (member.role !== desired && !lastOwner)
+      if (member.role !== desired && !lastOwner) {
         await run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", desired, workspaceId, userId);
+        if (member.role === "owner") await handOverWorkspaceCreator(workspaceId);
+      }
       await setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
     }
   } else if (managed) {

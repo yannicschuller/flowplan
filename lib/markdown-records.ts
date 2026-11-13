@@ -296,7 +296,7 @@ export async function importMarkdownRecords(
         ext = target.split(".").pop()!.toLowerCase();
       bytesAdded += data.length;
       await enforceQuota(page.workspace_id, bytesAdded);
-      await enforceUserStorage(user, bytesAdded);
+      await enforceUserStorage(user, bytesAdded, page.workspace_id);
       mkdirSync(dir, { recursive: true });
       writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));

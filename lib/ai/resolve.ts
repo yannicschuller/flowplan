@@ -14,6 +14,7 @@ import { privateAddress } from "../safe-fetch";
 import { isIP } from "node:net";
 import { mapAsync } from "../each-async";
 import { tokenAiAllowed } from "./token-access";
+import { aiAllowedByLimits, aiBudgetUsedUp } from "../user-limits";
 
 export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user" } | { ok: false; reason: AiReason };
 type Options = {
@@ -44,6 +45,8 @@ async function gate(user: Identity, feature: string, options: Options): Promise<
   if (!featureAllowed(instance, feature)) return "feature-off";
   if (!(await userAllowedByPolicy(user.id, instance))) return "not-allowed";
   if (!instance.guests && await guestHere(user, options.workspaceId)) return "guest";
+  // The account's own limits (users.limits.ai, lib/user-limits.ts).
+  if (!(await aiAllowedByLimits(user))) return "account-off";
   const own = await userAiSettings(user.id);
   if (!own.enabled) return "user-off";
   if (own.features[feature] === false) return "user-feature-off";
@@ -104,7 +107,11 @@ async function provider(user: Identity): Promise<AiResolution> {
 export async function resolveAi(user: Identity, feature: AiFeature | string, options: Options = {}): Promise<AiResolution> {
   const reason = await gate(user, feature, options);
   if (reason) return { ok: false, reason };
-  return await provider(user);
+  const resolved = await provider(user);
+  // The monthly AI tokens of the account count what the instance's provider
+  // answers (an own provider is the person's own bill).
+  if (resolved.ok && resolved.source === "instance" && (await aiBudgetUsedUp(user))) return { ok: false, reason: "budget" };
+  return resolved;
 }
 
 // Text stays on the server or in its own network: Ollama or another server

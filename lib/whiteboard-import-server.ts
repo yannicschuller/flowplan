@@ -54,7 +54,7 @@ export async function storeBoardImages(
     const data = Buffer.from(image.data);
     if (data.length > maxFile || verifiedMime(image.mime, data) !== image.mime) continue;
     await enforceQuota(workspaceId, added.bytes + data.length);
-    await enforceUserStorage(user, added.bytes + data.length);
+    await enforceUserStorage(user, added.bytes + data.length, workspaceId);
     added.bytes += data.length;
     const fid = id();
     writeFileSync(resolve(dir, fid), data);

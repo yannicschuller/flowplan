@@ -7,6 +7,7 @@
 // data – name, e-mail, password, passkeys, sessions, settings – is removed.
 import { z } from "zod";
 import { all, audit, lockFor, one, run, inSavepoint, lockMembership } from "./db";
+import { handOverWorkspaceCreator } from "./user-limits";
 import { HttpError } from "./auth";
 import { ADMINS_LOCK, localLoginEnabled } from "./local-auth";
 import { ssoOnlyAccount } from "./identities";
@@ -300,6 +301,9 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   await run("DELETE FROM collections WHERE owner_id=?", userId);
   await run("DELETE FROM grants WHERE user_id=?", userId);
   await run("DELETE FROM members WHERE user_id=?", userId);
+  // Workspaces the account created pass to their new owner ("owner"
+  // storage accounting, lib/user-limits.ts).
+  for (const w of await all<{ id: string }>("SELECT id FROM workspaces WHERE created_by=?", userId)) await handOverWorkspaceCreator(w.id, successors[w.id]);
   await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   // Who made records done (schema 96): nobody any more.
   await run("UPDATE row_status_log SET user_id=NULL WHERE user_id=?", userId);

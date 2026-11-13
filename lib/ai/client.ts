@@ -1,6 +1,7 @@
 // Browser side of the AI core: is a feature usable, may the AI read this
 // page, and streaming an answer from POST /api/ai/run (see lib/ai/index.ts).
 import { serverMessage } from "../i18n-errors";
+import { rememberUpgrade } from "../upgrade-hint";
 import { AI_REASON_TEXT, type AiFeature, type AiReason, type AiStatus } from "./features";
 import type { DatabaseNote } from "./database-note";
 import type { ResolvedTitle } from "./title-links";
@@ -63,7 +64,9 @@ export async function streamAiFrom(
   });
   if (!response.ok || !response.body) {
     const data = await response.json().catch(() => ({}));
-    throw new AiRequestError(serverMessage(data?.error || "Die KI-Anfrage ist fehlgeschlagen."), response.status);
+    const message = serverMessage(data?.error || "Die KI-Anfrage ist fehlgeschlagen.");
+    rememberUpgrade(message, data);
+    throw new AiRequestError(message, response.status);
   }
   onResponse?.(response);
   const reader = response.body.getReader();

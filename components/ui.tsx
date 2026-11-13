@@ -1,4 +1,5 @@
 "use client";
+import { rememberUpgrade } from "@/lib/upgrade-hint";
 import { serverMessage } from "@/lib/i18n-errors";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf } from "@/lib/idempotency-key";
 import {
@@ -626,6 +627,7 @@ export async function api<T = Record<string, unknown>>(
     );
     // onError props receive only the message; its status stays findable.
     rememberError(error.message, error.status, error.transient);
+    rememberUpgrade(error.message, data);
     throw error;
   }
   // The mobile app updates its widgets and badge after a change.
