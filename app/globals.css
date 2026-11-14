@@ -18960,7 +18960,6 @@ h3 .block-reactions {
 /* Text style and alignment (#278): small menus, the button shows what the
    text at the caret is now. */
 .editor-toolbar button.toolbar-menu-button[type] {
-  width: auto;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -18968,6 +18967,23 @@ h3 .block-reactions {
   gap: 0;
   padding: 4px 1px 4px 3px;
   white-space: nowrap;
+}
+.editor-toolbar button.toolbar-menu-button[type]:not(.toolbar-heading-menu) {
+  width: auto;
+}
+/* The text style ("Aa", "H2") keeps the width of the toolbar's other
+   buttons (#293); its caret sits in the corner. */
+.editor-toolbar button.toolbar-heading-menu[type] {
+  position: relative;
+  padding: 4px 4px 4px 0;
+}
+.editor-toolbar .toolbar-heading-menu svg.toolbar-menu-caret {
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+}
+.editor-toolbar .toolbar-heading-menu .toolbar-menu-text {
+  min-width: 0;
 }
 .editor-toolbar .toolbar-menu-button svg.toolbar-menu-caret {
   width: 7px;

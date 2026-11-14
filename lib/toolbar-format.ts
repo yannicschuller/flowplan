@@ -44,5 +44,7 @@ export function blockStyleAt(state: EditorState): BlockStyle | null {
   return (HEADING_LEVELS as readonly number[]).includes(level) ? (level as BlockStyle) : null;
 }
 
-// The short name on the button: "Text", "H1" … "H4".
-export const blockStyleShort = (style: BlockStyle | null) => (style === null || style === "paragraph" ? "Text" : `H${style}`);
+// The short name on the button: "Aa" for text, "H1" … "H4" – two
+// characters, so the button is as wide as the toolbar's others (#293); the
+// full name is its tooltip and accessible name.
+export const blockStyleShort = (style: BlockStyle | null) => (style === null || style === "paragraph" ? "Aa" : `H${style}`);

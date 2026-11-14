@@ -1,7 +1,7 @@
 "use client";
 // The alignment and block style menus of the formatting toolbar (#278): the
 // button shows what the text at the caret is now (its alignment icon,
-// "Text" or "H1" …), the menu the choices with their shortcuts. Radix menus
+// "Aa" for text or "H1" …, #293), the menu the choices with their shortcuts. Radix menus
 // as the toolbar's colour menu: arrow keys, Enter, Escape, screen readers
 // hear "menu" and the checked entry. Used by the app's toolbar
 // (components/editor.tsx) and the one of shared pages
@@ -189,7 +189,8 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
     equalityFn: (a, b) => a?.current === b?.current && a?.heading === b?.heading,
   });
   const current = state?.current ?? null;
-  const shown = blockStyleShort(current) === "Text" ? t("Text", "Text") : blockStyleShort(current);
+  // "Aa" or "H1" … "H4" (#293): as wide as the other buttons.
+  const shown = blockStyleShort(current);
   const names = (style: BlockStyle) => (style === "paragraph" ? t("Text", "Text") : t(`Überschrift ${style}`, `Heading ${style}`));
   return (
     <FormatMenu<string>

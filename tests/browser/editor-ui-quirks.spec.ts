@@ -49,9 +49,14 @@ test("text style and alignment are menus in the toolbar", async ({ page }, info)
   await expect(editor.locator("p").first()).toHaveCSS("text-align", "right");
   await expect(toolbar.getByRole("button", { name: "Ausrichtung: Rechtsbündig", exact: true })).toBeVisible();
 
-  // Text style: "Text", then "Überschrift 3" makes a level 3 heading.
-  const style = toolbar.getByRole("button", { name: "Textstil: Text", exact: true });
-  await expect(style).toHaveText(/Text/);
+  // Text style: "Aa" (as wide as the other buttons, #293), then
+  // "Überschrift 3" makes a level 3 heading.
+  const style = toolbar.getByRole("button", { name: "Aa – Textstil: Text", exact: true });
+  await expect(style).toHaveText(/^Aa$/);
+  await expect(style).toHaveAttribute("title", "Textstil: Text");
+  const bold = await toolbar.getByTitle("Fett", { exact: true }).boundingBox();
+  const styleBox = await style.boundingBox();
+  expect(Math.abs(styleBox!.width - bold!.width)).toBeLessThanOrEqual(0.5);
   await style.click();
   const styleMenu = page.getByRole("menu", { name: "Textstil" });
   await expect(styleMenu.getByRole("menuitemradio")).toHaveText([/^Text/, /Überschrift 1/, /Überschrift 2/, /Überschrift 3/, /Überschrift 4/]);
@@ -59,11 +64,12 @@ test("text style and alignment are menus in the toolbar", async ({ page }, info)
   await styleMenu.getByRole("menuitemradio", { name: /Überschrift 3/ }).click();
   await expect(editor.locator("h3")).toHaveText("Erster Absatz");
   await expect(toolbar.getByRole("button", { name: "H3 – Textstil: Überschrift 3", exact: true })).toHaveText(/H3/);
+  expect(Math.abs((await toolbar.getByRole("button", { name: "H3 – Textstil: Überschrift 3", exact: true }).boundingBox())!.width - bold!.width)).toBeLessThanOrEqual(0.5);
 
   if (info.project.name === "desktop") {
     // By keyboard: Enter opens, arrows move, Escape closes.
     await editor.getByText("Zweiter Absatz").click();
-    const second = toolbar.getByRole("button", { name: "Textstil: Text", exact: true });
+    const second = toolbar.getByRole("button", { name: "Aa – Textstil: Text", exact: true });
     await second.focus();
     await page.keyboard.press("Enter");
     await expect(styleMenu.getByRole("menuitemradio").first()).toBeFocused();
