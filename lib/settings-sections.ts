@@ -141,6 +141,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         anchor: "formatting-toolbar",
       },
       {
+        title: { de: "Formatierungsleiste anpassen", en: "Customize formatting toolbar" },
+        keywords: { de: "symbolleiste toolbar leiste schaltflächen knöpfe reihenfolge sortieren gruppen trennlinie ausblenden anpassen", en: "toolbar bar buttons order reorder sort groups divider separator hide customise customize" },
+        anchor: "toolbar-layout",
+      },
+      {
         title: { de: "„>“ erzeugt", en: "“>” creates" },
         keywords: { de: "zitat aufklappbarer block toggle markdown kürzel tippen größer-zeichen", en: "quote blockquote toggle markdown shortcut typing greater-than" },
         anchor: "quote-shortcut",

@@ -296,6 +296,7 @@ import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-clie
 import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
+import { setToolbarLayoutFromServer } from "@/lib/toolbar-layout-client";
 import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
@@ -588,6 +589,7 @@ export default function WorkspaceApp({
   useEffect(() => setQuoteShortcutLocal(boot.quoteShortcut), [boot.quoteShortcut]);
   // "Formatierungsleiste" (#235): the editors read it.
   useEffect(() => setFormattingToolbarLocal(boot.formattingToolbar), [boot.formattingToolbar]);
+  useEffect(() => setToolbarLayoutFromServer(boot.toolbarLayout), [boot.toolbarLayout]);
   // "Animationen" (#260, lib/motion-pref.ts): data-motion on <html>, which
   // menus and dialogs outside the app's root follow; the root carries it
   // too, so the server-rendered first paint has it. Gone when the app is left.

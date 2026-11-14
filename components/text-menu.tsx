@@ -82,6 +82,7 @@ import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
 import { mathActionResult, type MathAction } from "@/lib/math-solve";
 import { showToast } from "./toast";
 import { textMenuMarks, textMenuSide, type MenuRect } from "@/lib/text-menu-placement";
+import { toolbarLayout } from "@/lib/toolbar-layout-client";
 
 const reactions = ["👍", "❤️", "🎉", "😄", "👀", "✅", "🙏", "🔥"];
 // For a selection: x its middle, y its top, bottom its bottom.
@@ -428,7 +429,7 @@ export function TextMenu({
   // full set: "Umwandeln in", every mark, colour, formula, clearing, and
   // the toolbar's rarer actions in "…".
   const full = !toolbarOf(editor);
-  const marks = new Set(textMenuMarks(!full));
+  const marks = new Set(textMenuMarks(!full, toolbarLayout().hidden));
   const run = (fn: () => void) => () => {
     fn();
     close();

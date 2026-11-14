@@ -18996,6 +18996,7 @@ h3 .block-reactions {
 }
 /* Its own check (ItemIndicator) instead of the general one of radio items
    (app/option-colors.css); unchecked rows keep its room. */
+.toolbar-format-menu .dropdown-item.toolbar-format-item[role="menuitemcheckbox"][aria-checked="true"]::after,
 .toolbar-format-menu .dropdown-item.toolbar-format-item[role="menuitemradio"][aria-checked="true"]::after {
   content: none;
 }
@@ -30791,6 +30792,104 @@ html.split-resizing * {
   color: var(--secondary);
   font-size: 11.5px;
   font-weight: 500;
+}
+/* "Formatierungsleiste anpassen" (#292, components/settings/user/
+   toolbar-layout-editor.tsx): the toolbar's buttons as a list to show or
+   hide, drag or move up and down, with dividers between groups. */
+.toolbar-layout {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.toolbar-layout-actions,
+.toolbar-layout-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar-layout-editor {
+  display: grid;
+  gap: 10px;
+}
+.toolbar-layout-presets-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.toolbar-layout-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 560px;
+}
+.toolbar-layout-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.toolbar-layout-item:first-child {
+  border-top: 0;
+}
+.toolbar-layout-item.divider {
+  background: var(--surface);
+  color: var(--secondary);
+}
+.toolbar-layout-item.dragging {
+  opacity: 0.5;
+}
+.toolbar-layout-item.drop-before {
+  box-shadow: inset 0 2px 0 var(--blue);
+}
+.toolbar-layout-item.drop-after {
+  box-shadow: inset 0 -2px 0 var(--blue);
+}
+.toolbar-layout-handle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 32px;
+  color: var(--muted);
+  cursor: grab;
+}
+.toolbar-layout-check,
+.toolbar-layout-divider-label,
+.toolbar-layout-group-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-weight: 400;
+}
+.toolbar-layout-group-label {
+  font-weight: 500;
+}
+.toolbar-layout-check input[type="checkbox"] {
+  width: 16px;
+}
+/* A group's buttons, indented under its row. */
+.toolbar-layout-members {
+  grid-column: 2 / -1;
+  display: grid;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--border);
+}
+.toolbar-layout-item.member {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 10px;
+}
+.toolbar-layout-check span {
+  overflow-wrap: anywhere;
 }
 /* Up and down of a space in Settings → Bereiche (issue #48). */
 .ws-order-buttons {

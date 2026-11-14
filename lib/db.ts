@@ -1353,6 +1353,11 @@ function migrate(d: DatabaseSync) {
   // older version ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "formatting_toolbar"))
     d.exec("ALTER TABLE users ADD COLUMN formatting_toolbar TEXT");
+  // "Formatierungsleiste anpassen" per person (#292, lib/toolbar-layout.ts):
+  // users.toolbar_layout, NULL = the default, or the layout as JSON. An
+  // older version ignores the column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "toolbar_layout"))
+    d.exec("ALTER TABLE users ADD COLUMN toolbar_layout TEXT");
   // "Animationen" per person (#260, lib/motion-pref.ts): users.motion,
   // NULL = the default ('normal'), 'reduced' or 'off'. An older version
   // ignores the column, so the schema number stays.
