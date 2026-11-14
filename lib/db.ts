@@ -1495,6 +1495,13 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS workspace_activity_workspace ON workspace_activity(workspace_id);`);
   if (!(d.prepare("PRAGMA table_info(mail_queue)").all() as { name: string }[]).some((c) => c.name === "from_name"))
     d.exec("ALTER TABLE mail_queue ADD COLUMN from_name TEXT");
+  // The groups an SSO provider sent at a person's latest OpenID Connect
+  // sign-in (#289, lib/sso-group-report.ts), for Administration → Users:
+  // the claim read (OIDC_GROUPS_CLAIM), whether it was missing (NULL:
+  // unknown), the groups (bounded), the admin group then and whether it was
+  // among them. One row per account. A new table only – the schema number
+  // stays.
+  d.exec("CREATE TABLE IF NOT EXISTS sso_group_reports(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,at INTEGER NOT NULL,claim TEXT NOT NULL,claim_missing INTEGER,groups_json TEXT NOT NULL DEFAULT '[]',group_count INTEGER NOT NULL DEFAULT 0,admin_group TEXT NOT NULL,has_admin INTEGER NOT NULL DEFAULT 0)");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

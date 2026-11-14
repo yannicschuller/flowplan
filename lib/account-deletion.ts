@@ -57,6 +57,8 @@ const PERSONAL = [
   "local_accounts",
   "mobile_devices",
   "sso_sources",
+  // The groups of the latest SSO sign-in (#289, lib/sso-group-report.ts).
+  "sso_group_reports",
   "push_subscriptions",
   // Chat apps with their sealed tokens, choices and Telegram link codes
   // (lib/messengers.ts); their queue goes with the connections.

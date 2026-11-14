@@ -51,6 +51,9 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "ai_user_settings.user_id": "custom",
   // Sign-ins of the source: gone with it.
   "sessions.user_id": "drop",
+  // The groups of the source's latest SSO sign-in (#289): the target's own
+  // sign-ins tell its groups.
+  "sso_group_reports.user_id": "drop",
   "api_tokens.user_id": "drop",
   "auth_tokens.user_id": "drop",
   "auth_challenges.user_id": "drop",

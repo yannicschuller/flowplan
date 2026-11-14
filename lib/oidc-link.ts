@@ -32,6 +32,10 @@ export type OidcProfile = {
   name: string;
   picture?: unknown;
   groups: string[];
+  // Which claim the groups came from and whether it was missing (#289,
+  // lib/sso-group-report.ts); not kept for a sign-in that waits to be
+  // connected.
+  groupsSeen?: { claim: string; missing: boolean };
 };
 export const PENDING_LINK_SECONDS = 600;
 

@@ -158,6 +158,8 @@ async function finishSsoSignIn(userId: string, sso: OidcProfile, remember: boole
   // personal workspace would be created for someone without one.
   await syncSsoMemberships(userId, sso.groups);
   await ensureWorkspace(userId);
+  // What the provider sent, for Administration → Users (#289).
+  await recordSsoGroups(userId, sso.groups, sso.groupsSeen);
   // A linked account with e-mail and password keeps its admin flag.
   const groups = [...new Set([...sso.groups, ...await localGroups(userId)])];
   await issueSession(userId, groups, undefined, { remember, sso: true });
@@ -167,6 +169,7 @@ const LINK_COOKIE = "flowplan_link";
 // "Stay signed in on this device" from the sign-in form.
 const wantsRemember = (input: unknown) => !!input && typeof input === "object" && (input as { remember?: unknown }).remember === true;
 import { clientAddress } from "@/lib/client-address";
+import { groupsClaimMissing, groupsClaimName, recordSsoGroups } from "@/lib/sso-group-report";
 export const GET = withRequestLocale(handleGET);
 async function handleGET(
   req: Request,
@@ -321,6 +324,7 @@ async function handleGET(
         name: String(profile.name || profile.preferred_username || "Mitglied"),
         picture: profile.picture,
         groups,
+        groupsSeen: { claim: groupsClaimName(), missing: groupsClaimMissing(profile) },
       };
       const locale = await requestLocale();
       // "Connect SSO" from the account settings (#101): only for the account

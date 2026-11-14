@@ -7,6 +7,7 @@ import type { BuildInfo } from "@/lib/build-info";
 import type { UpdateStatus } from "@/lib/update-check";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
+import type { SsoGroupReport } from "@/lib/sso-group-report";
 import type { sessionSettings } from "@/lib/session-policy";
 type SessionSettings = Awaited<ReturnType<typeof sessionSettings>>;
 import type { MarkdownExportStatus, SpaceGitOverview } from "../markdown-export-settings";
@@ -76,6 +77,8 @@ export type AdminData = {
   // Connected SSO identities (#101) and the accounts that sign in with LDAP.
   identities?: { user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }[];
   ldapAccounts?: string[];
+  // Groups the SSO provider sent at each account's latest sign-in (#289).
+  ssoGroups?: SsoGroupReport[];
   // Administrators of every kind of sign-in (lib/auth.ts adminUserIds).
   adminIds?: string[];
   mail: { configured: boolean; host: string | null; from: string | null; tlsServername?: string | null; tlsUnverified?: boolean; pending: number; failed: number; sentWeek: number; lastError: string | null };
