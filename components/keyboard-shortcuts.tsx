@@ -26,6 +26,7 @@ import {
   type ShortcutAction,
 } from "@/lib/keymap";
 import { shortcutMatches } from "@/lib/shortcut-search";
+import { desktopApp } from "@/lib/native-app";
 
 type T = (de: string, en: string) => string;
 // The German and English names as well, for the search (#204).
@@ -120,6 +121,7 @@ export type ShortcutGroup = { title: string; items: { label: string; keys: strin
 // The fixed shortcuts (not changeable), for this overview.
 export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGroup[] {
   const k = (combo: string) => formatCombo(combo, mac);
+  const desktop = !!desktopApp();
   return [
     {
       title: t("Seitenbaum", "Page tree"),
@@ -127,7 +129,8 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Zwischen Seiten bewegen", "Move between pages"), keys: ["↑", "↓"] },
         { label: t("Unterseiten öffnen oder schließen", "Expand or collapse sub-pages"), keys: ["→", "←"] },
         { label: t("Seite öffnen", "Open the page"), keys: ["↵"] },
-        { label: t("In geteilter Ansicht öffnen", "Open in split view"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
+        { label: t("In neuem Tab öffnen", "Open in a new tab"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click"), t("Mittlere Maustaste", "Middle mouse button")] },
+        { label: t("In geteilter Ansicht öffnen", "Open in split view"), keys: [mac ? t("⌘ ⇧ + Klick", "⌘ ⇧ + click") : t("Ctrl + Shift + Klick", "Ctrl + Shift + click")] },
         { label: t("Seiten auswählen", "Select pages"), keys: [mac ? t("⇧ + Klick", "⇧ + click") : t("Shift + Klick", "Shift + click")] },
       ],
     },
@@ -148,7 +151,8 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Block verschieben", "Move the block"), keys: [k("Mod+Shift+ArrowUp"), k("Mod+Shift+ArrowDown")] },
         { label: t("Abschnitt (in der Überschrift) oder aufklappbaren Block ein- oder ausklappen", "Collapse or expand the section (in the heading) or the toggle"), keys: [k("Mod+Alt+Enter")] },
         { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Shift+Z")] },
-        { label: t("Seitenlink in geteilter Ansicht öffnen", "Open a page link in split view"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
+        { label: t("Seitenlink in neuem Tab öffnen", "Open a page link in a new tab"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
+        { label: t("Seitenlink in geteilter Ansicht öffnen", "Open a page link in split view"), keys: [mac ? t("⌘ ⇧ + Klick", "⌘ ⇧ + click") : t("Ctrl + Shift + Klick", "Ctrl + Shift + click")] },
         ...(ai ? [{ label: t("KI-Schreibassistent", "AI writing assistant"), keys: [k("Mod+J")] }] : []),
       ],
     },
@@ -172,6 +176,20 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Knoten duplizieren / löschen", "Duplicate / delete the node"), keys: [k("Mod+D"), t("Entf", "Delete")] },
         { label: t("Liste / Ansicht einpassen", "List / fit the view"), keys: ["L", "F"] },
         { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Y")] },
+      ],
+    },
+    {
+      // components/frame-tabs.tsx (#279). ⌘/Ctrl+W, Ctrl+Tab and ⌘/Ctrl+1…9
+      // belong to the browser's own tabs: only in the desktop app.
+      title: t("Tabs", "Tabs"),
+      items: [
+        { label: t("Tab schließen", "Close the tab"), keys: [k("Alt+W"), ...(desktop ? [k("Mod+W")] : []), t("Mittlere Maustaste", "Middle mouse button")] },
+        { label: t("Nächster / vorheriger Tab", "Next / previous tab"), keys: [k("Mod+Alt+PageDown"), k("Mod+Alt+PageUp"), ...(desktop ? [formatCombo("Ctrl+Tab", mac), formatCombo("Ctrl+Shift+Tab", mac)] : [])] },
+        { label: t("Tab nach rechts / links verschieben", "Move the tab right / left"), keys: [k("Mod+Alt+Shift+PageDown"), k("Mod+Alt+Shift+PageUp"), ...(desktop ? [formatCombo("Ctrl+Shift+PageDown", mac)] : [])] },
+        ...(desktop ? [{ label: t("Tab 1–8 / letzter Tab", "Tab 1–8 / last tab"), keys: [k("Mod+1"), "…", k("Mod+9")] }] : []),
+        { label: t("Zwischen Tabs bewegen (Tab fokussiert)", "Move between tabs (tab focused)"), keys: ["←", "→", "Home", "End"] },
+        { label: t("Fokussierten Tab verschieben", "Move the focused tab"), keys: [k("Alt+Shift+ArrowLeft"), k("Alt+Shift+ArrowRight")] },
+        { label: t("Fokussierten Tab schließen", "Close the focused tab"), keys: [t("Entf", "Delete")] },
       ],
     },
     {

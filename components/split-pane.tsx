@@ -1,16 +1,16 @@
 "use client";
-// Split view: a second page next to the open one (page menu "In geteilter
-// Ansicht öffnen", Ctrl/⌘-click on a link or in the page tree, dragging a
-// page to the right edge). The pane loads and shows its page on its own –
-// documents with their editor, databases, whiteboards and dashboards – with
-// a header of its own. The divider resizes both panes with the pointer or
-// the arrow keys. components/workspace-app.tsx keeps which page is open in
-// the address (?split=<id>) and turns it off on narrow screens.
+// Split view: the right frame of the tabs (#279, components/frame-tabs.tsx)
+// – opened with "In geteilter Ansicht öffnen", Ctrl/⌘+Shift-click on a
+// link or in the page tree, dragging a page or a tab to the right edge. The
+// pane loads and shows its active tab's page on its own – documents with
+// their editor, databases, whiteboards and dashboards – under the frame's
+// tab bar. The divider resizes both frames with the pointer or the arrow
+// keys. components/workspace-app.tsx keeps which page is open in the
+// address (?split=<id>) and hides the frame on narrow screens.
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowSquareOut, X } from "@phosphor-icons/react";
-import { useStatusLabel, useT } from "./i18n";
+import { useT } from "./i18n";
 import { api, PageIcon, PageSkeleton, reportError } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import { readModeIds } from "@/lib/read-mode";
@@ -114,7 +114,7 @@ export function SplitPane({
   members,
   ai,
   transcription,
-  onClose,
+  tabBar,
   onOpenMain,
   onOpenPage,
 }: {
@@ -126,16 +126,16 @@ export function SplitPane({
   members: (User & { role?: Role })[];
   ai?: AiStatus;
   transcription: boolean;
-  onClose: () => void;
-  // Shows the page in the main view instead (the split closes).
+  // The frame's tabs (components/frame-tabs.tsx).
+  tabBar: React.ReactNode;
+  // Shows the page in the main view instead (its tab moves there).
   onOpenMain: (id: string) => void;
   onOpenPage: (id: string) => void;
 }) {
   const t = useT();
-  const statusLabel = useStatusLabel();
   const [data, setData] = useState<PaneData | null>(null),
     [failed, setFailed] = useState(false),
-    [status, setStatus] = useState("Gespeichert");
+    [, setStatus] = useState("Gespeichert");
   const current = useRef(pageId);
   current.current = pageId;
   const reload = useCallback(async () => {
@@ -259,30 +259,8 @@ export function SplitPane({
     );
   return (
     <section className="split-pane" aria-label={t(`Geteilte Ansicht: ${page?.title || "Seite"}`, `Split view: ${page?.title || "Page"}`)}>
-      <header className="split-pane-header">
-        <PageIcon name={shownPageIcon(page?.icon, page?.kind)} size={16} />
-        <strong title={page?.title}>{page?.title || t("Ohne Titel", "Untitled")}</strong>
-        {data?.page.kind === "document" && <span className="split-pane-status">{statusLabel(status)}</span>}
-        <button
-          type="button"
-          className="icon-button"
-          title={t("In der Hauptansicht öffnen", "Open in the main view")}
-          aria-label={t("In der Hauptansicht öffnen", "Open in the main view")}
-          onClick={() => onOpenMain(pageId)}
-        >
-          <ArrowSquareOut size={16} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          title={t("Geteilte Ansicht schließen", "Close split view")}
-          aria-label={t("Geteilte Ansicht schließen", "Close split view")}
-          onClick={onClose}
-        >
-          <X size={16} />
-        </button>
-      </header>
-      <div className="split-pane-scroll">
+      {tabBar}
+      <div className="split-pane-scroll" id="frame-panel-1" role="tabpanel">
         <article
           className={`page-content split-page-content ${data?.page.kind === "database" ? "database-page" : ""} ${data?.page.kind === "whiteboard" ? "whiteboard-page" : ""} font-${data?.page.font || "sans"}`}
         >
@@ -293,6 +271,25 @@ export function SplitPane({
           )}
           <ViewBoundary key={pageId}>{body}</ViewBoundary>
         </article>
+      </div>
+    </section>
+  );
+}
+
+// A screen of the app (start page, inbox, settings …) in the right frame:
+// those show in the left frame only.
+export function SplitUnsupported({ tabBar, title, onOpenMain }: { tabBar: React.ReactNode; title: string; onOpenMain: () => void }) {
+  const t = useT();
+  return (
+    <section className="split-pane" aria-label={t(`Geteilte Ansicht: ${title}`, `Split view: ${title}`)}>
+      {tabBar}
+      <div className="split-pane-scroll" id="frame-panel-1" role="tabpanel">
+        <div className="page-content split-page-content split-unsupported">
+          <p>{t(`„${title}“ lässt sich nur in der linken Ansicht zeigen.`, `“${title}” can only be shown in the left view.`)}</p>
+          <button type="button" className="button" onClick={onOpenMain}>
+            {t("In der linken Ansicht öffnen", "Open in the left view")}
+          </button>
+        </div>
       </div>
     </section>
   );

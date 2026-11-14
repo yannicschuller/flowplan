@@ -50,8 +50,8 @@ test("sidebar selects several pages for moving, duplicating and trashing and dra
     await nav.getByRole("checkbox", { name: `Alpha ${tag} auswählen` }).check();
     await nav.getByRole("checkbox", { name: `Beta ${tag} auswählen` }).check();
   } else {
-    // Shift-click starts a selection (Ctrl/⌘-click alone opens the split
-    // view); while selecting, Ctrl/⌘-click adds a page.
+    // Shift-click starts a selection (Ctrl/⌘-click alone opens a new tab,
+    // #279); while selecting, Ctrl/⌘-click adds a page.
     await title(`Alpha ${tag}`).click({ modifiers: ["Shift"] });
     await title(`Beta ${tag}`).click({ modifiers: ["ControlOrMeta"] });
   }

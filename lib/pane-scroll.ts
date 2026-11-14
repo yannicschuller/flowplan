@@ -32,7 +32,12 @@ export function keepPosition(kept: Map<string, Kept>, key: string, place: string
 
 // `place` is null while it is not known yet (a page loading): the pane
 // waits at the top and keeps nothing for it.
-export function usePaneScroll(pane: RefObject<HTMLElement | null>, place: string | null) {
+// `entryKey` names the entry otherwise: with tabs (#279) every step of
+// every tab has its own (components/frame-tabs.tsx), as switching tabs
+// replaces the browser's entry.
+export function usePaneScroll(pane: RefObject<HTMLElement | null>, place: string | null, entryKey?: () => string | null) {
+  const keyOf = useRef(entryKey);
+  keyOf.current = entryKey;
   const kept = useRef(new Map<string, Kept>());
   // The place shown and the history entry it was shown in. A scroll event
   // can come in after the address has gone on to the next entry (scrolled,
@@ -59,7 +64,7 @@ export function usePaneScroll(pane: RefObject<HTMLElement | null>, place: string
   useLayoutEffect(() => {
     const el = pane.current;
     shown.current = place;
-    shownIn.current = currentEntryKey();
+    shownIn.current = keyOf.current?.() ?? currentEntryKey();
     restoring.current?.();
     if (!el) return;
     const target = place === null ? 0 : paneTarget(kept.current, shownIn.current, place);
