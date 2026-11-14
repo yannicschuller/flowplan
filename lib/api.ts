@@ -4,6 +4,7 @@ import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
 import { setUserQuoteShortcut, userQuoteShortcut } from "./user-quote-shortcut";
 import { setUserFormattingToolbar, userFormattingToolbar } from "./user-formatting-toolbar";
+import { setUserToolbarLayout, userToolbarLayout } from "./user-toolbar-layout";
 import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
@@ -378,6 +379,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     quoteShortcut: await userQuoteShortcut(user.id),
     // "Formatierungsleiste" (#235, lib/toolbar-pref.ts).
     formattingToolbar: await userFormattingToolbar(user.id),
+    // "Formatierungsleiste anpassen" (#292, lib/toolbar-layout.ts).
+    toolbarLayout: await userToolbarLayout(user.id),
     // "Animationen" (#260, lib/motion-pref.ts).
     motion: await userMotion(user.id),
     // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).
@@ -981,6 +984,11 @@ async function runCommand(
       // The fixed formatting toolbar shown or hidden (#235, lib/toolbar-pref.ts).
       case "profile.formattingToolbar":
         result = await setUserFormattingToolbar(user, b.formattingToolbar);
+        break;
+      // The toolbar's buttons chosen, ordered and grouped (#292,
+      // lib/toolbar-layout.ts); null resets.
+      case "profile.toolbarLayout":
+        result = await setUserToolbarLayout(user, b.toolbarLayout);
         break;
       // "Animationen": normal, reduced or off (#260, lib/motion-pref.ts).
       case "profile.motion":

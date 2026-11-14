@@ -13,6 +13,7 @@ import { pageIconPrefSchema } from "./page-icon-pref";
 import { externalLinkIconSchema } from "./external-link-icon-pref";
 import { quoteShortcutSchema } from "./quote-shortcut-pref";
 import { formattingToolbarSchema } from "./toolbar-pref";
+import { TOOLBAR_DIVIDER, TOOLBAR_ITEMS, TOOLBAR_ORDER_MAX, toolbarLayoutSchema } from "./toolbar-layout";
 import { motionPrefSchema } from "./motion-pref";
 import { fullWidthPagesSchema } from "./page-width-pref";
 import { updateNotesLevelSchema } from "./update-notes-pref";
@@ -68,7 +69,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.motion", "profile.fullWidthPages", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -239,6 +240,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: show (the default) or hide. Hidden, the text menu over a selection offers the whole formatting set; on a phone the formatting row on the keyboard stays.",
     input: z.object({ action: z.literal("profile.formattingToolbar"), formattingToolbar: formattingToolbarSchema }),
     result: z.object({ formattingToolbar: formattingToolbarSchema }),
+  },
+  {
+    action: "profile.toolbarLayout",
+    summary: "Choose, order and group the buttons of the fixed formatting toolbar",
+    description: `For the caller, on all devices: \`order\` lists the toolbar's buttons (${TOOLBAR_ITEMS.join(", ")}) each at most once, with "${TOOLBAR_DIVIDER}" for a divider between two groups (at most ${TOOLBAR_ORDER_MAX} entries); \`hidden\` lists the buttons not shown. Buttons left out of \`order\` (for example ones added in a later version) appear at their default place. null restores the default. The result is the layout as it now applies.`,
+    input: z.object({ action: z.literal("profile.toolbarLayout"), toolbarLayout: toolbarLayoutSchema }),
+    result: z.object({ toolbarLayout: toolbarLayoutSchema.unwrap() }),
   },
   {
     action: "profile.motion",

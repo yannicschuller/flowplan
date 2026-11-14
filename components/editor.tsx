@@ -103,6 +103,9 @@ import { ShortcutBlockquote } from "@/lib/quote-shortcut";
 import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import { showsFormattingToolbar } from "@/lib/toolbar-pref";
+import { useToolbarLayout } from "@/lib/toolbar-layout-client";
+import { TOOLBAR_DIVIDER, isToolbarGroup, toolbarEntries, type GroupableItem, type ToolbarItem } from "@/lib/toolbar-layout";
+import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
   commentMarkedNodeView,
@@ -132,10 +135,10 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { Extension } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
-import { AlignMenu, HeadingMenu } from "./format-menus";
+import { AlignMenu, HeadingMenu, ToolbarGroupMenu, type ToolbarGroupEntry } from "./format-menus";
 import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
-import { type ComponentProps, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ComponentProps, Fragment, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import {
@@ -342,6 +345,8 @@ export default function DocumentEditor({
   // "Formatierungsleiste" (#235, lib/toolbar-pref.ts): hidden, the text
   // menu offers the whole set; the row docked on a phone's keyboard stays.
   const toolbarShown = showsFormattingToolbar(useFormattingToolbar(), touchPhone);
+  // Its buttons as the person chose them (#292, lib/toolbar-layout.ts).
+  const layout = useToolbarLayout();
   // A record's toolbar docks (and offers the button) only while one writes
   // in that record (app/globals.css, .row-document … :focus-within); a
   // document's toolbar is docked anyway.
@@ -2743,252 +2748,11 @@ export default function DocumentEditor({
                 event.preventDefault();
             }}
           >
-            <button
-              title={t("Rückgängig", "Undo")}
-              onClick={() => editor?.chain().focus().undo().run()}
-            >
-              <ArrowUUpLeft />
-            </button>
-            <button
-              title={t("Wiederholen", "Redo")}
-              onClick={() => editor?.chain().focus().redo().run()}
-            >
-              <ArrowUUpRight />
-            </button>
-            {imageSelected && (
-              <button
-                title={t("Bild markieren (Doppelklick)", "Mark up image (double-click)")}
-                aria-label={t("Bild markieren", "Mark up image")}
-                onClick={annotateSelectedImage}
-              >
-                <PencilSimpleLine />
-              </button>
-            )}
-            {imageSelected && (
-              <button
-                title={t("Bild kopieren", "Copy image")}
-                aria-label={t("Bild kopieren", "Copy image")}
-                onClick={() => void copySelectedImage()}
-              >
-                <CopySimple />
-              </button>
-            )}
-            <span className="toolbar-separator" />
-            <button
-              title={t("Fett", "Bold")}
-              className={editor?.isActive("bold") ? "active" : ""}
-              onClick={() => editor?.chain().focus().toggleBold().run()}
-            >
-              <TextB />
-            </button>
-            <button
-              title={t("Kursiv", "Italic")}
-              onClick={() => editor?.chain().focus().toggleItalic().run()}
-            >
-              <TextItalic />
-            </button>
-            <button
-              title={t("Unterstrichen", "Underline")}
-              onClick={() => editor?.chain().focus().toggleUnderline().run()}
-            >
-              <TextUnderline />
-            </button>
-            <button
-              title={t("Durchgestrichen", "Strikethrough")}
-              onClick={() => editor?.chain().focus().toggleStrike().run()}
-            >
-              <TextStrikethrough />
-            </button>
-            <button
-              title={t("Markieren", "Highlight")}
-              onClick={() => editor?.chain().focus().toggleHighlight().run()}
-            >
-              <Highlighter />
-            </button>
-            {/* Comment on the selection or the current block (#200): on a
-                phone this toolbar, docked on the keyboard, is where it is
-                reachable while selecting shows no text menu. */}
-            <button
-              title={t("Kommentieren", "Comment") + keyHints.suffix("Mod+Alt+M")}
-              aria-label={t("Kommentieren", "Comment")}
-              onClick={() => editor?.view.dom.dispatchEvent(new CustomEvent("comment-create"))}
-            >
-              <ChatCircle />
-            </button>
-            <Dropdown.Root
-              onOpenChange={(open) => {
-                // The menu takes focus; colours apply to the remembered text.
-                if (open && editor) {
-                  const { from, to } = editor.state.selection;
-                  colorSelection.current = { from, to };
-                }
-              }}
-            >
-              <Dropdown.Trigger asChild>
-                <button title={t("Farbe", "Colour")} aria-label={t("Text- und Hintergrundfarbe", "Text and background colour")}>
-                  <Palette />
-                </button>
-              </Dropdown.Trigger>
-              <Dropdown.Portal>
-                <Dropdown.Content collisionPadding={safeCollisionPadding()}
-                  className="dropdown color-menu"
-                  sideOffset={6}
-                  onCloseAutoFocus={(event) => event.preventDefault()}
-                >
-                  <div className="color-menu-label">{t("Textfarbe", "Text colour")}</div>
-                  <div className="color-swatches">
-                    {textColors.map(([name, color]) => (
-                      <Dropdown.Item
-                        key={color}
-                        className="color-swatch"
-                        aria-label={t(`Textfarbe ${name}`, `Text colour ${name}`)}
-                        title={name}
-                        style={{ color }}
-                        onSelect={() => colorChain()?.setTextColor(color).run()}
-                      >
-                        A
-                      </Dropdown.Item>
-                    ))}
-                  </div>
-                  <div className="color-menu-label">{t("Hintergrund", "Background")}</div>
-                  <div className="color-swatches">
-                    {highlightColors.map(([name, color]) => (
-                      <Dropdown.Item
-                        key={color}
-                        className="color-swatch"
-                        aria-label={t(`Hintergrund ${name}`, `Background ${name}`)}
-                        title={name}
-                        style={{ background: color }}
-                        onSelect={() =>
-                          editor?.chain().focus().setHighlight({ color }).run()
-                        }
-                      >
-                        A
-                      </Dropdown.Item>
-                    ))}
-                  </div>
-                  <Dropdown.Item
-                    className="dropdown-item"
-                    onSelect={() =>
-                      colorChain()?.unsetTextColor().unsetHighlight().run()
-                    }
-                  >
-                    {t("Farben entfernen", "Remove colours")}
-                  </Dropdown.Item>
-                </Dropdown.Content>
-              </Dropdown.Portal>
-            </Dropdown.Root>
-            {editor && selectedMediaWidth !== null && (
-              <Select
-                aria-label={t("Medienbreite", "Media width")}
-                title={t("Breite des Videos oder der Einbettung", "Width of the video or embed")}
-                value={String(selectedMediaWidth)}
-                onChange={(e) =>
-                  editor
-                    .chain()
-                    .focus()
-                    .updateAttributes("media", {
-                      width: Number(e.target.value),
-                    })
-                    .run()
-                }
-              >
-                {MEDIA_WIDTHS.map((w) => (
-                  <option key={w} value={w}>
-                    {w} %
-                  </option>
-                ))}
-              </Select>
-            )}
-            <button
-              title={t("Hochgestellt", "Superscript")}
-              className={editor?.isActive("superscript") ? "active" : ""}
-              onClick={() => editor?.chain().focus().toggleSuperscript().run()}
-            >
-              <TextSuperscript />
-            </button>
-            <button
-              title={t("Tiefgestellt", "Subscript")}
-              className={editor?.isActive("subscript") ? "active" : ""}
-              onClick={() => editor?.chain().focus().toggleSubscript().run()}
-            >
-              <TextSubscript />
-            </button>
-            <button
-              title={t("Verdecken (Spoiler)", "Hide (spoiler)") + (keyHints.keys("Mod+Alt+H") && ` · ${keyHints.keys("Mod+Alt+H")}`)}
-              aria-pressed={!!editor?.isActive("spoiler")}
-              className={editor?.isActive("spoiler") ? "active" : ""}
-              onClick={() => editor?.chain().focus().toggleMark("spoiler").run()}
-            >
-              <EyeSlash />
-            </button>
-            <button
-              title={suggesting ? t("Vorschlagen beenden – wieder direkt bearbeiten", "Stop suggesting – edit directly again") : t("Vorschlagen: Änderungen als Vorschläge markieren", "Suggest: mark changes as suggestions")}
-              aria-label={t("Vorschlagen", "Suggest")}
-              aria-pressed={suggesting}
-              className={`suggest-toggle${suggesting ? " active" : ""}`}
-              onClick={() => setSuggesting(!suggesting)}
-            >
-              <PencilLine />
-              {suggesting && <span>{t("Vorschlagen", "Suggest")}</span>}
-            </button>
-            <button
-              title={authorsOn ? t("Autoren ausblenden", "Hide authors") : t("Autoren anzeigen: Text nach Person einfärben", "Show authors: colour the text by person")}
-              aria-label={t("Autoren anzeigen", "Show authors")}
-              aria-pressed={authorsOn}
-              className={authorsOn ? "active" : ""}
-              onClick={() => setAuthorsOn(!authorsOn)}
-            >
-              <UsersThree />
-            </button>
-            <button
-              title="Link"
-              onClick={() => {
-                setLinkUrl(editor?.getAttributes("link").href || "");
-                setLink(true);
-              }}
-            >
-              <LinkIcon />
-            </button>
-            <span className="toolbar-separator" />
-            {/* Text, H1–H4 and the alignment as small menus (#278). */}
-            <HeadingMenu editor={editor} />
-            <button
-              title={t("Aufgabenliste", "Task list")}
-              onClick={() => editor?.chain().focus().toggleTaskList().run()}
-            >
-              <CheckSquare />
-            </button>
-            {editor?.isActive("taskItem") && (
-              <button
-                title={t("Fälligkeit setzen", "Set due date")}
-                aria-label={t("Fälligkeit setzen", "Set due date")}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => editor && pickTaskDue(editor.view, e.currentTarget)}
-              >
-                <CalendarBlank />
-              </button>
-            )}
-            <AlignMenu editor={editor} />
-            <button title={t("Block nach oben", "Move block up")} onClick={() => moveBlock(-1)}>
-              ↑
-            </button>
-            <button title={t("Block nach unten", "Move block down")} onClick={() => moveBlock(1)}>
-              ↓
-            </button>
-            <button
-              title={t("Inhaltsverzeichnis", "Table of contents")}
-              data-outline-toggle
-              onClick={outline.toggle}
-            >
-              <ListBullets />
-            </button>
-            <button title={t("Inline-Formel", "Inline formula")} onClick={openInlineMath}>
-              <FunctionIcon />
-            </button>
-            <button
-              title={t("Block hinzufügen", "Add block")}
-              onClick={() => {
+            {/* The buttons in the person's order, hidden ones left out,
+                dividers between groups (#292, lib/toolbar-layout.ts).
+                Some apply only to what is selected. */}
+            {(() => {
+              const addBlockHere = () => {
                 if (!editor) return;
                 // A new block below the current one (#261), not the current
                 // one turned into another ("Turn into" in the block menu
@@ -3002,10 +2766,360 @@ export default function DocumentEditor({
                   query: "",
                 });
                 setSlashActive(0);
-              }}
-            >
-              <Plus />
-            </button>
+              };
+              const buttons: Record<ToolbarItem, () => ReactNode> = {
+                undo: () => (
+                  <button
+                    title={t("Rückgängig", "Undo")}
+                    onClick={() => editor?.chain().focus().undo().run()}
+                  >
+                    <ArrowUUpLeft />
+                  </button>
+                ),
+                redo: () => (
+                  <button
+                    title={t("Wiederholen", "Redo")}
+                    onClick={() => editor?.chain().focus().redo().run()}
+                  >
+                    <ArrowUUpRight />
+                  </button>
+                ),
+                imageTools: () => (
+                  <>
+                    <button
+                      title={t("Bild markieren (Doppelklick)", "Mark up image (double-click)")}
+                      aria-label={t("Bild markieren", "Mark up image")}
+                      onClick={annotateSelectedImage}
+                    >
+                      <PencilSimpleLine />
+                    </button>
+                    <button
+                      title={t("Bild kopieren", "Copy image")}
+                      aria-label={t("Bild kopieren", "Copy image")}
+                      onClick={() => void copySelectedImage()}
+                    >
+                      <CopySimple />
+                    </button>
+                  </>
+                ),
+                bold: () => (
+                  <button
+                    title={t("Fett", "Bold")}
+                    className={editor?.isActive("bold") ? "active" : ""}
+                    onClick={() => editor?.chain().focus().toggleBold().run()}
+                  >
+                    <TextB />
+                  </button>
+                ),
+                italic: () => (
+                  <button
+                    title={t("Kursiv", "Italic")}
+                    onClick={() => editor?.chain().focus().toggleItalic().run()}
+                  >
+                    <TextItalic />
+                  </button>
+                ),
+                underline: () => (
+                  <button
+                    title={t("Unterstrichen", "Underline")}
+                    onClick={() => editor?.chain().focus().toggleUnderline().run()}
+                  >
+                    <TextUnderline />
+                  </button>
+                ),
+                strike: () => (
+                  <button
+                    title={t("Durchgestrichen", "Strikethrough")}
+                    onClick={() => editor?.chain().focus().toggleStrike().run()}
+                  >
+                    <TextStrikethrough />
+                  </button>
+                ),
+                highlight: () => (
+                  <button
+                    title={t("Markieren", "Highlight")}
+                    onClick={() => editor?.chain().focus().toggleHighlight().run()}
+                  >
+                    <Highlighter />
+                  </button>
+                ),
+                // Comment on the selection or the current block (#200): on a
+                // phone this toolbar, docked on the keyboard, is where it is
+                // reachable while selecting shows no text menu.
+                comment: () => (
+                  <button
+                    title={t("Kommentieren", "Comment") + keyHints.suffix("Mod+Alt+M")}
+                    aria-label={t("Kommentieren", "Comment")}
+                    onClick={() => editor?.view.dom.dispatchEvent(new CustomEvent("comment-create"))}
+                  >
+                    <ChatCircle />
+                  </button>
+                ),
+                color: () => (
+                  <Dropdown.Root
+                    onOpenChange={(open) => {
+                      // The menu takes focus; colours apply to the remembered text.
+                      if (open && editor) {
+                        const { from, to } = editor.state.selection;
+                        colorSelection.current = { from, to };
+                      }
+                    }}
+                  >
+                    <Dropdown.Trigger asChild>
+                      <button title={t("Farbe", "Colour")} aria-label={t("Text- und Hintergrundfarbe", "Text and background colour")}>
+                        <Palette />
+                      </button>
+                    </Dropdown.Trigger>
+                    <Dropdown.Portal>
+                      <Dropdown.Content collisionPadding={safeCollisionPadding()}
+                        className="dropdown color-menu"
+                        sideOffset={6}
+                        onCloseAutoFocus={(event) => event.preventDefault()}
+                      >
+                        <div className="color-menu-label">{t("Textfarbe", "Text colour")}</div>
+                        <div className="color-swatches">
+                          {textColors.map(([name, color]) => (
+                            <Dropdown.Item
+                              key={color}
+                              className="color-swatch"
+                              aria-label={t(`Textfarbe ${name}`, `Text colour ${name}`)}
+                              title={name}
+                              style={{ color }}
+                              onSelect={() => colorChain()?.setTextColor(color).run()}
+                            >
+                              A
+                            </Dropdown.Item>
+                          ))}
+                        </div>
+                        <div className="color-menu-label">{t("Hintergrund", "Background")}</div>
+                        <div className="color-swatches">
+                          {highlightColors.map(([name, color]) => (
+                            <Dropdown.Item
+                              key={color}
+                              className="color-swatch"
+                              aria-label={t(`Hintergrund ${name}`, `Background ${name}`)}
+                              title={name}
+                              style={{ background: color }}
+                              onSelect={() =>
+                                editor?.chain().focus().setHighlight({ color }).run()
+                              }
+                            >
+                              A
+                            </Dropdown.Item>
+                          ))}
+                        </div>
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={() =>
+                            colorChain()?.unsetTextColor().unsetHighlight().run()
+                          }
+                        >
+                          {t("Farben entfernen", "Remove colours")}
+                        </Dropdown.Item>
+                      </Dropdown.Content>
+                    </Dropdown.Portal>
+                  </Dropdown.Root>
+                ),
+                mediaWidth: () => (
+                  <Select
+                    aria-label={t("Medienbreite", "Media width")}
+                    title={t("Breite des Videos oder der Einbettung", "Width of the video or embed")}
+                    value={String(selectedMediaWidth)}
+                    onChange={(e) => editor?.chain().focus().updateAttributes("media", { width: Number(e.target.value) }).run()}
+                  >
+                    {MEDIA_WIDTHS.map((w) => (
+                      <option key={w} value={w}>
+                        {w} %
+                      </option>
+                    ))}
+                  </Select>
+                ),
+                superscript: () => (
+                  <button
+                    title={t("Hochgestellt", "Superscript")}
+                    className={editor?.isActive("superscript") ? "active" : ""}
+                    onClick={() => editor?.chain().focus().toggleSuperscript().run()}
+                  >
+                    <TextSuperscript />
+                  </button>
+                ),
+                subscript: () => (
+                  <button
+                    title={t("Tiefgestellt", "Subscript")}
+                    className={editor?.isActive("subscript") ? "active" : ""}
+                    onClick={() => editor?.chain().focus().toggleSubscript().run()}
+                  >
+                    <TextSubscript />
+                  </button>
+                ),
+                spoiler: () => (
+                  <button
+                    title={t("Verdecken (Spoiler)", "Hide (spoiler)") + (keyHints.keys("Mod+Alt+H") && ` · ${keyHints.keys("Mod+Alt+H")}`)}
+                    aria-pressed={!!editor?.isActive("spoiler")}
+                    className={editor?.isActive("spoiler") ? "active" : ""}
+                    onClick={() => editor?.chain().focus().toggleMark("spoiler").run()}
+                  >
+                    <EyeSlash />
+                  </button>
+                ),
+                suggest: () => (
+                  <button
+                    title={suggesting ? t("Vorschlagen beenden – wieder direkt bearbeiten", "Stop suggesting – edit directly again") : t("Vorschlagen: Änderungen als Vorschläge markieren", "Suggest: mark changes as suggestions")}
+                    aria-label={t("Vorschlagen", "Suggest")}
+                    aria-pressed={suggesting}
+                    className={`suggest-toggle${suggesting ? " active" : ""}`}
+                    onClick={() => setSuggesting(!suggesting)}
+                  >
+                    <PencilLine />
+                    {suggesting && <span>{t("Vorschlagen", "Suggest")}</span>}
+                  </button>
+                ),
+                authors: () => (
+                  <button
+                    title={authorsOn ? t("Autoren ausblenden", "Hide authors") : t("Autoren anzeigen: Text nach Person einfärben", "Show authors: colour the text by person")}
+                    aria-label={t("Autoren anzeigen", "Show authors")}
+                    aria-pressed={authorsOn}
+                    className={authorsOn ? "active" : ""}
+                    onClick={() => setAuthorsOn(!authorsOn)}
+                  >
+                    <UsersThree />
+                  </button>
+                ),
+                link: () => (
+                  <button
+                    title="Link"
+                    onClick={() => {
+                      setLinkUrl(editor?.getAttributes("link").href || "");
+                      setLink(true);
+                    }}
+                  >
+                    <LinkIcon />
+                  </button>
+                ),
+                // Text, H1–H4 and the alignment as small menus (#278).
+                heading: () => <HeadingMenu editor={editor} />,
+                bulletList: () => (
+                  <button
+                    title={t("Aufzählung", "Bulleted list")}
+                    className={editor?.isActive("bulletList") ? "active" : ""}
+                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                  >
+                    <ListBullets />
+                  </button>
+                ),
+                orderedList: () => (
+                  <button
+                    title={t("Nummerierte Liste", "Numbered list")}
+                    className={editor?.isActive("orderedList") ? "active" : ""}
+                    onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+                  >
+                    <ListNumbers />
+                  </button>
+                ),
+                taskList: () => (
+                  <button
+                    title={t("Aufgabenliste", "Task list")}
+                    onClick={() => editor?.chain().focus().toggleTaskList().run()}
+                  >
+                    <CheckSquare />
+                  </button>
+                ),
+                taskDue: () => (
+                  <button
+                    title={t("Fälligkeit setzen", "Set due date")}
+                    aria-label={t("Fälligkeit setzen", "Set due date")}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => editor && pickTaskDue(editor.view, e.currentTarget)}
+                  >
+                    <CalendarBlank />
+                  </button>
+                ),
+                align: () => <AlignMenu editor={editor} />,
+                blockUp: () => (
+                  <button title={t("Block nach oben", "Move block up")} onClick={() => moveBlock(-1)}>
+                    ↑
+                  </button>
+                ),
+                blockDown: () => (
+                  <button title={t("Block nach unten", "Move block down")} onClick={() => moveBlock(1)}>
+                    ↓
+                  </button>
+                ),
+                outline: () => (
+                  <button
+                    title={t("Inhaltsverzeichnis", "Table of contents")}
+                    data-outline-toggle
+                    onClick={outline.toggle}
+                  >
+                    <ListBullets />
+                  </button>
+                ),
+                inlineMath: () => (
+                  <button title={t("Inline-Formel", "Inline formula")} onClick={openInlineMath}>
+                    <FunctionIcon />
+                  </button>
+                ),
+                addBlock: () => (
+                  <button title={t("Block hinzufügen", "Add block")} onClick={addBlockHere}>
+                    <Plus />
+                  </button>
+                ),
+              };
+              const applies = (item: ToolbarItem) =>
+                item === "imageTools"
+                  ? !!imageSelected
+                  : item === "mediaWidth"
+                    ? !!editor && selectedMediaWidth !== null
+                    : item === "taskDue"
+                      ? !!editor?.isActive("taskItem")
+                      : true;
+              // A group: one button opening a menu of its buttons.
+              const chain = () => editor?.chain().focus();
+              const grouped: Record<GroupableItem, Omit<ToolbarGroupEntry, "key">> = {
+                undo: { label: t("Rückgängig", "Undo"), icon: <ArrowUUpLeft />, run: () => chain()?.undo().run() },
+                redo: { label: t("Wiederholen", "Redo"), icon: <ArrowUUpRight />, run: () => chain()?.redo().run() },
+                bold: { label: t("Fett", "Bold"), icon: <TextB />, run: () => chain()?.toggleBold().run(), active: !!editor?.isActive("bold") },
+                italic: { label: t("Kursiv", "Italic"), icon: <TextItalic />, run: () => chain()?.toggleItalic().run(), active: !!editor?.isActive("italic") },
+                underline: { label: t("Unterstrichen", "Underline"), icon: <TextUnderline />, run: () => chain()?.toggleUnderline().run(), active: !!editor?.isActive("underline") },
+                strike: { label: t("Durchgestrichen", "Strikethrough"), icon: <TextStrikethrough />, run: () => chain()?.toggleStrike().run(), active: !!editor?.isActive("strike") },
+                highlight: { label: t("Markieren", "Highlight"), icon: <Highlighter />, run: () => chain()?.toggleHighlight().run(), active: !!editor?.isActive("highlight") },
+                comment: { label: t("Kommentieren", "Comment"), icon: <ChatCircle />, run: () => editor?.view.dom.dispatchEvent(new CustomEvent("comment-create")) },
+                superscript: { label: t("Hochgestellt", "Superscript"), icon: <TextSuperscript />, run: () => chain()?.toggleSuperscript().run(), active: !!editor?.isActive("superscript") },
+                subscript: { label: t("Tiefgestellt", "Subscript"), icon: <TextSubscript />, run: () => chain()?.toggleSubscript().run(), active: !!editor?.isActive("subscript") },
+                spoiler: { label: t("Verdecken (Spoiler)", "Hide (spoiler)"), icon: <EyeSlash />, run: () => chain()?.toggleMark("spoiler").run(), active: !!editor?.isActive("spoiler") },
+                suggest: { label: t("Vorschlagen", "Suggest"), icon: <PencilLine />, run: () => setSuggesting(!suggesting), active: suggesting },
+                authors: { label: t("Autoren anzeigen", "Show authors"), icon: <UsersThree />, run: () => setAuthorsOn(!authorsOn), active: authorsOn },
+                link: {
+                  label: "Link",
+                  icon: <LinkIcon />,
+                  run: () => {
+                    setLinkUrl(editor?.getAttributes("link").href || "");
+                    setLink(true);
+                  },
+                },
+                bulletList: { label: t("Aufzählung", "Bulleted list"), icon: <ListBullets />, run: () => chain()?.toggleBulletList().run(), active: !!editor?.isActive("bulletList") },
+                orderedList: { label: t("Nummerierte Liste", "Numbered list"), icon: <ListNumbers />, run: () => chain()?.toggleOrderedList().run(), active: !!editor?.isActive("orderedList") },
+                taskList: { label: t("Aufgabenliste", "Task list"), icon: <CheckSquare />, run: () => chain()?.toggleTaskList().run(), active: !!editor?.isActive("taskList") },
+                blockUp: { label: t("Block nach oben", "Move block up"), icon: <span aria-hidden>↑</span>, run: () => moveBlock(-1) },
+                blockDown: { label: t("Block nach unten", "Move block down"), icon: <span aria-hidden>↓</span>, run: () => moveBlock(1) },
+                inlineMath: { label: t("Inline-Formel", "Inline formula"), icon: <FunctionIcon />, run: openInlineMath },
+                addBlock: { label: t("Block hinzufügen", "Add block"), icon: <Plus />, run: addBlockHere },
+              };
+              return toolbarEntries(layout, applies).map((entry, i) =>
+                entry === TOOLBAR_DIVIDER ? (
+                  <span key={`divider-${i}`} className="toolbar-separator" role="separator" />
+                ) : isToolbarGroup(entry) ? (
+                  <ToolbarGroupMenu
+                    key={entry.join("+")}
+                    editor={editor}
+                    label={toolbarGroupLabel(entry, (item) => grouped[item].label, t)}
+                    entries={entry.map((item) => ({ key: item, ...grouped[item] }))}
+                  />
+                ) : (
+                  <Fragment key={entry}>{buttons[entry]()}</Fragment>
+                ),
+              );
+            })()}
             {keyboardOpen && touchPhone && (!rowId || focusInside) && (
               <button
                 type="button"

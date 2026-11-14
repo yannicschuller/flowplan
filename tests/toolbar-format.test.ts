@@ -63,7 +63,7 @@ test("the block style at the caret: text or a heading level", () => {
 
 test("names and shortcuts of the block styles", () => {
   assert.deepEqual(BLOCK_STYLES, ["paragraph", 1, 2, 3, 4]);
-  assert.deepEqual(BLOCK_STYLES.map(blockStyleShort), ["Text", "H1", "H2", "H3", "H4"]);
-  assert.equal(blockStyleShort(null), "Text");
+  assert.deepEqual(BLOCK_STYLES.map(blockStyleShort), ["Aa", "H1", "H2", "H3", "H4"], "two characters: as wide as the other buttons (#293)");
+  assert.equal(blockStyleShort(null), "Aa");
   assert.deepEqual(BLOCK_STYLES.map(blockStyleShortcut), ["Mod+Alt+0", "Mod+Alt+1", "Mod+Alt+2", "Mod+Alt+3", "Mod+Alt+4"]);
 });

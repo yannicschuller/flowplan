@@ -1,7 +1,7 @@
 "use client";
 // The alignment and block style menus of the formatting toolbar (#278): the
 // button shows what the text at the caret is now (its alignment icon,
-// "Text" or "H1" …), the menu the choices with their shortcuts. Radix menus
+// "Aa" for text or "H1" …, #293), the menu the choices with their shortcuts. Radix menus
 // as the toolbar's colour menu: arrow keys, Enter, Escape, screen readers
 // hear "menu" and the checked entry. Used by the app's toolbar
 // (components/editor.tsx) and the one of shared pages
@@ -189,7 +189,8 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
     equalityFn: (a, b) => a?.current === b?.current && a?.heading === b?.heading,
   });
   const current = state?.current ?? null;
-  const shown = blockStyleShort(current) === "Text" ? t("Text", "Text") : blockStyleShort(current);
+  // "Aa" or "H1" … "H4" (#293): as wide as the other buttons.
+  const shown = blockStyleShort(current);
   const names = (style: BlockStyle) => (style === "paragraph" ? t("Text", "Text") : t(`Überschrift ${style}`, `Heading ${style}`));
   return (
     <FormatMenu<string>
@@ -213,5 +214,73 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
         else chain.setHeading({ level: Number(value) as 1 | 2 | 3 | 4 }).run();
       }}
     />
+  );
+}
+
+// A group of the toolbar (#292, lib/toolbar-layout.ts): several buttons as
+// one, showing the icon of the active one (else the first) with a caret,
+// its menu the buttons with their names – toggles as checkbox entries.
+export type ToolbarGroupEntry = { key: string; label: string; icon: ReactNode; run: () => void; active?: boolean; disabled?: boolean };
+export function ToolbarGroupMenu({ editor, label, entries }: { editor: Editor | null; label: string; entries: ToolbarGroupEntry[] }) {
+  const selection = useRef<{ from: number; to: number } | null>(null);
+  const shown = entries.find((entry) => entry.active) ?? entries[0];
+  const name = shown?.active ? `${label}: ${shown.label}` : label;
+  const choose = (entry: ToolbarGroupEntry) => {
+    // Back to the text that was selected when the menu opened.
+    if (editor && !editor.isDestroyed && selection.current) {
+      const size = editor.state.doc.content.size;
+      editor.commands.setTextSelection({ from: Math.min(selection.current.from, size), to: Math.min(selection.current.to, size) });
+    }
+    entry.run();
+  };
+  return (
+    <Dropdown.Root
+      onOpenChange={(open) => {
+        if (open && editor) {
+          const { from, to } = editor.state.selection;
+          selection.current = { from, to };
+        }
+      }}
+    >
+      <Dropdown.Trigger asChild>
+        <button type="button" className={`toolbar-menu-button toolbar-group-menu${shown?.active ? " active" : ""}`} title={name} aria-label={name} disabled={!editor?.isEditable}>
+          {shown?.icon}
+          <CaretDown className="toolbar-menu-caret" weight="bold" aria-hidden />
+        </button>
+      </Dropdown.Trigger>
+      <Dropdown.Portal>
+        <Dropdown.Content
+          collisionPadding={safeCollisionPadding()}
+          className="dropdown toolbar-format-menu"
+          sideOffset={6}
+          align="start"
+          aria-label={label}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          {entries.map((entry) =>
+            entry.active === undefined ? (
+              <Dropdown.Item key={entry.key} className="dropdown-item toolbar-format-item" disabled={entry.disabled} onSelect={() => choose(entry)}>
+                {entry.icon}
+                <span>{entry.label}</span>
+              </Dropdown.Item>
+            ) : (
+              <Dropdown.CheckboxItem
+                key={entry.key}
+                checked={entry.active}
+                className="dropdown-item toolbar-format-item"
+                disabled={entry.disabled}
+                onSelect={() => choose(entry)}
+              >
+                {entry.icon}
+                <span>{entry.label}</span>
+                <Dropdown.ItemIndicator className="toolbar-format-check">
+                  <Check size={14} aria-hidden />
+                </Dropdown.ItemIndicator>
+              </Dropdown.CheckboxItem>
+            ),
+          )}
+        </Dropdown.Content>
+      </Dropdown.Portal>
+    </Dropdown.Root>
   );
 }

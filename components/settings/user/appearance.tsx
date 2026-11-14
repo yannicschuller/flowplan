@@ -5,7 +5,8 @@
 // profile, all devices), the arrow after links to the web (#217, profile,
 // all devices), the related pages and backlinks below pages
 // and records (this device), what "> " creates in the editor (#230,
-// profile, all devices), the editor's block handles and code blocks
+// profile, all devices), the formatting toolbar's buttons, order and
+// groups (#292, profile, all devices), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
 // "Animationen" (#260, profile, all devices), in the app for iPhone and
@@ -35,6 +36,7 @@ import type { QuoteShortcutPref } from "@/lib/quote-shortcut-pref";
 import { quoteShortcut, setQuoteShortcutLocal, useQuoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import type { FormattingToolbarPref } from "@/lib/toolbar-pref";
 import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } from "@/lib/toolbar-pref-client";
+import { ToolbarLayoutEditor } from "./toolbar-layout-editor";
 import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
@@ -362,6 +364,7 @@ export default function AppearanceSection() {
             ))}
           </div>
         </SettingRow>
+        <ToolbarLayoutEditor save={(toolbarLayout) => mutate({ action: "profile.toolbarLayout", toolbarLayout })} />
         <SettingRow
           anchor="full-width-pages"
           label={t("Seiten in voller Breite anzeigen", "Show pages at full width")}

@@ -315,6 +315,8 @@ export type Bootstrap = {
   quoteShortcut?: import("./quote-shortcut-pref").QuoteShortcutPref;
   // "Formatierungsleiste" (#235, lib/toolbar-pref.ts).
   formattingToolbar?: import("./toolbar-pref").FormattingToolbarPref;
+  // "Formatierungsleiste anpassen" (#292, lib/toolbar-layout.ts).
+  toolbarLayout?: import("./toolbar-layout").ToolbarLayout;
   // "Animationen" (#260, lib/motion-pref.ts).
   motion?: import("./motion-pref").MotionPref;
   // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).

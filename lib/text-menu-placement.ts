@@ -12,8 +12,12 @@ export type MenuRect = { left: number; top: number; right: number; bottom: numbe
 // where that toolbar is not shown (focus mode, a page whose toolbar is
 // hidden), so they stay reachable without a keyboard.
 export type TextMenuMark = "bold" | "italic" | "underline" | "strike" | "highlight" | "code";
-export function textMenuMarks(toolbarShown: boolean): TextMenuMark[] {
-  return toolbarShown ? ["bold", "italic", "code"] : ["bold", "italic", "underline", "strike", "highlight", "code"];
+// A mark the person took out of the toolbar (#292, lib/toolbar-layout.ts)
+// is offered here as well, so it stays reachable.
+export function textMenuMarks(toolbarShown: boolean, hiddenInToolbar: readonly string[] = []): TextMenuMark[] {
+  const all: TextMenuMark[] = ["bold", "italic", "underline", "strike", "highlight", "code"];
+  if (!toolbarShown) return all;
+  return all.filter((mark) => mark === "bold" || mark === "italic" || mark === "code" || hiddenInToolbar.includes(mark));
 }
 
 function overlaps(a: MenuRect, b: MenuRect) {
