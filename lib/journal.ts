@@ -380,6 +380,31 @@ export async function ensureJournalDay(user: Identity, journal: Page, date: stri
   const { dayId } = await storeNewDay(user, journal, date, dayDocument([], await templateNodes(journal.id, schema())));
   return { dayId, created: true };
 }
+// A day chosen in the day picker (#288, journal.roll with `day`): the page
+// of that date when there is one, else a new one with the journal's
+// template only – no open tasks are carried over, they belong to the newest
+// day. Today goes the usual way (rollJournal); days after `today` (the
+// client's local day, checked against the server clock) are refused, and a
+// day in the trash stays there.
+export async function openJournalDay(
+  user: Identity,
+  journal: Page,
+  date: string,
+  today: string,
+  now = new Date().toISOString().slice(0, 10),
+): Promise<{ dayId: string; changed: boolean; trashed?: boolean; draft?: boolean }> {
+  if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
+  journalDate.parse(date);
+  if (today < shiftDay(now, -1) || today > shiftDay(now, 1))
+    throw new HttpError(400, "Das Datum passt nicht zur Serverzeit.");
+  if (date > today) throw new HttpError(400, "Ein künftiger Tag lässt sich noch nicht anlegen.");
+  if (date === today) return await rollJournal(user, journal, today, now);
+  const existing = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=?", journal.id, date);
+  if (existing?.deleted_at) throw new HttpError(409, "Dieser Tag liegt im Papierkorb.");
+  if (existing) return { dayId: existing.id, changed: false };
+  const { dayId } = await storeNewDay(user, journal, date, dayDocument([], await templateNodes(journal.id, schema())));
+  return { dayId, changed: true };
+}
 // All journals of a workspace the user may edit.
 export async function rollJournals(user: Identity, workspaceId: string, today: string) {
   let changed = false;

@@ -3123,6 +3123,12 @@ export default function WorkspaceApp({
     }
     return openPage(journalId);
   }
+  // A past day chosen in the day picker (#288): its page, created without
+  // carried tasks when the journal has none for that date yet.
+  async function openJournalDate(journalId: string, date: string) {
+    const result = (await act({ action: "journal.roll", workspaceId: boot.workspace.id, pageId: journalId, date: localDay(), day: date })) as { dayId?: string } | null;
+    if (result?.dayId) return openPage(result.dayId);
+  }
   function openLastJournalToday() {
     const journal = journalsByUse()[0];
     if (journal) void openJournalToday(journal.id);
@@ -4643,6 +4649,7 @@ export default function WorkspaceApp({
                       days={(treeIndex.get(data.journalDay.journalId) || []).filter((p) => p.journal_date)}
                       onOpen={(id) => void openPage(id)}
                       onToday={() => void openJournalToday(data.journalDay!.journalId)}
+                      onCreate={editable && canCreate ? (date) => void openJournalDate(data.journalDay!.journalId, date) : undefined}
                     />
                   )}
                   {/* "Seitensymbol" (#214, app/page-icon-inline.css): the large

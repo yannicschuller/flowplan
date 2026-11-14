@@ -55,7 +55,7 @@ import {
   syncWhiteboard,
   whiteboardData,
 } from "./whiteboard";
-import { journalDate, rollJournal, rollJournals } from "./journal";
+import { journalDate, openJournalDay, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { commentRecipients, commentTextMentions } from "./comment-recipients";
@@ -1910,7 +1910,11 @@ async function runCommand(
       case "journal.roll": {
         // The client sends its own date: a new day starts at local midnight.
         const date = journalDate.parse(b.date);
-        if (b.pageId) {
+        if (b.pageId && b.day !== undefined) {
+          // A day chosen in the day picker (#288): opened, or created
+          // without carried tasks; never after today.
+          result = await openJournalDay(user, await write(), journalDate.parse(b.day), date);
+        } else if (b.pageId) {
           const journal = await write();
           // `write`: the first keystroke, task, tracker value or file in a
           // draft day creates it (journals set to "beim ersten Schreiben").

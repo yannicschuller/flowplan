@@ -120,6 +120,7 @@ export function JournalDayNav({
   days,
   onOpen,
   onToday,
+  onCreate,
 }: {
   date: string;
   today: string;
@@ -127,6 +128,9 @@ export function JournalDayNav({
   days: (DayLike & { journal_date?: string | null })[];
   onOpen: (id: string) => void;
   onToday: () => void;
+  // People who may write in the journal: a past day without an entry gets
+  // its page (#288). Without it such days cannot be chosen.
+  onCreate?: (date: string) => void;
 }) {
   const t = useT();
   const { previous, next } = useMemo(() => neighbourDays(days, date), [days, date]);
@@ -190,6 +194,14 @@ export function JournalDayNav({
             setPicker(false);
             onOpen(id);
           }}
+          onCreate={
+            onCreate &&
+            ((day) => {
+              setPicker(false);
+              if (day === today) onToday();
+              else onCreate(day);
+            })
+          }
           onClose={() => {
             setPicker(false);
             trigger.current?.focus();
@@ -200,19 +212,22 @@ export function JournalDayNav({
   );
 }
 
-// A month as a grid: days with an entry can be chosen. Arrow keys move by
+// A month as a grid: days with an entry can be chosen, with `onCreate` also
+// today and earlier days without one (#288). Arrow keys move by
 // a day or a week (across months), Page Up/Down by a month, Escape closes.
 function MonthPicker({
   date,
   today,
   days,
   onPick,
+  onCreate,
   onClose,
 }: {
   date: string;
   today: string;
   days: (DayLike & { journal_date?: string | null })[];
   onPick: (id: string) => void;
+  onCreate?: (date: string) => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -299,18 +314,27 @@ function MonthPicker({
             {week.map((cell, j) => {
               if (!cell) return <span key={`gap-${j}`} role="gridcell" />;
               const entry = byDate.get(cell);
+              // Days after today stay locked.
+              const creatable = !entry && !!onCreate && cell <= today;
               return (
                 <span key={cell} role="gridcell">
                   <button
                     type="button"
                     data-date={cell}
                     tabIndex={cell === focus ? 0 : -1}
-                    className={`${entry ? "has-entry" : ""}${cell === date ? " current" : ""}${cell === today ? " today" : ""}`}
-                    aria-disabled={entry ? undefined : true}
+                    className={`${entry ? "has-entry" : creatable ? "can-create" : ""}${cell === date ? " current" : ""}${cell === today ? " today" : ""}`}
+                    aria-disabled={entry || creatable ? undefined : true}
                     aria-current={cell === date ? "date" : undefined}
-                    aria-label={entry ? longDate.format(utc(cell)) : t(`${longDate.format(utc(cell))}, kein Eintrag`, `${longDate.format(utc(cell))}, no entry`)}
+                    aria-label={
+                      entry
+                        ? longDate.format(utc(cell))
+                        : creatable
+                          ? t(`Eintrag für ${longDate.format(utc(cell))} anlegen`, `Create an entry for ${longDate.format(utc(cell))}`)
+                          : t(`${longDate.format(utc(cell))}, kein Eintrag`, `${longDate.format(utc(cell))}, no entry`)
+                    }
+                    title={creatable ? t("Eintrag anlegen", "Create entry") : undefined}
                     onFocus={() => setFocus(cell)}
-                    onClick={() => entry && onPick(entry.id)}
+                    onClick={() => (entry ? onPick(entry.id) : creatable && onCreate!(cell))}
                   >
                     {Number(cell.slice(8))}
                   </button>
