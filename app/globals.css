@@ -30267,6 +30267,34 @@ html.split-resizing * {
   height: 18px;
   margin-top: 1px;
 }
+/* Notion through its API (components/import-notion.tsx): the shared
+   pages and databases to choose from. */
+.import-notion {
+  margin-top: 10px;
+}
+.import-sources-preview ul.import-notion-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-left: 0;
+  list-style: none;
+}
+.import-notion-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  min-width: 0;
+}
+.import-notion-list svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.import-notion-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
 /* ===== End of imports from other tools. ===== */
 
 /* ===== Administration sections (components/settings/admin/*): the status
