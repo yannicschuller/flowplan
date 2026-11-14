@@ -15,7 +15,9 @@
 // back() is false on the start page with nothing open: the app may then
 // leave (Android). The page tells the app whether there is a step back
 // (`FlowplanApp.backState`), so the iOS gesture is only there when it does
-// something. backProgress() previews the step while Android's predictive
+// something – and, with the person's "Wischen vom linken Rand" on "Seitenleiste
+// öffnen" (the default, #285), not at all: the edge opens the sidebar then
+// (`FlowplanApp.edgeSwipe`, lib/edge-swipe.ts). backProgress() previews the step while Android's predictive
 // back gesture is under way (lib/back-preview.ts). Sheets dragged down to
 // close (components/sheet-drag.ts) close through the dialog's own close, as
 // Escape does, so what back reports follows them.

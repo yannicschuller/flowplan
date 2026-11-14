@@ -145,6 +145,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         keywords: { de: "zitat aufklappbarer block toggle markdown kürzel tippen größer-zeichen", en: "quote blockquote toggle markdown shortcut typing greater-than" },
         anchor: "quote-shortcut",
       },
+      {
+        title: { de: "Wischen vom linken Rand", en: "Swipe from the left edge" },
+        keywords: { de: "wischen rand geste zurück seitenleiste navigation iphone ipad app", en: "swipe edge gesture back sidebar navigation iphone ipad app" },
+        anchor: "edge-swipe",
+      },
       { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },
       { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
       { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },

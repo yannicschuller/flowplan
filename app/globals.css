@@ -6661,7 +6661,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     left: 0;
     top: 0;
     bottom: 0;
-    width: min(320px, 86vw);
+    /* Its own width over the page (#285, --overlay-width: dragged at its
+       right edge, kept per device apart from the docked width); the page
+       stays visible beside it. */
+    width: min(var(--overlay-width, min(360px, 85vw)), calc(100vw - 48px));
     z-index: 42;
     transform: translate3d(-100%, 0, 0);
     transition: transform 0.18s ease;
@@ -27625,6 +27628,66 @@ td.ai-filled {
 }
 .desktop-collapsed > .sidebar .sidebar-resize {
   display: none;
+}
+/* The sidebar over the page (#285, components/drawer-swipe.ts): on phones,
+   and on tablets and computers whose sidebar is collapsed – there a swipe
+   from the left edge pulls it in over the page, with a width of its own
+   (--overlay-width, default 400px) and the dimmed page beside it. It stays
+   in its grid column (0 wide when collapsed) and overflows it, so the page's
+   column does not move. Closed, it waits out of view and hidden. */
+@media (min-width: 768px) {
+  .app-shell.desktop-collapsed > .sidebar {
+    width: min(var(--overlay-width, 400px), calc(100vw - 48px));
+    z-index: 42;
+    transform: translate3d(-100%, 0, 0);
+    transition:
+      transform 0.18s ease,
+      visibility 0s linear 0.18s;
+    will-change: transform;
+  }
+  .app-shell.desktop-collapsed.nav-open > .sidebar {
+    visibility: visible;
+    transform: translate3d(0, 0, 0);
+    transition: transform 0.18s ease;
+    box-shadow: 0 0 24px #17243830;
+  }
+  .app-shell.desktop-collapsed > .mobile-scrim,
+  .app-shell.desktop-collapsed > .mobile-scrim:hover {
+    position: fixed;
+    inset: 0;
+    background: #17243850;
+    z-index: 41;
+    border-radius: 0;
+  }
+  .app-shell.desktop-collapsed.nav-open > .mobile-scrim {
+    display: block;
+  }
+}
+/* Its right edge over the page: inside the sidebar (which clips sideways),
+   a strip wide enough for a finger with a small grip in the middle. */
+.app-shell.nav-open > .sidebar .sidebar-resize {
+  display: block;
+  right: 0;
+  width: 14px;
+}
+.app-shell.nav-open > .sidebar .sidebar-resize::after {
+  top: 50%;
+  bottom: auto;
+  left: 5px;
+  width: 4px;
+  height: 40px;
+  margin-top: -20px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0.35;
+}
+.app-shell.nav-open > .sidebar .sidebar-resize:focus-visible::after,
+.sidebar-resizing .app-shell.nav-open > .sidebar .sidebar-resize::after {
+  background: var(--blue);
+  opacity: 1;
+}
+.app-shell > .sidebar:focus {
+  outline: none;
 }
 @media (max-width: 767px) {
   .tree-toggle,

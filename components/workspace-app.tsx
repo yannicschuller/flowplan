@@ -53,6 +53,7 @@ import { openModeOf, type OpenMode } from "@/lib/open-place";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
+import { OVERLAY_MAX, OVERLAY_MIN, readOverlayWidth, writeOverlayWidth } from "@/lib/edge-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PageReview, openPageReview } from "./page-review";
@@ -657,6 +658,21 @@ export default function WorkspaceApp({
     document.cookie = layoutCookie({ sidebar: sidebarWidth, ask: askWidth, askPinned });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarWidth, askWidth, askPinned]);
+  // The sidebar's width while it lies over the page (phones, and tablets
+  // whose sidebar is collapsed; #285): its own, dragged at its right edge
+  // and kept per device apart from the docked width (lib/edge-swipe.ts).
+  // null: the stylesheet's default. Read after the first render – the
+  // overlay is closed at first paint.
+  const [overlayWidth, setOverlayWidth] = useState<number | null>(null);
+  const overlayRead = useRef(false);
+  useEffect(() => {
+    if (!overlayRead.current) {
+      overlayRead.current = true;
+      setOverlayWidth(readOverlayWidth(localStorage));
+      return;
+    }
+    writeOverlayWidth(localStorage, overlayWidth);
+  }, [overlayWidth]);
   const askNarrowWindow = useMedia(ASK_OVERLAY_MEDIA);
   // Presentation mode of the open document (components/presentation.tsx).
   const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
@@ -1178,20 +1194,34 @@ export default function WorkspaceApp({
     const release = holdViewTransitions();
     return () => void window.setTimeout(release, 250);
   }, [mobile]);
-  // It exists only in the phone layout (≤ 767 px, app/globals.css): when the
-  // window gets wider while it is open (a foldable such as iPhone Duo opens,
-  // the phone turns, a window grows) the sidebar takes over, and the drawer
-  // closes – instead of staying open unseen, taking the next "back" and
-  // coming back when the window narrows again.
+  // It exists in the phone layout (≤ 767 px, app/globals.css) and over the
+  // page on wider windows whose sidebar is collapsed (#285): when the window
+  // gets wider while it is open (a foldable such as iPhone Duo opens, the
+  // phone turns, a window grows) and the sidebar is docked there, the
+  // sidebar takes over, and the drawer closes – instead of staying open
+  // unseen, taking the next "back" and coming back when the window narrows
+  // again. The same when the collapsed sidebar is docked again.
   useEffect(() => {
     if (!mobile) return;
     const wide = matchMedia("(min-width: 768px)");
     const close = () => {
-      if (wide.matches) setMobile(false);
+      if (wide.matches && !desktopCollapsed) setMobile(false);
     };
     close();
     wide.addEventListener("change", close);
     return () => wide.removeEventListener("change", close);
+  }, [mobile, desktopCollapsed]);
+  // Open, the drawer is the place to be: focus moves into it (the page
+  // beside it is inert, see .main below), and back to the page when it
+  // closes with the focus still in it.
+  useEffect(() => {
+    if (!mobile) return;
+    const sidebar = document.querySelector<HTMLElement>(".app-shell > .sidebar");
+    if (sidebar && !sidebar.contains(document.activeElement)) sidebar.focus({ preventScroll: true });
+    return () => {
+      const active = document.activeElement;
+      if (!active || active === document.body || sidebar?.contains(active)) mainRef.current?.focus({ preventScroll: true });
+    };
   }, [mobile]);
   // Settings → Konto opens the introduction and the shortcut overlay again.
   useEffect(() => {
@@ -3370,8 +3400,12 @@ export default function WorkspaceApp({
       data-motion={motionAttribute(motion)}
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? (askNarrowWindow && !askPinned ? " ask-overlay" : " ask-open") : ""}`}
       style={
-        sidebarWidth || askWidth
-          ? ({ ...(sidebarWidth ? { "--sidebar-width": `${sidebarWidth}px` } : {}), ...(askWidth ? { "--ask-width": `${askWidth}px` } : {}) } as React.CSSProperties)
+        sidebarWidth || askWidth || overlayWidth
+          ? ({
+              ...(sidebarWidth ? { "--sidebar-width": `${sidebarWidth}px` } : {}),
+              ...(askWidth ? { "--ask-width": `${askWidth}px` } : {}),
+              ...(overlayWidth ? { "--overlay-width": `${overlayWidth}px` } : {}),
+            } as React.CSSProperties)
           : undefined
       }
       inert={switching || !!presenting}
@@ -3405,7 +3439,7 @@ export default function WorkspaceApp({
         aria-label={t("Navigation schließen", "Close navigation")}
         onClick={() => setMobile(false)}
       />
-      <aside className="sidebar">
+      <aside className="sidebar" tabIndex={mobile ? -1 : undefined} aria-label={mobile ? t("Navigation", "Navigation") : undefined}>
         <div className="sidebar-top">
           <a
             href="#home"
@@ -3946,14 +3980,29 @@ export default function WorkspaceApp({
             </Dropdown.Root>
           </div>
         </div>
-        <SidebarResize
-          width={sidebarWidth}
-          onWidth={setSidebarWidth}
-          label={t("Breite der Seitenleiste", "Sidebar width")}
-          hint={t("Ziehen zum Ändern, Doppelklick setzt zurück", "Drag to resize, double-click to reset")}
-        />
+        {/* Over the page (open drawer) the sidebar has a width of its own. */}
+        {mobile ? (
+          <SidebarResize
+            key="overlay"
+            width={overlayWidth}
+            onWidth={setOverlayWidth}
+            min={OVERLAY_MIN}
+            max={OVERLAY_MAX}
+            fallback={360}
+            label={t("Breite der Seitenleiste über der Seite", "Width of the sidebar over the page")}
+            hint={t("Ziehen zum Ändern, Doppeltippen setzt zurück", "Drag to resize, double-tap to reset")}
+          />
+        ) : (
+          <SidebarResize
+            key="docked"
+            width={sidebarWidth}
+            onWidth={setSidebarWidth}
+            label={t("Breite der Seitenleiste", "Sidebar width")}
+            hint={t("Ziehen zum Ändern, Doppelklick setzt zurück", "Drag to resize, double-click to reset")}
+          />
+        )}
       </aside>
-      <main className="main" id="main-content" tabIndex={-1} ref={mainRef}>
+      <main className="main" id="main-content" tabIndex={-1} ref={mainRef} inert={mobile}>
         {boot.user.demo && (
           <div className="demo-banner" role="note">
             <span>
