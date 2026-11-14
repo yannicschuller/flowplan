@@ -91,7 +91,9 @@ test("a wide first column stays below 60 % of a phone and the table scrolls side
   const pinned = (await title.boundingBox())!;
   expect(pinned.width).toBeLessThanOrEqual(viewport.width * 0.6 + 1);
   expect(await title.evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
-  expect(await page.locator("th.selection-cell").evaluate((el) => getComputedStyle(el).position)).toBe("static");
+  // Not pinned (relative while the header row sticks to the top, #287).
+  expect(await page.locator("th.selection-cell").evaluate((el) => getComputedStyle(el).position)).not.toBe("sticky");
+  expect(await page.locator("td.selection-cell").first().evaluate((el) => getComputedStyle(el).position)).toBe("static");
 
   const cdp = await page.context().newCDPSession(page);
   const cell = (await page.locator("tbody tr").nth(2).locator('td').nth(1).boundingBox())!;
