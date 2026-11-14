@@ -34,7 +34,7 @@ import { pinnedLookup, privateAddress } from "./safe-fetch";
 import { encryptionKeys, currentKeyId } from "./encryption";
 import { openSecret, sealSecret } from "./secret-box";
 import { secretKeyIds, secretsKeySource } from "./ai/secrets";
-import { mailConfig, smtpOptions } from "./mail";
+import { mailConfig, smtpOptions, smtpTlsHint } from "./mail";
 import { bucketFetch, storageConfig } from "./storage";
 import { confirmsWithPassword } from "./account-deletion";
 import { passwordLogin } from "./local-auth";
@@ -484,7 +484,7 @@ export async function reachability(): Promise<PreflightItem[]> {
       await transport.verify();
       items.push({ id: "reach.smtp", level: "ok", code: "reach.smtp.ok", target: `${mail.host}:${mail.port}` });
     } catch (e) {
-      items.push({ id: "reach.smtp", level: "error", code: mail.port === 25 || mail.port === 465 ? "reach.smtp.port" : "reach.smtp.error", target: `${mail.host}:${mail.port}`, message: failure(e) });
+      items.push({ id: "reach.smtp", level: "error", code: mail.port === 25 || mail.port === 465 ? "reach.smtp.port" : "reach.smtp.error", target: `${mail.host}:${mail.port}`, message: `${failure(e)}${smtpTlsHint(failure(e))}` });
     } finally {
       transport.close();
     }

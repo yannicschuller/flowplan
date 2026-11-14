@@ -38,6 +38,8 @@ export default function SigninSection() {
         ? { tone: "ok", label: t("LDAP an", "LDAP on") }
         : { tone: "off", label: t("LDAP aus", "LDAP off") },
   ];
+  // LDAP_TLS_REJECT_UNAUTHORIZED=false (#286): never silent.
+  if (dir?.ldap.tlsUnverified) items.push({ tone: "warn", label: t("LDAP: Zertifikatsprüfung aus", "LDAP: certificate check off") });
   if (data.localLogin)
     items.push(
       twoFactor === "off"

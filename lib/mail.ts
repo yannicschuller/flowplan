@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { rootCertificates } from "node:tls";
+import { certificateProblem, hostnameProblem, tlsIdentity, tlsServername, tlsVerifyOff } from "./tls-trust";
 // E-mail over SMTP: invitations and a summary of unread notifications.
 // Messages go into a persistent queue (like push) and are sent by a worker
 // with retries, so a slow or failing mail server never blocks a request.
@@ -28,6 +29,10 @@ export type MailConfig = {
   from: string;
   /** An own CA for the SMTP server's certificate (SMTP_TLS_CA, #286). */
   tlsCa?: string;
+  /** The name in the certificate when SMTP_HOST is an IP or another name (SMTP_TLS_SERVERNAME). */
+  tlsServername?: string;
+  /** false only with SMTP_TLS_REJECT_UNAUTHORIZED=false (lib/tls-trust.ts). */
+  tlsRejectUnauthorized: boolean;
 };
 
 export function mailConfig(): MailConfig | null {
@@ -43,16 +48,16 @@ export function mailConfig(): MailConfig | null {
     password: process.env.SMTP_PASSWORD || "",
     from: process.env.SMTP_FROM || `Flowplan <${process.env.SMTP_USER || "flowplan@localhost"}>`,
     tlsCa: tlsCaOf(process.env.SMTP_TLS_CA),
+    tlsServername: tlsServername("SMTP"),
+    tlsRejectUnauthorized: !tlsVerifyOff("SMTP"),
   };
 }
 // An own certificate authority, as file path or PEM text (also with "\n"
 // for line breaks, as in a one-line environment variable) – the same form
-// as LDAP_TLS_CA. Certificates are always verified (#286): an internal
-// server with a self-signed or private-CA certificate needs its CA here,
-// never a switch that turns verification off.
-// A TLS error about the server's certificate chain (#286).
-export const certificateProblem = (message: string) =>
-  /unable to (verify the first certificate|get local issuer certificate)|self[- ]signed certificate|certificate chain|UNABLE_TO_VERIFY|DEPTH_ZERO_SELF_SIGNED/i.test(message);
+// as LDAP_TLS_CA. An internal server with a self-signed or private-CA
+// certificate needs its CA here (#286); SMTP_TLS_REJECT_UNAUTHORIZED=false
+// is the explicit, warned-about last resort (lib/tls-trust.ts).
+export { certificateProblem, hostnameProblem };
 export function tlsCaOf(value: string | undefined) {
   const ca = value?.trim();
   if (!ca) return undefined;
@@ -70,7 +75,9 @@ const runtime = globalThis as unknown as {
 
 // The connection to the SMTP server – also used by the move check
 // (lib/instance-move.ts). An own CA (SMTP_TLS_CA) is trusted in addition to
-// the system's; verification itself stays on (#286).
+// the system's; SMTP_TLS_SERVERNAME is the name the certificate is checked
+// against; verification is off only with SMTP_TLS_REJECT_UNAUTHORIZED=false
+// (#286). The tls options apply to port 465 and to STARTTLS alike.
 export function smtpOptions(config: MailConfig, timeouts = { connection: 10_000, greeting: 10_000, socket: 20_000 }) {
   return {
     host: config.host,
@@ -80,8 +87,11 @@ export function smtpOptions(config: MailConfig, timeouts = { connection: 10_000,
     connectionTimeout: timeouts.connection,
     greetingTimeout: timeouts.greeting,
     socketTimeout: timeouts.socket,
-    // Node's `ca` replaces the trusted CAs: the system's stay in the list.
-    ...(config.tlsCa ? { tls: { ca: [...rootCertificates, config.tlsCa] } } : {}),
+    tls: {
+      // Node's `ca` replaces the trusted CAs: the system's stay in the list.
+      ...(config.tlsCa ? { ca: [...rootCertificates, config.tlsCa] } : {}),
+      ...tlsIdentity(config.host, config.tlsServername, config.tlsRejectUnauthorized),
+    },
   };
 }
 function transport(config: MailConfig) {
@@ -453,6 +463,10 @@ export async function mailStatus() {
   return {
     configured: !!config,
     host: config ? `${config.host}:${config.port}${config.secure ? " (TLS)" : ""}` : null,
+    // Certificate checks (#286): the name checked against, and whether
+    // SMTP_TLS_REJECT_UNAUTHORIZED=false switched verification off.
+    tlsServername: config?.tlsServername || null,
+    tlsUnverified: !!config && !config.tlsRejectUnauthorized,
     from: config?.from || null,
     pending: await count("SELECT COUNT(*) n FROM mail_queue WHERE sent_at IS NULL AND attempts<8"),
     failed: await count("SELECT COUNT(*) n FROM mail_queue WHERE sent_at IS NULL AND attempts>=8"),
@@ -462,6 +476,18 @@ export async function mailStatus() {
         "SELECT error FROM mail_queue WHERE error IS NOT NULL ORDER BY next_at DESC LIMIT 1",
       ))?.error || null,
   };
+}
+
+// What to do about a certificate error (#286): the test e-mail and the move check.
+export function smtpTlsHint(message: string) {
+  if (hostnameProblem(message))
+    return ct(
+      " – das Zertifikat gilt für einen anderen Namen als SMTP_HOST: gib den Namen aus dem Zertifikat in SMTP_TLS_SERVERNAME an (bei eigener CA zusätzlich SMTP_TLS_CA).",
+      " – the certificate is for another name than SMTP_HOST: give the name in the certificate in SMTP_TLS_SERVERNAME (with a private CA also SMTP_TLS_CA).",
+    );
+  if (certificateProblem(message))
+    return ct(" – trägt der SMTP-Server ein eigenes oder selbst signiertes Zertifikat, gib dessen CA in SMTP_TLS_CA an.", " – if the SMTP server uses a private or self-signed certificate, give its CA in SMTP_TLS_CA.");
+  return "";
 }
 
 // Admin test: sent right away (not queued) so the answer shows the result.
@@ -481,11 +507,7 @@ export async function sendTestMail(to: string) {
     const message = (error as Error).message;
     throw new HttpError(
       502,
-      `Senden fehlgeschlagen: ${message}${
-        certificateProblem(message)
-          ? ct(" – trägt der SMTP-Server ein eigenes oder selbst signiertes Zertifikat, gib dessen CA in SMTP_TLS_CA an.", " – if the SMTP server uses a private or self-signed certificate, give its CA in SMTP_TLS_CA.")
-          : ""
-      }`,
+      `Senden fehlgeschlagen: ${message}${smtpTlsHint(message)}`,
     );
   }
 }

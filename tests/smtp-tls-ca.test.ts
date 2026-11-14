@@ -1,7 +1,8 @@
 // An SMTP server with a certificate from a private CA (#286): without its
 // CA the connection fails with a certificate error (and the message says
 // where the CA goes); with SMTP_TLS_CA – file path or PEM text – it
-// connects. Verification is never switched off.
+// connects. (Switching verification off and SMTP_TLS_SERVERNAME:
+// tests/tls-trust.test.ts.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

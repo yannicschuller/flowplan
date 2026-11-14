@@ -14,11 +14,17 @@
 //                          replaced by the escaped sign-in name
 //   LDAP_GROUP_ATTRIBUTE   default memberOf
 //   LDAP_TLS_CA            PEM file or PEM text of the CA to trust
+//   LDAP_TLS_SERVERNAME    the name in the certificate when LDAP_URL names
+//                          the server by IP or another name
+//   LDAP_TLS_REJECT_UNAUTHORIZED
+//                          "false": certificates are not verified (warned
+//                          about at start and in Administration, #286)
 //   LDAP_STARTTLS          true: upgrade ldap:// with StartTLS
 //   LDAP_TIMEOUT_MS        per operation, default 8000
-import { connect as netConnect, isIP, type Socket } from "node:net";
+import { connect as netConnect, type Socket } from "node:net";
 import { connect as tlsConnect, type TLSSocket } from "node:tls";
 import { readFileSync } from "node:fs";
+import { certificateProblem, hostnameProblem, tlsIdentity, tlsServername, tlsVerifyOff } from "./tls-trust";
 
 // ---- BER ----
 
@@ -315,6 +321,10 @@ export type LdapConfig = {
   userFilter: string;
   groupAttribute: string;
   tlsCa?: string;
+  /** LDAP_TLS_SERVERNAME: the name the certificate is checked against. */
+  tlsServername?: string;
+  /** false only with LDAP_TLS_REJECT_UNAUTHORIZED=false; unset = verify. */
+  tlsRejectUnauthorized?: boolean;
   startTls: boolean;
   timeoutMs: number;
 };
@@ -325,12 +335,14 @@ export function ldapConfig(): LdapConfig | null {
   if (!ldapConfigured()) return null;
   return ldapServerConfig(process.env.LDAP_BASE_DN!.trim());
 }
-// A certificate the server's chain doesn't lead to a trusted CA (#286):
-// verification stays on – the fix is the CA in LDAP_TLS_CA.
-const caHint = (message: string) =>
-  /unable to (verify the first certificate|get local issuer certificate)|self[- ]signed certificate|UNABLE_TO_VERIFY|DEPTH_ZERO_SELF_SIGNED/i.test(message)
-    ? " – set LDAP_TLS_CA to the CA certificate of the LDAP server"
-    : "";
+// What to do about a certificate error (#286): a name mismatch points to
+// LDAP_TLS_SERVERNAME, an unknown CA to LDAP_TLS_CA.
+export const caHint = (message: string) =>
+  hostnameProblem(message)
+    ? " – the certificate is for another name than the host in LDAP_URL: set LDAP_TLS_SERVERNAME to the name in the certificate (with a private CA also LDAP_TLS_CA)"
+    : certificateProblem(message)
+      ? " – set LDAP_TLS_CA to the CA certificate of the LDAP server"
+      : "";
 // The server, the search account and TLS from the environment with another
 // base (contacts from the directory, lib/contacts-ldap.ts); null without
 // LDAP_URL.
@@ -345,9 +357,17 @@ export function ldapServerConfig(baseDn: string): LdapConfig | null {
     userFilter: process.env.LDAP_USER_FILTER?.trim() || "(|(uid={user})(mail={user}))",
     groupAttribute: process.env.LDAP_GROUP_ATTRIBUTE?.trim() || "memberOf",
     tlsCa: ca ? (ca.startsWith("-----BEGIN") ? ca.replace(/\\n/g, "\n") : readFileSync(ca, "utf8")) : undefined,
+    tlsServername: tlsServername("LDAP"),
+    tlsRejectUnauthorized: !tlsVerifyOff("LDAP"),
     startTls: process.env.LDAP_STARTTLS === "true",
     timeoutMs: Math.min(60_000, Math.max(1000, Number(process.env.LDAP_TIMEOUT_MS) || 8000)),
   };
+}
+
+// The node:tls options for ldaps:// and StartTLS: the own CA, the name the
+// certificate must carry (never an IP as SNI) and whether verification is on.
+export function ldapTlsOptions(host: string, config: Pick<LdapConfig, "tlsCa" | "tlsServername" | "tlsRejectUnauthorized">) {
+  return { ca: config.tlsCa, ...tlsIdentity(host, config.tlsServername, config.tlsRejectUnauthorized !== false) };
 }
 
 type Pending = { onMessage: (op: Tlv) => void; fail: (e: Error) => void };
@@ -386,13 +406,13 @@ export class LdapConnection {
     socket.on("error", (e) => this.shutdown(new LdapError(`LDAP connection failed: ${e.message}${caHint(e.message)}`)));
     socket.on("close", () => this.shutdown(new LdapError("LDAP connection closed")));
   }
-  static async open(config: Pick<LdapConfig, "url" | "tlsCa" | "startTls" | "timeoutMs">) {
+  static async open(config: Pick<LdapConfig, "url" | "tlsCa" | "tlsServername" | "tlsRejectUnauthorized" | "startTls" | "timeoutMs">) {
     const url = new URL(config.url);
     if (url.protocol !== "ldap:" && url.protocol !== "ldaps:") throw new LdapError("LDAP_URL must start with ldap:// or ldaps://");
     const secure = url.protocol === "ldaps:";
     const host = url.hostname.replace(/^\[|\]$/g, "");
     const port = Number(url.port) || (secure ? 636 : 389);
-    const tlsOptions = { ca: config.tlsCa, servername: isIP(host) ? undefined : host, rejectUnauthorized: true };
+    const tlsOptions = ldapTlsOptions(host, config);
     const socket = await new Promise<Socket | TLSSocket>((resolve, reject) => {
       const s = secure ? tlsConnect({ host, port, ...tlsOptions }) : netConnect({ host, port });
       const timer = setTimeout(() => {
@@ -473,7 +493,7 @@ export class LdapConnection {
       this.socket.write(ber.seq(0x30, ber.int(id), op));
     });
   }
-  private async startTls(options: { ca?: string; servername?: string; rejectUnauthorized: boolean }) {
+  private async startTls(options: ReturnType<typeof ldapTlsOptions>) {
     await this.request<void>(ber.seq(0x77, ber.str("1.3.6.1.4.1.1466.20037", 0x80)), (op, done) => {
       if (op.tag !== 0x78) throw new LdapError("Unexpected answer to StartTLS");
       const result = ldapResult(op);
@@ -494,7 +514,7 @@ export class LdapConnection {
       });
       secure.once("error", (e) => {
         clearTimeout(timer);
-        reject(new LdapError(`TLS failed: ${e.message}`));
+        reject(new LdapError(`TLS failed: ${e.message}${caHint(e.message)}`));
       });
     });
     this.listen(this.socket);

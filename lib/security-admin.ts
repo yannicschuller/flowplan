@@ -2,6 +2,7 @@
 // incidents (lib/security-events.ts, lib/security-detect.ts) and what an
 // administrator does about them – block an address or network, end
 // sessions, disable an account, revoke tokens and links.
+import { unverifiedTls } from "./tls-trust";
 import { z } from "zod";
 import { CSV_FORMULA } from "./cell-text";
 import { all, id, one, run, sql } from "./db";
@@ -406,6 +407,8 @@ async function setup(now: number) {
     mail: !!mailConfig(),
     // Sign-ins without an address: the proxy does not pass it on.
     addressMissing: recent >= 3 && withAddress === 0,
+    // SMTP/LDAP certificates not verified (*_TLS_REJECT_UNAUTHORIZED=false, #286).
+    tlsUnverified: unverifiedTls(),
   };
 }
 

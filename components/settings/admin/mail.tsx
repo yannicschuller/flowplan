@@ -27,6 +27,9 @@ export default function MailSection() {
           label: t("SMTP nicht eingerichtet", "SMTP not set up"),
         },
   ];
+  // SMTP_TLS_REJECT_UNAUTHORIZED=false (#286): never silent.
+  if (mail.configured && mail.tlsUnverified)
+    items.push({ tone: "warn", label: t("Zertifikatsprüfung aus", "Certificate check off") });
   if (mail.configured && mail.failed)
     items.push({
       tone: "error",
@@ -57,6 +60,21 @@ export default function MailSection() {
             <SettingRow label={t("Server", "Server")} description={t("Aus SMTP_HOST und SMTP_PORT.", "From SMTP_HOST and SMTP_PORT.")}>
               <code className="admin-break">{mail.host}</code>
             </SettingRow>
+            {(mail.tlsUnverified || mail.tlsServername) && (
+              <SettingRow
+                label={t("Zertifikat", "Certificate")}
+                description={
+                  mail.tlsUnverified
+                    ? t(
+                        "Zertifikatsprüfung ausgeschaltet (SMTP_TLS_REJECT_UNAUTHORIZED=false): wer im Netz dazwischen sitzt, kann sich als Mailserver ausgeben und das SMTP-Passwort mitlesen. Sicherer: SMTP_TLS_CA und SMTP_TLS_SERVERNAME.",
+                        "Certificate check switched off (SMTP_TLS_REJECT_UNAUTHORIZED=false): anyone on the network path can pose as the mail server and read the SMTP password. Safer: SMTP_TLS_CA and SMTP_TLS_SERVERNAME.",
+                      )
+                    : t(`Geprüft gegen den Namen ${mail.tlsServername} (SMTP_TLS_SERVERNAME).`, `Checked against the name ${mail.tlsServername} (SMTP_TLS_SERVERNAME).`)
+                }
+              >
+                <StatusBadge tone={mail.tlsUnverified ? "warn" : "ok"}>{mail.tlsUnverified ? t("Nicht geprüft", "Not verified") : t("Geprüft", "Verified")}</StatusBadge>
+              </SettingRow>
+            )}
             <SettingRow label={t("Absender", "Sender")} description={t("Aus SMTP_FROM.", "From SMTP_FROM.")}>
               <code className="admin-break">{mail.from}</code>
             </SettingRow>

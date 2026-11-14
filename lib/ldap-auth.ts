@@ -18,6 +18,7 @@
 //   account (sessions end); enabled again there, the sync or the next
 //   sign-in enables it again. Accounts disabled by an administrator stay
 //   disabled.
+import { tlsServername, unverifiedTls } from "./tls-trust";
 import { z } from "zod";
 import { all, audit, id, one, run, transaction } from "./db";
 import { HttpError, adminGroup } from "./auth";
@@ -261,6 +262,9 @@ export async function ldapStatus() {
     userFilter: config?.userFilter || "",
     groupAttribute: config?.groupAttribute || "",
     startTls: !!config?.startTls,
+    // Certificate checks (#286), also for the contacts sync (LDAP_URL alone).
+    tlsServername: tlsServername("LDAP") || "",
+    tlsUnverified: unverifiedTls().includes("LDAP"),
     accounts: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ldap_accounts"))?.n || 0),
     lastSync: await readStatus<LdapSyncResult>("ldap.sync"),
     lastTest: await readStatus<{ ok: boolean; ms: number; error: string; at: number }>("ldap.test"),
