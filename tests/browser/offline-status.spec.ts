@@ -21,6 +21,9 @@ test("offline is a small icon in the top bar with the explanation on a tap", asy
   // The page does not move down.
   expect((await topbar.boundingBox())!.y).toBe(before);
   await expect(icon).toHaveAccessibleName("Offline – Details");
+  // On the right side of the bar, not in its middle.
+  const bar = (await topbar.boundingBox())!, at = (await icon.boundingBox())!;
+  expect(at.x + at.width / 2).toBeGreaterThan(bar.x + bar.width * 0.6);
   await icon.click();
   const note = page.locator(".offline-status-note");
   await expect(note).toContainText("Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen werden später abgeglichen.");

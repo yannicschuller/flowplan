@@ -5118,6 +5118,9 @@ td:hover .link-cell-edit,
   display: inline-flex;
   flex: none;
   align-items: center;
+  /* To the right, just before the top bar's own actions – not in the
+     middle that the bar's space-between would give it. */
+  margin-left: auto;
 }
 .offline-status-button {
   color: #8a6300;
