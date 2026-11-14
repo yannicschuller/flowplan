@@ -1502,6 +1502,19 @@ function migrate(d: DatabaseSync) {
   // among them. One row per account. A new table only – the schema number
   // stays.
   d.exec("CREATE TABLE IF NOT EXISTS sso_group_reports(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,at INTEGER NOT NULL,claim TEXT NOT NULL,claim_missing INTEGER,groups_json TEXT NOT NULL DEFAULT '[]',group_count INTEGER NOT NULL DEFAULT 0,admin_group TEXT NOT NULL,has_admin INTEGER NOT NULL DEFAULT 0)");
+  // The introduction's follow-up (lib/getting-started.ts, lib/sample-space.ts):
+  // getting_started holds per person and workspace the checklist "Erste
+  // Schritte" – when it started (the introduction ended), whether it is
+  // hidden, what the person said they use Flowplan for and where they come
+  // from, and which items are done when (JSON {item: ms}). sample_spaces
+  // names the "Beispielbereich" a person created from the introduction and
+  // the pages created in it (JSON ids), so removing it removes exactly
+  // those. New tables only – an older version leaves them alone (no
+  // checklist, the sample is an ordinary space) – so the schema number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS getting_started(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,started_at INTEGER NOT NULL,hidden_at INTEGER,goal TEXT,source TEXT,done TEXT NOT NULL DEFAULT '{}',PRIMARY KEY(user_id,workspace_id));
+    CREATE INDEX IF NOT EXISTS getting_started_workspace ON getting_started(workspace_id);
+    CREATE TABLE IF NOT EXISTS sample_spaces(space_id TEXT PRIMARY KEY REFERENCES spaces(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_ids TEXT NOT NULL DEFAULT '[]',created_at INTEGER NOT NULL,UNIQUE(workspace_id,user_id));
+    CREATE INDEX IF NOT EXISTS sample_spaces_user ON sample_spaces(user_id);`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

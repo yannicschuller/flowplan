@@ -452,6 +452,11 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     language: await fixedLanguage(user.id),
     // New accounts see the introduction once (components/onboarding.tsx).
     onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
+    // The checklist "Erste Schritte" after the introduction (null: none)
+    // and the person's "Beispielbereich" (lib/getting-started.ts,
+    // lib/sample-space.ts).
+    gettingStarted: await gettingStarted(user, workspace.id),
+    sampleSpace: user.demo ? null : await sampleSpaceOf(user, workspace.id),
     // Favourite records of readable databases in this workspace.
     favoriteRows: (await filterAsync(await all<Page & { row_id: string; row_icon: string | null; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.icon row_icon,r.cells,d.fields FROM row_favorites f
@@ -926,6 +931,17 @@ async function runCommand(
       case "profile.onboarded":
         await run("UPDATE users SET onboarded_at=? WHERE id=?", Date.now(), user.id);
         result = { ok: true };
+        break;
+      // The checklist "Erste Schritte" (lib/getting-started.ts).
+      case "gettingStarted.start":
+      case "gettingStarted.mark":
+      case "gettingStarted.hide":
+        result = await gettingStartedCommand(user, action, b);
+        break;
+      // The "Beispielbereich" of the introduction (lib/sample-space.ts).
+      case "sample.create":
+      case "sample.remove":
+        result = await sampleSpaceCommand(user, action, b);
         break;
       case "notification.reset":
         result = await resetNotificationPrefs(user);
@@ -3886,6 +3902,12 @@ async function runCommand(
   } catch (error) {
     console.error("Webhook-Ereignis fehlgeschlagen", error);
   }
+  // What it means for the checklist "Erste Schritte" (lib/getting-started.ts).
+  try {
+    await gettingStartedAfterCommand(user, action, b, result);
+  } catch (error) {
+    console.error("Checkliste „Erste Schritte“ nicht aktualisiert", error);
+  }
   for (const task of afterCommit)
     try {
       await task();
@@ -4054,6 +4076,8 @@ async function createWorkspaceInner(user: string, name: string) {
   return wid;
 }
 import { inlineCommentCommand } from "./inline-comments";
+import { gettingStarted, gettingStartedAfterCommand, gettingStartedCommand } from "./getting-started";
+import { sampleSpaceCommand, sampleSpaceOf } from "./sample-space";
 import {
   archivedThreadsSchema,
   importInlineComments,

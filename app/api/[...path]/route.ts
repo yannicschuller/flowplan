@@ -93,6 +93,7 @@ import { COLLECTION_RESULTS, COLLECTION_RESULTS_MAX, listCollections, previewQue
 import { tagListing } from "@/lib/page-properties-server";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
+import { noteGettingStarted } from "@/lib/getting-started";
 import { importWhiteboardFile } from "@/lib/whiteboard-import-server";
 import { documentAuthors } from "@/lib/document-authors";
 import { bibliography, bibliographyForDoi, resolveDoi } from "@/lib/citations-server";
@@ -1760,10 +1761,11 @@ async function handlePOST(
         kept = earlier || kept;
       }
       const dryRun = fields.get("dryRun") === "1";
+      const importWorkspace = () => z.uuid().parse(fields.get("workspaceId"));
       const imported = () =>
         importFromSource(
           user,
-          z.uuid().parse(fields.get("workspaceId")),
+          importWorkspace(),
           z.uuid().parse(fields.get("spaceId")),
           file,
           {
@@ -1774,7 +1776,11 @@ async function handlePOST(
             // document at the top.
             nestLinked: fields.get("nestLinked") !== "0",
           },
-        );
+        ).then(async (result) => {
+          // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
+          if (!dryRun) await noteGettingStarted(user.id, importWorkspace(), "import").catch(() => {});
+          return result;
+        });
       // background=1 (the import page, #163): a large file takes longer than
       // a reverse proxy waits (504). The answer is the job's id at once; the
       // work runs after it, the page asks GET /api/import/source/job for
@@ -1822,11 +1828,11 @@ async function handlePOST(
         throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
       await requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
       const bytes = Buffer.from(await file.arrayBuffer());
-      return NextResponse.json(
-        await trackJob(user, "import", file.name, () =>
-          importZip(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), bytes),
-        ),
-      );
+      const workspaceId = z.uuid().parse(data.get("workspaceId"));
+      const result = await trackJob(user, "import", file.name, () => importZip(user, workspaceId, z.uuid().parse(data.get("spaceId")), bytes));
+      // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
+      await noteGettingStarted(user.id, workspaceId, "import").catch(() => {});
+      return NextResponse.json(result);
     }
     // A DOI as a citation: metadata via DOI content negotiation (cached),
     // then into the workspace's bibliography.
