@@ -399,6 +399,7 @@ export function RackLibrary({ board, onClose, title }: { board: BoardApi; onClos
   const file = useRef<HTMLInputElement>(null);
   useEffect(() => {
     let live = true;
+    if (board.guest) return;
     api<{ templates: OwnTemplate[] }>(`/api/whiteboards/${board.pageId}/rack-templates`)
       .then((r) => live && setOwn(r.templates))
       .catch(() => {});
@@ -538,7 +539,7 @@ export function RackLibrary({ board, onClose, title }: { board: BoardApi; onClos
         <button type="button" className="button" onClick={() => board.open({ kind: "rack-ports" })}>
           <Plugs size={16} aria-hidden="true" /> {t("Ports und Kabel", "Ports & cables")}
         </button>
-        {board.editable && (
+        {board.editable && !board.guest && (
           <button type="button" className="button" onClick={() => board.open({ kind: "rack-netbox" })}>
             <CloudArrowDown size={16} aria-hidden="true" /> {t("Aus NetBox …", "From NetBox …")}
           </button>
@@ -919,7 +920,7 @@ function DeviceForm({ board, item, t }: { board: BoardApi; item: WhiteboardItem;
           </button>
         </details>
       )}
-      {board.editable && (
+      {board.editable && !board.guest && (
         <button
           type="button"
           className="button"

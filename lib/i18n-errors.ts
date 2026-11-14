@@ -392,6 +392,9 @@ const exact: Record<string, string> = {
   "Kein Journaltag.": "Not a journal day.",
   "Kein Dokument.": "Not a document.",
   "Kein Whiteboard.": "Not a whiteboard.",
+  // Guests editing whiteboards and notebooks (lib/share-canvas.ts, #280).
+  "Hochladen ist für Gäste nicht möglich.": "Uploading is not available to guests.",
+  "Ungültige Änderung.": "Invalid change.",
   // Racks on whiteboards (lib/whiteboard-rack-server.ts).
   "Ungültiges Gerät.": "Invalid device.",
   "Dieser Arbeitsbereich hat schon 500 eigene Geräte.": "This workspace already has 500 own devices.",

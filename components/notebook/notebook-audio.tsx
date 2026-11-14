@@ -94,10 +94,13 @@ export function useNotebookAudio({
   canEdit,
   scroller,
   onError,
+  off = false,
 }: {
   pageId: string;
   editor: InkEditor;
   canEdit: boolean;
+  // Guests of an edit link (#280): no recordings.
+  off?: boolean;
   // The scrolling box of the sheets: "play from here" listens there.
   scroller: RefObject<HTMLDivElement | null>;
   onError: (message: string) => void;
@@ -126,6 +129,7 @@ export function useNotebookAudio({
 
   // ---- The list ----
   const load = useCallback(async () => {
+    if (off) return null;
     try {
       const data = await api<Info>(base);
       setInfo(data);
@@ -133,7 +137,7 @@ export function useNotebookAudio({
     } catch {
       return null;
     }
-  }, [base]);
+  }, [base, off]);
   useEffect(() => {
     void load();
   }, [load]);

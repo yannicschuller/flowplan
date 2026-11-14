@@ -8107,6 +8107,36 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   cursor: pointer;
 }
 
+/* Whiteboards and notebooks edited through an edit link (#280,
+   components/shared-canvas.tsx): the editor gets the room of the window. */
+.shared-canvas-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.shared-canvas-start .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.public-page:has(.shared-canvas.is-editing) {
+  max-width: min(1600px, 100%);
+}
+.shared-canvas.is-editing .whiteboard,
+.shared-canvas.is-editing .notebook-view {
+  height: calc(100dvh - 120px);
+}
+@media (max-width: 760px) {
+  .shared-canvas.is-editing .whiteboard,
+  .shared-canvas.is-editing .notebook-view {
+    height: calc(100dvh - 72px);
+    margin: 0 -20px;
+    border-radius: 0;
+    border-inline: 0;
+  }
+}
 .shared-interactions {
   border-top: 1px solid var(--border);
   margin-top: 40px;

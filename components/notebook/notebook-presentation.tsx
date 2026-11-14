@@ -16,6 +16,7 @@ import { CaretLeft, CaretRight, CursorClick, Hand, HighlighterCircle, X } from "
 import { useT } from "../i18n";
 import { InkLayer } from "../ink/ink-layer";
 import { PaperSvg, PdfBackground } from "./paper";
+import { useFileSrc } from "../ink/ink-picture";
 import { SheetLinks } from "./sheet-links";
 import { usePresenting, type LivePoint, type Presenter } from "./use-notebook-live";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
@@ -136,6 +137,7 @@ export function NotebookPresentation({
   onClose: (sheetId: string) => void;
 }) {
   const t = useT();
+  const fileUrl = useFileSrc();
   const root = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(() => Math.max(0, sheets.findIndex((s) => s.id === start)));
   const followed = follow ? sheets.findIndex((s) => s.id === follow.sheet) : -1;
@@ -339,7 +341,7 @@ export function NotebookPresentation({
         onContextMenu={(e) => e.preventDefault()}
       >
         {sheet.background ? (
-          <PdfBackground key={sheet.id} src={`/api/files/${sheet.background.file}`} page={sheet.background.page} width={width} eager />
+          <PdfBackground key={sheet.id} src={fileUrl(sheet.background.file)} page={sheet.background.page} width={width} eager />
         ) : look?.layout ? (
           <PaperSvg layout={look.layout} />
         ) : null}

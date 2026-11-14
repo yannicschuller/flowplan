@@ -307,6 +307,24 @@ export async function publicFile(token: string, fileId: string) {
     await one("SELECT 1 FROM notebook_sheets WHERE page_id=? AND background LIKE ?", file.page_id, `%"file":"${fileId}"%`)
   )
     referenced.add(fileId);
+  // Pictures in a notebook's handwriting and its own paper templates (#280:
+  // shown on the shared notebook, read and edited by guests).
+  if (
+    board?.kind === "notebook" &&
+    (await one(
+      `SELECT 1 FROM page_ink WHERE page_id=? AND data LIKE ?
+       UNION ALL SELECT 1 FROM notebook_sheets WHERE page_id=? AND paper LIKE ?
+       UNION ALL SELECT 1 FROM notebooks WHERE page_id=? AND paper LIKE ?
+       LIMIT 1`,
+      file.page_id,
+      `%"file":"${fileId}"%`,
+      file.page_id,
+      `%"file":"${fileId}"%`,
+      file.page_id,
+      `%"file":"${fileId}"%`,
+    ))
+  )
+    referenced.add(fileId);
   const coverId = imageFileId(
     pages.find((p) => p.id === file.page_id)?.cover || "",
   );

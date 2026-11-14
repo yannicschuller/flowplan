@@ -79,6 +79,7 @@ import {
   ChalkboardTeacher,
 } from "@phosphor-icons/react";
 import { Modal, api, sessionEnded } from "../ui";
+import { shareBoardUrl, type ShareGuest } from "../share-guest";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
 import {
   BOARD_IMPORT_LIMITS,
@@ -299,7 +300,12 @@ export default function Whiteboard({
   userId = "",
   userName = "",
   demo = false,
+  guest,
 }: {
+  // A guest of an edit link (#280, lib/share-canvas.ts): the board syncs
+  // through the link, without uploads, AI, templates, page links,
+  // facilitation or exports.
+  guest?: ShareGuest;
   // Demo guests cannot use the image search (it loads foreign servers).
   demo?: boolean;
   userId?: string;
@@ -526,6 +532,7 @@ export default function Whiteboard({
     if (inflight.current || sessionEnded()) return;
     inflight.current = true;
     const send = editable && dirty.current;
+    const guestUrl = guest ? shareBoardUrl(guest) : null;
     const vector = Y.encodeStateVector(doc);
     const update = send
       ? sharedUpdate(doc, lastVector.current)
@@ -538,8 +545,8 @@ export default function Whiteboard({
       const result = await api<{
         state: string;
         presence: { user_id: string; name: string; x: number; y: number }[];
-      }>("/api/command", {
-        action: "whiteboard.sync",
+      }>(guestUrl || "/api/command", {
+        action: guestUrl ? "sync" : "whiteboard.sync",
         pageId,
         generation,
         ...(update ? { update: to64(update) } : {}),
@@ -558,13 +565,13 @@ export default function Whiteboard({
     } finally {
       inflight.current = false;
     }
-  }, [doc, editable, generation, onError, onReload, pageId]);
+  }, [doc, editable, generation, onError, onReload, pageId, guest]);
   useEffect(() => {
     const timer = setInterval(() => void sync(), 900);
     const leave = () => {
       if (!editable || !dirty.current) return;
       const body = JSON.stringify({
-        action: "whiteboard.sync",
+        action: guest ? "sync" : "whiteboard.sync",
         pageId,
         generation,
         update: to64(
@@ -573,7 +580,7 @@ export default function Whiteboard({
         cursor: null,
       });
       if (sessionEnded()) return;
-      void fetch("/api/command", {
+      void fetch(guest ? shareBoardUrl(guest) : "/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
@@ -586,7 +593,7 @@ export default function Whiteboard({
       window.removeEventListener("pagehide", leave);
       leave();
     };
-  }, [sync, doc, editable, generation, pageId]);
+  }, [sync, doc, editable, generation, pageId, guest]);
 
   // Live cursors: own position goes out up to ~15 times a second, the others
   // arrive as a server-sent event stream (polling if a proxy blocks it).
@@ -620,13 +627,13 @@ export default function Whiteboard({
     if (c === undefined) return;
     cursor.current = undefined;
     lastSent.current = Date.now();
-    void fetch(`/api/whiteboards/${pageId}/cursor`, {
+    void fetch(guest ? shareBoardUrl(guest) : `/api/whiteboards/${pageId}/cursor`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(c),
+      body: JSON.stringify(guest ? { action: "cursor", pageId, clientId: guest.clientId, point: c && { x: c.x, y: c.y, ...(c.laser ? { laser: true } : {}), ...(c.view ? { view: c.view } : {}) } } : c),
       keepalive: c === null,
     }).catch(() => {});
-  }, [pageId]);
+  }, [pageId, guest]);
   const queueCursor = useCallback(
     (point: (Point & { laser?: boolean; view?: Presence["view"] }) | null) => {
       cursor.current = point;
@@ -659,9 +666,11 @@ export default function Whiteboard({
         } catch {}
       }, 700);
     };
-    if (typeof EventSource === "undefined") startPolling();
-    else {
-      source = new EventSource(`/api/whiteboards/${pageId}/cursors`);
+    // Guests have the stream only (no list to poll).
+    if (typeof EventSource === "undefined") {
+      if (!guest) startPolling();
+    } else {
+      source = new EventSource(guest ? `${shareBoardUrl(guest)}?pageId=${pageId}&client=${guest.clientId}` : `/api/whiteboards/${pageId}/cursors`);
       source.onmessage = (event) => {
         failures = 0;
         const data = JSON.parse(event.data);
@@ -670,13 +679,13 @@ export default function Whiteboard({
           data.cursors.forEach(take);
         } else if (data.type === "cursor") take(data);
         else if (data.type === "leave") others.delete(data.userId);
-        else boardSignal(pageId, data);
+        else if (!guest) boardSignal(pageId, data);
         publish();
       };
       source.onerror = () => {
         if (++failures >= 3) {
           source?.close();
-          startPolling();
+          if (!guest) startPolling();
         }
       };
     }
@@ -684,14 +693,14 @@ export default function Whiteboard({
       source?.close();
       if (poll) clearInterval(poll);
       if (sendTimer.current) clearTimeout(sendTimer.current);
-      void fetch(`/api/whiteboards/${pageId}/cursor`, {
+      void fetch(guest ? shareBoardUrl(guest) : `/api/whiteboards/${pageId}/cursor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "null",
+        body: guest ? JSON.stringify({ action: "cursor", pageId, clientId: guest.clientId, point: null }) : "null",
         keepalive: true,
       }).catch(() => {});
     };
-  }, [pageId]);
+  }, [pageId, guest]);
 
   // ---- coordinates ----
   const toWorld = useCallback((clientX: number, clientY: number): Point => {
@@ -735,6 +744,7 @@ export default function Whiteboard({
   // Excalidraw and draw.io files: the server reads them and stores their
   // pictures; the items land in the view (or where the file was dropped).
   async function importBoardFile(file: File, at?: Point) {
+    if (guest) return onError(t("Hochladen ist für Gäste nicht möglich.", "Uploading is not available to guests."));
     if (file.size > BOARD_IMPORT_LIMITS.bytes)
       return onError(t("Die Datei ist zu groß (höchstens 20 MB).", "The file is too large (at most 20 MB)."));
     try {
@@ -1025,7 +1035,7 @@ export default function Whiteboard({
     .sort()
     .join(",");
   useEffect(() => {
-    if (!rowRefs) return;
+    if (!rowRefs || guest) return;
     let alive = true;
     const load = async () => {
       try {
@@ -1039,9 +1049,9 @@ export default function Whiteboard({
       alive = false;
       clearInterval(timer);
     };
-  }, [rowRefs, pageId]);
+  }, [rowRefs, pageId, guest]);
   const facilitation = useFacilitation({
-    pageId, doc, itemsMap, editable, userId, items, byId, selection, zoom: view.zoom, rowCards,
+    pageId, doc, itemsMap, editable: editable && !guest, off: !!guest, userId, items, byId, selection, zoom: view.zoom, rowCards,
     visibleRect, moveTo: (target) => moveCamera(target), change, setProps, meta, setMetaValue, onError,
     viewport: () => {
       const rect = svg.current?.getBoundingClientRect();
@@ -2323,7 +2333,9 @@ export default function Whiteboard({
     if (next && (editable || next === "select" || next === "hand" || next === "laser"))
       setTool(next);
   }
-  async function upload(original: File) {
+  async function upload(original: File): Promise<{ url: string; placeholder?: PlaceholderInfo }> {
+    // Guests do not upload (#280): images from https addresses only.
+    if (guest) throw new Error(t("Hochladen ist für Gäste nicht möglich.", "Uploading is not available to guests."));
     const file = await compressImage(original);
     const body = new FormData();
     body.set("pageId", pageId);
@@ -2340,7 +2352,7 @@ export default function Whiteboard({
   };
   // AI and notes → records (components/whiteboard/ai-panel.tsx).
   const boardAi = useBoardAi({
-    pageId, editable, selection, read, itemsMap, change, addItem, setProps, undo, visibleRect, center, setSelection, onOpenPage,
+    pageId, editable: editable && !guest, selection, read, itemsMap, change, addItem, setProps, undo, visibleRect, center, setSelection, onOpenPage,
     fit: (list) => fitToContent(list),
     flush: async () => {
       for (let i = 0; i < 30 && (dirty.current || inflight.current); i++) await (inflight.current ? new Promise((r) => setTimeout(r, 100)) : sync());
@@ -2586,6 +2598,7 @@ export default function Whiteboard({
   const boardApi: BoardApi = {
     pageId,
     editable,
+    guest: !!guest,
     zoom: view.zoom,
     dock: layout.dock,
     items,
@@ -3158,13 +3171,19 @@ export default function Whiteboard({
         ...(boardAi.entry ? [{ key: "ai", title: t("KI", "AI"), items: [boardAi.entry] }] : []),
       ]
     : [];
+  // Guests (#280): nothing that uploads, searches foreign images, links
+  // pages of the workspace, embeds files, uses templates or AI.
+  const GUEST_HIDDEN = new Set(["image", "media", "card", "import", "embed", "templates", "tool-stamp"]);
+  const panelFor = guest
+    ? panelSections.filter((s) => s.key !== "ai").map((s) => ({ ...s, items: s.items.filter((i) => !GUEST_HIDDEN.has(i.key)) }))
+    : panelSections;
   const panelQuery = plusQuery.trim().toLocaleLowerCase();
-  const panelShown = panelSections
+  const panelShown = panelFor
     .map((s) => ({ ...s, items: s.items.filter((i) => !panelQuery || `${i.label} ${i.title}`.toLocaleLowerCase().includes(panelQuery)) }))
     .filter((s) => s.items.length);
   // A tool from the panel in use: its button shows it (like the dock did).
-  const panelTool = panelSections.flatMap((s) => s.items).find((i) => i.tool && i.tool === tool);
-  const meetingActions: BoardAction[] = editable
+  const panelTool = panelFor.flatMap((s) => s.items).find((i) => i.tool && i.tool === tool);
+  const meetingActions: BoardAction[] = editable && !guest
     ? [
         {
           key: "vote",
@@ -3285,7 +3304,8 @@ export default function Whiteboard({
   ];
   // Importing lives in the "+" panel (Einfügen) with everything else that
   // adds to the board.
-  const exportActions: BoardAction[] = [
+  // Guests export nothing the link does not already offer (#280).
+  const exportActions: BoardAction[] = guest ? [] : [
     { key: "mermaid", label: t("Als Mermaid kopieren", "Copy as Mermaid"), title: t("Formen und Verbindungen (Auswahl oder alles) als Mermaid-Flussdiagramm kopieren", "Copy shapes and connectors (selection or everything) as a Mermaid flowchart"), icon: <ClipboardText size={16} />, run: () => void copyMermaid(boardApi, t) },
     { key: "svg", label: t("Als SVG exportieren", "Export as SVG"), title: t("Als SVG exportieren", "Export as SVG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("svg") },
     { key: "png", label: t("Als PNG exportieren", "Export as PNG"), title: t("Als PNG exportieren", "Export as PNG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("png") },
@@ -3522,6 +3542,12 @@ export default function Whiteboard({
         if (editable && dropRackItem(boardApi, e, toWorld(e.clientX, e.clientY), t)) return;
         const files = [...e.dataTransfer.files];
         const diagramFile = files.find((f) => DIAGRAM_FILE.test(f.name));
+        // Guests: Mermaid/PlantUML text is read here; files are not uploaded.
+        if (guest && files.length && !diagramFile) {
+          e.preventDefault();
+          if (editable) onError(t("Hochladen ist für Gäste nicht möglich.", "Uploading is not available to guests."));
+          return;
+        }
         if (editable && diagramFile) {
           e.preventDefault();
           void dropDiagramFile(boardApi, diagramFile, t, toWorld(e.clientX, e.clientY));

@@ -8,6 +8,7 @@ import { BookmarkSimple } from "@phosphor-icons/react";
 import { InkLayer } from "../ink/ink-layer";
 import { PaperSvg, PdfBackground } from "./paper";
 import { PaperImageLayer } from "./custom-paper";
+import { useFileSrc } from "../ink/ink-picture";
 import type { InkDoc } from "@/lib/ink/model";
 import type { PageSize } from "@/lib/ink/coords";
 import type { PaperLayout } from "@/lib/notebook-paper";
@@ -47,11 +48,12 @@ export const SheetPicture = memo(function SheetPicture({
   label: string;
 }) {
   const [ref, seen] = useSeen<HTMLSpanElement>();
+  const fileUrl = useFileSrc();
   return (
     <span ref={ref} className={`notebook-thumb-paper${dark ? " is-dark" : ""}`} style={{ aspectRatio: `${size.width} / ${size.height}` }}>
       {seen &&
         (sheet.background ? (
-          <PdfBackground src={`/api/files/${sheet.background.file}`} page={sheet.background.page} width={width} eager />
+          <PdfBackground src={fileUrl(sheet.background.file)} page={sheet.background.page} width={width} eager />
         ) : layout ? (
           <>
             <PaperSvg layout={layout} />

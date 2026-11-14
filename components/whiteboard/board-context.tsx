@@ -23,6 +23,8 @@ export type DiagramPanel =
 export type BoardApi = {
   pageId: string;
   editable: boolean;
+  // A guest of an edit link (#280): nothing that needs an account.
+  guest?: boolean;
   zoom: number;
   // Phones and narrow panes (the board's compact layout).
   dock: boolean;
