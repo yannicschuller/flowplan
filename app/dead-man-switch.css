@@ -1,0 +1,62 @@
+/* Settings → Konto & Sicherheit → Nachricht bei Inaktivität (#282,
+   components/dead-man-switch.tsx). The list itself uses the classes of
+   app/emergency-access.css. */
+.deadman-form {
+  display: grid;
+  gap: 12px;
+  flex: 1 1 100%;
+  padding: 12px 0 4px;
+}
+.deadman-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.deadman-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.deadman-field > span {
+  font-weight: 600;
+  font-size: 13px;
+}
+.deadman-field textarea {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  resize: vertical;
+}
+.deadman-field small,
+.deadman-note {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: 0;
+}
+.deadman-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.deadman-inline > span {
+  display: grid;
+  gap: 2px;
+  font-weight: 500;
+}
+.deadman-preview {
+  display: grid;
+  gap: 12px;
+}
+.deadman-preview dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+}
+.deadman-preview dt {
+  color: var(--muted);
+}
+.deadman-preview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

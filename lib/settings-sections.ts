@@ -68,6 +68,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         keywords: { de: "vertrauensperson notfall zugriff erbe angehörige wartezeit anfragen ablehnen", en: "trusted contact emergency access legacy relatives waiting period request deny" },
         anchor: "emergency",
       },
+      {
+        title: { de: "Nachricht bei Inaktivität", en: "Inactivity message" },
+        keywords: {
+          de: "totmannschalter lebenszeichen inaktivität nachricht angehörige familie notiz empfänger ich bin da",
+          en: "dead man's switch sign of life inactivity message relatives family note recipients i'm here",
+        },
+        anchor: "deadman",
+      },
       { title: { de: "Deine Grenzen", en: "Your limits" }, keywords: { de: "speicher kontingent", en: "storage quota" }, anchor: "limits" },
       { title: { de: "Konto löschen", en: "Delete account" }, anchor: "delete-account" },
     ],
@@ -469,6 +477,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Inaktive Konten sperren", en: "Block inactive accounts" }, anchor: "registration" },
       { title: { de: "Zwei-Faktor-Anmeldung verlangen", en: "Require two-factor sign-in" }, keywords: { de: "2fa", en: "2fa" }, anchor: "two-factor" },
       { title: { de: "Notfallzugriff erlauben", en: "Allow emergency access" }, keywords: { de: "vertrauensperson notfall", en: "trusted contact emergency" }, anchor: "emergency" },
+      { title: { de: "Nachricht bei Inaktivität erlauben", en: "Allow inactivity messages" }, keywords: { de: "totmannschalter inaktivität", en: "dead man's switch inactivity" }, anchor: "deadman" },
       { title: { de: "Sitzungen", en: "Sessions" }, keywords: { de: "sitzungsdauer angemeldet bleiben abgemeldet timeout apps gerät merken", en: "session lifetime stay signed in signed out timeout apps remember device" }, anchor: "sessions" },
       { title: { de: "SSO-Gruppen zentral zuordnen", en: "Map SSO groups centrally" }, anchor: "sso-groups" },
       { title: { de: "SCIM-Token", en: "SCIM tokens" }, anchor: "scim" },

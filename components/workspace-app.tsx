@@ -3354,7 +3354,7 @@ export default function WorkspaceApp({
       inert={switching || !!presenting}
       aria-busy={switching}
     >
-      <ActivityPing />
+      <ActivityPing workspaceId={boot.workspace.id} />
       {/* The workspace's look (#196), unless this person chose Flowplan's own. */}
       <WorkspaceThemeStyle look={boot.plainLook ? null : boot.look} />
       <WorkspaceFavicon theme={boot.plainLook ? null : boot.look?.theme} />
