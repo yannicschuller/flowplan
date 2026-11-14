@@ -6,6 +6,7 @@ import { api, PageIcon } from "./ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { linkTargetInfo } from "./page-link-icons";
 import { parsePageLocation, pageLocationHash, inAppPageHash } from "@/lib/page-location";
+import { openModeOf, requestOpen, type OpenMode } from "@/lib/open-place";
 import type { ContactCardData } from "@/lib/contacts-io";
 import { ContactAvatar } from "./contacts";
 
@@ -35,23 +36,25 @@ export function revealSpoiler(event: MouseEvent | React.MouseEvent) {
   spoiler.toggleAttribute("data-revealed");
   return true;
 }
-// Ctrl/⌘-click on a page link: the split view next to the open page, when
-// the window is wide enough (components/workspace-app.tsx answers the
-// event). False when nobody took it – then a new tab as before.
-export function openInSplit(href: string) {
+// Ctrl/⌘-click (or the middle button) on a page link: a new tab, with Shift
+// the other frame (#279, lib/open-place.ts; components/frame-tabs.tsx
+// answers). False when nobody took it (phones) – then as before.
+export function openInTab(href: string, mode: OpenMode, origin: Element | null = null) {
   const hash = href.indexOf("#page=");
-  const target = hash >= 0 ? parsePageLocation(href.slice(hash)) : null;
-  if (!target || target.rowId) return false;
-  return !window.dispatchEvent(new CustomEvent("flowplan:open-split", { detail: target.pageId, cancelable: true }));
+  return hash >= 0 && requestOpen(href.slice(hash), mode, origin);
 }
+// A plain click inside the right frame goes there, not to the main view.
+const inSideFrame = (origin: Element | null) => !!origin?.closest?.(".split-pane");
 export function openReference(href: string, event?: MouseEvent) {
   if (!href) return;
   const hash = href.indexOf("#page=");
+  const origin = (event?.target as Element | null) ?? null;
   if (hash >= 0 && !(event?.metaKey || event?.ctrlKey)) {
+    if (inSideFrame(origin) && requestOpen(href.slice(hash), "here", origin)) return;
     location.hash = href.slice(hash);
     return;
   }
-  if (hash >= 0 && !event?.shiftKey && openInSplit(href)) return;
+  if (hash >= 0 && event && openInTab(href, openModeOf(event), origin)) return;
   if (href.startsWith("/") && !href.startsWith("//") && !event?.metaKey) {
     location.assign(href);
     return;
@@ -199,10 +202,9 @@ export function LinkPreview({
       // Read-only text (reading mode, split view): Ctrl/⌘-click as well.
       if (
         (event.metaKey || event.ctrlKey) &&
-        !event.shiftKey &&
         target.matches('a[href*="#page="]') &&
         !target.closest('[contenteditable="true"]') &&
-        openInSplit(target.getAttribute("href") || "")
+        openInTab(target.getAttribute("href") || "", openModeOf(event), target)
       ) {
         event.preventDefault();
         return;
@@ -219,6 +221,7 @@ export function LinkPreview({
         const hash = inAppPageHash(target.getAttribute("href") || "", location.href);
         if (!hash) return;
         event.preventDefault();
+        if (inSideFrame(target) && requestOpen(hash, "here", target)) return;
         location.hash = hash;
         return;
       }

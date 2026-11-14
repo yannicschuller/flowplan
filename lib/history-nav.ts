@@ -166,7 +166,40 @@ let trail: Trail | null = null;
 let steps: Steps = NO_STEPS;
 const listeners = new Set<() => void>();
 
+// Tabs (#279, components/frame-tabs.tsx): each tab has a history of its
+// own; while tabs are on, the arrows, ⌘[ / ⌘], the mouse buttons and the
+// desktop app's menu go through the active tab's steps (of the frame
+// worked in last) instead of the browser's.
+export type StepSource = { steps: () => Steps; go: (step: Step) => void };
+let source: StepSource | null = null;
+export function setStepSource(next: StepSource | null) {
+  source = next;
+  update();
+}
+// Recomputes the steps (the tabs changed).
+export function refreshSteps() {
+  update();
+}
+// The place of the browser's entry `delta` steps away (null: none known, or
+// not a place of the workspace) – a tab's step that is also the browser's
+// goes there by the browser's history, so both stay in step.
+export function browserPlaceAt(delta: number): string | null {
+  if (typeof window === "undefined") return null;
+  const nav = navigationApi();
+  let url: string | null | undefined;
+  if (nav?.currentEntry) url = nav.entries().find((e) => e.index === nav.currentEntry!.index + delta)?.url;
+  else if (trail) url = trail.entries[trail.index + delta];
+  if (!url || pathOf(url) !== location.pathname) return null;
+  return stepOf(hashOf(url));
+}
+// Goes `delta` entries through the browser's history, as goToStep does.
+export function browserGo(delta: number) {
+  if (trail) trail = { ...trail, expect: trail.index + delta };
+  history.go(delta);
+}
+
 function compute(): Steps {
+  if (source) return source.steps();
   const nav = navigationApi();
   if (nav?.currentEntry) {
     const entries = nav.entries().map((e) => ({ key: e.key, url: e.url || "", index: e.index }));
@@ -201,6 +234,7 @@ export function subscribeHistory(listener: () => void) {
 
 // Goes to a place of the lists (the arrows take the first one).
 export function goToStep(step: Step) {
+  if (source && step.key.startsWith("tab:")) return source.go(step);
   const nav = navigationApi();
   if (nav && !step.key.startsWith("trail:")) {
     try {

@@ -29322,40 +29322,116 @@ body:not(.print-view) .presentation-print {
 .split-row.split-active .split-primary {
   flex: 0 0 calc(var(--split, 50%) - 4px);
 }
-.split-primary-bar,
-.split-pane-header {
+/* Tabs (#279, components/frame-tabs.tsx): one bar per frame, from two tabs on. */
+.frame-tabs {
   display: flex;
   flex: none;
-  align-items: center;
-  gap: 8px;
-  height: 38px;
-  padding: 0 8px 0 14px;
+  align-items: stretch;
+  gap: 2px;
+  height: 36px;
+  padding: 4px 6px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
-  font-size: 13px;
+  scrollbar-width: thin;
 }
-.split-primary-bar > span {
+.frame-tab {
+  position: relative;
   display: flex;
-  flex: 1;
+  flex: 0 1 200px;
   align-items: center;
   gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 600;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-width: 96px;
+  max-width: 220px;
+  padding: 0 4px 0 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: default;
+  user-select: none;
+  touch-action: pan-x;
 }
-.split-pane-header strong {
+.frame-tab:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.frame-tab.active {
+  margin-bottom: -1px;
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+}
+/* With two frames the one worked in shows its active tab marked. */
+.frame-tabs.focused .frame-tab.active {
+  box-shadow: inset 0 2px 0 var(--blue);
+}
+.frame-tab:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.frame-tab-icon {
+  display: flex;
+  flex: none;
+}
+.frame-tab-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.split-pane-status {
+.frame-tab-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
+  opacity: 0;
+}
+.frame-tab:hover .frame-tab-close,
+.frame-tab.active .frame-tab-close,
+.frame-tab:focus-visible .frame-tab-close {
+  opacity: 1;
+}
+.frame-tab-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+@media (hover: none) {
+  .frame-tab-close {
+    opacity: 1;
+  }
+}
+.frame-tab.dragged {
+  opacity: 0.5;
+}
+.frame-tab.drop-before::before,
+.frame-tab.drop-after::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--blue);
+}
+.frame-tab.drop-before::before {
+  left: -3px;
+}
+.frame-tab.drop-after::after {
+  right: -3px;
+}
+html.tab-dragging,
+html.tab-dragging * {
+  cursor: grabbing !important;
 }
 .split-divider {
   position: relative;
@@ -29461,8 +29537,7 @@ html.split-resizing * {
 @media (max-width: 1024px) {
   .split-divider,
   .split-pane,
-  .split-dropzone,
-  .split-primary-bar {
+  .split-dropzone {
     display: none;
   }
   .split-row.split-active .split-primary {

@@ -46,7 +46,10 @@ import { InstanceBanners } from "./instance-banners";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
-import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
+import { SplitDivider, SplitPane, SplitUnsupported, clampSplit } from "./split-pane";
+import { TabBar, TabEdgeDrop, pageOfPlace, useFrameTabs, validPlaceIn, type PlaceLook } from "./frame-tabs";
+import { placeOf, tabCount, tabOf } from "@/lib/frame-tabs";
+import { openModeOf, type OpenMode } from "@/lib/open-place";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
@@ -187,6 +190,7 @@ import {
   Keyboard,
   Presentation as PresentIcon,
   SquareSplitHorizontal,
+  Browsers,
   SlidersHorizontal,
   CalendarBlank,
   CalendarCheck,
@@ -655,17 +659,12 @@ export default function WorkspaceApp({
   const askNarrowWindow = useMedia(ASK_OVERLAY_MEDIA);
   // Presentation mode of the open document (components/presentation.tsx).
   const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
-  // Split view (components/split-pane.tsx): the page shown next to the open
-  // one, kept in the address as ?split=<id> so a reload keeps it.
-  const [split, setSplit] = useState<string | null>(() => {
-      if (typeof location === "undefined") return null;
-      const id = new URLSearchParams(location.search).get("split");
-      return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
-    }),
-    // The share of the width the open page takes, in percent (kept per
-    // device; only shown once the window is known to be wide, after the
-    // first render).
-    [splitRatio, setSplitRatio] = useState(() => {
+  // Split view (components/split-pane.tsx): the right frame of the tabs
+  // (components/frame-tabs.tsx, #279) – its active page is kept in the
+  // address as ?split=<id>. The share of the width the left frame takes,
+  // in percent (kept per device; only shown once the window is known to be
+  // wide, after the first render).
+  const [splitRatio, setSplitRatio] = useState(() => {
       try {
         const stored = Number(localStorage.getItem("flowplan-split-ratio"));
         return stored ? clampSplit(stored) : 50;
@@ -680,6 +679,17 @@ export default function WorkspaceApp({
     // A page from the tree is being dragged: the drop zone at the right edge shows.
     [pageDrag, setPageDrag] = useState(false),
     [splitDropOver, setSplitDropOver] = useState(false);
+  // Tabs and frames (#279): on tablets and computers, not on phones.
+  const tabletUp = useMedia("(min-width: 768px)");
+  const tabs = useFrameTabs({
+    enabled: tabletUp,
+    wide,
+    userId: boot.user.id,
+    workspaceId: boot.workspace.id,
+    valid: validPlaceIn(boot.pages, !!boot.user.isAdmin),
+  });
+  const split = tabs.side ? pageOfPlace(placeOf(tabOf(tabs.side))) : null;
+  const sidePlace = tabs.side ? placeOf(tabOf(tabs.side)) : null;
   // The drag of a tree entry ended (its dragend), even before pageDrag was set.
   const pageDragEnded = useRef(true);
   // The tree entry's dragend does not arrive when the entry is re-rendered or
@@ -1479,29 +1489,18 @@ export default function WorkspaceApp({
     [notifyError],
   );
   openPageRef.current = openPage;
-  // A second page next to the open one; on narrow screens it opens normally.
+  // A page in the other frame (the split view, #279): "In geteilter Ansicht
+  // öffnen", the search for it, a page dropped at the right edge. Without
+  // tabs (phones) it opens normally; between 768 and 1024 px in a new tab.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
   const openSplit = useCallback(
-    (id: string) => {
-      if (!wideRef.current) return void openPage(id);
-      if (screenRef.current === "page" && currentId.current === id) {
-        notify(t("Diese Seite ist bereits geöffnet.", "This page is already open."));
-        return;
-      }
-      setSplit(id);
+    (id: string, from?: number) => {
+      if (!tabsRef.current.on) return void openPage(id);
+      tabsRef.current.openPlace(`page=${id}`, "side", from);
     },
-    [openPage, notify, t],
+    [openPage],
   );
-  // Ctrl/⌘-click on a page link (components/link-preview.tsx).
-  useEffect(() => {
-    const open = (e: Event) => {
-      const id = (e as CustomEvent<string>).detail;
-      if (!wideRef.current || typeof id !== "string") return;
-      e.preventDefault();
-      openSplit(id);
-    };
-    window.addEventListener("flowplan:open-split", open);
-    return () => window.removeEventListener("flowplan:open-split", open);
-  }, [openSplit]);
   function go(s: Screen) {
     screenRef.current = s;
     transitionView(
@@ -1733,7 +1732,13 @@ export default function WorkspaceApp({
     setShortcuts(false);
     setPresenting({ html: readHtml(), title: d.page.title || t("Ohne Titel", "Untitled") });
   };
-  const splitShown = !!split && wide;
+  const splitShown = !!tabs.side;
+  // The tab bars: from two tabs on, or with two frames (#279).
+  const tabBars = tabs.on && !!tabs.layout && (splitShown || tabCount(tabs.layout) > 1);
+  const describeTab = (place: string): PlaceLook => {
+    const look = describeStep(place);
+    return { title: look.title, icon: look.icon };
+  };
   // The quick search in split mode: the chosen page opens next to this one.
   const openSplitSearch = () => {
     if (!wideRef.current) {
@@ -1827,7 +1832,7 @@ export default function WorkspaceApp({
         toggleTheme();
         break;
       case "splitView":
-        if (splitShown) setSplit(null);
+        if (splitShown) tabs.closeFrame(1);
         else openSplitSearch();
         break;
       case "present":
@@ -1914,10 +1919,6 @@ export default function WorkspaceApp({
         return screenLook(t("Startseite", "Home"), House);
     }
   };
-  // The open page shows in the split view too: the split closes.
-  useEffect(() => {
-    if (split && screen === "page" && pageId === split) setSplit(null);
-  }, [split, screen, pageId]);
   // The journal used last ("Journal: Heute", its shortcut).
   const usedJournal = data?.page.kind === "journal" ? data.page.id : data?.journalDay?.journalId || null;
   useEffect(() => {
@@ -1943,7 +1944,7 @@ export default function WorkspaceApp({
   const mainScroll = useRef<HTMLDivElement>(null);
   // A page still loading is no place yet (null).
   const shownPlace = screen === "page" ? (data ? `page:${data.page.id}` : null) : `${screen}:${collectionId ?? ""}`;
-  usePaneScroll(mainScroll, shownPlace);
+  usePaneScroll(mainScroll, shownPlace, tabs.on ? tabs.entryKey : undefined);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
   // The record open in the database page (components/database-view.tsx,
@@ -2145,6 +2146,13 @@ export default function WorkspaceApp({
   // exports and new pages cannot act on the one being left.
   const [switching, setSwitching] = useState(false);
   const latestSwitch = useRef(0);
+  // The first place of a workspace switched to: its tabs' active one
+  // (#279), else the start page.
+  function goStart(b: Bootstrap) {
+    const place = tabsRef.current.switchTo(b.workspace.id, validPlaceIn(b.pages, !!b.user.isAdmin));
+    if (!place || place === "home") return go("home");
+    if (location.hash !== `#${place}`) location.hash = place;
+  }
   async function switchWorkspace(id: string) {
     const version = ++navigationVersion.current;
     latestSwitch.current = version;
@@ -2159,7 +2167,7 @@ export default function WorkspaceApp({
       setPageId(null);
       currentId.current = null;
       setData(null);
-      go("home");
+      goStart(kept);
     }
     try {
       const b = await api<Bootstrap>(`/api/bootstrap?workspace=${id}`);
@@ -2169,7 +2177,7 @@ export default function WorkspaceApp({
       setPageId(null);
       currentId.current = null;
       setData(null);
-      go("home");
+      goStart(b);
       setSpaceId(b.spaces[0]?.id || "");
     } catch (e) {
       if (kept && version === navigationVersion.current) setBoot(previous);
@@ -2932,12 +2940,14 @@ export default function WorkspaceApp({
                     ? selectedPages.includes(p.id)
                     : undefined
                 }
+                data-open-place=""
                 onClick={(e) => {
-                  // Ctrl/⌘-click opens the page in the split view – unless
-                  // pages are being selected (Shift-click starts a selection).
-                  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && wide && !selecting && !selectedPages.length) {
+                  // Ctrl/⌘-click opens the page in a new tab, with Shift in
+                  // the other frame (#279) – unless pages are being selected
+                  // (Shift-click starts a selection; on phones Ctrl/⌘-click).
+                  if ((e.metaKey || e.ctrlKey) && tabs.on && !selecting && !selectedPages.length) {
                     e.preventDefault();
-                    openSplit(p.id);
+                    tabs.openPlace(`page=${p.id}`, openModeOf(e));
                     return;
                   }
                   if (selecting || e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -2945,7 +2955,14 @@ export default function WorkspaceApp({
                     toggleSelected(p.id, e.shiftKey);
                     return;
                   }
+                  // In the frame worked in (the right one shows it there).
+                  if (tabs.on && tabs.openPlace(`page=${p.id}`, "here")) return;
                   void openPage(p.id);
+                }}
+                onAuxClick={(e) => {
+                  if (e.button !== 1 || !tabs.on) return;
+                  e.preventDefault();
+                  tabs.openPlace(`page=${p.id}`, openModeOf(e));
                 }}
               >
                 <PageIcon name={shownPageIcon(p.icon, p.kind)} size={17} />
@@ -3131,7 +3148,7 @@ export default function WorkspaceApp({
     ...(wide
       ? [
           splitShown
-            ? { label: t("Geteilte Ansicht schließen", "Close split view"), keywords: t("split nebeneinander zwei seiten", "split nebeneinander zwei seiten side by side two pages"), icon: SquareSplitHorizontal, run: () => setSplit(null) }
+            ? { label: t("Geteilte Ansicht schließen", "Close split view"), keywords: t("split nebeneinander zwei seiten", "split nebeneinander zwei seiten side by side two pages"), icon: SquareSplitHorizontal, run: () => tabs.closeFrame(1) }
             : { label: t("Seite daneben öffnen …", "Open a page beside it …"), keywords: t("split geteilte ansicht nebeneinander zwei seiten", "split geteilte ansicht nebeneinander zwei seiten view side by side two pages"), icon: SquareSplitHorizontal, run: () => setTimeout(openSplitSearch) },
         ]
       : []),
@@ -3258,13 +3275,16 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (search && activeItem) document.getElementById(`palette-${activeItem.id}`)?.scrollIntoView({ block: "nearest" });
   }, [search, activeItem]);
-  const runItem = (item: PaletteItem) => {
+  const runItem = (item: PaletteItem, mode: OpenMode = "here") => {
     if (item.kind === "command") return runCommand(item.action);
     const intoSplit = paletteSplit;
     closeSearch();
     // Chosen for the split view: the page opens next to the open one.
     if (intoSplit) return openSplit(item.result.id);
     const p = item.result;
+    // ⌘/Ctrl+Enter or -click: a new tab (with Shift the other frame); a
+    // page chosen while the right frame is worked in opens there (#279).
+    if (tabs.on && (mode !== "here" || !p.rowId) && tabs.openPlace(pageLocationHash({ pageId: p.id, rowId: p.rowId }).slice(1), mode)) return;
     if (item.kind === "recent") return void openPage(p.id, p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined);
     // The block with the hit flashes once the page is open.
     const hit = p.kind === "comment" || p.kind === "file" ? "" : snippetHit(p.snippet);
@@ -3294,7 +3314,7 @@ export default function WorkspaceApp({
       role="option"
       aria-selected={index === activeIndex}
       className={`palette-option${index === activeIndex ? " active" : ""}`}
-      onClick={() => runItem(item)}
+      onClick={(e) => runItem(item, openModeOf(e))}
       onMouseMove={() => index !== paletteActive && setPaletteActive(index)}
     >
       {content}
@@ -3465,14 +3485,18 @@ export default function WorkspaceApp({
             )}
             <button
               className={screen === "home" ? "selected" : ""}
-              onClick={() => go("home")}
+              data-open-place=""
+              onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace("home", openModeOf(e))) && go("home")}
+              onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace("home", openModeOf(e))}
             >
               <House size={19} />
               {t("Startseite", "Home")}
             </button>
             <button
               className={screen === "inbox" ? "selected" : ""}
-              onClick={() => go("inbox")}
+              data-open-place=""
+              onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace("inbox", openModeOf(e))) && go("inbox")}
+              onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace("inbox", openModeOf(e))}
             >
               <Bell size={19} />
               {t("Posteingang", "Inbox")}
@@ -3484,7 +3508,9 @@ export default function WorkspaceApp({
             </button>
             <button
               className={screen === "tasks" ? "selected" : ""}
-              onClick={() => go("tasks")}
+              data-open-place=""
+              onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace("tasks", openModeOf(e))) && go("tasks")}
+              onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace("tasks", openModeOf(e))}
             >
               <CheckSquare size={19} />
               {t("Meine Aufgaben", "My tasks")}
@@ -3545,7 +3571,16 @@ export default function WorkspaceApp({
                   className={`favorite-nav ${pageId === p.id && screen === "page" ? "selected" : ""}`}
                   key={p.id}
                   data-prefetch-page={p.id}
-                  onClick={(e) => ((e.metaKey || e.ctrlKey) && wide ? openSplit(p.id) : void openPage(p.id))}
+                  data-open-place=""
+                  onClick={(e) => {
+                    if (tabs.on && tabs.openPlace(`page=${p.id}`, openModeOf(e))) return;
+                    void openPage(p.id);
+                  }}
+                  onAuxClick={(e) => {
+                    if (e.button !== 1 || !tabs.on) return;
+                    e.preventDefault();
+                    tabs.openPlace(`page=${p.id}`, openModeOf(e));
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setPageMenu({ page: p, x: e.clientX, y: e.clientY });
@@ -4455,30 +4490,25 @@ export default function WorkspaceApp({
           style={splitShown ? ({ "--split": `${splitRatio}%` } as React.CSSProperties) : undefined}
         >
           <div className="split-primary">
-        {splitShown && split && (
-          <div className="split-primary-bar">
-            <span>
-              {screen === "page" && data ? (
-                <>
-                  <PageIcon name={shownPageIcon(data.page.icon, data.page.kind)} size={15} />
-                  {data.page.title || t("Ohne Titel", "Untitled")}
-                </>
-              ) : (
-                t("Hauptansicht", "Main view")
-              )}
-            </span>
-            <button
-              type="button"
-              className="icon-button"
-              title={t("Diese Seite schließen – die rechte bleibt offen", "Close this page – the right one stays open")}
-              aria-label={t("Linke Seite schließen", "Close the left page")}
-              onClick={() => void openPage(split)}
-            >
-              <X size={15} />
-            </button>
-          </div>
+        {tabBars && tabs.layout && (
+          <TabBar
+            tabs={tabs}
+            frame={tabs.layout.frames[0]}
+            index={0}
+            frames={splitShown ? 2 : 1}
+            focused={tabs.focused === 0}
+            wide={wide}
+            describe={describeTab}
+            panelId="frame-panel-0"
+          />
         )}
-        <div className="main-scroll" ref={mainScroll}>
+        <div
+          className="main-scroll"
+          ref={mainScroll}
+          id="frame-panel-0"
+          role={tabBars ? "tabpanel" : undefined}
+          aria-labelledby={tabBars && tabs.layout ? `tab-${tabs.layout.frames[0].active}` : undefined}
+        >
           {screen === "home" && (
             <HomeScreen
               boot={boot}
@@ -5134,25 +5164,52 @@ export default function WorkspaceApp({
           )}
         </div>
           </div>
-          {splitShown && split && (
+          {splitShown && tabs.side && (
             <>
               <SplitDivider value={splitRatio} onChange={setSplitRatio} container={() => splitRow.current} />
-              <SplitPane
-                key={split}
-                pageId={split}
-                userId={boot.user.id}
-                userName={boot.user.name}
-                demo={!!boot.user.demo}
-                pages={activePages}
-                members={boot.members}
-                ai={boot.ai}
-                transcription={!!boot.instance?.transcription}
-                onClose={() => setSplit(null)}
-                onOpenMain={(id) => void openPage(id)}
-                onOpenPage={(id) => void openPage(id)}
-              />
+              {(() => {
+                const bar = (
+                  <TabBar
+                    tabs={tabs}
+                    frame={tabs.side}
+                    index={1}
+                    frames={2}
+                    focused={tabs.focused === 1}
+                    wide={wide}
+                    describe={describeTab}
+                    panelId="frame-panel-1"
+                  />
+                );
+                // A screen of the app (start page, inbox, settings …) shows
+                // in the left frame only.
+                if (!split)
+                  return (
+                    <SplitUnsupported
+                      tabBar={bar}
+                      title={sidePlace ? describeTab(sidePlace).title : ""}
+                      onOpenMain={() => tabs.move(1, tabs.side!.active, 0, Number.MAX_SAFE_INTEGER)}
+                    />
+                  );
+                return (
+                  <SplitPane
+                    key={`${tabs.side.active}:${split}`}
+                    pageId={split}
+                    tabBar={bar}
+                    userId={boot.user.id}
+                    userName={boot.user.name}
+                    demo={!!boot.user.demo}
+                    pages={activePages}
+                    members={boot.members}
+                    ai={boot.ai}
+                    transcription={!!boot.instance?.transcription}
+                    onOpenMain={() => tabs.move(1, tabs.side!.active, 0, Number.MAX_SAFE_INTEGER)}
+                    onOpenPage={(id) => tabs.openPlace(`page=${id}`, "here", 1) || void openPage(id)}
+                  />
+                );
+              })()}
             </>
           )}
+          {tabs.drag && wide && tabs.layout?.frames.length === 1 && <TabEdgeDrop tabs={tabs} />}
           {pageDrag && wide && (
             <div
               className={`split-dropzone${splitDropOver ? " over" : ""}`}
@@ -5168,7 +5225,7 @@ export default function WorkspaceApp({
                 const id = e.dataTransfer.getData("application/x-flowplan-page");
                 setSplitDropOver(false);
                 setPageDrag(false);
-                if (id) openSplit(id);
+                if (id) openSplit(id, 0);
               }}
             >
               <SquareSplitHorizontal size={24} aria-hidden="true" />
@@ -5374,7 +5431,7 @@ export default function WorkspaceApp({
                 if (count) setPaletteActive((activeIndex + (e.key === "ArrowDown" ? 1 : count - 1)) % count);
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                if (activeItem) runItem(activeItem);
+                if (activeItem) runItem(activeItem, openModeOf(e));
               }
             }}
           />
@@ -6414,10 +6471,17 @@ export default function WorkspaceApp({
                         onSelect={() => window.open(url(), "_blank", "noopener")}
                       >
                         <ArrowSquareOut />
+                        {tabs.on ? t("In neuem Browser-Tab öffnen", "Open in new browser tab") : t("In neuem Tab öffnen", "Open in new tab")}
+                      </Dropdown.Item>
+                    )}
+                    {/* Tabs of the app (#279). */}
+                    {tabs.on && (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => tabs.openPlace(`page=${target.id}`, "tab")}>
+                        <Browsers />
                         {t("In neuem Tab öffnen", "Open in new tab")}
                       </Dropdown.Item>
                     )}
-                    {wide && !(screen === "page" && pageId === target.id) && (
+                    {wide && tabs.on && (
                       <Dropdown.Item className="dropdown-item" onSelect={() => openSplit(target.id)}>
                         <SquareSplitHorizontal />
                         {t("In geteilter Ansicht öffnen", "Open in split view")}
