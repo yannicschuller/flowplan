@@ -91,6 +91,15 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
 
   const result = await importFromSource(owner, wid, space, { name: "Mein Wissen_ws1.affine", bytes });
   const root = await pageByTitle("Mein Wissen");
+  // The import report: what was left out or kept as a link, per page.
+  assert.ok(result.report && result.report.total >= 3);
+  const report = await one<{ title: string; html: string }>("SELECT p.title,d.html FROM pages p JOIN documents d ON d.page_id=p.id WHERE p.id=?", result.report!.pageId);
+  assert.equal(report!.title, "Importbericht: AFFiNE – Mein Wissen");
+  assert.match(report!.html, /Nicht übernommene Blöcke/);
+  assert.match(report!.html, /<a [^>]*href="\/#page=[^"]+"[^>]*>[^<]+<\/a>: HTML-Einbettung/);
+  assert.match(report!.html, /bookmark: https:\/\/example\.org\/artikel/);
+  assert.match(report!.html, /Elemente auf dem Whiteboard nicht übernommen/);
+  assert.match(report!.html, /fehlt in der Datei/);
   assert.ok(result.rootIds.includes(root.id));
   // Folders as pages, documents in their first folder.
   const projects = await pageByTitle("Projekte"),

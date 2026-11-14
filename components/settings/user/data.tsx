@@ -19,13 +19,20 @@ import { CONTROL, SettingGroup, SettingRow } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
 import { MarketplaceLink, TemplateFileButton } from "../../marketplace";
 
-type Result = { tone: "ok" | "error"; text: string } | null;
+// `link`: a page to open next to the text (the import report).
+type Result = { tone: "ok" | "error"; text: string; link?: { href: string; label: string } } | null;
 
 // What an import or export said, next to its button.
 function Outcome({ result }: { result: Result }) {
   return (
     <p role="status" className={`ws-result${result?.tone === "error" ? " error" : ""}`} hidden={!result}>
       {result?.text}
+      {result?.link && (
+        <>
+          {" "}
+          <a href={result.link.href}>{result.link.label}</a>
+        </>
+      )}
     </p>
   );
 }
@@ -95,8 +102,8 @@ export default function DataSection() {
         <SettingRow
           label={t("Notion, AppFlowy oder Markdown-Export (ZIP)", "Notion, AppFlowy or Markdown export (ZIP)")}
           description={t(
-            "Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Notions HTML-Export (Exportieren → HTML) behält auch Toggles, Callouts und Farben. Maximal 100 MB, 10.000 Seiten (vom Betreiber einstellbar) und 5.000 Einträge je Tabelle.",
-            "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. Notion's HTML export (Export → HTML) also keeps toggles, callouts and colours. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.",
+            "Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Notions HTML-Export (Exportieren → HTML) behält auch Toggles, Callouts und Farben sowie die Eigenschaftstypen; Verknüpfungen zwischen Datenbanken des Exports bleiben erhalten, Formeln und Rollups kommen als Werte. Was nicht übernommen werden kann, listet ein Importbericht. Maximal 100 MB, 10.000 Seiten (vom Betreiber einstellbar) und 5.000 Einträge je Tabelle.",
+            "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. Notion's HTML export (Export → HTML) also keeps toggles, callouts and colours as well as the property types; relations between databases of the export are kept, formulas and rollups come as values. What cannot be carried over is listed in an import report. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.",
           )}
         >
           <Stack>
@@ -119,7 +126,14 @@ export default function DataSection() {
                   const response = await fetch("/api/import/zip", { method: "POST", body });
                   const result = await response.json();
                   if (!response.ok) throw new Error(serverMessage(result.error) || t("Import fehlgeschlagen.", "Import failed."));
-                  report("zip", { tone: "ok", text: t(`${result.pages} Seiten, ${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.pages} pages, ${result.rows} records and ${result.files} files imported.`) });
+                  report("zip", {
+                    tone: "ok",
+                    text: t(`${result.pages} Seiten, ${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.pages} pages, ${result.rows} records and ${result.files} files imported.`),
+                    // What was not carried over: the import report (lib/importers/report.ts).
+                    ...(result.report
+                      ? { link: { href: `#page=${result.report.pageId}`, label: t(`${result.report.total} Hinweise im Importbericht`, `${result.report.total} notes in the import report`) } }
+                      : {}),
+                  });
                   await onRefresh();
                 } catch (e) {
                   fail("zip")(e);

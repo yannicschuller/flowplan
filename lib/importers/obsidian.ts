@@ -6,13 +6,14 @@
 // ![[image.png]] images and ![[file.pdf]] file links,
 // callouts (> [!note]) callouts, and tags from the frontmatter and the
 // text (#tag) the page's tags.
+import { ct } from "../content-locale";
 import { posix } from "node:path";
 import { markdownToRawHtml } from "../markdown-html";
 import { blockMarkers } from "../markdown-import";
 import { splitFrontmatter, type FrontmatterValue } from "../frontmatter";
 import { frontmatterAliases } from "../aliases";
 import { fileRef, mimeOf, pageRef } from "./html";
-import { warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { importReport, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
 
 const NOTE = /\.(md|markdown)$/i;
 const hidden = (path: string) => path.split("/").some((part) => part.startsWith("."));
@@ -88,6 +89,7 @@ export function noteTags(data: Record<string, FrontmatterValue>, body: string) {
 
 export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): ImportTree {
   const warnings = warningList();
+  const report = importReport();
   const paths = [...entries.keys()].filter((p) => !hidden(p)).sort((a, b) => a.localeCompare(b));
   const notes = paths.filter((p) => NOTE.test(p));
   const attachments = paths.filter((p) => !NOTE.test(p) && !/\.canvas$/i.test(p));
@@ -148,7 +150,10 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     const folder = folderOfNote(path);
     const parent = folderKey(posix.dirname(folder ?? path));
     const text = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "");
-    const markdown = convertWikilinks(text, lookup(path), () => warnings.add("Eingebettete Notizen werden als Link übernommen."), pageRef(path));
+    const markdown = convertWikilinks(text, lookup(path), () => {
+      warnings.add("Eingebettete Notizen werden als Link übernommen.");
+      report.add("embed", ct("Eingebettete Notiz als Link übernommen", "Embedded note kept as a link"), path);
+    }, pageRef(path));
     const html = blockMarkers(markdownToRawHtml(markdown, (href, kind) => {
       if (href.startsWith("fp-import://")) return href;
       if (/^(https?:|mailto:)/i.test(href)) return href;
@@ -163,11 +168,14 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
         return null;
       }
       const found = lookup(path)(target);
-      if (!found && kind === "image") warnings.add("Bild ohne Datei im Tresor übersprungen.");
+      if (!found && kind === "image") {
+        warnings.add("Bild ohne Datei im Tresor übersprungen.");
+        report.add("file", ct(`Bild „${target.slice(0, 200)}“ fehlt im Tresor`, `Image “${target.slice(0, 200)}” is missing from the vault`), path);
+      }
       return found ? found.href + (found.kind === "page" && anchor ? `#${anchor}` : "") : null;
     }));
     pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
   }
   if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");
-  return { source: "obsidian", title: name, pages, files, warnings: warnings.list() };
+  return { source: "obsidian", title: name, pages, files, warnings: warnings.list(), report };
 }
