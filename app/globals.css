@@ -1800,8 +1800,12 @@ kbd,
   margin-top: 6px;
 }
 .document-editor th {
-  background: var(--surface);
   font-weight: 600;
+}
+/* A header cell's own background colour wins over the header tint (#283):
+   `.document-editor th` outweighs the colour's attribute selector. */
+.document-editor th:not([data-block-color$="-background"]) {
+  background: var(--surface);
 }
 /* Coloured cells (#240): the block colours' names, without the rounding
    and spacing a coloured paragraph gets. */
