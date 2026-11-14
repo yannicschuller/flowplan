@@ -28903,34 +28903,41 @@ tr:hover .row-open-mark,
     position: relative;
     display: inline-flex;
   }
+  /* A circle with the number in its middle; from two digits on it grows
+     into a pill, like the badges on iOS (#297). */
   .mobile-tab-badge {
     position: absolute;
-    top: -5px;
+    top: -6px;
     left: 13px;
-    min-width: 17px;
-    height: 17px;
-    padding: 0 4px;
-    border-radius: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
     border: 2px solid var(--sidebar);
     /* Darker than --signal: white text at 10 px needs ≥ 4.5:1. */
     background: #c23a17;
     color: #fff;
     font-size: 10px;
     font-weight: 700;
-    line-height: 13px;
-    text-align: center;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
-    box-sizing: content-box;
+    box-sizing: border-box;
   }
+  /* "New page" as a round "+", like the add buttons of other note apps (#297). */
   .mobile-tab-new-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 24px;
-    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    margin-top: -10px;
+    border-radius: 50%;
     background: var(--blue);
     color: var(--on-accent);
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
   }
   .mobile-tab-new {
     color: var(--text);
