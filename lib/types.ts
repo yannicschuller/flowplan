@@ -20,6 +20,9 @@ export type User = {
   // Administration only: deleted for inactivity on this day unless used
   // before (lib/inactive-accounts.ts).
   deletion_due_at?: number | null;
+  // Administration only: "Neuigkeiten nach Updates" of the person, null
+  // for the instance's default (#223, lib/user-update-notes.ts).
+  update_notes?: string | null;
 };
 export type Identity = User & {
   groups: string[];

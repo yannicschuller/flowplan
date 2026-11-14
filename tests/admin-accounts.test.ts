@@ -142,3 +142,45 @@ test("previews before deleting or merging an account change nothing", async () =
   assert.ok(await identityFromToken(target.token));
   assert.equal(await status(() => command(admin.identity, { action: "admin.deletePlan", userId: id() })), 404);
 });
+
+// "Neuigkeiten nach Updates" per person (#223): an admin sets the level or
+// the instance's default (null) where the person's own setting lives.
+test("an admin sets a person's what's-new level, the person sees and changes it", async () => {
+  const { saveInstanceSettings } = await import("../lib/instance-settings");
+  const { bootstrap } = await import("../lib/api");
+  const target = await account("Notes");
+  const wid = await createWorkspace(target.identity.id, "Neuigkeiten");
+  const stored = async () => (await one<{ update_notes: string | null }>("SELECT update_notes FROM users WHERE id=?", target.identity.id))!.update_notes;
+  const level = async () => (await bootstrap(target.identity, wid)).updateNotes?.level;
+  // Unset: the instance's default, also when that changes.
+  await run("UPDATE users SET seen_version='1.0.0' WHERE id=?", target.identity.id);
+  assert.equal(await stored(), null);
+  assert.equal(await level(), "all");
+  await saveInstanceSettings({ updateNotesDefault: "never" });
+  assert.equal(await level(), "never");
+  // A level of its own, as if the person had chosen it.
+  assert.deepEqual(await command(admin.identity, { action: "admin.updateNotes", userId: target.identity.id, level: "breaking" }), { level: "breaking", effective: "breaking" });
+  assert.equal(await stored(), "breaking");
+  assert.equal(await level(), "breaking");
+  assert.ok(await one("SELECT 1 FROM audit WHERE actor_id=? AND action='admin.updateNotes' AND resource_id=?", admin.identity.id, target.identity.id), "in the activity log");
+  // The person can still change it.
+  await command(target.identity, { action: "profile.updateNotes", level: "all" });
+  assert.equal(await stored(), "all");
+  // Back to the instance's default: no own value.
+  assert.deepEqual(await command(admin.identity, { action: "admin.updateNotes", userId: target.identity.id, level: null }), { level: null, effective: "never" });
+  assert.equal(await stored(), null);
+  assert.equal(await level(), "never");
+  await saveInstanceSettings({ updateNotesDefault: "all" });
+  assert.equal(await level(), "all");
+});
+
+test("the what's-new level by an admin: only valid values, only admins, only existing accounts", async () => {
+  const target = await account("NotesBad");
+  await command(admin.identity, { action: "admin.updateNotes", userId: target.identity.id, level: "never" });
+  const zod = (e: unknown) => (e as Error).name === "ZodError" || (e as { status?: number }).status === 400;
+  for (const bad of [{ level: "some" }, { level: "default" }, { level: "" }, { level: 1 }, {}, { userId: "nope", level: "all" }])
+    await assert.rejects(() => command(admin.identity, { action: "admin.updateNotes", userId: target.identity.id, ...bad }), zod, JSON.stringify(bad));
+  assert.equal(await status(() => command(member.identity, { action: "admin.updateNotes", userId: target.identity.id, level: "all" })), 403);
+  assert.equal(await status(() => command(admin.identity, { action: "admin.updateNotes", userId: id(), level: "all" })), 404);
+  assert.equal((await one<{ update_notes: string | null }>("SELECT update_notes FROM users WHERE id=?", target.identity.id))!.update_notes, "never", "a refused value changes nothing");
+});

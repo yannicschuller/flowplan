@@ -126,8 +126,8 @@ export default function GeneralSection() {
           field="updateNotesDefault"
           label={t("Neuigkeiten nach Updates für neue Konten", "What’s new after updates for new accounts")}
           description={t(
-            "Ob neue Konten nach einem Update einmal „Neu in Flowplan“ sehen. Jede Person kann es unter Darstellung & Sprache ändern; bestehende Konten behalten ihre Einstellung.",
-            "Whether new accounts see “New in Flowplan” once after an update. Everyone can change it under Appearance & language; existing accounts keep their setting.",
+            "Ob neue Konten nach einem Update einmal „Neu in Flowplan“ sehen. Jede Person kann es unter Darstellung & Sprache ändern, pro Person legst du es unter Benutzer fest; bestehende Konten behalten ihre Einstellung, Konten auf „Instanz-Standard“ folgen dieser hier.",
+            "Whether new accounts see “New in Flowplan” once after an update. Everyone can change it under Appearance & language, and you set it per person under Users; existing accounts keep their setting, accounts on “Instance default” follow this one.",
           )}
           options={[
             { value: "all", label: t("Alle anzeigen", "Show all") },

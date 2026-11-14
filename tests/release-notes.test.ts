@@ -170,13 +170,21 @@ test("new accounts start at the running version with the administration's defaul
   assert.equal((await one<{ update_notes: string }>("SELECT update_notes FROM users WHERE id=?", other.id))?.update_notes, "breaking");
   // Existing accounts keep theirs: the default is only for new ones.
   const anna = await account("notes-old");
-  await run("UPDATE users SET seen_version=? WHERE id=?", "1.9.1", anna.id);
+  await run("UPDATE users SET seen_version=?,update_notes=? WHERE id=?", "1.9.1", "all", anna.id);
   assert.equal((await userNotes.userUpdateNotes(anna, { current: "1.10.0", notes: ALL })).level, "all");
+  // Without a level of its own ("Instanz-Standard" by an admin): the default.
+  await run("UPDATE users SET update_notes=NULL WHERE id=?", anna.id);
+  assert.equal((await userNotes.userUpdateNotes(anna, { current: "1.10.0", notes: ALL })).level, "breaking");
   await saveInstanceSettings({ updateNotesDefault: "all" });
 
-  // Accounts from before the dialog existed see the running version's notes once.
+  // Accounts from before the dialog existed see the running version's notes
+  // once and keep the level they start with.
   const legacy = await account("notes-legacy");
   assert.deepEqual(versions((await userNotes.userUpdateNotes(legacy, { current: "1.10.0", notes: ALL })).pending || []), ["1.10.0"]);
+  assert.equal((await one<{ update_notes: string }>("SELECT update_notes FROM users WHERE id=?", legacy.id))?.update_notes, "all");
+  await saveInstanceSettings({ updateNotesDefault: "never" });
+  assert.equal((await userNotes.userUpdateNotes(legacy, { current: "1.10.0", notes: ALL })).level, "all");
+  await saveInstanceSettings({ updateNotesDefault: "all" });
 });
 
 test("the levels decide whether the dialog comes; with nothing to show the version counts as seen", async () => {

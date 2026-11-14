@@ -1117,7 +1117,7 @@ async function handleGET(
         plainHttp: plainHttpInstance(),
         userUsage: await usersUsage(),
         users: await all(
-          "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
+          "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,update_notes,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
         ),
         mail: await mailStatus(),
         backup: await scheduledBackupStatus(),

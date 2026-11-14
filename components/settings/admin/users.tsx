@@ -31,6 +31,7 @@ import {
 import type { MergePreview } from "@/lib/account-merge";
 import type { SsoGroupReport } from "@/lib/sso-group-report";
 import type { User } from "@/lib/types";
+import { UPDATE_NOTES_LEVELS, updateNotesLevelOf, type UpdateNotesLevel } from "@/lib/update-notes-pref";
 import { useT } from "../../i18n";
 import { Avatar, Modal, showNotice } from "../../ui";
 import { Select } from "../../select";
@@ -799,7 +800,15 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
     if (result !== undefined && done) setNote(done);
     return result;
   };
-  const more = [t("Grenzen", "limits"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
+  // "Neuigkeiten nach Updates" (#223): the person's own level, or the
+  // instance's default without one (lib/user-update-notes.ts).
+  const notesLabels: Record<UpdateNotesLevel, string> = {
+    all: t("Alle anzeigen", "Show all"),
+    breaking: t("Nur Breaking Changes", "Only breaking changes"),
+    never: t("Nie", "Never"),
+  };
+  const notesValue = u.update_notes === null || u.update_notes === undefined ? "default" : updateNotesLevelOf(u.update_notes);
+  const more = [t("Grenzen", "limits"), t("Neuigkeiten", "what’s new"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
   const storageMb = usage?.effective.storageMb ?? 0;
   return (
     <Modal open onClose={onClose} title={u.name} className="modal-side ux-drawer" sheet>
@@ -952,6 +961,28 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             />
           </PanelRow>
           <p className="ux-more-note muted">{t("Leer = Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = instance default, 0 = unlimited. Admins are not limited.")}</p>
+          <PanelRow
+            label={t("Neuigkeiten nach Updates", "What’s new after updates")}
+            htmlFor={`update-notes-${u.id}`}
+            hint={t(
+              `Ob ${u.name} nach einem Update einmal „Neu in Flowplan“ sieht. Instanz-Standard: ${notesLabels[data.settings.updateNotesDefault]}. Die Person kann es unter Darstellung & Sprache selbst ändern.`,
+              `Whether ${u.name} sees “New in Flowplan” once after an update. Instance default: ${notesLabels[data.settings.updateNotesDefault]}. The person can change it under Appearance & language.`,
+            )}
+          >
+            <Select
+              id={`update-notes-${u.id}`}
+              className="ux-select"
+              value={notesValue}
+              onChange={(e) => void run({ action: "admin.updateNotes", userId: u.id, level: e.target.value === "default" ? null : e.target.value }, t("Gespeichert.", "Saved."))}
+            >
+              <option value="default">{t("Instanz-Standard", "Instance default")}</option>
+              {UPDATE_NOTES_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {notesLabels[level]}
+                </option>
+              ))}
+            </Select>
+          </PanelRow>
           {ai && (
             <PanelRow label={t("KI-Funktionen", "AI features")} hint={t("Nur ausgewählte Personen dürfen KI nutzen (Administration → KI).", "Only selected people may use AI (Administration → AI).")}>
               <AiUserSwitch userId={u.id} name={u.name} allowed={ai.allowed} onChange={() => void load()} />
