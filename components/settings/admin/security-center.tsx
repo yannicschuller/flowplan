@@ -110,6 +110,14 @@ function Verdict({ d }: { d: Overview }) {
         "Sign-ins arrive without a client address – blocks and per-address rules do not work. Make sure the reverse proxy sets X-Forwarded-For (FLOWPLAN_TRUSTED_PROXIES).",
       ),
     );
+  // SMTP/LDAP certificates not verified on purpose (#286).
+  for (const service of d.setup.tlsUnverified)
+    notes.push(
+      t(
+        `Die Zertifikatsprüfung für ${service} ist ausgeschaltet (${service}_TLS_REJECT_UNAUTHORIZED=false) – wer im Netz dazwischen sitzt, kann sich als Server ausgeben und Passwörter mitlesen. Sicherer: ${service}_TLS_CA und ${service}_TLS_SERVERNAME.`,
+        `Certificate checks for ${service} are switched off (${service}_TLS_REJECT_UNAUTHORIZED=false) – anyone on the network path can pose as the server and read passwords. Safer: ${service}_TLS_CA and ${service}_TLS_SERVERNAME.`,
+      ),
+    );
   if (!d.setup.webhook && !d.setup.mail)
     notes.push(t("Vorfälle erscheinen nur im Posteingang der Admins und hier – richte E-Mail oder einen Webhook ein, um sie auch unterwegs zu bekommen.", "Incidents only show in the admins' inbox and here – set up e-mail or a webhook to get them on the go as well."));
   const state = s.criticalIncidents ? "error" : s.openIncidents ? "warn" : "ok";

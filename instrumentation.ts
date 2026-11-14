@@ -31,6 +31,9 @@ export async function register() {
     } catch (e) {
       console.error("Setup check failed:", (e as Error)?.message);
     }
+    // SMTP/LDAP certificates not verified on purpose (#286): never silent.
+    const { warnUnverifiedTlsOnce } = await import("./lib/tls-trust");
+    warnUnverifiedTlsOnce();
     // Catalogues of further languages for server-side texts (lib/i18n-catalogs.ts).
     await import("./lib/i18n-catalogs-server");
     const { startPushWorker, dispatchPush } = await import("./lib/push");

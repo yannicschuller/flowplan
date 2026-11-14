@@ -78,7 +78,7 @@ export type AdminData = {
   ldapAccounts?: string[];
   // Administrators of every kind of sign-in (lib/auth.ts adminUserIds).
   adminIds?: string[];
-  mail: { configured: boolean; host: string | null; from: string | null; pending: number; failed: number; sentWeek: number; lastError: string | null };
+  mail: { configured: boolean; host: string | null; from: string | null; tlsServername?: string | null; tlsUnverified?: boolean; pending: number; failed: number; sentWeek: number; lastError: string | null };
   markdownExport: MarkdownExportStatus;
   spaceGitExport: SpaceGitOverview;
   encryption: EncryptionStatus;

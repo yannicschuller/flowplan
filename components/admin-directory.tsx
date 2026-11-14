@@ -230,6 +230,21 @@ export function AdminDirectory({ directory }: { directory: Awaited<ReturnType<ty
             <SettingRow label={t("Server", "Server")} description={`${ldap.baseDn}${ldap.startTls ? " · StartTLS" : ""}`}>
               <code className="admin-break">{ldap.url}</code>
             </SettingRow>
+            {(ldap.tlsUnverified || ldap.tlsServername) && (
+              <SettingRow
+                label={t("Zertifikat", "Certificate")}
+                description={
+                  ldap.tlsUnverified
+                    ? t(
+                        "Zertifikatsprüfung ausgeschaltet (LDAP_TLS_REJECT_UNAUTHORIZED=false): wer im Netz dazwischen sitzt, kann sich als Verzeichnis ausgeben und Passwörter mitlesen. Sicherer: LDAP_TLS_CA und LDAP_TLS_SERVERNAME.",
+                        "Certificate check switched off (LDAP_TLS_REJECT_UNAUTHORIZED=false): anyone on the network path can pose as the directory and read passwords. Safer: LDAP_TLS_CA and LDAP_TLS_SERVERNAME.",
+                      )
+                    : t(`Geprüft gegen den Namen ${ldap.tlsServername} (LDAP_TLS_SERVERNAME).`, `Checked against the name ${ldap.tlsServername} (LDAP_TLS_SERVERNAME).`)
+                }
+              >
+                <StatusBadge tone={ldap.tlsUnverified ? "warn" : "ok"}>{ldap.tlsUnverified ? t("Nicht geprüft", "Not verified") : t("Geprüft", "Verified")}</StatusBadge>
+              </SettingRow>
+            )}
             <SettingRow label={t("Suche", "Search")} description={t(`Gruppen aus ${ldap.groupAttribute}`, `Groups from ${ldap.groupAttribute}`)}>
               <code className="admin-break">{ldap.userFilter}</code>
             </SettingRow>
