@@ -92,6 +92,11 @@ async function pageComplete(response) {
   for (const path of pageAssets(await response.clone().text())) if (!(await caches.match(path))) return false;
   return true;
 }
+// An error page that did not come from Flowplan: every answer of Flowplan
+// carries its build (lib/stale-copy.ts BUILD_HEADER).
+function fromProxy(response) {
+  return !response.ok && !response.headers.get("X-Flowplan-Build");
+}
 // Network first; the stored copy is used only when the network fails. The
 // app's files are looked up in every build's cache: unchanged files keep
 // their names across releases.
@@ -103,6 +108,14 @@ async function networkFirst(request, cacheName, key, anyCache = false) {
     if (!response.ok && anyCache) {
       const cached = await caches.match(key);
       if (cached) return cached;
+    }
+    // The app's page answered by a proxy instead of Flowplan (#284): while
+    // the server restarts, Traefik and others say "404 page not found" or
+    // 502/503 – the stored app is better than that page. Flowplan's own
+    // answers name their build (X-Flowplan-Build, proxy.ts).
+    if (request.mode === "navigate" && fromProxy(response)) {
+      const cached = await (await caches.open(cacheName)).match(key);
+      if (cached && (await pageComplete(cached))) return cached;
     }
     if (response.ok && response.type === "basic" && !(await signedOut(request, response))) {
       const cache = await caches.open(cacheName);

@@ -34,7 +34,10 @@ async function post(body: Record<string, unknown>, key: string) {
     headers: { "Content-Type": "application/json", [IDEMPOTENCY_HEADER]: key },
     body: JSON.stringify(body),
   });
-  const result = await response.json().catch(() => ({}));
+  const result = await response.json().catch(() => null);
+  // No JSON: a proxy answered while the server restarts (#284) – even its
+  // "404 page not found" says nothing about the change, which stays queued.
+  if (result === null && !response.ok) throw new NotYet();
   if (result?.code === IDEMPOTENCY_CODES.processing) throw new NotYet();
   // Signed out: the change waits for the next sign-in instead of being
   // discarded.
@@ -45,14 +48,16 @@ async function post(body: Record<string, unknown>, key: string) {
   // The server briefly unreachable: sent again later, not discarded.
   if (retryLater(response.status)) throw new NotYet();
   if (!response.ok)
-    throw new HttpFailure(serverMessage(result.error) || tr("Fehler", "Error"), response.status);
-  return result;
+    throw new HttpFailure(serverMessage(result?.error) || tr("Fehler", "Error"), response.status);
+  return result ?? {};
 }
 async function currentRows(pageId: string): Promise<Row[]> {
   const response = await fetch(`/api/pages/${pageId}`, { cache: "no-store" });
   if (retryLater(response.status)) throw new NotYet();
+  const body = await response.json().catch(() => null);
+  if (body === null && !response.ok) throw new NotYet(); // a proxy's page (#284)
   if (!response.ok) throw new HttpFailure(tr("Seite fehlt.", "Page missing."), response.status);
-  return (await response.json()).rows || [];
+  return body?.rows || [];
 }
 const read = (key: string): QueuedChange[] => {
   try {

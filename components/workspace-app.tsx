@@ -971,7 +971,10 @@ export default function WorkspaceApp({
     } catch (error) {
       if (version !== navigationVersion.current || navigationPending.current)
         return;
-      if (error instanceof ApiError && error.status === 404) {
+      // The workspace is gone – Flowplan said so. A 404 from a proxy while
+      // the server restarts ("404 page not found", #284) is no reason to
+      // leave the page: the editor keeps the text and sends it later.
+      if (error instanceof ApiError && error.status === 404 && !error.transient) {
         setData(null);
         window.location.assign("/");
         return;
