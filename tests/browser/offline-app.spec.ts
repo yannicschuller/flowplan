@@ -87,7 +87,12 @@ test("the offline copy holds every part of the app (#47)", async ({ page, contex
   const stuck = async (p: Page) => expect(p.locator(".view-unavailable")).toHaveCount(0);
   // A calendar view, loaded from the device's copy.
   await open(`page=${db.id}`);
-  await expect(page.locator(".offline-banner")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".offline-status-button")).toBeVisible({ timeout: 15_000 });
+  // A small icon in the top bar, the explanation on a tap (#296).
+  await page.locator(".offline-status-button").click();
+  await expect(page.locator(".offline-status-note")).toContainText("Offline – du siehst den zuletzt gespeicherten Stand.");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".offline-status-note")).toHaveCount(0);
   await expect(page.locator(".calendar-grid")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".calendar-grid").getByText("Zahnarzt")).toBeVisible();
   await stuck(page);
@@ -116,7 +121,7 @@ test("the offline copy holds every part of the app (#47)", async ({ page, contex
   await missing.getByRole("button", { name: "Erneut versuchen" }).click();
   await expect(missing).toBeVisible();
   // The sidebar still answers.
-  await expect(page.locator(".offline-banner")).toBeVisible();
+  await expect(page.locator(".offline-status-button")).toBeVisible();
   // Back online: the whiteboard loads by itself.
   await context.unrouteAll();
   await context.setOffline(false);

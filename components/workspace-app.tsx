@@ -15,6 +15,7 @@ import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
+import { OfflineStatus } from "./offline-status";
 import { saveStatusOf } from "@/lib/save-status";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
@@ -4043,11 +4044,6 @@ export default function WorkspaceApp({
           </div>
         )}
         <InstanceBanners initial={boot.instance?.banners || []} />
-        {!online && (
-          <div className="offline-banner" role="status">
-            {t("Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen werden später abgeglichen.", "Offline – you see the last saved state. Text changes are synced later.")}
-          </div>
-        )}
         {offlineNotice}
         {appOfflineNotice}
         {signedOut && (
@@ -4114,6 +4110,8 @@ export default function WorkspaceApp({
               </span>
             )}
           </div>
+          {/* Offline: a small icon instead of a banner over the page (#296). */}
+          {!online && <OfflineStatus />}
           {screen === "page" && data?.draft ? (
             <span className="topbar-note journal-draft-note" role="status">
               <span className="subtle-dot" />

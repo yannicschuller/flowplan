@@ -5111,6 +5111,51 @@ td:hover .link-cell-edit,
   color: #f3dc9a;
   border-color: #56461c;
 }
+/* Offline in the top bar (#296): a small yellow icon; tapping it shows the
+   explanation that used to be a banner over the page. */
+.offline-status {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+.offline-status-button {
+  color: #8a6300;
+  background: #fff4d6;
+}
+.offline-status-button:hover,
+.offline-status-button[aria-expanded="true"] {
+  background: #ffe9ad;
+}
+:root[data-theme="dark"] .offline-status-button {
+  color: #f3dc9a;
+  background: #3a3017;
+}
+:root[data-theme="dark"] .offline-status-button:hover,
+:root[data-theme="dark"] .offline-status-button[aria-expanded="true"] {
+  background: #4a3d1d;
+}
+.offline-status-note {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border: 1px solid #f0dca0;
+  border-radius: 8px;
+  background: #fff4d6;
+  color: #6b4d00;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+}
+:root[data-theme="dark"] .offline-status-note {
+  background: #3a3017;
+  color: #f3dc9a;
+  border-color: #56461c;
+}
 /* Offline copy: its date while offline, a quiet note while it refreshes. */
 .offline-copy-age {
   padding: 4px 16px;
