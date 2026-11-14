@@ -172,14 +172,14 @@ export function EmergencyAccessSettings({ userId, onError }: { userId: string; o
             }}
           >
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("E-Mail-Adresse", "E-mail address")} aria-label={t("E-Mail-Adresse", "E-mail address")} />
-            <Select className={CONTROL.sm} aria-label={t("Wartezeit", "Waiting period")} value={wait} onChange={(e) => setWait(Number(e.target.value))}>
+            <Select className={CONTROL.md} aria-label={t("Wartezeit", "Waiting period")} value={wait} onChange={(e) => setWait(Number(e.target.value))}>
               {EMERGENCY_WAIT_DAYS.map((d) => (
                 <option key={d} value={d}>
                   {d === 1 ? t("1 Tag Wartezeit", "1 day waiting period") : t(`${d} Tage Wartezeit`, `${d} days waiting period`)}
                 </option>
               ))}
             </Select>
-            <Select className={CONTROL.sm} aria-label={t("Dauer des Zugriffs", "Length of access")} value={access ?? ""} onChange={(e) => setAccess(e.target.value ? Number(e.target.value) : null)}>
+            <Select className={CONTROL.md} aria-label={t("Dauer des Zugriffs", "Length of access")} value={access ?? ""} onChange={(e) => setAccess(e.target.value ? Number(e.target.value) : null)}>
               <option value="">{t("Bis du ihn beendest", "Until you end it")}</option>
               {EMERGENCY_ACCESS_DAYS.map((d) => (
                 <option key={d} value={d}>
