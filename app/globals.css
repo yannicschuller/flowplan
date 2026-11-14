@@ -13172,10 +13172,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     center / contain no-repeat;
 }
 /* "Symbol bei externen Links" off (#217, lib/external-link-icon-pref.ts):
-   no arrow; colour and underline stay. Screen only – print replaces the
+   no arrow; colour and underline stay. On a published page the class sits
+   on its root and follows the publication's choice (lib/publication.ts). Screen only – print replaces the
    arrow with the address anyway (@media print below). */
 @media screen {
-  html.hide-external-link-icon :is(.document-editor, .shared-rich-editor, .inline-comment-panel) a[href^="http"]::after {
+  html.hide-external-link-icon :is(.document-editor, .shared-rich-editor, .inline-comment-panel) a[href^="http"]::after,
+  .public-page.hide-external-link-icon :is(.document-editor, .shared-rich-editor, .inline-comment-panel) a[href^="http"]::after {
     content: none;
     display: none;
   }

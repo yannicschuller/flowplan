@@ -6,9 +6,11 @@ import { z } from "zod";
 // When off, a class on <html> hides the arrow in the editor, comments and
 // read mode; the links keep their colour and underline. Stored per person on
 // the server (users.external_link_icon: NULL = the default, 0 = off, 1 = on),
-// so the choice follows the person to every device. Published pages keep the
-// default for their visitors, and the arrow is never printed (print shows
-// the address instead).
+// so the choice follows the person to every device. A published page
+// follows the choice stored with its publication (publications.
+// external_link_icon: preset from the publisher's setting, changeable in the
+// share dialog; the class then sits on .public-page). The arrow is never
+// printed (print shows the address instead).
 export const DEFAULT_EXTERNAL_LINK_ICON = true;
 export const externalLinkIconSchema = z.boolean();
 export const HIDE_EXTERNAL_LINK_ICON_CLASS = "hide-external-link-icon";

@@ -3140,6 +3140,7 @@ async function runCommand(
           z.boolean().optional().parse(b.includeChildren) ?? false,
           z.boolean().optional().parse(b.allowCopy) ?? true,
           z.boolean().optional().parse(b.autoChildren) ?? false,
+          z.boolean().optional().parse(b.externalLinkIcon),
         );
         if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? (b.autoChildren === true ? " with subpages, new ones automatically" : " with subpages") : ""}` });
         break;
