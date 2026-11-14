@@ -6,7 +6,7 @@
 // (lib/ai/device.ts: optional, the administration's and each person's
 // switch). API keys are only ever sent, never shown:
 // the server answers with "stored · ends in …abcd" at most (lib/ai).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useT } from "./i18n";
 import { api } from "./ui";
 import { Select } from "./select";
@@ -77,7 +77,7 @@ function ProviderFields({
   onChange,
   onKeyChange,
   own,
-  models,
+  modelsUrl,
   idPrefix,
 }: {
   value: Provider;
@@ -88,7 +88,8 @@ function ProviderFields({
   onKeyChange: (next: KeyChange) => void;
   // A person's own provider: public https addresses only.
   own: boolean;
-  models: string[];
+  // Where "Modelle abrufen" lists the models of the provider as typed.
+  modelsUrl: string;
   idPrefix: string;
 }) {
   const t = useT();
@@ -126,12 +127,14 @@ function ProviderFields({
         <input id={`${idPrefix}-url`} type="url" maxLength={500} value={value.baseUrl} placeholder={AI_DEFAULTS[value.kind].baseUrl} onChange={(e) => onChange({ ...value, baseUrl: e.target.value })} />
       </SettingRow>
       <SettingRow id={`${idPrefix}-model`} label={t("Modell", "Model")} description={t("Jede Modell-ID des Anbieters, z. B. ", "Any model id of the provider, e.g. ") + AI_DEFAULTS[value.kind].model}>
-        <input id={`${idPrefix}-model`} list={`${idPrefix}-models`} maxLength={200} value={value.model} onChange={(e) => onChange({ ...value, model: e.target.value })} />
-        <datalist id={`${idPrefix}-models`}>
-          {models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
+        <FetchModels
+          key={`${value.kind} ${value.baseUrl}`}
+          url={modelsUrl}
+          idPrefix={idPrefix}
+          provider={value}
+          apiKey={keyChange.apiKey}
+          onPick={(model) => onChange({ ...value, model })}
+        />
       </SettingRow>
       {value.kind !== "anthropic" && (
         <SettingRow id={`${idPrefix}-embed`} label={t("Modell für Embeddings (optional)", "Embedding model (optional)")} description={t("Für die Suche nach Bedeutung, z. B. ", "For searching by meaning, e.g. ") + AI_DEFAULTS[value.kind].embeddingModel}>
@@ -187,6 +190,147 @@ function ProviderFields({
         </p>
       )}
     </>
+  );
+}
+
+// The model field with "Modelle abrufen" (#290): lists the models of the
+// provider as typed in the form, saved or not (without a typed key the
+// server uses the saved one for the saved address). A search narrows the
+// list; picking fills the field, which stays free text.
+function FetchModels({
+  url,
+  idPrefix,
+  provider,
+  apiKey,
+  onPick,
+}: {
+  url: string;
+  idPrefix: string;
+  provider: Provider;
+  apiKey: string | null | undefined;
+  onPick: (model: string) => void;
+}) {
+  const t = useT();
+  const [models, setModels] = useState<string[] | null>(null),
+    [open, setOpen] = useState(false),
+    [query, setQuery] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const list = useRef<HTMLUListElement>(null),
+    field = useRef<HTMLInputElement>(null);
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (models || []).filter((m) => m.toLowerCase().includes(q));
+  }, [models, query]);
+  const listId = `${idPrefix}-model-list`;
+  async function load() {
+    setBusy(true);
+    setError("");
+    try {
+      const body = { provider: { kind: provider.kind, baseUrl: provider.baseUrl }, ...(apiKey !== undefined ? { apiKey } : {}) };
+      setModels((await api<{ models: string[] }>(url, body)).models);
+      setQuery("");
+      setOpen(true);
+    } catch (e) {
+      setOpen(false);
+      setError(t("Modelle konnten nicht abgerufen werden: ", "Could not fetch the models: ") + (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const pick = (model: string) => {
+    onPick(model);
+    setOpen(false);
+    field.current?.focus();
+  };
+  // Arrow keys move between the options, Enter or space picks one.
+  const options = () => [...(list.current?.querySelectorAll<HTMLElement>("[role=option]") || [])];
+  const move = (from: number, by: number) => {
+    const all = options();
+    if (all.length) all[Math.max(0, Math.min(all.length - 1, from + by))].focus();
+  };
+  return (
+    <div className="ai-model-field">
+      <div className="ai-model-row">
+        <input ref={field} id={`${idPrefix}-model`} list={`${idPrefix}-models`} maxLength={200} value={provider.model} onChange={(e) => onPick(e.target.value)} />
+        <button type="button" className="button compact" disabled={busy} aria-expanded={open} aria-controls={open ? listId : undefined} onClick={() => void load()}>
+          {busy ? t("Wird abgerufen …", "Fetching …") : t("Modelle abrufen", "Fetch models")}
+        </button>
+      </div>
+      <datalist id={`${idPrefix}-models`}>
+        {models?.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      {open && models && (
+        <div className="ai-model-picker">
+          <input
+            type="search"
+            aria-label={t("Modelle durchsuchen", "Search models")}
+            aria-controls={listId}
+            placeholder={t("Modelle durchsuchen …", "Search models …")}
+            value={query}
+            autoFocus
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                move(0, 0);
+              } else if (e.key === "Enter") {
+                // Not the form's submit: the first match is picked.
+                e.preventDefault();
+                if (shown[0]) pick(shown[0]);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setOpen(false);
+                field.current?.focus();
+              }
+            }}
+          />
+          <span role="status" className="ai-test-result">
+            {models.length === 0
+              ? t("Der Anbieter nennt keine Modelle.", "The provider lists no models.")
+              : shown.length === models.length
+                ? t(`${models.length} Modelle`, `${models.length} models`)
+                : t(`${shown.length} von ${models.length} Modellen`, `${shown.length} of ${models.length} models`)}
+          </span>
+          {shown.length > 0 && (
+            <ul ref={list} id={listId} role="listbox" aria-label={t("Modelle des Anbieters", "The provider's models")} className="ai-model-list">
+              {shown.map((m, i) => (
+                <li
+                  key={m}
+                  role="option"
+                  aria-selected={m === provider.model}
+                  tabIndex={i === 0 ? 0 : -1}
+                  onClick={() => pick(m)}
+                  onKeyDown={(e) => {
+                    const step = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity }[e.key];
+                    if (step !== undefined) {
+                      e.preventDefault();
+                      move(i, step);
+                    } else if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      pick(m);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setOpen(false);
+                      field.current?.focus();
+                    }
+                  }}
+                >
+                  {m}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -452,7 +596,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
               onChange={(next) => set({ provider: next })}
               onKeyChange={setKeyChange}
               own={false}
-              models={[]}
+              modelsUrl="/api/ai/admin/models"
             />
             <SettingRow label={t("Verbindung", "Connection")} description={t("Prüft Adresse, Schlüssel und Modell mit einer kurzen Anfrage.", "Checks address, key and model with a short request.")}>
               <TestButton url="/api/ai/admin/test" disabled={dirty || !view.settings.provider} onError={onError} />
@@ -820,7 +964,7 @@ function OwnProvider({ view, command, onError }: { view: UserView; command: (b: 
         {!view.instance.userProviders && <p className="callout">{t("Eigene Anbieter sind auf dieser Instanz nicht mehr erlaubt.", "Own providers are no longer allowed on this instance.")}</p>}
         {draft && (
           <>
-            <ProviderFields idPrefix="ai-own" value={draft} saved={saved} keyInfo={view.key} keyChange={keyChange} onChange={setDraft} onKeyChange={setKeyChange} own models={[]} />
+            <ProviderFields idPrefix="ai-own" value={draft} saved={saved} keyInfo={view.key} keyChange={keyChange} onChange={setDraft} onKeyChange={setKeyChange} own modelsUrl="/api/ai/models" />
             <SettingRow label={t("Verbindung", "Connection")}>
               <TestButton url="/api/ai/test" disabled={dirty || !saved} onError={onError} />
             </SettingRow>

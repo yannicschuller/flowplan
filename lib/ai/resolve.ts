@@ -6,10 +6,13 @@
 import { all, one } from "../db";
 import { isGuest } from "../permissions";
 import type { Identity } from "../types";
-import { AI_DEFAULTS, AI_FEATURE_IDS, DEVICE_AI_FEATURES, isAiFeature, type AiFeature, type AiReason, type AiStatus } from "./features";
+import { z } from "zod";
+import { HttpError } from "../auth";
+import { AI_DEFAULTS, AI_FEATURE_IDS, AI_PROVIDER_KINDS, AI_REASON_TEXT, DEVICE_AI_FEATURES, isAiFeature, type AiFeature, type AiReason, type AiStatus } from "./features";
 import { aiDeviceExcludedPages, aiExcludedPages } from "./access";
 import type { AiConfig } from "./providers";
-import { featureAllowed, instanceAiSettings, instanceKey, userAiSettings, userAllowedByPolicy, userKey, type AiProviderSettings } from "./settings";
+import { featureAllowed, instanceAiSettings, instanceKey, normalizeUrl, userAiSettings, userAllowedByPolicy, userKey, type AiProviderSettings } from "./settings";
+import { checkAiUrl } from "./transport";
 import { privateAddress } from "../safe-fetch";
 import { isIP } from "node:net";
 import { mapAsync } from "../each-async";
@@ -88,6 +91,36 @@ export async function userProviderConfig(user: Identity): Promise<Built> {
   if (key.unreadable) return { ok: false, reason: "key-unreadable" };
   if (AI_DEFAULTS[p.kind].keyRequired && !key.key) return { ok: false, reason: "no-provider" };
   return { ok: true, config: { ...p, baseUrl: p.baseUrl || AI_DEFAULTS[p.kind].baseUrl, apiKey: key.key || undefined, trusted: false } };
+}
+// A provider as typed in the settings form, not yet saved – only to list
+// its models ("Modelle abrufen", #290). The same reach as the saved one:
+// the instance's may be private or http (trusted), a person's own only
+// public https (checked again by aiFetch on every connection). Without a
+// typed key the saved key is used, but only for exactly the saved kind and
+// address – a stored key never goes to another host.
+const draftInput = z.object({
+  provider: z.object({ kind: z.enum(AI_PROVIDER_KINDS), baseUrl: z.string().trim().max(500) }),
+  // A typed key; null: explicitly none; absent or empty: the saved one.
+  apiKey: z.string().trim().max(1000).regex(/^[\x21-\x7e]*$/, "Ungültiger API-Schlüssel.").nullable().optional(),
+});
+export async function draftProviderConfig(user: Identity, scope: "instance" | "user", raw: unknown): Promise<AiConfig> {
+  const b = draftInput.parse(raw);
+  const trusted = scope === "instance";
+  const instance = await instanceAiSettings();
+  if (!trusted && !instance.userProviders) throw new HttpError(403, "Eigene KI-Anbieter sind auf dieser Instanz nicht erlaubt.");
+  const { kind } = b.provider;
+  const baseUrl = b.provider.baseUrl || AI_DEFAULTS[kind].baseUrl;
+  checkAiUrl(baseUrl, trusted);
+  let apiKey = b.apiKey || undefined;
+  if (!apiKey && b.apiKey !== null) {
+    const saved = trusted ? instance.provider : (await userAiSettings(user.id)).provider;
+    if (saved && saved.kind === kind && normalizeUrl(kind, saved.baseUrl) === normalizeUrl(kind, baseUrl)) {
+      const key = trusted ? await instanceKey() : await userKey(user.id);
+      if (key.unreadable) throw new HttpError(409, AI_REASON_TEXT["key-unreadable"][0]);
+      apiKey = key.key || undefined;
+    }
+  }
+  return { kind, baseUrl, model: "", apiKey, trusted };
 }
 // Which provider applies: the person's own when they chose it, else the
 // instance's, else their own as the only one there is.

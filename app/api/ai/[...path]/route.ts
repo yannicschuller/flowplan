@@ -16,7 +16,7 @@ import { requireAdmin, requireMember, requirePage } from "@/lib/permissions";
 import type { Identity } from "@/lib/types";
 import { AI_FEATURE_IDS, AI_REASON_TEXT } from "@/lib/ai/features";
 import { aiBlockInfo, aiPageAccess, aiRules } from "@/lib/ai/access";
-import { aiStatus, instanceProviderConfig, userProviderConfig } from "@/lib/ai/resolve";
+import { aiStatus, draftProviderConfig, instanceProviderConfig, userProviderConfig } from "@/lib/ai/resolve";
 import { aiStreamResponse, AI_LIMITS } from "@/lib/ai/run";
 import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
 import { adminAiView, assertSettingsCaller, instanceAiSettings, userAiSettings, userKeyInfo } from "@/lib/ai/settings";
@@ -83,6 +83,14 @@ async function body(req: Request, limit: number) {
 function built(result: Awaited<ReturnType<typeof instanceProviderConfig>>) {
   if (!result.ok) throw new HttpError(409, AI_REASON_TEXT[result.reason][0]);
   return result.config;
+}
+
+// The provider whose models are listed: the one typed in the form when the
+// body names one, else the saved one.
+async function modelsConfig(req: Request, user: Identity, scope: "instance" | "user") {
+  const b = await body(req, 10_000);
+  if (b && typeof b === "object" && "provider" in b) return await draftProviderConfig(user, scope, b);
+  return built(scope === "instance" ? await instanceProviderConfig() : await userProviderConfig(user));
 }
 
 // What the settings page shows: the person's choices, their own provider
@@ -268,20 +276,21 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     // A journal's week or month as a review (#170, lib/ai/journal-summary.ts);
     // the days are loaded on the server.
     if (path.length === 1 && path[0] === "journal-summary") return await aiJournalSummaryResponse(user, await body(req, 10_000), req.signal);
-    // The person's own provider (as saved): test it, list its models.
+    // The person's own provider (as saved): test it, list its models – or,
+    // with a "provider" in the body, the models of the one typed in the form
+    // (#290, draftProviderConfig: same reach, saved key only for the saved address).
     if (path.length === 1 && (path[0] === "test" || path[0] === "models")) {
       limitAiSetup(user.id);
-      const config = built(await userProviderConfig(user));
-      if (path[0] === "models") return NextResponse.json({ models: await listModels(config, req.signal) }, noStore);
-      return NextResponse.json(await testConnection(config, req.signal), noStore);
+      if (path[0] === "models") return NextResponse.json({ models: await listModels(await modelsConfig(req, user, "user"), req.signal) }, noStore);
+      return NextResponse.json(await testConnection(built(await userProviderConfig(user)), req.signal), noStore);
     }
-    // The administration: the instance provider as saved.
+    // The administration: the instance provider as saved (models: or as typed).
     if (path.length === 2 && path[0] === "admin") {
       requireAdmin(user);
       limitAiSetup(user.id);
+      if (path[1] === "models") return NextResponse.json({ models: await listModels(await modelsConfig(req, user, "instance"), req.signal) }, noStore);
       const config = built(await instanceProviderConfig());
       if (path[1] === "test") return NextResponse.json(await testConnection(config, req.signal), noStore);
-      if (path[1] === "models") return NextResponse.json({ models: await listModels(config, req.signal) }, noStore);
       // Downloading a model into Ollama: progress as JSON lines.
       if (path[1] === "pull") {
         const { model } = z
