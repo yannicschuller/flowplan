@@ -183,6 +183,9 @@ test("tabs: open with ⌘-click, reorder, close, the other frame, reload, histor
   // The tab's title follows a rename (saved when the title field is left,
   // as the page tree's).
   await expect(page.locator(".split-primary .ProseMirror")).toBeVisible();
+  // The new tab shows C before typing: a fill while the field still holds A
+  // renamed A (and the retry then C).
+  await expect(mainTitle(page)).toHaveValue("Seite C");
   await expect(async () => {
     await mainTitle(page).fill("Seite C neu");
     await mainTitle(page).blur();
