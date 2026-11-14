@@ -410,6 +410,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "export import zip json markdown pdf epub notion appflowy jira trello affine confluence evernote google docs goodnotes notizbuch obsidian backup sicherung wiederherstellen papierkorb aufbewahrung versionen", en: "export import zip json markdown pdf epub notion appflowy jira trello affine confluence evernote google docs goodnotes notebook obsidian backup restore trash retention versions" },
     entries: [
       { title: { de: "Aus Notion, AppFlowy, Confluence, Evernote oder Obsidian importieren", en: "Import from Notion, AppFlowy, Confluence, Evernote or Obsidian" }, keywords: { de: "google docs markdown zip", en: "google docs markdown zip" }, anchor: "import" },
+      { title: { de: "Direkt aus Notion importieren (Integrations-Token)", en: "Import straight from Notion (integration token)" }, keywords: { de: "notion api token integration verbindung importbericht", en: "notion api token integration connection import report" }, anchor: "import-tools" },
       { title: { de: "Aus GoodNotes importieren", en: "Import from GoodNotes" }, keywords: { de: "pdf notizbuch handschrift ipad", en: "pdf notebook handwriting ipad" }, anchor: "import" },
       { title: { de: "Aus Jira oder Trello importieren", en: "Import from Jira or Trello" }, anchor: "import" },
       { title: { de: "Vorlage aus Datei importieren", en: "Import template from file" }, keywords: { de: "marketplace flowplan-template", en: "marketplace flowplan-template" }, anchor: "marketplace-file" },

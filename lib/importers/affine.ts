@@ -46,7 +46,7 @@ import { calloutIcon } from "../callout-types";
 import { codeBlockHtml, esc, fileRef, mimeOf, pageRef, withBlockId } from "./html";
 import { AText, propertyValue, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
 import { affineBoard, edgelessExtras, noteDisplay } from "./affine-board";
-import { warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportDatabase, type ImportFile, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
+import { importReport, warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportDatabase, type ImportFile, type ImportPage, type ImportTemplate, type ImportTree, type ReportKind } from "./types";
 import type { FrontmatterValue } from "../frontmatter";
 import type { Field, View } from "../types";
 
@@ -133,6 +133,9 @@ const withAffineAnchor = (href: string | null, anchor: string | null) => (href &
 type Ctx = {
   ws: AWorkspace;
   warn: (message: string) => void;
+  // An entry of the import report for the document being converted
+  // (lib/importers/report.ts).
+  note: (kind: ReportKind, detail: string) => void;
   docLink: (docId: string) => string | null;
   // A document of the import that is a page (not a template, #116), and
   // one that is a template (links to it stay text).
@@ -327,6 +330,7 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
       if (block.flavour === "affine:embed-synced-doc") ctx.warn("Synchronisierte Dokumente werden als Link übernommen.");
       const href = withAffineAnchor(ctx.docLink(p.pageId), affineParamsAnchor(p.params));
       const shown = typeof p.title === "string" && p.title.trim() ? p.title : ctx.title(p.pageId);
+      if (block.flavour === "affine:embed-synced-doc") ctx.note("embed", ct(`Synchronisiertes Dokument „${shown}“ als Link übernommen`, `Synced document “${shown}” kept as a link`));
       return href ? `<p><a href="${esc(href)}">${esc(shown)}</a></p>` : `<p>${esc(shown)}</p>`;
     }
     case "affine:surface-ref":
@@ -339,19 +343,26 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
       return children();
     case "affine:embed-html":
       ctx.warn("HTML-Einbettungen werden nicht übernommen.");
+      ctx.note("block", ct("HTML-Einbettung", "HTML embed"));
       return "";
     case "affine:data-view":
       ctx.warn("Datenansichten (Data View) werden nicht übernommen.");
+      ctx.note("block", ct("Datenansicht (Data View)", "Data view"));
       return "";
     default: {
       // Bookmarks and embeds (YouTube, Figma, GitHub, Loom, iframes …) as links.
       const href = safeHref(p.url, ctx.docLink);
       const shown = typeof p.title === "string" && p.title.trim() ? p.title.slice(0, 500) : typeof p.url === "string" ? p.url.slice(0, 500) : "";
-      if (href) return `<p><a href="${esc(href)}">${esc(shown)}</a></p>${children()}`;
+      if (href) {
+        // Bookmarks and embeds of other sites stay links.
+        if (!href.startsWith("fp-import:")) ctx.note("embed", `${block.flavour.replace(/^affine:/, "")}: ${typeof p.url === "string" ? p.url.slice(0, 200) : shown}`);
+        return `<p><a href="${esc(href)}">${esc(shown)}</a></p>${children()}`;
+      }
       // A link with another scheme stays as text.
       if (typeof p.url === "string" && shown) return `<p>${esc(shown)}</p>${children()}`;
       if (block.children.length) return children();
       ctx.warn(`Block „${block.flavour.slice(0, 60)}“ wird nicht übernommen.`);
+      ctx.note("block", block.flavour.slice(0, 60));
       return "";
     }
   }
@@ -492,9 +503,13 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
         break;
       case "image":
         ctx.warn("Bild-Spalten von Datenbanken werden nicht übernommen.");
+        ctx.note("property", ct(`Bild-Spalte „${name}“ nicht übernommen`, `Image column “${name}” not carried over`));
         break;
       default:
-        if (column.type !== "rich-text") ctx.warn(`Datenbank-Spalte vom Typ „${column.type.slice(0, 40)}“ als Text übernommen.`);
+        if (column.type !== "rich-text") {
+          ctx.warn(`Datenbank-Spalte vom Typ „${column.type.slice(0, 40)}“ als Text übernommen.`);
+          ctx.note("property", ct(`Spalte „${name}“ (${column.type.slice(0, 40)}) als Text`, `Column “${name}” (${column.type.slice(0, 40)}) as text`));
+        }
         fields.push({ id: fid, name, type: "text" });
         // Formatted text (#126): bold, italic, strike, code and links stay.
         convert.set(column.id, (v) => {
@@ -716,6 +731,9 @@ export type AffineOptions = {
 
 export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: AffineOptions = {}): ImportTree {
   const warnings = warningList();
+  const report = importReport();
+  // The document being converted (for report entries of missing files).
+  let current: string | null = null;
   const live = ws.docs.filter((d) => !d.trash);
   const trashed = ws.docs.length - live.length;
   if (trashed) warnings.add(`${trashed} Dokumente im Papierkorb werden nicht übernommen.`);
@@ -772,6 +790,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: Affi
     const found = ws.blobs.get(key) ?? ws.blobs.get(key.replace(/^\//, ""));
     if (!found) {
       missingFiles++;
+      if (current) report.add("file", name ? ct(`„${name}“ fehlt in der Datei`, `“${name}” is missing from the file`) : ct("Ein Bild oder Anhang fehlt in der Datei", "An image or attachment is missing from the file"), current);
       return null;
     }
     if (!files.has(key)) {
@@ -855,6 +874,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: Affi
     if (docRoot && (edgelessExtras(docRoot) > 0 || ws.docProps.get(doc.id)?.primaryMode === "edgeless")) boardFor.add(doc.id);
     if (template && boardFor.delete(doc.id)) warnings.add("Whiteboards von Vorlagen werden nicht übernommen.");
     const key = docKey(doc.id);
+    current = template ? null : key;
     const title = titleOf(doc.id);
     const journalDate = template ? undefined : journalOf(doc.id);
     const properties = docProperties(ws, doc.id);
@@ -887,6 +907,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: Affi
     const ctx: Ctx = {
       ws,
       warn: (m) => warnings.add(m),
+      note: (kind, detail) => !template && report.add(kind, detail, key),
       docLink: ownLink,
       isDoc: (id) => byId.has(id) && !templateIds.has(id),
       isTemplate: (id) => templateIds.has(id),
@@ -954,6 +975,8 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: Affi
       });
       inText = true;
       dropped += board.replaced;
+      if (board.replaced)
+        report.add("block", ct(`${board.replaced} Elemente auf dem Whiteboard nicht übernommen`, `${board.replaced} elements on the whiteboard not carried over`), boardKey(doc.id));
       const name = `${title} – Whiteboard`.slice(0, 200);
       html = `<p>${esc(ct("Whiteboard", "Whiteboard"))}: <a href="${esc(pageRef(boardKey(doc.id)))}">${esc(name)}</a></p>${html}`;
       subpages.unshift({ key: boardKey(doc.id), parent: parent ?? ROOT, title: name, html: "", kind: "whiteboard", board });
@@ -1032,6 +1055,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: Affi
     pages,
     files,
     warnings: warnings.list(),
+    report,
     collections: ws.collections.length,
     ...(nested.documents ? { linkedBelow: nested.documents } : {}),
     ...(templates.length ? { templates } : {}),

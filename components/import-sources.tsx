@@ -14,6 +14,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { Switch } from "./settings-ui";
+import { ImportNotion } from "./import-notion";
 
 type Preview = {
   source: string;
@@ -49,7 +50,9 @@ type Preview = {
   // The kept upload, for the import.
   upload?: string;
 };
-type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string };
+// `report`: the page "Importbericht" listing what was not carried over or
+// only approximated (lib/importers/report.ts).
+type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string; report?: { pageId: string; total: number } };
 
 // Warnings carry a count ("… (3×)"); the text before it is translated.
 const warningText = (warning: string) => {
@@ -136,13 +139,15 @@ export function ImportSources({
   // Uploading (share of the file sent) or the server's work (its share
   // done; null while it cannot tell).
   const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number | null } | null>(null);
-  const [done, setDone] = useState("");
+  const [done, setDone] = useState<{ text: string; report?: { pageId: string; total: number } } | null>(null);
   const names: Record<string, string> = {
     affine: "AFFiNE",
     confluence: "Confluence",
     evernote: "Evernote",
     gdocs: "Google Docs",
     goodnotes: "GoodNotes",
+    // Not a file: its API with an integration token (components/import-notion.tsx).
+    notion: t("Notion (API)", "Notion (API)"),
     word: "Microsoft Word",
     obsidian: "Obsidian",
   };
@@ -170,7 +175,7 @@ export function ImportSources({
     discard(preview?.upload);
     setFile(chosen);
     setPreview(null);
-    setDone("");
+    setDone(null);
     setNestLinked(true);
     try {
       setPreview((await request(chosen, true)) as Preview);
@@ -185,17 +190,7 @@ export function ImportSources({
       const result = (await request(file, false, preview?.upload)) as Result;
       setPreview(null);
       setFile(null);
-      const extra = (result.whiteboards || 0) + (result.databases || 0) + (result.notebooks || 0) + (result.wrapper ? 1 : 0);
-      setDone(
-        mode === "database"
-          ? t(`${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.rows} records and ${result.files} files imported.`)
-          : t(
-              `${result.pages + result.folders + extra} Seiten, ${result.rows} Datenbankeinträge und ${result.files} Dateien importiert.`,
-              `${result.pages + result.folders + extra} pages, ${result.rows} database records and ${result.files} files imported.`,
-            ),
-      );
-      await onRefresh();
-      if (result.rootIds[0]) location.hash = `#page=${result.rootIds[0]}`;
+      await finish(result, mode);
     } catch (error) {
       onError((error as Error).message === "network" ? t("Keine Verbindung zum Server.", "No connection to the server.") : (error as Error).message);
       // A failed import drops the kept upload on the server: choose again.
@@ -203,6 +198,34 @@ export function ImportSources({
         setPreview(null);
         setFile(null);
       }
+    }
+  };
+  // The outcome of an import: counts, the report's summary, the first page.
+  const finish = async (result: Result, as: "pages" | "database") => {
+    const extra = (result.whiteboards || 0) + (result.databases || 0) + (result.notebooks || 0) + (result.wrapper ? 1 : 0);
+    setDone({
+      text:
+        as === "database"
+          ? t(`${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.rows} records and ${result.files} files imported.`)
+          : t(
+              `${result.pages + result.folders + extra} Seiten, ${result.rows} Datenbankeinträge und ${result.files} Dateien importiert.`,
+              `${result.pages + result.folders + extra} pages, ${result.rows} database records and ${result.files} files imported.`,
+            ),
+      ...(result.report ? { report: result.report } : {}),
+    });
+    await onRefresh();
+    if (result.rootIds[0]) location.hash = `#page=${result.rootIds[0]}`;
+  };
+  // A Notion API import (components/import-notion.tsx) once started.
+  const runNotion = async (job: string) => {
+    setDone(null);
+    setProgress({ phase: "work", share: null });
+    try {
+      await finish((await waitForJob(job, (share) => setProgress({ phase: "work", share }))) as Result, "pages");
+    } catch (error) {
+      onError((error as Error).message === "network" ? t("Keine Verbindung zum Server.", "No connection to the server.") : (error as Error).message);
+    } finally {
+      setProgress(null);
     }
   };
   // Several files at once: PDFs only, packed into one ZIP.
@@ -223,11 +246,11 @@ export function ImportSources({
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
-        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word or Obsidian")}</span>
+        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) or Obsidian")}</span>
         <small>
           {t(
-            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
-            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
+            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Notion (API): direkt aus Notion mit einem Integrations-Token, ohne Exportdatei. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird; danach listet ein Importbericht, was nicht oder nur angenähert übernommen wurde.",
+            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Notion (API): straight from Notion with an integration token, without an export file. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported; afterwards an import report lists what was not or only approximately carried over.",
           )}
         </small>
       </div>
@@ -236,8 +259,11 @@ export function ImportSources({
           <label htmlFor="import-source">{t("Quelle", "Source")}</label>
           <Select id="import-source" value={source} onChange={(e) => {
               setSource(e.target.value);
-              // Notebooks only come as pages.
-              if (e.target.value === "goodnotes") setMode("pages");
+              // Notebooks (and Notion's pages) only come as pages.
+              if (e.target.value === "goodnotes" || e.target.value === "notion") setMode("pages");
+              discard(preview?.upload);
+              setPreview(null);
+              setFile(null);
             }} disabled={busy} aria-label={t("Quelle des Imports", "Source of the import")}>
             <option value="auto">{t("Automatisch erkennen", "Detect automatically")}</option>
             {Object.entries(names).map(([value, name]) => (
@@ -259,33 +285,40 @@ export function ImportSources({
             </Select>
           </div>
         )}
-        <div className="ws-field">
-          <label htmlFor="import-source-mode">{t("Importieren als", "Import as")}</label>
-          <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy || source === "goodnotes"} aria-label={t("Importieren als", "Import as")}>
-            <option value="pages">{t("Seiten (Ordner als Unterseiten)", "Pages (folders as sub-pages)")}</option>
-            <option value="database">{t("Neue Datenbank (Tags, Daten, Ordner als Eigenschaften)", "New database (tags, dates, folders as properties)")}</option>
-          </Select>
-        </div>
-        <div className="ws-form-actions">
-          <label className={`button file-label ws-file${canWrite && !busy ? "" : " disabled"}`}>
-            <UploadSimple aria-hidden />
-            {t("Datei auswählen und prüfen", "Choose and check file")}
-            <input
-              type="file"
-              accept=".zip,.affine,.enex,.html,.htm,.docx,.doc,.one,.onetoc2,.onepkg,.pdf,.goodnotes,application/zip,application/pdf"
-              multiple
-              hidden
-              disabled={!canWrite || busy}
-              aria-label={t("Datei für den Import", "File to import")}
-              onChange={(e) => {
-                const chosen = [...(e.target.files || [])];
-                e.target.value = "";
-                if (chosen.length) void chooseMany(chosen);
-              }}
-            />
-          </label>
-        </div>
+        {source !== "notion" && (
+          <div className="ws-field">
+            <label htmlFor="import-source-mode">{t("Importieren als", "Import as")}</label>
+            <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy || source === "goodnotes"} aria-label={t("Importieren als", "Import as")}>
+              <option value="pages">{t("Seiten (Ordner als Unterseiten)", "Pages (folders as sub-pages)")}</option>
+              <option value="database">{t("Neue Datenbank (Tags, Daten, Ordner als Eigenschaften)", "New database (tags, dates, folders as properties)")}</option>
+            </Select>
+          </div>
+        )}
+        {source !== "notion" && (
+          <div className="ws-form-actions">
+            <label className={`button file-label ws-file${canWrite && !busy ? "" : " disabled"}`}>
+              <UploadSimple aria-hidden />
+              {t("Datei auswählen und prüfen", "Choose and check file")}
+              <input
+                type="file"
+                accept=".zip,.affine,.enex,.html,.htm,.docx,.doc,.one,.onetoc2,.onepkg,.pdf,.goodnotes,application/zip,application/pdf"
+                multiple
+                hidden
+                disabled={!canWrite || busy}
+                aria-label={t("Datei für den Import", "File to import")}
+                onChange={(e) => {
+                  const chosen = [...(e.target.files || [])];
+                  e.target.value = "";
+                  if (chosen.length) void chooseMany(chosen);
+                }}
+              />
+            </label>
+          </div>
+        )}
       </div>
+      {source === "notion" && (
+        <ImportNotion workspaceId={workspaceId} spaceId={space || spaces[0]?.id || ""} canWrite={canWrite} busy={busy} onJob={runNotion} onError={onError} />
+      )}
       {source === "word" && (
         <p className="import-sources-hint">
           <FileDoc aria-hidden />
@@ -399,7 +432,15 @@ export function ImportSources({
       )}
       {done && (
         <p role="status" className="ws-result">
-          {done}
+          {done.text}
+          {done.report && (
+            <>
+              {" "}
+              <a href={`#page=${done.report.pageId}`}>
+                {t(`${done.report.total} Hinweise im Importbericht`, `${done.report.total} notes in the import report`)}
+              </a>
+            </>
+          )}
         </p>
       )}
     </div>

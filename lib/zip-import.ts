@@ -26,6 +26,10 @@ import { cleanHtmlAsync } from "./document-server";
 import { isNotionHtml, notionHtmlPage, notionOptionColors } from "./importers/notion-html";
 import { colorOptions } from "./option-colors";
 import type { PageTagColor } from "./page-properties";
+import { notionCsvColumns, notionPropertyTypes, type NotionType, type RelationItem } from "./importers/notion-props";
+import { importReport } from "./importers/types";
+import { writeImportReport } from "./importers/report";
+import { ct } from "./content-locale";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
@@ -99,62 +103,7 @@ async function entriesOf(bytes: Buffer) {
   return entries;
 }
 
-const monthNames = [
-  "january",
-  "february",
-  "march",
-  "april",
-  "may",
-  "june",
-  "july",
-  "august",
-  "september",
-  "october",
-  "november",
-  "december",
-];
-// Notion writes "September 24, 2026" (optionally with a time) or ISO dates.
-export function importDate(value: string): string | null {
-  const iso = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(value);
-  if (iso) return iso[1];
-  const long = /^([A-Za-z]+) (\d{1,2}), (\d{4})/.exec(value);
-  if (long) {
-    const month = monthNames.indexOf(long[1].toLowerCase());
-    if (month >= 0)
-      return `${long[3]}-${String(month + 1).padStart(2, "0")}-${long[2].padStart(2, "0")}`;
-  }
-  return null;
-}
-export function inferField(
-  name: string,
-  values: string[],
-  index: number,
-): Field {
-  const fid = index === 0 ? "title" : `f${index}`;
-  const filled = values.map((v) => v.trim()).filter(Boolean);
-  if (index === 0 || !filled.length) return { id: fid, name, type: "text" };
-  if (filled.every((v) => /^-?\d+(?:[.,]\d+)?$/.test(v)))
-    return { id: fid, name, type: "number" };
-  if (filled.every((v) => /^(yes|no|ja|nein|true|false)$/i.test(v)))
-    return { id: fid, name, type: "checkbox" };
-  if (filled.every((v) => importDate(v)))
-    return { id: fid, name, type: "date" };
-  const distinct = [...new Set(filled)];
-  if (distinct.length <= 12 && filled.length >= distinct.length * 2)
-    return { id: fid, name, type: "select", options: distinct.slice(0, 100) };
-  return { id: fid, name, type: "text" };
-}
-function cellValue(field: Field, raw: string) {
-  const value = raw.trim();
-  if (!value) return field.type === "checkbox" ? false : null;
-  if (field.type === "number") return Number(value.replace(",", "."));
-  if (field.type === "checkbox") return /^(yes|ja|true)$/i.test(value);
-  if (field.type === "date") return importDate(value);
-  // A CSV is plain text: formatted text properties (#126, every text
-  // property but the title) keep "*" and "_" as written.
-  if (field.type === "text" && field.id !== "title") return escapeInline(value.slice(0, 10000));
-  return value.slice(0, 10000);
-}
+export { importDate, inferField } from "./zip-import-fields";
 // Row pages repeat the properties as "Name: value" lines below the title.
 function rowBody(markdown: string) {
   const lines = markdown.replace(/^﻿/, "").split("\n");
@@ -456,6 +405,8 @@ export async function importZip(
         const page = pageIds.get(nodeKey(target));
         if (page && kind === "link") return fragment ? pendingAnchor(`/#page=${page}`, fragment) : `/#page=${page}`;
         const data = entries.get(target);
+        if (!data && (kind === "image" || /\.(pdf|png|jpe?g|gif|webp|avif|svg|zip|docx?|xlsx?|pptx?|odt|txt|mp3|m4a|wav|mp4|mov|webm)$/i.test(target)))
+          report.add("file", ct(`„${posix.basename(target).slice(0, 200)}“ fehlt in der ZIP-Datei`, `“${posix.basename(target).slice(0, 200)}” is missing from the ZIP file`), pageId);
         if (!data || /\.(md|csv)$/i.test(target)) return null;
         if (uploaded.has(target)) return uploaded.get(target)!;
         const fid = id(),
@@ -483,6 +434,7 @@ export async function importZip(
     // the result sanitised; what cannot be resolved loses its address.
     const htmlDocument = (path: string, pageId: string, self?: string) => {
       const resolve = resolver(path, pageId, self);
+      for (const note of htmlPage(path).notes) report.add(note.kind, note.detail, pageId);
       return cleanHtmlAsync(htmlPage(path).html, async (tagName, attribs) => {
         const key = tagName === "a" ? "href" : tagName === "img" ? "src" : null;
         if (!key || !attribs[key]) return { tagName, attribs };
@@ -501,6 +453,11 @@ export async function importZip(
     // The record made of each record page (for the pages below it).
     const recordIds = new Map<string, string>();
     const imageBytes = { bytes: 0 };
+    // The import report (lib/importers/report.ts): entries name the page
+    // (and record) by its id.
+    const report = importReport();
+    const databases = new Map<string, { fields: Field[]; path: string; title: string }>();
+    const allRows: { rid: string; pid: string; title: string; cells: Record<string, unknown>; relations: { field: string; items: RelationItem[] }[] }[] = [];
     for (const node of ordered) {
       const pid = pageIds.get(node.key)!;
       if (node.kind === "whiteboard") {
@@ -554,27 +511,41 @@ export async function importZip(
           `Maximal ${MAX_IMPORT_ROWS} Einträge je Tabelle.`,
         );
       rowCount += records.length;
-      const fields = header.slice(0, 80).map((name, i) =>
-        inferField(
-          (name || `Spalte ${i + 1}`).slice(0, 200),
-          records.map((r) => r[i] || ""),
-          i,
-        ),
-      );
-      // Option colours (#242): Notion's HTML export has them on the
-      // database's table and its record pages; otherwise in turn.
+      // Option colours (#242) and property types: Notion's HTML export has
+      // them on the database's table and its record pages; otherwise the
+      // types come from the values and the colours in turn.
       const htmlSources = [
         ...[...entries.keys()].filter((path) => isHtml(path) && nodeKey(path) === node.key),
         ...(rowPages.get(node.key) || []).map((key) => documentPath.get(key) || "").filter(isHtml),
       ];
       const notionColors = new Map<string, Map<string, PageTagColor>>();
-      for (const path of htmlSources) if (entries.has(path)) notionOptionColors(text(path), notionColors);
+      const notionTypes = new Map<string, NotionType>();
+      for (const path of htmlSources)
+        if (entries.has(path)) {
+          notionOptionColors(text(path), notionColors);
+          notionPropertyTypes(text(path), notionTypes);
+        }
+      const columns = notionCsvColumns(header.slice(0, 80), records, notionTypes, people, escapeInline);
+      const fields = columns.map((c) => c.field);
       for (const f of fields) {
         const colors = notionColors.get(f.name);
-        if (f.type === "select" && colors)
+        if ((f.type === "select" || f.type === "multiselect") && colors)
           f.optionColors = Object.fromEntries((f.options || []).flatMap((o) => (colors.has(o) ? [[o, colors.get(o)!]] : [])));
       }
       colorOptions(fields);
+      // Formulas and rollups of the export are only their values (text).
+      for (const column of columns)
+        if (column.approximated)
+          report.add(
+            column.approximated,
+            column.approximated === "formula"
+              ? ct(`Formel „${column.field.name}“: Werte als Text übernommen`, `Formula “${column.field.name}”: values kept as text`)
+              : column.approximated === "rollup"
+                ? ct(`Rollup „${column.field.name}“: Werte als Text übernommen`, `Rollup “${column.field.name}”: values kept as text`)
+                : ct(`Eigenschaft „${column.field.name}“ als Text übernommen`, `Property “${column.field.name}” kept as text`),
+            pid,
+          );
+      databases.set(pid, { fields, path: node.path, title: node.title });
       // Default views may refer to default properties; start with a table.
       await run(
         "UPDATE databases SET fields=?,views=? WHERE page_id=?",
@@ -592,8 +563,23 @@ export async function importZip(
         pagesByTitle.set(title, [...(pagesByTitle.get(title) || []), key]);
       }
       await forEachAsync(records, async (record, i) => {
+        const relationCells: { field: string; items: RelationItem[] }[] = [];
+        let created: string | null = null,
+          updated: string | null = null;
         const cells = Object.fromEntries(
-          fields.map((f, j) => [f.id, cellValue(f, record[j] || "")]),
+          columns.flatMap((column, j) => {
+            const value = column.value(record[j] || "");
+            if (column.relation) {
+              relationCells.push({ field: column.field.id, items: value as RelationItem[] });
+              return [[column.field.id, []]];
+            }
+            if (column.timestamp) {
+              if (column.timestamp === "created") created = (value as string | null) || created;
+              else updated = (value as string | null) || updated;
+              return [];
+            }
+            return [[column.field.id, value]];
+          }),
         );
         const title = String(cells.title || "");
         const pageKey = pagesByTitle.get(title)?.shift();
@@ -623,9 +609,87 @@ export async function importZip(
           user.id,
           html,
         );
+        // Created and edited time of Notion's columns as the record's own.
+        const stamp = (value: string | null) => (value ? value.replace("T", " ").slice(0, 16).padEnd(16, " 00:00").slice(0, 16) + ":00" : null);
+        if (created || updated)
+          await run("UPDATE rows SET created_at=COALESCE(?,created_at),updated_at=COALESCE(?,?,updated_at) WHERE id=?", stamp(created), stamp(updated), stamp(created), rid);
+        allRows.push({ rid, pid, title, cells, relations: relationCells });
         if (html) recordDocs.push({ rid, html });
       });
     }
+    // Relations (Notion): a cell names records by their record page's path,
+    // Notion address or title – of this database or another of the export.
+    const notionRecords = new Map<string, string>();
+    for (const [key, rid] of recordIds) {
+      const match = NOTION_ID.exec(posix.basename(key));
+      if (match) notionRecords.set(match[1].toLowerCase(), rid);
+    }
+    const databaseOf = new Map(allRows.map((r) => [r.rid, r.pid]));
+    const byTitle = new Map<string, string[]>();
+    for (const r of allRows) if (r.title) byTitle.set(r.title, [...(byTitle.get(r.title) || []), r.rid]);
+    const notionId = (href: string) => {
+      const bare = href.split(/[?#]/)[0].replace(/\.(md|html?)$/i, "");
+      return (/([0-9a-f]{32})$/i.exec(bare) || /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(bare))?.[1].replaceAll("-", "").toLowerCase();
+    };
+    const relationTarget = (from: string, item: RelationItem) => {
+      if (item.href) {
+        if (!/^https?:/i.test(item.href))
+          try {
+            const key = nodeKey(posix.normalize(posix.join(posix.dirname(from), decodeURIComponent(item.href))));
+            if (recordIds.has(key)) return [recordIds.get(key)!];
+          } catch {}
+        const nid = notionId(item.href);
+        if (nid && notionRecords.has(nid)) return [notionRecords.get(nid)!];
+      }
+      return byTitle.get(item.title) || [];
+    };
+    const changedDatabases = new Set<string>();
+    for (const [pid, database] of databases) {
+      const rowsOf = allRows.filter((r) => r.pid === pid);
+      for (const field of database.fields.filter((f) => f.type === "relation")) {
+        const resolved = new Map<string, string[][]>();
+        const votes = new Map<string, number>();
+        for (const row of rowsOf) {
+          const items = row.relations.find((r) => r.field === field.id)?.items || [];
+          const targets = items.map((item) => relationTarget(database.path, item));
+          resolved.set(row.rid, targets);
+          for (const t of targets) if (t.length === 1) votes.set(databaseOf.get(t[0])!, (votes.get(databaseOf.get(t[0])!) || 0) + 1);
+        }
+        // The database most of the named records are in (Notion relates to
+        // one database).
+        const target = [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+        if (target) {
+          field.relationPage = target;
+          changedDatabases.add(pid);
+        }
+        for (const row of rowsOf) {
+          const items = row.relations.find((r) => r.field === field.id)?.items || [];
+          const targets = resolved.get(row.rid) || [];
+          const ids: string[] = [];
+          items.forEach((item, i) => {
+            const own = (targets[i] || []).filter((rid) => databaseOf.get(rid) === target);
+            if (own.length === 1) ids.push(own[0]);
+            else
+              report.add(
+                "relation",
+                own.length > 1
+                  ? ct(`„${field.name}“: „${item.title}“ ist nicht eindeutig`, `“${field.name}”: “${item.title}” is ambiguous`)
+                  : ct(`„${field.name}“: „${item.title}“ ist nicht Teil des Imports`, `“${field.name}”: “${item.title}” is not part of the import`),
+                pid,
+                row.rid,
+              );
+          });
+          // Without any record of the import: the titles as text.
+          row.cells[field.id] = target ? [...new Set(ids)] : escapeInline(items.map((item) => item.title).join(", ").slice(0, 10000)) || null;
+        }
+        if (!target) {
+          field.type = "text";
+          changedDatabases.add(pid);
+        }
+        for (const row of rowsOf) await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(row.cells), row.rid);
+      }
+    }
+    for (const pid of changedDatabases) await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(databases.get(pid)!.fields), pid);
     // Pages of records below their record (#231); one whose record page
     // matched no row of the table stays below the database.
     for (const node of ordered) {
@@ -644,13 +708,23 @@ export async function importZip(
       if (html !== record.html) await run("UPDATE rows SET content=? WHERE id=?", html, record.rid);
       await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", record.rid, htmlState(html), html, id());
     }
+    const titles = new Map(ordered.map((n) => [pageIds.get(n.key)!, days.get(n.key)?.title || n.title]));
+    const rowTitles = new Map(allRows.map((r) => [r.rid, r.title]));
+    const rootIds = ordered.filter((n) => !pageIds.has(parentKey(n.key))).map((n) => pageIds.get(n.key)!);
+    const summary = await writeImportReport(user, workspaceId, spaceId, notionPages.size ? "Notion" : ct("ZIP-Import", "ZIP import"), report, (entry) =>
+      entry.page && titles.has(entry.page)
+        ? {
+            href: `/#page=${entry.page}${entry.row ? `&row=${entry.row}` : ""}`,
+            title: entry.row ? `${titles.get(entry.page)} › ${rowTitles.get(entry.row) || ct("Ohne Titel", "Untitled")}` : titles.get(entry.page)!,
+          }
+        : null,
+    );
     return {
-      rootIds: ordered
-        .filter((n) => !pageIds.has(parentKey(n.key)))
-        .map((n) => pageIds.get(n.key)!),
+      rootIds,
       pages: ordered.length,
       rows: rowCount,
       files: uploaded.size + boardImages,
+      ...(summary ? { report: summary } : {}),
     };
   }, user);
 }

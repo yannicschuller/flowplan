@@ -2,10 +2,11 @@
 // note becomes a page with its ENML turned into HTML, its resources
 // (base64 with MIME type, referenced by MD5 hash from <en-media>) become
 // files, and its tags, dates and source address are kept.
+import { ct } from "../content-locale";
 import { createHash } from "node:crypto";
 import { attr, children, esc, fileRef, isElement, mergeLists, parseHtml, parseXml, renderNodes, text, type Element } from "./html";
 import { EXT_BY_MIME, find, byTag, taskItem } from "./html";
-import { isoDate, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { importReport, isoDate, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
 
 const child = (el: Element, name: string) => children(el).find((c) => c.name === name);
 const childText = (el: Element, name: string) => {
@@ -15,6 +16,7 @@ const childText = (el: Element, name: string) => {
 
 export function parseEnex(files: { name: string; xml: string }[]): ImportTree {
   const warnings = warningList();
+  const report = importReport();
   const pages: ImportPage[] = [];
   const stored = new Map<string, ImportFile>();
   const notebooks = files.length > 1;
@@ -55,6 +57,7 @@ export function parseEnex(files: { name: string; xml: string }[]): ImportTree {
               const resource = resources.get(hash);
               if (!resource) {
                 warnings.add("Verweis auf eine fehlende Ressource übersprungen.");
+                report.add("file", ct("Ein Bild oder Anhang fehlt in der Datei", "An image or attachment is missing from the file"), key);
                 return "";
               }
               used.add(hash);
@@ -62,6 +65,7 @@ export function parseEnex(files: { name: string; xml: string }[]): ImportTree {
             }
             if (el.name === "en-crypt") {
               warnings.add("Verschlüsselter Text kann nicht übernommen werden.");
+              report.add("block", ct("Verschlüsselter Text", "Encrypted text"), key);
               return "";
             }
             if (el.name === "en-todo") return "";
@@ -102,5 +106,6 @@ export function parseEnex(files: { name: string; xml: string }[]): ImportTree {
     pages,
     files: stored,
     warnings: warnings.list(),
+    report,
   };
 }

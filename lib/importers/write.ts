@@ -35,6 +35,7 @@ import { pageIconSchema } from "../page-appearance";
 import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anchors";
 import type { Field, Identity, Page, Space } from "../types";
 import { filterAsync, forEachAsync } from "../each-async";
+import { sourceName, writeImportReport, type ReportSummary } from "./report";
 
 export type ImportMode = "pages" | "database";
 export type ImportPreview = {
@@ -70,7 +71,9 @@ export type ImportPreview = {
   // More pages (records) than one import may bring: the import is refused.
   tooMany?: boolean;
 };
-export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string };
+// `report`: the page "Importbericht" listing what was not carried over or
+// approximated (lib/importers/report.ts), when there is anything to list.
+export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string; report?: ReportSummary };
 const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database" || page.kind === "notebook";
 // The pages a mode writes: databases and whiteboards only as pages; a
 // document that is a record's content (#82) only in database mode, where
@@ -90,6 +93,8 @@ const decodeKey = (key: string) => {
 function referencedFiles(tree: ImportTree, mode: ImportMode = "pages") {
   const used = new Map<string, string>();
   for (const page of pagesFor(tree, mode)) {
+    // A page's cover (pages mode only).
+    if (mode === "pages" && page.cover && tree.files.has(page.cover) && !used.has(page.cover)) used.set(page.cover, page.key);
     // A notebook's PDF backgrounds belong to the notebook.
     for (const sheet of page.notebook?.sheets || []) if (tree.files.has(sheet.file) && !used.has(sheet.file)) used.set(sheet.file, page.key);
     for (const html of [page.html, ...(page.database?.rows.map((r) => r.html) || [])])
@@ -318,6 +323,12 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       );
       fileUrls.set(key, { url: `/api/files/${fid}`, name, mime });
     }
+    // Covers: an image stored at its page.
+    if (!databaseId)
+      for (const { page } of ordered) {
+        const cover = page.cover ? fileUrls.get(page.cover) : undefined;
+        if (cover && isImage(cover.mime) && used.get(page.cover!) === page.key) await run("UPDATE pages SET cover=? WHERE id=?", cover.url, pageIds.get(page.key)!);
+      }
     // Block ids (#88): every document's blocks get Flowplan ids; a link to
     // a block or heading of a page of the import (pageRef with an anchor)
     // becomes a block link, or the page link when nothing matches.
@@ -452,23 +463,42 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
           continue;
         }
         if (page.kind === "database" && page.database) {
-          const { fields, views, rows: rowsOf } = page.database;
+          const { views, rows: rowsOf } = page.database;
+          // Relations name their database by its placeholder (Notion): the
+          // page it became; a target outside the import leaves the relation
+          // without database (its cells empty).
+          const fields = page.database.fields.map((f) => {
+            if (f.type !== "relation" || !f.relationPage?.startsWith("fp-import://page/")) return f;
+            const target = pageIds.get(decodeKey(f.relationPage.slice("fp-import://page/".length)));
+            return { ...f, relationPage: target || "" };
+          });
+          const relations = fields.filter((f) => f.type === "relation");
           colorOptions(fields);
           await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
           await forEachAsync(rowsOf.slice(0, MAX_IMPORT_ROWS), async (record, i) => {
             const own = record.key ? records.get(record.key) : undefined;
             const rid = own?.pageId === pid ? own.rowId : id();
             const html = record.html ? resolveHtml(record.html) : "";
+            // Relation cells name records of the import by their placeholder.
+            const cells = relations.length ? { ...record.cells } : record.cells;
+            for (const f of relations)
+              if (Array.isArray(cells[f.id]))
+                cells[f.id] = (cells[f.id] as unknown[]).flatMap((value) => {
+                  if (typeof value !== "string" || !value.startsWith("fp-import://page/")) return typeof value === "string" ? [value] : [];
+                  const target = records.get(decodeKey(value.slice("fp-import://page/".length)));
+                  return target && f.relationPage && target.pageId === f.relationPage ? [target.rowId] : [];
+                });
             await run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,icon) VALUES(?,?,?,?,?,?,?,COALESCE(?,?),?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,updated_at,icon) VALUES(?,?,?,?,?,?,?,COALESCE(?,?),COALESCE(?,?),?)",
               rid,
               pid,
-              JSON.stringify(record.cells),
+              JSON.stringify(cells),
               i,
               user.id,
               user.id,
               html,
               sqlTime(record.created), nowText(),
+              sqlTime(record.updated), nowText(),
               importIcon(record.icon) || "",
             );
             if (html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
@@ -523,10 +553,20 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       return { resolve: (html: string) => (html ? resolveHtml(documentAnchors(html, "", true).html, own) : ""), files: stored, skipped };
     });
     quota();
+    // The import report (lib/importers/report.ts): each entry with a link
+    // to the page or record it concerns.
+    const recordTitles = new Map(
+      tree.pages.flatMap((p) => (p.database?.rows || []).flatMap((r) => (r.key ? [[r.key, String(r.cells.title ?? "")] as [string, string]] : []))),
+    );
+    const report = await writeImportReport(user, workspaceId, spaceId, sourceName(tree.source, tree.title), tree.report, (entry) => {
+      const url = entry.page ? pageUrl(entry.page) : null;
+      if (!url || !entry.page) return null;
+      return { href: url, title: sources.get(entry.page)?.title || recordTitles.get(entry.page) || ct("Ohne Titel", "Untitled") };
+    });
     const rootIds = databaseId
       ? [databaseId]
       : [...new Set(ordered.filter(({ page }) => !page.parent || !pageIds.has(page.parent)).map(({ page }) => pageIds.get(page.key)!))];
-    return { ...preview, warnings: [...preview.warnings, ...templateWarnings], rootIds, rows, ...(databaseId ? { databaseId } : {}) };
+    return { ...preview, warnings: [...preview.warnings, ...templateWarnings], rootIds, rows, ...(databaseId ? { databaseId } : {}), ...(report ? { report } : {}) };
   }, user);
   for (const append of appends)
     try {

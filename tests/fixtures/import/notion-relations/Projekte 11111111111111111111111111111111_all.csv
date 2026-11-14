@@ -1,0 +1,3 @@
+Name,Aufgaben,Anzahl,Score,Tags,Owner,Erstellt,Link,Mail,Tel,Budget,Aktiv,Start
+Alpha,"Planen (Aufgaben%2022222222222222222222222222222222/Planen%20bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1.html), Bauen (Aufgaben%2022222222222222222222222222222222/Bauen%20bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2.html)",2,8,"Web, App",Ada,"March 3, 2025 9:15 AM",https://alpha.example,alpha@example.org,+49 30 1234,"1,250.50",Yes,"April 1, 2026 → April 3, 2026"
+Beta,"Testen (https://www.notion.so/Testen-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3), Extern (https://www.notion.so/Extern-cccccccccccccccccccccccccccccccc)",1,3,Web,Unbekannt,"March 4, 2025 10:00 PM",,,,,No,"May 5, 2026"

@@ -176,6 +176,9 @@ test("Obsidian: wikilinks, embeds, callouts, tags, aliases and folders as page t
   assert.equal(notes.parent_id, alpha.id);
   assert.equal((await pageByTitle("Übersicht")).parent_id, projects.id);
   assert.deepEqual(JSON.parse(start.aliases!), ["Startseite"]);
+  // The import report names the embedded note kept as a link, at its page.
+  const overview = await pageByTitle("Übersicht");
+  assert.match(await pageHtml(result.report!.pageId), new RegExp(`<a href="/#page=${overview.id}"[^>]*>Übersicht</a>: Eingebettete Notiz als Link übernommen`));
   const html = await pageHtml(start.id);
   assert.match(html, new RegExp(`<a href="/#page=${alpha.id}"[^>]*>Alpha</a>`));
   assert.match(html, new RegExp(`<a href="/#page=${notes.id}"[^>]*>die Notizen</a>`));

@@ -1380,6 +1380,15 @@ const exact: Record<string, string> = {
   "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.": "The uploaded file is no longer there. Please choose it again.",
   // Imports in the background (#163).
   "Es läuft schon ein Import. Bitte warte, bis er fertig ist.": "An import is already running. Please wait until it has finished.",
+  // Notion through its API (lib/importers/notion-api.ts).
+  "Notion-Exporte bitte über „Notion, AppFlowy oder Markdown-Export (ZIP)“ importieren oder Notion direkt über ein Integrations-Token verbinden.":
+    "Please import Notion exports via “Notion, AppFlowy or Markdown export (ZIP)” or connect Notion directly with an integration token.",
+  "Das sieht nicht nach einem Notion-Integrations-Token aus (es beginnt mit „ntn_“ oder „secret_“).": "This does not look like a Notion integration token (it starts with “ntn_” or “secret_”).",
+  "Notion ist gerade nicht erreichbar. Bitte versuche es später erneut.": "Notion cannot be reached right now. Please try again later.",
+  "Notion hat das Integrations-Token abgelehnt. Bitte prüfe es und versuche es erneut.": "Notion rejected the integration token. Please check it and try again.",
+  "Notion begrenzt gerade die Anfragen. Bitte versuche es später erneut.": "Notion is limiting requests right now. Please try again later.",
+  "Notion hat die Anfrage nicht beantwortet. Bitte versuche es später erneut.": "Notion did not answer the request. Please try again later.",
+  "Bitte wähle mindestens eine Seite oder Datenbank aus.": "Please choose at least one page or database.",
   "Der Import wurde unterbrochen, zum Beispiel durch einen Neustart des Servers. Bitte starte ihn erneut.": "The import was interrupted, for example by a restart of the server. Please start it again.",
   "Ein Dokument konnte nicht gelesen werden.": "A document could not be read.",
   "Ein Dokument ist zu groß und wurde übersprungen.": "A document is too large and was skipped.",
@@ -1454,6 +1463,7 @@ const exact: Record<string, string> = {
   "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
 };
 const patterns: [RegExp, string][] = [
+  [/^Mehr als (\d+) Seiten: weitere Seiten werden nicht übernommen \(FLOWPLAN_IMPORT_MAX_DOCS\)\.$/, "More than $1 pages: further pages are not imported (FLOWPLAN_IMPORT_MAX_DOCS)."],
   // The import check of marketplace packages (lib/marketplace-check.ts).
   [/^Die Vorlage braucht Flowplan (\S+) – diese Instanz hat (\S+)\.$/, "The template needs Flowplan $1 – this instance has $2."],
   [/^(\d+) Schrift\(en\) würden nicht übernommen \(Größe, Anzahl oder Speicherplatz\)\.$/, "$1 typeface(s) would not be taken over (size, number or storage)."],

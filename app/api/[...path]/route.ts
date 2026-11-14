@@ -1814,6 +1814,29 @@ async function handlePOST(
         if (kept && !keep) upload.discardImportUpload(user.id, kept);
       }
     }
+    // Notion through its API: "list" the pages and databases the token
+    // sees, "import" the chosen ones as a background job (#163), its state
+    // at GET /api/import/source/job. The token comes in the body and stays
+    // in this request (or the job's memory): never stored or logged.
+    if (path.length === 2 && path[0] === "import" && path[1] === "notion") {
+      const body = z
+        .object({
+          action: z.enum(["list", "import"]),
+          workspaceId: z.uuid(),
+          spaceId: z.uuid(),
+          token: z.string().max(300),
+          items: z.array(z.object({ id: z.string().regex(/^[0-9a-f-]{32,36}$/i), kind: z.enum(["page", "database"]) })).max(200).optional(),
+        })
+        .parse(await req.json());
+      const { importNotion, listNotion } = await import("@/lib/importers/notion-import");
+      if (body.action === "list") return NextResponse.json(await listNotion(user, body.workspaceId, body.spaceId, body.token), { headers: { "Cache-Control": "no-store" } });
+      const { requireSpace } = await import("@/lib/importers/write");
+      await requireSpace(user, body.workspaceId, body.spaceId);
+      const { launchJob, runningJob } = await import("@/lib/background-jobs");
+      if (runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+      const job = await launchJob(user, "import", "Notion", () => importNotion(user, body.workspaceId, body.spaceId, body.token, body.items || []), (task) => after(task));
+      return NextResponse.json({ job }, { status: 202 });
+    }
     if (path[0] === "import" && path[1] === "zip") {
       const data = await req.formData();
       const file = data.get("file");

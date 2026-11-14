@@ -7,7 +7,53 @@ import type { ImportedBoard } from "../whiteboard-import";
 import type { Field, View } from "../types";
 import type { FrontmatterValue } from "../frontmatter";
 
-export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "obsidian" | "word";
+// "notion": Notion's API (lib/importers/notion-api.ts) – not a file; its
+// export ZIP goes through lib/zip-import.ts.
+export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "notion" | "obsidian" | "word";
+
+// The import report (lib/importers/report.ts): what an import did not carry
+// over or only approximated, each entry with the imported page it concerns
+// (its key in the tree; for the ZIP import the created page's id). The
+// writer turns it into a page "Importbericht" in the target space.
+export type ReportKind =
+  // A block type the importer does not know or cannot convert.
+  | "block"
+  // An embed, bookmark or external file kept as a link.
+  | "embed"
+  // A synced block: its content copied where it was shown.
+  | "synced"
+  // A formula or rollup without counterpart: its computed values as text.
+  | "formula"
+  | "rollup"
+  // A property brought in as another type (person as text, …).
+  | "property"
+  // A relation target that is not part of the import.
+  | "relation"
+  // A file too large, missing or failed to download.
+  | "file"
+  | "other";
+export type ReportEntry = { kind: ReportKind; detail: string; page?: string; row?: string };
+// Collects report entries; the same entry for the same page once, at most
+// MAX_REPORT entries (the rest only counted).
+export const MAX_REPORT = 2000;
+export function importReport() {
+  const seen = new Set<string>();
+  const entries: ReportEntry[] = [];
+  const counts: Partial<Record<ReportKind, number>> = {};
+  return {
+    entries,
+    counts,
+    add(kind: ReportKind, detail: string, page?: string | null, row?: string | null) {
+      const clean = detail.replace(/\s+/g, " ").trim().slice(0, 300);
+      const key = `${kind}\u0000${clean}\u0000${page || ""}\u0000${row || ""}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      counts[kind] = (counts[kind] || 0) + 1;
+      if (entries.length < MAX_REPORT) entries.push({ kind, detail: clean, ...(page ? { page } : {}), ...(row ? { row } : {}) });
+    },
+  };
+}
+export type ImportReport = ReturnType<typeof importReport>;
 
 // A sheet of an imported notebook (GoodNotes PDF, lib/importers/goodnotes.ts):
 // page `page` (from 1) of the PDF `file` (a key of the tree's files) as its
@@ -21,7 +67,7 @@ export type ImportDatabase = {
   // carries a document of the import (AFFiNE: a database row turned into a
   // doc, #82) has that document's key: links to it lead to the record. Its
   // icon is an emoji, as a page's.
-  rows: { cells: Record<string, unknown>; html: string; created?: string; key?: string; icon?: string }[];
+  rows: { cells: Record<string, unknown>; html: string; created?: string; updated?: string; key?: string; icon?: string }[];
 };
 
 export type ImportPage = {
@@ -53,6 +99,8 @@ export type ImportPage = {
   // The page's icon: an emoji (AFFiNE's document, folder and collection
   // icons, #82).
   icon?: string;
+  // The page's cover: a file of the import (an image; Notion).
+  cover?: string;
   // The document's content is that of a record of a database of this
   // import (the record has this page's key): in "pages" mode it
   // gets no page of its own and links to it lead to the record; in
@@ -84,6 +132,9 @@ export type ImportTree = {
   pages: ImportPage[];
   files: Map<string, ImportFile>;
   warnings: string[];
+  // What was not carried over or only approximated, per page (the import
+  // report; lib/importers/report.ts).
+  report?: ImportReport;
   // Colours of tags by name, as the source names them (AFFiNE).
   tagColors?: Record<string, string>;
   // Collections and similar pages the source adds (counted in the preview).

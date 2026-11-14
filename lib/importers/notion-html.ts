@@ -27,6 +27,7 @@ import { DomUtils } from "htmlparser2";
 import { CALLOUT_COLORS, calloutIcon, type CalloutColor } from "../callout-types";
 import { highlightColors } from "../text-marks";
 import type { PageTagColor } from "../page-properties";
+import type { ReportKind } from "./types";
 
 // Notion's colour names → the editor's palette (lib/text-marks.ts).
 const COLOR_NAMES: Record<string, CalloutColor> = {
@@ -43,6 +44,13 @@ const COLOR_NAMES: Record<string, CalloutColor> = {
   red: "red",
 };
 const PALETTE = Object.keys(CALLOUT_COLORS) as CalloutColor[];
+// "red" / "red_background" (Notion's colour, also the API's) → the palette.
+export function notionColorName(name: string | undefined | null) {
+  if (!name || name === "default") return null;
+  const [base, background] = name.split("_");
+  const color = COLOR_NAMES[base];
+  return color ? { color, background: background === "background" } : null;
+}
 // "red" / "red_background" from a class list with the given prefix.
 export function notionColor(el: Element, prefix: "highlight-" | "block-color-") {
   for (const name of (el.attribs.class || "").split(/\s+/)) {
@@ -54,7 +62,7 @@ export function notionColor(el: Element, prefix: "highlight-" | "block-color-") 
   return null;
 }
 // Text coloured or highlighted as the editor stores it.
-function colored(html: string, color: { color: CalloutColor; background: boolean } | null) {
+export function colored(html: string, color: { color: CalloutColor; background: boolean } | null) {
   if (!color || !html.trim()) return html;
   if (color.background) {
     const hex = highlightColors[PALETTE.indexOf(color.color)][1];
@@ -141,7 +149,9 @@ const tex = (el: Element) => {
   return annotation ? DomUtils.textContent(annotation).trim() : DomUtils.textContent(el).trim();
 };
 
-export type NotionPage = { title: string | null; html: string };
+// `notes`: what the import report lists for the page (bookmarks and
+// embeds kept as links).
+export type NotionPage = { title: string | null; html: string; notes: { kind: ReportKind; detail: string }[] };
 
 // One page of the export: its title (the page's <h1 class="page-title">)
 // and its content as editor HTML. Links and images keep the export's
@@ -154,7 +164,8 @@ export function notionHtmlPage(source: string): NotionPage {
     findOne(doc.children, (el) => hasClass(el, "page-body")) ||
     findOne(doc.children, byTag("article")) ||
     findOne(doc.children, byTag("body"));
-  if (!body) return { title, html: "" };
+  const notes: NotionPage["notes"] = [];
+  if (!body) return { title, html: "", notes };
   // Scripts and styles never count (KaTeX brings a <style> per formula).
   for (const el of find(body, (e) => ["script", "style", "noscript", "template"].includes(e.name))) DomUtils.removeElement(el);
   mergeLists(body);
@@ -226,6 +237,7 @@ export function notionHtmlPage(source: string): NotionPage {
       const link = bookmark;
       const titleEl = findOne(el, (c) => hasClass(c, "bookmark-title"));
       const label = (titleEl && DomUtils.textContent(titleEl).trim()) || attr(link, "href");
+      notes.push({ kind: "embed", detail: attr(link, "href").slice(0, 300) });
       return `<p><a href="${esc(attr(link, "href"))}">${esc(label)}</a></p>`;
     }
     if (tag === "figure" && hasClass(el, "equation")) return `<div data-math="${esc(tex(el))}"></div>`;
@@ -239,7 +251,12 @@ export function notionHtmlPage(source: string): NotionPage {
     return undefined;
   };
   options.rule = rule;
-  return { title, html: blocks(body.children) };
+  const html = blocks(body.children);
+  // Embeds (videos, maps, …) the export only links to.
+  for (const el of find(body, (e) => e.name === "figure" && !hasClass(e, "image") && !hasClass(e, "callout") && !hasClass(e, "equation")))
+    for (const link of find(el, (e) => e.name === "a" && /^https?:/i.test(attr(e, "href")) && !hasClass(e, "bookmark")))
+      if (findOne(el, (e) => hasClass(e, "source"))) notes.push({ kind: "embed", detail: attr(link, "href").slice(0, 300) });
+  return { title, html, notes };
 }
 
 // Notion's own page files (an export may hold other HTML too): a
@@ -276,6 +293,8 @@ const SELECT_COLORS: Record<string, PageTagColor> = {
   red: "red",
   teal: "teal",
 };
+// A select option's colour by Notion's name (also the API's "color").
+export const notionOptionColor = (name: string | undefined | null): PageTagColor | undefined => (name ? SELECT_COLORS[name.toLowerCase()] : undefined);
 export function notionOptionColors(source: string, into = new Map<string, Map<string, PageTagColor>>()) {
   if (!source.includes("select-value-color-")) return into;
   const doc = parseHtml(source);
