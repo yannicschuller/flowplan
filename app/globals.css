@@ -25375,6 +25375,58 @@ h3 .block-reactions {
   color: var(--secondary);
   font-size: 12.5px;
 }
+.ai-model-field {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  width: min(420px, 100%);
+}
+.ai-model-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.ai-model-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ai-model-row button {
+  flex: none;
+}
+.ai-model-field .error {
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.ai-model-picker {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+.ai-model-list {
+  max-height: 240px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  list-style: none;
+}
+.ai-model-list [role="option"] {
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.ai-model-list [role="option"]:hover,
+.ai-model-list [role="option"]:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.ai-model-list [role="option"][aria-selected="true"] {
+  font-weight: 600;
+}
 .ai-ollama {
   display: grid;
   gap: 10px;
