@@ -889,3 +889,24 @@
     margin-top: 0;
   }
 }
+/* Groups from the SSO provider at the latest sign-in (#289). */
+.ux-sso-group-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.ux-sso-group-list .tag {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.ux-sso-group-list .ux-sso-admin {
+  background: var(--blue-light);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.ux-sso-groups code {
+  font-size: 12px;
+}

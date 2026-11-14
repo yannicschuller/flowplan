@@ -29,6 +29,7 @@ import {
   Users,
 } from "@phosphor-icons/react";
 import type { MergePreview } from "@/lib/account-merge";
+import type { SsoGroupReport } from "@/lib/sso-group-report";
 import type { User } from "@/lib/types";
 import { useT } from "../../i18n";
 import { Avatar, Modal, showNotice } from "../../ui";
@@ -701,6 +702,45 @@ function UserRow({
 }
 
 // One row of the panel: what it is (with a hint) and its control.
+// What the SSO provider sent at the latest sign-in (#289): to see why
+// someone is or is not an admin.
+function SsoGroups({ report: r, now }: { report?: SsoGroupReport; now: number }) {
+  const t = useT();
+  return (
+    <section className="ux-block ux-sso-groups" aria-label={t("Gruppen vom Anbieter (letzte Anmeldung)", "Groups from the provider (last sign-in)")}>
+      <div className="ux-usage">
+        <span>{t("Gruppen vom Anbieter (letzte Anmeldung)", "Groups from the provider (last sign-in)")}</span>
+        {r && <strong title={new Date(r.at).toLocaleString(LOCALE_TAG)}>{ago(r.at, t, now)}</strong>}
+      </div>
+      {!r ? (
+        <p className="ux-more-note muted">{t("Noch keine SSO-Anmeldung aufgezeichnet. Sie erscheint nach der nächsten Anmeldung.", "No SSO sign-in recorded yet. It appears after the next sign-in.")}</p>
+      ) : (
+        <>
+          <p className="ux-more-note muted">
+            {t("Claim", "Claim")} <code>{r.claim}</code>
+            {r.claimMissing ? ` · ${t("fehlte in Token und Userinfo", "missing from token and userinfo")}` : ""}
+          </p>
+          {r.groups.length ? (
+            <ul className="ux-sso-group-list" aria-label={t("Gruppen", "Groups")}>
+              {r.groups.map((g, i) => (
+                <li key={`${i}-${g}`} className={g === r.adminGroup ? "tag ux-sso-admin" : "tag"}>
+                  {g}
+                </li>
+              ))}
+              {r.groupCount > r.groups.length && <li className="tag muted">{t(`+ ${r.groupCount - r.groups.length} weitere`, `+ ${r.groupCount - r.groups.length} more`)}</li>}
+            </ul>
+          ) : (
+            <p className="ux-more-note">{t("keine Gruppen erhalten – prüfe OIDC_GROUPS_CLAIM und den Gruppen-Mapper deines Anbieters", "no groups received – check OIDC_GROUPS_CLAIM and your provider's group mapper")}</p>
+          )}
+          <p className="ux-more-note">
+            {t(`Admin-Gruppe „${r.adminGroup}“ enthalten:`, `Admin group “${r.adminGroup}” included:`)}{" "}
+            <StatusBadge tone={r.hasAdminGroup ? "ok" : "off"}>{r.hasAdminGroup ? t("ja", "yes") : t("nein", "no")}</StatusBadge>
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
 function PanelRow({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
   return (
     <div className="ux-row-item">
@@ -721,6 +761,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
   const { act, mutate, load } = useAdminData();
   const local = data.localAccounts?.[u.id];
   const identities = (data.identities || []).filter((i) => i.user_id === u.id);
+  const ssoGroups = data.ssoGroups?.find((r) => r.userId === u.id);
   const ldap = !!data.ldapAccounts?.includes(u.id);
   const [merging, setMerging] = useState(false);
   const admin = !!local?.admin || !!data.adminIds?.includes(u.id);
@@ -817,6 +858,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
           <StorageBar usage={usage} wide />
         </section>
       )}
+      {(ssoGroups || identities.length > 0) && <SsoGroups report={ssoGroups} now={now} />}
       <form
         className="ux-block ux-rows"
         aria-label={t(`Einstellungen für ${u.name}`, `Settings for ${u.name}`)}

@@ -166,6 +166,7 @@ import { emergencyForcedOff, emergencyContent, emergencyExport, emergencyKeys, e
 import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
 import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
+import { ssoGroupReports } from "@/lib/sso-group-report";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -1155,6 +1156,8 @@ async function handleGET(
           "SELECT user_id,id,issuer,email,created_at,last_used_at FROM user_identities ORDER BY created_at",
         ),
         ldapAccounts: (await all<{ user_id: string }>("SELECT user_id FROM ldap_accounts")).map((r) => r.user_id),
+        // Groups the SSO provider sent at each account's latest sign-in (#289).
+        ssoGroups: await ssoGroupReports(user),
         // Administrators of every kind of sign-in (SSO groups included).
         adminIds: await adminUserIds(),
         localLogin: localLoginEnabled(),
