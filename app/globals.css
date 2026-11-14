@@ -9908,8 +9908,24 @@ tr.order-drop-after > td {
   position: relative;
   min-width: 0;
 }
+/* The editor's gutter (#278): left of the text, "+" (24 px) and ⠿ (24 px,
+   14 px from the text) need 62 px. A page has that room in its margin, so
+   its text starts 26 px into the editor (--block-editor-inset). Editors in
+   a box that clips or frames them – a record's content (dialog, side panel,
+   page of its own), a guest's editor on a share page – keep the whole
+   gutter inside: their text starts --block-gutter in, and "+ ⠿" sit inside
+   the box, next to the toolbar's edge. Touch screens have no "+": there the
+   handle fits into the 26 px. */
+:root {
+  --block-gutter: 62px;
+}
+@media not (pointer: coarse) {
+  :is(.row-document, .shared-rich-editor) {
+    --block-editor-inset: var(--block-gutter);
+  }
+}
 .block-editor-surface.with-block-handles {
-  padding-left: 26px;
+  padding-left: var(--block-editor-inset, 26px);
 }
 .block-handle-layer {
   position: absolute;
@@ -25619,7 +25635,7 @@ h3 .block-reactions {
   right: 18px;
 }
 .block-editor-surface.with-block-handles.with-rtl-blocks {
-  padding-right: 26px;
+  padding-right: var(--block-editor-inset, 26px);
 }
 /* AI writing assistant and summaries (components/ai-writer.tsx,
    components/ai-summary.tsx). */
@@ -29425,6 +29441,9 @@ html.split-resizing * {
 }
 .split-row.split-active .page-content:not(.database-page):not(.whiteboard-page) {
   padding: 32px 32px 60px;
+  /* The pane's scroll box clips: the page's 26 px inset plus this padding
+     hold the whole block gutter (#278). */
+  padding-left: max(32px, calc(var(--block-gutter) - 26px));
 }
 .split-page-title {
   display: flex;
