@@ -75,7 +75,8 @@ test("a page's menu opens it in a new window of the app", async ({ page }, info)
   await page.goto("/#home");
   await page.locator(`.page-nav[data-page-id="${created.id}"]`).click({ button: "right" });
   const menu = page.getByRole("menu", { name: `Aktionen für ${title}` });
-  await expect(menu.getByRole("menuitem", { name: "In neuem Tab öffnen" })).toHaveCount(0);
+  // No browser tab in the app; the app's own tabs (#279) stay offered.
+  await expect(menu.getByRole("menuitem", { name: /Browser-Tab/ })).toHaveCount(0);
   await menu.getByRole("menuitem", { name: "In neuem Fenster öffnen" }).click();
   await expect.poll(async () => (await app(page)).windows).toEqual([expect.stringContaining(`#page=${created.id}`)]);
 });
