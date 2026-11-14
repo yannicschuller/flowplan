@@ -367,6 +367,7 @@ type PageData = DatabaseData & {
     autoChildren?: boolean;
     count: number;
     allowCopy?: boolean;
+    externalLinkIcon?: boolean;
     publishedAt?: string | null;
     password?: boolean;
     expiresAt?: number | null;

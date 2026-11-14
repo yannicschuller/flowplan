@@ -334,6 +334,11 @@ function migrate(d: DatabaseSync) {
     // and only publishes the stored list (the safe side), so the schema
     // number stays.
     ["auto_children", "INTEGER NOT NULL DEFAULT 0"],
+    // "Pfeil ↗ hinter Links zeigen" (#217, lib/external-link-icon-pref.ts):
+    // the publisher's choice, taken at publishing and changeable in the
+    // dialog. Existing publications keep the arrow they always showed; an
+    // older version ignores the column, so the schema number stays.
+    ["external_link_icon", "INTEGER NOT NULL DEFAULT 1"],
   ])
     if (!publicationColumns.some((c) => c.name === column))
       d.exec(`ALTER TABLE publications ADD COLUMN ${column} ${type}`);

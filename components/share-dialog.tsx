@@ -25,6 +25,9 @@ export type SharePublication = {
   autoChildren?: boolean;
   count: number;
   allowCopy?: boolean;
+  // The arrow after links to the web (#217), preset from the publisher's
+  // own setting when publishing.
+  externalLinkIcon?: boolean;
   password?: boolean;
   expiresAt?: number | null;
 };
@@ -113,7 +116,7 @@ export function ShareDialog({
       onError(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
     }
   };
-  const publish = (patch: { enabled: boolean; includeChildren?: boolean; autoChildren?: boolean; allowCopy?: boolean }) => {
+  const publish = (patch: { enabled: boolean; includeChildren?: boolean; autoChildren?: boolean; allowCopy?: boolean; externalLinkIcon?: boolean }) => {
     const includeChildren = patch.includeChildren ?? !!publication?.includeChildren;
     return act({
       action: "page.publish",
@@ -125,6 +128,11 @@ export function ShareDialog({
             // Only together with the sub-pages; off when they are.
             autoChildren: includeChildren && (patch.autoChildren ?? !!publication?.autoChildren),
             allowCopy: patch.allowCopy ?? publication?.allowCopy !== false,
+            // Left out when publishing: the server takes the publisher's
+            // own setting (lib/publication.ts).
+            ...(published || patch.externalLinkIcon !== undefined
+              ? { externalLinkIcon: patch.externalLinkIcon ?? publication?.externalLinkIcon !== false }
+              : {}),
           }
         : { enabled: false }),
     });
@@ -321,6 +329,23 @@ export function ShareDialog({
                       aria-labelledby={`${id}-copy`}
                       disabled={!editable}
                       onClick={() => void publish({ enabled: true, allowCopy: publication?.allowCopy === false })}
+                    >
+                      <span />
+                    </button>
+                  </div>
+                  <div className="sh-opt">
+                    <span className="sh-opt-label">
+                      <span id={`${id}-link-icon`}>{t("Pfeil ↗ hinter Links zeigen", "Show ↗ arrow after links")}</span>
+                      <Hint text={t("Gilt für Links ins Web auf der veröffentlichten Seite. Voreingestellt wie in deinen Einstellungen unter Darstellung.", "Applies to links to the web on the published page. Preset from your appearance settings.")} />
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      className="switch"
+                      aria-checked={publication?.externalLinkIcon !== false}
+                      aria-labelledby={`${id}-link-icon`}
+                      disabled={!editable}
+                      onClick={() => void publish({ enabled: true, externalLinkIcon: publication?.externalLinkIcon === false })}
                     >
                       <span />
                     </button>

@@ -13,17 +13,19 @@ import { mapAsync } from "./each-async";
 import { recordFile, recordScope, recordSharePages, recordSubPage } from "./record-share";
 import { privateRecordPageIds, readonlyRecordPageIds } from "./record-pages";
 import { parsePageLocation } from "./page-location";
+import { userExternalLinkIcon } from "./user-external-link-icon";
 
 export async function publicationSettings(pageId: string) {
   const row = await one<{
     include_children: number;
     auto_children: number;
     allow_copy: number;
+    external_link_icon: number;
     published_at: string | null;
     password: number;
     expires_at: number | null;
   }>(
-    "SELECT include_children,auto_children,allow_copy,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
+    "SELECT include_children,auto_children,allow_copy,external_link_icon,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
     pageId,
   );
   const autoChildren = !!row?.include_children && !!row.auto_children;
@@ -31,6 +33,8 @@ export async function publicationSettings(pageId: string) {
     includeChildren: !!row?.include_children,
     autoChildren,
     allowCopy: row ? !!row.allow_copy : true,
+    // The arrow after links to the web on the published page (#217).
+    externalLinkIcon: row ? !!row.external_link_icon : true,
     publishedAt: row?.published_at || null,
     password: !!row?.password,
     expiresAt: row?.expires_at ?? null,
@@ -56,13 +60,16 @@ async function publishedCount(pageId: string) {
 // What a published page shows under its title: when it was published, and
 // whether it is offered for copying – never behind a password. allow_copy is
 // an integer, combined here and not with AND in SQL (PostgreSQL refuses
-// integers as booleans).
+// integers as booleans). Also whether its links to the web show the arrow
+// (#217, the publisher's choice).
 export async function publicationNotice(pageId: string) {
-  const row = await one<{ published_at: string | null; allow_copy: number; password: number }>(
-    "SELECT published_at,allow_copy,password_hash IS NOT NULL password FROM publications WHERE page_id=?",
+  const row = await one<{ published_at: string | null; allow_copy: number; password: number; external_link_icon: number }>(
+    "SELECT published_at,allow_copy,password_hash IS NOT NULL password,external_link_icon FROM publications WHERE page_id=?",
     pageId,
   );
-  return row ? { published_at: row.published_at, allow_copy: row.allow_copy && !row.password ? 1 : 0 } : undefined;
+  return row
+    ? { published_at: row.published_at, allow_copy: row.allow_copy && !row.password ? 1 : 0, external_link_icon: row.external_link_icon ? 1 : 0 }
+    : undefined;
 }
 export async function publishPage(
   user: Identity,
@@ -72,6 +79,9 @@ export async function publishPage(
   allowCopy = true,
   // New sub-pages join by themselves (only together with the sub-pages).
   autoChildren = false,
+  // The arrow after links to the web (#217). Not given: what the
+  // publication had, or for a new one the publisher's own setting.
+  externalLinkIcon?: boolean,
 ) {
   // A journal with a PIN is never published (setting the PIN ended its
   // publications, lib/journal-extras.ts); below a published page it stays
@@ -98,10 +108,14 @@ export async function publishPage(
     }
   }
   // Password and end date stay while the page remains published.
-  const kept = await one<{ password_hash: string | null; expires_at: number | null }>(
-    "SELECT password_hash,expires_at FROM publications WHERE page_id=?",
+  // So does the arrow choice when none is given.
+  const kept = await one<{ password_hash: string | null; expires_at: number | null; external_link_icon: number }>(
+    "SELECT password_hash,expires_at,external_link_icon FROM publications WHERE page_id=?",
     page.id,
   );
+  const linkIcon = enabled
+    ? externalLinkIcon ?? (kept ? !!kept.external_link_icon : await userExternalLinkIcon(user.id))
+    : true;
   await run("DELETE FROM publication_pages WHERE root_id=?", page.id);
   await run("DELETE FROM publications WHERE page_id=?", page.id);
   await run(
@@ -111,11 +125,12 @@ export async function publishPage(
   );
   if (enabled) {
     await run(
-      "INSERT INTO publications(page_id,include_children,auto_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,?,?,?,?,?,?)",
+      "INSERT INTO publications(page_id,include_children,auto_children,published_at,published_by,allow_copy,external_link_icon,password_hash,expires_at) VALUES(?,?,?,?,?,?,?,?,?)",
       page.id,
       includeChildren ? 1 : 0, includeChildren && autoChildren ? 1 : 0, nowText(),
       user.id,
       allowCopy ? 1 : 0,
+      linkIcon ? 1 : 0,
       kept?.password_hash ?? null,
       kept?.expires_at ?? null,
     );

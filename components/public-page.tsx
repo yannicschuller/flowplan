@@ -58,6 +58,7 @@ import {
 import { mapAsync } from "../lib/each-async";
 import { recordScope } from "@/lib/record-share";
 import { renderPublicRecord } from "./public-record";
+import { publicPageClass } from "@/lib/public-page-class";
 
 // A property value on a published page; formatted text (#126) with its
 // formatting (no links inside a card that is itself a link; line breaks
@@ -219,7 +220,9 @@ async function renderPublishedPage({
       coverUrl = `/api/share/${token}/files/${coverId}`;
     } catch {}
   }
-  // Only real publications (not private share links) show metadata and copying.
+  // Only real publications (not private share links) show metadata and
+  // copying, and follow the publisher's choice of the arrow after links to
+  // the web (#217: a class on the root, app/globals.css).
   const publication =
     root.public_token === token
       ? await publicationNotice(root.id)
@@ -274,7 +277,7 @@ async function renderPublishedPage({
     );
   return (
     <main
-      className={`public-page ${page.full_width ? "public-wide" : ""} ${theme?.accent ? "public-themed" : ""}`}
+      className={publicPageClass({ wide: !!page.full_width, themed: !!theme?.accent, externalLinkIcon: !publication || !!publication.external_link_icon })}
       style={theme?.accent ? ({ "--blue": theme.accent, "--accent-strong": theme.accent } as React.CSSProperties) : undefined}
     >
       {/* The look of the workspace (#196); the publication's own accent above wins. */}
