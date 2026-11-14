@@ -27,10 +27,14 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // above the measured values. Since the French catalogue left the shared
 // JavaScript (2026-10-31, lib/i18n-catalogs.ts) sign-in and registration
 // measure 262.1 KB, the signed-in pages about 170 KB less than before.
+// 2026-11-14: a document 2221.5 KB after the editor gained the Tabs block,
+// block selection/copy/paste rules, meeting time chips and the motion
+// setting (0.9.6) – the document budget moves to 2300 KB; the other pages
+// did not grow.
 const PAGES = [
   { path: "/login", jsKb: 290 },
   { path: "/register", jsKb: 290 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2220 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2300 },
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1).
