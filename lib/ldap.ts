@@ -325,6 +325,12 @@ export function ldapConfig(): LdapConfig | null {
   if (!ldapConfigured()) return null;
   return ldapServerConfig(process.env.LDAP_BASE_DN!.trim());
 }
+// A certificate the server's chain doesn't lead to a trusted CA (#286):
+// verification stays on – the fix is the CA in LDAP_TLS_CA.
+const caHint = (message: string) =>
+  /unable to (verify the first certificate|get local issuer certificate)|self[- ]signed certificate|UNABLE_TO_VERIFY|DEPTH_ZERO_SELF_SIGNED/i.test(message)
+    ? " – set LDAP_TLS_CA to the CA certificate of the LDAP server"
+    : "";
 // The server, the search account and TLS from the environment with another
 // base (contacts from the directory, lib/contacts-ldap.ts); null without
 // LDAP_URL.
@@ -377,7 +383,7 @@ export class LdapConnection {
   }
   private listen(socket: Socket | TLSSocket) {
     socket.on("data", (chunk: Buffer) => this.receive(chunk));
-    socket.on("error", (e) => this.shutdown(new LdapError(`LDAP connection failed: ${e.message}`)));
+    socket.on("error", (e) => this.shutdown(new LdapError(`LDAP connection failed: ${e.message}${caHint(e.message)}`)));
     socket.on("close", () => this.shutdown(new LdapError("LDAP connection closed")));
   }
   static async open(config: Pick<LdapConfig, "url" | "tlsCa" | "startTls" | "timeoutMs">) {
@@ -400,7 +406,7 @@ export class LdapConnection {
       });
       s.once("error", (e) => {
         clearTimeout(timer);
-        reject(new LdapError(`LDAP connection failed: ${e.message}`));
+        reject(new LdapError(`LDAP connection failed: ${e.message}${caHint(e.message)}`));
       });
     });
     const conn = new LdapConnection(socket, config.timeoutMs);

@@ -34,7 +34,7 @@ import { pinnedLookup, privateAddress } from "./safe-fetch";
 import { encryptionKeys, currentKeyId } from "./encryption";
 import { openSecret, sealSecret } from "./secret-box";
 import { secretKeyIds, secretsKeySource } from "./ai/secrets";
-import { mailConfig } from "./mail";
+import { mailConfig, smtpOptions } from "./mail";
 import { bucketFetch, storageConfig } from "./storage";
 import { confirmsWithPassword } from "./account-deletion";
 import { passwordLogin } from "./local-auth";
@@ -479,7 +479,7 @@ export async function reachability(): Promise<PreflightItem[]> {
   const mail = mailConfig();
   if (!mail) items.push({ id: "reach.smtp", level: "warn", code: "reach.smtp.off" });
   else {
-    const transport = nodemailer.createTransport({ host: mail.host, port: mail.port, secure: mail.secure, auth: mail.user ? { user: mail.user, pass: mail.password } : undefined, connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 10000 });
+    const transport = nodemailer.createTransport(smtpOptions(mail, { connection: 8000, greeting: 8000, socket: 10000 }));
     try {
       await transport.verify();
       items.push({ id: "reach.smtp", level: "ok", code: "reach.smtp.ok", target: `${mail.host}:${mail.port}` });

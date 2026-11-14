@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { rootCertificates } from "node:tls";
 // E-mail over SMTP: invitations and a summary of unread notifications.
 // Messages go into a persistent queue (like push) and are sent by a worker
 // with retries, so a slow or failing mail server never blocks a request.
@@ -24,6 +26,8 @@ export type MailConfig = {
   user: string;
   password: string;
   from: string;
+  /** An own CA for the SMTP server's certificate (SMTP_TLS_CA, #286). */
+  tlsCa?: string;
 };
 
 export function mailConfig(): MailConfig | null {
@@ -38,7 +42,21 @@ export function mailConfig(): MailConfig | null {
     user: process.env.SMTP_USER || "",
     password: process.env.SMTP_PASSWORD || "",
     from: process.env.SMTP_FROM || `Flowplan <${process.env.SMTP_USER || "flowplan@localhost"}>`,
+    tlsCa: tlsCaOf(process.env.SMTP_TLS_CA),
   };
+}
+// An own certificate authority, as file path or PEM text (also with "\n"
+// for line breaks, as in a one-line environment variable) – the same form
+// as LDAP_TLS_CA. Certificates are always verified (#286): an internal
+// server with a self-signed or private-CA certificate needs its CA here,
+// never a switch that turns verification off.
+// A TLS error about the server's certificate chain (#286).
+export const certificateProblem = (message: string) =>
+  /unable to (verify the first certificate|get local issuer certificate)|self[- ]signed certificate|certificate chain|UNABLE_TO_VERIFY|DEPTH_ZERO_SELF_SIGNED/i.test(message);
+export function tlsCaOf(value: string | undefined) {
+  const ca = value?.trim();
+  if (!ca) return undefined;
+  return ca.startsWith("-----BEGIN") ? ca.replace(/\\n/g, "\n") : readFileSync(ca, "utf8");
 }
 
 type Message = { to: string; subject: string; text: string; html: string; from?: string | { name: string; address: string } };
@@ -50,16 +68,24 @@ const runtime = globalThis as unknown as {
   flowplanMailSender?: Sender;
 };
 
-function transport(config: MailConfig) {
-  runtime.flowplanMailTransport ??= nodemailer.createTransport({
+// The connection to the SMTP server – also used by the move check
+// (lib/instance-move.ts). An own CA (SMTP_TLS_CA) is trusted in addition to
+// the system's; verification itself stays on (#286).
+export function smtpOptions(config: MailConfig, timeouts = { connection: 10_000, greeting: 10_000, socket: 20_000 }) {
+  return {
     host: config.host,
     port: config.port,
     secure: config.secure,
     auth: config.user ? { user: config.user, pass: config.password } : undefined,
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 20_000,
-  });
+    connectionTimeout: timeouts.connection,
+    greetingTimeout: timeouts.greeting,
+    socketTimeout: timeouts.socket,
+    // Node's `ca` replaces the trusted CAs: the system's stay in the list.
+    ...(config.tlsCa ? { tls: { ca: [...rootCertificates, config.tlsCa] } } : {}),
+  };
+}
+function transport(config: MailConfig) {
+  runtime.flowplanMailTransport ??= nodemailer.createTransport(smtpOptions(config));
   return runtime.flowplanMailTransport;
 }
 
@@ -452,6 +478,14 @@ export async function sendTestMail(to: string) {
       ]),
     });
   } catch (error) {
-    throw new HttpError(502, `Senden fehlgeschlagen: ${(error as Error).message}`);
+    const message = (error as Error).message;
+    throw new HttpError(
+      502,
+      `Senden fehlgeschlagen: ${message}${
+        certificateProblem(message)
+          ? ct(" – trägt der SMTP-Server ein eigenes oder selbst signiertes Zertifikat, gib dessen CA in SMTP_TLS_CA an.", " – if the SMTP server uses a private or self-signed certificate, give its CA in SMTP_TLS_CA.")
+          : ""
+      }`,
+    );
   }
 }
