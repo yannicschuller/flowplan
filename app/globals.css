@@ -104,6 +104,13 @@ a:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
 }
+/* Checkboxes and radio buttons reached by keyboard (#278, task boxes in
+   reading mode too): the same ring as buttons – the faint field glow of
+   inputs is hardly visible around a 16 px box. */
+input:is([type="checkbox"], [type="radio"]):focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
 
 /* ---------- Text selection ----------
    Only meaningful text can be selected and copied: a long press on the tab
@@ -1524,7 +1531,9 @@ kbd,
 [contenteditable="true"] span[data-mention] {
   cursor: pointer;
 }
-.document-editor ul[data-type="taskList"] > li > label input[type="checkbox"]:disabled {
+.document-editor ul[data-type="taskList"] > li > label input[type="checkbox"]:disabled,
+.document-editor ul[data-type="taskList"] > li > label:has(> input.task-box-locked),
+.document-editor ul[data-type="taskList"] > li > label input.task-box-locked {
   cursor: default;
 }
 .document-editor ul[data-type="taskList"] > li > div {
@@ -8182,6 +8191,11 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 }
 .shared-rich-editor .tiptap {
   min-height: 160px;
+}
+/* The icon toolbar of the app's editor (#278), wrapping inside the box. */
+.shared-rich-editor .editor-toolbar {
+  max-width: 100%;
+  margin-bottom: 12px;
 }
 .shared-interactions textarea {
   min-height: 100px;
@@ -18924,6 +18938,66 @@ h3 .block-reactions {
 .suggest-toggle span {
   font-size: 12.5px;
   font-weight: 600;
+}
+/* Suggest mode on (#278): the label sits on the button's own surface – the
+   button grows to fit it (also in the phone's scrolling row) instead of
+   spilling over the buttons beside it. */
+.editor-toolbar button.suggest-toggle.active {
+  width: auto;
+  flex-shrink: 0;
+  padding: 3px 8px 3px 6px;
+  border: 1px solid color-mix(in srgb, #2f9e62 45%, transparent);
+  white-space: nowrap;
+}
+:root[data-theme="dark"] .suggest-toggle.active {
+  color: #6fdc9b !important;
+}
+/* Text style and alignment (#278): small menus, the button shows what the
+   text at the caret is now. */
+.editor-toolbar button.toolbar-menu-button[type] {
+  width: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 4px 1px 4px 3px;
+  white-space: nowrap;
+}
+.editor-toolbar .toolbar-menu-button svg.toolbar-menu-caret {
+  width: 7px;
+  height: 7px;
+  opacity: 0.7;
+}
+.editor-toolbar .toolbar-menu-button[data-state="open"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.toolbar-menu-text {
+  min-width: 22px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+}
+.toolbar-format-item > span:not(.toolbar-format-check) {
+  flex: 1;
+}
+.toolbar-format-item[data-state="checked"] {
+  color: var(--text);
+}
+.toolbar-format-check {
+  display: inline-flex;
+  color: var(--blue);
+}
+/* Its own check (ItemIndicator) instead of the general one of radio items
+   (app/option-colors.css); unchecked rows keep its room. */
+.toolbar-format-menu .dropdown-item.toolbar-format-item[role="menuitemradio"][aria-checked="true"]::after {
+  content: none;
+}
+.toolbar-format-item:not([data-state="checked"])::after {
+  content: "";
+  width: 14px;
+  flex: none;
 }
 .document-writing-surface.suggesting .ProseMirror {
   caret-color: #2f9e62;

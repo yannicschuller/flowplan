@@ -30,6 +30,7 @@ export default function RowDocument({
   fields,
   templates,
   draftOf,
+  readOnlyHint,
   onError,
   onChanged,
 }: {
@@ -45,6 +46,8 @@ export default function RowDocument({
   templates?: { id: string; name: string }[];
   // This record is a template opened for editing.
   draftOf?: string;
+  // Why task boxes cannot be ticked (reading mode, #278).
+  readOnlyHint?: string;
   onError: (s: string) => void;
   onChanged: () => Promise<unknown>;
 }) {
@@ -180,6 +183,7 @@ export default function RowDocument({
           html={data.html}
           generation={data.generation}
           editable={editable}
+          readOnlyHint={readOnlyHint}
           onStatus={setStatus}
           onError={onError}
           onHtml={onHtml}
