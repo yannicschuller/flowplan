@@ -42,19 +42,22 @@ LABEL org.opencontainers.image.title="Flowplan" \
   org.opencontainers.image.documentation="https://docs.flowplan.org/installation" \
   org.opencontainers.image.licenses="AGPL-3.0-only"
 WORKDIR /app
-# Certificates for HTTPS to the S3 endpoint (Litestream is a static binary);
-# curl for Coolify's HTTP healthcheck, which runs inside the container.
+# Certificates for HTTPS to the S3 endpoint (Litestream is a static binary).
 # The PostgreSQL client tools (pg_dump, pg_restore, psql) for the backups of
 # an instance on PostgreSQL (lib/pg-backup.ts): from the PostgreSQL project's
-# own repository (Debian's are version 15), the newest major version – a
-# client dumps servers up to its own version, never newer ones.
+# own repository (Debian's are older), the newest major version – a client
+# dumps servers up to its own version, never newer ones.
 # The base image's Debian packages get their security updates (apt and others
-# fixed after the base image was built). Debian 13 (trixie): Debian 12's curl
-# 7.88 and glibc 2.36 had critical findings without a fix there; trixie's
-# newer versions get fixes first. util-linux brings setpriv (the entrypoint's
-# drop to PUID:PGID), installed explicitly in case the base image drops it. npm, npx and corepack are only needed
-# to build; the image runs node alone, and their bundled packages (undici,
-# brace-expansion …) would otherwise be scanned as part of the image.
+# fixed after the base image was built). Debian 13 (trixie) instead of 12:
+# newer curl and glibc that get security fixes first.
+# curl only fetches the repository key here and is removed again with
+# libcurl: image scans showed critical curl findings that Debian has no fix
+# for, and Flowplan never needs it. Health checks that call `curl` inside
+# the container (Coolify's HTTP check) get docker/healthcheck-curl.mjs.
+# util-linux brings setpriv (the entrypoint's drop to PUID:PGID), installed
+# explicitly in case the base image drops it. npm, npx and corepack are only
+# needed to build; the image runs node alone, and their bundled packages
+# (undici, brace-expansion …) would otherwise be scanned as part of the image.
 ARG PG_CLIENT_MAJOR=18
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
   && apt-get install -y --no-install-recommends ca-certificates curl util-linux \
@@ -65,10 +68,13 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
   && apt-get update \
   && apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_MAJOR}" \
   && /usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/pg_dump --version \
+  && apt-get purge -y --auto-remove curl \
+  && ! dpkg -l 'libcurl*' 2>/dev/null | grep -q '^ii' \
   && rm -rf /var/lib/apt/lists/* \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
+COPY --chmod=755 docker/healthcheck-curl.mjs /usr/local/bin/curl
 # Explicit modes: the checkout may be private (umask 077); the app runs as node.
 COPY --chmod=644 docker/litestream.yml /etc/litestream.yml
 COPY --chmod=755 docker/entrypoint.sh /app/entrypoint.sh
