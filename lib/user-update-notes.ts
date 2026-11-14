@@ -1,9 +1,13 @@
 // "Neuigkeiten nach Updates" per person (#223, lib/update-notes-pref.ts):
-//   users.update_notes  the level (NULL: never chosen, "all")
+//   users.update_notes  the level (NULL: no own value – the instance's
+//                       default, updateNotesDefault; "Instanz-Standard" in
+//                       Administration → Benutzer)
 //   users.seen_version  the last version whose notes the person saw (NULL:
 //                       not tracked yet)
 // The bootstrap hands out the versions between the two once after an update;
 // closing the dialog marks the running version as seen (profile.updateNotes).
+// Administrators set the level per person (admin.updateNotes, Administration
+// → Benutzer); the person sees it and can still change it.
 import { z } from "zod";
 import { HttpError } from "./auth";
 import { buildInfo } from "./build-info";
@@ -11,34 +15,43 @@ import { one, run } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { CHANGELOG_URL, isVersion, loadReleaseNotes, notesBetween, notesForLevel } from "./release-notes";
 import { compareVersions } from "./update-check";
-import { updateNotesLevelOf, updateNotesLevelSchema, type ReleaseNotes, type UpdateNotesBoot } from "./update-notes-pref";
+import { updateNotesLevelOf, updateNotesLevelSchema, type ReleaseNotes, type UpdateNotesBoot, type UpdateNotesLevel } from "./update-notes-pref";
 import type { Identity } from "./types";
 
 type Row = { seen_version: string | null; update_notes: string | null; onboarded_at: number | null; last_open_at: number | null };
 type Options = { current?: string; notes?: ReleaseNotes[] };
+
+// The level that applies: the own one, without one the instance's default.
+async function effectiveLevel(stored: string | null | undefined): Promise<UpdateNotesLevel> {
+  return stored === null || stored === undefined ? (await instanceSettings()).updateNotesDefault : updateNotesLevelOf(stored);
+}
 
 // For the bootstrap. Side effects only where nothing is to be shown, so the
 // next update compares with the right version:
 // - A new account (no introduction finished or the app never open) starts at
 //   the running version with the administration's default level: no backlog.
 // - Accounts from before #223 (seen_version NULL, but used before) see the
-//   running version's notes once.
+//   running version's notes once and keep the level they start with.
+// - Otherwise an account without a level of its own (an administrator chose
+//   "Instanz-Standard") follows the instance's default.
 // - Nothing to show (level, or no notes for the skipped versions): the
 //   running version counts as seen.
 // API tokens and demo accounts only read.
 export async function userUpdateNotes(user: Identity, options: Options = {}): Promise<UpdateNotesBoot> {
   const current = options.current ?? buildInfo().version;
   const row = await one<Row>("SELECT seen_version,update_notes,onboarded_at,last_open_at FROM users WHERE id=?", user.id);
-  let level = updateNotesLevelOf(row?.update_notes);
+  const level = await effectiveLevel(row?.update_notes);
   if (!row || !isVersion(current) || user.apiScope || user.demo) return { level };
   const all = options.notes ?? loadReleaseNotes();
   let skipped: ReleaseNotes[];
   if (row.seen_version === null) {
     if (row.onboarded_at === null || row.last_open_at === null) {
-      if (row.update_notes === null) level = (await instanceSettings()).updateNotesDefault;
       await run("UPDATE users SET seen_version=?,update_notes=COALESCE(update_notes,?) WHERE id=? AND seen_version IS NULL", current, level, user.id);
       return { level };
     }
+    // They keep the level they start with, as new accounts do: a later
+    // change of the instance's default leaves them alone.
+    await run("UPDATE users SET update_notes=COALESCE(update_notes,?) WHERE id=? AND seen_version IS NULL", level, user.id);
     skipped = notesBetween(all, null, current).slice(0, 1);
   } else skipped = notesBetween(all, row.seen_version, current);
   const pending = notesForLevel(skipped, level);
@@ -66,7 +79,18 @@ export async function setUserUpdateNotes(user: Identity, input: unknown, options
   if (b.seen && isVersion(current)) await markSeen(user.id, current);
   const row = await one<{ seen_version: string | null; update_notes: string | null }>("SELECT seen_version,update_notes FROM users WHERE id=?", user.id);
   if (!row) throw new HttpError(404, "Benutzer nicht gefunden.");
-  return { level: updateNotesLevelOf(row.update_notes), seenVersion: row.seen_version };
+  return { level: await effectiveLevel(row.update_notes), seenVersion: row.seen_version };
+}
+
+// admin.updateNotes: an administrator sets a person's level, null for the
+// instance's default (no own value). Where the person's own setting lives,
+// so they see it and can change it again.
+export const adminUpdateNotesSchema = z.object({ userId: z.uuid(), level: updateNotesLevelSchema.nullable() });
+export async function adminSetUpdateNotes(input: unknown) {
+  const b = adminUpdateNotesSchema.parse(input);
+  if (!(await run("UPDATE users SET update_notes=? WHERE id=? AND demo_until IS NULL", b.level, b.userId)).changes)
+    throw new HttpError(404, "Benutzer nicht gefunden.");
+  return { level: b.level, effective: await effectiveLevel(b.level) };
 }
 
 // releaseNotes.list ("Was ist neu", any time, whatever the level): the

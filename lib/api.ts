@@ -6,7 +6,7 @@ import { setUserQuoteShortcut, userQuoteShortcut } from "./user-quote-shortcut";
 import { setUserFormattingToolbar, userFormattingToolbar } from "./user-formatting-toolbar";
 import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
-import { recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
+import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
@@ -1064,6 +1064,14 @@ async function runCommand(
         requireAdmin(user);
         result = await setUserLimits(z.uuid().parse(b.userId), b.limits);
         break;
+      // "Neuigkeiten nach Updates" of a person (#223): a level or null for
+      // the instance's default (lib/user-update-notes.ts).
+      case "admin.updateNotes": {
+        requireAdmin(user);
+        result = await adminSetUpdateNotes(b);
+        securityEvent("admin.user", { actorId: user.id, detail: `update notes ${(result as { level: string | null }).level ?? "default"} ${b.userId}` });
+        break;
+      }
       case "workspace.update": {
         await requireMember(user, wid(), "owner");
         if (b.name !== undefined)
