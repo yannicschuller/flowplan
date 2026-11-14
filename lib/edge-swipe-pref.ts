@@ -67,7 +67,7 @@ export function reportEdgeSwipe(pref: EdgeSwipePref = edgeSwipePref()) {
   try {
     // { android: true }: this instance offers the choice on Android too, so
     // the app may keep the edge from the system's back gesture there (an
-    // instance up to 0.9.6 reports without it, and the app ignores it).
+    // earlier :beta reports without it, and the app ignores it).
     nativeApp()?.edgeSwipe?.(pref, { android: true });
   } catch {}
 }
