@@ -76,6 +76,11 @@ function surfaceDoc(doc: InkDoc, surface: string): InkDoc {
   if (doc.pages[surface]?.length) out.pages[surface] = doc.pages[surface];
   return out;
 }
+// The ink of a surface for someone already allowed to read the page.
+export async function pageInkState(page: Page, surface: string, canEdit: boolean) {
+  checkSurface(surface);
+  return await state(page, surface, canEdit);
+}
 async function state(page: Page, surface: string, canEdit: boolean): Promise<PageInkState> {
   const row = await stored(page.id, surface);
   return {
@@ -159,7 +164,6 @@ export type SavePageInkResult = {
 };
 export async function savePageInk(user: Identity, pageId: string, surface: string, input: unknown, now = Date.now()): Promise<SavePageInkResult> {
   const body = (input && typeof input === "object" ? input : {}) as { base?: unknown; doc?: unknown; recognized?: unknown; knows?: unknown };
-  const knows = Array.isArray(body.knows) ? body.knows.filter((k): k is string => typeof k === "string") : [];
   const base = Number(body.base);
   if (!Number.isInteger(base) || base < 0 || !body.doc || typeof body.doc !== "object") throw new HttpError(400, "Ungültige Eingabe.");
   checkSurface(surface);
@@ -167,6 +171,25 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
   if (await isEncryptedPage(page)) throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
   await requirePage(user, page.id, true);
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+  if (page.locked) throw new HttpError(409, "Seite ist gesperrt");
+  return await writePageInk(page, surface, body, { id: user.id, user }, now);
+}
+// Who saves: a person, or a guest of an edit link (lib/share-canvas.ts, #280:
+// no account, `id` null). `files`: the pictures a guest may place – only
+// those already on the notebook (guests cannot upload).
+export type InkWriter = { id: string | null; user?: Identity; audit?: string; files?: Set<string> };
+// The save itself, once the writer's rights on `page` are checked.
+export async function writePageInk(
+  page: Page,
+  surface: string,
+  body: { base?: unknown; doc?: unknown; recognized?: unknown; knows?: unknown },
+  writer: InkWriter,
+  now = Date.now(),
+): Promise<SavePageInkResult> {
+  const knows = Array.isArray(body.knows) ? body.knows.filter((k): k is string => typeof k === "string") : [];
+  const base = Number(body.base);
+  if (!Number.isInteger(base) || base < 0 || !body.doc || typeof body.doc !== "object") throw new HttpError(400, "Ungültige Eingabe.");
+  checkSurface(surface);
   if (page.locked) throw new HttpError(409, "Seite ist gesperrt");
   await requireSurface(page, surface);
   const ours = surfaceDoc(parseInk(body.doc), surface);
@@ -198,7 +221,13 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
     // Pictures an older client did not know stay; pictures of other pages' files go.
     const storedItems = current ? parseInk(current.data).pages[surface] || [] : [];
     const sent = doc.pages[surface] || [];
-    const kept = await onlyPageFiles(page.id, keepUnknownItems(sent, storedItems, knows));
+    let kept = await onlyPageFiles(page.id, keepUnknownItems(sent, storedItems, knows));
+    // A guest's pictures: only files the notebook already shows.
+    if (writer.files) {
+      const allowed = writer.files;
+      const filtered = kept.filter((i) => i.type !== "image" || !i.file || allowed.has(i.file.toLowerCase()));
+      if (filtered.length !== kept.length) kept = filtered;
+    }
     if (kept !== sent) {
       doc = surfaceDoc({ ...emptyInk(), pages: { [surface]: kept } }, surface);
       merged = true;
@@ -218,10 +247,10 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
       inkText(doc).slice(0, 100000),
       doc.pages[surface]?.length ? recognized : "",
       version,
-      user.id,
+      writer.id,
       now,
     );
-    await run("INSERT INTO page_ink_versions(page_id,surface,version,data,created_by,created_at) VALUES(?,?,?,?,?,?)", page.id, surface, version, data, user.id, now);
+    await run("INSERT INTO page_ink_versions(page_id,surface,version,data,created_by,created_at) VALUES(?,?,?,?,?,?)", page.id, surface, version, data, writer.id, now);
     await run(
       "DELETE FROM page_ink_versions WHERE page_id=? AND surface=? AND version<=(SELECT version FROM page_ink_versions WHERE page_id=? AND surface=? ORDER BY version DESC LIMIT 1 OFFSET ?)",
       page.id,
@@ -231,8 +260,8 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
       PAGE_INK_VERSIONS_KEPT,
     );
     await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
-    await audit(user.id, "page.ink", page.id, `${surface} (${inkItemCount(doc)})`);
-    await recordPageEdit(user, page.id);
+    await audit(writer.audit ?? writer.id ?? "guest", writer.user ? "page.ink" : "share.ink", page.id, `${surface} (${inkItemCount(doc)})`);
+    if (writer.user) await recordPageEdit(writer.user, page.id);
     return { version, conflict, ...(merged ? { doc } : {}) };
   });
 }

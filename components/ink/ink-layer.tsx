@@ -69,7 +69,7 @@ import {
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
-import { fileSrc, ImageFrame, InkImageItem, type ImageAction } from "./ink-picture";
+import { ImageFrame, InkImageItem, useFileSrc, type ImageAction } from "./ink-picture";
 import { splitHighlights } from "@/lib/ink/svg";
 import { useLocale } from "../i18n";
 import { isUnspoken, type Playback } from "@/lib/ink/audio-sync";
@@ -226,7 +226,7 @@ export function InkLayer({
   fingersScroll = false,
   onImageAction,
   onSaveSticker,
-  imageSrc = fileSrc,
+  imageSrc: givenSrc,
   playback = null,
 }: {
   page: string;
@@ -260,6 +260,8 @@ export function InkLayer({
   playback?: Playback;
 }) {
   const t = useT();
+  const sharedSrc = useFileSrc();
+  const imageSrc = givenSrc ?? sharedSrc;
   const active = !!editor && editing;
   const stored = (editor ? editor.doc : doc)?.pages[page];
   const items = useMemo(() => stored || [], [stored]);

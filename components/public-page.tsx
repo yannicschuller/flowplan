@@ -46,6 +46,8 @@ import {
 import { fileIdOf, fileUrls } from "@/lib/file-cells";
 import { cardFields } from "@/lib/card-fields";
 import { SharedInteractions } from "./shared-interactions";
+import { SharedCanvas } from "./shared-canvas";
+import { isEncryptedPage } from "@/lib/e2ee-server";
 import {
   PublicCalendar,
   PublicChart,
@@ -252,6 +254,24 @@ async function renderPublishedPage({
   const shortLinks = (value: string) =>
     customHost ? value.replaceAll(`"/share/${token}/`, '"/').replaceAll(`"/share/${token}"`, '"/"') : value;
   const children = pages.filter((p) => p.parent_id === page.id);
+  // Edit links of whiteboards and notebooks: the app's editor through the
+  // link (#280, components/shared-canvas.tsx), the picture until it starts.
+  const liveCanvas =
+    (page.kind === "notebook" || page.kind === "whiteboard") && context.role === "editor" && !page.locked && !(await isEncryptedPage(page));
+  const canvas = (picture: React.ReactNode) =>
+    liveCanvas ? (
+      <SharedCanvas
+        token={token}
+        pageId={page.id}
+        kind={page.kind as "whiteboard" | "notebook"}
+        title={page.title}
+        pages={pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind }))}
+      >
+        {picture}
+      </SharedCanvas>
+    ) : (
+      picture
+    );
   return (
     <main
       className={`public-page ${page.full_width ? "public-wide" : ""} ${theme?.accent ? "public-themed" : ""}`}
@@ -326,9 +346,9 @@ async function renderPublishedPage({
         </nav>
       )}
       {page.kind === "notebook" ? (
-        <PublicNotebook label={page.title} sheets={await publicNotebookSheets(page, token)} />
+        canvas(<PublicNotebook label={page.title} sheets={await publicNotebookSheets(page, token)} />)
       ) : page.kind === "whiteboard" ? (
-        <WhiteboardStatic
+        canvas(<WhiteboardStatic
           height={640}
           pages={pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind }))}
           items={await mapAsync(await whiteboardSnapshotItems(page), async (item) => {
@@ -342,7 +362,7 @@ async function renderPublishedPage({
               return { ...item, src: undefined };
             }
           })}
-        />
+        />)
       ) : d && !record && activeView?.type === "calendar" ? (
         <PublicCalendar
           records={records}

@@ -30,7 +30,10 @@ export function useNotebookInsert({
   onError,
   onBusy,
   onPdf,
+  refuse,
 }: {
+  // Said instead of uploading (guests of an edit link, #280).
+  refuse?: string;
   pageId: string;
   editor: InkEditor;
   sizeOf: (sheetId: string) => PageSize | undefined;
@@ -72,6 +75,7 @@ export function useNotebookInsert({
   const insertFiles = useCallback(
     async (files: File[], sheetId = current(), at?: XY | null) => {
       if (!canEdit || !sheetId) return;
+      if (refuse) return onError(refuse);
       const pdf = files.find((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
       if (pdf && onPdf) onPdf(pdf);
       const pictures = files.filter(isPicture);
@@ -95,7 +99,7 @@ export function useNotebookInsert({
         }
       }
     },
-    [canEdit, current, onBusy, onError, onPdf, pageId, place, t],
+    [canEdit, current, onBusy, onError, onPdf, pageId, place, refuse, t],
   );
 
   // ⌘V with a picture on the clipboard (copied ink goes first, see useInkShortcuts).

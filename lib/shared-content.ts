@@ -507,7 +507,7 @@ export async function limitShareRequests(token: string) {
 export const MAX_GUEST_DOCUMENT = 3_000_000;
 const MAX_LIVE_STATE = 8_000_000;
 // Live edits have their own, larger budget (a change every half second).
-async function limitLiveChanges(token: string) {
+export async function limitLiveChanges(token: string) {
   await run("DELETE FROM share_live_requests WHERE created_at<?", Date.now() - 60000);
   if (
     ((await one<{ n: number }>(

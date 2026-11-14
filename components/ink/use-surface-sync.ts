@@ -24,14 +24,17 @@ export const surfaceUrl = (pageId: string, surface: string) => `/api/pages/${pag
 // One request for the versions of a page's surfaces, shared by all blocks
 // of the page that ask at about the same time.
 const versionRequests = new Map<string, { at: number; promise: Promise<Record<string, number>> }>();
-function pageVersions(pageId: string) {
-  const cached = versionRequests.get(pageId);
+function pageVersions(pageId: string, url = `/api/pages/${pageId}/ink`) {
+  const cached = versionRequests.get(url);
   if (cached && Date.now() - cached.at < 3000) return cached.promise;
-  const promise = api<{ versions: Record<string, number> }>(`/api/pages/${pageId}/ink`).then((r) => r.versions || {});
-  versionRequests.set(pageId, { at: Date.now(), promise });
-  promise.catch(() => versionRequests.delete(pageId));
+  const promise = api<{ versions: Record<string, number> }>(url).then((r) => r.versions || {});
+  versionRequests.set(url, { at: Date.now(), promise });
+  promise.catch(() => versionRequests.delete(url));
   return promise;
 }
+// Other addresses for the same exchange: guests of an edit link (#280,
+// app/api/share/[token]/notebook).
+export type SurfaceUrls = { versions: string; surface: (surface: string) => string };
 
 export function useSurfaceSync({
   pageId,
@@ -42,7 +45,9 @@ export function useSurfaceSync({
   poll = 10000,
   surfaces,
   onConflict,
+  urls,
 }: {
+  urls?: SurfaceUrls;
   pageId: string;
   editor: InkEditor;
   canEdit: boolean;
@@ -60,8 +65,8 @@ export function useSurfaceSync({
   const [error, setError] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognition = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const live = useRef({ editor, canEdit, sizeOf, onConflict, surfaces, pageId });
-  live.current = { editor, canEdit, sizeOf, onConflict, surfaces, pageId };
+  const live = useRef({ editor, canEdit, sizeOf, onConflict, surfaces, pageId, urls });
+  live.current = { editor, canEdit, sizeOf, onConflict, surfaces, pageId, urls };
 
   // The state as loaded (or created): the base of the next save.
   const prime = useCallback((surface: string, version: number, items: InkItem[] = NONE) => {
@@ -80,7 +85,7 @@ export function useSurfaceSync({
 
   // In the app: the text of the handwriting, for search.
   const recognize = useCallback((surface: string, version: number) => {
-    if (!recognitionAvailable()) return;
+    if (!recognitionAvailable() || live.current.urls) return;
     clearTimeout(recognition.current.get(surface));
     recognition.current.set(
       surface,
@@ -111,7 +116,7 @@ export function useSurfaceSync({
         const doc = emptyInk();
         if (snapshot.length) doc.pages[surface] = snapshot;
         // `knows`: this version handles pictures (the server keeps them for older ones).
-        const result = await api<SaveAnswer>(surfaceUrl(page, surface), { base: base.version, doc, knows: ["image"] });
+        const result = await api<SaveAnswer>(live.current.urls?.surface(surface) ?? surfaceUrl(page, surface), { base: base.version, doc, knows: ["image"] });
         let items = snapshot;
         if (result.doc) {
           // Someone saved in between: theirs merged with ours (server), and
@@ -175,7 +180,7 @@ export function useSurfaceSync({
       const { editor: ed, pageId: page, surfaces: wanted } = live.current;
       let versions: Record<string, number>;
       try {
-        versions = await pageVersions(page);
+        versions = await pageVersions(page, live.current.urls?.versions);
       } catch {
         return;
       }
@@ -184,7 +189,7 @@ export function useSurfaceSync({
         const state = saved.current.get(surface);
         if (!state || version <= state.version || inflight.current.has(surface)) continue;
         try {
-          const remote = await api<{ doc: InkDoc; version: number }>(surfaceUrl(page, surface));
+          const remote = await api<{ doc: InkDoc; version: number }>(live.current.urls?.surface(surface) ?? surfaceUrl(page, surface));
           const current = saved.current.get(surface);
           if (!current || remote.version <= current.version || inflight.current.has(surface)) continue;
           const theirs = parseInk(remote.doc).pages[surface] || NONE;

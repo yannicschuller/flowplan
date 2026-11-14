@@ -144,7 +144,7 @@ export function SharedInteractions({
       </p>
       {data.role === "editor" && !data.locked && !editing && (
         <button className="button" disabled={busy} onClick={startEdit}>
-          {t("Inhalt bearbeiten", "Edit content")}
+          {data.canEditContent || data.rowId ? t("Inhalt bearbeiten", "Edit content") : t("Titel bearbeiten", "Edit title")}
         </button>
       )}
       {editing && (

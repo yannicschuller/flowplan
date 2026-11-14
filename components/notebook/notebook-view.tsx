@@ -36,6 +36,8 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
+import { FileSrcContext, fileSrc } from "../ink/ink-picture";
+import { shareFileUrl, shareNotebookUrl, type ShareGuest } from "../share-guest";
 import { api, downloadBlob, Modal } from "../ui";
 import { InkLayer } from "../ink/ink-layer";
 import { InkToolbar } from "../ink/ink-toolbar";
@@ -96,6 +98,7 @@ type Place = { at: "start" } | { after: string | null };
 const sizeOf = (paper: Paper, sheet: Pick<NotebookSheet, "paper" | "background">): PageSize =>
   sheet.background ? { width: sheet.background.width, height: sheet.background.height } : paperSize(effectivePaper(paper, sheet.paper));
 const ZOOMS = { min: 0.5, max: 3, step: 0.25 };
+const GUEST_COMMANDS = new Set(["notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move"]);
 const THUMBS_KEY = "flowplan-notebook-thumbs";
 const fileName = (title: string) => (title || "Notebook").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim().slice(0, 120) || "Notebook";
 
@@ -105,12 +108,17 @@ export default function NotebookView({
   notebook,
   editable,
   onError,
+  guest,
 }: {
   pageId: string;
   title: string;
   notebook: NotebookPayload;
   editable: boolean;
   onError: (message: string) => void;
+  // A guest of an edit link (#280, lib/share-canvas.ts): writing and the
+  // sheets through the link; no uploads, paper templates, links, recordings,
+  // presenting, exports or AI.
+  guest?: ShareGuest;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -119,6 +127,19 @@ export default function NotebookView({
   const placeMenu = useMenuPlacement();
   const placeStartMenu = useMenuPlacement("start");
   const canEdit = editable && notebook.canEdit;
+  // What only members have.
+  const member = !guest;
+  const fileUrl = useMemo(() => (guest ? (file: string) => shareFileUrl(guest, file) : fileSrc), [guest]);
+  const guestUrls = useMemo(
+    () =>
+      guest
+        ? {
+            versions: `${shareNotebookUrl(guest)}?pageId=${pageId}&versions=1`,
+            surface: (surface: string) => `${shareNotebookUrl(guest)}?pageId=${pageId}&surface=${encodeURIComponent(surface)}`,
+          }
+        : undefined,
+    [guest, pageId],
+  );
   const [paper, setPaper] = useState<Paper>(notebook.paper);
   const [sheets, setSheets] = useState<NotebookSheet[]>(() =>
     notebook.sheets.map(({ id, position, paper: own, background, title, bookmark, links }) => ({ id, position, paper: own, background, title, bookmark, links })),
@@ -146,6 +167,7 @@ export default function NotebookView({
     pageId,
     editor,
     canEdit,
+    urls: guestUrls,
     sizeOf: (surface) => sizesRef.current.get(surface) || null,
     onConflict: (by) =>
       setNotice({
@@ -166,7 +188,7 @@ export default function NotebookView({
   // ---- Layout, zoom, current sheet ----
   const scroller = useRef<HTMLDivElement>(null);
   // Audio recordings, synced to the ink (notebook-audio.tsx).
-  const audio = useNotebookAudio({ pageId, editor, canEdit, scroller, onError });
+  const audio = useNotebookAudio({ pageId, editor, canEdit: canEdit && member, scroller, onError, off: !member });
   const [fit, setFit] = useState(760);
   const [zoom, setZoom] = useState(1);
   useEffect(() => {
@@ -245,7 +267,14 @@ export default function NotebookView({
   const run = useCallback(
     async (body: Record<string, unknown>) => {
       try {
-        const answer = await api<CommandAnswer>("/api/command", { pageId, ...body });
+        // Guests: the sheet commands of the link (lib/share-canvas.ts).
+        const { action, ...rest } = body as { action: string } & Record<string, unknown>;
+        const answer = guest
+          ? GUEST_COMMANDS.has(action)
+            ? await api<CommandAnswer>(shareNotebookUrl(guest), { pageId, op: action.replace(/^notebook\./, ""), ...rest })
+            : null
+          : await api<CommandAnswer>("/api/command", { pageId, ...body });
+        if (!answer) return null;
         apply(answer);
         return answer;
       } catch (e) {
@@ -253,7 +282,7 @@ export default function NotebookView({
         return null;
       }
     },
-    [apply, onError, pageId],
+    [apply, onError, pageId, guest],
   );
   const addSheet = useCallback(
     async (after: string | null, place: Place = { after }) => {
@@ -296,7 +325,7 @@ export default function NotebookView({
     const trashed = answer.trashed || [];
     setNotice({
       text: ids.length === 1 ? t("Blatt gelöscht.", "Sheet deleted.") : t(`${ids.length} Blätter gelöscht.`, `${ids.length} sheets deleted.`),
-      action: trashed.length ? { label: t("Rückgängig", "Undo"), run: () => (setNotice(null), void restore(trashed)) } : undefined,
+      action: trashed.length && member ? { label: t("Rückgängig", "Undo"), run: () => (setNotice(null), void restore(trashed)) } : undefined,
     });
   };
   const moveOrder = async (order: string[]) => {
@@ -405,6 +434,8 @@ export default function NotebookView({
   };
   const followLink = (target: NotebookLinkTarget) => {
     if ("sheet" in target) show(target.sheet, true);
+    // Guests: the page through the link (only pages of the link are linked).
+    else if (guest) window.location.href = `/share/${encodeURIComponent(guest.token)}/${target.page}`;
     else window.location.hash = `page=${target.page}`;
   };
   const sheetName = useCallback(
@@ -519,6 +550,7 @@ export default function NotebookView({
     onError,
     onBusy: setBusy,
     onPdf: (file) => void importPdf(file),
+    refuse: guest ? t("Hochladen ist für Gäste nicht möglich.", "Uploading is not available to guests.") : undefined,
   });
   // "Insert PDF": a notebook with nothing on it yet takes the PDF at once,
   // otherwise the dialog asks where (after the current sheet first).
@@ -574,7 +606,7 @@ export default function NotebookView({
 
   // ---- Page overview, presenting, following ----
   const [overview, setOverview] = useState<"pages" | "outline" | null>(null);
-  const live = useNotebookLive(pageId);
+  const live = useNotebookLive(pageId, member);
   // Presenting (follow: null) or following someone (their user id).
   const [presentation, setPresentation] = useState<{ follow: string | null } | null>(null);
   const presenter = live.presenters[0] || null;
@@ -691,6 +723,7 @@ export default function NotebookView({
 
   const sheetMenu = (sheet: NotebookSheet, index: number, close: () => void = () => setMenu(null)) => (
     <div ref={placeStartMenu} className="ink-menu notebook-menu" role="menu" aria-label={t(`Blatt ${index + 1}`, `Sheet ${index + 1}`)}>
+      {member && (<>
       <button type="button" role="menuitem" onClick={() => (close(), void bookmark([sheet.id], !sheet.bookmark))}>
         <BookmarkSimple size={16} weight={sheet.bookmark ? "fill" : "regular"} /> {sheet.bookmark ? t("Lesezeichen entfernen", "Remove bookmark") : t("Als Lesezeichen", "Bookmark")}
       </button>
@@ -703,26 +736,31 @@ export default function NotebookView({
       <button type="button" role="menuitem" onClick={() => (close(), setLinking({ sheet: sheet.id, link: null }))}>
         <LinkSimple size={16} /> {t("Link einfügen …", "Insert link …")}
       </button>
+      </>)}
       <button type="button" role="menuitem" onClick={() => (close(), void addSheet(sheet.id))}>
         <Plus size={16} /> {t("Neues Blatt danach", "New sheet after")}
       </button>
+      {member && (<>
       <button type="button" role="menuitem" onClick={() => (close(), choosePdf(index === 0 ? { at: "start" } : { after: sheets[index - 1].id }))}>
         <FilePdf size={16} /> {t("PDF davor einfügen …", "Insert PDF before …")}
       </button>
       <button type="button" role="menuitem" onClick={() => (close(), choosePdf({ after: sheet.id }))}>
         <FilePdf size={16} /> {t("PDF danach einfügen …", "Insert PDF after …")}
       </button>
+      </>)}
       <button type="button" role="menuitem" onClick={() => (close(), void duplicate(sheet.id))}>
         <CopySimple size={16} /> {t("Duplizieren", "Duplicate")}
       </button>
-      {!sheet.background && (
+      {!sheet.background && member && (
         <button type="button" role="menuitem" onClick={() => (close(), openPaper(sheet.id))}>
           <Rows size={16} /> {t("Papier ändern …", "Change paper …")}
         </button>
       )}
-      <button type="button" role="menuitem" onClick={() => (close(), setTransferring([sheet.id]))}>
-        <FolderSimple size={16} /> {t("In anderes Notizbuch …", "To another notebook …")}
-      </button>
+      {member && (
+        <button type="button" role="menuitem" onClick={() => (close(), setTransferring([sheet.id]))}>
+          <FolderSimple size={16} /> {t("In anderes Notizbuch …", "To another notebook …")}
+        </button>
+      )}
       <button type="button" role="menuitem" disabled={index === 0} onClick={() => (close(), void move(sheet.id, index - 1))}>
         <ArrowUp size={16} /> {t("Nach oben", "Move up")}
       </button>
@@ -736,7 +774,8 @@ export default function NotebookView({
   );
 
   return (
-    <div className={`notebook-view${thumbs ? " with-thumbs" : ""}`}>
+    <FileSrcContext.Provider value={fileUrl}>
+    <div className={`notebook-view${thumbs ? " with-thumbs" : ""}${guest ? " is-guest" : ""}`}>
       <div className="notebook-bar">
         {canEdit && <InkToolbar editor={editor} toolKeys page={current} label={t("Schreibwerkzeuge", "Writing tools")} />}
         <div className="notebook-controls" role="toolbar" aria-label={t("Notizbuch", "Notebook")}>
@@ -760,7 +799,7 @@ export default function NotebookView({
           >
             <SquaresFour size={18} />
           </button>
-          <button
+          {member && <button
             type="button"
             className="icon-button"
             aria-label={t("Präsentieren", "Present")}
@@ -768,7 +807,7 @@ export default function NotebookView({
             onClick={() => (setOverview(null), setPresentation({ follow: null }))}
           >
             <Presentation size={18} />
-          </button>
+          </button>}
           <span className="notebook-position" aria-live="polite">
             {t(`Blatt ${currentIndex + 1} von ${sheets.length}`, `Sheet ${currentIndex + 1} of ${sheets.length}`)}
           </span>
@@ -806,15 +845,17 @@ export default function NotebookView({
                   <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(null, { at: "start" }))}>
                     {t("Vor dem ersten Blatt", "Before the first sheet")}
                   </button>
-                  <button type="button" role="menuitem" onClick={() => (setMenu(null), insertPdf())}>
-                    <FilePdf size={16} /> {t("PDF einfügen …", "Insert PDF …")}
-                  </button>
+                  {member && (
+                    <button type="button" role="menuitem" onClick={() => (setMenu(null), insertPdf())}>
+                      <FilePdf size={16} /> {t("PDF einfügen …", "Insert PDF …")}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           )}
-          {canEdit && <NotebookInsertMenu pageId={pageId} editor={editor} insert={insert} current={() => currentRef.current} onError={onError} />}
-          {canEdit && sheets.find((s) => s.id === current && !s.background) && (
+          {canEdit && member && <NotebookInsertMenu pageId={pageId} editor={editor} insert={insert} current={() => currentRef.current} onError={onError} />}
+          {canEdit && member && sheets.find((s) => s.id === current && !s.background) && (
             <button type="button" className="icon-button" aria-label={t("Papier ändern", "Change paper")} title={t("Papier ändern", "Change paper")} onClick={() => openPaper(current)}>
               <Rows size={18} />
             </button>
@@ -834,18 +875,20 @@ export default function NotebookView({
             </button>
             {menu === "more" && (
               <div ref={placeMenu} className="ink-menu notebook-menu notebook-menu-end" role="menu" aria-label={t("Weitere Aktionen", "More actions")}>
-                {canEdit && (
+                {canEdit && member && (
                   <button type="button" role="menuitem" onClick={() => (setMenu(null), insertPdf())}>
                     <FilePdf size={16} /> {t("PDF einfügen …", "Insert PDF …")}
                   </button>
                 )}
-                <button type="button" role="menuitem" onClick={() => (setMenu(null), void exportPdf())}>
-                  <FileArrowDown size={16} /> {t("Als PDF exportieren", "Export as PDF")}
-                </button>
+                {member && (
+                  <button type="button" role="menuitem" onClick={() => (setMenu(null), void exportPdf())}>
+                    <FileArrowDown size={16} /> {t("Als PDF exportieren", "Export as PDF")}
+                  </button>
+                )}
                 <button type="button" role="menuitem" onClick={() => (setMenu(null), setOverview("outline"))}>
                   <ListBullets size={16} /> {t("Inhaltsverzeichnis", "Table of contents")}
                 </button>
-                {canEdit && (
+                {canEdit && member && (
                   <button type="button" role="menuitem" onClick={() => (setMenu(null), setTrashOpen(true))}>
                     <ArrowCounterClockwise size={16} /> {t("Gelöschte Blätter …", "Deleted sheets …")}
                   </button>
@@ -1014,7 +1057,7 @@ export default function NotebookView({
             recognized={recognized}
             outline={outline}
             current={current}
-            canEdit={canEdit}
+            canEdit={canEdit && member}
             tab={overview}
             onTab={setOverview}
             actions={overviewActions}
@@ -1038,7 +1081,7 @@ export default function NotebookView({
                   style={{ width, aspectRatio: `${size.width} / ${size.height}` }}
                 >
                   {sheet.background ? (
-                    <PdfBackground src={`/api/files/${sheet.background.file}`} page={sheet.background.page} width={width} eager={index < 2} />
+                    <PdfBackground src={fileUrl(sheet.background.file)} page={sheet.background.page} width={width} eager={index < 2} />
                   ) : (
                     <>
                       <PaperSvg layout={look.layout!} />
@@ -1052,7 +1095,7 @@ export default function NotebookView({
                     editing={canEdit}
                     playback={audio.playback}
                     onImageAction={
-                      canEdit
+                      canEdit && member
                         ? (_action, item) =>
                             item.file &&
                             void savePictureAsSticker(item.file, pageId, title || t("Bild", "Picture"))
@@ -1061,24 +1104,24 @@ export default function NotebookView({
                         : undefined
                     }
                     onSaveSticker={
-                      canEdit
+                      canEdit && member
                         ? (items) =>
                             void saveSelectionAsSticker(items, pageId, t("Auswahl", "Selection"))
                               .then(() => setNotice({ text: t("Als Sticker gespeichert – zu finden unter Einfügen › Sticker › Meine Sticker.", "Saved as a sticker – find it under Insert › Stickers › My stickers.") }))
                               .catch((e: Error) => onError(e.message))
                         : undefined
                     }
-                    onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
-                    aiPageId={canEdit ? pageId : undefined}
-                    onOutline={canEdit ? (title, y) => outlineFromSelection(sheet.id, title, y) : undefined}
+                    onConvert={canEdit && member && canRecognize ? () => void convert(sheet.id) : undefined}
+                    aiPageId={canEdit && member ? pageId : undefined}
+                    onOutline={canEdit && member ? (title, y) => outlineFromSelection(sheet.id, title, y) : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />
                   {sheet.links && (
                     <SheetLinks
                       links={sheet.links}
                       size={size}
-                      editable={canEdit}
-                      areas={!canEdit || editor.tool === "lasso" || editor.tool === "laser"}
+                      editable={canEdit && member}
+                      areas={!canEdit || !member || editor.tool === "lasso" || editor.tool === "laser"}
                       sheetName={sheetName}
                       onFollow={followLink}
                       onChange={(links) => void saveLinks(sheet.id, links)}
@@ -1214,5 +1257,6 @@ export default function NotebookView({
         />
       )}
     </div>
+    </FileSrcContext.Provider>
   );
 }

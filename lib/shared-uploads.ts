@@ -77,6 +77,9 @@ export async function guestUpload(token: string, pageId: string, file: File) {
     const { page, role } = own ? { page: record.page, role: record.role } : await publicPage(token, pageId);
     if (role !== "editor")
       throw new HttpError(403, "Dieser Link erlaubt keine Uploads.");
+    // Whiteboards and notebooks: guests edit them without uploads (#280).
+    if (page.kind === "whiteboard" || page.kind === "notebook")
+      throw new HttpError(403, "Hochladen ist für Gäste nicht möglich.");
     if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
     await limitShareRequests(token);
     await limitGuestUploads(token);

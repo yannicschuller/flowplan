@@ -9,17 +9,18 @@ import { Check, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { api, Modal } from "../ui";
 import { PdfBackground } from "./paper";
+import { useFileSrc } from "../ink/ink-picture";
 import { loadPdf } from "../pdf-viewer";
 import type { Paper, PaperFit, PaperImage } from "@/lib/notebook-paper";
 import { createTemplate, listTemplates, preparePicture, type TemplateEntry } from "./notebook-media";
 
-const fileSrc = (file: string) => `/api/files/${file}`;
 
 // The own template of a sheet over its paper colour, under the ink.
 // `src`: another address of the picture (a template not yet on the page,
 // in the paper dialog's preview).
 export function PaperImageLayer({ image, size, width, eager = false, src }: { image: PaperImage; size: { width: number; height: number }; width: number; eager?: boolean; src?: string }) {
-  const url = src || (image.file ? fileSrc(image.file) : null);
+  const shared = useFileSrc();
+  const url = src || (image.file ? shared(image.file) : null);
   if (!url) return null;
   if (image.kind === "pdf") return <PdfBackground src={url} page={1} width={width} eager={eager} />;
   const tile = image.fit === "tile" && image.width && image.height;

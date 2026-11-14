@@ -6,7 +6,7 @@
 // ink, change its opacity, duplicate, delete or save it as a sticker. All
 // with pen, finger or mouse; one undo step per gesture. Keyboard: arrows
 // move (Shift: further), Delete, ⌘D, Escape (useInkShortcuts).
-import { memo, useEffect, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { ArrowsClockwise, Check, CopySimple, Crop, DropHalf, SelectionBackground, SelectionForeground, Sticker, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
@@ -31,11 +31,17 @@ import { builtinSticker, stickerSvgElements } from "@/lib/ink/stickers";
 import { palmLikely } from "@/lib/stylus";
 
 export const fileSrc = (file: string) => `/api/files/${file}`;
+// Where pictures of the page come from: its files, or – for guests of an
+// edit link (#280) – the link's file addresses.
+export const FileSrcContext = createContext<(file: string) => string>(fileSrc);
+export const useFileSrc = () => useContext(FileSrcContext);
 
 // One picture or sticker in the ink SVG (page units).
 // `dim`: notebook audio playback has not reached it yet (.ink-unspoken; its
 // own opacity is kept under the dimming).
-export const InkImageItem = memo(function InkImageItem({ item, src = fileSrc, dim = false }: { item: InkImage; src?: (file: string) => string; dim?: boolean }) {
+export const InkImageItem = memo(function InkImageItem({ item, src: given, dim = false }: { item: InkImage; src?: (file: string) => string; dim?: boolean }) {
+  const shared = useFileSrc();
+  const src = given ?? shared;
   const c = imageCentre(item);
   const transform = item.rotation ? `rotate(${item.rotation} ${c.x} ${c.y})` : undefined;
   const opacity = item.opacity !== undefined && item.opacity < 1 ? item.opacity : undefined;
@@ -91,7 +97,7 @@ export function ImageFrame({
   onClose,
   onPick,
   onAction,
-  src = fileSrc,
+  src: given,
 }: {
   item: InkImage;
   items: InkItem[];
@@ -107,6 +113,8 @@ export function ImageFrame({
   src?: (file: string) => string;
 }) {
   const t = useT();
+  const shared = useFileSrc();
+  const src = given ?? shared;
   const [cropping, setCropping] = useState(false);
   const [alpha, setAlpha] = useState<number | null>(null);
   const drag = useRef<Drag | null>(null);

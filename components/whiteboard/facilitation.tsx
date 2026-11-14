@@ -76,6 +76,8 @@ export type FacilitationOptions = {
   setMetaValue: (key: keyof WhiteboardMeta, value: unknown) => void;
   timerRunning: boolean;
   onError: (message: string) => void;
+  // Guests of an edit link (#280): no facilitation at all.
+  off?: boolean;
 };
 
 export function useFacilitation(o: FacilitationOptions) {
@@ -117,6 +119,7 @@ export function useFacilitation(o: FacilitationOptions) {
     [jumpTo, say, t],
   );
   const load = useCallback(async () => {
+    if (opts.current.off) return;
     try {
       const next = await api<FacilitationState>(url);
       const s = seen.current;
