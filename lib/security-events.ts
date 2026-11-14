@@ -391,7 +391,7 @@ export async function sweepSecurityEvents(now = Date.now()) {
 /* ---------- From the activity log ---------- */
 
 // Entries of the activity log that matter for security, as events.
-const ADMIN_SETTINGS = /^(ldap\.(enable|disable)|scim\.token\.(create|revoke)|admin\.(ops\.alerts|ops\.maintenance|push\.rotate|ai|metrics\.clear)|instance\.(backup|restore\.staged)|plugin\.(register|update|delete)|domain\.(add|remove)|e2ee\.identity\.reset|admin\.emergency|inbound\.rotate|contacts\.ldap\.(config|import|unsubscribe))$/;
+const ADMIN_SETTINGS = /^(ldap\.(enable|disable)|scim\.token\.(create|revoke)|admin\.(ops\.alerts|ops\.maintenance|push\.rotate|ai|metrics\.clear)|instance\.(backup|restore\.staged)|plugin\.(register|update|delete)|domain\.(add|remove)|e2ee\.identity\.reset|admin\.emergency|admin\.deadman|inbound\.rotate|contacts\.ldap\.(config|import|unsubscribe))$/;
 const EXPORTS = /(\.export|^instance\.backup)$/;
 const EMERGENCY_KINDS: Record<string, SecurityKind> = {
   designate: "emergency.designated",
@@ -407,6 +407,16 @@ const EMERGENCY_KINDS: Record<string, SecurityKind> = {
   expire: "emergency.expired",
   view: "emergency.viewed",
   export: "emergency.exported",
+};
+const DEADMAN_KINDS: Record<string, SecurityKind> = {
+  arm: "deadman.armed",
+  disarm: "deadman.disarmed",
+  change: "deadman.changed",
+  recipients: "deadman.recipients",
+  warn: "deadman.warning",
+  fire: "deadman.fired",
+  checkin: "deadman.checkin",
+  rearm: "deadman.rearmed",
 };
 export function auditToSecurity(actor: string, action: string, resource: string, detail: string): [SecurityKind, SecurityInput] | null {
   if (action === "account.delete") return ["account.deleted", { actorId: actor, detail: resource }];
@@ -424,6 +434,11 @@ export function auditToSecurity(actor: string, action: string, resource: string,
   if (action.startsWith("emergency.")) {
     const kind = EMERGENCY_KINDS[action.slice(10)];
     return kind ? [kind, { actorId: actor || null, detail: detail || resource }] : null;
+  }
+  // The inactivity message (lib/dead-man-switch.ts).
+  if (action.startsWith("deadman.")) {
+    const kind = DEADMAN_KINDS[action.slice(8)];
+    return kind ? [kind, { actorId: actor || null, detail: `${resource} ${detail}`.trim() }] : null;
   }
   if (EXPORTS.test(action)) return ["data.export", { actorId: actor, detail: `${action} ${resource}`.trim() }];
   if (ADMIN_SETTINGS.test(action)) return ["admin.settings", { actorId: actor || null, detail: `${action}${detail ? ` ${detail}` : ""}` }];

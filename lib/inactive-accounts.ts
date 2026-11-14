@@ -18,6 +18,7 @@ import {
   queueMail,
 } from "./mail";
 import { deleteInactiveAccount } from "./account-deletion";
+import { fireBeforeDeletion } from "./dead-man-switch";
 import { userLocale } from "./user-locale";
 import { db } from "./db-driver";
 import { localeTag, type Locale } from "./i18n";
@@ -129,6 +130,9 @@ export async function deleteInactiveAccounts(now = Date.now()) {
     }
     if (now >= p.due) {
       await transaction(async () => {
+        // Armed inactivity messages (#282) go out first: they would never
+        // go out once the account is gone.
+        await fireBeforeDeletion(p.id, now);
         const plan = await deleteInactiveAccount(p.id);
         await run(
           `INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(${db.dialect.randomHex()},NULL,'user.inactiveDeleted',?,?)`,

@@ -65,6 +65,10 @@ export const instanceSettingsSchema = z.object({
   // on by default; off suspends every granted access and refuses new
   // requests. FLOWPLAN_EMERGENCY_ACCESS=off switches it off regardless.
   emergencyAccess: z.boolean().default(true),
+  // Inactivity message per workspace ("dead man's switch", #282,
+  // lib/dead-man-switch.ts): on by default (needs e-mail delivery); off
+  // nothing is warned about or sent. FLOWPLAN_DEAD_MAN_SWITCH=off wins.
+  deadManSwitch: z.boolean().default(true),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -95,6 +99,7 @@ const defaults: InstanceSettings = {
   appDays: null,
   updateNotesDefault: "all",
   emergencyAccess: true,
+  deadManSwitch: true,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

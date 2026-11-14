@@ -630,6 +630,53 @@ async function storeKeys(user: Identity, link: EmergencyLink, b: Record<string, 
   return { ok: true, stored: data.keys.length };
 }
 
+// ---- Granted by the holder's inactivity message (#282) ----
+
+// The holder's inactivity message went out and its owner chose "Notfallzugriff
+// für meine Vertrauenspersonen sofort freigeben" (lib/dead-man-switch.ts):
+// every trusted contact who accepted the role gets access now, without their
+// waiting period – a request still waiting included. Only contacts who
+// accepted at least their own waiting period before: one named and accepted
+// shortly before (say, after an account takeover) is not let in faster than
+// a request of theirs would be. The reason is in the activity log
+// ("deadman:<switch>"); the holder can end each access as usual.
+export async function grantForInactivity(holderId: string, switchId: string, now = Date.now()) {
+  if (!(await emergencyEnabled())) return [] as string[];
+  const holder = await person(holderId);
+  if (!holder) return [];
+  const names: string[] = [];
+  for (const link of await all<EmergencyLink>(
+    "SELECT * FROM emergency_contacts WHERE holder_id=? AND status IN ('accepted','requested') ORDER BY created_at,id",
+    holderId,
+  )) {
+    if (link.accepted_at === null || link.accepted_at > now - link.wait_days * DAY) continue;
+    await lockFor(`emergency:${link.id}`);
+    const changed = await run(
+      "UPDATE emergency_contacts SET status='granted',requested_at=COALESCE(requested_at,?),grant_at=?,granted_at=?,expires_at=?,reminded=0 WHERE id=? AND status IN ('accepted','requested')",
+      now,
+      now,
+      now,
+      link.access_days ? now + link.access_days * DAY : null,
+      link.id,
+    );
+    if (!changed.changes) continue;
+    const contact = await person(link.contact_id);
+    await record(holderId, "grant", link, `deadman:${switchId}`);
+    if (!contact) continue;
+    await notify(
+      holder.id,
+      `${contact.name} hat jetzt Lesezugriff auf deine Inhalte (Notfallzugriff). Beenden unter Einstellungen → Konto & Sicherheit → Notfallzugriff.`,
+    );
+    await notify(contact.id, `Dein Notfallzugriff auf die Inhalte von ${holder.name} ist freigegeben.`);
+    names.push(contact.name);
+  }
+  return names;
+}
+// Trusted contacts who accepted the role (for the settings of #282).
+export async function acceptedContacts(holderId: string) {
+  return Number((await one<{ n: number }>("SELECT COUNT(*) n FROM emergency_contacts WHERE holder_id=? AND status<>'invited'", holderId))?.n || 0);
+}
+
 // ---- Denying from the e-mail (no sign-in needed) ----
 
 // The link of one request: signed with the instance's key over the link and

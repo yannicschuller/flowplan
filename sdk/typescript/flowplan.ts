@@ -3427,7 +3427,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/settings`, { query }, options);
   }
 
-  /** Change something — The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*` and `emergency.*` (emergency access, session only) are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429). (POST /api/command) */
+  /** Change something — The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*`, `emergency.*` (emergency access) and `deadman.*` (inactivity message) are refused for every token (session only). Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429). (POST /api/command) */
   async command<A extends Command>(body: A, options?: RequestOptions): Promise<CommandResultOf<A>> {
     return this.json<CommandResultOf<A>>("POST", `/api/command`, { json: body, idempotent: true }, options);
   }

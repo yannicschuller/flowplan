@@ -19,6 +19,7 @@ import { deletePlugin, updatePlugin } from "./plugins";
 import { addDomain, removeDomain, savePublicationTheme } from "./custom-domains";
 import { afterEncryptedPageCreate, e2eeCommand, encryptedPageData, guardEncryptedCommand, isEncryptedPage, makeSpaceEncrypted } from "./e2ee-server";
 import { emergencyCommand } from "./emergency-access";
+import { deadmanCommand } from "./dead-man-switch";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
 import { setAiBlock, setAiRule } from "./ai/access";
 import { aiStatus } from "./ai/resolve";
@@ -817,8 +818,12 @@ async function runCommand(
   // Read tokens only read; tokens never administer the instance.
   if (user.apiScope === "read")
     throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  // Emergency access (lib/emergency-access.ts) is for the signed-in person only.
-  if (user.apiScope && (action.startsWith("admin.") || action.startsWith("token.") || action.startsWith("ai.") || action.startsWith("emergency.")))
+  // Emergency access (lib/emergency-access.ts) and the inactivity message
+  // (lib/dead-man-switch.ts) are for the signed-in person only.
+  if (
+    user.apiScope &&
+    (action.startsWith("admin.") || action.startsWith("token.") || action.startsWith("ai.") || action.startsWith("emergency.") || action.startsWith("deadman."))
+  )
     throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   if (user.demo && !demoAllows(action, b))
     throw new HttpError(
@@ -869,6 +874,13 @@ async function runCommand(
       case "emergency.keys":
         result = await emergencyCommand(user, action, b);
         break;
+      // Inactivity message per workspace ("dead man's switch", #282).
+      case "deadman.save":
+      case "deadman.remove":
+      case "deadman.checkin":
+      case "deadman.preview":
+        result = await deadmanCommand(user, action, b);
+        break;
       case "workspace.create":
         if (!(await instanceSettings()).allowWorkspaceCreation && !user.isAdmin)
           throw new HttpError(
@@ -881,11 +893,15 @@ async function runCommand(
       case "admin.settings": {
         requireAdmin(user);
         const before = (await instanceSettings()).emergencyAccess;
+        const deadmanBefore = (await instanceSettings()).deadManSwitch;
         result = await saveInstanceSettings(b.settings);
         // Switching the emergency access (#281) suspends or resumes every
         // granted access: a security event of its own.
         const after = (result as Awaited<ReturnType<typeof instanceSettings>>).emergencyAccess;
         if (before !== after) await audit(user.id, "admin.emergency", "instance", after ? "on" : "off");
+        // The inactivity message (#282) likewise.
+        const deadman = (result as Awaited<ReturnType<typeof instanceSettings>>).deadManSwitch;
+        if (deadmanBefore !== deadman) await audit(user.id, "admin.deadman", "instance", deadman ? "on" : "off");
         break;
       }
       // AI (lib/ai): administration, own settings, what the AI may read.

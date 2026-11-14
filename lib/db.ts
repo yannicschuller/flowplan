@@ -1471,6 +1471,25 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS emergency_contacts_due ON emergency_contacts(status,grant_at);
     CREATE TABLE IF NOT EXISTS emergency_keys(link_id TEXT NOT NULL REFERENCES emergency_contacts(id) ON DELETE CASCADE,space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,key_version INTEGER NOT NULL,sealed TEXT NOT NULL,public_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(link_id,space_id,key_version));
     CREATE INDEX IF NOT EXISTS emergency_keys_space ON emergency_keys(space_id);`);
+  // Inactivity message per workspace ("dead man's switch", #282,
+  // lib/dead-man-switch.ts): deadman_switches holds one switch per person
+  // and workspace (gone with the membership: the foreign key on members) –
+  // period, note, recipients (JSON), what counts as a sign of life, the
+  // coupling to emergency access, and its state: checkin_at the last
+  // explicit sign of life (arming, "Ich bin da", saving), warned the bits of
+  // the warnings sent (7, 3, 1 days before) with the time of the last,
+  // fired_at/fired_to the last sending. workspace_activity the last use of
+  // a workspace per person (written at most hourly). mail_queue.from_name
+  // the sender's display name of a message. New tables and a nullable
+  // column only – an older version leaves them alone – so the schema
+  // number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS deadman_switches(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,enabled INTEGER NOT NULL DEFAULT 0,period_days INTEGER NOT NULL,note TEXT NOT NULL DEFAULT '',recipients TEXT NOT NULL DEFAULT '[]',source TEXT NOT NULL DEFAULT 'account' CHECK(source IN ('account','workspace')),grant_emergency INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT 'armed' CHECK(state IN ('armed','fired')),checkin_at INTEGER NOT NULL,warned INTEGER NOT NULL DEFAULT 0,warned_at INTEGER,fired_at INTEGER,fired_to TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(user_id,workspace_id),FOREIGN KEY(workspace_id,user_id) REFERENCES members(workspace_id,user_id) ON DELETE CASCADE);
+    CREATE INDEX IF NOT EXISTS deadman_switches_due ON deadman_switches(enabled,state);
+    CREATE INDEX IF NOT EXISTS deadman_switches_workspace ON deadman_switches(workspace_id);
+    CREATE TABLE IF NOT EXISTS workspace_activity(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
+    CREATE INDEX IF NOT EXISTS workspace_activity_workspace ON workspace_activity(workspace_id);`);
+  if (!(d.prepare("PRAGMA table_info(mail_queue)").all() as { name: string }[]).some((c) => c.name === "from_name"))
+    d.exec("ALTER TABLE mail_queue ADD COLUMN from_name TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
