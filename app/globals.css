@@ -28931,15 +28931,16 @@ tr:hover .row-open-mark,
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
-    margin-top: -10px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: var(--blue);
     color: var(--on-accent);
     box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
   }
+  /* Only the circle, in the middle of the bar's height. */
   .mobile-tab-new {
+    justify-content: center;
     color: var(--text);
   }
   .mobile-tab:active .mobile-tab-new-icon,

@@ -338,13 +338,13 @@ export function MobileTabBar({
         className="mobile-tab mobile-tab-new"
         onClick={onNew}
         disabled={!onNew}
-        title={onNew ? undefined : t("Du kannst hier keine Seiten anlegen.", "You cannot create pages here.")}
+        // Only the round "+" shows (#297), so the name is given here.
+        aria-label={t("Neue Seite", "New page")}
+        title={onNew ? t("Neue Seite", "New page") : t("Du kannst hier keine Seiten anlegen.", "You cannot create pages here.")}
       >
         <span className="mobile-tab-new-icon" aria-hidden="true">
-          <Plus size={22} weight="bold" />
+          <Plus size={24} weight="bold" />
         </span>
-        {/* The visible label is the button's name (WCAG 2.5.3). */}
-        <span>{t("Neue Seite", "New page")}</span>
       </button>
       <button
         type="button"
