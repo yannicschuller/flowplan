@@ -89,6 +89,7 @@ import { GalleryCover } from "./gallery-cover";
 import { CoverFrame } from "./cover-frame";
 import { primePlaceholder } from "./image-placeholder";
 import { ScrollFade } from "./scroll-fade";
+import { useStickyTableHead } from "./sticky-table-head";
 import type { PageImage } from "@/lib/page-appearance";
 import {
   Fragment,
@@ -413,6 +414,7 @@ export default function DatabaseView({
   const t = useT();
   const tagOptions = useTagOptions();
   const keyHints = useKeyboardHints();
+  const stickyHead = useStickyTableHead();
   // "Mit KI zusammenfassen" for the view's records or one record.
   const aiSummarize = useAiAvailability("summarize", page.id);
   const aiBlockedHint = useAiBlockedHint();
@@ -3503,6 +3505,7 @@ export default function DatabaseView({
           }}
         >
           <table
+            ref={stickyHead}
             role="grid"
             aria-label={t(`${view.name} – Tabelle`, `${view.name} – table`)}
             className="data-table configurable-table"
