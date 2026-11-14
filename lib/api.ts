@@ -18,6 +18,7 @@ import { teamReply } from "./service-desk";
 import { deletePlugin, updatePlugin } from "./plugins";
 import { addDomain, removeDomain, savePublicationTheme } from "./custom-domains";
 import { afterEncryptedPageCreate, e2eeCommand, encryptedPageData, guardEncryptedCommand, isEncryptedPage, makeSpaceEncrypted } from "./e2ee-server";
+import { emergencyCommand } from "./emergency-access";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
 import { setAiBlock, setAiRule } from "./ai/access";
 import { aiStatus } from "./ai/resolve";
@@ -816,7 +817,8 @@ async function runCommand(
   // Read tokens only read; tokens never administer the instance.
   if (user.apiScope === "read")
     throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  if (user.apiScope && (action.startsWith("admin.") || action.startsWith("token.") || action.startsWith("ai.")))
+  // Emergency access (lib/emergency-access.ts) is for the signed-in person only.
+  if (user.apiScope && (action.startsWith("admin.") || action.startsWith("token.") || action.startsWith("ai.") || action.startsWith("emergency.")))
     throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   if (user.demo && !demoAllows(action, b))
     throw new HttpError(
@@ -855,6 +857,18 @@ async function runCommand(
       case "e2ee.title":
         result = await e2eeCommand(user, action, b, afterCommit);
         break;
+      // Emergency access for trusted contacts (#281).
+      case "emergency.designate":
+      case "emergency.accept":
+      case "emergency.leave":
+      case "emergency.remove":
+      case "emergency.request":
+      case "emergency.cancel":
+      case "emergency.deny":
+      case "emergency.revoke":
+      case "emergency.keys":
+        result = await emergencyCommand(user, action, b);
+        break;
       case "workspace.create":
         if (!(await instanceSettings()).allowWorkspaceCreation && !user.isAdmin)
           throw new HttpError(
@@ -864,10 +878,16 @@ async function runCommand(
         await assertMayCreateWorkspace(user);
         result = { id: await createWorkspaceInner(user.id, str.parse(b.name)) };
         break;
-      case "admin.settings":
+      case "admin.settings": {
         requireAdmin(user);
+        const before = (await instanceSettings()).emergencyAccess;
         result = await saveInstanceSettings(b.settings);
+        // Switching the emergency access (#281) suspends or resumes every
+        // granted access: a security event of its own.
+        const after = (result as Awaited<ReturnType<typeof instanceSettings>>).emergencyAccess;
+        if (before !== after) await audit(user.id, "admin.emergency", "instance", after ? "on" : "off");
         break;
+      }
       // AI (lib/ai): administration, own settings, what the AI may read.
       case "admin.ai":
         result = await saveInstanceAi(user, b);

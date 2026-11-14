@@ -161,6 +161,40 @@ each member's public key.
   document with the newest key over time, but that does not take back what
   they already had.
 
+## Emergency access (trusted contacts, #281)
+
+A holder can name trusted contacts (`lib/emergency-access.ts`) who may
+read and export the holder's private spaces after a waiting period the
+holder can deny in. For encrypted spaces the server stays zero-knowledge:
+
+- The **holder's browser** seals every key version of each encrypted space
+  the holder owns (private, not deleted, holder still a full member) for
+  the contact's public key, with its own context
+  `flowplan:e2ee:emergency-key:v1:<spaceId>:<version>:<holderId>:<contactId>`
+  (`emergencyKeyContext`), and stores the blobs with `emergency.keys`
+  (`emergency_keys`, together with the public key they were sealed for).
+  A sealed key opens neither as a member's space key nor for another holder
+  or contact.
+- The server checks what it can without opening anything: the space is one
+  of the holder's emergency spaces, the holder holds that version, the
+  public key is the contact's current one, the blob has the sealed-key
+  format. Contacts without a key pair are listed; their keys are sealed the
+  next time the holder is unlocked after they set one up (the same happens
+  for a new key version after a rotation, and after the contact reset their
+  key pair).
+- **Release**: `GET /api/emergency/<link>/keys` answers only while the
+  access is granted (waiting period over, not denied, not revoked, not
+  expired, feature on) and only to the contact, in a browser session (never
+  an API token). The ciphertext comes from
+  `GET /api/emergency/<link>/pages/<id>/log`; the contact's browser decrypts
+  it and builds the Markdown (`lib/e2ee-markdown.ts`).
+- **Ending** an access after keys went out marks those spaces
+  `rotate_pending`: the holder's browser makes a new key at the next visit
+  (as after removing a member). What the contact read stays read; nothing
+  written after the rotation can be read.
+- The contact never gets a membership, a grant or `e2ee_space_keys` rows:
+  the space's own routes stay closed to them.
+
 ## Documents: encrypted sync path
 
 Encrypted pages do not use `document.sync` (which stores HTML and a

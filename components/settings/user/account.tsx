@@ -1,7 +1,7 @@
 "use client";
 // Settings → Konto & Sicherheit, as cards: Profil, Anmeldung & Sicherheit
 // (password, two-factor, passkeys, signed-in devices), Ende-zu-Ende-
-// Verschlüsselung, one's limits on this instance and – at the end – the
+// Verschlüsselung, Notfallzugriff (trusted contacts, #281), one's limits on this instance and – at the end – the
 // danger zone (reset encryption keys, delete the account).
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "../../i18n";
@@ -12,6 +12,7 @@ import { TwoFactorSettings } from "../../two-factor";
 import { DeleteOwnAccount } from "../../delete-own-account";
 import { MySessions } from "../../my-sessions";
 import { E2eeKeySettings, E2eeResetRow } from "../../e2ee";
+import { EmergencyAccessSettings } from "../../emergency-access";
 import { SignInMethods } from "../../sign-in-methods";
 import { useUserSettings } from "../user-context";
 
@@ -56,6 +57,8 @@ export default function AccountSection() {
       )}
 
       {!demo && <E2eeKeySettings userId={boot.user.id} onError={onError} />}
+
+      {!demo && <EmergencyAccessSettings userId={boot.user.id} onError={onError} />}
 
       {boot.myLimits && (
         <SettingGroup

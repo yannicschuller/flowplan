@@ -162,6 +162,8 @@ import { onShutdown } from "@/lib/cluster/runtime";
 import { workflowGet } from "@/lib/workflows/commands";
 import { workflowPost } from "@/lib/workflows/rest";
 import { withReadMemo } from "@/lib/read-memo";
+import { emergencyForcedOff, emergencyContent, emergencyExport, emergencyKeys, emergencyLog, emergencyOverview, emergencyPage } from "@/lib/emergency-access";
+import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -229,6 +231,10 @@ async function handleGET(
           "Content-Disposition": 'inline; filename="flowplan.ics"',
         },
       });
+    // Denying a request for emergency access from the e-mail (#281,
+    // lib/emergency-access.ts): the signed link is the authorization; this
+    // page only asks, the button below sends the denial.
+    if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") return await emergencyDenyPage(url.searchParams.get("token") || "");
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(await listApiTokens(user));
@@ -1146,6 +1152,7 @@ async function handleGET(
         // Administrators of every kind of sign-in (SSO groups included).
         adminIds: await adminUserIds(),
         localLogin: localLoginEnabled(),
+        emergencyForcedOff: emergencyForcedOff(),
         restorePending: pendingRestore(),
         // Who may use AI when the administration chose "selected people".
         aiPolicy: { access: (await instanceAiSettings()).access, enabled: (await instanceAiSettings()).enabled, allowed: await aiAllowedUsers() },
@@ -1164,6 +1171,34 @@ async function handleGET(
       if (path.length === 4 && path[1] === "pages" && path[3] === "log") {
         const after = z.coerce.number().int().min(0).parse(url.searchParams.get("after") || "0");
         return NextResponse.json(await documentLog(user, z.uuid().parse(path[2]), after));
+      }
+      throw new HttpError(404, "Nicht gefunden.");
+    }
+    // Emergency access (#281): the overview of the settings and, for a
+    // contact whose access is granted, the holder's content to read and
+    // export. In the browser only, never with an API token.
+    if (path[0] === "emergency") {
+      if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+      const headers = { "Cache-Control": "private, no-store" };
+      if (path.length === 1) return NextResponse.json(await emergencyOverview(user), { headers });
+      if (path.length === 3 && path[2] === "content") return NextResponse.json(await emergencyContent(user, path[1]), { headers });
+      if (path.length === 3 && path[2] === "keys") return NextResponse.json(await emergencyKeys(user, path[1]), { headers });
+      if (path.length === 4 && path[2] === "pages") return NextResponse.json(await emergencyPage(user, path[1], path[3]), { headers });
+      if (path.length === 5 && path[2] === "pages" && path[4] === "log") {
+        const after = z.coerce.number().int().min(0).parse(url.searchParams.get("after") || "0");
+        return NextResponse.json(await emergencyLog(user, path[1], path[3], after), { headers });
+      }
+      if (path.length === 3 && path[2] === "export") {
+        const result = await emergencyExport(user, path[1], z.uuid().parse(url.searchParams.get("space")));
+        const name = encodeURIComponent(result.name).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+        return new Response(new Uint8Array(result.bytes), {
+          headers: {
+            ...headers,
+            "Content-Type": result.mime,
+            "Content-Disposition": `attachment; filename="flowplan.zip"; filename*=UTF-8''${name}`,
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
       }
       throw new HttpError(404, "Nicht gefunden.");
     }
@@ -1291,6 +1326,12 @@ async function handlePOST(
       requireBodySize(req, maxBody, "Anfrage zu groß.");
     else if (Number(req.headers.get("content-length") || 0) > maxBody)
       throw new HttpError(413, "Anfrage zu groß.");
+    // The denial from the e-mail's confirmation page (#281): no sign-in,
+    // the signed link decides.
+    if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") {
+      const form = await req.formData();
+      return await emergencyDenied(String(form.get("token") || ""));
+    }
     const user = await requireUser();
     // Every POST here changes something; read tokens only read (the
     // Markdown export has a route of its own).

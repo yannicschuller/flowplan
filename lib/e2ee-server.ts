@@ -36,7 +36,7 @@ const passphraseWrap = z
 const recoveryWrap = z
   .object({ alg: z.literal("HKDF-SHA256/AES-256-GCM"), v: z.number().int().min(1).max(10), salt: b64(64), iv: b64(32), ct: b64(512) })
   .strict();
-const sealedKey = z
+export const sealedKey = z
   .object({
     alg: z.literal("X25519-HKDF-SHA256/AES-256-GCM"),
     v: z.number().int().min(1).max(10),
@@ -61,7 +61,7 @@ const titleCipher = z
 
 // ---- What is encrypted ----
 
-type SpaceFlags = Space & { encrypted?: number; key_version?: number; encrypt_titles?: number; rotate_pending?: number };
+export type SpaceFlags = Space & { encrypted?: number; key_version?: number; encrypt_titles?: number; rotate_pending?: number };
 export async function encryptedSpace(spaceId: string | null | undefined): Promise<SpaceFlags | null> {
   if (!spaceId) return null;
   const space = await one<SpaceFlags>("SELECT * FROM spaces WHERE id=?", spaceId);
@@ -299,6 +299,11 @@ const toB64 = (data: Uint8Array) => Buffer.from(data).toString("base64");
 // The snapshot (when the reader is behind it) and every update after.
 export async function documentLog(user: Identity, pageId: string, after: number) {
   const { page, space } = await requireEncryptedDocument(user, pageId, false);
+  return await encryptedLog(page, space, after);
+}
+// The same for a reader whose access the caller checked (the emergency
+// access of a trusted contact, lib/emergency-access.ts): ciphertext only.
+export async function encryptedLog(page: Page, space: SpaceFlags, after: number) {
   const snapshot = await one<{ upto: number; key_version: number; data: Uint8Array }>("SELECT * FROM e2ee_snapshots WHERE page_id=?", page.id);
   const fromSnapshot = !!snapshot && after < snapshot.upto;
   const start = fromSnapshot ? snapshot!.upto : after;

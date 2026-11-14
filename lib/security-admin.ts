@@ -157,6 +157,13 @@ function incidentScope(i: { rule: string; key: string; actor_id: string | null; 
       return { where: "e.actor_id=?", args: [i.actor_id ?? ""], before: HOUR };
     case "e2ee_mass_reset":
       return { where: "e.kind='admin.settings' AND e.detail LIKE 'e2ee.identity.reset%'", args: [], before: HOUR };
+    // The requests for the account ("holder:<id>") or by the person ("contact:<id>").
+    case "emergency_requests": {
+      const [side, who] = i.key.split(":");
+      return side === "holder"
+        ? { where: "e.kind LIKE 'emergency.%' AND e.detail LIKE ?", args: [`holder:${who} %`], before: T.emergencyWindow }
+        : { where: "e.kind LIKE 'emergency.%' AND e.actor_id=?", args: [who ?? ""], before: T.emergencyWindow };
+    }
     case "privilege_change":
       return { where: "(e.actor_id=? OR e.id=?)", args: [i.actor_id ?? "", Number(i.key.replace(/^event:/, "")) || 0], before: 10 * MINUTE };
   }
@@ -179,6 +186,7 @@ function ruleReason(rule: SecurityRule) {
     e2ee_mass_reset: [`Mindestens ${T.e2eeResetAccounts} Konten haben innerhalb von ${min(T.e2eeResetWindow)} Minuten ihren Schlüssel für verschlüsselte Bereiche zurückgesetzt.`, `At least ${T.e2eeResetAccounts} accounts reset their key for encrypted spaces within ${min(T.e2eeResetWindow)} minutes.`],
     mass_export: [`Mindestens ${T.exportsPerHour} Exporte in einer Stunde und ein Vielfaches des Üblichen dieser Person in den letzten 30 Tagen.`, `At least ${T.exportsPerHour} exports in an hour and many times this person's usual amount over the last 30 days.`],
     probing: [`Mindestens ${T.probes} Anfragen an die API mit der Antwort 401, 403 oder 404 von derselben Adresse innerhalb von ${min(T.probeWindow)} Minuten – jemand probiert Adressen, IDs oder Zugänge durch.`, `At least ${T.probes} API requests answered with 401, 403 or 404 from the same address within ${min(T.probeWindow)} minutes – someone is trying addresses, IDs or access.`],
+    emergency_requests: [`Mindestens ${T.emergencyRequests} Anfragen auf Notfallzugriff für dasselbe Konto oder von derselben Person innerhalb von ${min(T.emergencyWindow) / 60} Stunden.`, `At least ${T.emergencyRequests} emergency access requests for the same account or by the same person within ${min(T.emergencyWindow) / 60} hours.`],
     injection_attempts: [`Mindestens ${T.contentAttempts} abgewiesene Versuche in einer Stunde, über Inhalte interne Adressen (SSRF) oder gefährliches Markup einzuschleusen.`, `At least ${T.contentAttempts} refused attempts within an hour to sneak in internal addresses (SSRF) or dangerous markup through content.`],
   };
   return r[rule] ?? ["", ""];

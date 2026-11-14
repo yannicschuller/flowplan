@@ -14,8 +14,8 @@ import { resolve, posix } from "node:path";
 import { all, one, transaction, audit } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage, pageRole, spaceRole } from "./permissions";
-import { lockedPageIds, requireUnlocked } from "./journal-extras";
-import { requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
+import { inPinJournal, lockedPageIds, pinJournalPageIds, requireUnlocked } from "./journal-extras";
+import { encryptedPageIds, requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
 import { database, rows } from "./api";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
@@ -72,6 +72,13 @@ export type MarkdownExportOptions = {
   // For a prompt (lib/ai/content.ts): no values from other databases –
   // relations, rollups and formulas may show data the AI may not read.
   forAi?: boolean;
+  // The emergency access of a trusted contact (#281, lib/emergency-access.ts):
+  // exported as the holder, but only from these spaces (pages, links,
+  // embeds, attachments), every journal with a PIN left out whether or not
+  // the holder entered it lately, no values from other databases (as for
+  // the AI) and no entry of the holder's in the activity log (the contact's
+  // own is written by the caller).
+  emergency?: { spaceIds: string[] };
 };
 const unavailable = () => ct("Nicht verfügbar", "Not available"),
   recordWord = () => ct("Eintrag", "Record");
@@ -133,11 +140,17 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
   } else {
     if (!options.pageId) throw new HttpError(400, "Seite fehlt.");
     root = await requirePage(user, options.pageId);
-    await requireUnlocked(user, root);
+    if (options.emergency) {
+      if (await inPinJournal(root)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
+    } else await requireUnlocked(user, root);
     await requirePlaintext(root);
   }
   const workspaceId = space ? space.workspace_id : root!.workspace_id;
-  const locked = await lockedPageIds(user, workspaceId);
+  const scope = options.emergency ? new Set(options.emergency.spaceIds) : null;
+  if (scope && !scope.has(space ? space.id : root!.space_id)) throw new HttpError(403, "Keine Berechtigung für diese Seite.");
+  const locked = scope
+    ? new Set([...(await pinJournalPageIds(workspaceId)), ...(await encryptedPageIds(workspaceId))])
+    : await lockedPageIds(user, workspaceId);
   if (!zip && options.includeSubpages)
     throw new HttpError(400, "Unterseiten sind nur im ZIP-Export verfügbar.");
   if (options.rowId && (root?.kind !== "database" || options.includeSubpages))
@@ -145,7 +158,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
   const visible = await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL ORDER BY position,id",
     workspaceId,
-  ), async (page) => !locked.has(page.id) && await pageRole(user, page));
+  ), async (page) => !locked.has(page.id) && (!scope || scope.has(page.space_id)) && await pageRole(user, page));
   // Top-level pages: the one page, or all the person may read in the space.
   const roots = space ? visible.filter((page) => page.space_id === space.id && !page.parent_id) : [root!];
   const selected: Page[] = [...roots],
@@ -206,6 +219,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
       try {
         page = await requirePage(user, id);
       } catch {}
+      if (page && scope && (!scope.has(page.space_id) || locked.has(page.id))) page = null;
       pageCache.set(id, page);
     }
     return pageCache.get(id)!;
@@ -606,7 +620,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
       const list = (Array.isArray(value) ? value : value === null || value === undefined || value === "" ? [] : [value]) as unknown[];
       let out: FrontmatterValue;
       if (value === "#ACCESS") continue;
-      if (options.forAi && ["relation", "rollup", "formula"].includes(field.type)) continue;
+      if ((options.forAi || options.emergency) && ["relation", "rollup", "formula"].includes(field.type)) continue;
       if (field.type === "checkbox") out = !!value;
       else if (field.type === "number") out = typeof value === "number" && Number.isFinite(value) ? value : null;
       else if (field.type === "multiselect") out = list.map(String);
@@ -945,7 +959,9 @@ export async function exportMarkdown(
     ),
   );
   const bytes = await writeZip(entries);
-  if (space) await audit(user.id, "space.markdown.export", space.id);
+  if (options.emergency) {
+    // Logged by lib/emergency-access.ts as the contact's export.
+  } else if (space) await audit(user.id, "space.markdown.export", space.id);
   else await audit(user.id, "page.markdown.export", root!.id);
   return {
     bytes,

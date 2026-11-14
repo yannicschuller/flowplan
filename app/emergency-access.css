@@ -1,0 +1,115 @@
+/* Settings → Konto & Sicherheit → Notfallzugriff (#281,
+   components/emergency-access.tsx): the lists of trusted contacts and the
+   read-only view of a holder's content. */
+.emergency-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.emergency-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.emergency-item:first-child {
+  border-top: 0;
+}
+.emergency-who {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.emergency-who small,
+.emergency-note,
+.emergency-empty {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.emergency-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.emergency-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.emergency-add > input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.emergency-viewer {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 16px;
+  min-height: 320px;
+}
+.emergency-tree {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  overflow: auto;
+  max-height: 65vh;
+}
+.emergency-tree h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.emergency-tree h3 small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.emergency-tree ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.emergency-page {
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.emergency-page:hover,
+.emergency-page.active {
+  background: var(--hover, rgba(0, 0, 0, 0.05));
+}
+.emergency-depth-1 { padding-inline-start: 12px; }
+.emergency-depth-2 { padding-inline-start: 24px; }
+.emergency-depth-3 { padding-inline-start: 36px; }
+.emergency-depth-4 { padding-inline-start: 48px; }
+.emergency-depth-5 { padding-inline-start: 60px; }
+.emergency-depth-6 { padding-inline-start: 72px; }
+.emergency-content header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.emergency-markdown {
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .emergency-viewer {
+    grid-template-columns: 1fr;
+  }
+}

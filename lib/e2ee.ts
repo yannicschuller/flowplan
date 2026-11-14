@@ -216,6 +216,12 @@ export async function createIdentity(passphrase: string, iterations = PBKDF2_ITE
 export function spaceKeyContext(spaceId: string, version: number, userId: string) {
   return `flowplan:e2ee:space-key:v1:${spaceId}:${version}:${userId}`;
 }
+// A space key sealed for a trusted contact of the emergency access (#281,
+// lib/emergency-access.ts): its own purpose, the holder and the contact, so
+// it opens neither as a member's key nor for another holder or contact.
+export function emergencyKeyContext(spaceId: string, version: number, holderId: string, contactId: string) {
+  return `flowplan:e2ee:emergency-key:v1:${spaceId}:${version}:${holderId}:${contactId}`;
+}
 async function sharedKey(privateKey: CryptoKey, publicKey: CryptoKey, salt: Uint8Array, context: string) {
   const secret = await subtle().deriveBits({ name: "X25519", public: publicKey }, privateKey, 256);
   const base = await subtle().importKey("raw", secret, "HKDF", false, ["deriveKey"]);

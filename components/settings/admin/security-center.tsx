@@ -952,6 +952,7 @@ function Setup({ d }: { d: Overview }) {
     e2ee_mass_reset: t(`${th.e2eeResetAccounts} Konten setzen ihren Verschlüsselungsschlüssel in ${minutes(th.e2eeResetWindow)} Minuten zurück`, `${th.e2eeResetAccounts} accounts reset their encryption key within ${minutes(th.e2eeResetWindow)} minutes`),
     mass_export: t(`Mehr als ${th.exportsPerHour} Exporte einer Person in einer Stunde`, `More than ${th.exportsPerHour} exports by one person in an hour`),
     probing: t(`${th.probes} abgewiesene API-Anfragen (401/403/404) einer Adresse in ${minutes(th.probeWindow)} Minuten`, `${th.probes} refused API requests (401/403/404) from one address in ${minutes(th.probeWindow)} minutes`),
+    emergency_requests: t(`${th.emergencyRequests} Anfragen auf Notfallzugriff für ein Konto oder von einer Person an einem Tag`, `${th.emergencyRequests} emergency access requests for one account or by one person in a day`),
     injection_attempts: t(`${th.contentAttempts} abgewehrte Skripte oder interne Adressen in einer Stunde`, `${th.contentAttempts} refused scripts or internal addresses in an hour`),
   };
   const on = (value: boolean, label: string) => <StatusBadge tone={value ? "ok" : "off"}>{label}</StatusBadge>;

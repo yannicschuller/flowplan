@@ -52,6 +52,19 @@ export const securityKinds = {
   "workflow.auto_paused": { severity: "info", de: "Workflow automatisch pausiert", en: "Workflow paused automatically" },
   "workflow.approval.refused": { severity: "warn", de: "Freigabe aus der App abgewiesen (Bestätigung oder Gerät)", en: "Approval from the app refused (confirmation or device)" },
   "workflow.limit": { severity: "warn", de: "Workflow am Limit (Kaskade oder Rate)", en: "Workflow at its limit (cascade or rate)" },
+  // Emergency access for trusted contacts (#281, lib/emergency-access.ts).
+  "emergency.designated": { severity: "info", de: "Vertrauensperson eingetragen", en: "Trusted contact added" },
+  "emergency.accepted": { severity: "info", de: "Rolle als Vertrauensperson angenommen", en: "Trusted contact role accepted" },
+  "emergency.removed": { severity: "info", de: "Vertrauensperson entfernt", en: "Trusted contact removed" },
+  "emergency.requested": { severity: "warn", de: "Notfallzugriff angefragt", en: "Emergency access requested" },
+  "emergency.reminder": { severity: "info", de: "Erinnerung an angefragten Notfallzugriff", en: "Reminder of requested emergency access" },
+  "emergency.cancelled": { severity: "info", de: "Anfrage auf Notfallzugriff zurückgezogen", en: "Emergency access request withdrawn" },
+  "emergency.denied": { severity: "info", de: "Notfallzugriff abgelehnt", en: "Emergency access denied" },
+  "emergency.granted": { severity: "warn", de: "Notfallzugriff freigegeben", en: "Emergency access granted" },
+  "emergency.revoked": { severity: "info", de: "Notfallzugriff beendet", en: "Emergency access ended" },
+  "emergency.expired": { severity: "info", de: "Notfallzugriff abgelaufen", en: "Emergency access expired" },
+  "emergency.viewed": { severity: "info", de: "Inhalte über Notfallzugriff gelesen", en: "Content read through emergency access" },
+  "emergency.exported": { severity: "warn", de: "Export über Notfallzugriff", en: "Export through emergency access" },
 } as const satisfies Record<string, Kind>;
 export type SecurityKind = keyof typeof securityKinds;
 export const isSecurityKind = (value: string): value is SecurityKind => value in securityKinds;
@@ -70,5 +83,6 @@ export const securityRules = {
   mass_export: { severity: "warn", de: "Ungewöhnlich viele Exporte", en: "Unusually many exports" },
   probing: { severity: "warn", de: "Abtasten von Adressen und IDs", en: "Probing of addresses and IDs" },
   injection_attempts: { severity: "warn", de: "Wiederholte Angriffsversuche über Inhalte", en: "Repeated attack attempts through content" },
+  emergency_requests: { severity: "warn", de: "Mehrere Anfragen auf Notfallzugriff in kurzer Zeit", en: "Several emergency access requests in a short time" },
 } as const satisfies Record<string, Kind>;
 export type SecurityRule = keyof typeof securityRules;

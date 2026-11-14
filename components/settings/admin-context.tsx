@@ -68,6 +68,8 @@ export type AdminData = {
   // Effective session lifetimes (lib/session-policy.ts).
   sessionPolicy?: SessionSettings;
   localLogin?: boolean;
+  // FLOWPLAN_EMERGENCY_ACCESS=off (#281): the switch cannot turn it on.
+  emergencyForcedOff?: boolean;
   localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean; password?: boolean }>;
   // Connected SSO identities (#101) and the accounts that sign in with LDAP.
   identities?: { user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }[];

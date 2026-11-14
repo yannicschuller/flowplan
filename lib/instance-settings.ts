@@ -61,6 +61,10 @@ export const instanceSettingsSchema = z.object({
   // "Neuigkeiten nach Updates" that new accounts start with (#223,
   // lib/update-notes-pref.ts); existing accounts keep theirs.
   updateNotesDefault: updateNotesLevelSchema.default("all"),
+  // Emergency access for trusted contacts (#281, lib/emergency-access.ts):
+  // on by default; off suspends every granted access and refuses new
+  // requests. FLOWPLAN_EMERGENCY_ACCESS=off switches it off regardless.
+  emergencyAccess: z.boolean().default(true),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -90,6 +94,7 @@ const defaults: InstanceSettings = {
   appSessions: null,
   appDays: null,
   updateNotesDefault: "all",
+  emergencyAccess: true,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

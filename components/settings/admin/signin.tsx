@@ -160,6 +160,30 @@ export default function SigninSection() {
         </SettingGroup>
       )}
 
+      <SettingGroup
+        id="emergency"
+        title={t("Notfallzugriff", "Emergency access")}
+        description={t(
+          "Personen können Vertrauenspersonen eintragen, die im Notfall nach einer Wartezeit ihre privaten Bereiche lesen und exportieren – ohne das Konto zu übernehmen. Jede Anfrage und jeder freigegebene Zugriff steht unter Sicherheit.",
+          "People can name trusted contacts who, in an emergency and after a waiting period, read and export their private spaces – without taking over the account. Every request and every granted access shows under Security.",
+        )}
+      >
+        {data.emergencyForcedOff ? (
+          <SettingRow label={t("Notfallzugriff erlauben", "Allow emergency access")} description={t("Über FLOWPLAN_EMERGENCY_ACCESS=off in der Umgebung ausgeschaltet.", "Switched off through FLOWPLAN_EMERGENCY_ACCESS=off in the environment.")}>
+            <StatusBadge tone="off">{t("Aus", "Off")}</StatusBadge>
+          </SettingRow>
+        ) : (
+          <InstanceSwitch
+            field="emergencyAccess"
+            label={t("Notfallzugriff erlauben", "Allow emergency access")}
+            description={t(
+              "Aus: Niemand kann Notfallzugriff anfragen, freigegebene Zugriffe ruhen, bis du ihn wieder einschaltest. Ablehnen und Beenden bleibt möglich.",
+              "Off: nobody can request emergency access, granted access is suspended until you switch it on again. Denying and ending stay possible.",
+            )}
+          />
+        )}
+      </SettingGroup>
+
       {sessions && (
         <SettingGroup
           id="sessions"
