@@ -2,6 +2,101 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.9.6 – 2026-11-14
+
+### Security
+
+- Resetting an account's encryption key shows as a warning of its own in the security overview; several accounts resetting theirs within an hour open an incident.
+
+### New
+
+- Tabs above the page: ⌘/Ctrl-click or the middle mouse button opens a new tab, and every tab has its own history. The split view shows two views with their own tabs, and tabs can be dragged between them. Your device remembers tabs and views ([#279](https://github.com/yannicschuller/flowplan/issues/279)).
+- Emergency access: trusted contacts can read and export your private spaces, encrypted ones included, after a waiting period in which you can deny ([#281](https://github.com/yannicschuller/flowplan/issues/281)).
+- Inactivity message: if you don't use Flowplan for a period you choose, a note of yours goes to up to ten e-mail addresses – with reminders before and, if you like, immediate emergency access ([#282](https://github.com/yannicschuller/flowplan/issues/282)).
+- Guests with an edit link edit whiteboards and notebooks live in the same editor – without an account and without uploads ([#280](https://github.com/yannicschuller/flowplan/issues/280)).
+- Tabs block: titled tabs holding any blocks ([#272](https://github.com/yannicschuller/flowplan/issues/272)).
+- Insert between any blocks (“+” everywhere), copy and cut blocks from the block menu, choose blocks with their handle ([#261](https://github.com/yannicschuller/flowplan/issues/261), [#263](https://github.com/yannicschuller/flowplan/issues/263), [#264](https://github.com/yannicschuller/flowplan/issues/264)).
+- Lock, unlock, favourite or copy the links of several pages in the sidebar at once ([#275](https://github.com/yannicschuller/flowplan/issues/275)).
+- The workspace accent colour now also applies to the logo, the tab icon, default avatars and all controls ([#277](https://github.com/yannicschuller/flowplan/issues/277)).
+- Collections page through all matches with “Load more” ([#270](https://github.com/yannicschuller/flowplan/issues/270)).
+- AI and workflows see a journal day's completed tasks; new workflow step “Read journal day” ([#273](https://github.com/yannicschuller/flowplan/issues/273)).
+- Settings for full-width pages and for animations ([#257](https://github.com/yannicschuller/flowplan/issues/257), [#260](https://github.com/yannicschuller/flowplan/issues/260)).
+
+### Improved
+
+- Text style and alignment are small menus in the toolbar; edit links use the same toolbar and block menu as the workspace ([#278](https://github.com/yannicschuller/flowplan/issues/278)).
+- Official marketplace templates carry their title in German and English; publishing requires the English title ([#276](https://github.com/yannicschuller/flowplan/issues/276)).
+- Meeting citations show the passage's time; first-person commitments name the owner ([#199](https://github.com/yannicschuller/flowplan/issues/199)).
+- Back and forward bring a place back where you left it ([#262](https://github.com/yannicschuller/flowplan/issues/262)).
+- The mobile app can offer offline use and switch it on through the page ([#203](https://github.com/yannicschuller/flowplan/issues/203)).
+
+### Bug fixes
+
+- Links in locked and read-only pages open in the same window ([#274](https://github.com/yannicschuller/flowplan/issues/274)).
+- A header cell's own background colour in tables is shown ([#283](https://github.com/yannicschuller/flowplan/issues/283)).
+- Tables: pointing at a column border no longer makes every row taller; the table of contents' close button stays in reach ([#258](https://github.com/yannicschuller/flowplan/issues/258), [#259](https://github.com/yannicschuller/flowplan/issues/259)).
+- Tasks can no longer appear ticked in reading mode; callouts and quotes have a single handle ([#278](https://github.com/yannicschuller/flowplan/issues/278)).
+- Pasted blocks land where the caret is; one undo fully reverts a “Turn into”.
+- Sideways strips no longer scroll up and down on phones; “+” and the handle are fully visible in records and on share pages.
+
+<details>
+<summary>All commits</summary>
+
+- CI: new tests order by seq or insertion on Postgres; text style button's name includes what it shows; workflow page budget 1830 KB ([03f2523](https://github.com/yannicschuller/flowplan/commit/03f2523b6bd20ceaf0f8b5d954f3354cee1bda52))
+- Release notes 0.9.6 ([78db91d](https://github.com/yannicschuller/flowplan/commit/78db91dc18b2d489e80b21a57b54f4d4f90aa62c))
+- Help docs: tabs, guest editing, emergency access, inactivity message, toolbar menus ([6bc8858](https://github.com/yannicschuller/flowplan/commit/6bc885853848d45a4141270c82e7a678a93b5931))
+- Gallery: list the tab bar's context menu as not yet shown in a scene (#279) ([040dff7](https://github.com/yannicschuller/flowplan/commit/040dff71d901131944c8c3e0c7a90bff3ad715ac))
+- Gallery coverage: list the emergency access and inactivity message settings as not shown yet (#281, #282) ([1b90ad7](https://github.com/yannicschuller/flowplan/commit/1b90ad7b34da491f17153f1de18b5713e789888e))
+- Inactivity message: settings, administration switch, translations (#282) ([3ecee46](https://github.com/yannicschuller/flowplan/commit/3ecee463770e879998c149e5ecacd42a76387372))
+- Inactivity message per workspace ("dead man's switch"): server side (#282) ([e7870d9](https://github.com/yannicschuller/flowplan/commit/e7870d969b5c6cdd7af641de8b0d73986fafe165))
+- Tabs above the page, two frames side by side, history per tab (#279) ([4b9b67b](https://github.com/yannicschuller/flowplan/commit/4b9b67b12b7431498660db2f0ffc8d5836a5ce07))
+- Tabs and frames: the layout model (#279) ([541efde](https://github.com/yannicschuller/flowplan/commit/541efde2b362c567106e46ed54e5d00c17ffb845))
+- Emergency access: waiting period and access length selects wide enough for their labels (#281) ([fb7d31a](https://github.com/yannicschuller/flowplan/commit/fb7d31aa5370a4b865033b8269caf8bc59508d1c))
+- Browser test: emergency access from designation to reading and ending (#281) ([958b8f1](https://github.com/yannicschuller/flowplan/commit/958b8f1ec2e29efb2818eac0b5166a0d6262b251))
+- Editor UI quirks (#278): style and alignment menus, suggest label, read-mode tasks, shared editor ([5902930](https://github.com/yannicschuller/flowplan/commit/5902930ff52a1e5f8c674f91a5f71f15720f42a9))
+- Guests edit shared whiteboards and notebooks live through an edit link (#280) ([cf3aec8](https://github.com/yannicschuller/flowplan/commit/cf3aec89c012e76144e001148e77a45c7bcb595e))
+- Tables: a header cell's own background colour is shown (#283) ([0f4919f](https://github.com/yannicschuller/flowplan/commit/0f4919fd33e12c76853e45357981b48d9b4eb521))
+- Emergency access: settings, viewer, administration switch, translations (#281) ([5bdcc11](https://github.com/yannicschuller/flowplan/commit/5bdcc11255c6d5a1b34fedbce006f1231b14ba5f))
+- Emergency access for trusted contacts: server side (#281) ([b5929f9](https://github.com/yannicschuller/flowplan/commit/b5929f97f60976eb82484fd235907e19911c5d05))
+- Quality: document page JavaScript budget 2300 KB ([bcb1378](https://github.com/yannicschuller/flowplan/commit/bcb1378774e5c89369f3925ad839874f2b775288))
+- Block "+" and handle sit inside record and share-page editors (#278) ([b916fdb](https://github.com/yannicschuller/flowplan/commit/b916fdb8ddc92a4452b6c939335bf4c177689449))
+- Regenerate help docs for #276 and #277 ([aa74e69](https://github.com/yannicschuller/flowplan/commit/aa74e69676048ce88937ff39aa70b5521e8d353f))
+- Release skill: the marketplace English-title switch is already on ([8447174](https://github.com/yannicschuller/flowplan/commit/84471746a3151bc3f8d3fd96989fdc19e5b28287))
+- Skills: mark docs for unreleased features with the next version; release reminds of the docs redeploy and the marketplace English-title switch ([a142190](https://github.com/yannicschuller/flowplan/commit/a142190ec2616a48c5bde85cde30fca9c73810b7))
+- Tabs block: the handle sits on the tab strip whichever tab is open ([f753488](https://github.com/yannicschuller/flowplan/commit/f7534881a68151d21cc9675904d0ca4102cf4033))
+- Workspace accent beyond text: mark, tab icon, default avatars, controls (#277) ([7d45002](https://github.com/yannicschuller/flowplan/commit/7d450023ffa2754c1feafc70f08ad2f45756159e))
+- Pasted blocks go above a paragraph when the caret is at its start ([5254ea6](https://github.com/yannicschuller/flowplan/commit/5254ea6d0b6917a29124103d46fc326f2e7f2f1d))
+- Publish dialog: German and English title, the English one required (follow-up to #276) ([7db10ca](https://github.com/yannicschuller/flowplan/commit/7db10ca1ca13d26dc3c7bb8f89ba62e8b175f22d))
+- Regenerate help docs for #275 ([f2f55b7](https://github.com/yannicschuller/flowplan/commit/f2f55b72b9edfb6d53bfdddea39649d124dfb171))
+- Sidebar selection: lock, unlock, favourite and copy links of several pages (#275) ([a3920ea](https://github.com/yannicschuller/flowplan/commit/a3920ea5699e8861328f3f0f16f715ef641c8a95))
+- Official marketplace templates: the title in both languages (#276) ([0062a90](https://github.com/yannicschuller/flowplan/commit/0062a909a274f5b9907f876055d055443709246a))
+- Block ids join the undo step of the change that needed them ([24ad109](https://github.com/yannicschuller/flowplan/commit/24ad10951dd1d302572c4163c940c037c85060d7))
+- locked-page-links spec: check the same-window navigation, back and external links ([50fefc9](https://github.com/yannicschuller/flowplan/commit/50fefc9f0c7a546223c7b7dc718e8aafecc05892))
+- Sideways strips no longer scroll up and down on phones ([d687b8f](https://github.com/yannicschuller/flowplan/commit/d687b8f3832c36ee95977e9443fbdf97b8eee18b))
+- Locked and read-only pages open page links in the same window ([6fef3ca](https://github.com/yannicschuller/flowplan/commit/6fef3ca2dd96271faa1c3c506f936e1209fa6e09))
+- Encryption key resets get their own warning instead of a critical "rights changed" ([9c0efdf](https://github.com/yannicschuller/flowplan/commit/9c0efdf378762a997af35473c3c6784d724b7008))
+- Regenerate help docs: Flowplan docs in your AI ([62f0b6e](https://github.com/yannicschuller/flowplan/commit/62f0b6ea8ffdb4dbad031f6043a59424999861d3))
+- New pages written from scratch get no stray empty paragraph ([5451260](https://github.com/yannicschuller/flowplan/commit/54512608f8e249262c1460190b691fbc51167502))
+- Regenerate help docs for #273 ([d9e76f9](https://github.com/yannicschuller/flowplan/commit/d9e76f94b0446ece147cbfde7d991f7d78ddc0ec))
+- AI and workflows see a journal day's "Completed this day" (#273) ([22975c3](https://github.com/yannicschuller/flowplan/commit/22975c3f2b1fa4a4b4431a8194e2e517685d14ca))
+- Regenerate help docs for #272 ([cc83e39](https://github.com/yannicschuller/flowplan/commit/cc83e390a676ffd32272bc83001637c33abbb198))
+- Tabs block: titled tabs with any blocks inside (#272) ([e5d050b](https://github.com/yannicschuller/flowplan/commit/e5d050b1a91203c5ddcd92e2b252a7cdad8689b3))
+- Let the mobile app offer offline use and switch it on through the page (#203) ([211e4f1](https://github.com/yannicschuller/flowplan/commit/211e4f18989cdffb5c961de3957880e4909365d6))
+- Regenerate help docs for #270 ([c163d8f](https://github.com/yannicschuller/flowplan/commit/c163d8f9bacdf4e32d7606247346215b813fc47c))
+- Collections: page through all results with "Load more" (#270) ([c978d8e](https://github.com/yannicschuller/flowplan/commit/c978d8eaffb333e84174e2c884ed71ea684062a6))
+- Regenerate help docs for #199 #257-#264 ([232ade8](https://github.com/yannicschuller/flowplan/commit/232ade86688e304bab31ffc75e123092709dcaba))
+- Setting to show every page at full width (#257) ([2d70b73](https://github.com/yannicschuller/flowplan/commit/2d70b734822945cecda0e45a44684e0396db33ee))
+- One motion standard and an "Animationen" setting (#260) ([3f3a65e](https://github.com/yannicschuller/flowplan/commit/3f3a65e8de5fe704c86f1ca1ac246bcd4a6d6e96))
+- Add a block between any blocks: "+" everywhere, gaps, toolbar "+" (#261) ([1880b1a](https://github.com/yannicschuller/flowplan/commit/1880b1a7aeb8dbb043b6e324aa889de49fa6b873))
+- Copy and cut blocks from the block menu (#263) ([18f4c07](https://github.com/yannicschuller/flowplan/commit/18f4c07c8a381b1b0fc803dd7c682f4e17300b07))
+- Choose a block with its handle; Esc keeps the choice, ⌘A in two steps (#264) ([99d0fd5](https://github.com/yannicschuller/flowplan/commit/99d0fd50c8a95b922ad1cd4b2c7488eed922991e))
+- Meeting citations show the passage's time; first-person commitments name the owner (#199) ([e63a37a](https://github.com/yannicschuller/flowplan/commit/e63a37a7a6c1c3935913f6fc0d6de46787555542))
+- Back and forward bring a place back where it was left, never another page's position (#262) ([59cf92e](https://github.com/yannicschuller/flowplan/commit/59cf92ee63a59ca44cb6993acacd0f34fe4d1a8e))
+- Table of contents: the close button stays in reach in a long list (#259) ([337516f](https://github.com/yannicschuller/flowplan/commit/337516f03a7c5e34301511288caf8a469c3578b3))
+- Tables: pointing at a column border no longer makes every row taller (#258) ([33c88d3](https://github.com/yannicschuller/flowplan/commit/33c88d3eb9ac5d44fee29cd45c7f7602ec5625ea))
+
+</details>
+
 ## v0.9.5 – 2026-11-13
 
 ### Security
