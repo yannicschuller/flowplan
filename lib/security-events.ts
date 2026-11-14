@@ -391,8 +391,23 @@ export async function sweepSecurityEvents(now = Date.now()) {
 /* ---------- From the activity log ---------- */
 
 // Entries of the activity log that matter for security, as events.
-const ADMIN_SETTINGS = /^(ldap\.(enable|disable)|scim\.token\.(create|revoke)|admin\.(ops\.alerts|ops\.maintenance|push\.rotate|ai|metrics\.clear)|instance\.(backup|restore\.staged)|plugin\.(register|update|delete)|domain\.(add|remove)|e2ee\.identity\.reset|inbound\.rotate|contacts\.ldap\.(config|import|unsubscribe))$/;
+const ADMIN_SETTINGS = /^(ldap\.(enable|disable)|scim\.token\.(create|revoke)|admin\.(ops\.alerts|ops\.maintenance|push\.rotate|ai|metrics\.clear)|instance\.(backup|restore\.staged)|plugin\.(register|update|delete)|domain\.(add|remove)|e2ee\.identity\.reset|admin\.emergency|inbound\.rotate|contacts\.ldap\.(config|import|unsubscribe))$/;
 const EXPORTS = /(\.export|^instance\.backup)$/;
+const EMERGENCY_KINDS: Record<string, SecurityKind> = {
+  designate: "emergency.designated",
+  accept: "emergency.accepted",
+  remove: "emergency.removed",
+  leave: "emergency.removed",
+  request: "emergency.requested",
+  remind: "emergency.reminder",
+  cancel: "emergency.cancelled",
+  deny: "emergency.denied",
+  grant: "emergency.granted",
+  revoke: "emergency.revoked",
+  expire: "emergency.expired",
+  view: "emergency.viewed",
+  export: "emergency.exported",
+};
 export function auditToSecurity(actor: string, action: string, resource: string, detail: string): [SecurityKind, SecurityInput] | null {
   if (action === "account.delete") return ["account.deleted", { actorId: actor, detail: resource }];
   if (action === "admin.deleteUser") return ["admin.user", { actorId: actor, detail: `deleted ${resource}` }];
@@ -404,6 +419,12 @@ export function auditToSecurity(actor: string, action: string, resource: string,
   // A journal PIN ended its share links, publications and public forms.
   if (action === "journal.lock.revoke") return ["share.revoked", { actorId: actor, detail: `journal ${resource} ${detail}`.trim() }];
   if (action === "share.create") return ["share.created", { actorId: actor, detail: `${resource} ${detail}`.trim() }];
+  // Emergency access (lib/emergency-access.ts): every step, before the
+  // export rule (its export is a kind of its own).
+  if (action.startsWith("emergency.")) {
+    const kind = EMERGENCY_KINDS[action.slice(10)];
+    return kind ? [kind, { actorId: actor || null, detail: detail || resource }] : null;
+  }
   if (EXPORTS.test(action)) return ["data.export", { actorId: actor, detail: `${action} ${resource}`.trim() }];
   if (ADMIN_SETTINGS.test(action)) return ["admin.settings", { actorId: actor || null, detail: `${action}${detail ? ` ${detail}` : ""}` }];
   return null;

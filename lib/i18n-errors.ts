@@ -5,6 +5,19 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Emergency access for trusted contacts (#281, lib/emergency-access.ts).
+  "Auf dieser Instanz gibt es kein Konto mit dieser E-Mail-Adresse.": "There is no account with this e-mail address on this instance.",
+  "Bitte nimm die Rolle als Vertrauensperson zuerst an.": "Please accept the role as trusted contact first.",
+  "Der Notfallzugriff ist auf dieser Instanz ausgeschaltet.": "Emergency access is switched off on this instance.",
+  "Der Notfallzugriff ist nicht freigegeben.": "Emergency access has not been granted.",
+  "Die Schlüssel der Vertrauensperson haben sich geändert. Bitte neu laden.": "The trusted contact's keys have changed. Please reload.",
+  "Die letzte Anfrage wurde abgelehnt. Eine neue ist frühestens nach 24 Stunden möglich.": "The last request was denied. A new one is possible after 24 hours at the earliest.",
+  "Diese Einladung gibt es so nicht mehr.": "This invitation no longer exists as it was.",
+  "Diese Person ist bereits deine Vertrauensperson.": "This person is already your trusted contact.",
+  "Du kannst dich nicht selbst als Vertrauensperson eintragen.": "You cannot add yourself as trusted contact.",
+  "Es läuft bereits eine Anfrage.": "A request is already running.",
+  "Es läuft keine Anfrage und kein Zugriff.": "There is no request and no access.",
+  "Es läuft keine Anfrage.": "There is no request.",
   // The Flowplan Marketplace (lib/marketplace-package.ts, lib/marketplace-config.ts).
   // The import check (lib/marketplace-check.ts).
   "Dieses API-Token hat keine Berechtigung „Marketplace-Prüfung“.": "This API token has no permission “Marketplace check”.",
@@ -1571,6 +1584,35 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^(.+) hat die PIN von „(.+)“ zurückgesetzt$/, "$1 reset the PIN of “$2”"],
+  // Emergency access (#281, lib/emergency-access.ts).
+  [/^Höchstens (\d+) Vertrauenspersonen\.$/, "At most $1 trusted contacts."],
+  [
+    /^(.+) hat dich als Vertrauensperson für den Notfallzugriff eingetragen\. Bitte bestätige das unter Einstellungen → Konto & Sicherheit → Notfallzugriff\.$/,
+    "$1 named you as trusted contact for emergency access. Please confirm under Settings → Account & security → Emergency access.",
+  ],
+  [/^(.+) ist jetzt deine Vertrauensperson für den Notfallzugriff\.$/, "$1 is now your trusted contact for emergency access."],
+  [/^(.+) hat die Rolle als Vertrauensperson abgelehnt\.$/, "$1 declined the role as trusted contact."],
+  [/^(.+) ist nicht mehr deine Vertrauensperson für den Notfallzugriff\.$/, "$1 is no longer your trusted contact for emergency access."],
+  [/^(.+) hat dich als Vertrauensperson entfernt\.$/, "$1 removed you as trusted contact."],
+  [
+    /^(.+) hat Notfallzugriff auf deine Inhalte angefragt\. Ohne Ablehnung bekommt (.+) am (.+) Lesezugriff\. Ablehnen unter Einstellungen → Konto & Sicherheit → Notfallzugriff\.$/,
+    "$1 asked for emergency access to your content. Unless you deny it, $2 gets read access on $3. Deny under Settings → Account & security → Emergency access.",
+  ],
+  [
+    /^Erinnerung: (.+) bekommt am (.+) Lesezugriff auf deine Inhalte \(Notfallzugriff\), wenn du nicht ablehnst\.$/,
+    "Reminder: $1 gets read access to your content on $2 (emergency access) unless you deny it.",
+  ],
+  [/^(.+) hat die Anfrage auf Notfallzugriff zurückgezogen\.$/, "$1 withdrew the request for emergency access."],
+  [/^(.+) hat deine Anfrage auf Notfallzugriff abgelehnt\.$/, "$1 denied your request for emergency access."],
+  [
+    /^(.+) hat jetzt Lesezugriff auf deine Inhalte \(Notfallzugriff\)\. Beenden unter Einstellungen → Konto & Sicherheit → Notfallzugriff\.$/,
+    "$1 now has read access to your content (emergency access). End it under Settings → Account & security → Emergency access.",
+  ],
+  [/^Dein Notfallzugriff auf die Inhalte von (.+) ist freigegeben\.$/, "Your emergency access to the content of $1 is granted."],
+  [/^Dein Notfallzugriff auf die Inhalte von (.+) ist abgelaufen\.$/, "Your emergency access to the content of $1 has expired."],
+  [/^Der Notfallzugriff von (.+) ist abgelaufen\.$/, "The emergency access of $1 has expired."],
+  [/^(.+) hat deinen Notfallzugriff beendet\.$/, "$1 ended your emergency access."],
+  [/^(.+) hat deine Inhalte über den Notfallzugriff exportiert \(„(.+)“\)\.$/, "$1 exported your content through emergency access (“$2”)."],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
   [/^Die Besprechung „(.+)“ beginnt gleich\.$/, "The meeting “$1” starts soon."],
   // A chat app the instance turned off (lib/messengers.ts).

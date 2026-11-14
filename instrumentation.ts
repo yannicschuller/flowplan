@@ -47,6 +47,9 @@ export async function register() {
     // Page owners are reminded once a review date has passed.
     const { startReviewWorker } = await import("./lib/page-review");
     startReviewWorker(() => void dispatchPush());
+    // Emergency access (#281): waiting periods that end, reminders, expiry.
+    const { startEmergencyWorker } = await import("./lib/emergency-access");
+    startEmergencyWorker(() => void dispatchPush());
     const { startSearchWorker } = await import("./lib/search-index");
     startSearchWorker();
     const { startFileTextWorker } = await import("./lib/file-text");

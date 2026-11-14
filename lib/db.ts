@@ -1456,6 +1456,21 @@ function migrate(d: DatabaseSync) {
   if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "parent_row_id"))
     d.exec("ALTER TABLE pages ADD COLUMN parent_row_id TEXT");
   d.exec("CREATE INDEX IF NOT EXISTS pages_parent_row ON pages(parent_row_id) WHERE parent_row_id IS NOT NULL");
+  // Emergency access for trusted contacts (#281, lib/emergency-access.ts):
+  // emergency_contacts holds who named whom (holder → contact), the
+  // waiting period, an optional length of the access and where a request
+  // stands ('invited' until the contact accepts, 'accepted', 'requested'
+  // with the end of the waiting period in grant_at, 'granted');
+  // emergency_keys the space keys of the holder's encrypted spaces, sealed
+  // in the holder's browser for the contact's public key (public_key: the
+  // key they were sealed for) and handed out only while access is granted.
+  // New tables only – an older version leaves them alone (no access is
+  // given there) – so the schema number stays.
+  d.exec(`CREATE TABLE IF NOT EXISTS emergency_contacts(id TEXT PRIMARY KEY,holder_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,contact_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,wait_days INTEGER NOT NULL,access_days INTEGER,status TEXT NOT NULL CHECK(status IN ('invited','accepted','requested','granted')),created_at INTEGER NOT NULL,accepted_at INTEGER,requested_at INTEGER,grant_at INTEGER,granted_at INTEGER,expires_at INTEGER,denied_at INTEGER,reminded INTEGER NOT NULL DEFAULT 0,keys_released INTEGER NOT NULL DEFAULT 0,UNIQUE(holder_id,contact_id));
+    CREATE INDEX IF NOT EXISTS emergency_contacts_contact ON emergency_contacts(contact_id);
+    CREATE INDEX IF NOT EXISTS emergency_contacts_due ON emergency_contacts(status,grant_at);
+    CREATE TABLE IF NOT EXISTS emergency_keys(link_id TEXT NOT NULL REFERENCES emergency_contacts(id) ON DELETE CASCADE,space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,key_version INTEGER NOT NULL,sealed TEXT NOT NULL,public_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(link_id,space_id,key_version));
+    CREATE INDEX IF NOT EXISTS emergency_keys_space ON emergency_keys(space_id);`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

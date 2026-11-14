@@ -164,6 +164,34 @@ export const securityPlaybooks: Record<SecurityRule, Playbook> = {
       RESOLVE,
     ],
   },
+  emergency_requests: {
+    meaning: {
+      de: "Für ein Konto wurde innerhalb eines Tages mehrmals Notfallzugriff angefragt – oder eine Person hat ihn bei mehreren Konten angefragt. Angefragt heißt noch nicht freigegeben: Die betroffene Person wird bei jeder Anfrage benachrichtigt und kann ablehnen, erst nach der Wartezeit gibt es Lesezugriff.",
+      en: "Emergency access to one account was requested several times within a day – or one person requested it for several accounts. Requested does not mean granted: the person concerned is told of every request and can deny it; read access only follows after the waiting period.",
+    },
+    harmless: {
+      de: "Ein echter Notfall: mehrere Angehörige fragen gleichzeitig an, oder eine Person kümmert sich um mehrere Konten.",
+      en: "A real emergency: several relatives ask at the same time, or one person looks after several accounts.",
+    },
+    steps: [
+      {
+        de: "Im Aktivitätsprotokoll nach „emergency.“ suchen: wer angefragt hat und für wen.",
+        en: "Search the activity log for “emergency.”: who asked and for whom.",
+        link: AUDIT,
+      },
+      {
+        de: "Die betroffene Person auf anderem Weg fragen, ob sie davon weiß. Sie lehnt in ihren Einstellungen unter Konto & Sicherheit → Notfallzugriff ab.",
+        en: "Ask the person concerned by another way whether they know about it. They deny it in their settings under Account & security → Emergency access.",
+      },
+      {
+        de: "Wirkt es wie ein Missbrauch: die Sitzungen der anfragenden Person beenden; notfalls den Notfallzugriff der Instanz ausschalten (Anmeldung & SSO) – freigegebene Zugriffe ruhen dann.",
+        en: "If it looks like abuse: end the sessions of the person who asked; if needed, switch off the instance's emergency access (Sign-in & SSO) – granted access is suspended then.",
+        action: "sessions",
+        link: SIGN_IN,
+      },
+      RESOLVE,
+    ],
+  },
   e2ee_mass_reset: {
     meaning: {
       de: "Mehrere Konten haben kurz nacheinander ihren Schlüssel für verschlüsselte Bereiche zurückgesetzt. Einzeln ist das harmlos; gehäuft kann es heißen, dass jemand mit übernommenen Sitzungen oder einem Skript Personen aus ihren verschlüsselten Bereichen aussperrt.",

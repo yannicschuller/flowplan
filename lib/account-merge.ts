@@ -58,6 +58,10 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "mobile_devices.user_id": "drop",
   // Device keys of the apps (lib/app-devices.ts): registered again at the next sign-in.
   "app_devices.user_id": "drop",
+  // Emergency access (#281): designations of and for the source end; the
+  // target names its own trusted contacts again.
+  "emergency_contacts.holder_id": "drop",
+  "emergency_contacts.contact_id": "drop",
   // Progress of the source's background jobs, its widget history and focus timer.
   "background_jobs.user_id": "drop",
   "widget_counter_days.user_id": "drop",

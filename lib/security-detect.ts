@@ -28,6 +28,10 @@ export const SECURITY_THRESHOLDS = {
   // Encryption keys reset by this many accounts within the window.
   e2eeResetAccounts: 3,
   e2eeResetWindow: HOUR,
+  // Emergency access (#281): this many requests for one account, or by one
+  // contact, within a day.
+  emergencyRequests: 3,
+  emergencyWindow: DAY,
 } as const;
 const T = SECURITY_THRESHOLDS;
 
@@ -61,6 +65,24 @@ export async function detectSecurity(e: SecurityEvent) {
     case "blocked.ssrf":
     case "blocked.content":
       return await attempts(e);
+    case "emergency.requested":
+      return await emergencyRequests(e);
+  }
+}
+
+// Requests for emergency access (lib/emergency-access.ts; detail
+// "holder:<id> contact:<id>"): several for one account – or by one contact
+// for several accounts – within a day look like someone trying their luck.
+async function emergencyRequests(e: SecurityEvent) {
+  const holder = /holder:([\w-]+)/.exec(e.detail)?.[1];
+  const since = e.at - T.emergencyWindow;
+  if (holder) {
+    const n = await count("SELECT COUNT(*) n FROM security_events WHERE kind='emergency.requested' AND detail LIKE ? AND at>=?", `holder:${holder} %`, since);
+    if (n >= T.emergencyRequests) await openIncident("emergency_requests", `holder:${holder}`, e, `${n}: ${e.detail}`);
+  }
+  if (e.actorId) {
+    const n = await count("SELECT COUNT(*) n FROM security_events WHERE kind='emergency.requested' AND actor_id=? AND at>=?", e.actorId, since);
+    if (n >= T.emergencyRequests) await openIncident("emergency_requests", `contact:${e.actorId}`, e, `${n}: ${e.detail}`);
   }
 }
 

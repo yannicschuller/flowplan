@@ -299,6 +299,9 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   // Own collections (#86), shared ones too: they are queries of this person.
   await run("DELETE FROM collections WHERE owner_id=?", userId);
   await run("DELETE FROM grants WHERE user_id=?", userId);
+  // Emergency access (#281): of and for this account – also when the
+  // account stays as an empty shell below.
+  await run("DELETE FROM emergency_contacts WHERE holder_id=? OR contact_id=?", userId, userId);
   await run("DELETE FROM members WHERE user_id=?", userId);
   await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   // Who made records done (schema 96): nobody any more.
