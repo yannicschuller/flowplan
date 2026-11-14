@@ -1,26 +1,26 @@
 "use client";
-// Phones: the sidebar follows the finger. A swipe from the left edge pulls
-// it in, a swipe to the left on the open sidebar (or the dimmed page beside
-// it) pushes it out – released past a third of its width or with some
-// speed, it settles open or closed, otherwise it springs back. Vertical
-// swipes, dialogs, whiteboards and places that pan sideways themselves are
-// left alone. On iOS the very edge belongs to "back" – Safari's own swipe,
-// and the app's (flowplan-app) whenever the page has a step back – so there
-// the swipe that opens starts a little further in, where back never begins.
-// Where nothing claims the edge (the installed web app, the app on its start
-// page) it may start at the edge itself.
+// Touch screens: the sidebar follows the finger. A swipe from the left edge
+// pulls it in over the page, a swipe to the left on the open sidebar (or the
+// dimmed page beside it) pushes it out – released past a third of its width
+// or with some speed, it settles open or closed, otherwise it springs back.
+// Nothing navigates. On phones, and on tablets whose sidebar is collapsed
+// (#285: there it lies over the page with a width of its own); a docked,
+// visible sidebar is already there. Vertical swipes, dialogs, whiteboards
+// and places that pan sideways themselves are left alone. Who owns the very
+// edge – "back" in Safari, the person's choice in the iOS app – decides
+// lib/edge-swipe.ts; where back owns it, the swipe that opens starts a
+// little further in, where back never begins.
 import { useEffect, useRef } from "react";
 import { canScrollBack, sidewaysBoxes } from "@/lib/sideways-scroll";
+import { OPEN_EDGE, drawerSwipeApplies, openFrom } from "@/lib/edge-swipe";
+import { edgeSwipePref, onEdgeSwipePref, reportEdgeSwipe } from "@/lib/edge-swipe-pref";
+import { nativeApp } from "@/lib/native-app";
 
 const PHONE = "(max-width: 767px)";
-// Where a swipe that opens may start, from the left edge; BACK_EDGE is left
-// to iOS's back swipe (it begins within about 20 points of the edge).
-const EDGE = 64;
-const BACK_EDGE = 24;
 // Moved this far before deciding: sideways (drawer) or not (scroll).
 const DECIDE = 10;
 const IGNORE =
-  "[role=dialog], canvas, .whiteboard, .wb-root, input[type=range], [data-no-edge-swipe]";
+  "[role=dialog], canvas, .whiteboard, .wb-root, input[type=range], [data-no-edge-swipe], .sidebar-resize";
 
 export function useDrawerSwipe(
   open: boolean,
@@ -35,18 +35,29 @@ export function useDrawerSwipe(
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const inApp = "FlowplanApp" in window;
     const standalone = window.matchMedia("(display-mode: standalone)").matches;
-    // Whether a swipe from the very edge goes back instead (lib/app-back.ts
-    // turns the app's gesture on only when there is a step back).
-    const backAtEdge = () => {
-      if (!ios) return false;
-      if (inApp) {
-        const nav = (
-          window as { FlowplanNavigation?: { canGoBack?: () => boolean } }
-        ).FlowplanNavigation;
-        return nav?.canGoBack?.() !== false;
-      }
-      return !standalone;
+    // From where a swipe to the right opens (lib/edge-swipe.ts; the app's
+    // back swipe is on only while there is a step back, lib/app-back.ts).
+    const from = () => {
+      const nav = (
+        window as { FlowplanNavigation?: { canGoBack?: () => boolean } }
+      ).FlowplanNavigation;
+      return openFrom({
+        ios,
+        inApp,
+        appTakesChoice: typeof nativeApp()?.edgeSwipe === "function",
+        pref: edgeSwipePref(),
+        canGoBack: nav?.canGoBack?.() !== false,
+        standalone,
+      });
     };
+    // The app learns which way the edge goes, now and on every change.
+    reportEdgeSwipe();
+    const unPref = onEdgeSwipePref(() => reportEdgeSwipe());
+    const applies = () =>
+      drawerSwipeApplies({
+        phone: phone.matches,
+        collapsed: !!document.querySelector(".app-shell.desktop-collapsed"),
+      });
     let start: { x: number; y: number; t: number; open: boolean } | null = null;
     let dragging = false;
     let width = 0;
@@ -63,6 +74,8 @@ export function useDrawerSwipe(
       const { sidebar, scrim } = parts();
       if (!sidebar) return;
       sidebar.style.transition = "none";
+      // A collapsed sidebar on a tablet is hidden until it is open.
+      sidebar.style.visibility = "visible";
       sidebar.style.transform = `translateX(${(shown - 1) * 100}%)`;
       if (scrim) {
         scrim.style.display = "block";
@@ -79,11 +92,12 @@ export function useDrawerSwipe(
       if (dragging) up();
       start = null;
       dragging = false;
-      if (!phone.matches || e.touches.length !== 1) return;
+      if (e.touches.length !== 1) return;
       const touch = e.touches[0];
       const target = e.target as Element | null;
       if (target?.closest(IGNORE)) return;
       const { open } = state.current;
+      if (!open && !applies()) return;
       if (open) {
         // Closing: on the sidebar or the dimmed page.
         if (
@@ -91,8 +105,7 @@ export function useDrawerSwipe(
         )
           return;
       } else {
-        const from = backAtEdge() ? BACK_EDGE : 0;
-        if (touch.clientX < from || touch.clientX > EDGE) return;
+        if (touch.clientX < from() || touch.clientX > OPEN_EDGE) return;
         // A table (board, timeline …) scrolled to the right scrolls back.
         if (canScrollBack(sidewaysBoxes(target))) return;
       }
@@ -200,6 +213,7 @@ export function useDrawerSwipe(
       window.addEventListener(type, swallow, true);
     document.addEventListener("touchstart", down, { passive: true });
     return () => {
+      unPref();
       document.removeEventListener("touchstart", down);
       window.removeEventListener("pointerdown", pointerDown, true);
       for (const type of ["pointermove", "pointerup", "pointercancel"] as const)

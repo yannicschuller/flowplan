@@ -8,7 +8,8 @@
 // profile, all devices), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
-// "Animationen" (#260, profile, all devices), pages at full width (#257,
+// "Animationen" (#260, profile, all devices), in the app for iPhone and
+// iPad what the swipe from the left edge does (#285, this device), pages at full width (#257,
 // profile, all devices),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
 // "Was ist neu" (#223, profile, all devices).
@@ -21,6 +22,7 @@ import { CONTROL, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSav
 import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
 import { setBlockHandlesAlways, useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 import { setDiscoveryPanelsShown, useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
+import { setEdgeSwipePref, useEdgeSwipeChoosable, useEdgeSwipePref } from "@/lib/edge-swipe-pref";
 import { useUserSettings } from "../user-context";
 import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
@@ -48,6 +50,8 @@ export default function AppearanceSection() {
   const lineNumbers = useLineNumbersByDefault();
   const handlesAlways = useBlockHandlesAlways();
   const discoveryPanels = useDiscoveryPanelsShown();
+  const edgeSwipe = useEdgeSwipePref();
+  const edgeSwipeChoosable = useEdgeSwipeChoosable();
   const drawio = useDrawioPrefs();
   const textMenu = useTextMenuPref();
   const [textMenuStatus, runTextMenu] = useSaveState();
@@ -285,6 +289,32 @@ export default function AppearanceSection() {
           checked={discoveryPanels}
           onChange={setDiscoveryPanelsShown}
         />
+        {/* Only in the app for iPhone and iPad that takes the choice: in
+            Safari the edge is always its back swipe, on Android the
+            system's (lib/edge-swipe.ts). */}
+        {edgeSwipeChoosable && (
+          <SettingRow
+            anchor="edge-swipe"
+            label={t("Wischen vom linken Rand", "Swipe from the left edge")}
+            description={t(
+              "Seitenleiste öffnen: Die Seitenleiste kommt über die Seite, nichts wird verlassen – zurück geht es mit den Pfeilen oben links. Zurück: Das Wischen ganz am Rand geht einen Schritt zurück, die Seitenleiste öffnet ein Wischen etwas weiter innen. Nur auf diesem Gerät.",
+              "Open sidebar: the sidebar comes in over the page and nothing is left – the arrows at the top left go back. Back: a swipe right at the edge goes one step back, a swipe a little further in opens the sidebar. On this device only.",
+            )}
+          >
+            <div className="segmented" role="radiogroup" aria-label={t("Wischen vom linken Rand", "Swipe from the left edge")}>
+              {(
+                [
+                  ["drawer", t("Seitenleiste öffnen", "Open sidebar")],
+                  ["back", t("Zurück", "Back")],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value} data-active={edgeSwipe === value}>
+                  <input type="radio" name="edge-swipe" checked={edgeSwipe === value} onChange={() => setEdgeSwipePref(value)} /> {label}
+                </label>
+              ))}
+            </div>
+          </SettingRow>
+        )}
       </SettingGroup>
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
         <SettingRow
