@@ -4,7 +4,7 @@ import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { foldAllSections } from "@/lib/heading-folds";
-import { findSection, parseSettingsHash } from "@/lib/settings-sections";
+import { findSection, parseSettingsHash, settingsHash } from "@/lib/settings-sections";
 import { connectDesktop, goBack, goForward, installHistory, installMouseButtons, rememberedTitle } from "@/lib/history-nav";
 import { usePaneScroll } from "@/lib/pane-scroll";
 import { HistoryButtons, type StepLook } from "./history-buttons";
@@ -40,7 +40,7 @@ import { SpaceAppearance, SpaceIcon } from "./space-appearance";
 import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
-import { Onboarding } from "./onboarding";
+import type { OnboardingStep } from "./onboarding";
 import { FindInPage } from "./find-in-page";
 import { InstanceBanners } from "./instance-banners";
 import { AppPromo } from "./app-promo";
@@ -329,6 +329,12 @@ const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), 
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 // Workflows bring the canvas (xyflow): loaded with the first workflow page.
 const WorkflowView = dynamic(() => loadView(() => import("./workflow/workflow-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
+// The introduction (with its import and admin steps) and the checklist
+// "Erste Schritte": loaded only for the people who see them.
+const Onboarding = dynamic(() => import("./onboarding").then((m) => m.Onboarding), { ssr: false });
+const GettingStarted = dynamic(() => import("./getting-started"), { ssr: false });
+// Offline use offered once on a further device (#295, lib/offline-offer.ts).
+const OfflineOfferPrompt = dynamic(() => import("./offline-offer"), { ssr: false });
 const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard")), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
@@ -513,6 +519,7 @@ export default function WorkspaceApp({
     [sourcePage, setSourcePage] = useState<string | null>(null),
     [spaceExport, setSpaceExport] = useState<string | null>(null),
     [onboarding, setOnboarding] = useState(!!initial.onboarding),
+    [onboardingStep, setOnboardingStep] = useState<OnboardingStep | undefined>(undefined),
     [find, setFind] = useState({ open: false, key: 0 }),
     [spaceManager, setSpaceManager] = useState<{
       space: Space;
@@ -1282,6 +1289,33 @@ export default function WorkspaceApp({
     },
     [refresh, offlineQueue],
   );
+  // "Erste Schritte" (lib/getting-started.ts): the browser reports what the
+  // server cannot see – the quick search opened, the app in use (installed
+  // web app, desktop or phone app). Once each.
+  const checklist = boot.gettingStarted;
+  const checklistOpen = !!checklist && !checklist.hidden;
+  const searchTicked = !!checklist?.items.some((i) => i.id === "search" && i.done);
+  const appTicked = !!checklist?.items.some((i) => i.id === "app" && i.done);
+  const ticking = useRef(new Set<string>());
+  const tick = useCallback(
+    (item: "search" | "app") => {
+      if (ticking.current.has(item)) return;
+      ticking.current.add(item);
+      void mutate({ action: "gettingStarted.mark", workspaceId: boot.workspace.id, item, done: true }).catch(() => ticking.current.delete(item));
+    },
+    [mutate, boot.workspace.id],
+  );
+  useEffect(() => {
+    if (checklistOpen && search && !searchTicked) tick("search");
+  }, [checklistOpen, search, searchTicked, tick]);
+  useEffect(() => {
+    if (!checklistOpen || appTicked) return;
+    let standalone = false;
+    try {
+      standalone = matchMedia("(display-mode: standalone)").matches || !!nativeApp() || inDesktopApp();
+    } catch {}
+    if (standalone) tick("app");
+  }, [checklistOpen, appTicked, tick]);
   // Journals get a page for the new day: when the app opens, comes back to
   // the foreground and at local midnight.
   const hasJournal = boot.pages.some(
@@ -3161,7 +3195,15 @@ export default function WorkspaceApp({
     ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow") }]),
     { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
     { label: t("Auf der Seite suchen", "Find on page"), keywords: t("finden text treffer strg f", "finden text treffer strg f find text match ctrl f"), icon: MagnifyingGlass, run: () => setFind((f) => ({ open: true, key: f.key + 1 })) },
-    { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Compass, run: () => setOnboarding(true) },
+    { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Compass, run: () => { setOnboardingStep(undefined); setOnboarding(true); } },
+    // The checklist after the introduction, hidden earlier (lib/getting-started.ts).
+    ...(boot.gettingStarted?.hidden
+      ? [{ label: t("Erste Schritte anzeigen", "Show getting started"), keywords: t("checkliste einstieg start", "checkliste einstieg start checklist onboarding getting started"), icon: CheckSquare, run: () => void mutate({ action: "gettingStarted.hide", workspaceId: boot.workspace.id, hidden: false }) }]
+      : []),
+    // Administrators: the introduction's traffic lights for the instance.
+    ...(boot.user.isAdmin
+      ? [{ label: t("Instanz einrichten", "Set up the instance"), keywords: t("admin status ampel mail sso sicherung backup ki https", "admin status ampel mail sso sicherung backup ki https traffic light setup backup ai"), icon: Compass, run: () => { setOnboardingStep("setup"); setOnboarding(true); } }]
+      : []),
     { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
     {
@@ -3926,6 +3968,25 @@ export default function WorkspaceApp({
           )}
         </div>
         <div className="sidebar-bottom">
+          {/* "Erste Schritte" after the introduction (lib/getting-started.ts). */}
+          {boot.gettingStarted && !boot.gettingStarted.hidden && (
+            <GettingStarted
+              state={boot.gettingStarted}
+              sample={boot.sampleSpace && !boot.sampleSpace.trashed ? boot.sampleSpace : null}
+              mutate={(b) => mutate({ workspaceId: boot.workspace.id, ...b })}
+              onAction={(item) => {
+                if (item === "page") {
+                  const first = boot.spaces.find((sp) => !sp.deleted_at);
+                  if (first) addPage("document", null, first.id);
+                } else if (item === "task") go("tasks");
+                else if (item === "search") openSearch();
+                else
+                  location.hash = settingsHash(
+                    item === "invite" ? { area: "settings", section: "members" } : item === "app" ? { area: "settings", section: "devices" } : { area: "settings", section: "data", anchor: "import" },
+                  );
+              }}
+            />
+          )}
           {/* Less used places as one row of symbols (on phones behind
               "Mehr" by the profile): the page tree above keeps the height. */}
           <SidebarToolRow tools={sidebarTools} />
@@ -5306,6 +5367,12 @@ export default function WorkspaceApp({
         </div>
       </main>
       <AppPromo paused={onboarding} />
+      {/* Offline use on a device the introduction did not run on (#295):
+          for people who went through the introduction (it asks there), once
+          per device, not while it is open. */}
+      {!onboarding && boot.gettingStarted && (
+        <OfflineOfferPrompt userId={boot.user.id} workspaceId={boot.workspace.id} guest={!!boot.workspace.guest} demo={!!boot.user.demo} />
+      )}
       {/* #marketplace-import and "Vorlage aus Datei importieren" (components/marketplace.tsx). */}
       <MarketplaceReceiver
         config={boot.instance?.marketplace}
@@ -5322,8 +5389,16 @@ export default function WorkspaceApp({
           theme={theme}
           chooseTheme={chooseTheme}
           mutate={(b) => mutate({ workspaceId: boot.workspace.id, ...b })}
+          refresh={refresh}
+          initialStep={onboardingStep}
           onOpenPage={(pageId) => void openPage(pageId)}
-          onClose={() => setOnboarding(false)}
+          onOpenHash={(hash) => {
+            location.hash = hash;
+          }}
+          onClose={() => {
+            setOnboarding(false);
+            setOnboardingStep(undefined);
+          }}
         />
       )}
       {/* "Drucken / PDF" with options and presets (#215). */}

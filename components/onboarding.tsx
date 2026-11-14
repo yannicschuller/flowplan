@@ -1,19 +1,30 @@
 "use client";
 // The introduction after creating an account: a few settings (language,
-// appearance, workspace name, e-mail summaries, push), pages to start with,
-// and a short tour of what Flowplan does. Shown once (users.onboarded_at);
-// Settings → General and the command palette open it again.
+// appearance), for administrators the state of the instance (mail, SSO,
+// backup, AI, HTTPS), where the person comes from – with the export guide,
+// the import and the tool's terms in Flowplan –, what they use Flowplan for
+// with matching pages to start with and a sample space to try things, a
+// short tour and notifications. Shown once (users.onboarded_at); Settings →
+// Appearance & language and the command palette open it again. Finishing
+// or skipping starts the checklist "Erste Schritte" (lib/getting-started.ts).
+// Loaded only when shown (components/workspace-app.tsx).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   BookOpen,
+  Briefcase,
   CheckCircle,
   CheckSquare,
   Circle,
   CircleHalf,
   CloudArrowDown,
+  Compass,
   FileText,
+  Flask,
+  GraduationCap,
+  HardDrives,
+  Kanban,
   Lightning,
   MagnifyingGlass,
   Moon,
@@ -23,41 +34,61 @@ import {
   Sparkle,
   Sun,
   Table,
+  Translate,
+  User,
   UsersThree,
   type Icon,
 } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale, type Locale } from "@/lib/i18n";
 import type { ThemeChoice } from "@/lib/theme";
+import { ONBOARDING_GOALS, type OnboardingGoal, type OnboardingSource } from "@/lib/getting-started-items";
+import { STARTERS, starterCommand, startersFor, type StarterId } from "@/lib/onboarding-goals";
+import { migrationSource } from "@/lib/migration-sources";
 import { clearLocale, setLocale, useLocale, useT } from "./i18n";
 import { Modal } from "./ui";
 import { Select } from "./select";
 import PushSettings from "./push-settings";
+import { ImportPanel, SourcePicker, TermsTable } from "./onboarding-import";
+import { AdminSetup } from "./onboarding-admin";
+import { OfflineOfferPanel, useOfflineOffer } from "./offline-offer";
+import { readOfferAnswer, saveOfferAnswer } from "@/lib/offline-offer";
+import type { ImportOutcome } from "./import-client";
 
-type Starter = "tasks" | "notes" | "journal" | "whiteboard";
 export type OnboardingBoot = {
-  user: { name: string };
+  user: { id: string; name: string; isAdmin?: boolean; demo?: boolean };
   workspace: { id: string; name: string; role: string; guest?: number | boolean };
   spaces: { id: string; name: string; deleted_at?: string | null }[];
+  pages?: { id: string; title: string }[];
   language?: Locale | null;
   instance?: { mail?: boolean };
+  sampleSpace?: { spaceId: string; name: string; pages: number; trashed: boolean } | null;
 };
 
-const STEPS = ["welcome", "start", "tour", "notify", "done"] as const;
+const STEPS = ["welcome", "setup", "source", "terms", "start", "tour", "notify", "offline", "done"] as const;
+export type OnboardingStep = (typeof STEPS)[number];
 
 export function Onboarding({
   boot,
   theme,
   chooseTheme,
   mutate,
+  refresh,
   onOpenPage,
+  onOpenHash,
   onClose,
+  initialStep,
 }: {
   boot: OnboardingBoot;
   theme: ThemeChoice;
   chooseTheme: (choice: ThemeChoice) => void;
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
+  // Loads the workspace again (after an import, which is no command).
+  refresh: () => Promise<unknown>;
   onOpenPage: (pageId: string) => void;
+  // An address in the app (#admin/mail …), after the introduction closed.
+  onOpenHash: (hash: string) => void;
   onClose: () => void;
+  initialStep?: OnboardingStep;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -65,16 +96,30 @@ export function Onboarding({
   const owner = boot.workspace.role === "owner";
   const canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest;
   const space = boot.spaces.find((s) => !s.deleted_at);
-  const [step, setStep] = useState(0);
   const [name, setName] = useState(boot.workspace.name);
-  const [starters, setStarters] = useState<Starter[]>([]);
+  const [goal, setGoal] = useState<OnboardingGoal | null>(null);
+  const [starters, setStarters] = useState<StarterId[]>([]);
+  const [source, setSource] = useState<OnboardingSource | null>(null);
+  const [imported, setImported] = useState<(ImportOutcome & { source: OnboardingSource }) | null>(null);
+  const [importing, setImporting] = useState(false);
   const [email, setEmail] = useState(true);
   const [feature, setFeature] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<{ id: string; title: string }[]>([]);
   const docs = (slug: string) => `https://docs.flowplan.org/${locale === "de" ? "de" : "en"}/${slug}`;
-  const steps = STEPS.filter((s) => s !== "start" || canCreate || owner);
+  const tool = source && source !== "fresh" ? migrationSource(source) : null;
+  // Offline use on this device (#295, lib/offline-offer.ts): asked here on
+  // the device the introduction runs on.
+  const offerOffline = useOfflineOffer(boot.user.id, !!boot.workspace.guest, !!boot.user.demo, false);
+  const steps = STEPS.filter(
+    (s) =>
+      (s !== "setup" || !!boot.user.isAdmin) &&
+      (s !== "terms" || !!tool) &&
+      (s !== "start" || canCreate || owner) &&
+      (s !== "offline" || !!offerOffline),
+  );
+  const [step, setStep] = useState(() => Math.max(0, initialStep ? steps.indexOf(initialStep) : 0));
   const current = steps[step];
   // Each step starts at its heading, not at the Close button: screen readers
   // hear what the step is about first.
@@ -82,12 +127,30 @@ export function Onboarding({
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, [step]);
+  const sample = boot.sampleSpace && !boot.sampleSpace.trashed ? boot.sampleSpace : null;
 
-  const starterInfo: Record<Starter, { icon: Icon; title: string; text: string }> = {
+  const starterInfo: Record<StarterId, { icon: Icon; title: string; text: string }> = {
     tasks: { icon: CheckSquare, title: t("Aufgaben", "Tasks"), text: t("Eine Datenbank mit Status, Fälligkeit und Board-Ansicht.", "A database with status, due date and a board view.") },
     notes: { icon: FileText, title: t("Notizen", "Notes"), text: t("Eine Datenbank für Notizen und Dokumente, jede ein ganzer Text.", "A database for notes and documents, each a full text.") },
     journal: { icon: Notebook, title: "Journal", text: t("Ein Tagebuch mit einer Seite pro Tag.", "A diary with one page per day.") },
     whiteboard: { icon: PresentationChart, title: "Whiteboard", text: t("Eine freie Fläche für Skizzen und Ideen.", "An open canvas for sketches and ideas.") },
+    todo: { icon: CheckSquare, title: t("Aufgabenliste", "Task list"), text: t("Persönliche Aufgaben mit Priorität, Fälligkeit, Board und Kalender.", "Personal tasks with priority, due date, board and calendar.") },
+    habits: { icon: Sparkle, title: t("Gewohnheiten-Tracker", "Habit tracker"), text: t("Ein Eintrag pro Tag, Gewohnheiten abhaken und den Anteil sehen.", "One record per day: tick off habits and see the share.") },
+    reading: { icon: BookOpen, title: t("Leseliste", "Reading list"), text: t("Bücher und Artikel mit Status, Bewertung und Notizen – als Galerie.", "Books and articles with status, rating and notes – as a gallery.") },
+    wiki: { icon: BookOpen, title: t("Team-Wiki", "Team wiki"), text: t("Startseite für Wissen, Abläufe und Ansprechpersonen eines Teams.", "Home page for a team's knowledge, processes and contacts.") },
+    meetingLog: { icon: UsersThree, title: t("Besprechungsprotokolle", "Meeting log"), text: t("Alle Besprechungen als Datenbank – mit Kalender und Protokoll je Termin.", "All meetings as a database – with a calendar and minutes per date.") },
+    decisions: { icon: Table, title: t("Entscheidungsprotokoll", "Decision log"), text: t("Wichtige Entscheidungen mit Begründung, Status und Datum nachvollziehbar sammeln.", "Collect important decisions with reasons, status and date so they stay traceable.") },
+    project: { icon: Briefcase, title: t("Projektplanung", "Project plan"), text: t("Aufgaben mit Status, Zeitraum, Aufwand und Timeline für ein Projekt.", "Tasks with status, period, effort and a timeline for one project.") },
+    sprint: { icon: Kanban, title: t("Sprint-Board", "Sprint board"), text: t("Kanban für zweiwöchige Sprints mit Story Points und Verantwortlichen.", "Kanban for two-week sprints with story points and assignees.") },
+    roadmap: { icon: Compass, title: t("Produkt-Roadmap", "Product roadmap"), text: t("Themen nach Quartal und Status, mit Board und Timeline für die Planung.", "Topics by quarter and status, with a board and a timeline for planning.") },
+    brief: { icon: FileText, title: t("Projektsteckbrief", "Project brief"), text: t("Ziel, Umfang, Beteiligte und Risiken eines Projekts auf einer Seite.", "Goal, scope, people and risks of a project on one page.") },
+  };
+  const goals: Record<OnboardingGoal, { icon: Icon; title: string }> = {
+    personal: { icon: User, title: t("Persönlich", "Personal") },
+    team: { icon: UsersThree, title: t("Team & Wissen", "Team & knowledge") },
+    projects: { icon: Kanban, title: t("Projekte & Tickets", "Projects & tickets") },
+    study: { icon: GraduationCap, title: t("Studium & Schreiben", "Study & writing") },
+    other: { icon: Circle, title: t("Etwas anderes", "Something else") },
   };
   const features: { icon: Icon; title: string; text: string; tip: string; slug: string }[] = [
     {
@@ -151,11 +214,20 @@ export function Onboarding({
     },
   ];
 
+  // Ends the introduction and starts "Erste Schritte" with the answers
+  // (not when only the instance's setup was opened from the command palette).
   const finish = async () => {
+    try {
+      if (!boot.user.demo && initialStep !== "setup") await mutate({ action: "gettingStarted.start", goal, source, imported: !!imported });
+    } catch {}
     try {
       await mutate({ action: "profile.onboarded" });
     } catch {}
     onClose();
+  };
+  const leaveTo = async (hash: string) => {
+    await finish();
+    onOpenHash(hash);
   };
   // Settings of a step are saved when going on, so skipping keeps what was set.
   const next = async () => {
@@ -168,11 +240,7 @@ export function Onboarding({
           const made: { id: string; title: string }[] = [];
           for (const kind of starters) {
             const info = starterInfo[kind];
-            const body =
-              kind === "tasks" || kind === "notes"
-                ? { kind: "database", databaseKind: kind === "tasks" ? "tasks" : "documents" }
-                : { kind };
-            const result = (await mutate({ action: "page.create", spaceId: space.id, title: info.title, ...body })) as { id?: string } | undefined;
+            const result = (await mutate(starterCommand(kind, space.id, info.title))) as { id?: string } | undefined;
             if (result?.id) made.push({ id: String(result.id), title: info.title });
           }
           setCreated((list) => [...list, ...made]);
@@ -180,6 +248,8 @@ export function Onboarding({
         }
       }
       if (current === "notify" && boot.instance?.mail) await mutate({ action: "notification.email", email });
+      // Going on without an answer: the card asks again on this device in a week.
+      if (current === "offline" && !readOfferAnswer()) saveOfferAnswer("later");
       if (current === "done") return void (await finish());
       setStep((s) => Math.min(steps.length - 1, s + 1));
     } catch (e) {
@@ -188,15 +258,29 @@ export function Onboarding({
       setBusy(false);
     }
   };
-
+  const toggleSample = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await mutate({ action: sample ? "sample.remove" : "sample.create" });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const offered = startersFor(goal);
+  const title = (id: string, fallback: string) => boot.pages?.find((p) => p.id === id)?.title || fallback;
+  const importedPages = imported ? imported.rootIds.slice(0, 5).map((id) => ({ id, title: title(id, t("Importierte Seite", "Imported page")) })) : [];
   const shown = features[feature];
+  const stopped = busy || importing;
   return (
     <Modal
       open
       wide
       className="onboarding"
       title={t("Willkommen bei Flowplan", "Welcome to Flowplan")}
-      onClose={() => void finish()}
+      onClose={() => !importing && void finish()}
       onOpenAutoFocus={(e) => {
         e.preventDefault();
         heading.current?.focus({ preventScroll: true });
@@ -263,6 +347,54 @@ export function Onboarding({
             </div>
           </section>
         )}
+        {current === "setup" && (
+          <section aria-labelledby="onboarding-setup">
+            <HardDrives size={28} weight="duotone" className="onboarding-mark" aria-hidden />
+            <h2 id="onboarding-setup" tabIndex={-1} ref={heading}>{t("Instanz einrichten", "Set up the instance")}</h2>
+            <p>
+              {t(
+                "Du bist Administrator. So steht es um die Grundlagen dieser Instanz – Rot zuerst angehen, Gelb ist optional oder einen Blick wert. Diese Übersicht findest du wieder über die Befehlspalette („Instanz einrichten“).",
+                "You are an administrator. This is where the basics of this instance stand – tackle red first, yellow is optional or worth a look. You find this overview again in the command palette (“Set up the instance”).",
+              )}
+            </p>
+            <AdminSetup onOpenSection={(hash) => void leaveTo(hash)} />
+          </section>
+        )}
+        {current === "source" && (
+          <section aria-labelledby="onboarding-source">
+            <Translate size={28} weight="duotone" className="onboarding-mark" aria-hidden />
+            <h2 id="onboarding-source" tabIndex={-1} ref={heading}>{t("Woher kommst du?", "Where are you coming from?")}</h2>
+            <p>
+              {t(
+                "Wenn du schon Inhalte in einem anderen Werkzeug hast, nimm sie gleich mit: Wir zeigen dir, wo der Export steckt, und importieren ihn. Sonst fang einfach neu an.",
+                "If you already have content in another tool, bring it along right away: we show you where the export is and import it. Otherwise just start fresh.",
+              )}
+            </p>
+            <SourcePicker value={source} disabled={importing} onChange={setSource} />
+            {tool && (
+              <ImportPanel
+                key={tool.id}
+                source={tool}
+                workspaceId={boot.workspace.id}
+                space={space}
+                canWrite={canCreate}
+                imported={imported}
+                onBusy={setImporting}
+                onImported={async (result) => {
+                  setImported(result);
+                  await refresh().catch(() => {});
+                }}
+              />
+            )}
+          </section>
+        )}
+        {current === "terms" && tool && (
+          <section aria-labelledby="onboarding-terms">
+            <h2 id="onboarding-terms" tabIndex={-1} ref={heading}>{t("So heißt das hier", "What it's called here")}</h2>
+            <p>{t(`Was du aus ${tool.name} kennst – und wie es in Flowplan heißt.`, `What you know from ${tool.name} – and what it is called in Flowplan.`)}</p>
+            <TermsTable source={tool.id} />
+          </section>
+        )}
         {current === "start" && (
           <section aria-labelledby="onboarding-start">
             <h2 id="onboarding-start" tabIndex={-1} ref={heading}>{t("Womit möchtest du starten?", "What would you like to start with?")}</h2>
@@ -274,11 +406,32 @@ export function Onboarding({
             )}
             {space && canCreate && (
               <>
+                <span className="onboarding-label" id="onboarding-goal-label">{t("Wofür nutzt du Flowplan vor allem?", "What do you mainly use Flowplan for?")}</span>
+                <div className="segmented onboarding-goals" role="radiogroup" aria-labelledby="onboarding-goal-label">
+                  {ONBOARDING_GOALS.map((g) => {
+                    const Glyph = goals[g].icon;
+                    return (
+                      <label key={g} data-active={goal === g}>
+                        <input
+                          type="radio"
+                          name="onboarding-goal"
+                          checked={goal === g}
+                          onChange={() => {
+                            setGoal(g);
+                            // Choices that the new proposal still has stay chosen.
+                            setStarters((list) => list.filter((k) => startersFor(g).includes(k)));
+                          }}
+                        />
+                        <Glyph size={15} aria-hidden /> {goals[g].title}
+                      </label>
+                    );
+                  })}
+                </div>
                 <p className="muted">
                   {t(`Wir legen die gewählten Seiten im Bereich „${space.name}“ an. Du kannst auch einfach leer anfangen.`, `We create the chosen pages in the space “${space.name}”. You can also simply start empty.`)}
                 </p>
                 <div className="onboarding-starters" role="group" aria-label={t("Seiten zum Start", "Pages to start with")}>
-                  {(Object.keys(starterInfo) as Starter[]).map((kind) => {
+                  {offered.map((kind) => {
                     const info = starterInfo[kind];
                     const on = starters.includes(kind);
                     return (
@@ -287,6 +440,7 @@ export function Onboarding({
                         type="button"
                         className="onboarding-card"
                         aria-pressed={on}
+                        data-template={STARTERS[kind].template ? "" : undefined}
                         onClick={() => setStarters((list) => (on ? list.filter((k) => k !== kind) : [...list, kind]))}
                       >
                         <info.icon size={22} weight={on ? "fill" : "regular"} aria-hidden />
@@ -301,6 +455,22 @@ export function Onboarding({
                     );
                   })}
                 </div>
+                {!boot.user.demo && (
+                  <div className="onboarding-sample">
+                    <Flask size={22} weight="duotone" aria-hidden />
+                    <span>
+                      <strong>{sample ? t(`„${sample.name}“ ist angelegt`, `“${sample.name}” is ready`) : t("Erst einmal ausprobieren?", "Try things out first?")}</strong>
+                      <small>
+                        {sample
+                          ? t("Ein privater Bereich mit Beispielseiten. Entfernen nimmt genau diese Seiten wieder heraus.", "A private space with sample pages. Removing takes out exactly these pages again.")
+                          : t("Ein privater Beispielbereich mit Projekt, Wiki, Besprechungsnotiz und Whiteboard – mit einem Klick wieder entfernt.", "A private sample space with a project, a wiki, a meeting note and a whiteboard – removed again with one click.")}
+                      </small>
+                    </span>
+                    <button type="button" className="button compact" disabled={busy} onClick={() => void toggleSample()}>
+                      {sample ? t("Beispielbereich entfernen", "Remove sample space") : t("Beispielbereich anlegen", "Create sample space")}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </section>
@@ -371,14 +541,28 @@ export function Onboarding({
             </div>
           </section>
         )}
+        {current === "offline" && (
+          <section aria-labelledby="onboarding-offline">
+            <CloudArrowDown size={28} weight="duotone" className="onboarding-mark" aria-hidden />
+            <h2 id="onboarding-offline" tabIndex={-1} ref={heading}>{t("Auch ohne Verbindung arbeiten?", "Work without a connection too?")}</h2>
+            <OfflineOfferPanel
+              userId={boot.user.id}
+              workspaceId={boot.workspace.id}
+              headingId="onboarding-offline"
+              onAnswered={(answer) => {
+                if (answer !== "enabled") setStep((s) => Math.min(steps.length - 1, s + 1));
+              }}
+            />
+          </section>
+        )}
         {current === "done" && (
           <section aria-labelledby="onboarding-done">
             <Sparkle size={30} weight="duotone" className="onboarding-mark" aria-hidden />
             <h2 id="onboarding-done" tabIndex={-1} ref={heading}>{t("Alles bereit!", "All set!")}</h2>
-            {created.length > 0 && (
+            {[...created, ...importedPages].length > 0 && (
               <p>
                 {t("Angelegt:", "Created:")}{" "}
-                {created.map((page, index) => (
+                {[...created, ...importedPages].map((page, index) => (
                   <span key={page.id}>
                     {index > 0 && ", "}
                     <button
@@ -389,10 +573,21 @@ export function Onboarding({
                         onOpenPage(page.id);
                       }}
                     >
-                      {page.title}
+                      {title(page.id, page.title)}
                     </button>
                   </span>
                 ))}
+              </p>
+            )}
+            {!boot.user.demo && (
+              <p className="onboarding-next">
+                <CheckSquare size={18} aria-hidden />
+                <span>
+                  {t(
+                    "In der Seitenleiste wartet die Liste „Erste Schritte“: Sie hakt sich selbst ab, wenn du etwas davon erledigt hast, und lässt sich ausblenden.",
+                    "The “Getting started” list waits in the sidebar: it ticks itself off as you do things, and can be hidden.",
+                  )}
+                </span>
               </p>
             )}
             {/* Shortcuts only with a keyboard (lib/keyboard-hints.ts); "/" is typed. */}
@@ -424,16 +619,16 @@ export function Onboarding({
       </div>
       <div className="modal-actions onboarding-actions">
         {current !== "done" && (
-          <button type="button" className="text-button" disabled={busy} onClick={() => void finish()}>
+          <button type="button" className="text-button" disabled={stopped} onClick={() => void finish()}>
             {t("Überspringen", "Skip")}
           </button>
         )}
         {step > 0 && (
-          <button type="button" className="button" disabled={busy} onClick={() => setStep((s) => s - 1)}>
+          <button type="button" className="button" disabled={stopped} onClick={() => setStep((s) => s - 1)}>
             {t("Zurück", "Back")}
           </button>
         )}
-        <button type="button" className="button primary" disabled={busy} onClick={() => void next()}>
+        <button type="button" className="button primary" disabled={stopped} onClick={() => void next()}>
           {current === "done"
             ? t("Los geht's", "Let's go")
             : current === "start" && starters.length

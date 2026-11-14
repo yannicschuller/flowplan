@@ -7,11 +7,14 @@
 // once with the job, and the page asks for its progress until it is done –
 // a large workspace takes longer than a reverse proxy waits for an answer.
 // Several PDFs chosen at once are sent as one ZIP (lib/stored-zip.ts).
+// Sending and waiting: components/import-client.ts (shared with the
+// introduction).
 import { useState } from "react";
 import { FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
 import { storedZip } from "@/lib/stored-zip";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
+import { sendImport as send, waitForJob } from "./import-client";
 import { Select } from "./select";
 import { Switch } from "./settings-ui";
 
@@ -56,55 +59,6 @@ const warningText = (warning: string) => {
   const counted = /^(.*) \((\d+)×\)$/.exec(warning);
   return counted ? `${serverMessage(counted[1])} (${counted[2]}×)` : serverMessage(warning);
 };
-
-function send(query: URLSearchParams, body: File | null, onProgress: (share: number) => void) {
-  return new Promise<unknown>((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("POST", `/api/import/source?${query}`);
-    request.setRequestHeader("Content-Type", "application/octet-stream");
-    request.responseType = "json";
-    request.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    request.upload.onload = () => onProgress(1);
-    request.onload = () => {
-      const data = request.response as { error?: string } | null;
-      if (request.status >= 200 && request.status < 300) resolve(data);
-      else reject(new Error(serverMessage(data?.error) || String(request.status)));
-    };
-    request.onerror = () => reject(new Error("network"));
-    request.send(body);
-  });
-}
-
-// Asks for a background import's state until it is done (#163). While the
-// server writes a large import it may not answer for a while: a gateway
-// error of the reverse proxy (502–504) or a lost connection only means
-// asking again later, for up to half an hour without an answer.
-const PATIENCE_MS = 30 * 60_000;
-async function waitForJob(job: string, onProgress: (share: number | null) => void) {
-  let failures = 0,
-    lastAnswer = Date.now();
-  for (;;) {
-    await new Promise((resolve) => setTimeout(resolve, Math.min(10_000, 1000 * 2 ** failures)));
-    let response: Response | null = null;
-    try {
-      response = await fetch(`/api/import/source/job?id=${encodeURIComponent(job)}`, { cache: "no-store" });
-    } catch {
-      /* no connection right now */
-    }
-    if (!response || (response.status >= 502 && response.status <= 504)) {
-      if (Date.now() - lastAnswer > PATIENCE_MS) throw new Error("network");
-      failures = Math.min(failures + 1, 4);
-      continue;
-    }
-    failures = 0;
-    lastAnswer = Date.now();
-    const data = (await response.json().catch(() => null)) as { status?: string; progress?: number | null; result?: unknown; error?: string; code?: number } | null;
-    if (!response.ok) throw new Error(serverMessage(data?.error) || String(response.status));
-    if (data?.status === "done") return data.result;
-    if (data?.status === "failed") throw new Error(serverMessage(data.error) || String(data.code || 500));
-    onProgress(typeof data?.progress === "number" ? data.progress : null);
-  }
-}
 
 export function ImportSources({
   workspaceId,
