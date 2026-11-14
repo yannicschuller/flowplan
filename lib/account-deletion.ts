@@ -70,6 +70,10 @@ const PERSONAL = [
   "user_shortcuts",
   // Own start page layouts (lib/home-layout.ts).
   "home_layouts",
+  // The checklist "Erste Schritte" and which space was the sample
+  // (lib/getting-started.ts, lib/sample-space.ts).
+  "getting_started",
+  "sample_spaces",
   "page_follows",
   "page_visits",
   // The quick search's own visit history (#243, lib/search-visits.ts).

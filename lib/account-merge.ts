@@ -118,6 +118,10 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "saved_searches.user_id": "move",
   "sidebar_state.user_id": "move",
   "home_layouts.user_id": "move",
+  // "Erste Schritte" and the "Beispielbereich" (lib/getting-started.ts,
+  // lib/sample-space.ts): where the target has its own, the target's stays.
+  "getting_started.user_id": "move",
+  "sample_spaces.user_id": "move",
   "home_defaults.updated_by": "move",
   "journal_unlocks.user_id": "move",
   "notifications.user_id": "move",

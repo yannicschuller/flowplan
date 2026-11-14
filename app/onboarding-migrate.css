@@ -1,0 +1,464 @@
+/* The introduction's steps for moving from another tool, the goal, the
+   sample space and the administrators' setup (components/onboarding.tsx,
+   components/onboarding-import.tsx, components/onboarding-admin.tsx), and
+   the sidebar list "Erste Schritte" (components/getting-started.tsx). */
+.onboarding-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.onboarding-source {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* The radio covers its card: a click anywhere chooses it. */
+.onboarding-source input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.onboarding-source:has(input:focus-visible) {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
+}
+.onboarding-source[data-active] {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.onboarding-source[data-fresh] svg {
+  color: var(--blue);
+}
+.onboarding-guide {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.onboarding-guide h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.onboarding-guide-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding-left: 22px;
+  line-height: 1.5;
+}
+.onboarding-guide-file {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0 0 12px;
+  color: var(--secondary);
+  font-size: 13.5px;
+}
+.onboarding-guide-file svg {
+  flex: none;
+  color: var(--blue);
+}
+.onboarding-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.onboarding-import-row .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.onboarding-guide .import-sources-progress {
+  margin-top: 12px;
+}
+.onboarding-import-done,
+.onboarding-import-error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0 0;
+  font-weight: 600;
+}
+.onboarding-import-done svg {
+  flex: none;
+  color: #3f6d52;
+}
+.onboarding-import-error {
+  color: #a43c3f;
+}
+.onboarding-guide > p.small {
+  margin: 12px 0 0;
+}
+.onboarding-terms-wrap {
+  max-height: min(46vh, 420px);
+  overflow: auto;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.onboarding-terms {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.onboarding-terms th,
+.onboarding-terms td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.onboarding-terms thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.onboarding-terms tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+.onboarding-terms tbody th {
+  width: 36%;
+  font-weight: 500;
+}
+.onboarding-terms td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--secondary);
+  line-height: 1.4;
+}
+.onboarding-terms-mark {
+  width: 22px;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  color: var(--secondary);
+}
+.onboarding-terms-mark svg {
+  margin-top: 2px;
+}
+.onboarding-terms tr[data-match="same"] .onboarding-terms-mark {
+  color: #3f6d52;
+}
+.onboarding-terms tr[data-match="none"] td strong {
+  color: var(--secondary);
+  font-weight: 500;
+}
+.onboarding-habits {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--secondary);
+  font-size: 13.5px;
+}
+.onboarding-goals {
+  display: flex;
+  flex-wrap: wrap;
+  width: auto;
+  max-width: 100%;
+  margin-bottom: 4px;
+}
+#onboarding-goal-label {
+  margin-top: 14px;
+}
+.onboarding-sample {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.onboarding-sample svg {
+  color: var(--blue);
+}
+.onboarding-sample small {
+  display: block;
+  color: var(--secondary);
+  line-height: 1.4;
+}
+.onboarding-next {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--blue-light);
+}
+.onboarding-next svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--blue);
+}
+.onboarding-setup {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.onboarding-setup li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.onboarding-setup-text small {
+  display: block;
+  color: var(--secondary);
+  line-height: 1.4;
+}
+.onboarding-setup .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+}
+.onboarding-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px var(--hover);
+}
+[data-light="green"] .onboarding-light {
+  background: #2f9e5b;
+  box-shadow: 0 0 0 3px #2f9e5b2e;
+}
+[data-light="yellow"] .onboarding-light {
+  background: #d9a400;
+  box-shadow: 0 0 0 3px #d9a4002e;
+}
+[data-light="red"] .onboarding-light {
+  background: #d2463f;
+  box-shadow: 0 0 0 3px #d2463f2e;
+}
+[data-theme="dark"] .onboarding-import-done svg,
+[data-theme="dark"] .onboarding-terms tr[data-match="same"] .onboarding-terms-mark {
+  color: #a8d8b9;
+}
+[data-theme="dark"] .onboarding-import-error {
+  color: #f3b0b0;
+}
+@media (max-width: 640px) {
+  .onboarding-sources {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .onboarding-sample,
+  .onboarding-setup li {
+    grid-template-columns: auto 1fr;
+  }
+  .onboarding-sample .button,
+  .onboarding-setup .button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* "Erste Schritte" in the sidebar. */
+.getting-started {
+  margin: 0 8px 8px;
+  padding: 8px 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.getting-started-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.getting-started-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.getting-started-toggle svg {
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+.getting-started-toggle svg[data-open] {
+  transform: none;
+}
+.getting-started-count {
+  margin-left: auto;
+  color: var(--secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.getting-started-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin: 4px 0 6px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--hover);
+  appearance: none;
+}
+.getting-started-progress::-webkit-progress-bar {
+  border-radius: 2px;
+  background: var(--hover);
+}
+.getting-started-progress::-webkit-progress-value {
+  border-radius: 2px;
+  background: var(--blue);
+}
+.getting-started-progress::-moz-progress-bar {
+  border-radius: 2px;
+  background: var(--blue);
+}
+.getting-started ul {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.getting-started li {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+}
+.getting-started li label {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  font-weight: 400;
+  line-height: 1.35;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.getting-started li[data-done] label span {
+  color: var(--secondary);
+  text-decoration: line-through;
+}
+.getting-started li .icon-button {
+  flex: none;
+}
+.getting-started-all {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 6px;
+  color: var(--blue);
+  font-weight: 600;
+}
+.getting-started-sample {
+  margin: 6px 0 0;
+}
+.getting-started-sample .text-button {
+  font-size: 12.5px;
+}
+.getting-started-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+/* Offline use offered per device (#295, components/offline-offer.tsx): the
+   introduction's step and the card on further devices. */
+.offline-offer-panel > p {
+  line-height: 1.55;
+}
+.offline-offer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+}
+.offline-offer-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.offline-offer-message {
+  font-weight: 600;
+}
+.offline-offer {
+  position: fixed;
+  right: max(16px, var(--safe-right, 0px));
+  bottom: max(16px, var(--safe-bottom, 0px));
+  z-index: 60;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  font-size: 13.5px;
+}
+.offline-offer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.offline-offer-head svg {
+  flex: none;
+  color: var(--blue);
+}
+.offline-offer-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+.offline-offer .offline-offer-panel > p:first-child {
+  margin-top: 8px;
+}
+#getting-started-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

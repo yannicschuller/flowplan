@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-// The introduction: settings, pages to start with, a tour of the features
-// and notifications. New accounts see it once; Settings → Account opens it
+// The introduction: settings, where the person comes from, pages to start
+// with, a tour of the features and notifications. New accounts see it once; Settings → Account opens it
 // again (used here, so any account of the test instance works).
 test("the introduction walks through settings, starter pages and the tour", async ({ page }, info) => {
   const errors: string[] = [];
@@ -21,6 +21,13 @@ test("the introduction walks through settings, starter pages and the tour", asyn
   await page.screenshot({ path: `test-results/onboarding-1-${info.project.name}.png` });
   await dialog.getByRole("button", { name: "Weiter" }).click();
 
+  // Administrators see the state of the instance first.
+  await expect(dialog.getByRole("heading", { name: /^(Instanz einrichten|Woher kommst du\?)$/ })).toBeVisible();
+  if (await dialog.getByRole("heading", { name: "Instanz einrichten" }).isVisible()) await dialog.getByRole("button", { name: "Weiter" }).click();
+  // Where the person comes from: nothing chosen goes on without an import.
+  await expect(dialog.getByRole("heading", { name: "Woher kommst du?" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+
   await expect(dialog.getByRole("heading", { name: "Womit möchtest du starten?" })).toBeVisible();
   await dialog.getByRole("button", { name: /^Aufgaben/ }).click();
   await expect(dialog.getByRole("button", { name: /^Aufgaben/ })).toHaveAttribute("aria-pressed", "true");
@@ -37,6 +44,9 @@ test("the introduction walks through settings, starter pages and the tour", asyn
 
   await expect(dialog.getByRole("heading", { name: "Wie möchtest du benachrichtigt werden?" })).toBeVisible();
   await dialog.getByRole("button", { name: "Weiter" }).click();
+  // Offline use on this device (#295), where the browser can: asked later.
+  await expect(dialog.getByRole("heading", { name: /^(Auch ohne Verbindung arbeiten\?|Alles bereit!)$/ })).toBeVisible();
+  if (await dialog.getByRole("heading", { name: "Auch ohne Verbindung arbeiten?" }).isVisible()) await dialog.getByRole("button", { name: "Später" }).click();
   await expect(dialog.getByRole("heading", { name: "Alles bereit!" })).toBeVisible();
   await expect(dialog).toContainText("Angelegt: Aufgaben");
   await page.screenshot({ path: `test-results/onboarding-4-${info.project.name}.png` });

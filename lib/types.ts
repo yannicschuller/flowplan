@@ -365,6 +365,10 @@ export type Bootstrap = {
   language?: Locale | null;
   // New account: show the introduction (components/onboarding.tsx).
   onboarding?: boolean;
+  // The checklist "Erste Schritte" (lib/getting-started.ts); null: none.
+  gettingStarted?: import("./getting-started-items").ChecklistView | null;
+  // The person's "Beispielbereich" here (lib/sample-space.ts); null: none.
+  sampleSpace?: { spaceId: string; name: string; pages: number; trashed: boolean; createdAt: number } | null;
   instance?: {
     name: string;
     announcement: string;

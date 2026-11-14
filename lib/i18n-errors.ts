@@ -1461,6 +1461,8 @@ const exact: Record<string, string> = {
   "Vorlagen für den ganzen Arbeitsbereich speichern nur Eigentümer. Speichere sie für diesen Bereich.": "Only owners save templates for the whole workspace. Save it for this space.",
   "Vorlage eines anderen Bereichs.": "Template of another space.",
   "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
+  "Keine Checkliste „Erste Schritte“ in diesem Arbeitsbereich.": "No “Getting started” checklist in this workspace.",
+  "Kein Beispielbereich vorhanden.": "There is no sample space.",
 };
 const patterns: [RegExp, string][] = [
   [/^Mehr als (\d+) Seiten: weitere Seiten werden nicht übernommen \(FLOWPLAN_IMPORT_MAX_DOCS\)\.$/, "More than $1 pages: further pages are not imported (FLOWPLAN_IMPORT_MAX_DOCS)."],
