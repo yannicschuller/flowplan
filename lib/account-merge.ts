@@ -62,6 +62,10 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   // target names its own trusted contacts again.
   "emergency_contacts.holder_id": "drop",
   "emergency_contacts.contact_id": "drop",
+  // The inactivity message (#282) of the source ends with it (the target
+  // sets up its own, with its own recipients), its use per workspace too.
+  "deadman_switches.user_id": "drop",
+  "workspace_activity.user_id": "drop",
   // Progress of the source's background jobs, its widget history and focus timer.
   "background_jobs.user_id": "drop",
   "widget_counter_days.user_id": "drop",

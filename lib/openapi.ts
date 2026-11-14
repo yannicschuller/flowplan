@@ -61,9 +61,10 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 
 // Actions a write token may send. The names come from lib/api.ts command();
 // tests/openapi.test.ts fails when the switch there and this list differ.
-// Administration (admin.*), tokens (token.*), AI (ai.*) and the emergency
-// access (emergency.*, lib/emergency-access.ts) are refused for API tokens
-// and therefore not listed.
+// Administration (admin.*), tokens (token.*), AI (ai.*), the emergency
+// access (emergency.*, lib/emergency-access.ts) and the inactivity message
+// (deadman.*, lib/dead-man-switch.ts) are refused for API tokens and
+// therefore not listed.
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
@@ -114,7 +115,7 @@ export const commandActionNames = [
   "workflow.run.retry", "workflow.approve", "workflow.hook", "workflow.credential.set", "workflow.credential.remove", "workflow.import",
 ] as const;
 // Prefixes command() refuses for every API token.
-export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai.", "emergency."] as const;
+export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai.", "emergency.", "deadman."] as const;
 
 // A choice per tag or property (by id, or `tag:<name>` for templates), or
 // one word for all: auto (the same-named one there, else a copy), copy, remove.
@@ -1718,7 +1719,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/trash/files", method: "get", op: { id: "fileTrash", tag: "Workspace", summary: "Files in the trash", description: "Files the caller may restore (`file.restore`) or delete permanently (`file.purge`).", params: [workspace], ok: { schema: { type: "array", items: { type: "object", additionalProperties: true } }, description: "Trashed files with their pages" }, errors: [400, 401, 403] } },
   { path: "/api/trash/rows", method: "get", op: { id: "rowTrash", tag: "Workspace", summary: "Records in the trash", params: [workspace], ok: { schema: { type: "array", items: { type: "object", additionalProperties: true } }, description: "Trashed records with their databases" }, errors: [400, 401, 403] } },
   { path: "/api/settings", method: "get", op: { id: "workspaceSettings", tag: "Workspace", summary: "Invitations, groups and grants of a workspace", description: "Owners only.", params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Settings" }, errors: [401, 403] } },
-  { path: "/api/command", method: "post", op: { id: "command", tag: "Workspace", summary: "Change something", description: "The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*` and `emergency.*` (emergency access, session only) are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429).", write: true, body: { content: "application/json", schema: ref("Command"), required: true }, ok: { schema: ref("CommandResult"), description: "The result of the action" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
+  { path: "/api/command", method: "post", op: { id: "command", tag: "Workspace", summary: "Change something", description: "The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*`, `emergency.*` (emergency access) and `deadman.*` (inactivity message) are refused for every token (session only). Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429).", write: true, body: { content: "application/json", schema: ref("Command"), required: true }, ok: { schema: ref("CommandResult"), description: "The result of the action" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
   // Pages
   { path: "/api/pages/{pageId}", method: "get", op: { id: "getPage", tag: "Pages", summary: "A page with its content", description: "Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts, and your own quick-search history; not for API tokens).", params: [p("pageId", "Page ID")], ok: { schema: ref("PageData"), description: "The page" }, errors: [401, 403, 404] } },
   { path: "/api/pages/{pageId}/blocks/{blockId}", method: "get", op: { id: "blockPreview", tag: "Pages", summary: "Preview of a block link", description: `What a pasted block link shows: the page's (or with \`row\` the record's) title and the start of the block's text, as \`Page › text\` (#88). A block link is the page address with the block: \`/#page=<page>&block=<blockId>\` (records: \`/#page=<database>&row=<record>&block=<blockId>\`). \`found\` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: \`encrypted\` is true and title and text stay empty. ${noStore}`, params: [p("pageId", "Page ID (the database for a record)"), p("blockId", "Block ID", { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" }), q("row", "Record ID, for a block of a record's document", { type: "string", format: "uuid" })], ok: { schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, rowId: { type: "string", format: "uuid" }, workspaceId: { type: "string", format: "uuid" }, blockId: { type: "string" }, title: { type: "string" }, text: { type: "string" }, found: { type: "boolean" }, encrypted: { type: "boolean" } }, required: ["pageId", "workspaceId", "blockId", "title", "text", "found", "encrypted"] }, description: "Title and text" }, errors: [400, 401, 403, 404] } },

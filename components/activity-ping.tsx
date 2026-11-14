@@ -1,7 +1,9 @@
 "use client";
 // Tells the server once a minute that the app is open and how long ago it
 // was last used (typed, clicked, scrolled, touched) – for "who is here" in
-// Administration → Users (lib/user-activity.ts). Nothing else is sent.
+// Administration → Users (lib/user-activity.ts) – and which workspace is
+// open, for the inactivity message "only this workspace" (#282). Nothing
+// else is sent.
 import { useEffect } from "react";
 
 const EVERY_MS = 60_000;
@@ -13,7 +15,7 @@ const USE_EVENTS = [
   "scroll",
 ] as const;
 
-export function ActivityPing() {
+export function ActivityPing({ workspaceId }: { workspaceId?: string }) {
   useEffect(() => {
     let usedAt = Date.now();
     let sentAt = 0;
@@ -27,7 +29,7 @@ export function ActivityPing() {
       void fetch("/api/activity", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idleMs }),
+        body: JSON.stringify({ idleMs, workspaceId }),
         keepalive: true,
       }).catch(() => {});
     };
@@ -51,6 +53,6 @@ export function ActivityPing() {
         window.removeEventListener(name, used, { capture: true });
       document.removeEventListener("visibilitychange", shown);
     };
-  }, []);
+  }, [workspaceId]);
   return null;
 }

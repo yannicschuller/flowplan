@@ -164,6 +164,8 @@ import { workflowPost } from "@/lib/workflows/rest";
 import { withReadMemo } from "@/lib/read-memo";
 import { emergencyForcedOff, emergencyContent, emergencyExport, emergencyKeys, emergencyLog, emergencyOverview, emergencyPage } from "@/lib/emergency-access";
 import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
+import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
+import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -235,6 +237,10 @@ async function handleGET(
     // lib/emergency-access.ts): the signed link is the authorization; this
     // page only asks, the button below sends the denial.
     if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") return await emergencyDenyPage(url.searchParams.get("token") || "");
+    // "Ich bin da" from a warning about the inactivity message (#282,
+    // lib/dead-man-switch.ts): the signed link is the authorization; this
+    // page only asks, its button checks in.
+    if (path.length === 2 && path[0] === "deadman" && path[1] === "here") return await deadmanHerePage(url.searchParams.get("token") || "");
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(await listApiTokens(user));
@@ -1153,6 +1159,7 @@ async function handleGET(
         adminIds: await adminUserIds(),
         localLogin: localLoginEnabled(),
         emergencyForcedOff: emergencyForcedOff(),
+        deadManForcedOff: deadmanForcedOff(),
         restorePending: pendingRestore(),
         // Who may use AI when the administration chose "selected people".
         aiPolicy: { access: (await instanceAiSettings()).access, enabled: (await instanceAiSettings()).enabled, allowed: await aiAllowedUsers() },
@@ -1201,6 +1208,12 @@ async function handleGET(
         });
       }
       throw new HttpError(404, "Nicht gefunden.");
+    }
+    // The inactivity message (#282): the overview for the settings, in the
+    // browser only.
+    if (path.length === 1 && path[0] === "deadman") {
+      if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+      return NextResponse.json(await deadmanOverview(user), { headers: { "Cache-Control": "private, no-store" } });
     }
     if (path.length === 2 && path[0] === "avatars") {
       const picture = await avatarFor(user, z.uuid().parse(path[1]));
@@ -1331,6 +1344,10 @@ async function handlePOST(
     if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") {
       const form = await req.formData();
       return await emergencyDenied(String(form.get("token") || ""));
+    }
+    if (path.length === 2 && path[0] === "deadman" && path[1] === "here") {
+      const form = await req.formData();
+      return await deadmanHere(String(form.get("token") || ""));
     }
     const user = await requireUser();
     // Every POST here changes something; read tokens only read (the

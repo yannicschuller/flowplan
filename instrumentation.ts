@@ -50,6 +50,9 @@ export async function register() {
     // Emergency access (#281): waiting periods that end, reminders, expiry.
     const { startEmergencyWorker } = await import("./lib/emergency-access");
     startEmergencyWorker(() => void dispatchPush());
+    // The inactivity message (#282): warnings, sending, re-arming.
+    const { startDeadmanWorker } = await import("./lib/dead-man-switch");
+    startDeadmanWorker(() => void dispatchPush());
     const { startSearchWorker } = await import("./lib/search-index");
     startSearchWorker();
     const { startFileTextWorker } = await import("./lib/file-text");

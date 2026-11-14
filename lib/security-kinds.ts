@@ -65,6 +65,15 @@ export const securityKinds = {
   "emergency.expired": { severity: "info", de: "Notfallzugriff abgelaufen", en: "Emergency access expired" },
   "emergency.viewed": { severity: "info", de: "Inhalte über Notfallzugriff gelesen", en: "Content read through emergency access" },
   "emergency.exported": { severity: "warn", de: "Export über Notfallzugriff", en: "Export through emergency access" },
+  // Inactivity message per workspace (#282, lib/dead-man-switch.ts).
+  "deadman.armed": { severity: "info", de: "Nachricht bei Inaktivität eingeschaltet", en: "Inactivity message switched on" },
+  "deadman.disarmed": { severity: "info", de: "Nachricht bei Inaktivität ausgeschaltet", en: "Inactivity message switched off" },
+  "deadman.changed": { severity: "info", de: "Nachricht bei Inaktivität geändert", en: "Inactivity message changed" },
+  "deadman.recipients": { severity: "warn", de: "Empfänger der Nachricht bei Inaktivität geändert", en: "Recipients of the inactivity message changed" },
+  "deadman.warning": { severity: "info", de: "Erinnerung vor der Nachricht bei Inaktivität", en: "Reminder before the inactivity message" },
+  "deadman.fired": { severity: "warn", de: "Nachricht bei Inaktivität verschickt", en: "Inactivity message sent" },
+  "deadman.checkin": { severity: "info", de: "Lebenszeichen zur Nachricht bei Inaktivität", en: "Check-in for the inactivity message" },
+  "deadman.rearmed": { severity: "info", de: "Nachricht bei Inaktivität wieder eingeschaltet", en: "Inactivity message switched on again" },
 } as const satisfies Record<string, Kind>;
 export type SecurityKind = keyof typeof securityKinds;
 export const isSecurityKind = (value: string): value is SecurityKind => value in securityKinds;

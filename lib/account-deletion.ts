@@ -302,6 +302,9 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   // Emergency access (#281): of and for this account – also when the
   // account stays as an empty shell below.
   await run("DELETE FROM emergency_contacts WHERE holder_id=? OR contact_id=?", userId, userId);
+  // The inactivity message (#282) and the use per workspace behind it.
+  await run("DELETE FROM deadman_switches WHERE user_id=?", userId);
+  await run("DELETE FROM workspace_activity WHERE user_id=?", userId);
   await run("DELETE FROM members WHERE user_id=?", userId);
   await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   // Who made records done (schema 96): nobody any more.

@@ -41,7 +41,8 @@ export function mailConfig(): MailConfig | null {
   };
 }
 
-type Sender = (message: { to: string; subject: string; text: string; html: string }) => Promise<unknown>;
+type Message = { to: string; subject: string; text: string; html: string; from?: string | { name: string; address: string } };
+type Sender = (message: Message) => Promise<unknown>;
 const runtime = globalThis as unknown as {
   flowplanMailTransport?: Transporter;
   flowplanMailRun?: Promise<void>;
@@ -66,7 +67,7 @@ function transport(config: MailConfig) {
 export function setMailSender(sender: Sender | undefined) {
   runtime.flowplanMailSender = sender;
 }
-function send(config: MailConfig, message: { to: string; subject: string; text: string; html: string }) {
+function send(config: MailConfig, message: Message) {
   if (runtime.flowplanMailSender) return runtime.flowplanMailSender(message);
   return transport(config).sendMail({ from: config.from, ...message });
 }
@@ -103,18 +104,29 @@ export const mailLayout = layout;
 export const mailEscape = escape;
 export const mailAppUrl = appUrl;
 
-export async function queueMail(to: string, subject: string, text: string, html: string) {
+// `fromName` replaces the display name of the sender (the address stays the
+// instance's): "<Name> via Flowplan (<instance>)" for the inactivity
+// message (#282, lib/dead-man-switch.ts).
+export async function queueMail(to: string, subject: string, text: string, html: string, options: { fromName?: string } = {}) {
   if (!mailConfig() || !/^[^\s@]+@[^\s@]+$/.test(to)) return false;
   await run(
-    "INSERT INTO mail_queue(id,recipient,subject,text,html,next_at) VALUES(?,?,?,?,?,?)",
+    "INSERT INTO mail_queue(id,recipient,subject,text,html,next_at,from_name) VALUES(?,?,?,?,?,?,?)",
     id(),
     to,
     subject.slice(0, 250),
     text,
     html,
     Date.now(),
+    options.fromName ? senderName(options.fromName) : null,
   );
   return true;
+}
+// A display name without line breaks, quotes or angle brackets.
+export const senderName = (name: string) =>
+  name.replace(/[\r\n\t"<>\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+// The address of SMTP_FROM ("Flowplan <x@y>" or "x@y").
+export function senderAddress(config: MailConfig) {
+  return (/<([^<>\s]+@[^<>\s]+)>\s*$/.exec(config.from)?.[1] || config.from).trim();
 }
 
 // Account e-mails with one link: confirm the address, reset the password.
@@ -343,8 +355,8 @@ export async function queueNotificationDigests(now = Date.now()) {
 export async function flushMailQueue(now = Date.now()) {
   const config = mailConfig();
   if (!config || (await workersPaused())) return;
-  const due = await all<{ id: string; recipient: string; subject: string; text: string; html: string; attempts: number }>(
-    "SELECT id,recipient,subject,text,html,attempts FROM mail_queue WHERE sent_at IS NULL AND attempts<8 AND next_at<=? ORDER BY next_at LIMIT 50",
+  const due = await all<{ id: string; recipient: string; subject: string; text: string; html: string; attempts: number; from_name: string | null }>(
+    "SELECT id,recipient,subject,text,html,attempts,from_name FROM mail_queue WHERE sent_at IS NULL AND attempts<8 AND next_at<=? ORDER BY next_at LIMIT 50",
     now,
   );
   for (const mail of due) {
@@ -353,7 +365,13 @@ export async function flushMailQueue(now = Date.now()) {
     if (!(await run("UPDATE mail_queue SET next_at=? WHERE id=? AND sent_at IS NULL AND next_at<=?", Date.now() + 10 * 60_000, mail.id, now)).changes)
       continue;
     try {
-      await send(config, { to: mail.recipient, subject: mail.subject, text: mail.text, html: mail.html });
+      await send(config, {
+        to: mail.recipient,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+        ...(mail.from_name ? { from: { name: mail.from_name, address: senderAddress(config) } } : {}),
+      });
       await run("UPDATE mail_queue SET sent_at=?,error=NULL WHERE id=?", Date.now(), mail.id);
     } catch (error) {
       const attempts = mail.attempts + 1;

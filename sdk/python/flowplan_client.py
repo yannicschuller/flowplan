@@ -2529,7 +2529,7 @@ class FlowplanClient:
         return self._json("GET", "/api/settings", query=dict(query) if query else None, headers=headers)
 
     def command(self, body: "Command", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "CommandResult":
-        """Change something — The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*` and `emergency.*` (emergency access, session only) are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429). (POST /api/command)"""
+        """Change something — The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*`, `emergency.*` (emergency access) and `deadman.*` (inactivity message) are refused for every token (session only). Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429). (POST /api/command)"""
         return self._json("POST", "/api/command", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def get_page(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "PageData":

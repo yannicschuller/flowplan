@@ -5,6 +5,11 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Inactivity message per workspace (#282, lib/dead-man-switch.ts).
+  "Die Nachricht bei Inaktivität ist auf dieser Instanz ausgeschaltet.": "The inactivity message is switched off on this instance.",
+  "Für die Nachricht bei Inaktivität muss der E-Mail-Versand eingerichtet sein.": "The inactivity message needs e-mail delivery to be set up.",
+  "Nur Mitglieder eines Arbeitsbereichs (keine Gäste) können eine Nachricht bei Inaktivität einrichten.": "Only members of a workspace (no guests) can set up an inactivity message.",
+  "Bitte gib eine Notiz und mindestens einen Empfänger an.": "Please enter a note and at least one recipient.",
   // Emergency access for trusted contacts (#281, lib/emergency-access.ts).
   "Auf dieser Instanz gibt es kein Konto mit dieser E-Mail-Adresse.": "There is no account with this e-mail address on this instance.",
   "Bitte nimm die Rolle als Vertrauensperson zuerst an.": "Please accept the role as trusted contact first.",
@@ -1587,6 +1592,22 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^(.+) hat die PIN von „(.+)“ zurückgesetzt$/, "$1 reset the PIN of “$2”"],
+  // Inactivity message (#282, lib/dead-man-switch.ts).
+  [/^Höchstens (\d+) Empfänger\.$/, "At most $1 recipients."],
+  [/^Ungültige E-Mail-Adresse: (.+)$/, "Invalid e-mail address: $1"],
+  [/^Höchstens (\d+) Nachrichten bei Inaktivität\.$/, "At most $1 inactivity messages."],
+  [/^Die Notiz darf höchstens (\d+) Zeichen lang sein\.$/, "The note can be at most $1 characters long."],
+  [
+    /^Deine Nachricht bei Inaktivität für „(.+)“ wurde am (.+) an (.+) verschickt\. Sie ist jetzt wieder eingeschaltet\.$/,
+    "Your inactivity message for “$1” was sent on $2 to $3. It is switched on again now.",
+  ],
+  [/^Deine Nachricht bei Inaktivität für „(.+)“ wurde an (.+) verschickt\.$/, "Your inactivity message for “$1” was sent to $2."],
+  [/^Die Empfänger deiner Nachricht bei Inaktivität für „(.+)“ wurden geändert: (.+)\.$/, "The recipients of your inactivity message for “$1” were changed: $2."],
+  [/^Die Notiz deiner Nachricht bei Inaktivität für „(.+)“ wurde geändert\.$/, "The note of your inactivity message for “$1” was changed."],
+  [
+    /^Erinnerung: Deine Nachricht bei Inaktivität für „(.+)“ wird am (.+) an (\d+) Empfänger verschickt, wenn du dich nicht meldest\. „Ich bin da“ oder jede Nutzung setzt sie zurück\.$/,
+    "Reminder: your inactivity message for “$1” will be sent on $2 to $3 recipients unless you check in. “I'm here” or any use resets it.",
+  ],
   // Emergency access (#281, lib/emergency-access.ts).
   [/^Höchstens (\d+) Vertrauenspersonen\.$/, "At most $1 trusted contacts."],
   [

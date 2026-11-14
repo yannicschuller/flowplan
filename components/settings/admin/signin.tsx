@@ -184,6 +184,30 @@ export default function SigninSection() {
         )}
       </SettingGroup>
 
+      <SettingGroup
+        id="deadman"
+        title={t("Nachricht bei Inaktivität", "Inactivity message")}
+        description={t(
+          "Personen können je Arbeitsbereich eine Notiz hinterlegen, die nach einer gewählten Zeit ohne Nutzung an bis zu zehn E-Mail-Adressen geht – nach Erinnerungen 7, 3 und 1 Tag vorher. Braucht den E-Mail-Versand. Jedes Verschicken und jede Änderung der Empfänger steht unter Sicherheit.",
+          "People can leave a note per workspace that goes to up to ten e-mail addresses after a chosen time without use – after reminders 7, 3 and 1 day before. Needs e-mail delivery. Every sending and every change of recipients shows under Security.",
+        )}
+      >
+        {data.deadManForcedOff ? (
+          <SettingRow label={t("Nachricht bei Inaktivität erlauben", "Allow inactivity messages")} description={t("Über FLOWPLAN_DEAD_MAN_SWITCH=off in der Umgebung ausgeschaltet.", "Switched off through FLOWPLAN_DEAD_MAN_SWITCH=off in the environment.")}>
+            <StatusBadge tone="off">{t("Aus", "Off")}</StatusBadge>
+          </SettingRow>
+        ) : (
+          <InstanceSwitch
+            field="deadManSwitch"
+            label={t("Nachricht bei Inaktivität erlauben", "Allow inactivity messages")}
+            description={t(
+              "Aus: Es gehen keine Erinnerungen und keine Nachrichten hinaus, eingeschaltete Nachrichten ruhen. Wieder an, verschickt Flowplan keine Nachricht, bevor die Person einen Tag vorher erinnert wurde.",
+              "Off: no reminders and no messages go out, switched-on messages rest. Back on, Flowplan sends no message before the person was reminded a day before.",
+            )}
+          />
+        )}
+      </SettingGroup>
+
       {sessions && (
         <SettingGroup
           id="sessions"
