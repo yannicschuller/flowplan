@@ -3,7 +3,7 @@ import { DEFAULT_EDGE_SWIPE, parseEdgeSwipePref, type EdgeSwipePref } from "./ed
 import { nativeApp } from "./native-app";
 
 // "Wischen vom linken Rand" (Settings → Darstellung & Sprache, #285): in the
-// app for iPhone and iPad, whether the swipe from the left edge opens the
+// app for iPhone, iPad and Android, whether the swipe from the left edge opens the
 // sidebar (the default) or goes back. For this device (like the block
 // handles); other tabs follow. lib/edge-swipe.ts decides who owns the edge.
 const KEY = "flowplan.edge-swipe";
@@ -47,12 +47,14 @@ export function useEdgeSwipePref(): EdgeSwipePref {
   return useSyncExternalStore(onEdgeSwipePref, edgeSwipePref, () => DEFAULT_EDGE_SWIPE);
 }
 
-// The choice only does something in the app on iPhone and iPad that takes
-// it (FlowplanApp.edgeSwipe, apps newer than 1.0.12): elsewhere Safari or
-// the system owns its back gesture, or nothing claims the edge.
+// The choice only does something in the app that takes it
+// (FlowplanApp.edgeSwipe): on iPhone and iPad (apps newer than 1.0.12) the
+// app's back swipe steps aside, on Android (apps newer than 1.0.13) the app
+// keeps a strip of the left edge from the system's back gesture. Elsewhere
+// Safari or the system owns its back gesture, or nothing claims the edge.
 export function edgeSwipeChoosable(): boolean {
   const app = nativeApp();
-  return app?.platform === "ios" && typeof app.edgeSwipe === "function";
+  return (app?.platform === "ios" || app?.platform === "android") && typeof app.edgeSwipe === "function";
 }
 
 const noop = () => () => {};

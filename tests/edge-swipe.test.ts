@@ -95,10 +95,18 @@ test("the choice: 'drawer' by default, 'back' is kept; unknown values are the de
   setEdgeSwipePref("drawer");
 });
 
-test("the choice is offered and reported only to an iOS app that takes it", () => {
+test("the choice is offered and reported only to an app (iOS, Android) that takes it", () => {
   assert.equal(edgeSwipeChoosable(), false);
   const sent: unknown[] = [];
+  // Android from 1.0.14: the app keeps a strip of the left edge from the system's back gesture.
   fakeWindow.FlowplanApp = { platform: "android", version: "1.1.0", edgeSwipe: (mode: unknown) => sent.push(mode) };
+  assert.equal(edgeSwipeChoosable(), true);
+  reportEdgeSwipe();
+  assert.deepEqual(sent.splice(0), ["drawer"]);
+  // An older Android app: not offered.
+  fakeWindow.FlowplanApp = { platform: "android", version: "1.0.13" };
+  assert.equal(edgeSwipeChoosable(), false);
+  fakeWindow.FlowplanApp = { platform: "desktop", version: "1.1.0", edgeSwipe: (mode: unknown) => sent.push(mode) };
   assert.equal(edgeSwipeChoosable(), false);
   fakeWindow.FlowplanApp = { platform: "ios", version: "1.0.12" };
   assert.equal(edgeSwipeChoosable(), false);
