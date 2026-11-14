@@ -7,6 +7,9 @@
 // "improve" action (lib/capture-improve.ts) – on the server or on this
 // device, as in the editor – and the answer is shown as a preview to take
 // ("Übernehmen") or not ("Original behalten"). Nothing is saved by it.
+// With `screen` the form is the start screen of a phone (components/
+// start-capture.tsx, lib/start-screen.ts) instead of a sheet: no dialog
+// around it, and the second button leaves for the app.
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Check, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { textLocale } from "@/lib/i18n";
@@ -35,8 +38,12 @@ export function QuickCapture({
   mutate,
   onSaved,
   notify,
+  screen = false,
 }: {
   workspaceId: string;
+  // The start screen (components/start-capture.tsx): no dialog; "Zur App"
+  // instead of "Abbrechen" (onClose).
+  screen?: boolean;
   // Offline the AI is not offered (capturing still works).
   online?: boolean;
   onClose: () => void;
@@ -99,10 +106,9 @@ export function QuickCapture({
   // Shorthand and links the AI changed or dropped (#172): the same check as
   // the desktop capture window, shown before the text is taken.
   const lost = improving?.phase === "done" && changed ? lostCaptureTokens(captureImproveSource(improving.source), captureImproveSource(improving.result), { today: localDay(), locale: textLocaleNow }) : [];
-  return (
-    <Modal open sheet onClose={onClose} title={t("Erfassen", "Capture")}>
+  const form = (
       <form
-        className="quick-capture"
+        className={screen ? "quick-capture start-capture-form" : "quick-capture"}
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -224,13 +230,18 @@ export function QuickCapture({
         )}
         <div className="modal-actions">
           <button type="button" className="button" onClick={onClose}>
-            {t("Abbrechen", "Cancel")}
+            {screen ? t("Zur App", "To the app") : t("Abbrechen", "Cancel")}
           </button>
           <button className="button primary" disabled={busy || improving?.phase === "running" || !database || (!title.trim() && !text.trim())}>
             {busy ? t("Wird gespeichert …", "Saving …") : t("Erfassen", "Capture")}
           </button>
         </div>
       </form>
+  );
+  if (screen) return form;
+  return (
+    <Modal open sheet onClose={onClose} title={t("Erfassen", "Capture")}>
+      {form}
     </Modal>
   );
 }

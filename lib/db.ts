@@ -1369,6 +1369,11 @@ function migrate(d: DatabaseSync) {
   // stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "full_width_pages"))
     d.exec("ALTER TABLE users ADD COLUMN full_width_pages INTEGER");
+  // "Beim Öffnen auf dem Handy" per person (lib/start-screen.ts):
+  // users.start_screen, NULL = the default ('home') or 'capture'. An older
+  // version ignores the column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "start_screen"))
+    d.exec("ALTER TABLE users ADD COLUMN start_screen TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

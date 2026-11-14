@@ -13,7 +13,8 @@
 // iPad what the swipe from the left edge does (#285, this device), pages at full width (#257,
 // profile, all devices),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
-// "Was ist neu" (#223, profile, all devices).
+// "Was ist neu" (#223, profile, all devices), "Beim Öffnen auf dem Handy"
+// (lib/start-screen.ts, profile, all devices).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { CircleHalf, Gift, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
@@ -41,6 +42,8 @@ import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
+import type { StartScreen } from "@/lib/start-screen";
+import { setStartScreenLocal, startScreen as startScreenNow, useStartScreen } from "@/lib/start-screen-client";
 import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
 
 export default function AppearanceSection() {
@@ -149,6 +152,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.fullWidthPages", fullWidthPages: on });
       } catch (e) {
         setFullWidthPagesLocal(before);
+        throw e;
+      }
+    });
+  };
+  const start = useStartScreen(boot.startScreen);
+  const [startStatus, runStart] = useSaveState();
+  const chooseStart = (value: StartScreen) => {
+    const before = startScreenNow();
+    setStartScreenLocal(value);
+    void runStart(async () => {
+      try {
+        await mutate({ action: "profile.startScreen", startScreen: value });
+      } catch (e) {
+        setStartScreenLocal(before);
         throw e;
       }
     });
@@ -317,6 +334,30 @@ export default function AppearanceSection() {
             </div>
           </SettingRow>
         )}
+      </SettingGroup>
+      <SettingGroup id="start" title={t("Beim Öffnen", "On opening")}>
+        <SettingRow
+          anchor="start-screen"
+          label={t("Beim Öffnen auf dem Handy", "When opening on a phone")}
+          description={t(
+            "Schnellerfassung: Öffnest du Flowplan auf dem Handy (App, installierte Web-App oder Browser), erscheint zuerst das Erfassen – Titel antippen ist nicht nötig, die Tastatur ist da. Nach dem Sichern geht es mit „Noch eins“ weiter oder mit „Zur App“ in den Arbeitsbereich. Links, Mitteilungen und Teilen öffnen weiter ihr Ziel; Tablets und Computer zeigen immer die Startseite. Gilt auf allen Geräten.",
+            "Quick capture: when you open Flowplan on a phone (app, installed web app or browser), capturing comes first – no need to tap the title, the keyboard is up. After saving, “One more” goes on, “To the app” opens the workspace. Links, notifications and sharing still open their target; tablets and computers always show the home page. Applies on all devices.",
+          )}
+        >
+          <SaveState status={startStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Beim Öffnen auf dem Handy", "When opening on a phone")}>
+            {(
+              [
+                ["home", t("Startseite", "Home")],
+                ["capture", t("Schnellerfassung", "Quick capture")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={start === value}>
+                <input type="radio" name="start-screen" checked={start === value} onChange={() => chooseStart(value)} /> {label}
+              </label>
+            ))}
+          </div>
+        </SettingRow>
       </SettingGroup>
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
         <SettingRow
