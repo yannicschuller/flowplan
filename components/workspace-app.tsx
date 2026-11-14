@@ -299,6 +299,7 @@ import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
 import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
+import { setStartScreenLocal } from "@/lib/start-screen-client";
 import { fullWidthPagesOf, showsFullWidth } from "@/lib/page-width-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
@@ -599,6 +600,8 @@ export default function WorkspaceApp({
   // browser's copy is set, so the first paint has the width.
   useEffect(() => setFullWidthPagesLocal(boot.fullWidthPages), [boot.fullWidthPages]);
   const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
+  // "Beim Öffnen auf dem Handy" (lib/start-screen.ts): the settings show it.
+  useEffect(() => setStartScreenLocal(boot.startScreen), [boot.startScreen]);
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
     const root = document.documentElement;

@@ -114,6 +114,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         keywords: { de: "bewegung animation reduziert aus übergänge einblenden barrierefreiheit", en: "motion animation reduced off transitions fade accessibility" },
         anchor: "motion",
       },
+      {
+        title: { de: "Beim Öffnen auf dem Handy", en: "When opening on a phone" },
+        keywords: { de: "start startbildschirm startseite schnellerfassung erfassen handy telefon öffnen app", en: "start start screen home quick capture capture phone open app" },
+        anchor: "start-screen",
+      },
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
       {
         title: { de: "Seitensymbol", en: "Page icon" },

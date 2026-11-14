@@ -319,6 +319,8 @@ export type Bootstrap = {
   motion?: import("./motion-pref").MotionPref;
   // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).
   fullWidthPages?: boolean;
+  // "Beim Öffnen auf dem Handy" (lib/start-screen.ts).
+  startScreen?: import("./start-screen").StartScreen;
   // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts).
   updateNotes?: import("./update-notes-pref").UpdateNotesBoot;
   spaces: Space[];
