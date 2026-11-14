@@ -421,7 +421,7 @@ Two formats (phase 3):
     be at least the server's major version. Found in `FLOWPLAN_PG_BIN`, on
     `PATH` or in `/usr/lib/postgresql/<n>/bin` (the newest that fits); the
     Docker image installs `postgresql-client-18` from the PostgreSQL
-    project's apt repository (Debian bookworm ships 15). Without fitting
+    project's apt repository (Debian trixie ships 17). Without fitting
     tools – or with `FLOWPLAN_BACKUP_FORMAT=sqlite` – the scheduled backup
     falls back to the portable SQLite file and logs why.
   - The password goes to the tools through `PGPASSWORD`, never on the

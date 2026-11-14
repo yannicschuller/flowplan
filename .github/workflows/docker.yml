@@ -232,10 +232,22 @@ jobs:
           docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.1 image \
             --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 0 --format table \
             --timeout 15m "$image" | tee "$RUNNER_TEMP/trivy.txt"
+          # What scanners without --ignore-unfixed show (users run those):
+          # findings the distribution has no fix for yet, as a count per
+          # package – for information, never a failure.
+          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.1 image \
+            --severity CRITICAL --scanners vuln --exit-code 0 --format json \
+            --timeout 15m "$image" > "$RUNNER_TEMP/trivy-all.json" || true
           {
             echo "## Trivy: HIGH and CRITICAL with a fix available"
             echo
             echo '```'
             tail -c 60000 "$RUNNER_TEMP/trivy.txt"
             echo '```'
+            echo
+            echo "## Trivy: CRITICAL without a fix yet (for information)"
+            echo
+            jq -r '[.Results[]?.Vulnerabilities[]? | select((.FixedVersion // "") == "") | "\(.PkgName) \(.InstalledVersion): \(.VulnerabilityID)"] | if length == 0 then "none" else .[] end' "$RUNNER_TEMP/trivy-all.json" 2>/dev/null | sort -u | head -200 || echo "(no report)"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "Critical findings without a fix:"
+          jq -r '[.Results[]?.Vulnerabilities[]? | select((.FixedVersion // "") == "")] | length' "$RUNNER_TEMP/trivy-all.json" 2>/dev/null || true

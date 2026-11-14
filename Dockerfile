@@ -5,7 +5,7 @@
 # the image's 35 minutes. Only the stage "standalone" adapts the result to
 # each target platform (native packages such as sharp, see
 # scripts/standalone-arch.mjs).
-FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS deps
+FROM --platform=$BUILDPLATFORM node:26-trixie-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # npm's download cache survives between builds (BuildKit cache mount).
@@ -28,13 +28,13 @@ ARG FLOWPLAN_SKIP_TYPECHECK=""
 RUN --mount=type=cache,target=/app/.next/cache npm run build
 # Per target platform, still without emulation: packages built for another
 # CPU are swapped for their twin of the target (e.g. sharp for arm64).
-FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS standalone
+FROM --platform=$BUILDPLATFORM node:26-trixie-slim AS standalone
 ARG TARGETARCH
 COPY --from=build /app/.next/standalone /out
 COPY scripts/standalone-arch.mjs /tmp/standalone-arch.mjs
 RUN --mount=type=cache,target=/root/.npm node /tmp/standalone-arch.mjs /out "$TARGETARCH"
 FROM litestream/litestream:0.5.18 AS litestream
-FROM node:26-bookworm-slim AS runtime
+FROM node:26-trixie-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \
   org.opencontainers.image.description="Documents, databases, whiteboards and a daily journal for teams – self-hosted." \
   org.opencontainers.image.source="https://github.com/yannicschuller/flowplan" \
@@ -49,12 +49,15 @@ WORKDIR /app
 # own repository (Debian's are version 15), the newest major version – a
 # client dumps servers up to its own version, never newer ones.
 # The base image's Debian packages get their security updates (apt and others
-# fixed after the base image was built). npm, npx and corepack are only needed
+# fixed after the base image was built). Debian 13 (trixie): Debian 12's curl
+# 7.88 and glibc 2.36 had critical findings without a fix there; trixie's
+# newer versions get fixes first. util-linux brings setpriv (the entrypoint's
+# drop to PUID:PGID), installed explicitly in case the base image drops it. npm, npx and corepack are only needed
 # to build; the image runs node alone, and their bundled packages (undici,
 # brace-expansion …) would otherwise be scanned as part of the image.
 ARG PG_CLIENT_MAJOR=18
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl util-linux \
   && install -d /usr/share/postgresql-common/pgdg \
   && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
   && . /etc/os-release \

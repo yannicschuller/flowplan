@@ -21,7 +21,7 @@ For every repo (`flowplan`, `flowplan-docs`, `flowplan-website`, `flowplan-app`,
 
 ## 3. Pinned versions Dependabot doesn't see
 
-- `flowplan/Dockerfile`: `node:<major>-bookworm-slim`, `litestream/litestream:<x.y.z>` (Docker Hub tags), the Trivy image in `docker.yml`.
+- `flowplan/Dockerfile`: `node:<major>-trixie-slim`, `litestream/litestream:<x.y.z>` (Docker Hub tags), the Trivy image in `docker.yml`.
 - Workflow actions pinned by major (`actions/checkout@vN` …) where Dependabot isn't configured.
 - Prefer releases that are at least a few days old; note the date.
 
