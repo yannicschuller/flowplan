@@ -116,6 +116,10 @@ type Positioned = DocumentBlock & {
   // first line with the box, so its handle sits closer to its text, inside
   // the box's padding, and it has no "+" (that place is the box's handle).
   boxed: boolean;
+  // The first paragraph of a callout or quote (#278): no handle of its own,
+  // the box's handle stands for it (as a list item's for its first
+  // paragraph) – both sat on the same line, one block with two handles.
+  front: boolean;
   // A paragraph or heading indented with Tab (#246): how far its text
   // starts from its edge; the handle sits there (#255).
   indent: number;
@@ -134,6 +138,8 @@ const replays = new WeakMap<Element, { source: Animation; replay: Animation }>()
 // a column (#261): the handle of the whole layout and its "+" (a block
 // below the columns) sat under the handle of the first block inside.
 const BOXES = ["callout", "blockquote", "meeting", "column"];
+// Boxes whose handle stands for their first paragraph (#278).
+const FRONTED = ["callout", "blockquote"];
 // A block inside a closed toggle has no handle (#252): Chrome still lays out
 // the content of a closed <details> and reports its rectangles, so the
 // handle of a hidden block showed up over the visible blocks below. Closed
@@ -352,6 +358,11 @@ export function DocumentBlockControls({
             handleTop: firstLineCenter(editor, b, rect, dom) - origin.top - 14 - dy,
             glide: glide?.animation,
             indent: b.node.attrs.indent ? parseFloat(getComputedStyle(dom).paddingInlineStart) || 0 : 0,
+            front:
+              b.index === 0 &&
+              b.node.type.name === "paragraph" &&
+              b.parentPos >= 0 &&
+              FRONTED.includes(editor.state.doc.nodeAt(b.parentPos)?.type.name || ""),
             boxed: (() => {
               const $pos = editor.state.doc.resolve(b.pos);
               for (let d = $pos.depth; d > 0; d--) if (BOXES.includes($pos.node(d).type.name)) return true;
@@ -2058,7 +2069,7 @@ export function DocumentBlockControls({
     editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
     setTick((t) => t + 1);
   }
-  const visible = blocks.filter((block) => !listContainers.includes(block.node.type.name));
+  const visible = blocks.filter((block) => !listContainers.includes(block.node.type.name) && !block.front);
   // The block with the caret: the innermost one with a handle around it (a
   // selected block itself).
   // While a block is dragged the caret's handle stays where it was: the
@@ -2129,6 +2140,7 @@ export function DocumentBlockControls({
         .filter(
           (b) =>
             !listContainers.includes(b.node.type.name) &&
+            !b.front &&
             y >= b.top &&
             y <= b.top + b.height &&
             (!b.boxed || (b.rtl ? x <= b.right + 26 : x >= b.left - 26)),

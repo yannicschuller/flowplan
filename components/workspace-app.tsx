@@ -4789,6 +4789,13 @@ export default function WorkspaceApp({
                             : undefined
                       }
                       onSourceClose={() => setSourcePage(null)}
+                      readOnlyHint={
+                        reading
+                          ? t("Im Lesemodus nicht änderbar", "Cannot be changed in reading mode")
+                          : data.page.locked
+                            ? t("Die Seite ist gesperrt – nicht änderbar", "The page is locked – cannot be changed")
+                            : undefined
+                      }
                     />
                     )}
                     {data.journalDay && data.journalDay.options?.completed !== false && (

@@ -6166,6 +6166,7 @@ export default function DatabaseView({
                   pages={pages}
                   members={members}
                   editable={selectedEditable && !readingRecord}
+                  readOnlyHint={readingRecord ? t("Im Lesemodus nicht änderbar", "Cannot be changed in reading mode") : undefined}
                   fields={fields}
                   templates={editable ? data.rowTemplates : undefined}
                   draftOf={templateDraft?.rowId === selected.id ? templateDraft.templateId : undefined}

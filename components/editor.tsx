@@ -132,6 +132,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { Extension } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
+import { AlignMenu, HeadingMenu } from "./format-menus";
 import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
 import { type ComponentProps, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -178,7 +179,6 @@ import {
   Tabs as TabsIcon,
   Function as FunctionIcon,
   TextAlignLeft,
-  TextAlignCenter,
   ArrowsClockwise,
   Microphone,
   Scan,
@@ -292,6 +292,7 @@ export default function DocumentEditor({
   transcription = false,
   source = false,
   sourceNotice,
+  readOnlyHint,
   onSourceClose,
   draft,
   captionNumbers = false,
@@ -306,6 +307,9 @@ export default function DocumentEditor({
   source?: boolean;
   // Why the source can only be read (locked page …), if so.
   sourceNotice?: string;
+  // Why task boxes cannot be ticked while not editable (#278): "Im
+  // Lesemodus nicht änderbar"; without it a general note.
+  readOnlyHint?: string;
   onSourceClose?: () => void;
   // The server turns voice notes into text (Whisper).
   transcription?: boolean;
@@ -329,6 +333,8 @@ export default function DocumentEditor({
   const t = useT();
   const keyHints = useKeyboardHints();
   const locale = useLocale();
+  const readOnlyHintRef = useRef(readOnlyHint);
+  readOnlyHintRef.current = readOnlyHint;
   // On a phone the toolbar docks above the on-screen keyboard; a button at
   // its end closes the keyboard to see what it covered (#120).
   const keyboardOpen = useSoftKeyboard();
@@ -784,7 +790,7 @@ export default function DocumentEditor({
         TableShortcuts,
         PlainNewLine,
         TaskList,
-        FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }) }),
+        FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }), readOnlyHint: () => readOnlyHintRef.current || t("Nicht änderbar", "Cannot be changed") }),
         ListTidy,
         // Last of the Tab handlers: Tab never leaves the text (#254).
         TabStaysInText,
@@ -2945,14 +2951,8 @@ export default function DocumentEditor({
               <LinkIcon />
             </button>
             <span className="toolbar-separator" />
-            <button
-              title={t("Überschrift", "Heading")}
-              onClick={() =>
-                editor?.chain().focus().toggleHeading({ level: 2 }).run()
-              }
-            >
-              <TextHTwo />
-            </button>
+            {/* Text, H1–H4 and the alignment as small menus (#278). */}
+            <HeadingMenu editor={editor} />
             <button
               title={t("Aufgabenliste", "Task list")}
               onClick={() => editor?.chain().focus().toggleTaskList().run()}
@@ -2969,14 +2969,7 @@ export default function DocumentEditor({
                 <CalendarBlank />
               </button>
             )}
-            <button
-              title={t("Zentrieren", "Centre")}
-              onClick={() =>
-                editor?.chain().focus().setTextAlign("center").run()
-              }
-            >
-              <TextAlignCenter />
-            </button>
+            <AlignMenu editor={editor} />
             <button title={t("Block nach oben", "Move block up")} onClick={() => moveBlock(-1)}>
               ↑
             </button>

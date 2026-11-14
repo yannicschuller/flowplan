@@ -52,7 +52,8 @@ test("guests with an edit link add records and upload images", async ({
       .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
       .click();
     await guest.getByLabel("Geteilten Inhalt bearbeiten").click();
-    await guest.getByLabel("Datei einfügen").setInputFiles({
+    // The toolbar button "Datei einfügen" opens this field (#278).
+    await guest.locator(".shared-toolbar input[type=file]").setInputFiles({
       name: "skizze.png",
       mimeType: "image/png",
       buffer: png,
@@ -86,7 +87,8 @@ test("guests with an edit link add records and upload images", async ({
     await guest
       .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
       .click();
-    await guest.getByLabel("Datei einfügen").setInputFiles({
+    // The toolbar button "Datei einfügen" opens this field (#278).
+    await guest.locator(".shared-toolbar input[type=file]").setInputFiles({
       name: "seite.html",
       mimeType: "text/html",
       buffer: Buffer.from("<script>alert(1)</script>"),

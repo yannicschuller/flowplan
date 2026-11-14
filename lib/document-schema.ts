@@ -387,6 +387,9 @@ type FlowTaskItemOptions = TaskItemOptions & {
   onStatusMenu: ((pos: number, anchor: DOMRect) => void) | null;
   // The interface language for the box's accessible name.
   translate: (de: string, en: string) => string;
+  // Why the box cannot be ticked while the text is not editable (#278:
+  // "Im Lesemodus nicht änderbar"); without it a general note.
+  readOnlyHint: (() => string) | null;
 };
 export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
   addOptions() {
@@ -394,6 +397,7 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
       ...(this.parent?.() as TaskItemOptions),
       onStatusMenu: null,
       translate: (_de: string, en: string) => en.split("||")[0],
+      readOnlyHint: null,
     };
   },
   // Ticking a task off ticks off its subtasks (lib/task-subtasks.ts); a
@@ -427,6 +431,45 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
         box.indeterminate = status === "progress";
       };
       describe(props.node);
+      // Not editable (reading mode, a locked page, only allowed to read,
+      // #278): the box cannot be ticked at all – the click is cancelled
+      // before the browser ticks it, so no tick, no strike-through
+      // animation (lib/motion.ts) and no undoing it again (TipTap's own
+      // handler only reverts the box after the change). It stays
+      // reachable by keyboard and says why it does not change.
+      if (box) {
+        const sync = () => {
+          const locked = !props.editor.isEditable;
+          box.classList.toggle("task-box-locked", locked);
+          if (locked) {
+            box.setAttribute("aria-disabled", "true");
+            box.title = options.readOnlyHint?.() || options.translate("Nicht änderbar", "Cannot be changed");
+          } else {
+            box.removeAttribute("aria-disabled");
+            box.removeAttribute("title");
+          }
+        };
+        sync();
+        // The editor can switch while the item stays (setEditable emits
+        // "update"); checked again before a click or key counts.
+        props.editor.on("update", sync);
+        const destroy = (view as { destroy?: () => void }).destroy;
+        (view as { destroy?: () => void }).destroy = () => {
+          props.editor.off("update", sync);
+          destroy?.call(view);
+        };
+        box.addEventListener(
+          "click",
+          (event) => {
+            sync();
+            if (!props.editor.isEditable) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          },
+          true,
+        );
+      }
       if (label && box) {
         let timer: ReturnType<typeof setTimeout> | null = null,
           pressed = 0;

@@ -110,7 +110,7 @@ test("“+” adds a block below or above with the slash menu, the handle keeps 
   expect(errors).toEqual([]);
 });
 
-test("blocks inside toggles, callouts and quotes have handles of their own", async ({ page }, info) => {
+test("blocks inside toggles, callouts and quotes have handles of their own (a box's first paragraph uses the box's)", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const phone = info.project.name === "mobile";
@@ -167,9 +167,10 @@ test("blocks inside toggles, callouts and quotes have handles of their own", asy
   await page.getByRole("button", { name: /^Blockaktionen: Hinweis/ }).click();
   await expect(page.getByRole("menuitem", { name: "Hinweistyp" })).toBeVisible();
   await page.keyboard.press("Escape");
-  // A quote's paragraph too.
+  // A quote's first paragraph is the quote's (#278): one handle, the quote's.
   await editor.getByText("Im Zitat").hover();
-  await expect(handle(page, "Im Zitat", "Absatz")).toHaveClass(/hovered/);
+  await expect(handle(page, "Im Zitat", "Zitat")).toHaveClass(/hovered/);
+  await expect(handle(page, "Im Zitat", "Absatz")).toHaveCount(0);
   await page.screenshot({ path: "test-results/block-handle-nested.png" });
   expect(errors).toEqual([]);
 });
