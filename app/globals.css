@@ -33942,6 +33942,12 @@ label.ws-search input {
 .journal-month-picker [role="gridcell"] button.has-entry:hover {
   border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
 }
+/* A past day without an entry: a tap creates it (#288). */
+.journal-month-picker [role="gridcell"] button.can-create:hover {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+  color: var(--text);
+}
 .journal-month-picker [role="gridcell"] button.today {
   border-color: var(--blue);
 }
