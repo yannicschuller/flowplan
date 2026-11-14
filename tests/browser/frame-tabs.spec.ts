@@ -203,6 +203,26 @@ test("tabs: open with ⌘-click, reorder, close, the other frame, reload, histor
   expect(errors).toEqual([]);
 });
 
+test("a narrow window hides the right frame and, with one tab left, the tab bar (#291)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Once is enough.");
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  const { a, d } = await setup(page);
+  await page.goto(`/#page=${a}`);
+  await expect(mainTitle(page)).toHaveValue("Seite A", { timeout: 30_000 });
+  await tree(page, d).click({ modifiers: ["ControlOrMeta", "Shift"] });
+  await expect(page.locator(".split-pane")).toBeVisible();
+  await expect(bar(page, 0)).toBeVisible();
+  // Tablet portrait: tabs are on, the split view is not.
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(page.locator(".split-pane")).toHaveCount(0);
+  await expect(page.locator(".frame-tabs")).toHaveCount(0);
+  await expect(mainTitle(page)).toHaveValue("Seite A");
+  // Wide again: the right frame and both bars are back.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator(".split-pane")).toBeVisible();
+  await expect(titles(page, 1)).toHaveText(["Seite D"]);
+});
+
 test("phones: no tab bar, a page at a time as before", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "The phone layout.");
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");

@@ -48,7 +48,7 @@ import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, SplitUnsupported, clampSplit } from "./split-pane";
 import { TabBar, TabEdgeDrop, pageOfPlace, useFrameTabs, validPlaceIn, type PlaceLook } from "./frame-tabs";
-import { placeOf, tabCount, tabOf } from "@/lib/frame-tabs";
+import { placeOf, tabOf } from "@/lib/frame-tabs";
 import { openModeOf, type OpenMode } from "@/lib/open-place";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
@@ -1767,8 +1767,10 @@ export default function WorkspaceApp({
     setPresenting({ html: readHtml(), title: d.page.title || t("Ohne Titel", "Untitled") });
   };
   const splitShown = !!tabs.side;
-  // The tab bars: from two tabs on, or with two frames (#279).
-  const tabBars = tabs.on && !!tabs.layout && (splitShown || tabCount(tabs.layout) > 1);
+  // The tab bars: from two tabs on, or with two frames (#279). Only the
+  // frames on screen count: a narrow window hides the right one, and its
+  // tabs alone must not bring the bar back over a single tab (#291).
+  const tabBars = tabs.on && !!tabs.layout && (splitShown || tabs.layout.frames[0].tabs.length > 1);
   const describeTab = (place: string): PlaceLook => {
     const look = describeStep(place);
     return { title: look.title, icon: look.icon };
