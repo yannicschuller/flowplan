@@ -20,6 +20,7 @@
     "components/dead-man-switch.tsx",
     "components/document-block-controls.tsx",
     "components/emergency-access.tsx",
+    "components/frame-tabs.tsx",
     "components/image-annotator.tsx",
     "components/image-tools.tsx",
     "components/ink/ai-convert.tsx",
