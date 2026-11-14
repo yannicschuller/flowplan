@@ -24,6 +24,7 @@ import "./print-options.css";
 import "./page-icon-inline.css";
 import "./tabs-block.css";
 import "./whats-new.css";
+import "./emergency-access.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";

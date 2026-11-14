@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 import { api } from "./ui";
 import * as e2ee from "@/lib/e2ee";
 import { tr as t } from "@/lib/locale-tag";
+import type { EmergencyOverview, EmergencyRewrap } from "@/lib/emergency-kinds";
 
 export type ServerIdentity = e2ee.Identity & { version: number };
 type Holder = { userId: string; name: string; publicKey: string | null };
@@ -117,6 +118,9 @@ function unlocked(key: CryptoKey) {
   lastActivity = Date.now();
   watchActivity();
   changed();
+  // Space keys a trusted contact still waits for (#281): sealed now, the
+  // next time the holder is here and unlocked.
+  void syncEmergencyKeys().catch(() => {});
 }
 export async function unlock(passphrase: string) {
   if (!identity) throw new Error(t("Die Verschlüsselung ist noch nicht eingerichtet.", "Encryption is not set up yet."));
@@ -309,4 +313,64 @@ export async function encryptTitle(spaceId: string, pageId: string, title: strin
   const cipher = await e2ee.encryptTitle(key, pageId, title);
   titles.set(`${pageId}:${cipher}`, title);
   return cipher;
+}
+
+// ---- Emergency access (#281, lib/emergency-access.ts) ----
+
+// As holder: seals the key versions of my encrypted spaces that a trusted
+// contact does not have yet for the contact's public key. The server only
+// keeps them (and hands them out once access is granted); it never sees a
+// key it could open. Returns how many were stored.
+export async function sealEmergencyKeys(rewrap: EmergencyRewrap[]) {
+  if (!privateKey || !rewrap.length) return 0;
+  let stored = 0;
+  const links = new Map<string, EmergencyRewrap[]>();
+  for (const entry of rewrap) links.set(entry.linkId, [...(links.get(entry.linkId) || []), entry]);
+  for (const [linkId, entries] of links) {
+    const keys: { spaceId: string; version: number; sealed: e2ee.SealedKey }[] = [];
+    for (const entry of entries) {
+      const open = await openSpace(entry.spaceId).catch(() => null);
+      if (!open) continue;
+      for (const version of entry.versions) {
+        const key = open.keys.get(version);
+        if (key)
+          keys.push({
+            spaceId: entry.spaceId,
+            version,
+            sealed: await e2ee.sealKey(key.raw, entry.publicKey, e2ee.emergencyKeyContext(entry.spaceId, version, userId, entry.contactId)),
+          });
+      }
+    }
+    if (!keys.length) continue;
+    await api("/api/command", { action: "emergency.keys", linkId, publicKey: entries[0].publicKey, keys });
+    stored += keys.length;
+  }
+  return stored;
+}
+let syncing: Promise<number> | null = null;
+export function syncEmergencyKeys() {
+  if (!privateKey || !userId) return Promise.resolve(0);
+  return (syncing ??= (async () => {
+    try {
+      const overview = await api<EmergencyOverview>("/api/emergency");
+      return overview.enabled ? await sealEmergencyKeys(overview.rewrap) : 0;
+    } finally {
+      syncing = null;
+    }
+  })());
+}
+// As trusted contact with granted access: the holder's space keys, opened
+// with my private key in this tab only.
+export async function openEmergencyKeys(released: { holderId: string; contactId: string; keys: { spaceId: string; version: number; sealed: e2ee.SealedKey }[] }) {
+  const key = requireUnlocked();
+  const spacesOpened = new Map<string, Map<number, e2ee.SpaceKey>>();
+  for (const k of released.keys)
+    try {
+      const raw = await e2ee.openKey(k.sealed, key, e2ee.emergencyKeyContext(k.spaceId, k.version, released.holderId, released.contactId));
+      if (!spacesOpened.has(k.spaceId)) spacesOpened.set(k.spaceId, new Map());
+      spacesOpened.get(k.spaceId)!.set(k.version, await e2ee.spaceKeyFromRaw(k.version, raw));
+    } catch {
+      // Sealed for an earlier key pair of mine: stays closed.
+    }
+  return spacesOpened;
 }
