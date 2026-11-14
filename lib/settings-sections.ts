@@ -147,7 +147,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       },
       {
         title: { de: "Wischen vom linken Rand", en: "Swipe from the left edge" },
-        keywords: { de: "wischen rand geste zurück seitenleiste navigation iphone ipad app", en: "swipe edge gesture back sidebar navigation iphone ipad app" },
+        keywords: { de: "wischen rand geste zurück seitenleiste navigation iphone ipad android app", en: "swipe edge gesture back sidebar navigation iphone ipad android app" },
         anchor: "edge-swipe",
       },
       { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },

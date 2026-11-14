@@ -289,9 +289,9 @@ export default function AppearanceSection() {
           checked={discoveryPanels}
           onChange={setDiscoveryPanelsShown}
         />
-        {/* Only in the app for iPhone and iPad that takes the choice: in
-            Safari the edge is always its back swipe, on Android the
-            system's (lib/edge-swipe.ts). */}
+        {/* Only in the app (iPhone, iPad, Android) that takes the choice:
+            in Safari the edge is always its back swipe, in browsers on
+            Android the system's (lib/edge-swipe.ts). */}
         {edgeSwipeChoosable && (
           <SettingRow
             anchor="edge-swipe"

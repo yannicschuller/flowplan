@@ -14,8 +14,12 @@
 //     while the page has a step back. An app from before the choice
 //     (no FlowplanApp.edgeSwipe) keeps its back swipe, so the page keeps
 //     clear of the edge as before.
-//   - the installed web app and Android: nothing claims the edge in the page
-//     (Android's back gesture is the system's, before the page sees a touch).
+//   - the installed web app and Android: nothing claims the edge in the page.
+//     Android's back gesture is the system's, before the page sees a touch –
+//     unless the app takes the choice and it is "drawer": the app then keeps
+//     a strip of the left edge (200 dp high, centred) from the system's
+//     gesture, so the swipe reaches the page; with "Zurück" the edge stays
+//     the system's back and a swipe a little further in opens the sidebar.
 //
 // Back stays available through the arrows at the top left and the app's
 // back button (Android).
