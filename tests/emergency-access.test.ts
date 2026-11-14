@@ -5,6 +5,7 @@
 // path for encrypted spaces.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { onPostgres } from "./helpers/backend";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,8 +40,11 @@ const html = async (pageId: string, text: string) => await run("UPDATE documents
 // The waiting period is over: as if the days had passed.
 const elapse = async (linkId: string) =>
   await run("UPDATE emergency_contacts SET requested_at=requested_at-?,grant_at=? WHERE id=?", 30 * DAY, Date.now() - 1000, linkId);
-const notes = async (who: Identity) => (await all<{ body: string; link: string | null }>("SELECT body,link FROM notifications WHERE user_id=? ORDER BY created_at,rowid", who.id));
-const auditOf = async (linkId: string) => (await all<{ action: string }>("SELECT action FROM audit WHERE resource_id=? ORDER BY created_at,rowid", linkId)).map((a) => a.action);
+// audit has no seq column: insertion order is SQLite's rowid, or on
+// PostgreSQL the inserting transaction and the row's place in the heap.
+const INSERT_ORDER = onPostgres ? "xmin::text::bigint,ctid" : "rowid";
+const notes = async (who: Identity) => (await all<{ body: string; link: string | null }>("SELECT body,link FROM notifications WHERE user_id=? ORDER BY seq", who.id));
+const auditOf = async (linkId: string) => (await all<{ action: string }>(`SELECT action FROM audit WHERE resource_id=? ORDER BY created_at,${INSERT_ORDER}`, linkId)).map((a) => a.action);
 
 // The holder's world: a team space, a private space with a page and a
 // journal behind a PIN, and a private space of someone else shared with her.

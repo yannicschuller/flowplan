@@ -61,6 +61,7 @@ function FormatMenu<V extends string>({
   trigger,
   className,
   entries,
+  visibleText,
   onChoose,
 }: {
   editor: Editor | null;
@@ -69,6 +70,8 @@ function FormatMenu<V extends string>({
   trigger: ReactNode;
   className: string;
   entries: { value: V; label: string; icon: ReactNode; shortcut?: string; disabled?: boolean }[];
+  /** The text the button shows, if any (not an icon). */
+  visibleText?: string;
   onChoose: (value: V, selection: { from: number; to: number } | null) => void;
 }) {
   const hints = useKeyboardHints();
@@ -77,6 +80,9 @@ function FormatMenu<V extends string>({
   const selection = useRef<{ from: number; to: number } | null>(null);
   const currentEntry = entries.find((entry) => entry.value === current);
   const name = currentEntry ? `${label}: ${currentEntry.label}` : label;
+  // A text on the button ("H2") must be part of its accessible name
+  // (WCAG 2.5.3, label in name), so voice control finds it by what it shows.
+  const accessible = visibleText && !name.includes(visibleText) ? `${visibleText} – ${name}` : name;
   return (
     <Dropdown.Root
       onOpenChange={(open) => {
@@ -87,7 +93,7 @@ function FormatMenu<V extends string>({
       }}
     >
       <Dropdown.Trigger asChild>
-        <button type="button" className={`toolbar-menu-button ${className}`} title={name} aria-label={name} disabled={!editor?.isEditable}>
+        <button type="button" className={`toolbar-menu-button ${className}`} title={name} aria-label={accessible} disabled={!editor?.isEditable}>
           {trigger}
           <CaretDown className="toolbar-menu-caret" weight="bold" aria-hidden />
         </button>
@@ -183,6 +189,7 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
     equalityFn: (a, b) => a?.current === b?.current && a?.heading === b?.heading,
   });
   const current = state?.current ?? null;
+  const shown = blockStyleShort(current) === "Text" ? t("Text", "Text") : blockStyleShort(current);
   const names = (style: BlockStyle) => (style === "paragraph" ? t("Text", "Text") : t(`Überschrift ${style}`, `Heading ${style}`));
   return (
     <FormatMenu<string>
@@ -190,7 +197,8 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
       label={t("Textstil", "Text style")}
       current={current === null ? null : String(current)}
       className="toolbar-heading-menu"
-      trigger={<span className="toolbar-menu-text">{blockStyleShort(current) === "Text" ? t("Text", "Text") : blockStyleShort(current)}</span>}
+      visibleText={shown}
+      trigger={<span className="toolbar-menu-text">{shown}</span>}
       entries={BLOCK_STYLES.map((style) => ({
         value: String(style),
         label: names(style),

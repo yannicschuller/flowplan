@@ -37,8 +37,10 @@ const PAGES = [
   { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2300 },
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
-  // at most a database page + 120 KB (docs/specs/workflows.md §10.1).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1810, ready: ".react-flow__node, .wf-list-node" },
+  // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
+  // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
+  // the inactivity message (#282) in the workspace bundle.
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1830, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand

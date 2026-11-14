@@ -6,6 +6,7 @@
 // tokens, the holder's e-mail on changes, the log and security events.
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
+import { onPostgres } from "./helpers/backend";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,8 +40,11 @@ const arm = async (who: Identity, workspaceId: string, extra: Record<string, unk
 const row = async (switchId: string) => (await one<import("../lib/dead-man-switch").SwitchRow>("SELECT * FROM deadman_switches WHERE id=?", switchId))!;
 const mailsTo = async (to: string) =>
   await all<{ subject: string; text: string; html: string; from_name: string | null }>("SELECT subject,text,html,from_name FROM mail_queue WHERE recipient=? ORDER BY seq", to);
-const notes = async (who: Identity) => (await all<{ body: string; link: string | null }>("SELECT body,link FROM notifications WHERE user_id=? ORDER BY created_at,rowid", who.id));
-const auditOf = async (switchId: string) => (await all<{ action: string; detail: string }>("SELECT action,detail FROM audit WHERE resource_id=? ORDER BY created_at,rowid", switchId)).map((a) => a.action);
+// audit has no seq column: insertion order is SQLite's rowid, or on
+// PostgreSQL the inserting transaction and the row's place in the heap.
+const INSERT_ORDER = onPostgres ? "xmin::text::bigint,ctid" : "rowid";
+const notes = async (who: Identity) => (await all<{ body: string; link: string | null }>("SELECT body,link FROM notifications WHERE user_id=? ORDER BY seq", who.id));
+const auditOf = async (switchId: string) => (await all<{ action: string; detail: string }>(`SELECT action,detail FROM audit WHERE resource_id=? ORDER BY created_at,${INSERT_ORDER}`, switchId)).map((a) => a.action);
 const tokenOf = (text: string) => decodeURIComponent(/\/api\/deadman\/here\?token=([^\s]+)/.exec(text)![1]);
 
 // Every test starts without switches and mail: the worker looks at all of them.

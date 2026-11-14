@@ -58,7 +58,7 @@ test("text style and alignment are menus in the toolbar", async ({ page }, info)
   await page.screenshot({ path: "test-results/toolbar-heading-menu.png" });
   await styleMenu.getByRole("menuitemradio", { name: /Überschrift 3/ }).click();
   await expect(editor.locator("h3")).toHaveText("Erster Absatz");
-  await expect(toolbar.getByRole("button", { name: "Textstil: Überschrift 3", exact: true })).toHaveText(/H3/);
+  await expect(toolbar.getByRole("button", { name: "H3 – Textstil: Überschrift 3", exact: true })).toHaveText(/H3/);
 
   if (info.project.name === "desktop") {
     // By keyboard: Enter opens, arrows move, Escape closes.
@@ -227,7 +227,7 @@ test("the shared page's editor: icon toolbar and the “/” menu behind “+”
       await expect(button.locator("svg")).toHaveCount(1);
       expect((await button.textContent())?.trim()).toBe("");
     }
-    await expect(toolbar.getByRole("button", { name: /^Textstil/ })).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: /Textstil/ })).toBeVisible();
     await expect(toolbar.getByRole("button", { name: /^Ausrichtung/ })).toBeVisible();
     await expect(toolbar.locator(".toolbar-separator")).not.toHaveCount(0);
     const box = (await guest.locator(".shared-rich-editor").boundingBox())!;
