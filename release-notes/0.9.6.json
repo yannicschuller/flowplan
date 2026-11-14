@@ -1,0 +1,122 @@
+{
+  "security": [
+    {
+      "de": "Wird der Verschlüsselungsschlüssel eines Kontos zurückgesetzt, meldet die Sicherheitsübersicht das als eigene Warnung; setzen mehrere Konten ihn kurz hintereinander zurück, öffnet sich ein Vorfall.",
+      "en": "Resetting an account's encryption key shows as a warning of its own in the security overview; several accounts resetting theirs within an hour open an incident."
+    }
+  ],
+  "features": [
+    {
+      "de": "Tabs über der Seite: ⌘/Strg-Klick oder die mittlere Maustaste öffnet einen neuen Tab, jeder Tab hat seinen eigenen Verlauf. Die geteilte Ansicht zeigt zwei Ansichten mit eigenen Tabs; Tabs lassen sich zwischen ihnen ziehen. Das Gerät merkt sich Tabs und Ansichten.",
+      "en": "Tabs above the page: ⌘/Ctrl-click or the middle mouse button opens a new tab, and every tab has its own history. The split view shows two views with their own tabs, and tabs can be dragged between them. Your device remembers tabs and views.",
+      "issues": [279]
+    },
+    {
+      "de": "Notfallzugriff: Vertrauenspersonen können nach einer Wartezeit, in der du ablehnen kannst, deine privaten Bereiche lesen und exportieren – auch verschlüsselte.",
+      "en": "Emergency access: trusted contacts can read and export your private spaces, encrypted ones included, after a waiting period in which you can deny.",
+      "issues": [281]
+    },
+    {
+      "de": "Nachricht bei Inaktivität: Nutzt du Flowplan eine gewählte Zeit lang nicht, geht eine Notiz von dir an bis zu zehn E-Mail-Adressen – mit Erinnerungen vorher und auf Wunsch sofortigem Notfallzugriff.",
+      "en": "Inactivity message: if you don't use Flowplan for a period you choose, a note of yours goes to up to ten e-mail addresses – with reminders before and, if you like, immediate emergency access.",
+      "issues": [282]
+    },
+    {
+      "de": "Gäste mit einem Bearbeitungslink bearbeiten Whiteboards und Notizbücher live im selben Editor – ohne Konto und ohne Uploads.",
+      "en": "Guests with an edit link edit whiteboards and notebooks live in the same editor – without an account and without uploads.",
+      "issues": [280]
+    },
+    {
+      "de": "Tabs-Block: Reiter mit Titeln, in denen beliebige Blöcke stehen.",
+      "en": "Tabs block: titled tabs holding any blocks.",
+      "issues": [272]
+    },
+    {
+      "de": "Zwischen allen Blöcken einfügen („+“ überall), Blöcke über das Blockmenü kopieren und ausschneiden, Blöcke mit dem Griff auswählen.",
+      "en": "Insert between any blocks (“+” everywhere), copy and cut blocks from the block menu, choose blocks with their handle.",
+      "issues": [261, 263, 264]
+    },
+    {
+      "de": "Mehrere Seiten in der Seitenleiste auf einmal sperren, entsperren, zu Favoriten hinzufügen oder ihre Links kopieren.",
+      "en": "Lock, unlock, favourite or copy the links of several pages in the sidebar at once.",
+      "issues": [275]
+    },
+    {
+      "de": "Die Akzentfarbe des Arbeitsbereichs gilt jetzt auch für Logo, Tab-Symbol, Standard-Avatare und alle Bedienelemente.",
+      "en": "The workspace accent colour now also applies to the logo, the tab icon, default avatars and all controls.",
+      "issues": [277]
+    },
+    {
+      "de": "Sammlungen blättern mit „Mehr laden“ durch alle Treffer.",
+      "en": "Collections page through all matches with “Load more”.",
+      "issues": [270]
+    },
+    {
+      "de": "KI und Workflows sehen die erledigten Aufgaben eines Journal-Tages; neuer Workflow-Schritt „Journal-Tag lesen“.",
+      "en": "AI and workflows see a journal day's completed tasks; new workflow step “Read journal day”.",
+      "issues": [273]
+    },
+    {
+      "de": "Einstellungen für volle Seitenbreite und für Animationen.",
+      "en": "Settings for full-width pages and for animations.",
+      "issues": [257, 260]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Textstil und Ausrichtung sind kleine Menüs in der Werkzeugleiste; der Bearbeitungslink nutzt dieselbe Werkzeugleiste und dasselbe Blockmenü wie der Arbeitsbereich.",
+      "en": "Text style and alignment are small menus in the toolbar; edit links use the same toolbar and block menu as the workspace.",
+      "issues": [278]
+    },
+    {
+      "de": "Offizielle Marktplatz-Vorlagen tragen ihren Titel auf Deutsch und Englisch; beim Veröffentlichen ist der englische Titel Pflicht.",
+      "en": "Official marketplace templates carry their title in German and English; publishing requires the English title.",
+      "issues": [276]
+    },
+    {
+      "de": "Zitate in Besprechungen zeigen die Zeit der Stelle; Zusagen in der ersten Person nennen die zuständige Person.",
+      "en": "Meeting citations show the passage's time; first-person commitments name the owner.",
+      "issues": [199]
+    },
+    {
+      "de": "Zurück und Vorwärts stellen eine Stelle so wieder her, wie du sie verlassen hast.",
+      "en": "Back and forward bring a place back where you left it.",
+      "issues": [262]
+    },
+    {
+      "de": "Die mobile App kann die Offline-Nutzung anbieten und über die Seite einschalten.",
+      "en": "The mobile app can offer offline use and switch it on through the page.",
+      "issues": [203]
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Links in gesperrten und schreibgeschützten Seiten öffnen sich im selben Fenster.",
+      "en": "Links in locked and read-only pages open in the same window.",
+      "issues": [274]
+    },
+    {
+      "de": "Eine eigene Hintergrundfarbe in Kopfzellen von Tabellen wird angezeigt.",
+      "en": "A header cell's own background colour in tables is shown.",
+      "issues": [283]
+    },
+    {
+      "de": "Tabellen: Das Zeigen auf eine Spaltengrenze macht nicht mehr jede Zeile höher; der Schließen-Knopf des Inhaltsverzeichnisses bleibt erreichbar.",
+      "en": "Tables: pointing at a column border no longer makes every row taller; the table of contents' close button stays in reach.",
+      "issues": [258, 259]
+    },
+    {
+      "de": "Im Lesemodus lassen sich Aufgaben nicht mehr scheinbar abhaken; Hinweise und Zitate haben nur noch einen Griff.",
+      "en": "Tasks can no longer appear ticked in reading mode; callouts and quotes have a single handle.",
+      "issues": [278]
+    },
+    {
+      "de": "Eingefügte Blöcke landen dort, wo der Cursor steht; ein Rückgängig macht ein „Umwandeln in“ vollständig rückgängig.",
+      "en": "Pasted blocks land where the caret is; one undo fully reverts a “Turn into”."
+    },
+    {
+      "de": "Seitliche Leisten scrollen auf dem Handy nicht mehr nach oben und unten; „+“ und Griff sind in Einträgen und auf Freigabeseiten ganz sichtbar.",
+      "en": "Sideways strips no longer scroll up and down on phones; “+” and the handle are fully visible in records and on share pages."
+    }
+  ]
+}
