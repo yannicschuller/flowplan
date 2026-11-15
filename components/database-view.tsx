@@ -38,6 +38,7 @@ import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRenam
 import { OPTION_COLORS, carryColors, choiceChipClass, colorOptions, hasOwnOptions, legacyOptionColor, optionColor, type OptionColor } from "@/lib/option-colors";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
+import { RecordPropertyList } from "./record-property-order";
 import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
 import { summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
 import { doneRule } from "@/lib/database-settings-schema";
@@ -45,6 +46,7 @@ import type { RecordPropertiesChoice } from "@/lib/page-view-prefs";
 import {
   defaultRecordLayout,
   emptyCell,
+  orderRecordFields,
   recordOpenLabels,
   recordOpenModes,
   type RecordOpenMode,
@@ -1062,8 +1064,9 @@ export default function DatabaseView({
       </>
     );
   };
-  // Properties shown on the record page (layout: hidden and empty ones).
-  const layoutFields = fields.filter(
+  // Properties shown on the record page (layout: their order, hidden and
+  // empty ones).
+  const layoutFields = orderRecordFields(fields, recordLayout.order).filter(
     (f, i) => i === 0 || !recordLayout.hidden.includes(f.id),
   );
   const emptyFields = new Set(
@@ -6063,7 +6066,14 @@ export default function DatabaseView({
                   fresh={freshRowId === selected.id}
                   summary={(recordSummary?.shown || []).map((f) => summaryChip(selected, f)).filter((x) => x !== null)}
                 >
-                  {recordFields.map((f) => (
+                  <RecordPropertyList
+                    key={selected.id}
+                    fields={recordFields}
+                    allFields={fields}
+                    order={recordLayout.order}
+                    arrange={!!editable && allowFieldChanges}
+                    save={(order) => act({ action: "database.recordLayout", layout: { ...recordLayout, order } })}
+                    render={(f) => (
                     <Fragment key={`${selected.id}-${f.id}`}>
                       <PropertyRow group={f.type === "files" || f.type === "date" || isTagField(f)}>
                         <span>
@@ -6125,7 +6135,8 @@ export default function DatabaseView({
                         <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
                       )}
                     </Fragment>
-                  ))}
+                    )}
+                  />
                   {emptyHidden > 0 && (
                     <button
                       className="text-button"

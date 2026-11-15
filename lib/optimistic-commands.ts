@@ -355,6 +355,19 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
         page: onPage((data) => (data.database ? { ...data, database: { ...data.database, fields, views } } : data)),
       };
     }
+    case "database.recordLayout": {
+      // The record page's layout and property order (#305) at once; the
+      // server's answer (unknown properties dropped) replaces it.
+      const layout = b.layout;
+      if (!pageId || !layout || typeof layout !== "object" || Array.isArray(layout)) return null;
+      return {
+        page: onPage((data) =>
+          data.database
+            ? { ...data, database: { ...data.database, recordLayout: layout as Database["recordLayout"] } }
+            : data,
+        ),
+      };
+    }
     case "comment.create": {
       const body = str(b.body)?.trim();
       if (!pageId || !body) return null;

@@ -8369,6 +8369,72 @@ tr.order-drop-before > td {
 tr.order-drop-after > td {
   box-shadow: inset 0 -3px var(--blue);
 }
+/* The record page's property order (#305, components/record-property-order.tsx):
+   a handle before each property for those who may change it. */
+.row-property-sortable {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 4px;
+  border-radius: 4px;
+}
+.row-property-sortable > :not(.record-property-handle) {
+  grid-column: 2;
+}
+.row-property-sortable > .record-property-handle {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  width: 24px;
+  height: 30px;
+  margin-top: 2px;
+  padding: 2px;
+  color: var(--muted);
+  cursor: grab;
+  border-radius: 4px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.row-property-sortable > .record-property-handle:active {
+  cursor: grabbing;
+}
+.row-property-sortable > .record-property-handle:hover,
+.row-property-sortable > .record-property-handle:focus-visible {
+  color: var(--blue);
+  background: var(--blue-light);
+}
+@media (hover: hover) and (pointer: fine) {
+  .row-property-sortable > .record-property-handle {
+    opacity: 0.35;
+  }
+  .row-property-sortable:hover > .record-property-handle,
+  .row-property-sortable > .record-property-handle:focus-visible {
+    opacity: 1;
+  }
+}
+.row-property-sortable.dragging {
+  opacity: 0.5;
+}
+.row-property-sortable.drop-before {
+  box-shadow: inset 0 3px var(--blue);
+}
+.row-property-sortable.drop-after {
+  box-shadow: inset 0 -3px var(--blue);
+}
+.print-view .record-property-handle {
+  display: none;
+}
+.print-view .row-property-sortable {
+  display: block;
+}
+@media print {
+  .record-property-handle {
+    display: none !important;
+  }
+  .row-property-sortable {
+    display: block;
+  }
+}
 .record-card-wrap {
   position: relative;
 }

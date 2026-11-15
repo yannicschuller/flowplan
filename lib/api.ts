@@ -112,7 +112,7 @@ import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
 import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
-import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
+import { cleanRecordOrder, parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { afterContactWrite, contactCellsFor, contactsPageData } from "./contacts";
 import {
   assertRowAccess,
@@ -2849,10 +2849,16 @@ async function runCommand(
         const p = await write();
         const fields = (await database(p.id)).fields;
         const layout = recordLayoutSchema.parse(b.layout);
+        // Kept in the database's versions like its other settings.
+        await autoDatabaseSnapshot(user, p);
         // The title stays visible; unknown properties are dropped.
         layout.hidden = [...new Set(layout.hidden)].filter(
           (fid) => fid !== fields[0]?.id && fields.some((f) => f.id === fid),
         );
+        // The record page's order (#305): known properties, each once.
+        const order = cleanRecordOrder(layout.order, fields);
+        if (order) layout.order = order;
+        else delete layout.order;
         await run(
           "UPDATE databases SET record_layout=? WHERE page_id=?",
           JSON.stringify(layout),

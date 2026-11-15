@@ -14,6 +14,7 @@ import { requirePage, pageRole, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
 import { database, rows } from "./api";
+import { orderRecordFields } from "./record-layout";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
 import { cellText } from "./cell-text";
@@ -314,9 +315,11 @@ async function collect(user: Identity, options: ExportSelection): Promise<Collec
     if (options.rowId) {
       const record = records[0];
       name = record.title;
+      // The properties in the record page's order (#305).
+      const listed = orderRecordFields(fields.map((field, index) => ({ id: field.id, name: field.name, value: record.values[index] })), schema.recordLayout?.order);
       html =
         `<table><tr><th>${escaped(ct("Eigenschaft", "Property"))}</th><th>${escaped(ct("Wert", "Value"))}</th></tr>` +
-        fields.map((field, index) => `<tr><td>${cell(field.name)}</td><td>${cell(record.values[index])}</td></tr>`).join("") +
+        listed.map((field) => `<tr><td>${cell(field.name)}</td><td>${cell(field.value)}</td></tr>`).join("") +
         `</table>` +
         record.body;
       return { page, depth, title: record.title, html, svg: null, cover };

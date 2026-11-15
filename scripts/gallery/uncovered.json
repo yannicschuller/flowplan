@@ -45,6 +45,7 @@
     "components/pdf-viewer-dialog.tsx",
     "components/presentation.tsx",
     "components/public-calendar-grid.tsx",
+    "components/record-property-order.tsx",
     "components/record-to-page.tsx",
     "components/related-record.tsx",
     "components/row-document.tsx",
