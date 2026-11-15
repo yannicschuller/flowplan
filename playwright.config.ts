@@ -17,6 +17,8 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
 // the test (`await import(...)`), not at the top of the file.
 process.env.PLAYWRIGHT_FORCE_ASYNC_LOADER ??= "1";
 
+const baseURL = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+
 export default defineConfig({
   testDir: "./tests/browser",
   fullyParallel: false,
@@ -26,7 +28,13 @@ export default defineConfig({
     timeout: Number(process.env.TEST_EXPECT_TIMEOUT_MS || 5000),
   },
   use: {
-    baseURL: process.env.TEST_BASE_URL || "http://127.0.0.1:3000",
+    baseURL,
+    // Every test's browser is a new device, where people who went through
+    // the introduction get the card "Auf diesem Gerät auch offline
+    // arbeiten?" (#295, components/offline-offer.tsx) over the page. The
+    // specs start with it answered; onboarding-migration.spec.ts goes
+    // through the question itself.
+    storageState: { cookies: [], origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: "flowplan-offline-offer", value: "never" }] }] },
     headless: true,
     // The tests read German texts; English is tested explicitly. API
     // requests (request fixture, page.request) do not take the locale, so

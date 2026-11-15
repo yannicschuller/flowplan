@@ -53,6 +53,8 @@ import { AdminSetup } from "./onboarding-admin";
 import { OfflineOfferPanel, useOfflineOffer } from "./offline-offer";
 import { readOfferAnswer, saveOfferAnswer } from "@/lib/offline-offer";
 import type { ImportOutcome } from "./import-client";
+import { suggestedLevel, type SettingsLevel } from "@/lib/settings-level";
+import { setOwnSettingsLevel } from "@/lib/settings-level-client";
 
 export type OnboardingBoot = {
   user: { id: string; name: string; isAdmin?: boolean; demo?: boolean };
@@ -62,6 +64,7 @@ export type OnboardingBoot = {
   language?: Locale | null;
   instance?: { mail?: boolean };
   sampleSpace?: { spaceId: string; name: string; pages: number; trashed: boolean } | null;
+  settingsLevel?: { level: string; own: boolean };
 };
 
 const STEPS = ["welcome", "setup", "source", "terms", "start", "tour", "notify", "offline", "done"] as const;
@@ -214,6 +217,15 @@ export function Onboarding({
     },
   ];
 
+  const levelFor = (g: OnboardingGoal | null): SettingsLevel | null =>
+    g && g !== "other" && !boot.user.demo && !boot.settingsLevel?.own ? suggestedLevel(g) : null;
+  const levelNames: Record<SettingsLevel, string> = {
+    beginner: t("Einsteiger", "Beginner"),
+    normal: t("Normal", "Normal"),
+    expert: t("Experte", "Expert"),
+  };
+  const suggested = levelFor(goal);
+
   // Ends the introduction and starts "Erste Schritte" with the answers
   // (not when only the instance's setup was opened from the command palette).
   const finish = async () => {
@@ -246,6 +258,10 @@ export function Onboarding({
           setCreated((list) => [...list, ...made]);
           setStarters([]);
         }
+        // The goal suggests a settings level (#294) – only for someone who
+        // has none of their own yet; "Sonstiges" keeps the instance default.
+        const level = levelFor(goal);
+        if (level) await setOwnSettingsLevel(mutate, level);
       }
       if (current === "notify" && boot.instance?.mail) await mutate({ action: "notification.email", email });
       // Going on without an answer: the card asks again on this device in a week.
@@ -427,6 +443,14 @@ export function Onboarding({
                     );
                   })}
                 </div>
+                {suggested && (
+                  <p className="muted onboarding-level-hint">
+                    {t(
+                      `Die Einstellungen zeigen dir danach die Stufe „${levelNames[suggested]}“. Mehr Einstellungen bekommst du jederzeit oben in den Einstellungen.`,
+                      `Settings then show you the level “${levelNames[suggested]}”. You can switch to more settings any time at the top of Settings.`,
+                    )}
+                  </p>
+                )}
                 <p className="muted">
                   {t(`Wir legen die gewählten Seiten im Bereich „${space.name}“ an. Du kannst auch einfach leer anfangen.`, `We create the chosen pages in the space “${space.name}”. You can also simply start empty.`)}
                 </p>

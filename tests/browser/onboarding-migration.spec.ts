@@ -98,6 +98,8 @@ test("moving from Notion: guide, import, terms, starters, sample space and the c
   await expect(dialog.getByRole("heading", { name: "Womit möchtest du starten?" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: /^Aufgaben/ })).toBeVisible();
   await dialog.getByRole("radio", { name: "Projekte & Tickets" }).check();
+  // The goal suggests a settings level (#294).
+  await expect(dialog.locator(".onboarding-level-hint")).toContainText("„Normal“");
   await expect(dialog.getByRole("button", { name: /^Aufgaben/ })).toHaveCount(0);
   await dialog.getByRole("button", { name: /^Sprint-Board/ }).click();
   await dialog.getByRole("button", { name: "Beispielbereich anlegen" }).click();
@@ -120,6 +122,8 @@ test("moving from Notion: guide, import, terms, starters, sample space and the c
   await expect(dialog).toContainText("Erste Schritte");
   await dialog.getByRole("button", { name: "Los geht's" }).click();
   await expect(dialog).toBeHidden();
+  // … stored as the person's own level.
+  expect((await (await page.request.get("/api/bootstrap")).json()).settingsLevel).toEqual({ level: "normal", own: true });
 
   // The checklist: imported in the introduction already, so no import item.
   const list = page.getByRole("region", { name: "Erste Schritte" });
@@ -162,7 +166,8 @@ test("moving from Notion: guide, import, terms, starters, sample space and the c
   await page.waitForTimeout(3500);
   await expect(page.getByRole("region", { name: "Auf diesem Gerät auch offline arbeiten?" })).toHaveCount(0);
   // Another browser of the same person asks once; "Später" closes it for a week.
-  const other = await browser.newContext({ baseURL: origin, viewport: { width: 1280, height: 800 }, locale: "de-DE" });
+  // (A device that was never asked: not the specs' pre-answered storage.)
+  const other = await browser.newContext({ baseURL: origin, viewport: { width: 1280, height: 800 }, locale: "de-DE", storageState: { cookies: [], origins: [] } });
   const second = await other.newPage();
   await second.request.post("/api/auth/password", { headers: { origin }, data: { email: account.email, password: account.password } });
   await second.goto("/");
