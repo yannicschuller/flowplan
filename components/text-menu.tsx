@@ -69,6 +69,8 @@ import {
   ArrowDown,
   TextTSlash,
   Check,
+  Square,
+  CheckSquareOffset,
 } from "@phosphor-icons/react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { CellSelection } from "@tiptap/pm/tables";
@@ -80,6 +82,7 @@ import { hasLatexText } from "@/lib/chat-paste";
 import { latexToFormulas } from "@/lib/latex-convert";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
 import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
+import { bulkTasks, canBulkTasks, selectionTasks, type BulkTaskAction } from "@/lib/task-bulk";
 import { mathActionResult, type MathAction } from "@/lib/math-solve";
 import { showToast } from "./toast";
 import { textMenuMarks, textMenuSide, type MenuRect } from "@/lib/text-menu-placement";
@@ -424,6 +427,13 @@ export function TextMenu({
       .map(([emoji]) => emoji),
   );
   const task = editable ? taskAtSelection(editor.view) : null;
+  // All tasks at once (#309) on right click: the checklist around the
+  // caret, or the tasks in the selection.
+  const bulk = editable && place.mode === "context" ? selectionTasks(editor.state) : [];
+  const setAllTasks = (action: BulkTaskAction) => {
+    const tr = bulkTasks(editor.state, bulk, action);
+    if (tr) editor.view.dispatch(tr);
+  };
   // Underline, strikethrough and highlight only where the toolbar is not
   // shown (#210): it has them, and they keep their shortcuts. Without the
   // toolbar (focus mode, or hidden in the settings, #235) the menu is the
@@ -804,6 +814,18 @@ export function TextMenu({
           >
             <MathOperations size={15} />
             <span>{t("In Formeln umwandeln", "Turn into formulas")}</span>
+          </button>
+        </div>
+      )}
+      {bulk.length > 0 && (
+        <div className="text-menu-calc text-menu-tasks" role="group" aria-label={t("Aufgaben", "Tasks")}>
+          <button type="button" role="menuitem" disabled={!canBulkTasks(editor.state.doc, bulk, "open")} onClick={run(() => setAllTasks("open"))}>
+            <Square size={15} />
+            <span>{t("Alle als offen markieren", "Mark all as open")}</span>
+          </button>
+          <button type="button" role="menuitem" disabled={!canBulkTasks(editor.state.doc, bulk, "done")} onClick={run(() => setAllTasks("done"))}>
+            <CheckSquareOffset size={15} />
+            <span>{t("Alle abhaken", "Check all")}</span>
           </button>
         </div>
       )}
