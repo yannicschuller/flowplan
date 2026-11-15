@@ -11,7 +11,15 @@
 // inline-text.tsx, never as HTML); the editor (components/
 // rich-text-input.tsx) reads and writes runs. Values that arrive as plain
 // text (a CSV, a form) are stored through `escapeInline`.
+//
+// Form descriptions (#306) read a richer dialect (`{ spans: true }`):
+// Pandoc's bracketed spans add underline and the text colours of the
+// document editor – [text]{.underline}, [text]{.color-blue}. Without the
+// option such a span stays text, so text properties read as before.
 import type { Field } from "./types";
+import { isTextColorId, textColorByHex, type TextColorId } from "./text-colors";
+
+export type InlineOptions = { spans?: boolean };
 
 export type InlineRun = {
   // May contain "\n" (a line break).
@@ -22,6 +30,9 @@ export type InlineRun = {
   code?: boolean;
   // Only a safe link (see safeHref).
   href?: string;
+  // Only with `{ spans: true }`.
+  underline?: boolean;
+  color?: TextColorId;
 };
 
 const ESCAPABLE = new Set(["\\", "*", "_", "~", "`", "[", "]"]);
@@ -67,16 +78,16 @@ const isWord = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}]/u.tes
 
 // Inline Markdown → runs of text with their marks (adjacent runs with the
 // same marks merged).
-export function parseInline(markdown: unknown): InlineRun[] {
+export function parseInline(markdown: unknown, options: InlineOptions = {}): InlineRun[] {
   if (typeof markdown !== "string" || !markdown) return [];
   const source = normalizeBreaks(markdown);
   const runs: InlineRun[] = [];
-  parseRange(source, 0, source.length, {}, runs, 0);
+  parseRange(source, 0, source.length, {}, runs, 0, !!options.spans);
   return mergeRuns(runs);
 }
 
 function sameMarks(a: Marks, b: Marks) {
-  return !!a.bold === !!b.bold && !!a.italic === !!b.italic && !!a.strike === !!b.strike && !!a.code === !!b.code && a.href === b.href;
+  return !!a.bold === !!b.bold && !!a.italic === !!b.italic && !!a.strike === !!b.strike && !!a.code === !!b.code && a.href === b.href && !!a.underline === !!b.underline && a.color === b.color;
 }
 
 export function mergeRuns(runs: InlineRun[]): InlineRun[] {
@@ -97,6 +108,8 @@ function cleanRun(run: InlineRun): InlineRun {
   if (run.strike) out.strike = true;
   if (run.code) out.code = true;
   if (run.href) out.href = run.href;
+  if (run.underline) out.underline = true;
+  if (run.color) out.color = run.color;
   return out;
 }
 
@@ -127,6 +140,34 @@ function skipUnit(s: string, i: number, end: number) {
     return close < 0 ? i + n : close + n;
   }
   return i + 1;
+}
+
+// A bracketed span at `i` ("[label]{.underline .color-red}"): the label's
+// range, its marks and the end, or null. Unknown classes are dropped.
+function spanAt(s: string, i: number, end: number) {
+  let depth = 0,
+    j = i;
+  while (j < end) {
+    const c = s[j];
+    if (c === "\\" || c === "`") {
+      j = skipUnit(s, j, end);
+      continue;
+    }
+    if (c === "[") depth++;
+    else if (c === "]" && --depth === 0) break;
+    j++;
+  }
+  if (j >= end || s[j] !== "]" || s[j + 1] !== "{") return null;
+  const close = s.indexOf("}", j + 2);
+  if (close < 0 || close >= end || close - j > 200) return null;
+  const attrs = s.slice(j + 2, close);
+  if (!/^\s*\.[a-z][a-z0-9-]*(?:\s+\.[a-z][a-z0-9-]*)*\s*$/.test(attrs)) return null;
+  const marks: Marks = {};
+  for (const cls of attrs.trim().split(/\s+/).map((c) => c.slice(1))) {
+    if (cls === "underline") marks.underline = true;
+    else if (cls.startsWith("color-") && isTextColorId(cls.slice(6))) marks.color = cls.slice(6) as TextColorId;
+  }
+  return { labelStart: i + 1, labelEnd: j, marks, next: close + 1 };
 }
 
 // A link at `i` ("[label](url)"): the label's range and the end, or null.
@@ -167,7 +208,7 @@ type DelimNode = { kind: "delim"; ch: string; len: number; orig: number; open: b
 // when no space follows (_ also not after a letter or digit) and closes
 // when no space precedes it (_ also not before a letter or digit); ~~ is
 // strike. Inner delimiters close first ("***a***", "**a*b***").
-function parseRange(s: string, start: number, end: number, marks: Marks, out: InlineRun[], depth: number) {
+function parseRange(s: string, start: number, end: number, marks: Marks, out: InlineRun[], depth: number, spans: boolean) {
   const nodes: (TextNode | DelimNode)[] = [];
   let buf = "";
   const flush = () => {
@@ -199,13 +240,27 @@ function parseRange(s: string, start: number, end: number, marks: Marks, out: In
       i = close + n;
       continue;
     }
+    if (c === "[" && spans && depth < 20) {
+      const span = spanAt(s, i, end);
+      if (span) {
+        flush();
+        const label: InlineRun[] = [];
+        parseRange(s, span.labelStart, span.labelEnd, { ...marks, ...span.marks }, label, depth + 1, spans);
+        for (const run of label) {
+          const { text, ...runMarks } = run;
+          nodes.push({ kind: "text", text, marks: runMarks });
+        }
+        i = span.next;
+        continue;
+      }
+    }
     if (c === "[" && !marks.href && depth < 20) {
       const link = linkAt(s, i, end);
       if (link) {
         flush();
         const href = safeHref(link.url);
         const label: InlineRun[] = [];
-        parseRange(s, link.labelStart, link.labelEnd, href ? { ...marks, href } : marks, label, depth + 1);
+        parseRange(s, link.labelStart, link.labelEnd, href ? { ...marks, href } : marks, label, depth + 1, spans);
         if (!label.length && href) label.push({ ...marks, href, text: link.url });
         for (const run of label) {
           const { text, ...runMarks } = run;
@@ -278,10 +333,10 @@ function parseRange(s: string, start: number, end: number, marks: Marks, out: In
 }
 
 // The text without its formatting (line breaks stay "\n").
-export function toPlain(markdown: unknown): string {
+export function toPlain(markdown: unknown, options: InlineOptions = {}): string {
   if (typeof markdown !== "string") return markdown === null || markdown === undefined ? "" : String(markdown);
   if (!/[\\*_~`[]/.test(markdown)) return normalizeBreaks(markdown);
-  return parseInline(markdown)
+  return parseInline(markdown, options)
     .map((run) => run.text)
     .join("");
 }
@@ -292,7 +347,7 @@ export function hasInlineMarkup(markdown: unknown): boolean {
   return typeof markdown === "string" && /[\\*_~`[]/.test(markdown);
 }
 
-const ORDER = ["href", "bold", "italic", "strike"] as const;
+const ORDER = ["href", "color", "underline", "bold", "italic", "strike"] as const;
 
 // Runs → inline Markdown. Marks never start or end with whitespace (a
 // space moves outside), italic is _x_ unless a letter touches it (then *x*).
@@ -366,6 +421,8 @@ function serializeLevel(runs: InlineRun[], level: number): string {
     const body = serializeLevel(inner, level + 1);
     let wrapped: string;
     if (key === "href") wrapped = `[${body}](${escapeUrl(String(value))})`;
+    else if (key === "color") wrapped = `[${body}]{.color-${value}}`;
+    else if (key === "underline") wrapped = `[${body}]{.underline}`;
     else if (key === "bold") wrapped = `**${body}**`;
     else if (key === "strike") wrapped = `~~${body}~~`;
     else wrapped = `${OPEN}${body}${CLOSE}`;
@@ -413,8 +470,8 @@ function trimRuns(group: InlineRun[], lead: number, trail: number): InlineRun[] 
 
 // Normalises inline Markdown (e.g. from the API): the same text and marks,
 // written the way the editor writes them; unsafe links keep their label.
-export function normalizeInline(markdown: string): string {
-  return serializeInline(parseInline(markdown));
+export function normalizeInline(markdown: string, options: InlineOptions = {}): string {
+  return serializeInline(parseInline(markdown, options));
 }
 
 // ---- HTML → inline Markdown (paste, imports) ----------------------------
@@ -433,11 +490,13 @@ const CELLS = new Set(["td", "th"]);
 function styleOf(attrs: Record<string, string>) {
   const style = (attrs.style || "").toLowerCase();
   const prop = (name: string) => new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([^;]+)`).exec(style)?.[1].trim();
-  return { weight: prop("font-weight"), fontStyle: prop("font-style"), decoration: [prop("text-decoration"), prop("text-decoration-line")].filter(Boolean).join(" ") };
+  return { weight: prop("font-weight"), fontStyle: prop("font-style"), decoration: [prop("text-decoration"), prop("text-decoration-line")].filter(Boolean).join(" "), color: prop("color") };
 }
 
 // The runs of an element tree: inline marks kept, blocks become line breaks.
-export function htmlRuns(nodes: HtmlNode[]): InlineRun[] {
+// With `{ spans: true }` underline and the palette's text colours are kept
+// too (a colour as the document editor writes it, or a text-color- class).
+export function htmlRuns(nodes: HtmlNode[], options: InlineOptions = {}): InlineRun[] {
   const out: InlineRun[] = [];
   const walk = (list: HtmlNode[], marks: Marks, pre: boolean) => {
     for (const node of list) {
@@ -461,6 +520,11 @@ export function htmlRuns(nodes: HtmlNode[]): InlineRun[] {
       if (name === "s" || name === "strike" || name === "del") next.strike = true;
       if (style.decoration.includes("line-through")) next.strike = true;
       if (name === "code" || name === "kbd" || name === "samp" || name === "tt") next.code = true;
+      if (options.spans) {
+        if (name === "u" || name === "ins" || style.decoration.includes("underline")) next.underline = true;
+        const color = (style.color && textColorByHex(style.color)) || /(?:^|\s)text-color-([a-z]+)(?:\s|$)/.exec(node.attrs.class || "")?.[1];
+        if (isTextColorId(color)) next.color = color;
+      }
       if (name === "a" && node.attrs.href) {
         const href = safeHref(node.attrs.href);
         if (href) next.href = href;

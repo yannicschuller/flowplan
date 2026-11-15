@@ -9,18 +9,42 @@
 // line break in the record (multiline); Escape drops the edit. Selecting
 // text shows a small format bar. Pasted HTML keeps its inline formatting,
 // blocks become line breaks.
+//
+// `formats="form"` (form descriptions, #306) adds underline (⌘/Ctrl U) and
+// the document editor's text colours, stored as bracketed spans
+// (lib/form-text.ts); colours render as text-color- classes, never as
+// style attributes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Extension, Node, type JSONContent } from "@tiptap/core";
+import { Extension, Mark, Node, type JSONContent } from "@tiptap/core";
 import { Slice } from "@tiptap/pm/model";
-import { Code, LinkSimple, TextB, TextItalic, TextStrikethrough } from "@phosphor-icons/react";
+import { Code, LinkSimple, Palette, TextB, TextItalic, TextStrikethrough, TextUnderline } from "@phosphor-icons/react";
 import { formatCombo, isMacPlatform } from "@/lib/keymap";
-import { htmlRuns, mergeRuns, parseInline, safeHref, serializeInline, type HtmlNode, type InlineRun } from "@/lib/inline-markdown";
+import { htmlRuns, mergeRuns, parseInline, safeHref, serializeInline, type HtmlNode, type InlineOptions, type InlineRun } from "@/lib/inline-markdown";
+import { isTextColorId, textColorList, type TextColorId } from "@/lib/text-colors";
 import { useT } from "./i18n";
 
 // A document of exactly one paragraph.
 const SingleParagraph = Node.create({ name: "doc", topNode: true, content: "paragraph" });
+
+// A text colour of the palette by its name, shown with a class.
+const InlineColor = Mark.create({
+  name: "inlineColor",
+  addAttributes() {
+    return { color: { default: null } };
+  },
+  parseHTML: () => [
+    {
+      tag: "span[class]",
+      getAttrs: (element) => {
+        const color = /(?:^|\s)text-color-([a-z]+)/.exec((element as HTMLElement).className)?.[1];
+        return isTextColorId(color) ? { color } : false;
+      },
+    },
+  ],
+  renderHTML: ({ mark }) => ["span", isTextColorId(mark.attrs.color) ? { class: `text-color-${mark.attrs.color}` } : {}, 0],
+});
 
 export function runsToContent(runs: InlineRun[]): JSONContent {
   const content: JSONContent[] = [];
@@ -31,6 +55,8 @@ export function runsToContent(runs: InlineRun[]): JSONContent {
       run.strike && { type: "strike" },
       run.code && { type: "code" },
       run.href && { type: "link", attrs: { href: run.href } },
+      run.underline && { type: "underline" },
+      run.color && { type: "inlineColor", attrs: { color: run.color } },
     ].filter(Boolean) as JSONContent["marks"];
     run.text.split("\n").forEach((part, i) => {
       if (i > 0) content.push({ type: "hardBreak" });
@@ -54,6 +80,8 @@ export function contentToRuns(doc: JSONContent): InlineRun[] {
           if (mark.type === "strike") run.strike = true;
           if (mark.type === "code") run.code = true;
           if (mark.type === "link") run.href = safeHref(String(mark.attrs?.href || ""));
+          if (mark.type === "underline") run.underline = true;
+          if (mark.type === "inlineColor" && isTextColorId(mark.attrs?.color)) run.color = mark.attrs.color;
         }
         runs.push(run);
       }
@@ -69,7 +97,7 @@ export function domToHtmlNodes(nodes: NodeListOf<ChildNode> | ChildNode[]): Html
     else if (node.nodeType === 1) {
       const el = node as Element;
       const attrs: Record<string, string> = {};
-      for (const name of ["href", "style"]) {
+      for (const name of ["href", "style", "class"]) {
         const value = el.getAttribute(name);
         if (value !== null) attrs[name] = value;
       }
@@ -79,12 +107,12 @@ export function domToHtmlNodes(nodes: NodeListOf<ChildNode> | ChildNode[]): Html
   return out;
 }
 
-function pastedRuns(data: DataTransfer | null): InlineRun[] | null {
+function pastedRuns(data: DataTransfer | null, options: InlineOptions): InlineRun[] | null {
   if (!data) return null;
   const html = data.getData("text/html");
   if (html) {
     const doc = new DOMParser().parseFromString(html, "text/html");
-    return htmlRuns(domToHtmlNodes(doc.body.childNodes));
+    return htmlRuns(domToHtmlNodes(doc.body.childNodes), options);
   }
   const text = data.getData("text/plain");
   return text ? [{ text: text.replace(/\r\n?/g, "\n") }] : null;
@@ -100,6 +128,7 @@ export default function RichTextEditor({
   label,
   placeholder,
   onCancel,
+  formats = "text",
 }: {
   value: string;
   onChange: (markdown: string) => void | Promise<unknown>;
@@ -112,6 +141,8 @@ export default function RichTextEditor({
   placeholder?: string;
   // The edit ended without a change (Escape, or Enter in a table cell).
   onCancel?: () => void;
+  // "form": also underline and text colours (form descriptions, #306).
+  formats?: "text" | "form";
 }) {
   const t = useT();
   const mac = typeof navigator !== "undefined" && isMacPlatform();
@@ -123,6 +154,21 @@ export default function RichTextEditor({
   const [bar, setBar] = useState<{ x: number; y: number } | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [linkError, setLinkError] = useState(false);
+  const [colors, setColors] = useState(false);
+  const colorNames: Record<TextColorId, string> = {
+    gray: t("Grau", "Grey"),
+    brown: t("Braun", "Brown"),
+    orange: t("Orange", "Orange"),
+    yellow: t("Gelb", "Yellow"),
+    green: t("Grün", "Green"),
+    blue: t("Blau", "Blue"),
+    purple: t("Lila", "Purple"),
+    pink: t("Pink", "Pink"),
+    red: t("Rot", "Red"),
+  };
+  const form = formats === "form";
+  const dialect: InlineOptions = { spans: form };
+  const parse = (markdown: string) => runsToContent(parseInline(markdown, dialect));
   const linkInput = useRef<HTMLInputElement>(null);
 
   const markdownOf = (editor: Editor) => serializeInline(contentToRuns(editor.getJSON()));
@@ -145,6 +191,16 @@ export default function RichTextEditor({
     requestAnimationFrame(() => linkInput.current?.focus());
     return true;
   };
+  // Closes the format bar once focus has moved on: removing it while the
+  // focus is between two elements makes a dialog around the editor (the
+  // form designer, #306) take the focus back from the next field.
+  const closeBar = () =>
+    setTimeout(() => {
+      if (wrap.current?.contains(document.activeElement)) return;
+      setBar(null);
+      setLink(null);
+      setColors(false);
+    });
   const placeBar = (editor: Editor) => {
     const { from, to } = editor.state.selection;
     const start = editor.view.coordsAtPos(from),
@@ -161,7 +217,7 @@ export default function RichTextEditor({
     immediatelyRender: false,
     editable: !disabled,
     autofocus: autoFocus ? "end" : false,
-    content: runsToContent(parseInline(value)),
+    content: parse(value),
     extensions: [
       SingleParagraph,
       StarterKit.configure({
@@ -174,7 +230,7 @@ export default function RichTextEditor({
         codeBlock: false,
         heading: false,
         horizontalRule: false,
-        underline: false,
+        underline: form ? {} : false,
         dropcursor: false,
         gapcursor: false,
         trailingNode: false,
@@ -188,6 +244,7 @@ export default function RichTextEditor({
           HTMLAttributes: { target: "_blank", rel: "noopener noreferrer", class: null },
         },
       }),
+      ...(form ? [InlineColor] : []),
       Extension.create({
         name: "inlineTextKeys",
         addKeyboardShortcuts() {
@@ -199,7 +256,7 @@ export default function RichTextEditor({
               return true;
             },
             Escape: () => {
-              this.editor.commands.setContent(runsToContent(parseInline(saved.current)));
+              this.editor.commands.setContent(parse(saved.current));
               live.current.onCancel?.();
               this.editor.commands.blur();
               return true;
@@ -217,7 +274,7 @@ export default function RichTextEditor({
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
       },
       handlePaste: (view, event) => {
-        const runs = pastedRuns(event.clipboardData);
+        const runs = pastedRuns(event.clipboardData, dialect);
         if (!runs) return false;
         event.preventDefault();
         const doc = view.state.schema.nodeFromJSON(runsToContent(runs));
@@ -251,13 +308,13 @@ export default function RichTextEditor({
       if (editor.state.selection.empty) {
         setBar(null);
         setLink(null);
+        setColors(false);
       } else placeBar(editor);
     },
     onBlur: ({ editor, event }) => {
       // The format bar and its link field keep the edit open.
       if (event.relatedTarget instanceof globalThis.Node && wrap.current?.contains(event.relatedTarget)) return;
-      setBar(null);
-      setLink(null);
+      closeBar();
       finish(editor, false);
     },
   }), []);
@@ -269,7 +326,8 @@ export default function RichTextEditor({
   useEffect(() => {
     if (!editor || editor.isFocused || value === saved.current) return;
     saved.current = value;
-    editor.commands.setContent(runsToContent(parseInline(value)));
+    editor.commands.setContent(parse(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, value]);
   useEffect(() => {
     editor?.setEditable(!disabled);
@@ -317,22 +375,53 @@ export default function RichTextEditor({
             if (!(e.target as HTMLElement).closest("input")) e.preventDefault();
           }}
         >
-          {link === null ? (
+          {link === null && colors ? (
+            <div className="text-menu-format rich-text-colors" role="group" aria-label={t("Textfarbe", "Text colour")}>
+              {textColorList.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`rich-text-swatch${editor.isActive("inlineColor", { color: c.id }) ? " active" : ""}`}
+                  aria-label={t(`Textfarbe ${colorNames[c.id]}`, `Text colour ${colorNames[c.id]}`)}
+                  aria-pressed={editor.isActive("inlineColor", { color: c.id })}
+                  title={colorNames[c.id]}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    editor.chain().focus().setMark("inlineColor", { color: c.id }).run();
+                    setColors(false);
+                  }}
+                >
+                  <span className={`text-color-${c.id}`}>A</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="rich-text-swatch rich-text-swatch-none"
+                aria-label={t("Farbe entfernen", "Remove colour")}
+                title={t("Farbe entfernen", "Remove colour")}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  editor.chain().focus().unsetMark("inlineColor").run();
+                  setColors(false);
+                }}
+              >
+                <span>A</span>
+              </button>
+            </div>
+          ) : link === null ? (
             <div className="text-menu-format">
               {mark("bold", `${t("Fett", "Bold")} (${key("Mod+B")})`, <TextB size={16} />, () => editor.chain().focus().toggleBold().run())}
               {mark("italic", `${t("Kursiv", "Italic")} (${key("Mod+I")})`, <TextItalic size={16} />, () => editor.chain().focus().toggleItalic().run())}
+              {form && mark("underline", `${t("Unterstrichen", "Underline")} (${key("Mod+U")})`, <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
               {mark("strike", `${t("Durchgestrichen", "Strikethrough")} (${key("Mod+Shift+X")})`, <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
               {mark("code", `Code (${key("Mod+E")})`, <Code size={16} />, () => editor.chain().focus().toggleCode().run())}
               {mark("link", `Link (${key("Mod+K")})`, <LinkSimple size={16} />, () => openLink(editor))}
+              {form && mark("inlineColor", t("Textfarbe", "Text colour"), <Palette size={16} />, () => setColors(true))}
             </div>
           ) : (
-            <form
-              className="rich-text-link"
-              onSubmit={(e) => {
-                e.preventDefault();
-                applyLink();
-              }}
-            >
+            // No <form>: the editor may sit inside one (the form designer,
+            // #306), and Enter here must not submit that.
+            <div className="rich-text-link">
               <input
                 ref={linkInput}
                 type="text"
@@ -346,7 +435,11 @@ export default function RichTextEditor({
                   setLinkError(false);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    applyLink();
+                  } else if (e.key === "Escape") {
                     e.preventDefault();
                     e.stopPropagation();
                     setLink(null);
@@ -355,12 +448,11 @@ export default function RichTextEditor({
                 }}
                 onBlur={(e) => {
                   if (e.relatedTarget instanceof globalThis.Node && wrap.current?.contains(e.relatedTarget)) return;
-                  setLink(null);
-                  setBar(null);
+                  closeBar();
                   finish(editor, false);
                 }}
               />
-              <button type="submit" className="button compact primary">
+              <button type="button" className="button compact primary" onClick={applyLink}>
                 {t("Übernehmen", "Apply")}
               </button>
               {linkError && (
@@ -368,7 +460,7 @@ export default function RichTextEditor({
                   {t("Nur http-, https- und mailto-Links.", "Only http, https and mailto links.")}
                 </span>
               )}
-            </form>
+            </div>
           )}
         </div>
       )}

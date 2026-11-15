@@ -9,6 +9,7 @@ import { HttpError } from "./auth";
 import { field as fieldSchema } from "./database-schema";
 import { formConfigSchema, formFollowUpSchema, publicFormFields } from "./form-settings";
 import { formSettings } from "./forms";
+import { cleanFormConfigTexts, cleanSurveyTexts } from "./form-text";
 import { isQuestion, questionFields, storageType, surveySchema, type Survey, type SurveyItem } from "./survey";
 import { newQuestion } from "./survey";
 import type { Field, Page } from "./types";
@@ -78,7 +79,7 @@ export async function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
     if (item.showIf && !seen.has(item.showIf.field)) throw new HttpError(400, "Eine Bedingung verweist auf eine spätere oder fehlende Frage.");
     if (isQuestion(item)) questionFields(item).forEach((f) => seen.add(f));
   }
-  const survey: Survey = { ...b.survey, items };
+  const survey: Survey = cleanSurveyTexts({ ...b.survey, items });
   const stored = z.array(fieldSchema).max(80).parse(fields);
   await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(stored), page.id);
 
@@ -87,7 +88,7 @@ export async function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
   const config = previous?.config || formConfigSchema.parse({});
   const questions = items.filter(isQuestion);
   const asked = questions.flatMap(questionFields);
-  const next = formConfigSchema.parse({
+  const next = cleanFormConfigTexts(formConfigSchema.parse({
     ...config,
     // Only the settings sent (defaults of the others must not overwrite them).
     ...Object.fromEntries(Object.entries(b.form).filter(([k, v]) => v !== undefined && k in sentForm)),
@@ -101,7 +102,7 @@ export async function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
       questions.flatMap((q) => (q.type === "long" ? [[q.field, "long"]] : ["single", "yesno"].includes(q.type) ? [[q.field, "buttons"]] : [])),
     ),
     survey,
-  });
+  }));
   await run(
     "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET config=excluded.config",
     page.id,

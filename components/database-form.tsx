@@ -20,6 +20,8 @@ import {
 import type { Field, Page, Row } from "@/lib/types";
 import { SurveyBuilder } from "./survey-builder";
 import { SurveyRunner } from "./survey-runner";
+import { FormText } from "./inline-text";
+import { FormTextInput } from "./form-text-input";
 type Form = {
   token: string;
   enabled: number;
@@ -158,9 +160,8 @@ export default function DatabaseForm({
       {builderModal}
       <div className="form-heading">
         <h2>{config.title || page.title}</h2>
-        <p>
-          {config.description ||
-            t("Deine Antworten werden als neuer Eintrag gespeichert.", "Your answers are saved as a new record.")}
+        <p className="form-description">
+          {config.description ? <FormText value={config.description} /> : t("Deine Antworten werden als neuer Eintrag gespeichert.", "Your answers are saved as a new record.")}
         </p>
         {editable && (
           <div className="form-heading-actions">
@@ -312,17 +313,15 @@ export default function DatabaseForm({
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             />
           </label>
-          <label>
-            {t("Beschreibung", "Description")}
-            <textarea
-              aria-label={t("Beschreibung", "Description")}
+          <div className="field-group form-text-label">
+            <span>{t("Beschreibung", "Description")}</span>
+            <FormTextInput
+              label={t("Beschreibung", "Description")}
               value={draft.description}
               maxLength={3000}
-              onChange={(e) =>
-                setDraft({ ...draft, description: e.target.value })
-              }
+              onChange={(description) => setDraft((d) => ({ ...d, description }))}
             />
-          </label>
+          </div>
           <h3>{t("Fragen", "Questions")}</h3>
           {designFields.map((f, index) => (
             <Fragment key={f.id}>
@@ -414,22 +413,17 @@ export default function DatabaseForm({
                   </label>
                 )}
               </div>
-              <label>
-                {t("Hinweis zu", "Hint for")}{" "}{f.name}
-                <input
+              <div className="field-group form-text-label">
+                <span>
+                  {t("Hinweis zu", "Hint for")}{" "}{f.name}
+                </span>
+                <FormTextInput
+                  label={`${t("Hinweis zu", "Hint for")} ${f.name}`}
                   maxLength={1000}
                   value={draft.descriptions[f.id] || ""}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      descriptions: {
-                        ...draft.descriptions,
-                        [f.id]: e.target.value,
-                      },
-                    })
-                  }
+                  onChange={(text) => setDraft((d) => ({ ...d, descriptions: { ...d.descriptions, [f.id]: text } }))}
                 />
-              </label>
+              </div>
               {!draft.hiddenFields.includes(f.id) && (
                 <FormConditionEditor
                   condition={draft.logic[f.id]}

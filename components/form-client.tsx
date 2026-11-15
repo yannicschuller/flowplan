@@ -4,6 +4,7 @@ import { useT } from "./i18n";
 import { useState } from "react";
 import { api } from "./ui";
 import { SurveyRunner } from "./survey-runner";
+import { FormText } from "./inline-text";
 import { FormFlow, FormThanks, useFormDraft } from "./form-flow";
 import { formRedirect, localizedFormTexts, type FormConfig } from "@/lib/form-settings";
 import type { Field } from "@/lib/types";
@@ -92,7 +93,7 @@ export default function FormClient({
               {!config.survey.welcome.enabled && (
                 <div className="form-heading">
                   <h1>{title}</h1>
-                  {config.description && <p>{config.description}</p>}
+                  {config.description && <p className="form-description"><FormText value={config.description} /></p>}
                 </div>
               )}
               {draft.loaded ? (
@@ -130,7 +131,7 @@ export default function FormClient({
       <div className="form-preview">
         <div className="form-heading">
           <h1>{title}</h1>
-          {config.description && <p>{config.description}</p>}
+          {config.description && <p className="form-description"><FormText value={config.description} /></p>}
           <p className="muted">
             {anonymous
               ? t("Dieses Formular erfasst keine Benutzeridentität.", "This form does not record who you are.")
