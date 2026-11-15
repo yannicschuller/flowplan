@@ -23,7 +23,7 @@ test("the default lists every button once, in groups", () => {
   assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_BUTTONS].sort());
   assert.deepEqual(items(layout.order), [...L.TOOLBAR_BUTTONS], "the default order is the item order");
   assert.equal(layout.order.filter((e) => e === "|").length, 2);
-  assert.deepEqual(layout.hidden, ["bulletList", "orderedList"], "the lists new in #292 start hidden: the toolbar stays as it was");
+  assert.deepEqual(layout.hidden, ["bulletList", "orderedList", "indent", "outdent"], "the lists new in #292 and indent / outdent (#302) start hidden: the toolbar stays as it was");
   assert.ok(L.isDefaultToolbarLayout(L.toolbarLayoutOf(null)));
   for (const bad of [undefined, "", "{", "[]", 3, true, {}, { order: "bold" }, { hidden: ["bold"] }])
     assert.ok(L.isDefaultToolbarLayout(L.toolbarLayoutOf(bad)), JSON.stringify(bad));
@@ -42,7 +42,7 @@ test("a stored layout is read leniently: unknown and duplicate buttons dropped, 
   assert.notEqual(layout.order[layout.order.length - 1], "|");
   assert.ok(!layout.order.some((e, i) => e === "|" && layout.order[i + 1] === "|"), "never two dividers in a row");
   assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_BUTTONS].sort(), "every known button is in the order");
-  assert.deepEqual(layout.hidden, ["italic", "bulletList", "orderedList"], "missing buttons the default hides start hidden");
+  assert.deepEqual(layout.hidden, ["italic", "bulletList", "orderedList", "indent", "outdent"], "missing buttons the default hides start hidden");
 });
 
 test("buttons missing from a stored layout (added in a later version) appear at their default place, shown", () => {
@@ -62,6 +62,22 @@ test("buttons missing from a stored layout (added in a later version) appear at 
   // The default's predecessor moved: the new button follows it there.
   const moved = L.toolbarLayoutOf({ order: ["addBlock", "subscript", "|", "undo"], hidden: [] });
   assert.equal(moved.order[moved.order.indexOf("subscript") + 1], "spoiler");
+});
+
+test("indent and outdent (#302): a layout stored before them stays valid and renders as before", () => {
+  const before = { order: L.DEFAULT_TOOLBAR_ORDER.filter((e) => e !== "indent" && e !== "outdent"), hidden: ["italic"] };
+  assert.ok(L.toolbarLayoutSchema.safeParse(before).success, "still a valid layout to save");
+  const layout = L.toolbarLayoutOf(before);
+  const at = (e: string) => layout.order.indexOf(e as never);
+  assert.equal(at("indent"), at("blockDown") + 1, "at their default place");
+  assert.equal(at("outdent"), at("indent") + 1);
+  assert.deepEqual(layout.hidden, ["italic", "indent", "outdent"], "hidden: nothing new shows without a choice");
+  assert.deepEqual(L.toolbarEntries(layout), L.toolbarEntries(before as never), "the toolbar looks as before");
+  // Shown on request, and they can share a group.
+  const shown = L.setToolbarItemShown(L.setToolbarItemShown(layout, "indent", true), "outdent", true);
+  assert.ok(L.toolbarEntries(shown).includes("indent") && L.toolbarEntries(shown).includes("outdent"));
+  assert.ok(L.canGroupWithNext(shown, at("indent")));
+  assert.ok(L.toolbarLayoutSchema.safeParse({ order: [["indent", "outdent"], "bold"], hidden: [] }).success);
 });
 
 test("what the toolbar renders: hidden and inapplicable buttons left out, dividers only between buttons", () => {
@@ -109,7 +125,7 @@ test("groups: read leniently, rendered as one entry, a button once across groups
   // A missing button follows the group holding its default predecessor.
   const at = L.entryIndexOf(layout.order, "subscript");
   assert.equal(at, L.entryIndexOf(layout.order, "superscript") + 1);
-  assert.equal(layout.hidden.length, 0, "lists the person placed are shown");
+  assert.deepEqual(layout.hidden, ["indent", "outdent"], "lists the person placed are shown (indent and outdent, left out, keep their default)");
   // Rendering: hidden members leave the group; one left is a button.
   const shown = (hidden: import("../lib/toolbar-layout").ToolbarItem[]) =>
     L.toolbarEntries({ order: [["bulletList", "orderedList", "taskList"], "|", "bold"], hidden });
@@ -197,7 +213,7 @@ test("each person saves a layout; it comes with the bootstrap, is validated, and
   const mine = { order: ["bold", "|", "italic", "undo"], hidden: ["undo"] };
   const saved = (await command(anna, { action: "profile.toolbarLayout", toolbarLayout: mine })) as { toolbarLayout: { order: string[]; hidden: string[] } };
   assert.deepEqual(saved.toolbarLayout.order.slice(0, 3), ["bold", "|", "italic"]);
-  assert.deepEqual(saved.toolbarLayout.hidden, ["undo", "bulletList", "orderedList"], "left out, the lists keep their default: hidden");
+  assert.deepEqual(saved.toolbarLayout.hidden, ["undo", "bulletList", "orderedList", "indent", "outdent"], "left out, the lists keep their default: hidden");
   assert.equal(items(saved.toolbarLayout.order).length, L.TOOLBAR_BUTTONS.length, "the rest at their default places");
   assert.deepEqual((await bootstrap(anna, wid)).toolbarLayout, saved.toolbarLayout);
   assert.ok(L.isDefaultToolbarLayout((await bootstrap(ben, wid)).toolbarLayout!), "only for that person");

@@ -42,6 +42,8 @@ import {
   TextHOne,
   TextHThree,
   TextHTwo,
+  TextIndent,
+  TextOutdent,
   TextT,
   Trash,
 } from "@phosphor-icons/react";
@@ -59,7 +61,7 @@ import { blockToMath, blockToToggle, blocksToColumns, colorable, setBlockColors,
 import { blocksToTabs, tabsToBlocks } from "@/lib/tabs-commands";
 import { BLOCK_COLOR_NAMES, blockColor, blockColorLabels, type BlockColorName } from "@/lib/block-colors";
 import type { Editor } from "@tiptap/core";
-import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } from "@tiptap/pm/state";
 import * as pmView from "@tiptap/pm/view";
 import type { ResolvedPos, Slice } from "@tiptap/pm/model";
 import {
@@ -82,6 +84,7 @@ import {
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { nestBlocks } from "@/lib/toggle-nesting";
+import { canShiftBlocks, followBlocks, pressTab, textSelectionOver } from "@/lib/block-indent";
 import { isToggleClosed, markToggleScope, toggleKey } from "@/lib/toggle-view";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
 import { dropContainer } from "@/lib/drop-container";
@@ -1166,9 +1169,11 @@ export function DocumentBlockControls({
   }
   // Tab / ⇧Tab: what the keys do in the text, for the text of all chosen
   // blocks (lists nest, paragraphs and headings indent); the same blocks
-  // stay chosen.
+  // stay chosen. Also "Einrücken" / "Ausrücken" in the menu (#302), there
+  // in the touch selection mode too (its circles stay on the blocks).
   function indent(out: boolean) {
     if (!editor?.isEditable) return;
+    const keep = (positions: number[]) => (pickingRef.current ? select(positions) : startSelection(positions));
     let range;
     try {
       range = blockRange(editor.state.doc, selected.current);
@@ -1182,18 +1187,16 @@ export function DocumentBlockControls({
       // A closed toggle opens (as with the caret in the text).
       applyBlockChange(editor, nested.into.length ? nested.tr.setMeta(toggleKey, { open: nested.into }) : nested.tr);
       (editor.view.dom as HTMLElement).blur();
-      startSelection(nested.positions);
+      keep(nested.positions);
       return;
     }
-    const marks = captureBlockSelection(editor, selected.current);
-    const from = Selection.findFrom(editor.state.doc.resolve(range.from), 1, true),
-      to = Selection.findFrom(editor.state.doc.resolve(range.to), -1, true);
-    if (!from || !to) return;
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(from.$from, to.$to)));
-    editor.commands.keyboardShortcut(out ? "Shift-Tab" : "Tab");
-    const positions = marks.map((mark) => mark.pos).filter((pos) => editor.state.doc.nodeAt(pos));
+    const text = textSelectionOver(editor.state, range.from, range.to);
+    if (!text) return;
+    const chosen = [...selected.current];
+    editor.view.dispatch(editor.state.tr.setSelection(text));
+    const positions = followBlocks(editor, chosen, () => pressTab(editor.view, out));
     (editor.view.dom as HTMLElement).blur();
-    startSelection(positions.length ? positions : selected.current);
+    keep(positions.length ? positions : selected.current);
   }
   // The functions of the latest render, for the listeners below.
   const live = useRef({ startSelection, endSelection, bandBlocks, handled });
@@ -1891,6 +1894,26 @@ export function DocumentBlockControls({
           run: () => setDirection(turnable, (dir || null) as BlockDirection | null),
         })),
       };
+    }
+    // Indent and outdent (#302): what Tab / ⇧Tab do, without a keyboard –
+    // for all chosen blocks that can move, in one step.
+    if (editor.isEditable) {
+      items.push({
+        icon: <TextIndent />,
+        label: t("Einrücken", "Indent"),
+        keywords: "indent nest einrücken tab",
+        disabled: !canShiftBlocks(editor.state, selected.current, false),
+        run: () => indent(false),
+        shortcut: "Tab",
+      });
+      items.push({
+        icon: <TextOutdent />,
+        label: t("Ausrücken", "Outdent"),
+        keywords: "outdent unindent lift ausrücken",
+        disabled: !canShiftBlocks(editor.state, selected.current, true),
+        run: () => indent(true),
+        shortcut: "Shift+Tab",
+      });
     }
     // Moving: on phones on this level (no shortcuts there, dragging needs
     // a hold); with a mouse in a flyout, next to their shortcuts (#238).

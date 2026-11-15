@@ -201,7 +201,10 @@ import {
   PuzzlePiece,
   Keyboard,
   CaretDown,
+  TextIndent,
+  TextOutdent,
 } from "@phosphor-icons/react";
+import { canShiftText, pressTab } from "@/lib/block-indent";
 import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
@@ -2393,6 +2396,13 @@ export default function DocumentEditor({
   function moveBlock(direction: -1 | 1) {
     moveSelectedBlock(editor, direction);
   }
+  // Indent / outdent (#302): Tab / ⇧Tab at the selection, for every block
+  // it covers that can move (lib/block-indent.ts).
+  function shiftText(out: boolean) {
+    if (!editor?.isEditable) return;
+    editor.commands.focus();
+    pressTab(editor.view, out);
+  }
   // A new file for an image (#240, its corner toolbar): uploaded like a
   // dropped one, the image keeps its place, width, caption and alignment;
   // markings belonged to the old picture and go.
@@ -2470,6 +2480,16 @@ export default function DocumentEditor({
       current?.isActive("media")
         ? Number(current.getAttributes("media").width || 100)
         : null,
+  });
+  // Whether the toolbar's indent and outdent apply at the selection (only
+  // worked out while the toolbar shows them).
+  const shiftShown = !layout.hidden.includes("indent") || !layout.hidden.includes("outdent");
+  const shiftable = useEditorState({
+    editor,
+    selector: ({ editor: current }) => {
+      if (!shiftShown || !current?.isEditable) return "";
+      return `${canShiftText(current.state, false) ? "i" : ""}${canShiftText(current.state, true) ? "o" : ""}`;
+    },
   });
   const headings: { text: string; pos: number; level: number }[] = [];
   editor?.state.doc.descendants((node, pos) => {
@@ -3099,6 +3119,28 @@ export default function DocumentEditor({
                     ↓
                   </button>
                 ),
+                indent: () => (
+                  <button
+                    title={t("Einrücken", "Indent") + keyHints.suffix("Tab")}
+                    aria-label={t("Einrücken", "Indent")}
+                    aria-keyshortcuts="Tab"
+                    disabled={!shiftable?.includes("i")}
+                    onClick={() => shiftText(false)}
+                  >
+                    <TextIndent />
+                  </button>
+                ),
+                outdent: () => (
+                  <button
+                    title={t("Ausrücken", "Outdent") + keyHints.suffix("Shift+Tab")}
+                    aria-label={t("Ausrücken", "Outdent")}
+                    aria-keyshortcuts="Shift+Tab"
+                    disabled={!shiftable?.includes("o")}
+                    onClick={() => shiftText(true)}
+                  >
+                    <TextOutdent />
+                  </button>
+                ),
                 outline: () => (
                   <button
                     title={t("Inhaltsverzeichnis", "Table of contents")}
@@ -3158,6 +3200,8 @@ export default function DocumentEditor({
                 taskList: { label: t("Aufgabenliste", "Task list"), icon: <CheckSquare />, run: () => chain()?.toggleTaskList().run(), active: !!editor?.isActive("taskList") },
                 blockUp: { label: t("Block nach oben", "Move block up"), icon: <span aria-hidden>↑</span>, run: () => moveBlock(-1) },
                 blockDown: { label: t("Block nach unten", "Move block down"), icon: <span aria-hidden>↓</span>, run: () => moveBlock(1) },
+                indent: { label: t("Einrücken", "Indent"), icon: <TextIndent />, run: () => shiftText(false), disabled: !shiftable?.includes("i") },
+                outdent: { label: t("Ausrücken", "Outdent"), icon: <TextOutdent />, run: () => shiftText(true), disabled: !shiftable?.includes("o") },
                 inlineMath: { label: t("Inline-Formel", "Inline formula"), icon: <FunctionIcon />, run: openInlineMath },
                 addBlock: { label: t("Block hinzufügen", "Add block"), icon: <Plus />, run: addBlockHere },
               };
