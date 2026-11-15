@@ -1,0 +1,141 @@
+{
+  "security": [
+    {
+      "de": "Das Image basiert auf Debian 13 (trixie) und enthält kein curl mehr; der Gesundheitscheck für Coolify kommt ohne aus.",
+      "en": "The image is based on Debian 13 (trixie) and no longer contains curl; the health check for Coolify works without it."
+    },
+    {
+      "de": "SMTP und LDAP: eigene Zertifizierungsstelle für interne Mailserver, ein Name zum Prüfen der Zertifikate und ein ausdrückliches Abschalten der Prüfung mit Warnungen.",
+      "en": "SMTP and LDAP: an own certificate authority for internal mail servers, a name to check certificates against, and an explicit opt-out of verification with warnings.",
+      "issues": [
+        286
+      ]
+    }
+  ],
+  "features": [
+    {
+      "de": "Einstellungsstufen Einsteiger, Normal und Experte: Einstellungen über deiner Stufe sind ausgeblendet, die Suche findet trotzdem alles. Admins legen die Stufe für neue Konten und je Person fest.",
+      "en": "Settings levels Beginner, Normal and Expert: settings above your level are hidden, the search still finds everything. Admins set the level for new accounts and per person.",
+      "issues": [
+        294
+      ]
+    },
+    {
+      "de": "Neues Onboarding für den Umzug: „Woher kommst du?“ mit Export-Anleitung und Import, „So heißt das hier“, eine Checkliste „Erste Schritte“, ein Beispielbereich, eine Übersicht für Admins und das Angebot, offline zu arbeiten – je Gerät.",
+      "en": "A new onboarding for moving over: \"Where are you coming from?\" with export guides and import, \"What it's called here\", a \"First steps\" checklist, a sample space, a setup overview for admins and the offer to work offline – per device.",
+      "issues": [
+        295
+      ]
+    },
+    {
+      "de": "Notion: Import direkt über die Notion-API mit einem Integrations-Token; Datenbanken aus dem Export kommen vollständiger mit Eigenschaften und verbundenen Relationen. Jeder Import legt einen Importbericht an.",
+      "en": "Notion: import straight through the Notion API with an integration token; databases from the export come over more completely with properties and connected relations. Every import writes an import report."
+    },
+    {
+      "de": "Formatierungsleiste anpassen: Schaltflächen ausblenden, umsortieren und in Gruppen zusammenfassen.",
+      "en": "Customize the formatting toolbar: hide, reorder and group buttons.",
+      "issues": [
+        292
+      ]
+    },
+    {
+      "de": "Schnellerfassung als Startbildschirm auf dem Handy.",
+      "en": "Quick capture as the start screen on phones."
+    },
+    {
+      "de": "Journal: Einträge für frühere Tage über die Tagesauswahl anlegen.",
+      "en": "Journal: create entries for earlier days from the day picker.",
+      "issues": [
+        288
+      ]
+    },
+    {
+      "de": "KI-Einstellungen: „Modelle abrufen“ listet die Modelle des Anbieters.",
+      "en": "AI settings: \"Fetch models\" lists the provider's models.",
+      "issues": [
+        290
+      ]
+    },
+    {
+      "de": "Administration → Benutzer zeigt die Gruppen vom SSO-Anbieter bei der letzten Anmeldung – zum Prüfen der Admin-Gruppe.",
+      "en": "Administration → Users shows the groups from the SSO provider at the last sign-in – to check the admin group.",
+      "issues": [
+        289
+      ]
+    },
+    {
+      "de": "Admins legen „Neuigkeiten nach Updates“ je Person fest.",
+      "en": "Admins set \"What's new after updates\" per person.",
+      "issues": [
+        223
+      ]
+    },
+    {
+      "de": "Vom linken Rand wischen öffnet die Seitenleiste über der Seite – auf Touch-Geräten und in der Android-App.",
+      "en": "Swiping from the left edge opens the sidebar over the page – on touch devices and in the Android app.",
+      "issues": [
+        285
+      ]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Offline zeigt ein kleines Symbol rechts in der oberen Leiste statt eines Banners.",
+      "en": "Offline shows as a small icon on the right of the top bar instead of a banner.",
+      "issues": [
+        296
+      ]
+    },
+    {
+      "de": "Handy: „Neue Seite“ ist ein rundes „+“, Zähler in der Leiste sind zentriert.",
+      "en": "Phones: \"New page\" is a round \"+\", counters in the tab bar are centred.",
+      "issues": [
+        297
+      ]
+    },
+    {
+      "de": "Die Kopfzeile von Tabellen bleibt beim Scrollen oben.",
+      "en": "The header row of tables stays at the top while scrolling.",
+      "issues": [
+        287
+      ]
+    },
+    {
+      "de": "Veröffentlichte Seiten folgen der Einstellung für den Link-Pfeil.",
+      "en": "Published pages follow the link arrow setting.",
+      "issues": [
+        217
+      ]
+    },
+    {
+      "de": "Die Schaltfläche für den Textstil heißt „Aa“ und ist so breit wie die anderen.",
+      "en": "The text style button reads \"Aa\" and is as wide as the others.",
+      "issues": [
+        293
+      ]
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Das Blockmenü über „+“ in der Leiste lässt sich auf dem iPad scrollen.",
+      "en": "The block menu from the toolbar's \"+\" scrolls on the iPad.",
+      "issues": [
+        298
+      ]
+    },
+    {
+      "de": "Die Tab-Leiste zählt nur sichtbare Tabs.",
+      "en": "The tab bar counts only visible tabs.",
+      "issues": [
+        291
+      ]
+    },
+    {
+      "de": "Ein Neustart des Servers hinter einem Proxy lässt die Seite und ausstehende Änderungen nicht mehr fallen.",
+      "en": "A server restart behind a proxy no longer leaves the page or drops pending changes.",
+      "issues": [
+        284
+      ]
+    }
+  ]
+}
