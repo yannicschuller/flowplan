@@ -131,9 +131,53 @@ export function SlashMenu({
   // the menu while the keyboard is still coming up, and the final size often
   // arrives without a resize event: the shell's keyboard measurements (which
   // follow up for about a second) and a few timed checks re-place it too.
+  // While a finger is on the menu it stays where it is (#298): opened with
+  // the toolbar's "+", the menu's own search field has the focus, and iOS
+  // moves the visible area along a swipe – re-placing the menu under the
+  // finger then ended the swipe before the list scrolled. The move waits
+  // for the finger to lift. A swipe on the list also puts the keyboard
+  // away, as lists in iOS apps do, which leaves the list more room.
+  const touching = useRef(false);
+  const deferred = useRef(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    let startY: number | null = null;
+    const down = (event: TouchEvent) => {
+      touching.current = true;
+      startY = event.touches.length === 1 ? event.touches[0].clientY : null;
+    };
+    const move = (event: TouchEvent) => {
+      if (startY === null || event.touches.length !== 1 || Math.abs(event.touches[0].clientY - startY) < 8) return;
+      startY = null;
+      const field = el.querySelector("input");
+      if (field && document.activeElement === field && (event.target as Element | null)?.closest(".slash-menu-list")) field.blur();
+    };
+    const up = (event: TouchEvent) => {
+      if (event.touches.length) return;
+      touching.current = false;
+      if (deferred.current) {
+        deferred.current = false;
+        setViewportTick((n) => n + 1);
+      }
+    };
+    el.addEventListener("touchstart", down, { passive: true });
+    el.addEventListener("touchmove", move, { passive: true });
+    el.addEventListener("touchend", up, { passive: true });
+    el.addEventListener("touchcancel", up, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", down);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", up);
+      el.removeEventListener("touchcancel", up);
+    };
+  }, []);
   useEffect(() => {
     const vv = window.visualViewport;
-    const again = () => setViewportTick((n) => n + 1);
+    const again = () => {
+      if (touching.current) deferred.current = true;
+      else setViewportTick((n) => n + 1);
+    };
     vv?.addEventListener("resize", again);
     vv?.addEventListener("scroll", again);
     // The page or the pane scrolling under the menu (the caret brought into
@@ -155,7 +199,7 @@ export function SlashMenu({
   }, []);
   useLayoutEffect(() => {
     const el = box.current;
-    if (!el) return;
+    if (!el || touching.current) return;
     const list = el.querySelector<HTMLElement>(".slash-menu-list");
     // What the menu takes in full: its frame plus the whole list.
     const full = el.offsetHeight - (list?.clientHeight ?? 0) + (list?.scrollHeight ?? 0);
@@ -166,7 +210,7 @@ export function SlashMenu({
   // fixed positions against another frame) would move it off the caret.
   useLayoutEffect(() => {
     const el = box.current;
-    if (!el || !place) return;
+    if (!el || !place || touching.current) return;
     const shift = Math.round(el.getBoundingClientRect().top - place.top);
     // (The opening animation moves it a few pixels itself.)
     if (Math.abs(shift) > 12) el.style.top = `${place.top - shift}px`;

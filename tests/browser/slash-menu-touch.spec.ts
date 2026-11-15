@@ -157,3 +157,68 @@ test("iOS keyboard: the / menu lies in the visible area at the caret and scrolls
   expect(at.menu.bottom).toBeLessThanOrEqual(at.line.top);
   await page.keyboard.press("Escape");
 });
+
+// #298 (iPad): the block menu opened with the toolbar's "+" has its own
+// search field, which has the focus. iOS moves the visible area along a
+// swipe then; the menu followed that move under the finger and the swipe
+// ended before the list scrolled. While a finger is on the menu it stays
+// put, and a swipe on the list puts the keyboard away (the search field
+// gives up the focus), as lists in iOS apps do.
+test("toolbar \"+\": the block menu with its search field scrolls by touch while iOS moves the visible area", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "Touch.");
+  test.setTimeout(180_000);
+  await fakeIosKeyboard(page);
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const created = await (
+    await page.request.post("/api/command", {
+      headers: { origin },
+      data: { action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Plus touch ${Date.now()}`, kind: "document" },
+    })
+  ).json();
+  await page.goto(`/#page=${created.id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible();
+  const welcome = page.getByRole("dialog", { name: "Willkommen bei Flowplan" });
+  await page.waitForTimeout(300);
+  if (await welcome.isVisible()) {
+    await page.keyboard.press("Escape");
+    await expect(welcome).toBeHidden();
+  }
+  await editor.tap();
+  await keyboard(page, KEYBOARD, 0);
+  await page.locator('button[title="Block hinzufügen"]').first().tap();
+  const menu = page.locator(".slash-menu");
+  const search = menu.getByRole("combobox", { name: "Block suchen" });
+  await expect(search).toBeFocused();
+  const list = menu.locator(".slash-menu-list");
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight + 20)).toBe(true);
+  const before = (await menu.boundingBox())!.y;
+
+  // A swipe on the list; halfway iOS moves the visible area (the focused
+  // field kept in view), as it does on an iPad.
+  const box = (await list.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  const x = box.x + box.width / 2,
+    from = box.y + box.height * 0.85,
+    to = box.y + box.height * 0.15;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: from }] });
+  for (let i = 1; i <= 10; i++) {
+    if (i === 5) await keyboard(page, KEYBOARD, 120);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: from + ((to - from) * i) / 10 }] });
+    await page.waitForTimeout(16);
+    // The menu does not move under the finger.
+    expect((await menu.boundingBox())!.y).toBe(before);
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(40);
+  // The keyboard went away with the swipe; the menu stays open.
+  await expect(search).not.toBeFocused();
+  await expect(menu).toBeVisible();
+  // A tap on an entry still chooses it.
+  await menu.getByRole("option", { name: /Zitat/ }).tap();
+  await expect(menu).toHaveCount(0);
+  await expect(editor.locator("blockquote")).toHaveCount(1);
+});
