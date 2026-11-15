@@ -2320,7 +2320,7 @@ export default function DatabaseView({
             />
           )}
           <strong>
-            {r.icon && <PageIcon name={r.icon} size={16} />}
+            {r.icon && <PageIcon name={r.icon} size={16} className="row-icon" />}
             {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
           </strong>
           <div className="card-properties">
@@ -3147,7 +3147,7 @@ export default function DatabaseView({
         {editable && orderHandle(r, groupKey)}
         <button onClick={() => setRowId(r.id)}>
           <span>
-            {r.icon && <PageIcon name={r.icon} size={16} />}
+            {r.icon && <PageIcon name={r.icon} size={16} className="row-icon" />}
             {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
           </span>
           <span>

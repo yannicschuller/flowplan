@@ -52,3 +52,48 @@ test("board and gallery cards show every filled property", async ({ page }, info
   await expect(tile.locator(".card-properties > span")).toHaveText(["Nord", "Vertrieb", "0", "Berlin"]);
   expect(errors).toEqual([]);
 });
+
+// #299: a record's icon on a card sits on the title's first line with room
+// before the title – library icons (SVG) had neither, unlike emoji.
+test("a card's icon lines up with the title's first line and keeps a gap", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const command = async (data: Record<string, unknown>) => {
+    const response = await page.request.post("/api/command", { headers: { origin }, data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  const db = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Card icons ${info.project.name}`, kind: "database" });
+  const first = await (await page.request.get(`/api/pages/${db.id}`)).json();
+  await command({
+    action: "database.update",
+    pageId: db.id,
+    version: first.database.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Offen"] },
+    ],
+    views: [{ id: "board", name: "Board", type: "board", groupBy: "status", filters: [], sorts: [], fieldOrder: ["title", "status"] }],
+  });
+  const title = "Reorder report blocks and sections, and move blocks between sections";
+  const row = await command({ action: "row.create", pageId: db.id, cells: { title, status: "Offen" } });
+  const rows = (await (await page.request.get(`/api/pages/${db.id}`)).json()).rows as { id: string; version: number }[];
+  const version = rows.find((r) => r.id === (row.id ?? row.row?.id))!.version;
+  await command({ action: "row.appearance", pageId: db.id, rowId: row.id ?? row.row?.id, version, icon: "icon:Rocket:#337ea9" });
+  await page.goto(`/#page=${db.id}`);
+  const strong = page.locator(".record-card", { hasText: "Reorder" }).locator("> strong");
+  await expect(strong.locator("svg")).toBeVisible({ timeout: 30_000 });
+  const at = await strong.evaluate((el) => {
+    const icon = el.querySelector("svg")!.getBoundingClientRect();
+    const text = [...el.childNodes].find((n) => n.nodeType === 3)!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 1);
+    const letter = range.getBoundingClientRect();
+    return { gap: letter.left - icon.right, iconMid: (icon.top + icon.bottom) / 2, letterMid: (letter.top + letter.bottom) / 2 };
+  });
+  expect(at.gap).toBeGreaterThanOrEqual(4);
+  expect(Math.abs(at.iconMid - at.letterMid)).toBeLessThanOrEqual(3);
+});
