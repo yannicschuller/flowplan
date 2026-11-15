@@ -72,7 +72,7 @@ export function DatabaseTools({
         <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} pageId={page.id} />
       </Modal>
       <Modal open={panel === "git"} onClose={() => setPanel(null)} title={t("Git-Anbindung", "Git connection")} wide>
-        {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id")} editable={editable} act={act} />}
+        {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id" && !!f.prefix)} editable={editable} act={act} />}
       </Modal>
       <IssueSyncDialog page={page} database={database} editable={editable} />
       <Modal open={panel === "time"} onClose={() => setPanel(null)} title={t(`Zeiten · ${page.title}`, `Time · ${page.title}`)} wide>
