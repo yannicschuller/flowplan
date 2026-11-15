@@ -33001,6 +33001,121 @@ label.ws-search input {
 .ink-block:focus {
   outline: none;
 }
+/* The touch shield around a drawing block being edited with pen or finger
+   (components/ink/touch-shield.tsx): four panels around the block's
+   rectangle (--hole-*, window coordinates) swallow the resting hand. Over
+   the top bar, sidebar and tab bar, under modals. */
+.ink-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  pointer-events: none;
+  --hole-top: 0px;
+  --hole-bottom: 0px;
+  --hole-left: 0px;
+  --hole-right: 0px;
+}
+.ink-shield-panel {
+  position: fixed;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: contain;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.ink-shield-panel.is-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--hole-top);
+}
+.ink-shield-panel.is-bottom {
+  top: var(--hole-bottom);
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.ink-shield-panel.is-left,
+.ink-shield-panel.is-right {
+  top: var(--hole-top);
+  height: calc(var(--hole-bottom) - var(--hole-top));
+}
+.ink-shield-panel.is-left {
+  left: 0;
+  width: var(--hole-left);
+}
+.ink-shield-panel.is-right {
+  left: var(--hole-right);
+  right: 0;
+}
+.ink-shield-pill {
+  position: fixed;
+  top: calc(10px + var(--safe-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  pointer-events: none;
+}
+.ink-shield.is-pill-bottom .ink-shield-pill {
+  top: auto;
+  bottom: calc(10px + var(--safe-bottom, 0px));
+}
+.ink-shield.is-pill-hidden .ink-shield-pill {
+  display: none;
+}
+.ink-shield-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--blue);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--blue);
+  box-shadow: 0 4px 16px #0003;
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ink-shield-hint {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--secondary);
+  box-shadow: 0 2px 8px #0002;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: ink-shield-hint 6s ease forwards;
+}
+@keyframes ink-shield-hint {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-shield-hint {
+    animation-timing-function: steps(1, end);
+  }
+}
 
 /* ---------- Start page (components/home) ----------
    A grid of widgets: 4 columns where there is room, 3, 2, and one on
