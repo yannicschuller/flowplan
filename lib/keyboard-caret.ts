@@ -21,10 +21,11 @@ export function coveredBelow(paneBottom: number, viewport: { offsetTop: number; 
 }
 
 // The part of a pane the person sees: inside the pane, inside the visible
-// area and above a toolbar docked on the keyboard (its top edge, when it
-// lies inside the visible area).
-export function visibleBand(pane: Band, viewport: { offsetTop: number; height: number }, toolbarTop?: number | null): Band {
-  const top = Math.max(pane.top, viewport.offsetTop);
+// area, above a toolbar docked on the keyboard (its top edge, when it lies
+// inside the visible area) and below what follows the visible area's top
+// over the pane (`coverBottom`: the workspace's top bar, #307).
+export function visibleBand(pane: Band, viewport: { offsetTop: number; height: number }, toolbarTop?: number | null, coverBottom?: number | null): Band {
+  const top = Math.max(pane.top, viewport.offsetTop, coverBottom ?? -Infinity);
   let bottom = Math.min(pane.bottom, viewport.offsetTop + viewport.height);
   if (toolbarTop != null && toolbarTop > top && toolbarTop < bottom) bottom = toolbarTop;
   return { top, bottom };

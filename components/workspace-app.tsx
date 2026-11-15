@@ -4191,8 +4191,10 @@ export default function WorkspaceApp({
                 className={`save-status${online && ["saved", "changes-saved", "loading", "syncing"].includes(saveStatusOf(status) || "") ? " save-status-quiet" : ""}`}
                 value={`${online}:${statusLabel(status)}`}
               >
-                {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
+                {/* The icon after the text, so it stays put while the text
+                    changes its width. */}
                 <span>{statusLabel(status)}</span>
+                {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
               </CrossFade>
               <PresenceAvatars users={data.present.filter((u) => u.id !== boot.user.id).slice(0, 3)} />
               {/* A record as a page (#231) has its own actions above it;
