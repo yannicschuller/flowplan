@@ -4,7 +4,9 @@
 // stored per block in page_ink (lib/page-ink-store.ts) with its own
 // versions; saves merge with what collaborators drew at the same time.
 // Pens draw at once; with a finger or mouse the block is first activated
-// (so fingers keep scrolling the document). Loaded with the first block.
+// (so fingers keep scrolling the document). Entered with a pen or finger,
+// a touch shield (touch-shield.tsx) keeps the resting hand from the rest of
+// the app until Done (#311). Loaded with the first block.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeViewProps } from "@tiptap/react";
 import { Check, PencilSimple } from "@phosphor-icons/react";
@@ -16,6 +18,7 @@ import { useInkEditor, useInkShortcuts } from "./use-ink-editor";
 import { useEditorEditable } from "../editor-editable";
 import { surfaceUrl, useSurfaceSync } from "./use-surface-sync";
 import { convertSelection } from "./convert";
+import { InkTouchShield } from "./touch-shield";
 import { PaperSvg } from "../notebook/paper";
 import { emptyInk, parseInk, type InkDoc } from "@/lib/ink/model";
 import { recognitionAvailable } from "@/lib/ink/recognition";
@@ -41,6 +44,9 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
   const [loaded, setLoaded] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [active, setActive] = useState(false);
+  // Entered by pen or touch (or, without a pointer, on a touch device):
+  // the shield covers the rest of the app. Mouse users click outside to leave.
+  const [shielded, setShielded] = useState(false);
   const [notice, setNotice] = useState("");
   // Live: reading mode switches the document without drawing this again.
   const editable = useEditorEditable(doc) && options.enabled;
@@ -100,24 +106,45 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
 
   // Activation: a click or a pen inside; leaving with a click outside.
   const root = useRef<HTMLDivElement>(null);
-  const activate = useCallback(() => {
-    if (!writable) return;
-    setActive(true);
-    // Keys (undo, delete) go to the drawing, not the text around it.
-    requestAnimationFrame(() => root.current?.focus({ preventScroll: true }));
-  }, [writable]);
+  const activate = useCallback(
+    (shield: boolean) => {
+      if (!writable) return;
+      setActive(true);
+      setShielded(shield);
+      // Keys (undo, delete) go to the drawing, not the text around it.
+      requestAnimationFrame(() => root.current?.focus({ preventScroll: true }));
+    },
+    [writable],
+  );
+  const finish = useCallback(() => {
+    setActive(false);
+    setShielded(false);
+    ink.setSelection(null);
+    void sync.flush();
+  }, [ink, sync]);
   useEffect(() => {
     if (!active) return;
     const outside = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (root.current?.contains(target) || target?.closest?.(".ink-menu, .modal")) return;
-      setActive(false);
-      ink.setSelection(null);
-      void sync.flush();
+      if (root.current?.contains(target) || target?.closest?.(".ink-menu, .modal, .ink-shield")) return;
+      finish();
+    };
+    // Escape ends drawing once nothing inside wants it (a selection, a menu).
+    const escape = (event: KeyboardEvent) => {
+      const target = event.target as Element | null;
+      if (event.key !== "Escape" || event.defaultPrevented || target?.closest?.(".ink-menu, .modal")) return;
+      if (document.querySelector(".modal")) return;
+      event.preventDefault();
+      finish();
     };
     document.addEventListener("pointerdown", outside, true);
-    return () => document.removeEventListener("pointerdown", outside, true);
-  }, [active, ink, sync]);
+    window.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [active, finish]);
+  const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
   // Height: drag the handle (or arrow keys on it).
   const scale = useRef(1);
@@ -177,10 +204,17 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       aria-label={t("Handschrift", "Handwriting")}
       onDragStart={(e) => e.preventDefault()}
       onPointerDownCapture={(e) => {
-        if (active || !writable || (e.target as Element).closest(".ink-block-resize")) return;
+        if (!writable) return;
+        const touch = e.pointerType === "pen" || e.pointerType === "touch";
+        // A pen or finger on a block entered with the mouse: the hand rests now.
+        if (active) {
+          if (touch && !shielded) setShielded(true);
+          return;
+        }
+        if ((e.target as Element).closest(".ink-block-resize")) return;
         // A pen switches to pen-only drawing at once (fingers keep scrolling).
         if (e.pointerType === "pen" && !ink.penOnly) ink.setPenOnly(true);
-        activate();
+        activate(touch);
       }}
     >
       {active && writable && (
@@ -200,11 +234,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
           <button
             type="button"
             className="ink-done"
-            onClick={() => {
-              setActive(false);
-              ink.setSelection(null);
-              void sync.flush();
-            }}
+            onClick={finish}
           >
             <Check size={17} />
             <span>{t("Fertig", "Done")}</span>
@@ -212,10 +242,11 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
         </InkToolbar>
       )}
       {!active && writable && loaded && (
-        <button type="button" className="ink-block-start" onClick={activate}>
+        <button type="button" className="ink-block-start" onClick={() => activate(coarse())}>
           <PencilSimple size={16} /> {t("Zeichnen", "Draw")}
         </button>
       )}
+      {active && writable && shielded && <InkTouchShield block={root} onDone={finish} />}
       {notice && (
         <p className="notebook-notice" role="status">
           {notice}
