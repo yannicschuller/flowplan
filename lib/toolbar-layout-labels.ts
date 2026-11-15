@@ -33,6 +33,8 @@ export function toolbarItemLabels(t: T): Record<ToolbarItem, string> {
     align: t("Ausrichtung", "Alignment"),
     blockUp: t("Block nach oben", "Move block up"),
     blockDown: t("Block nach unten", "Move block down"),
+    indent: t("Einrücken", "Indent"),
+    outdent: t("Ausrücken", "Outdent"),
     outline: t("Inhaltsverzeichnis", "Table of contents"),
     inlineMath: t("Inline-Formel", "Inline formula"),
     addBlock: t("Block hinzufügen", "Add block"),

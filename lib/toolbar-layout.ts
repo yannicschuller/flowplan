@@ -49,6 +49,8 @@ export const TOOLBAR_BUTTONS = [
   "align",
   "blockUp",
   "blockDown",
+  "indent",
+  "outdent",
   "outline",
   "inlineMath",
   "addBlock",
@@ -136,6 +138,8 @@ export const GROUPABLE_BUTTONS = [
   "taskList",
   "blockUp",
   "blockDown",
+  "indent",
+  "outdent",
   "inlineMath",
   "addBlock",
 ] as const satisfies readonly ToolbarButton[];
@@ -180,6 +184,8 @@ export const DEFAULT_TOOLBAR_ORDER: ToolbarEntry[] = [
   "align",
   "blockUp",
   "blockDown",
+  "indent",
+  "outdent",
   "outline",
   "inlineMath",
   "addBlock",
@@ -187,7 +193,11 @@ export const DEFAULT_TOOLBAR_ORDER: ToolbarEntry[] = [
 // Bulleted and numbered lists were not in the toolbar before #292 (the
 // slash menu and Markdown shortcuts make them); they are there to be shown
 // or grouped ("Listen"), hidden by default so the toolbar stays as it was.
-export const DEFAULT_HIDDEN: ToolbarItem[] = ["bulletList", "orderedList"];
+//
+// Indent and outdent (#302, what Tab / ⇧Tab do, for touch screens) came
+// later and are hidden by default too: a stored layout without them gets
+// them back at their place, hidden (parsedToolbarLayout).
+export const DEFAULT_HIDDEN: ToolbarItem[] = ["bulletList", "orderedList", "indent", "outdent"];
 export function defaultToolbarLayout(): ToolbarLayout {
   return { order: [...DEFAULT_TOOLBAR_ORDER], hidden: [...DEFAULT_HIDDEN] };
 }
