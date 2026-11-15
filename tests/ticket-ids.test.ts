@@ -9,8 +9,8 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-ids-"));
 const { id, run, one } = await import("../lib/db");
 const { command, database, bootstrap, rows } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
-const { resolveTicket } = await import("../lib/ticket-refs");
-const { computedCells } = await import("../lib/database");
+const { resolveTicket, prefixes, readablePrefixes } = await import("../lib/ticket-refs");
+const { computedCells, queryRows } = await import("../lib/database");
 const { suggestedPrefix } = await import("../lib/ticket-ids");
 
 async function user(name: string): Promise<Identity> {
@@ -58,9 +58,8 @@ test("records get running numbers, shown with the prefix", async () => {
   assert.equal(await resolveTicket(owner, wid, "WEB-99"), null);
 });
 
-test("prefixes are required and unique in the workspace", async () => {
+test("prefixes are unique in the workspace", async () => {
   const other = await db("Other");
-  await assert.rejects(async () => await withId(other), /Präfix/);
   await assert.rejects(async () => await withId(other, "WEB"), /WEB nutzt schon/);
   await withId(other, "OPS");
   assert.equal(suggestedPrefix("Website Relaunch"), "WR");
@@ -102,4 +101,48 @@ test("a database created from a template of a ticket database gets a free prefix
   const template = (await act({ action: "template.save", pageId: bugs, name: "Bug-Tracker", spaceId: null })).id as string;
   const made = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Bugs 2", templateId: template })).id as string;
   assert.equal((await database(made)).fields.find((f) => f.type === "id")!.prefix, "BUG2");
+});
+
+test("an ID without a prefix counts up and is left out of references (#313)", async () => {
+  const plain = await db("Plain");
+  const a = (await act({ action: "row.create", pageId: plain, cells: { title: "A" } })).id;
+  await withId(plain);
+  const b = (await act({ action: "row.create", pageId: plain, cells: { title: "B" } })).id;
+  const c = (await act({ action: "row.create", pageId: plain, cells: { title: "C" } })).id;
+  const shown = async () => {
+    const fields = (await database(plain)).fields;
+    return await Promise.all([a, b, c].map(async (rid) => {
+      const row = await one<any>("SELECT * FROM rows WHERE id=?", rid);
+      return computedCells({ ...row, cells: JSON.parse(row.cells) }, fields).key;
+    }));
+  };
+  assert.deepEqual(await shown(), ["1", "2", "3"]);
+  assert.equal((await database(plain)).fields.find((f) => f.type === "id")!.prefix, undefined);
+  // Still one ID property per database.
+  const d = await database(plain);
+  await assert.rejects(
+    async () => await act({ action: "database.update", pageId: plain, version: d.version, fields: [...d.fields, { id: "key2", name: "ID 2", type: "id" }], views: d.views }),
+    /höchstens eine ID/,
+  );
+  // Sorting by the ID goes by number (10 after 9), searching finds "3".
+  for (let i = 0; i < 7; i++) await act({ action: "row.create", pageId: plain, cells: { title: "Weitere" } });
+  const all = await rows(plain),
+    view = { ...d.views[0], filters: [], sorts: [{ field: "key", direction: "desc" as const }] };
+  assert.deepEqual(queryRows(all, d.fields, view).slice(0, 3).map((r) => r.cells.key), ["10", "9", "8"]);
+  assert.deepEqual(queryRows(all, d.fields, view, "3").map((r) => r.id), [c]);
+  // No prefix: nothing to list or resolve, a second plain database is fine.
+  assert.ok(!(await prefixes(wid)).some((p) => p.pageId === plain));
+  assert.ok(!(await readablePrefixes(owner, wid)).some((p) => p.pageId === plain));
+  const second = await db("Plain 2");
+  await withId(second);
+  // A copy does not get a prefix claimed.
+  const copy = (await act({ action: "page.duplicate", pageId: plain })).id as string;
+  assert.equal((await database(copy)).fields.find((f) => f.type === "id")!.prefix, undefined);
+  // Setting a prefix later keeps the numbers; clearing it again too.
+  await withId(plain, "PLN");
+  assert.deepEqual(await shown(), ["PLN-1", "PLN-2", "PLN-3"]);
+  assert.equal((await resolveTicket(owner, wid, "PLN-2"))!.rowId, b);
+  await withId(plain);
+  assert.deepEqual(await shown(), ["1", "2", "3"]);
+  assert.equal(await resolveTicket(owner, wid, "PLN-2"), null);
 });

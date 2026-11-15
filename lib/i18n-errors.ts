@@ -476,7 +476,6 @@ const exact: Record<string, string> = {
   "Eine Regel setzt einen Wert, der nicht zur Eigenschaft passt.": "A rule sets a value that does not fit the property.",
   "Einstellung verweist auf eine unbekannte Eigenschaft.": "A setting refers to an unknown property.",
   "Eine Datenbank hat höchstens eine ID-Eigenschaft.": "A database has at most one ID property.",
-  "Die ID-Eigenschaft braucht ein Präfix, z. B. WEB.": "The ID property needs a prefix, e.g. WEB.",
   "Anfrage nicht gefunden.": "Request not found.",
   "Zu viele Nachrichten. Bitte später erneut versuchen.": "Too many messages. Please try again later.",
   "Zu diesem Eintrag gibt es keine Kundenanfrage.": "There is no customer request for this record.",

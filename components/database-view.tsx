@@ -5136,22 +5136,27 @@ export default function DatabaseView({
           )}
           {fieldDraft.type === "id" && (
             <label>
-              {t("Präfix", "Prefix")}
+              {t("Präfix (optional)", "Prefix (optional)")}
               <input
-                required
                 maxLength={10}
                 pattern="[A-Z][A-Z0-9]{0,9}"
                 aria-describedby="ticket-prefix-hint"
                 value={fieldDraft.prefix || ""}
                 onChange={(e) =>
-                  setFieldDraft((f) => ({ ...f, prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))
+                  // Cleared: no prefix at all, the ID is the plain number (#313).
+                  setFieldDraft((f) => ({ ...f, prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") || undefined }))
                 }
               />
               <small id="ticket-prefix-hint" className="muted">
-                {t(
-                  `Jeder Eintrag bekommt automatisch eine Nummer wie ${fieldDraft.prefix || "WEB"}-123. Im Text wird sie zum Link, in Git-Commits zur Referenz.`,
-                  `Every record automatically gets a number like ${fieldDraft.prefix || "WEB"}-123. In text it becomes a link, in Git commits a reference.`,
-                )}
+                {fieldDraft.prefix
+                  ? t(
+                      `Jeder Eintrag bekommt automatisch eine Nummer wie ${fieldDraft.prefix}-123. Im Text wird sie zum Link, in Git-Commits zur Referenz.`,
+                      `Every record automatically gets a number like ${fieldDraft.prefix}-123. In text it becomes a link, in Git commits a reference.`,
+                    )
+                  : t(
+                      "Ohne Präfix zählt die ID einfach hoch (1, 2, 3 …). Verweise wie WEB-123 in Texten und Git-Commits gibt es nur mit Präfix.",
+                      "Without a prefix the ID simply counts up (1, 2, 3 …). References like WEB-123 in text and Git commits only work with a prefix.",
+                    )}
               </small>
             </label>
           )}

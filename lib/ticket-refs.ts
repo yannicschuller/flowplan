@@ -1,5 +1,6 @@
 // Ticket numbers on the server: one ID property per database, prefixes are
-// unique in a workspace, and "WEB-123" resolves to its record for whoever
+// optional (without one the ID is the plain number, 1, 2, 3 …) and unique in
+// a workspace, and "WEB-123" resolves to its record for whoever
 // may read it (links in text, Git commits).
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -15,8 +16,8 @@ export async function validateTicketPrefix(page: Page, fields: Field[]) {
   const ids = fields.filter((f) => f.type === "id");
   if (ids.length > 1) throw new HttpError(400, "Eine Datenbank hat höchstens eine ID-Eigenschaft.");
   const prefix = ids[0]?.prefix;
-  if (!ids.length) return;
-  if (!prefix) throw new HttpError(400, "Die ID-Eigenschaft braucht ein Präfix, z. B. WEB.");
+  // Without a prefix the ID counts up on its own (#313): nothing to keep unique.
+  if (!prefix) return;
   // An unchanged prefix stays editable, even if another database shares it.
   const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id);
   if (stored && (JSON.parse(stored.fields) as Field[]).some((f) => f.type === "id" && f.prefix === prefix)) return;
@@ -50,7 +51,8 @@ export async function claimTicketPrefix(pageId: string) {
   );
 }
 
-// Databases with an ID property in a workspace.
+// Databases with a prefixed ID property in a workspace (plain numbers
+// without a prefix cannot be referenced).
 export async function prefixes(workspaceId: string) {
   return (await all<{ id: string; title: string; fields: string }>(
     "SELECT p.id,p.title,d.fields FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.fields LIKE '%\"type\":\"id\"%'",

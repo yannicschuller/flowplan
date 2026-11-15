@@ -55,7 +55,7 @@ export function GitSettings({
       </p>
       {!hasIds && (
         <p className="callout-inline">
-          {t("Lege dafür eine Eigenschaft vom Typ „ID (Ticketnummer)“ an.", "For this, add a property of the type “ID (ticket number)”.")}
+          {t("Lege dafür eine Eigenschaft vom Typ „ID (Ticketnummer)“ mit Präfix an.", "For this, add a property of the type “ID (ticket number)” with a prefix.")}
         </p>
       )}
       {!config ? (
