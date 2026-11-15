@@ -187,7 +187,7 @@ export default function AppearanceSection() {
   return (
     <>
       <SettingGroup id="language" title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
-        <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
+        <SettingRow anchor="ui-language" label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
           <SaveState status={status} />
           <Select
             className={`language-select ${CONTROL.md}`}
@@ -210,6 +210,7 @@ export default function AppearanceSection() {
           </Select>
         </SettingRow>
         <SettingRow
+          anchor="color-theme"
           label={t("Erscheinungsbild", "Appearance")}
           description={t("Automatisch folgt dem Hell- oder Dunkelmodus des Geräts. Nur auf diesem Gerät.", "Automatic follows the device's light or dark mode. On this device only.")}
         >
@@ -300,6 +301,7 @@ export default function AppearanceSection() {
           <Switch checked={linkIcon} label={t("Symbol bei externen Links", "Icon on external links")} onChange={chooseLinkIcon} />
         </SettingRow>
         <SwitchRow
+          anchor="discovery"
           label={t("Verwandte Seiten und Rückverweise anzeigen", "Show related pages and backlinks")}
           description={t(
             "Unter Seiten und Einträgen: Verwandte Seiten, „Verlinkt von“, „Verknüpft von“ und nicht verlinkte Erwähnungen. Nur auf diesem Gerät.",
@@ -440,6 +442,7 @@ export default function AppearanceSection() {
           </div>
         </SettingRow>
         <SwitchRow
+          anchor="block-handles"
           label={t("Griffe immer anzeigen", "Always show block handles")}
           description={t(
             "Den Griff ⠿ neben jedem Block zeigen, nicht nur am Block unter dem Mauszeiger und am Block mit dem Cursor. Nur auf diesem Gerät.",
@@ -449,6 +452,7 @@ export default function AppearanceSection() {
           onChange={setBlockHandlesAlways}
         />
         <SwitchRow
+          anchor="line-numbers"
           label={t("Zeilennummern standardmäßig anzeigen", "Show line numbers by default")}
           description={t(
             "Für Codeblöcke ohne eigene Einstellung, beim Bearbeiten und Lesen. Nur auf diesem Gerät.",
@@ -458,6 +462,7 @@ export default function AppearanceSection() {
           onChange={setLineNumbersByDefault}
         />
         <SettingRow
+          anchor="drawio-theme"
           label={t("draw.io-Design", "draw.io theme")}
           description={t(
             "Hell oder dunkel beim Bearbeiten von draw.io-Diagrammen; Automatisch folgt Flowplan. Nur auf diesem Gerät.",
@@ -479,6 +484,7 @@ export default function AppearanceSection() {
           </div>
         </SettingRow>
         <SettingRow
+          anchor="drawio-ui"
           label={t("draw.io-Oberfläche", "draw.io interface")}
           description={t("Wie draw.io beim Bearbeiten aussieht. Nur auf diesem Gerät.", "How draw.io looks while editing. On this device only.")}
         >
@@ -497,6 +503,7 @@ export default function AppearanceSection() {
       </SettingGroup>
       <SettingGroup id="help" title={t("Hilfe", "Help")}>
         <SettingRow
+          anchor="keyboard-shortcuts"
           label={t("Alle Tastenkürzel", "All keyboard shortcuts")}
           description={
             keyHints.visible
@@ -509,7 +516,7 @@ export default function AppearanceSection() {
             {t("Tastenkürzel anzeigen", "Show keyboard shortcuts")}
           </button>
         </SettingRow>
-        <SettingRow label={t("Einführung ansehen", "Show introduction")} description={t("Die kurze Tour durch Flowplan und die ersten Einstellungen, wie nach dem Anlegen des Kontos.", "The short tour of Flowplan and the first settings, as after creating your account.")}>
+        <SettingRow anchor="introduction" label={t("Einführung ansehen", "Show introduction")} description={t("Die kurze Tour durch Flowplan und die ersten Einstellungen, wie nach dem Anlegen des Kontos.", "The short tour of Flowplan and the first settings, as after creating your account.")}>
           <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:onboarding"))}>
             {t("Einführung starten", "Start introduction")}
           </button>

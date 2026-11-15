@@ -9,6 +9,7 @@ import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
+import { adminSetSettingsLevel, setUserSettingsLevel, userSettingsLevel } from "./user-settings-level";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
@@ -391,6 +392,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts): the level
     // and, once after an update, the release notes to show.
     updateNotes: await userUpdateNotes(user),
+    // The settings level (#294, lib/settings-level.ts).
+    settingsLevel: await userSettingsLevel(user.id),
     pages,
     // The records pages sit under (#231, lib/record-pages.ts): the sidebar
     // shows them in their database, the breadcrumb and the record its pages.
@@ -1026,6 +1029,11 @@ async function runCommand(
       case "profile.updateNotes":
         result = await setUserUpdateNotes(user, { level: b.level, seen: b.seen });
         break;
+      // The settings level: Einsteiger, Normal or Experte (#294,
+      // lib/settings-level.ts).
+      case "profile.settingsLevel":
+        result = await setUserSettingsLevel(user, b.level);
+        break;
       // "Was ist neu": the latest release notes up to the running version.
       case "releaseNotes.list":
         result = recentReleaseNotes({ limit: b.limit });
@@ -1097,6 +1105,14 @@ async function runCommand(
         break;
       // "Neuigkeiten nach Updates" of a person (#223): a level or null for
       // the instance's default (lib/user-update-notes.ts).
+      // The settings level of a person (#294): a level or null for the
+      // instance's default (lib/user-settings-level.ts).
+      case "admin.settingsLevel": {
+        requireAdmin(user);
+        result = await adminSetSettingsLevel(b);
+        securityEvent("admin.user", { actorId: user.id, detail: `settings level ${(result as { level: string | null }).level ?? "default"} ${b.userId}` });
+        break;
+      }
       case "admin.updateNotes": {
         requireAdmin(user);
         result = await adminSetUpdateNotes(b);

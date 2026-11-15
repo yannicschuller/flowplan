@@ -8,6 +8,8 @@ import { test, expect, type Page } from "@playwright/test";
 async function fixture(page: Page, title: string, html: string) {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // Settings levels (#294): these settings are for experts.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.settingsLevel", level: "expert" } });
   const command = async (data: Record<string, unknown>) => {
     const response = await page.request.post("/api/command", { headers: { origin }, data });
     expect(response.ok(), await response.text()).toBe(true);

@@ -18,7 +18,8 @@ function dataDir() {
 async function person(browser: Browser, db: DatabaseSync, name: string, workspace: string, role: string) {
   const uid = randomUUID(),
     token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, uid, name, `${uid}@test.invalid`, Date.now());
+  // Settings level "expert" (#294): the encryption settings are for experts.
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at,settings_level) VALUES(?,?,?,?,?,'expert')").run(uid, uid, name, `${uid}@test.invalid`, Date.now());
   db.prepare("INSERT INTO members VALUES(?,?,?)").run(workspace, uid, role);
   db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(
     createHash("sha256").update(token).digest("hex"),

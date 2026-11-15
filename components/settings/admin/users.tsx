@@ -32,6 +32,8 @@ import type { MergePreview } from "@/lib/account-merge";
 import type { SsoGroupReport } from "@/lib/sso-group-report";
 import type { User } from "@/lib/types";
 import { UPDATE_NOTES_LEVELS, updateNotesLevelOf, type UpdateNotesLevel } from "@/lib/update-notes-pref";
+import { SETTINGS_LEVELS, isSettingsLevel } from "@/lib/settings-level";
+import { useLevelName } from "../../settings-level";
 import { useT } from "../../i18n";
 import { Avatar, Modal, showNotice } from "../../ui";
 import { Select } from "../../select";
@@ -808,7 +810,11 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
     never: t("Nie", "Never"),
   };
   const notesValue = u.update_notes === null || u.update_notes === undefined ? "default" : updateNotesLevelOf(u.update_notes);
-  const more = [t("Grenzen", "limits"), t("Neuigkeiten", "what’s new"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
+  // The settings level (#294): the person's own, or the instance's default
+  // without one (lib/user-settings-level.ts).
+  const levelName = useLevelName();
+  const settingsLevelValue = isSettingsLevel(u.settings_level) ? u.settings_level : "default";
+  const more = [t("Grenzen", "limits"), t("Neuigkeiten", "what’s new"), t("Einstellungsstufe", "settings level"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
   const storageMb = usage?.effective.storageMb ?? 0;
   return (
     <Modal open onClose={onClose} title={u.name} className="modal-side ux-drawer" sheet>
@@ -979,6 +985,28 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
               {UPDATE_NOTES_LEVELS.map((level) => (
                 <option key={level} value={level}>
                   {notesLabels[level]}
+                </option>
+              ))}
+            </Select>
+          </PanelRow>
+          <PanelRow
+            label={t("Einstellungsstufe", "Settings level")}
+            htmlFor={`settings-level-${u.id}`}
+            hint={t(
+              `Welche Einstellungen ${u.name} sieht: Einsteiger, Normal oder Experte. Die Suche findet immer alle. Instanz-Standard: ${levelName(data.settings.settingsLevelDefault)}. Die Person kann es oben in den Einstellungen selbst ändern.`,
+              `Which settings ${u.name} sees: Beginner, Normal or Expert. The search always finds all of them. Instance default: ${levelName(data.settings.settingsLevelDefault)}. The person can change it at the top of Settings.`,
+            )}
+          >
+            <Select
+              id={`settings-level-${u.id}`}
+              className="ux-select"
+              value={settingsLevelValue}
+              onChange={(e) => void run({ action: "admin.settingsLevel", userId: u.id, level: e.target.value === "default" ? null : e.target.value }, t("Gespeichert.", "Saved."))}
+            >
+              <option value="default">{t("Instanz-Standard", "Instance default")}</option>
+              {SETTINGS_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {levelName(level)}
                 </option>
               ))}
             </Select>

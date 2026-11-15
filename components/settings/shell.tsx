@@ -7,7 +7,9 @@
 // forward work and every section can be linked.
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { ArrowLeft, CaretRight, MagnifyingGlass, type Icon } from "@phosphor-icons/react";
-import { parseSettingsHash, settingsHash, matchesQuery, type GroupMeta, type SettingsArea, type SettingsRoute, type Text } from "@/lib/settings-sections";
+import { parseSettingsHash, settingsHash, searchSettings, type GroupMeta, type SettingsArea, type SettingsRoute, type Text } from "@/lib/settings-sections";
+import { anchorLevel, hiddenEntries, higherLevel, sectionMinLevel, sectionVisible, withinLevel, type SettingsLevel } from "@/lib/settings-level";
+import { LevelDot, LevelMore, LevelNotice, LevelSwitch, LevelViewProvider, useLevelName } from "../settings-level";
 import { SettingsSkeleton } from "../skeleton";
 import { useT } from "../i18n";
 import { StatusBadge, type Tone } from "../settings-ui";
@@ -84,6 +86,11 @@ type ShellProps = {
   detailActions?: ReactNode;
   // Wraps the section content (providers that only sections need).
   Wrap?: ComponentType<{ children: ReactNode }>;
+  // Settings levels (#294, lib/settings-level.ts), only for the personal
+  // settings: the person's level and how to change it. Sections above it
+  // are left out of the tiles and the side navigation, the search finds
+  // them; a section opened above it says so.
+  level?: { value: SettingsLevel; onChange: (level: SettingsLevel) => void };
 };
 
 export function SettingsShell(props: ShellProps) {
@@ -106,7 +113,7 @@ function useText() {
   return (text: Text) => t(text.de, text.en);
 }
 
-function SettingsHome({ area, title, description, HeaderIcon, sections, groups, groupTitle, summaries, status }: ShellProps) {
+function SettingsHome({ area, title, description, HeaderIcon, sections, groups, groupTitle, summaries, status, level }: ShellProps) {
   const t = useT();
   const tx = useText();
   const [query, setQuery] = useState("");
@@ -121,17 +128,13 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
   // English, so a search in any of them finds it.
   const results = useMemo(() => {
     if (!query.trim()) return null;
-    const out: { section: SectionDef; entry?: string; anchor?: string }[] = [];
-    for (const s of sections) {
-      const own = [tx(s.title), s.title.de, s.title.en, tx(s.description), s.keywords.de, s.keywords.en, tx(s.keywords)];
-      if (matchesQuery(own, query)) out.push({ section: s });
-      for (const e of s.entries || []) {
-        const texts = [tx(e.title), e.title.de, e.title.en, ...(e.keywords ? [e.keywords.de, e.keywords.en, tx(e.keywords)] : [])];
-        if (matchesQuery(texts, query)) out.push({ section: s, entry: tx(e.title), anchor: e.anchor });
-      }
-    }
-    return out;
+    // Every level (#294): a setting above the person's carries its mark.
+    return searchSettings(sections, query, tx).map((r) => ({ ...r, entry: r.entry ? tx(r.entry.title) : undefined }));
   }, [query, sections, tx]);
+  const levelName = useLevelName();
+  // Above the person's level: the mark and the level's name.
+  const above = (l: SettingsLevel | undefined) => (level && l && !withinLevel(l, level.value) ? l : undefined);
+  const shown = level ? sections.filter((s) => sectionVisible(s, level.value)) : sections;
   const groupName = (g: GroupMeta) => (groupTitle ? groupTitle(g) : tx(g.title));
   return (
     <div className="settings-home">
@@ -145,6 +148,7 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
         </div>
       </header>
       {status}
+      {level && <LevelSwitch value={level.value} onChange={level.onChange} />}
       <div className="settings-search" role="search">
         <MagnifyingGlass size={17} aria-hidden />
         <input
@@ -170,14 +174,31 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
             <ul className="settings-tiles list">
               {results.map((r, i) => (
                 <li key={`${r.section.id}-${i}`}>
-                  <Tile area={area} section={r.section} summary={r.entry ? { line: t(`in ${tx(r.section.title)}`, `in ${tx(r.section.title)}`) } : summaries[r.section.id]} title={r.entry || tx(r.section.title)} anchor={r.anchor} />
+                  <Tile
+                    area={area}
+                    section={r.section}
+                    summary={
+                      above(r.level)
+                        ? {
+                            line: r.entry
+                              ? t(`in ${tx(r.section.title)} · Stufe ${levelName(r.level!)}`, `in ${tx(r.section.title)} · ${levelName(r.level!)} level`)
+                              : t(`Stufe ${levelName(r.level!)}`, `${levelName(r.level!)} level`),
+                          }
+                        : r.entry
+                          ? { line: t(`in ${tx(r.section.title)}`, `in ${tx(r.section.title)}`) }
+                          : summaries[r.section.id]
+                    }
+                    title={r.entry || tx(r.section.title)}
+                    anchor={r.anchor}
+                    level={above(r.level)}
+                  />
                 </li>
               ))}
             </ul>
           </section>
         ) : (
           groups
-            .map((g) => ({ g, items: sections.filter((s) => s.group === g.id) }))
+            .map((g) => ({ g, items: shown.filter((s) => s.group === g.id) }))
             .filter(({ items }) => items.length)
             .map(({ g, items }) => (
               <section className="settings-tile-group" key={g.id} aria-labelledby={`settings-group-${g.id}`}>
@@ -197,7 +218,7 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
   );
 }
 
-function Tile({ area, section, summary, title, anchor }: { area: SettingsArea; section: SectionDef; summary?: TileSummary; title: string; anchor?: string }) {
+function Tile({ area, section, summary, title, anchor, level }: { area: SettingsArea; section: SectionDef; summary?: TileSummary; title: string; anchor?: string; level?: SettingsLevel }) {
   const tx = useText();
   const { Icon } = section;
   const tone = summary?.tone;
@@ -252,7 +273,10 @@ function Tile({ area, section, summary, title, anchor }: { area: SettingsArea; s
         <Icon size={20} />
       </span>
       <span className="settings-tile-text">
-        <strong>{title}</strong>
+        <strong>
+          {title}
+          {level && <LevelDot level={level} decorative />}
+        </strong>
         <small>{summary?.line || tx(section.description)}</small>
       </span>
       {summary?.value && <span className="settings-tile-value">{summary.value}</span>}
@@ -266,13 +290,25 @@ function Tile({ area, section, summary, title, anchor }: { area: SettingsArea; s
   );
 }
 
-function SettingsDetail({ area, title, sections, groups, groupTitle, detailActions, section, anchor, Wrap }: ShellProps & { section: SectionDef; anchor: string | null }) {
+function SettingsDetail({ area, title, sections, groups, groupTitle, detailActions, section, anchor, Wrap, level }: ShellProps & { section: SectionDef; anchor: string | null }) {
   const t = useT();
   const tx = useText();
   const heading = useRef<HTMLHeadingElement>(null);
   const group = groups.find((g) => g.id === section.group);
   const groupName = group ? (groupTitle ? groupTitle(group) : tx(group.title)) : "";
-  const siblings = sections.filter((s) => s.group === section.group);
+  // Levels (#294): "Trotzdem zeigen" shows this section up to a higher
+  // level for now; another section starts at the person's level again.
+  const [reveal, setReveal] = useState<{ section: string; level: SettingsLevel } | null>(null);
+  const revealed = level && reveal?.section === section.id ? reveal.level : null;
+  const viewLevel = level ? (revealed ? higherLevel(revealed, level.value) : level.value) : null;
+  const lowest = sectionMinLevel(section);
+  const whole = !!level && !withinLevel(lowest, level.value);
+  // What the address points to, when above the person's level: the
+  // setting of the anchor, else the section.
+  const pointed = anchorLevel(section, anchor);
+  const target = !level ? null : pointed && !withinLevel(pointed, level.value) ? higherLevel(pointed, lowest) : whole ? lowest : null;
+  const showBody = !viewLevel || withinLevel(lowest, viewLevel);
+  const siblings = sections.filter((s) => s.group === section.group && (!level || s.id === section.id || sectionVisible(s, level.value)));
   const { Component, Icon } = section;
   useEffect(() => {
     lastSection = section.id;
@@ -289,14 +325,21 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
     };
     let timer = setTimeout(find, 0);
     return () => clearTimeout(timer);
-  }, [section.id, anchor]);
+  }, [section.id, anchor, viewLevel]);
   const back = () => {
     if (openedFromHome && history.length > 1) {
       openedFromHome = false;
       history.back();
     } else location.hash = settingsHash({ area });
   };
-  const body = <Component />;
+  const body = viewLevel ? (
+    <LevelViewProvider level={viewLevel} section={section}>
+      {showBody && <Component />}
+      {showBody && <LevelMore count={hiddenEntries(section, viewLevel)} onReveal={() => setReveal({ section: section.id, level: "expert" })} />}
+    </LevelViewProvider>
+  ) : (
+    <Component />
+  );
   return (
     <div className="settings-detail" data-detail={section.id}>
       <div className="settings-detail-bar">
@@ -322,10 +365,20 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
               <h1 ref={heading} tabIndex={-1}>
                 {tx(section.title)}
               </h1>
+              {level && <LevelDot level={lowest} />}
               <p>{tx(section.description)}</p>
             </div>
             {detailActions && <div className="settings-detail-actions">{detailActions}</div>}
           </header>
+          {target && (
+            <LevelNotice
+              target={target}
+              whole={whole}
+              revealed={!!revealed && withinLevel(target, revealed)}
+              onSwitch={() => level?.onChange(target)}
+              onReveal={() => setReveal({ section: section.id, level: target })}
+            />
+          )}
           <div className="settings-body">{Wrap ? <Wrap>{body}</Wrap> : body}</div>
         </div>
         {siblings.length > 1 && (

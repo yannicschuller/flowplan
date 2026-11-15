@@ -10,6 +10,8 @@ test("MCP endpoint answers tokens with the person's rights only", async ({ page,
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server's data directory.");
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // Settings levels (#294): these settings are for experts.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.settingsLevel", level: "expert" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
 
   await page.goto("/#settings/api");

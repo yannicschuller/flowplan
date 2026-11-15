@@ -23,6 +23,9 @@ export type User = {
   // Administration only: "Neuigkeiten nach Updates" of the person, null
   // for the instance's default (#223, lib/user-update-notes.ts).
   update_notes?: string | null;
+  // Administration only: the settings level of the person, null for the
+  // instance's default (#294, lib/user-settings-level.ts).
+  settings_level?: string | null;
 };
 export type Identity = User & {
   groups: string[];
@@ -317,6 +320,8 @@ export type Bootstrap = {
   formattingToolbar?: import("./toolbar-pref").FormattingToolbarPref;
   // "Formatierungsleiste anpassen" (#292, lib/toolbar-layout.ts).
   toolbarLayout?: import("./toolbar-layout").ToolbarLayout;
+  // The settings level (#294, lib/settings-level.ts).
+  settingsLevel?: import("./settings-level").SettingsLevelBoot;
   // "Animationen" (#260, lib/motion-pref.ts).
   motion?: import("./motion-pref").MotionPref;
   // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).

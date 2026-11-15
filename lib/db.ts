@@ -1374,6 +1374,13 @@ function migrate(d: DatabaseSync) {
   // version ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "start_screen"))
     d.exec("ALTER TABLE users ADD COLUMN start_screen TEXT");
+  // The settings level per person (#294, lib/settings-level.ts):
+  // users.settings_level, NULL = the instance's default, or 'beginner',
+  // 'normal', 'expert'. Accounts from before get 'expert' once
+  // (lib/data-steps.ts). An older version ignores the column, so the schema
+  // number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "settings_level"))
+    d.exec("ALTER TABLE users ADD COLUMN settings_level TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

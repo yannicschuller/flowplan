@@ -94,10 +94,12 @@ test("search targets of the personal and connection sections exist in their pane
     "components/clipper-settings.tsx",
     "components/capture-target.tsx",
     "components/settings/user/about.tsx",
+    "components/settings/user/appearance.tsx",
+    "components/settings/user/toolbar-layout-editor.tsx",
   ]
     .map((file) => readFileSync(file, "utf8"))
     .join("\n");
-  for (const id of ["account", "notifications", "devices", "api", "connections", "clipper", "about"])
+  for (const id of ["account", "appearance", "notifications", "devices", "api", "connections", "clipper", "about"])
     for (const entry of findSection("settings", id)?.entries || [])
       if (entry.anchor) assert.match(sources, new RegExp(`(id|anchor)="${entry.anchor}"`), `settings/${id}/${entry.anchor} has no target`);
   assert.equal(parseSettingsHash("#settings/webhooks/new")?.anchor, "new");

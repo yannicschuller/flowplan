@@ -18,6 +18,7 @@ import { motionPrefSchema } from "./motion-pref";
 import { fullWidthPagesSchema } from "./page-width-pref";
 import { startScreenSchema } from "./start-screen";
 import { updateNotesLevelSchema } from "./update-notes-pref";
+import { settingsLevelSchema } from "./settings-level";
 import { releaseNoteItemSchema } from "./release-notes";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
@@ -70,7 +71,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.startScreen", "profile.updateNotes", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -281,6 +282,14 @@ export const commandActions: ActionDoc[] = [
       seen: z.literal(true).optional(),
     }),
     result: z.object({ level: updateNotesLevelSchema, seenVersion: z.string().nullable() }),
+  },
+  {
+    action: "profile.settingsLevel",
+    summary: "The caller's settings level: beginner, normal or expert",
+    description:
+      "For the caller, on all devices: which settings Settings shows – those of the level and below (beginner ⊂ normal ⊂ expert); the settings search finds all of them. Without a level of their own a person follows the instance's default (normal unless the administration chose another). The bootstrap's settingsLevel carries the level and whether it is the caller's own.",
+    input: z.object({ action: z.literal("profile.settingsLevel"), level: settingsLevelSchema }),
+    result: z.object({ settingsLevel: z.object({ level: settingsLevelSchema, own: z.boolean() }) }),
   },
   {
     action: "releaseNotes.list",

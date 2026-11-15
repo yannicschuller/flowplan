@@ -37545,3 +37545,147 @@ a.favorite-nav.selected {
   background: var(--hover);
   color: var(--text);
 }
+
+/* ---------- Settings levels (#294, components/settings-level.tsx) ----------
+   The mark of a setting's level: shape and colour together – a green circle
+   (Einsteiger), a yellow diamond (Normal), a red triangle (Experte) – with
+   the name as label and tooltip. Colours keep 3:1 against the background in
+   light and dark. */
+.level-dot {
+  --level-colour: #2f8a4f;
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--level-colour);
+  vertical-align: middle;
+}
+.level-dot[data-level="normal"] {
+  --level-colour: #a86a00;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.level-dot[data-level="expert"] {
+  --level-colour: #c62f35;
+  width: 10px;
+  height: 9px;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+[data-theme="dark"] .level-dot {
+  --level-colour: #62c987;
+}
+[data-theme="dark"] .level-dot[data-level="normal"] {
+  --level-colour: #e7b549;
+}
+[data-theme="dark"] .level-dot[data-level="expert"] {
+  --level-colour: #ff7b7b;
+}
+/* Next to a row's label, a card's title and a section's heading, without
+   changing their accessible names. */
+.setting-text:has(> .level-dot) {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+}
+.setting-text:has(> .level-dot) > :not(.level-dot) {
+  grid-column: 2;
+}
+.setting-text > .level-dot {
+  grid-row: 1;
+  grid-column: 1;
+  align-self: center;
+}
+.setting-group-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+}
+.setting-group-title > :not(.level-dot) {
+  grid-column: 2;
+}
+.setting-group-title > .level-dot {
+  grid-row: 1;
+  grid-column: 1;
+}
+.settings-detail-head > div:has(> h1 + .level-dot) {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+}
+.settings-detail-head > div > h1 + .level-dot {
+  grid-row: 1;
+  grid-column: 2;
+}
+.settings-detail-head > div:has(> h1 + .level-dot) > p {
+  grid-column: 1 / -1;
+}
+.settings-tile-text strong .level-dot {
+  margin-left: 8px;
+}
+/* A card whose settings the level all leaves out disappears. */
+.setting-group:has(> .setting-rows > [data-level-hidden]):not(:has(> .setting-rows > :not([data-level-hidden]))) {
+  display: none;
+}
+/* The switch at the top of Settings. */
+.settings-level {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 14px;
+}
+.settings-level-label {
+  color: var(--secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.settings-level-switch label {
+  gap: 7px;
+}
+.settings-level-hint {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.settings-level-switch label:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring, var(--blue));
+  outline-offset: 1px;
+}
+/* A search result or link above the level. */
+.level-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.level-notice p {
+  flex: 1 1 240px;
+  margin: 0;
+  font-size: 13.5px;
+}
+.level-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.level-more {
+  margin: 4px 2px 22px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.level-more .text-button {
+  display: inline;
+  padding: 0;
+  color: var(--blue);
+  text-decoration: underline;
+}

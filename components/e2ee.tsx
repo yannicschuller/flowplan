@@ -700,6 +700,7 @@ export function E2eeResetRow({ onError }: { onError: (message: string) => void }
   return (
     <SettingRow
       anchor="reset-keys"
+      level="expert"
       label={t("Schlüssel zurücksetzen", "Reset keys")}
       description={t("Nur wenn Passphrase und Wiederherstellungsschlüssel verloren sind: neue Schlüssel, alle Bereichsschlüssel sind weg.", "Only if passphrase and recovery key are lost: new keys, all space keys are gone.")}
     >

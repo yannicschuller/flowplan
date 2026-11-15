@@ -135,6 +135,20 @@ export default function GeneralSection() {
             { value: "never", label: t("Nie", "Never") },
           ]}
         />
+        {/* The settings level (#294): accounts without one of their own. */}
+        <InstanceSelect
+          field="settingsLevelDefault"
+          label={t("Einstellungsstufe für neue Konten", "Settings level for new accounts")}
+          description={t(
+            "Welche Einstellungen neue Konten sehen: Einsteiger das Wichtigste, Normal die meisten, Experte alle. Die Suche findet immer alle, und jede Person kann ihre Stufe oben in den Einstellungen ändern; pro Person legst du sie unter Benutzer fest. Konten von vor dieser Einstellung sehen weiter alles (Experte).",
+            "Which settings new accounts see: Beginner the essentials, Normal most of them, Expert all. The search always finds all of them, and everyone can change their level at the top of Settings; you set it per person under Users. Accounts from before this setting keep seeing everything (Expert).",
+          )}
+          options={[
+            { value: "beginner", label: t("Einsteiger", "Beginner") },
+            { value: "normal", label: t("Normal", "Normal") },
+            { value: "expert", label: t("Experte", "Expert") },
+          ]}
+        />
       </SettingGroup>
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>

@@ -7,6 +7,23 @@
 // (#settings/<id>, #admin/<id>) and must not change once released. Texts are
 // { de, en } pairs (French and further languages come from locales/ via
 // `npm run i18n`).
+//
+// Levels (#294, lib/settings-level.ts): every personal setting (area
+// "settings") has a level – "beginner" (Einsteiger), "normal" or "expert"
+// (Experte). A person sees the settings up to their level; the search finds
+// all of them. The rule for a new setting: give its section a `level` (none
+// means "beginner"), and give an entry a `level` when it differs from its
+// section's. Beginner is what everyone needs on day one (language, theme,
+// name, password, passkeys, the basics of notifications and capture);
+// normal most appearance, editor and workspace options; expert tokens,
+// webhooks, developer and advanced options, toolbar layout, anything
+// experimental. The panel marks the setting's row or card with the same
+// anchor (SettingRow anchor / SettingGroup id, components/settings-ui.tsx),
+// which takes the level from here; rows without an entry take their card's,
+// else the section's (or say `level` themselves). Administration sections
+// (area "admin") have no level: admins see all of them.
+// tests/settings-level.test.ts checks that every level is valid.
+import { entryLevel, sectionMinLevel, type SettingsLevel } from "./settings-level";
 
 export type SettingsArea = "settings" | "admin";
 export type Text = { de: string; en: string };
@@ -15,7 +32,7 @@ export type Text = { de: string; en: string };
 // Konto & Sicherheit). `anchor` is the id of an element in the section the
 // result scrolls to (#settings/account/passkeys); without it the section
 // opens at the top.
-export type SettingsEntry = { title: Text; keywords?: Text; anchor?: string };
+export type SettingsEntry = { title: Text; keywords?: Text; anchor?: string; level?: SettingsLevel };
 
 export type SectionMeta = {
   id: string;
@@ -27,6 +44,8 @@ export type SectionMeta = {
   description: Text;
   keywords: Text;
   entries?: SettingsEntry[];
+  // The level of the section and, by default, of its entries (#294).
+  level?: SettingsLevel;
 };
 
 export type GroupMeta = { id: string; area: SettingsArea; title: Text };
@@ -50,6 +69,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "account",
     area: "settings",
+    level: "beginner",
     group: "personal",
     icon: "UserCircle",
     title: { de: "Konto & Sicherheit", en: "Account & security" },
@@ -57,16 +77,17 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "profil name anzeigename passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee grenzen speicher konto löschen", en: "profile name display name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee limits storage delete account" },
     entries: [
       { title: { de: "Anzeigename", en: "Display name" }, keywords: { de: "profil name", en: "profile name" }, anchor: "profile" },
-      { title: { de: "Anmeldemethoden", en: "Sign-in methods" }, keywords: { de: "sso oidc verbinden trennen single sign-on passwort entfernen", en: "sso oidc connect disconnect link single sign-on remove password" }, anchor: "sign-in-methods" },
+      { title: { de: "Anmeldemethoden", en: "Sign-in methods" }, keywords: { de: "sso oidc verbinden trennen single sign-on passwort entfernen", en: "sso oidc connect disconnect link single sign-on remove password" }, anchor: "sign-in-methods", level: "normal" },
       { title: { de: "Passwort ändern", en: "Change password" }, anchor: "password" },
       { title: { de: "Passkeys", en: "Passkeys" }, anchor: "passkeys" },
       { title: { de: "Zwei-Faktor-Anmeldung", en: "Two-factor sign-in" }, keywords: { de: "2fa authenticator code wiederherstellungscodes", en: "2fa authenticator code recovery codes" }, anchor: "two-factor" },
       { title: { de: "Angemeldete Geräte", en: "Signed-in devices" }, keywords: { de: "sitzungen abmelden", en: "sessions sign out" }, anchor: "sessions" },
-      { title: { de: "Ende-zu-Ende-Verschlüsselung", en: "End-to-end encryption" }, keywords: { de: "e2ee schlüssel passphrase wiederherstellungsschlüssel", en: "e2ee key passphrase recovery key" }, anchor: "encryption" },
+      { title: { de: "Ende-zu-Ende-Verschlüsselung", en: "End-to-end encryption" }, keywords: { de: "e2ee schlüssel passphrase wiederherstellungsschlüssel", en: "e2ee key passphrase recovery key" }, anchor: "encryption", level: "expert" },
       {
         title: { de: "Notfallzugriff", en: "Emergency access" },
         keywords: { de: "vertrauensperson notfall zugriff erbe angehörige wartezeit anfragen ablehnen", en: "trusted contact emergency access legacy relatives waiting period request deny" },
         anchor: "emergency",
+        level: "normal",
       },
       {
         title: { de: "Nachricht bei Inaktivität", en: "Inactivity message" },
@@ -75,14 +96,16 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
           en: "dead man's switch sign of life inactivity message relatives family note recipients i'm here",
         },
         anchor: "deadman",
+        level: "normal",
       },
-      { title: { de: "Deine Grenzen", en: "Your limits" }, keywords: { de: "speicher kontingent", en: "storage quota" }, anchor: "limits" },
+      { title: { de: "Deine Grenzen", en: "Your limits" }, keywords: { de: "speicher kontingent", en: "storage quota" }, anchor: "limits", level: "normal" },
       { title: { de: "Konto löschen", en: "Delete account" }, anchor: "delete-account" },
     ],
   },
   {
     id: "security",
     area: "settings",
+    level: "normal",
     group: "personal",
     icon: "ShieldCheck",
     title: { de: "Sicherheitscheck", en: "Security check" },
@@ -101,73 +124,93 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "appearance",
     area: "settings",
+    level: "beginner",
     group: "personal",
     icon: "Palette",
     title: { de: "Darstellung & Sprache", en: "Appearance & language" },
     description: { de: "Sprache, Hell oder Dunkel, Zeilennummern im Code, Tastenkürzel und die Einführung.", en: "Language, light or dark, line numbers in code, keyboard shortcuts and the introduction." },
     keywords: { de: "sprache deutsch englisch französisch design hell dunkel theme editor griffe blockgriffe code zeilennummern tastenkürzel shortcuts einführung tour", en: "language german english french theme light dark appearance editor handles block handles code line numbers keyboard shortcuts introduction tour" },
     entries: [
-      { title: { de: "Sprache", en: "Language" } },
-      { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
+      { title: { de: "Sprache", en: "Language" }, anchor: "ui-language" },
+      { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" }, anchor: "color-theme" },
       {
         title: { de: "Animationen", en: "Animations" },
         keywords: { de: "bewegung animation reduziert aus übergänge einblenden barrierefreiheit", en: "motion animation reduced off transitions fade accessibility" },
         anchor: "motion",
+        level: "normal",
       },
       {
         title: { de: "Beim Öffnen auf dem Handy", en: "When opening on a phone" },
         keywords: { de: "start startbildschirm startseite schnellerfassung erfassen handy telefon öffnen app", en: "start start screen home quick capture capture phone open app" },
         anchor: "start-screen",
+        level: "normal",
       },
-      { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look" },
+      { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look", level: "normal" },
       {
         title: { de: "Seitensymbol", en: "Page icon" },
         keywords: { de: "symbol icon emoji titel neben über klein groß cover kopf", en: "icon emoji title next to inline above small large cover header" },
         anchor: "page-icon",
+        level: "normal",
       },
       {
         title: { de: "Symbol bei externen Links", en: "Icon on external links" },
         keywords: { de: "link links pfeil extern web adresse url symbol icon", en: "link links arrow external web address url symbol icon" },
         anchor: "external-link-icon",
+        level: "normal",
       },
       {
         title: { de: "Menü bei Textauswahl", en: "Menu on text selection" },
         keywords: { de: "textmenü markieren auswahl popup reaktionen formatieren handy tablet", en: "text menu select selection popup reactions formatting phone tablet" },
         anchor: "text-menu",
+        level: "normal",
       },
       {
         title: { de: "Seiten in voller Breite anzeigen", en: "Show pages at full width" },
         keywords: { de: "volle breite breit seitenbreite layout einträge standard", en: "full width wide page width layout records default" },
         anchor: "full-width-pages",
+        level: "normal",
       },
       {
         title: { de: "Formatierungsleiste", en: "Formatting toolbar" },
         keywords: { de: "symbolleiste toolbar leiste ausblenden fokusmodus formatieren", en: "toolbar bar hide focus mode formatting" },
         anchor: "formatting-toolbar",
+        level: "normal",
       },
       {
         title: { de: "Formatierungsleiste anpassen", en: "Customize formatting toolbar" },
         keywords: { de: "symbolleiste toolbar leiste schaltflächen knöpfe reihenfolge sortieren gruppen trennlinie ausblenden anpassen", en: "toolbar bar buttons order reorder sort groups divider separator hide customise customize" },
         anchor: "toolbar-layout",
+        level: "expert",
       },
       {
         title: { de: "„>“ erzeugt", en: "“>” creates" },
         keywords: { de: "zitat aufklappbarer block toggle markdown kürzel tippen größer-zeichen", en: "quote blockquote toggle markdown shortcut typing greater-than" },
         anchor: "quote-shortcut",
+        level: "expert",
       },
       {
         title: { de: "Wischen vom linken Rand", en: "Swipe from the left edge" },
         keywords: { de: "wischen rand geste zurück seitenleiste navigation iphone ipad android app", en: "swipe edge gesture back sidebar navigation iphone ipad android app" },
         anchor: "edge-swipe",
+        level: "normal",
       },
-      { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },
-      { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
-      { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },
-      { title: { de: "Einführung ansehen", en: "Show introduction" } },
+      {
+        title: { de: "Verwandte Seiten und Rückverweise anzeigen", en: "Show related pages and backlinks" },
+        keywords: { de: "verlinkt von verknüpft erwähnungen backlinks", en: "linked from mentions backlinks related" },
+        anchor: "discovery",
+        level: "normal",
+      },
+      { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" }, anchor: "block-handles", level: "normal" },
+      { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" }, anchor: "line-numbers", level: "normal" },
+      { title: { de: "draw.io-Design", en: "draw.io theme" }, keywords: { de: "drawio diagramm hell dunkel", en: "drawio diagram light dark" }, anchor: "drawio-theme", level: "normal" },
+      { title: { de: "draw.io-Oberfläche", en: "draw.io interface" }, keywords: { de: "drawio diagramm kennedy minimal sketch skizze", en: "drawio diagram kennedy minimal sketch" }, anchor: "drawio-ui", level: "expert" },
+      { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" }, anchor: "keyboard-shortcuts", level: "normal" },
+      { title: { de: "Einführung ansehen", en: "Show introduction" }, anchor: "introduction" },
       {
         title: { de: "Neuigkeiten nach Updates", en: "What’s new after updates" },
         keywords: { de: "neu update version änderungen versionshinweise breaking changes stumm aus", en: "new update version changes release notes changelog breaking changes mute off" },
         anchor: "update-notes",
+        level: "normal",
       },
       { title: { de: "Was ist neu", en: "What’s new" }, keywords: { de: "neuigkeiten versionshinweise", en: "release notes changelog" }, anchor: "whats-new" },
     ],
@@ -175,6 +218,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "notifications",
     area: "settings",
+    level: "beginner",
     group: "personal",
     icon: "BellSimple",
     title: { de: "Benachrichtigungen", en: "Notifications" },
@@ -189,15 +233,17 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         title: { de: "Chat-Apps", en: "Chat apps" },
         keywords: { de: "messenger telegram gotify ntfy matrix bot testnachricht", en: "messenger telegram gotify ntfy matrix bot test message" },
         anchor: "messengers",
+        level: "normal",
       },
       { title: { de: "Wöchentliche Zusammenfassung", en: "Weekly digest" }, anchor: "weekly-digest" },
       { title: { de: "Push-Benachrichtigungen", en: "Push notifications" }, keywords: { de: "desktop-app mitteilungen", en: "desktop app notifications" }, anchor: "push" },
-      { title: { de: "Testbenachrichtigung", en: "Test notification" }, keywords: { de: "test push relay app gerät zustellung", en: "test push relay app device delivery" }, anchor: "push-test" },
+      { title: { de: "Testbenachrichtigung", en: "Test notification" }, keywords: { de: "test push relay app gerät zustellung", en: "test push relay app device delivery" }, anchor: "push-test", level: "normal" },
     ],
   },
   {
     id: "ai",
     area: "settings",
+    level: "normal",
     group: "personal",
     icon: "Sparkle",
     title: { de: "KI", en: "AI" },
@@ -207,13 +253,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "devices",
     area: "settings",
+    level: "beginner",
     group: "personal",
     icon: "DeviceMobile",
     title: { de: "Offline & Geräte", en: "Offline & devices" },
     description: { de: "Inhalte auf diesem Gerät für die Nutzung ohne Verbindung.", en: "Content on this device for use without a connection." },
     keywords: { de: "offline synchronisierung gerät kopie cache", en: "offline sync device copy cache" },
     entries: [
-      { title: { de: "Offline-Nutzung", en: "Offline use" }, anchor: "offline" },
+      { title: { de: "Offline-Nutzung", en: "Offline use" }, anchor: "offline", level: "normal" },
       { title: { de: "Apps für iPhone, iPad, Android und Computer", en: "Apps for iPhone, iPad, Android and computers" }, keywords: { de: "app herunterladen app store apk android iphone ipad desktop", en: "app download app store apk android iphone ipad desktop" }, anchor: "apps" },
     ],
   },
@@ -221,6 +268,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "api",
     area: "settings",
+    level: "expert",
     group: "connections",
     icon: "PlugsConnected",
     title: { de: "API & KI-Assistenten", en: "API & AI assistants" },
@@ -234,6 +282,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "webhooks",
     area: "settings",
+    level: "expert",
     group: "connections",
     icon: "WebhooksLogo",
     title: { de: "Webhooks", en: "Webhooks" },
@@ -244,6 +293,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "connections",
     area: "settings",
+    level: "normal",
     group: "connections",
     icon: "CalendarBlank",
     title: { de: "Kalender & Issues", en: "Calendars & issues" },
@@ -258,6 +308,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "clipper",
     area: "settings",
+    level: "beginner",
     group: "connections",
     icon: "BookmarkSimple",
     title: { de: "Web-Clipper", en: "Web clipper" },
@@ -265,13 +316,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "clipper lesezeichen bookmarklet browser erweiterung erfassen", en: "clipper bookmarks bookmarklet browser extension capture" },
     entries: [
       { title: { de: "Erfassen", en: "Capture" }, keywords: { de: "schnell erfassen datenbank eingang", en: "quick capture database inbox" }, anchor: "capture" },
-      { title: { de: "Browser-Lesezeichen importieren", en: "Import browser bookmarks" }, anchor: "bookmarks" },
+      { title: { de: "Browser-Lesezeichen importieren", en: "Import browser bookmarks" }, anchor: "bookmarks", level: "normal" },
     ],
   },
   // --------------------------------------------------------------- workspace
   {
     id: "workspace",
     area: "settings",
+    level: "beginner",
     group: "workspace",
     icon: "SlidersHorizontal",
     title: { de: "Allgemein", en: "General" },
@@ -279,7 +331,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "arbeitsbereich name symbol icon emoji bild e-mail-eingang webhook imap verlassen löschen gefahrenzone", en: "workspace name icon emoji image inbound email webhook imap leave delete danger zone" },
     entries: [
       { title: { de: "Name & Symbol des Arbeitsbereichs", en: "Workspace name & icon" }, anchor: "identity" },
-      { title: { de: "E-Mail-Eingang", en: "Inbound e-mail" }, keywords: { de: "weiterleiten mailgun postmark", en: "forward mailgun postmark" }, anchor: "inbound-mail" },
+      { title: { de: "E-Mail-Eingang", en: "Inbound e-mail" }, keywords: { de: "weiterleiten mailgun postmark", en: "forward mailgun postmark" }, anchor: "inbound-mail", level: "expert" },
       { title: { de: "Arbeitsbereich verlassen", en: "Leave workspace" }, anchor: "danger" },
       { title: { de: "Arbeitsbereich löschen", en: "Delete workspace" }, anchor: "danger" },
     ],
@@ -287,6 +339,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "look",
     area: "settings",
+    level: "normal",
     group: "workspace",
     icon: "PaintBrush",
     title: { de: "Erscheinungsbild", en: "Appearance" },
@@ -304,6 +357,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "printpresets",
     area: "settings",
+    level: "normal",
     group: "workspace",
     icon: "Printer",
     title: { de: "Druckvorlagen", en: "Print presets" },
@@ -317,6 +371,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "print",
     area: "settings",
+    level: "normal",
     group: "personal",
     icon: "Printer",
     title: { de: "Drucken / PDF", en: "Print / PDF" },
@@ -330,6 +385,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "autolinks",
     area: "settings",
+    level: "expert",
     group: "workspace",
     icon: "LinkSimple",
     title: { de: "Automatische Links", en: "Automatic links" },
@@ -346,6 +402,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "members",
     area: "settings",
+    level: "beginner",
     group: "workspace",
     icon: "UsersThree",
     title: { de: "Mitglieder", en: "Members" },
@@ -359,19 +416,21 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "groups",
     area: "settings",
+    level: "normal",
     group: "workspace",
     icon: "ShieldCheck",
     title: { de: "Gruppen & Rechte", en: "Groups & permissions" },
     description: { de: "Gruppen bilden, SSO-Gruppen zuordnen und Zugriff auf Bereiche geben.", en: "Form groups, map SSO groups and give access to spaces." },
     keywords: { de: "gruppen rechte berechtigungen sso zugriff sichtbarkeit", en: "groups permissions sso access visibility" },
     entries: [
-      { title: { de: "SSO-Gruppen zuordnen", en: "Map SSO groups" }, anchor: "sso" },
+      { title: { de: "SSO-Gruppen zuordnen", en: "Map SSO groups" }, anchor: "sso", level: "expert" },
       { title: { de: "Zugriff auf Bereiche", en: "Access to spaces" }, keywords: { de: "privat sichtbarkeit", en: "private visibility" }, anchor: "access" },
     ],
   },
   {
     id: "spaces",
     area: "settings",
+    level: "beginner",
     group: "workspace",
     icon: "FolderSimple",
     title: { de: "Bereiche", en: "Spaces" },
@@ -381,6 +440,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "tags",
     area: "settings",
+    level: "normal",
     group: "workspace",
     icon: "Tag",
     title: { de: "Tags & Eigenschaften", en: "Tags & properties" },
@@ -394,6 +454,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "extensions",
     area: "settings",
+    level: "expert",
     group: "workspace",
     icon: "PuzzlePiece",
     title: { de: "Block-Erweiterungen", en: "Block extensions" },
@@ -403,6 +464,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "data",
     area: "settings",
+    level: "beginner",
     group: "workspace",
     icon: "Database",
     title: { de: "Import & Export", en: "Import & export" },
@@ -413,16 +475,17 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Direkt aus Notion importieren (Integrations-Token)", en: "Import straight from Notion (integration token)" }, keywords: { de: "notion api token integration verbindung importbericht", en: "notion api token integration connection import report" }, anchor: "import-tools" },
       { title: { de: "Aus GoodNotes importieren", en: "Import from GoodNotes" }, keywords: { de: "pdf notizbuch handschrift ipad", en: "pdf notebook handwriting ipad" }, anchor: "import" },
       { title: { de: "Aus Jira oder Trello importieren", en: "Import from Jira or Trello" }, anchor: "import" },
-      { title: { de: "Vorlage aus Datei importieren", en: "Import template from file" }, keywords: { de: "marketplace flowplan-template", en: "marketplace flowplan-template" }, anchor: "marketplace-file" },
+      { title: { de: "Vorlage aus Datei importieren", en: "Import template from file" }, keywords: { de: "marketplace flowplan-template", en: "marketplace flowplan-template" }, anchor: "marketplace-file", level: "normal" },
       { title: { de: "Arbeitsbereich exportieren", en: "Export workspace" }, anchor: "export" },
       { title: { de: "Bereich als Markdown exportieren", en: "Export space as Markdown" }, keywords: { de: "pdf epub e-book", en: "pdf epub e-book" }, anchor: "export" },
-      { title: { de: "Flowplan-Archiv wiederherstellen", en: "Restore a Flowplan archive" }, keywords: { de: "backup importieren sicherung", en: "import backup" }, anchor: "backups" },
+      { title: { de: "Flowplan-Archiv wiederherstellen", en: "Restore a Flowplan archive" }, keywords: { de: "backup importieren sicherung", en: "import backup" }, anchor: "backups", level: "normal" },
       { title: { de: "Papierkorb & Aufbewahrung", en: "Trash & retention" }, anchor: "trash" },
     ],
   },
   {
     id: "meetings",
     area: "settings",
+    level: "normal",
     group: "workspace",
     icon: "Microphone",
     title: { de: "Besprechungen", en: "Meetings" },
@@ -439,6 +502,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "time",
     area: "settings",
+    level: "normal",
     group: "workspace",
     icon: "Timer",
     title: { de: "Zeiten", en: "Time" },
@@ -449,6 +513,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
   {
     id: "about",
     area: "settings",
+    level: "beginner",
     group: "help",
     icon: "Info",
     title: { de: "Über Flowplan", en: "About Flowplan" },
@@ -478,6 +543,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Grenzen einer Person", en: "Limits of a person" }, keywords: { de: "speicher upload", en: "storage upload" } },
       { title: { de: "Link zum Zurücksetzen des Passworts", en: "Password reset link" } },
       { title: { de: "Konten zusammenführen", en: "Merge accounts" }, keywords: { de: "doppelt duplikat sso verbinden", en: "duplicate sso link merge" } },
+      { title: { de: "Einstellungsstufe einer Person", en: "Settings level of a person" }, keywords: { de: "stufe einsteiger normal experte", en: "level beginner normal expert" } },
     ],
   },
   {
@@ -712,6 +778,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         keywords: { de: "versionshinweise neu update standard", en: "release notes new update default" },
         anchor: "version",
       },
+      {
+        title: { de: "Einstellungsstufe für neue Konten", en: "Settings level for new accounts" },
+        keywords: { de: "stufe einsteiger normal experte standard einstellungen", en: "level beginner normal expert default settings" },
+        anchor: "version",
+      },
     ],
   },
 ];
@@ -772,4 +843,24 @@ export function matchesQuery(haystack: string[], query: string) {
   const text = fold(haystack.join(" "));
   const words = fold(query).split(/\s+/).filter(Boolean);
   return words.length > 0 && words.every((w) => text.includes(w));
+}
+
+// The search of the landing page: sections and their entries whose texts
+// (in the reader's language via `pick`, and German and English) match –
+// at every level (#294): `level` is the result's, for its mark when above
+// the person's (personal settings only).
+export type SettingsSearchResult<S extends SectionMeta = SectionMeta> = { section: S; entry?: SettingsEntry; anchor?: string; level?: SettingsLevel };
+export function searchSettings<S extends SectionMeta>(sections: S[], query: string, pick: (text: Text) => string): SettingsSearchResult<S>[] {
+  const out: SettingsSearchResult<S>[] = [];
+  if (!query.trim()) return out;
+  for (const s of sections) {
+    const levelled = s.area === "settings";
+    const own = [pick(s.title), s.title.de, s.title.en, pick(s.description), s.keywords.de, s.keywords.en, pick(s.keywords)];
+    if (matchesQuery(own, query)) out.push({ section: s, level: levelled ? sectionMinLevel(s) : undefined });
+    for (const e of s.entries || []) {
+      const texts = [pick(e.title), e.title.de, e.title.en, ...(e.keywords ? [e.keywords.de, e.keywords.en, pick(e.keywords)] : [])];
+      if (matchesQuery(texts, query)) out.push({ section: s, entry: e, anchor: e.anchor, level: levelled ? entryLevel(s, e) : undefined });
+    }
+  }
+  return out;
 }

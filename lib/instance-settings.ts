@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, run } from "./db";
 import { HttpError } from "./auth";
 import { updateNotesLevelSchema } from "./update-notes-pref";
+import { settingsLevelSchema } from "./settings-level";
 
 // Instance-wide settings admins change in the interface. Environment
 // variables stay the defaults; stored values take precedence.
@@ -61,6 +62,10 @@ export const instanceSettingsSchema = z.object({
   // "Neuigkeiten nach Updates" that new accounts start with (#223,
   // lib/update-notes-pref.ts); existing accounts keep theirs.
   updateNotesDefault: updateNotesLevelSchema.default("all"),
+  // The settings level of accounts without one of their own (#294,
+  // lib/settings-level.ts): new accounts and those an administrator set to
+  // "Instanz-Standard". Accounts from before #294 got "expert" once.
+  settingsLevelDefault: settingsLevelSchema.default("normal"),
   // Emergency access for trusted contacts (#281, lib/emergency-access.ts):
   // on by default; off suspends every granted access and refuses new
   // requests. FLOWPLAN_EMERGENCY_ACCESS=off switches it off regardless.
@@ -98,6 +103,7 @@ const defaults: InstanceSettings = {
   appSessions: null,
   appDays: null,
   updateNotesDefault: "all",
+  settingsLevelDefault: "normal",
   emergencyAccess: true,
   deadManSwitch: true,
 };
