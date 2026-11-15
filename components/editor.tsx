@@ -62,6 +62,7 @@ import { showToast, showUndo } from "./toast";
 import { copyImage } from "@/lib/copy-image";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { drawBlockNode } from "./ink/draw-block";
+import { queueDrawingStart } from "./ink/drawing-start";
 import { newDrawBlockId } from "@/lib/draw-block-node";
 import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
@@ -2060,7 +2061,10 @@ export default function DocumentEditor({
             keywords: ["zeichnen", "draw", "dessin", "dessiner", "handschrift", "handwriting", "sketch", "skizze", "croquis", "stift", "pencil", "ink", "tinte", "scribble"],
             description: t("Handschrift und Skizzen mit Stift oder Finger", "Handwriting and sketches with a pen or finger"),
             icon: Scribble,
-            run: () =>
+            run: () => {
+              const id = newDrawBlockId();
+              // The new block starts in drawing mode (#311): no tap first.
+              queueDrawingStart(id);
               editor
                 ?.chain()
                 .focus()
@@ -2068,8 +2072,9 @@ export default function DocumentEditor({
                   if (state.selection instanceof NodeSelection) tr.setSelection(Selection.near(tr.doc.resolve(state.selection.to)));
                   return true;
                 })
-                .insertContent([{ type: "drawBlock", attrs: { id: newDrawBlockId(), page: pageId, height: 300, paper: "lined" } }, { type: "paragraph" }])
-                .run(),
+                .insertContent([{ type: "drawBlock", attrs: { id, page: pageId, height: 300, paper: "lined" } }, { type: "paragraph" }])
+                .run();
+            },
           },
         ]),
     {

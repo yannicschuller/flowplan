@@ -66,6 +66,7 @@ import {
   samples,
   stillWriting,
   writingInField,
+  stylusTouch,
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
@@ -332,7 +333,7 @@ export function InkLayer({
       // Fingers on the ruler or a shape's handles move those, never the page.
       if ((event.target as Element | null)?.closest?.(".ink-ruler-layer, .ink-shape-edit")) return event.preventDefault();
       if ((event.target as Element | null)?.closest?.(".ink-ui")) return;
-      const stylus = [...event.touches].some((touch) => (touch as Touch & { touchType?: string }).touchType === "stylus");
+      const stylus = stylusTouch(event);
       const g = gesture.current;
       // A palm next to the pen (also on another page) does not scroll the pages away under it.
       const palm = palmLikely({ pointerType: "touch" });

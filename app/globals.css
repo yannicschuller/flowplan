@@ -21240,6 +21240,7 @@ h3 .block-reactions {
 }
 .ink-toolbar .ink-done {
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 0 12px;
   background: var(--ink-bar-active-bg);
@@ -32957,8 +32958,20 @@ label.ws-search input {
   outline: 2px solid var(--blue);
   outline-offset: -2px;
 }
+/* Paper, save state and Done in one row, centred on each other (#311).
+   The paper is a label: not the stacked field with room below of the
+   global label rule. */
+.ink-block .ink-group.ink-end {
+  gap: 8px;
+}
+.ink-block-paper {
+  flex-direction: row;
+  align-items: center;
+  margin: 0 4px 0 0;
+}
 .ink-block-paper select {
-  height: 32px;
+  width: auto;
+  height: 36px;
   padding: 0 24px 0 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -33083,7 +33096,8 @@ label.ws-search input {
   top: auto;
   bottom: calc(10px + var(--safe-bottom, 0px));
 }
-.ink-shield.is-pill-hidden .ink-shield-pill {
+/* The block's own Done is on screen: no second one. */
+.ink-shield.is-done-hidden .ink-shield-done {
   display: none;
 }
 .ink-shield-done {

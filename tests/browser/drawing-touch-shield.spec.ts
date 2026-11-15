@@ -56,10 +56,21 @@ async function documentWithBlock(page: Page, id: string, typeWith: "touch" | "mo
   await page.keyboard.press("Enter");
   const block = page.locator(".ink-block");
   await expect(block.locator(".ink-layer")).toHaveCount(1, { timeout: 15_000 });
-  for (let i = 0; i < 45; i++) {
-    await page.keyboard.type(`Zeile ${i}`);
-    await page.keyboard.press("Enter");
-  }
+  // The new block starts in drawing mode; Escape goes on in the text below it.
+  await expect(block).toHaveClass(/is-active/);
+  // Inserted by touch, the shield is up (with the hint, the first one of the session).
+  if (typeWith === "touch") await expect(page.locator(".ink-shield .ink-shield-hint")).toHaveText("Berührungen außerhalb der Zeichnung werden ignoriert");
+  else await expect(page.locator(".ink-shield")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(block).not.toHaveClass(/is-active/);
+  await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest(".ProseMirror"))).toBe(true);
+  await page.keyboard.type("Zeile 0");
+  // The rest at once (typing 45 lines is slow on a busy machine).
+  await page.evaluate(() => {
+    const editor = (document.querySelector(".ProseMirror") as unknown as { editor: { commands: { insertContent: (content: unknown) => boolean } } }).editor;
+    editor.commands.insertContent(Array.from({ length: 44 }, (_, i) => ({ type: "paragraph", content: [{ type: "text", text: `Zeile ${i + 1}` }] })));
+  });
+  await expect(editor.locator("p", { hasText: "Zeile 44" })).toHaveCount(1);
   await page.locator(".main-scroll").evaluate((el) => (el.scrollTop = 0));
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   return block;
@@ -85,7 +96,8 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   const shield = page.locator(".ink-shield");
   await expect(shield).toBeAttached();
   await expect(shield).toHaveAttribute("aria-hidden", "true");
-  await expect(shield.locator(".ink-shield-hint")).toHaveText("Berührungen außerhalb der Zeichnung werden ignoriert");
+  // The hint came with the first shield (the new block's).
+  await expect(shield.locator(".ink-shield-hint")).toHaveCount(0);
 
   // A tap on the top bar's workspace link and on the sidebar does nothing.
   const home = page.locator(".topbar .breadcrumb-workspace");
@@ -126,13 +138,20 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
   await scroller.evaluate((el) => (el.scrollTop = 0));
 
-  // Again with the pen; the shield's own Done pill ends it (no hint the second time).
+  // Again with the pen (no hint the second time). The block's Done is on
+  // screen, so the shield has none of its own; scrolled away, the shield's
+  // Done pill is the way out and ends it.
   await pen(cdp, line({ x: box.x + 400, y: box.y + 140 }, { x: box.x + 560, y: box.y + 170 }));
   await expect(shield).toBeAttached();
   await expect(shield.locator(".ink-shield-hint")).toHaveCount(0);
-  await shield.getByRole("button", { name: "Fertig", includeHidden: true }).tap();
+  const pill = shield.getByRole("button", { name: "Fertig", includeHidden: true });
+  await expect(pill).toBeHidden();
+  await scroller.evaluate((el) => (el.scrollTop += el.querySelector(".ink-block")!.getBoundingClientRect().top - el.getBoundingClientRect().top + 20));
+  await expect(pill).toBeVisible();
+  await pill.tap();
   await expect(shield).toHaveCount(0);
   await expect(block).not.toHaveClass(/is-active/);
+  await scroller.evaluate((el) => (el.scrollTop = 0));
 
   // And once more; Escape ends it.
   await pen(cdp, line({ x: box.x + 400, y: box.y + 60 }, { x: box.x + 560, y: box.y + 90 }));
@@ -144,6 +163,135 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   // Now the top bar link works.
   await page.touchscreen.tap(homeBox.x + homeBox.width / 2, homeBox.y + homeBox.height / 2);
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#home");
+  expect(errors).toEqual([]);
+});
+
+// What the iPad's text input sees (#311): Scribble writes into a focused
+// editable element or one with a caret near the pen; the on-screen keyboard
+// comes for a focused editable element. Real Scribble and the keyboard
+// cannot run here – these are the conditions behind them.
+const textState = (page: Page) =>
+  page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null;
+    const editor = document.querySelector(".ProseMirror") as HTMLElement;
+    const selection = window.getSelection();
+    return {
+      inEditor: !!active && editor.contains(active),
+      editable: !!active?.isContentEditable,
+      caretInText: !!selection?.rangeCount && editor.contains(selection.anchorNode),
+      editorEditable: editor.getAttribute("contenteditable"),
+      inputmode: [...document.querySelectorAll("[inputmode='none']")].length,
+      readonly: !!active?.closest("[readonly]"),
+    };
+  });
+
+// A stylus touch on the canvas is cancelled (WebKit starts no Scribble for
+// it); a finger's is not while the block is not drawing (fingers scroll).
+const touchCancelled = (page: Page, type: "stylus" | "direct") =>
+  page.locator(".ink-block-surface").evaluate((surface, touchType) => {
+    const box = surface.getBoundingClientRect();
+    const target = surface.querySelector(".ink-layer") || surface;
+    const touch = new Touch({ identifier: Date.now(), target, clientX: box.left + 50, clientY: box.top + 50, touchType } as TouchInit);
+    const event = new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, type);
+
+test("a new drawing block starts drawing without a caret in the text; afterwards a tap brings the keyboard back", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "The tablet is set up by this file; one run is enough.");
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const id = await setup(page);
+  await page.goto(`/#page=${id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
+  await editor.tap();
+  await page.keyboard.type("Oben");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/zeichnen");
+  await expect(page.getByRole("option", { name: /Zeichnen/ }).first()).toBeVisible();
+  await page.getByRole("option", { name: /Zeichnen/ }).first().tap();
+
+  // 1. Active at once, shielded (a touch device), and the text has neither
+  // the focus nor a caret.
+  const block = page.locator(".ink-block");
+  await expect(block).toHaveClass(/is-active/, { timeout: 15_000 });
+  const shield = page.locator(".ink-shield");
+  await expect(shield).toBeAttached();
+  await expect.poll(() => textState(page)).toMatchObject({ editable: false, caretInText: false });
+  expect(await page.evaluate(() => document.activeElement?.classList.contains("ink-block"))).toBe(true);
+  // The block is no editable target: its node is contenteditable=false.
+  await expect(page.locator(".ink-block-node")).toHaveAttribute("contenteditable", "false");
+  await expect(shield.locator("[contenteditable]")).toHaveCount(0);
+  // Scribble's way in: stylus touches on the canvas are cancelled.
+  expect(await touchCancelled(page, "stylus")).toBe(true);
+
+  // The pen draws, and the text still gets nothing.
+  const cdp = await page.context().newCDPSession(page);
+  const box = (await block.locator(".ink-block-surface").boundingBox())!;
+  await pen(cdp, line({ x: box.x + 60, y: box.y + 60 }, { x: box.x + 300, y: box.y + 110 }));
+  await expect(strokes(block)).toHaveCount(1);
+  await expect.poll(() => textState(page)).toMatchObject({ editable: false, caretInText: false });
+  await expect(editor.locator("p").filter({ hasText: /\S/ })).toHaveText(["Oben"]);
+
+  // 3. One Done: the block's own is on screen, the shield shows none.
+  const tools = page.getByRole("toolbar", { name: "Zeichenwerkzeuge" });
+  await expect(tools.getByRole("button", { name: "Fertig" })).toBeVisible();
+  await expect(shield.locator(".ink-shield-done")).toBeHidden();
+
+  // 4. Done; a tap on the text focuses the editor (editable, no
+  // inputmode=none, nothing read-only) and typing works.
+  await tools.getByRole("button", { name: "Fertig" }).tap();
+  await expect(shield).toHaveCount(0);
+  await expect(block).not.toHaveClass(/is-active/);
+  expect(await page.evaluate(() => !!document.activeElement?.closest(".ink-block"))).toBe(false);
+  const first = editor.locator("p", { hasText: "Oben" });
+  const at = (await first.boundingBox())!;
+  await page.touchscreen.tap(at.x + at.width - 4, at.y + at.height / 2);
+  await expect.poll(() => textState(page)).toEqual({ inEditor: true, editable: true, caretInText: true, editorEditable: "true", inputmode: 0, readonly: false });
+  await page.keyboard.type(" weiter");
+  await expect(first).toHaveText(/Oben weiter/);
+  // A finger on the canvas of the inactive block is not cancelled (it scrolls).
+  expect(await touchCancelled(page, "direct")).toBe(false);
+
+  // Escape ends drawing too, with the caret in the text below the block.
+  await pen(cdp, line({ x: box.x + 80, y: box.y + 160 }, { x: box.x + 320, y: box.y + 200 }));
+  await expect(block).toHaveClass(/is-active/);
+  await expect.poll(() => textState(page)).toMatchObject({ editable: false, caretInText: false });
+  await page.keyboard.press("Escape");
+  await expect(block).not.toHaveClass(/is-active/);
+  await expect.poll(() => textState(page)).toMatchObject({ inEditor: true, editable: true });
+  await page.keyboard.type("Unten");
+  await expect(editor.locator("p", { hasText: "Unten" })).toHaveCount(1);
+  expect(
+    await editor.evaluate((el) => {
+      const blockNode = el.querySelector(".ink-block-node")!;
+      const paragraph = [...el.querySelectorAll("p")].find((p) => p.textContent === "Unten")!;
+      return !!(blockNode.compareDocumentPosition(paragraph) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }),
+  ).toBe(true);
+
+  // Deleting the block while drawing: shield gone, the text takes taps and keys.
+  await pen(cdp, line({ x: box.x + 400, y: box.y + 60 }, { x: box.x + 560, y: box.y + 90 }));
+  await expect(shield).toBeAttached();
+  // (As a collaborator's change or undo would: not through the block's own UI.)
+  await page.evaluate(() => {
+    type Node = { type: { name: string }; nodeSize: number };
+    type View = { state: { doc: { descendants: (f: (n: Node, pos: number) => void) => void }; tr: { delete: (a: number, b: number) => unknown } }; dispatch: (tr: unknown) => void };
+    const { view } = (document.querySelector(".ProseMirror") as unknown as { editor: { view: View } }).editor;
+    let found: [number, number] | null = null;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === "drawBlock") found = [pos, pos + node.nodeSize];
+    });
+    if (found) view.dispatch(view.state.tr.delete(...(found as [number, number])));
+  });
+  await expect(block).toHaveCount(0);
+  await expect(shield).toHaveCount(0);
+  await page.touchscreen.tap(at.x + at.width - 4, at.y + at.height / 2);
+  await expect.poll(() => textState(page)).toMatchObject({ inEditor: true, editable: true, editorEditable: "true", inputmode: 0 });
+  await page.keyboard.type("!");
+  await expect(first).toHaveText(/Oben weiter!/);
   expect(errors).toEqual([]);
 });
 

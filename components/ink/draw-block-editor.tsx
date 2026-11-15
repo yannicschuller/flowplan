@@ -9,6 +9,7 @@
 // the app until Done (#311). Loaded with the first block.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeViewProps } from "@tiptap/react";
+import { Selection } from "@tiptap/pm/state";
 import { Check, PencilSimple } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { api } from "../ui";
@@ -22,9 +23,22 @@ import { InkTouchShield } from "./touch-shield";
 import { PaperSvg } from "../notebook/paper";
 import { emptyInk, parseInk, type InkDoc } from "@/lib/ink/model";
 import { recognitionAvailable } from "@/lib/ink/recognition";
+import { stylusTouch } from "@/lib/stylus";
 import { blockPaperLayout } from "@/lib/notebook-paper";
 import { DRAW_BLOCK_HEIGHTS, DRAW_BLOCK_PAPERS, DRAW_BLOCK_WIDTH, drawBlockFrom, drawBlockHeight, drawBlockId, drawBlockPaper, type DrawBlockPaper } from "@/lib/draw-block-node";
 import type { DrawBlockOptions } from "./draw-block";
+import { takeDrawingStart } from "./drawing-start";
+
+const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+// The document's text gives up the focus and its DOM selection (a caret
+// left in a paragraph is where Scribble writes, even without the focus).
+function releaseText(text: HTMLElement) {
+  const active = document.activeElement as HTMLElement | null;
+  if (active && (active === text || (text.contains(active) && active.isContentEditable))) active.blur();
+  const selection = window.getSelection();
+  if (selection?.rangeCount && text.contains(selection.anchorNode)) selection.removeAllRanges();
+}
+const onInkUi = (target: EventTarget | null) => !!(target as Element | null)?.closest?.(".ink-ui");
 
 export default function DrawBlockEditor({ node, editor: doc, extension, updateAttributes, getPos }: NodeViewProps) {
   const t = useT();
@@ -111,17 +125,67 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       if (!writable) return;
       setActive(true);
       setShielded(shield);
+      // No caret in the text while the pen draws: iPadOS Scribble would turn
+      // the handwriting into text there (#311).
+      releaseText(doc.view.dom);
       // Keys (undo, delete) go to the drawing, not the text around it.
-      requestAnimationFrame(() => root.current?.focus({ preventScroll: true }));
+      requestAnimationFrame(() => {
+        if (!root.current?.isConnected) return;
+        releaseText(doc.view.dom);
+        root.current.focus({ preventScroll: true });
+      });
     },
-    [writable],
+    [writable, doc],
   );
-  const finish = useCallback(() => {
-    setActive(false);
-    setShielded(false);
-    ink.setSelection(null);
-    void sync.flush();
-  }, [ink, sync]);
+  // Leaving: the caret goes below the block (where the text goes on); the
+  // text gets the focus back only from the keyboard (Escape) – a tap on the
+  // text focuses it as usual, with the on-screen keyboard.
+  const finish = useCallback(
+    (focusText = false) => {
+      setActive(false);
+      setShielded(false);
+      ink.setSelection(null);
+      void sync.flush();
+      const block = root.current;
+      if (block?.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+      if (doc.isDestroyed || !doc.isEditable) return;
+      const at = typeof getPos === "function" ? getPos() : undefined;
+      if (typeof at !== "number") return;
+      try {
+        const $after = doc.state.doc.resolve(Math.min(at + node.nodeSize, doc.state.doc.content.size));
+        const selection = Selection.findFrom($after, 1, true) ?? Selection.findFrom($after, -1, true);
+        if (!selection) return;
+        if (focusText) doc.chain().setTextSelection(selection.from).focus(undefined, { scrollIntoView: false }).run();
+        else doc.view.dispatch(doc.state.tr.setSelection(selection).setMeta("addToHistory", false));
+      } catch {}
+    },
+    [ink, sync, doc, getPos, node.nodeSize],
+  );
+  // A block just inserted from the slash menu starts in drawing mode.
+  useEffect(() => {
+    if (loaded && writable && id && takeDrawingStart(id)) activate(coarse());
+  }, [loaded, writable, id, activate]);
+  // Stylus touches on the canvas never start Scribble, the long-press
+  // callout or a text selection – also before the block is active (the pen
+  // is what activates it). Native and not passive: React's are. The
+  // floating text box and bars on the canvas (.ink-ui) keep their taps.
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || !writable) return;
+    const touch = (event: TouchEvent) => {
+      if (event.cancelable && stylusTouch(event) && !onInkUi(event.target)) event.preventDefault();
+    };
+    const pointer = (event: PointerEvent) => {
+      if (event.pointerType === "pen" && !onInkUi(event.target)) event.preventDefault();
+    };
+    surface.addEventListener("touchstart", touch, { passive: false });
+    surface.addEventListener("pointerdown", pointer);
+    return () => {
+      surface.removeEventListener("touchstart", touch);
+      surface.removeEventListener("pointerdown", pointer);
+    };
+  }, [writable, loaded]);
   useEffect(() => {
     if (!active) return;
     const outside = (event: PointerEvent) => {
@@ -135,7 +199,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       if (event.key !== "Escape" || event.defaultPrevented || target?.closest?.(".ink-menu, .modal")) return;
       if (document.querySelector(".modal")) return;
       event.preventDefault();
-      finish();
+      finish(true);
     };
     document.addEventListener("pointerdown", outside, true);
     window.addEventListener("keydown", escape);
@@ -144,7 +208,6 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       window.removeEventListener("keydown", escape);
     };
   }, [active, finish]);
-  const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
   // Height: drag the handle (or arrow keys on it).
   const scale = useRef(1);
@@ -234,7 +297,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
           <button
             type="button"
             className="ink-done"
-            onClick={finish}
+            onClick={() => finish()}
           >
             <Check size={17} />
             <span>{t("Fertig", "Done")}</span>
@@ -255,7 +318,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
           </button>
         </p>
       )}
-      <div className="ink-block-surface" style={{ aspectRatio: `${DRAW_BLOCK_WIDTH} / ${height}` }}>
+      <div ref={surfaceRef} className="ink-block-surface" style={{ aspectRatio: `${DRAW_BLOCK_WIDTH} / ${height}` }}>
         <PaperSvg layout={layout} />
         {loaded && (
           <InkLayer
