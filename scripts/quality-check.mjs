@@ -31,16 +31,20 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // block selection/copy/paste rules, meeting time chips and the motion
 // setting (0.9.6) – the document budget moves to 2300 KB; the other pages
 // did not grow.
+// 2026-11-15: a database 1692.7 KB, a workflow 1833.7 KB after the
+// workspace bundle gained the toolbar layout (#292), the settings levels
+// (#294), the start screen on phones and the onboarding's checklist hooks
+// (#295) – the database budget moves to 1720 KB, the workflow's to 1860 KB.
 const PAGES = [
   { path: "/login", jsKb: 290 },
   { path: "/register", jsKb: 290 },
   { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2300 },
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1720 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
-  // the inactivity message (#282) in the workspace bundle.
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1830, ready: ".react-flow__node, .wf-list-node" },
+  // the inactivity message (#282) in the workspace bundle; 1860 since 0.9.7.
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1860, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
