@@ -10,9 +10,14 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CheckCircle, CircleNotch, WarningCircle } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import type { SettingsLevel } from "@/lib/settings-level";
+import { LevelDot, LevelHidden, LevelScope, useLevelGate } from "./settings-level";
 
 // A card: a titled group of setting rows. `id` makes it a target of the
-// search and of addresses like #settings/account/passkeys.
+// search and of addresses like #settings/account/passkeys. In Settings the
+// card has a level (#294, components/settings-level.tsx): its own `level`,
+// else the one of the registry entry with its id, else the section's; above
+// the person's level it is left out, and its rows take its level.
 export function SettingGroup({
   title,
   description,
@@ -20,6 +25,7 @@ export function SettingGroup({
   actions,
   id,
   tone,
+  level,
 }: {
   title: string;
   description?: ReactNode;
@@ -27,17 +33,23 @@ export function SettingGroup({
   actions?: ReactNode;
   id?: string;
   tone?: "danger";
+  level?: SettingsLevel;
 }) {
+  const gate = useLevelGate(id, level);
+  if (gate.hidden) return null;
   return (
     <section className={`setting-group${tone === "danger" ? " danger-zone" : ""}`} id={id} aria-labelledby={id ? `${id}-title` : undefined}>
       <header>
-        <div>
+        <div className={gate.own ? "setting-group-title" : undefined}>
+          {gate.own && gate.level && <LevelDot level={gate.level} />}
           <h2 id={id ? `${id}-title` : undefined}>{title}</h2>
           {description && <p>{description}</p>}
         </div>
         {actions && <div className="setting-group-actions">{actions}</div>}
       </header>
-      <div className="setting-rows">{children}</div>
+      <div className="setting-rows">
+        <LevelScope level={gate.level}>{children}</LevelScope>
+      </div>
     </section>
   );
 }
@@ -55,11 +67,33 @@ export function DangerZone({ title, description, children, id }: { title?: strin
 // One setting: label and explanation left, control right. With `id` the
 // label belongs to the control of that id; `wide` puts the control under
 // the text (text areas, lists). `anchor` gives the row itself an id: a
-// target of the search and of #settings/<section>/<anchor>.
-export function SettingRow({ label, description, children, id, wide = false, anchor }: { label: string; description?: ReactNode; children: ReactNode; id?: string; wide?: boolean; anchor?: string }) {
+// target of the search and of #settings/<section>/<anchor>. In Settings
+// the row has a level (#294): its own `level`, else the registry entry's
+// with its anchor (then it shows the level's mark), else its card's; above
+// the person's level it is left out.
+export function SettingRow({
+  label,
+  description,
+  children,
+  id,
+  wide = false,
+  anchor,
+  level,
+}: {
+  label: string;
+  description?: ReactNode;
+  children: ReactNode;
+  id?: string;
+  wide?: boolean;
+  anchor?: string;
+  level?: SettingsLevel;
+}) {
+  const gate = useLevelGate(anchor, level);
+  if (gate.hidden) return <LevelHidden />;
   return (
     <div className={`setting-row${wide ? " wide" : ""}`} id={anchor}>
       <div className="setting-text">
+        {gate.own && gate.level && <LevelDot level={gate.level} />}
         {id ? <label htmlFor={id}>{label}</label> : <span className="setting-label">{label}</span>}
         {description && <small>{description}</small>}
       </div>
@@ -82,9 +116,25 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
 }
 
 // A switch row: the whole text is the switch's label.
-export function SwitchRow({ label, description, checked, onChange, disabled }: { label: string; description?: ReactNode; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+export function SwitchRow({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+  anchor,
+  level,
+}: {
+  label: string;
+  description?: ReactNode;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  disabled?: boolean;
+  anchor?: string;
+  level?: SettingsLevel;
+}) {
   return (
-    <SettingRow label={label} description={description}>
+    <SettingRow label={label} description={description} anchor={anchor} level={level}>
       <Switch checked={checked} onChange={onChange} label={label} disabled={disabled} />
     </SettingRow>
   );

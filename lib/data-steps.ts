@@ -28,6 +28,7 @@ export const ISSUE_PROVIDERS_STEP = "issue-providers-95";
 export const GRANT_KINDS_STEP = "grant-kinds-100";
 export const SYNCED_JOURNAL_STEP = "synced-journal-parent";
 export const SEARCH_VISITS_STEP = "search-visits-243";
+export const SETTINGS_LEVEL_STEP = "settings-level-294";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -41,6 +42,7 @@ export const dataSteps = (): DataStep[] => [
   { name: GRANT_KINDS_STEP, run: grantKinds },
   { name: SYNCED_JOURNAL_STEP, run: syncedBlocksIntoJournals },
   { name: SEARCH_VISITS_STEP, run: searchVisitsFromPageVisits },
+  { name: SETTINGS_LEVEL_STEP, run: settingsLevelForExistingAccounts },
 ];
 
 // Runs the steps not done yet (`only`: just these). Several instances on
@@ -320,4 +322,12 @@ async function searchVisitsFromPageVisits() {
      ON CONFLICT DO NOTHING`,
     Date.now() - RETENTION_DAYS * 86_400_000,
   );
+}
+
+// #294 – settings levels (lib/settings-level.ts): every account from before
+// keeps seeing all its settings ("expert"); accounts created afterwards
+// follow the instance's default ("normal"). On a new database there is no
+// account yet when this runs.
+async function settingsLevelForExistingAccounts() {
+  await run("UPDATE users SET settings_level='expert' WHERE settings_level IS NULL");
 }

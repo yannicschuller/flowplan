@@ -10,6 +10,8 @@ async function setup(page: Page) {
     return response.json();
   };
   await command({ action: "profile.onboarded" });
+  // Settings levels (#294): "Formatierungsleiste anpassen" is for experts.
+  await command({ action: "profile.settingsLevel", level: "expert" });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const host = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Leiste anpassen ${Date.now()}`, kind: "document" });
   const { htmlState } = await import("../../lib/document-server");

@@ -4,6 +4,8 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
   test.skip(info.project.name !== "desktop", "Settings flows are the same on mobile.");
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // Settings levels (#294): these settings are for experts.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.settingsLevel", level: "expert" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
 
   // Personal API token: created once, then usable without the cookie.
