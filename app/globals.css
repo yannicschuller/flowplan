@@ -1212,6 +1212,12 @@ kbd,
   color: var(--muted);
   margin-right: 8px;
 }
+/* The cloud on the right, the text right-aligned towards it: the cloud
+   stays in its place while "Ungespeicherte Änderungen", "Speichern …" and
+   "Gespeichert" take turns (also while they cross-fade over each other). */
+.save-status > span {
+  justify-content: flex-end;
+}
 .starred {
   color: #dcac49;
 }
@@ -29217,6 +29223,33 @@ tr:hover .row-open-mark,
 }
 .hide-keyboard-fab:active {
   background: var(--hover);
+}
+/* With the keyboard open, iOS (Safari and the app's web view) keeps the
+   layout at its full height and, to show the caret, moves the visible area
+   down the page (--keyboard-visible-top, components/mobile-tab-bar.tsx) –
+   the whole app with it: the top bar went out of view above the screen
+   while writing (#307, iPad with the docked keyboard). The top bar, the
+   banners above it and the tab bars above a pane follow the visible area's
+   top instead, over the pane's upper part, which is out of view there
+   anyway; components/keep-caret.ts keeps the caret below them. Relative
+   offsets, not transforms: menus fixed inside the bar keep the screen as
+   their containing block. Below dialogs and menus, above the text. */
+html.keyboard-docked .app-shell.keyboard-open .main > :has(~ .split-row),
+html.keyboard-docked .app-shell.keyboard-open .split-row > * > :has(~ .main-scroll) {
+  position: relative;
+  top: var(--keyboard-visible-top, 0px);
+  z-index: 25;
+}
+/* The bar is see-through otherwise; the text scrolls behind it now. */
+html.keyboard-docked .app-shell.keyboard-open .main > .topbar {
+  background: var(--bg);
+}
+/* The formatting toolbar that sticks at the pane's top (wider screens)
+   sticks below the bar that moved over it. */
+@media (min-width: 768px) {
+  html.keyboard-docked .app-shell.keyboard-open .main-scroll .page-layout .editor-toolbar {
+    top: calc(8px + var(--keyboard-visible-top, 0px));
+  }
 }
 .hide-keyboard-fab .editor-hide-keyboard-icon svg:first-child {
   width: 20px;

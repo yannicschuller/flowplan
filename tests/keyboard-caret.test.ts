@@ -26,6 +26,11 @@ test("the visible band: inside the pane and the visible area, above the docked t
   // A toolbar outside the visible area does not count.
   assert.deepEqual(visibleBand(pane, iphone, 690), { top: 186, bottom: 570 });
   assert.deepEqual(visibleBand({ top: 57, bottom: 844 }, { offsetTop: 0, height: 844 }), { top: 57, bottom: 844 });
+  // #307: the top bar follows the visible area's top over the pane – the
+  // text shows below it (pane top + what iOS moved the visible area).
+  assert.deepEqual(visibleBand(pane, iphone, 522, pane.top + iphone.offsetTop), { top: 243, bottom: 522 });
+  // Not moved: the pane's own top.
+  assert.deepEqual(visibleBand(pane, { offsetTop: 0, height: 508 }, null, pane.top), { top: 57, bottom: 508 });
 });
 
 test("the caret scrolls into the band with a margin, and only when it has to", () => {
