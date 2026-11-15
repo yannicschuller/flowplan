@@ -48,6 +48,19 @@ export function SpaceAppearance({
   disabled?: boolean;
 }) {
   const t = useT();
+  // The table's names are German (#310).
+  const colorNames: Record<(typeof spaceColors)[number][0], string> = {
+    none: t("Ohne Farbe", "No colour"),
+    gray: t("Grau", "Grey"),
+    brown: t("Braun", "Brown"),
+    orange: t("Orange", "Orange"),
+    yellow: t("Gelb", "Yellow"),
+    green: t("Grün", "Green"),
+    blue: t("Blau", "Blue"),
+    purple: t("Violett", "Purple"),
+    pink: t("Rosa", "Pink"),
+    red: t("Rot", "Red"),
+  };
   const [open, setOpen] = useState(false),
     [error, setError] = useState("");
   const file = useRef<HTMLInputElement>(null);
@@ -106,9 +119,9 @@ export function SpaceAppearance({
               value={color}
               onChange={(event) => onChange(icon, event.target.value)}
             >
-              {spaceColors.map(([value, label]) => (
+              {spaceColors.map(([value]) => (
                 <option key={value} value={value}>
-                  {label}
+                  {colorNames[value]}
                 </option>
               ))}
             </Select>

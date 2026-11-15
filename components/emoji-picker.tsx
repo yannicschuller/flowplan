@@ -1,5 +1,5 @@
 "use client";
-import { useT } from "./i18n";
+import { useLocale, useT } from "./i18n";
 import { Select } from "./select";
 import { useMemo, useState } from "react";
 import { emojiGroups, searchEmojis } from "@/lib/emoji-data";
@@ -14,6 +14,21 @@ export default function EmojiPicker({
   allowSymbols?: boolean;
 }) {
   const t = useT();
+  const locale = useLocale();
+  // The emoji data's category names are German (#310).
+  const groupNames: Record<string, string> = {
+    "smileys-emotion": t("Smileys & Emotionen", "Smileys & emotion"),
+    "people-body": t("Menschen & Körper", "People & body"),
+    component: t("Komponenten", "Components"),
+    "animals-nature": t("Tiere & Natur", "Animals & nature"),
+    "food-drink": t("Essen & Trinken", "Food & drink"),
+    "travel-places": t("Reisen & Orte", "Travel & places"),
+    activities: t("Aktivitäten", "Activities"),
+    objects: t("Gegenstände", "Objects"),
+    symbols: t("Symbole", "Symbols"),
+    flags: t("Flaggen", "Flags"),
+  };
+  const groupName = (key: string, fallback: string) => groupNames[key] ?? fallback;
   const [query, setQuery] = useState(""),
     [group, setGroup] = useState("all"),
     [tone, setTone] = useState("all"),
@@ -63,7 +78,7 @@ export default function EmojiPicker({
             <option value="all">{t("Alle Kategorien", "All categories")}</option>
             {emojiGroups.map((g) => (
               <option key={g.key} value={g.order}>
-                {g.message}
+                {groupName(g.key, g.message)}
               </option>
             ))}
           </Select>
@@ -98,8 +113,8 @@ export default function EmojiPicker({
           <button
             key={e.hexcode}
             type="button"
-            title={e.label}
-            aria-label={`${e.label} ${e.emoji}`}
+            title={locale === "de" ? e.label : e.labelEn}
+            aria-label={`${locale === "de" ? e.label : e.labelEn} ${e.emoji}`}
             aria-pressed={selected === e.emoji}
             disabled={busy}
             onClick={() => select(e.emoji)}

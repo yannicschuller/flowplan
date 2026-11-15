@@ -9,6 +9,7 @@ import { z } from "zod";
 import { all, audit, id, lockFor, one, refuseKeeping, run, nowText, sql } from "./db";
 import { documentSchema } from "./document-schema";
 import { taskStatusOf } from "./task-status";
+import { ct } from "./content-locale";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
 import { HttpError } from "./auth";
@@ -41,9 +42,12 @@ export const trackerSchema = z.object({
   unit: z.string().trim().max(12).optional(),
 });
 export type Tracker = z.infer<typeof trackerSchema>;
-export const defaultTrackers: Tracker[] = [
-  { id: "mood", name: "Stimmung", kind: "mood" },
-];
+// The default tracker, named in the language of the request (#308).
+export const defaultTrackers = (): Tracker[] => [{ id: "mood", name: ct("Stimmung", "Mood"), kind: "mood" }];
+// The default tracker as stored before #308 – German whatever the language;
+// shown in the reader's language until someone renames it.
+const localizedTracker = (tracker: Tracker): Tracker =>
+  tracker.id === "mood" && tracker.kind === "mood" && tracker.name === "Stimmung" ? { ...tracker, name: ct("Stimmung", "Mood") } : tracker;
 export const TEMPLATE_LIMIT = 50_000;
 
 type SettingsRow = {
@@ -80,9 +84,9 @@ async function settingsRow(journalId: string) {
 }
 export async function journalSettings(journalId: string) {
   const row = await settingsRow(journalId);
-  let trackers = defaultTrackers;
+  let trackers = defaultTrackers();
   try {
-    if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
+    if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers)).map(localizedTracker);
   } catch {}
   let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE, carried: "top", carriedHeading: "" };
   try {
@@ -105,7 +109,7 @@ async function ensureSettings(journalId: string) {
   await run(
     "INSERT INTO journal_settings(page_id,trackers) VALUES(?,?) ON CONFLICT DO NOTHING",
     journalId,
-    JSON.stringify(defaultTrackers),
+    JSON.stringify(defaultTrackers()),
   );
 }
 // "Tage in der Seitenleiste" of every journal of a workspace, for the page

@@ -29,6 +29,8 @@ export const emojiEntries = (german as Entry[])
       return {
         emoji: entry.emoji,
         label: entry.label,
+        // The English name for other languages (#310).
+        labelEn: en?.label || entry.label,
         hexcode: entry.hexcode,
         group: entry.group ?? parent.group,
         order: entry.order ?? 99999,

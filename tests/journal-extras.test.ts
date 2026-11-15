@@ -274,3 +274,17 @@ test("streaks and memories are computed from the days", () => {
   const found = onThisDay([day("2025-10-04"), day("2026-09-04"), day("2026-09-27"), day("2026-09-28")], "2026-10-04");
   assert.deepEqual(found.map((f) => f.label), ["Vor einer Woche", "Vor einem Monat", "Vor einem Jahr"]);
 });
+
+// #308: the default "Stimmung" tracker follows the reader's language; a
+// renamed one keeps its name.
+test("the default mood tracker is named in the reader's language", async () => {
+  const { journalSettings } = await import("../lib/journal-extras");
+  const { withContentLocale } = await import("../lib/content-locale");
+  const other = ((await command(user, { action: "page.create", workspaceId: wid, spaceId: space, title: "Tracker", kind: "journal" })) as { id: string }).id;
+  await run("INSERT INTO journal_settings(page_id,trackers) VALUES(?,?) ON CONFLICT DO NOTHING", other, JSON.stringify([{ id: "mood", name: "Stimmung", kind: "mood" }]));
+  await run("UPDATE journal_settings SET trackers=? WHERE page_id=?", JSON.stringify([{ id: "mood", name: "Stimmung", kind: "mood" }]), other);
+  assert.equal((await withContentLocale("en", () => journalSettings(other))).trackers[0].name, "Mood");
+  assert.equal((await withContentLocale("de", () => journalSettings(other))).trackers[0].name, "Stimmung");
+  await run("UPDATE journal_settings SET trackers=? WHERE page_id=?", JSON.stringify([{ id: "mood", name: "Laune", kind: "mood" }]), other);
+  assert.equal((await withContentLocale("en", () => journalSettings(other))).trackers[0].name, "Laune");
+});
