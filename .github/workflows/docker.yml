@@ -229,13 +229,13 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}"
           echo "Scanning $image"
-          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.1 image \
+          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.2 image \
             --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 0 --format table \
             --timeout 15m "$image" | tee "$RUNNER_TEMP/trivy.txt"
           # What scanners without --ignore-unfixed show (users run those):
           # findings the distribution has no fix for yet, as a count per
           # package – for information, never a failure.
-          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.1 image \
+          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.2 image \
             --severity CRITICAL --scanners vuln --exit-code 0 --format json \
             --timeout 15m "$image" > "$RUNNER_TEMP/trivy-all.json" || true
           {
