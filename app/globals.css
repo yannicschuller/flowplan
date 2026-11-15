@@ -696,6 +696,13 @@ kbd,
   font-weight: 600;
   margin-right: auto;
 }
+.page-selection-actions {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
 .favorite-nav {
   display: flex;
   width: calc(100% - 24px);
@@ -6521,6 +6528,9 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   --muted: #8e8a98;
   --secondary: #b3afbd;
   --blue: #959bff;
+  /* Hovered primary buttons: a lighter lavender, not the light theme's
+     blue – with the dark text on it that was hard to read. */
+  --primary-hover: #aeb3ff;
   --blue-light: #2a2a55;
   --accent-strong: #b9bcff;
   --on-accent: #121117;
@@ -29199,6 +29209,11 @@ tr:hover .row-open-mark,
     bottom: auto;
     transform: translate(-50%, -100%);
   }
+}
+/* A dialog leaves a strip at its end for the button above (design review): otherwise it covered the dialog's main button at the bottom
+   right ("Erfassen", "Speichern", …). */
+html.hide-keyboard-fab-shown .modal {
+  --modal-pad-bottom: calc(var(--modal-pad) - var(--modal-edge) + 56px);
 }
 .hide-keyboard-fab {
   display: none;

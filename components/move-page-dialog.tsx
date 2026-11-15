@@ -207,33 +207,38 @@ export function MovePageDialog({
             {t("Die Seite und ihre Unterseiten wechseln den Arbeitsbereich. Rechte für Gruppen und Personen, die dort nicht Mitglied sind, entfallen; Datenbanken mit Relationen zu zurückbleibenden Datenbanken lassen sich erst nach dem Lösen der Relation verschieben.", "The page and its sub-pages change workspace. Permissions for groups and people who are not members there are dropped; databases with relations to databases staying behind can only be moved after removing the relation.")}
           </p>
         )}
-        <button
-          className="button primary"
-          disabled={busy || !spaceId || !page}
-          onClick={async () => {
-            if (!page) return;
-            // Into another space: first what the destination lacks (#136).
-            if (spaceId !== page.space_id) {
-              setBusy(true);
-              const check = await api<{ foreign: ForeignMeta[] }>("/api/command", {
-                action: "page.moveCheck",
-                workspaceId: currentWorkspace,
-                pageId: page.id,
-                spaceId,
-                ...(parentId ? { parentId } : {}),
-              }).catch(() => ({ foreign: [] }));
-              setBusy(false);
-              if (check.foreign.length) {
-                setChoices({});
-                setResolve(check.foreign);
-                return;
+        <div className="modal-actions">
+          <button type="button" className="button" onClick={onClose}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          <button
+            className="button primary"
+            disabled={busy || !spaceId || !page}
+            onClick={async () => {
+              if (!page) return;
+              // Into another space: first what the destination lacks (#136).
+              if (spaceId !== page.space_id) {
+                setBusy(true);
+                const check = await api<{ foreign: ForeignMeta[] }>("/api/command", {
+                  action: "page.moveCheck",
+                  workspaceId: currentWorkspace,
+                  pageId: page.id,
+                  spaceId,
+                  ...(parentId ? { parentId } : {}),
+                }).catch(() => ({ foreign: [] }));
+                setBusy(false);
+                if (check.foreign.length) {
+                  setChoices({});
+                  setResolve(check.foreign);
+                  return;
+                }
               }
-            }
-            await move();
-          }}
-        >
-          {busy ? t("Wird verschoben …", "Moving …") : t("Verschieben", "Move")}
-        </button>
+              await move();
+            }}
+          >
+            {busy ? t("Wird verschoben …", "Moving …") : t("Verschieben", "Move")}
+          </button>
+        </div>
       </div>
     </Modal>
   );

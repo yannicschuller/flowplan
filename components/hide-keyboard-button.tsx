@@ -89,7 +89,16 @@ export function HideKeyboardButton() {
       vv?.removeEventListener("scroll", later);
     };
   }, [keyboardOpen, fab]);
-  if (!keyboardOpen || !shown || typeof document === "undefined") return null;
+  // While it shows, an open dialog keeps a strip free at its end: its
+  // buttons at the bottom right sat right where this button is.
+  const visible = keyboardOpen && shown;
+  useEffect(() => {
+    if (!visible) return;
+    const root = document.documentElement;
+    root.classList.add("hide-keyboard-fab-shown");
+    return () => root.classList.remove("hide-keyboard-fab-shown");
+  }, [visible]);
+  if (!visible || typeof document === "undefined") return null;
   const label = t("Tastatur ausblenden", "Hide keyboard");
   return createPortal(
     <button

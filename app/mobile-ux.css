@@ -32,6 +32,12 @@
     /* Backwards only: a held translate would capture fixed children (#75). */
     animation: sheet-in var(--motion-slow) var(--ease-standard) backwards;
   }
+  /* Room at the end for "Tastatur ausblenden" (components/hide-keyboard-
+     button.tsx) while it shows: it sat on the sheet's main button at the
+     bottom right ("Erfassen", "Speichern", …). */
+  html.hide-keyboard-fab-shown .modal.modal-sheet {
+    padding-bottom: calc(76px + var(--safe-bottom));
+  }
   .modal.modal-sheet > .sheet-handle {
     display: block;
     position: sticky;

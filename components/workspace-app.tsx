@@ -3734,56 +3734,60 @@ export default function WorkspaceApp({
               aria-label={t("Seitenauswahl", "Page selection")}
             >
               <span>{selectedPages.length} {t("ausgewählt", "selected")}</span>
-              <button
-                className="text-button"
-                disabled={!selectedPages.length || bulkBusy}
-                onClick={() => {
-                  setBulkTarget("");
-                  setBulkDialog("move");
-                }}
-              >
-                {t("Verschieben", "Move")}
-              </button>
-              <button
-                className="text-button"
-                disabled={!selectedPages.length || bulkBusy}
-                onClick={() => void bulkPages("duplicate")}
-              >
-                {t("Duplizieren", "Duplicate")}
-              </button>
-              <button
-                className="text-button danger"
-                disabled={!selectedPages.length || bulkBusy}
-                onClick={() => setBulkDialog("delete")}
-              >
-                {t("Papierkorb", "Trash")}
-              </button>
-              <Dropdown.Root modal={false}>
-                <Dropdown.Trigger asChild>
-                  <button
-                    className="text-button"
-                    disabled={!selectedPages.length || bulkBusy}
-                    aria-label={t("Weitere Aktionen für die Auswahl", "More actions for the selection")}
-                    title={t("Weitere Aktionen", "More actions")}
-                  >
-                    <DotsThree size={16} />
-                  </button>
-                </Dropdown.Trigger>
-                <Dropdown.Portal>
-                  <Dropdown.Content
-                    className="dropdown"
-                    align="end"
-                    sideOffset={4}
-                    collisionPadding={safeCollisionPadding()}
-                    aria-label={t("Weitere Aktionen für die Auswahl", "More actions for the selection")}
-                  >
-                    {selectionMenuItems()}
-                  </Dropdown.Content>
-                </Dropdown.Portal>
-              </Dropdown.Root>
-              <button className="text-button" onClick={clearSelection}>
+              {/* Two lines: the count and "Fertig", the actions below – in the
+                  narrow sidebar they wrapped into three uneven ones. */}
+              <button className="text-button page-selection-done" onClick={clearSelection}>
                 {t("Fertig", "Done")}
               </button>
+              <div className="page-selection-actions">
+                <button
+                  className="text-button"
+                  disabled={!selectedPages.length || bulkBusy}
+                  onClick={() => {
+                    setBulkTarget("");
+                    setBulkDialog("move");
+                  }}
+                >
+                  {t("Verschieben", "Move")}
+                </button>
+                <button
+                  className="text-button"
+                  disabled={!selectedPages.length || bulkBusy}
+                  onClick={() => void bulkPages("duplicate")}
+                >
+                  {t("Duplizieren", "Duplicate")}
+                </button>
+                <button
+                  className="text-button danger"
+                  disabled={!selectedPages.length || bulkBusy}
+                  onClick={() => setBulkDialog("delete")}
+                >
+                  {t("Papierkorb", "Trash")}
+                </button>
+                <Dropdown.Root modal={false}>
+                  <Dropdown.Trigger asChild>
+                    <button
+                      className="text-button"
+                      disabled={!selectedPages.length || bulkBusy}
+                      aria-label={t("Weitere Aktionen für die Auswahl", "More actions for the selection")}
+                      title={t("Weitere Aktionen", "More actions")}
+                    >
+                      <DotsThree size={16} />
+                    </button>
+                  </Dropdown.Trigger>
+                  <Dropdown.Portal>
+                    <Dropdown.Content
+                      className="dropdown"
+                      align="end"
+                      sideOffset={4}
+                      collisionPadding={safeCollisionPadding()}
+                      aria-label={t("Weitere Aktionen für die Auswahl", "More actions for the selection")}
+                    >
+                      {selectionMenuItems()}
+                    </Dropdown.Content>
+                  </Dropdown.Portal>
+                </Dropdown.Root>
+              </div>
             </div>
           )}
           {boot.spaces
@@ -6281,7 +6285,13 @@ export default function WorkspaceApp({
               placeholder="z. B. Design-Team"
             />
           </label>
-          <button className="button primary">{t("Erstellen", "Create")}</button>
+          {/* Like the other dialogs: cancel and the main action, right-aligned. */}
+          <div className="modal-actions">
+            <button type="button" className="button" onClick={() => setNewWorkspace(false)}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+            <button className="button primary">{t("Erstellen", "Create")}</button>
+          </div>
         </form>
       </Modal>
       <Modal
@@ -6383,7 +6393,12 @@ export default function WorkspaceApp({
               </p>
             </div>
           )}
-          <button className="button primary">{t("Bereich erstellen", "Create space")}</button>
+          <div className="modal-actions">
+            <button type="button" className="button" onClick={() => setNewSpace(false)}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+            <button className="button primary">{t("Bereich erstellen", "Create space")}</button>
+          </div>
         </form>
       </Modal>
       <Modal
@@ -6543,7 +6558,12 @@ export default function WorkspaceApp({
               {t("„Speichern“ speichert die Vorlage ohne sie.", "“Save” saves the template without them.")}
             </p>
           )}
-          <button className="button primary">{t("Speichern", "Save")}</button>
+          <div className="modal-actions">
+            <button type="button" className="button" onClick={() => setTemplateName(false)}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+            <button className="button primary">{t("Speichern", "Save")}</button>
+          </div>
         </form>
       </Modal>
       {pageMenu && (

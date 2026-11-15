@@ -24,6 +24,10 @@ export async function seedGallery(api: APIRequestContext, origin: string, { fres
   });
   const command = commandFor(api, origin);
   const { workspaceId, spaceId } = base;
+  // Every setting on screen (settings levels, #294): the gallery's account
+  // is new, so it would follow the instance default ("Normal") and hide the
+  // Expert ones – such as setting up end-to-end encryption.
+  await command({ action: "profile.settingsLevel", level: "expert" }).catch(() => {});
   const create = async (kind: string, title: string, extra: Record<string, unknown> = {}) =>
     (await command({ action: "page.create", workspaceId, spaceId, kind, title, ...extra })).id as string;
 

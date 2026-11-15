@@ -1099,6 +1099,8 @@ const dialogScenes: Scene[] = [
     steps: async (page) => {
       await page.getByRole("button", { name: /Symbol/ }).first().click();
       await page.getByRole("dialog").last().waitFor();
+      // The emoji picker loads on demand ("Emojis werden geladen …").
+      await page.getByRole("dialog").last().getByLabel(/Emoji suchen/).waitFor();
     },
   },
   {
@@ -1146,6 +1148,8 @@ const dialogScenes: Scene[] = [
     covers: ["components/home/home-editor.tsx"],
     steps: async (page) => {
       await button(page, "Anpassen").click();
+      // The editor loads on demand: wait for it, not an empty page.
+      await page.getByText("Startseite anpassen").first().waitFor();
     },
   },
   {
