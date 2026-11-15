@@ -13,7 +13,7 @@ import { pageIconPrefSchema } from "./page-icon-pref";
 import { externalLinkIconSchema } from "./external-link-icon-pref";
 import { quoteShortcutSchema } from "./quote-shortcut-pref";
 import { formattingToolbarSchema } from "./toolbar-pref";
-import { TOOLBAR_DIVIDER, TOOLBAR_ITEMS, TOOLBAR_ORDER_MAX, toolbarLayoutSchema } from "./toolbar-layout";
+import { TOOLBAR_BLOCKS, TOOLBAR_BUTTONS, TOOLBAR_DIVIDER, TOOLBAR_ORDER_MAX, toolbarLayoutSchema } from "./toolbar-layout";
 import { motionPrefSchema } from "./motion-pref";
 import { fullWidthPagesSchema } from "./page-width-pref";
 import { startScreenSchema } from "./start-screen";
@@ -246,9 +246,9 @@ export const commandActions: ActionDoc[] = [
   {
     action: "profile.toolbarLayout",
     summary: "Choose, order and group the buttons of the fixed formatting toolbar",
-    description: `For the caller, on all devices: \`order\` lists the toolbar's buttons (${TOOLBAR_ITEMS.join(", ")}) each at most once, with "${TOOLBAR_DIVIDER}" for a divider between two groups (at most ${TOOLBAR_ORDER_MAX} entries); \`hidden\` lists the buttons not shown. Buttons left out of \`order\` (for example ones added in a later version) appear at their default place. null restores the default. The result is the layout as it now applies.`,
+    description: `For the caller, on all devices: \`order\` lists the toolbar's buttons (${TOOLBAR_BUTTONS.join(", ")}) each at most once, with "${TOOLBAR_DIVIDER}" for a divider between two groups (at most ${TOOLBAR_ORDER_MAX} entries); \`hidden\` lists the buttons not shown. Buttons left out of \`order\` (for example ones added in a later version) appear at their default place; the blocks of the "/" menu (${TOOLBAR_BLOCKS.join(", ")}) are only in the toolbar where \`order\` lists them. null restores the default – the instance's default toolbar if an administrator set one, else the built-in one; a layout equal to that default is stored as none. The result is the layout as it now applies and whether it is the caller's own (\`custom\`).`,
     input: z.object({ action: z.literal("profile.toolbarLayout"), toolbarLayout: toolbarLayoutSchema }),
-    result: z.object({ toolbarLayout: toolbarLayoutSchema.unwrap() }),
+    result: z.object({ toolbarLayout: toolbarLayoutSchema.unwrap(), custom: z.boolean() }),
   },
   {
     action: "profile.motion",

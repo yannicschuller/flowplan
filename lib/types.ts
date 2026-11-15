@@ -320,6 +320,10 @@ export type Bootstrap = {
   formattingToolbar?: import("./toolbar-pref").FormattingToolbarPref;
   // "Formatierungsleiste anpassen" (#292, lib/toolbar-layout.ts).
   toolbarLayout?: import("./toolbar-layout").ToolbarLayout;
+  // What applies without a layout of one's own: the instance's default or
+  // the built-in one; and whether the person has their own.
+  toolbarLayoutDefault?: import("./toolbar-layout").ToolbarLayout;
+  toolbarLayoutCustom?: boolean;
   // The settings level (#294, lib/settings-level.ts).
   settingsLevel?: import("./settings-level").SettingsLevelBoot;
   // "Animationen" (#260, lib/motion-pref.ts).

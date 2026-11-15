@@ -178,7 +178,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       },
       {
         title: { de: "Formatierungsleiste anpassen", en: "Customize formatting toolbar" },
-        keywords: { de: "symbolleiste toolbar leiste schaltflächen knöpfe reihenfolge sortieren gruppen trennlinie ausblenden anpassen", en: "toolbar bar buttons order reorder sort groups divider separator hide customise customize" },
+        keywords: { de: "symbolleiste toolbar leiste schaltflächen knöpfe reihenfolge sortieren gruppen trennlinie ausblenden anpassen blöcke tabelle code formel vorschau zurücksetzen", en: "toolbar bar buttons order reorder sort groups divider separator hide customise customize blocks table code formula preview reset" },
         anchor: "toolbar-layout",
         level: "expert",
       },
@@ -769,7 +769,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "SlidersHorizontal",
     title: { de: "Instanz", en: "Instance" },
     description: { de: "Name, öffentliche Demo, Version und Aktualisierung der Instanz.", en: "Name, public demo, version and update of the instance." },
-    keywords: { de: "instanz name demo version update aktualisieren commit admin-gruppe", en: "instance name demo version update commit admin group" },
+    keywords: { de: "instanz name demo version update aktualisieren commit admin-gruppe formatierungsleiste", en: "instance name demo version update commit admin group formatting toolbar" },
     entries: [
       { title: { de: "Name der Instanz", en: "Instance name" }, anchor: "instance" },
       { title: { de: "Öffentliche Demo", en: "Public demo" }, anchor: "instance" },
@@ -782,6 +782,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         title: { de: "Einstellungsstufe für neue Konten", en: "Settings level for new accounts" },
         keywords: { de: "stufe einsteiger normal experte standard einstellungen", en: "level beginner normal expert default settings" },
         anchor: "version",
+      },
+      {
+        title: { de: "Standard-Formatierungsleiste", en: "Default formatting toolbar" },
+        keywords: { de: "symbolleiste toolbar leiste schaltflächen reihenfolge gruppen trennlinie blöcke standard alle personen", en: "toolbar bar buttons order groups divider blocks default everyone" },
+        anchor: "toolbar-layout-default",
       },
     ],
   },

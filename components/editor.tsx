@@ -104,7 +104,7 @@ import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import { showsFormattingToolbar } from "@/lib/toolbar-pref";
 import { useToolbarLayout } from "@/lib/toolbar-layout-client";
-import { TOOLBAR_DIVIDER, isToolbarGroup, toolbarEntries, type GroupableItem, type ToolbarItem } from "@/lib/toolbar-layout";
+import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
@@ -253,6 +253,9 @@ import { PageLinkIcons } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { blockPaste, syncDomSelection } from "@/lib/block-paste";
+// Blocks of the toolbar (#292) that go in at the caret, not in a block of
+// their own: they belong in the sentence.
+const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
 // A touch screen as wide as a phone: where the toolbar docks at the bottom,
 // above the on-screen keyboard (app/globals.css, max-width: 767px).
 const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
@@ -2756,24 +2759,66 @@ export default function DocumentEditor({
                 dividers between groups (#292, lib/toolbar-layout.ts).
                 Some apply only to what is selected. */}
             {(() => {
-              const addBlockHere = (event?: { nativeEvent?: Event }) => {
+              // A new block below the current one (#261), not the current
+              // one turned into another ("Turn into" in the block menu
+              // does that); an empty paragraph is itself the place.
+              const placeNewBlock = () => {
                 if (!editor) return;
-                // A new block below the current one (#261), not the current
-                // one turned into another ("Turn into" in the block menu
-                // does that); an empty paragraph is itself the place.
                 const block = blockForInsert(editor.state);
                 const placed = block && editor.isEditable ? emptyBlockNear(editor.state, block) : null;
                 if (placed) editor.view.dispatch(placed.tr.setSelection(TextSelection.create(placed.tr.doc, placed.caret)).scrollIntoView());
+              };
+              const openSlash = (event?: { nativeEvent?: Event }, sub?: string) => {
+                if (!editor) return;
                 const pointer = event?.nativeEvent as PointerEvent | undefined;
                 setSlash({
                   from: editor.state.selection.from,
                   mode: "button",
                   query: "",
                   touch: pointer?.pointerType === "touch",
+                  sub: sub ?? null,
                 });
                 setSlashActive(0);
               };
-              const buttons: Record<ToolbarItem, () => ReactNode> = {
+              const addBlockHere = (event?: { nativeEvent?: Event }) => {
+                if (!editor) return;
+                placeNewBlock();
+                openSlash(event);
+              };
+              // A block of the "/" menu as a button of its own (#292): a
+              // click does what choosing it in the menu of "+" does – the
+              // block goes below the current one (mentions, fractions,
+              // footnotes and citations stay at the caret, they belong in
+              // the sentence); an entry with a second level (the callout
+              // kinds) opens that level there.
+              const commandOf = (block: ToolbarBlock) => commands.find((command) => command.id === slashIdOf(block));
+              const insertBlock = (block: ToolbarBlock, event?: { nativeEvent?: Event }) => {
+                const command = commandOf(block);
+                if (!editor || !command || command.disabled) return;
+                if (!BLOCKS_AT_CARET.has(block)) placeNewBlock();
+                if (command.children) return openSlash(event, command.id);
+                setSlashRecents(rememberSlashCommand(command.id));
+                editor.commands.focus();
+                command.run();
+              };
+              const blockButton = (block: ToolbarBlock) => {
+                const command = commandOf(block);
+                if (!command) return null;
+                const Icon = command.icon;
+                return (
+                  <button
+                    title={command.disabled ? `${command.name} – ${command.description}` : command.name}
+                    aria-label={command.name}
+                    aria-haspopup={command.children ? "dialog" : undefined}
+                    disabled={command.disabled}
+                    data-block={slashIdOf(block)}
+                    onClick={(event) => insertBlock(block, event)}
+                  >
+                    <Icon />
+                  </button>
+                );
+              };
+              const buttons: Record<ToolbarButton, () => ReactNode> = {
                 undo: () => (
                   <button
                     title={t("Rückgängig", "Undo")}
@@ -3072,7 +3117,9 @@ export default function DocumentEditor({
                 ),
               };
               const applies = (item: ToolbarItem) =>
-                item === "imageTools"
+                isToolbarBlock(item)
+                  ? !!commandOf(item)
+                  : item === "imageTools"
                   ? !!imageSelected
                   : item === "mediaWidth"
                     ? !!editor && selectedMediaWidth !== null
@@ -3081,7 +3128,7 @@ export default function DocumentEditor({
                       : true;
               // A group: one button opening a menu of its buttons.
               const chain = () => editor?.chain().focus();
-              const grouped: Record<GroupableItem, Omit<ToolbarGroupEntry, "key">> = {
+              const grouped: Record<GroupableButton, Omit<ToolbarGroupEntry, "key">> = {
                 undo: { label: t("Rückgängig", "Undo"), icon: <ArrowUUpLeft />, run: () => chain()?.undo().run() },
                 redo: { label: t("Wiederholen", "Redo"), icon: <ArrowUUpRight />, run: () => chain()?.redo().run() },
                 bold: { label: t("Fett", "Bold"), icon: <TextB />, run: () => chain()?.toggleBold().run(), active: !!editor?.isActive("bold") },
@@ -3111,6 +3158,12 @@ export default function DocumentEditor({
                 inlineMath: { label: t("Inline-Formel", "Inline formula"), icon: <FunctionIcon />, run: openInlineMath },
                 addBlock: { label: t("Block hinzufügen", "Add block"), icon: <Plus />, run: addBlockHere },
               };
+              const groupedOf = (item: GroupableItem): Omit<ToolbarGroupEntry, "key"> => {
+                if (!isToolbarBlock(item)) return grouped[item];
+                const command = commandOf(item);
+                const Icon = command?.icon ?? Plus;
+                return { label: command?.name ?? "", icon: <Icon />, run: () => insertBlock(item), disabled: !!command?.disabled };
+              };
               return toolbarEntries(layout, applies).map((entry, i) =>
                 entry === TOOLBAR_DIVIDER ? (
                   <span key={`divider-${i}`} className="toolbar-separator" role="separator" />
@@ -3118,11 +3171,11 @@ export default function DocumentEditor({
                   <ToolbarGroupMenu
                     key={entry.join("+")}
                     editor={editor}
-                    label={toolbarGroupLabel(entry, (item) => grouped[item].label, t)}
-                    entries={entry.map((item) => ({ key: item, ...grouped[item] }))}
+                    label={toolbarGroupLabel(entry, (item) => groupedOf(item).label, t)}
+                    entries={entry.map((item) => ({ key: item, ...groupedOf(item) }))}
                   />
                 ) : (
-                  <Fragment key={entry}>{buttons[entry]()}</Fragment>
+                  <Fragment key={entry}>{isToolbarBlock(entry) ? blockButton(entry) : buttons[entry]()}</Fragment>
                 ),
               );
             })()}

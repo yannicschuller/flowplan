@@ -4,7 +4,7 @@ import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
 import { setUserQuoteShortcut, userQuoteShortcut } from "./user-quote-shortcut";
 import { setUserFormattingToolbar, userFormattingToolbar } from "./user-formatting-toolbar";
-import { setUserToolbarLayout, userToolbarLayout } from "./user-toolbar-layout";
+import { setUserToolbarLayout, userToolbarLayoutState } from "./user-toolbar-layout";
 import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
@@ -382,7 +382,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // "Formatierungsleiste" (#235, lib/toolbar-pref.ts).
     formattingToolbar: await userFormattingToolbar(user.id),
     // "Formatierungsleiste anpassen" (#292, lib/toolbar-layout.ts).
-    toolbarLayout: await userToolbarLayout(user.id),
+    // The layout, the default it falls back to (the instance's, else the
+    // built-in one) and whether it is the person's own.
+    ...(await userToolbarLayoutState(user.id).then(({ layout, standard, custom }) => ({ toolbarLayout: layout, toolbarLayoutDefault: standard, toolbarLayoutCustom: custom }))),
     // "Animationen" (#260, lib/motion-pref.ts).
     motion: await userMotion(user.id),
     // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).

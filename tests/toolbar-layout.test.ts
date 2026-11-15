@@ -20,8 +20,8 @@ const items = (order: readonly (string | string[])[]) => order.flatMap((e) => (A
 
 test("the default lists every button once, in groups", () => {
   const layout = L.defaultToolbarLayout();
-  assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_ITEMS].sort());
-  assert.deepEqual(items(layout.order), [...L.TOOLBAR_ITEMS], "the default order is the item order");
+  assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_BUTTONS].sort());
+  assert.deepEqual(items(layout.order), [...L.TOOLBAR_BUTTONS], "the default order is the item order");
   assert.equal(layout.order.filter((e) => e === "|").length, 2);
   assert.deepEqual(layout.hidden, ["bulletList", "orderedList"], "the lists new in #292 start hidden: the toolbar stays as it was");
   assert.ok(L.isDefaultToolbarLayout(L.toolbarLayoutOf(null)));
@@ -41,7 +41,7 @@ test("a stored layout is read leniently: unknown and duplicate buttons dropped, 
   assert.equal(layout.order[layout.order.indexOf("italic") + 1], "underline");
   assert.notEqual(layout.order[layout.order.length - 1], "|");
   assert.ok(!layout.order.some((e, i) => e === "|" && layout.order[i + 1] === "|"), "never two dividers in a row");
-  assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_ITEMS].sort(), "every known button is in the order");
+  assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_BUTTONS].sort(), "every known button is in the order");
   assert.deepEqual(layout.hidden, ["italic", "bulletList", "orderedList"], "missing buttons the default hides start hidden");
 });
 
@@ -104,7 +104,7 @@ test("groups: read leniently, rendered as one entry, a button once across groups
     [["bulletList", "orderedList", "taskList"], "|", ["strike", "superscript"], "bold", "italic"],
     "unknown, ungroupable and repeated buttons leave a group; one left is a button",
   );
-  assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_ITEMS].sort());
+  assert.deepEqual([...items(layout.order)].sort(), [...L.TOOLBAR_BUTTONS].sort());
   assert.equal(layout.order.indexOf("color" as never) >= 0, true, "an ungroupable button is put back on its own");
   // A missing button follows the group holding its default predecessor.
   const at = L.entryIndexOf(layout.order, "subscript");
@@ -147,7 +147,7 @@ test("group edits: with the next, out of the group, within it, ungroup, presets"
   preset = L.applyGroupPreset(preset, "scripts");
   assert.ok(L.hasGroupPreset(preset, "scripts"));
   assert.equal(preset.order[preset.order.indexOf("underline") + 1].toString(), "strike,superscript,subscript", "where strikethrough was");
-  assert.deepEqual([...items(preset.order)].sort(), [...L.TOOLBAR_ITEMS].sort(), "nothing lost");
+  assert.deepEqual([...items(preset.order)].sort(), [...L.TOOLBAR_BUTTONS].sort(), "nothing lost");
   // A preset over an existing group takes its buttons out of it.
   const mixed = L.applyGroupPreset({ order: [["taskList", "bold"], "italic"], hidden: [] }, "lists");
   assert.deepEqual(mixed.order, [["bulletList", "orderedList", "taskList"], "bold", "italic"]);
@@ -198,7 +198,7 @@ test("each person saves a layout; it comes with the bootstrap, is validated, and
   const saved = (await command(anna, { action: "profile.toolbarLayout", toolbarLayout: mine })) as { toolbarLayout: { order: string[]; hidden: string[] } };
   assert.deepEqual(saved.toolbarLayout.order.slice(0, 3), ["bold", "|", "italic"]);
   assert.deepEqual(saved.toolbarLayout.hidden, ["undo", "bulletList", "orderedList"], "left out, the lists keep their default: hidden");
-  assert.equal(items(saved.toolbarLayout.order).length, L.TOOLBAR_ITEMS.length, "the rest at their default places");
+  assert.equal(items(saved.toolbarLayout.order).length, L.TOOLBAR_BUTTONS.length, "the rest at their default places");
   assert.deepEqual((await bootstrap(anna, wid)).toolbarLayout, saved.toolbarLayout);
   assert.ok(L.isDefaultToolbarLayout((await bootstrap(ben, wid)).toolbarLayout!), "only for that person");
   for (const bad of [undefined, "bold", { order: ["rocket"], hidden: [] }, { order: ["bold", "bold"], hidden: [] }, { order: [], hidden: ["x"] }, { order: Array(200).fill("|"), hidden: [] }])
