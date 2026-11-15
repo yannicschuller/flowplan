@@ -1,6 +1,6 @@
 ---
 name: design-review
-description: Look at Flowplan's UI the way a user sees it – screenshots of one area (desktop and phone, light and dark) from the UI gallery or, for the marketplace, website and admin, from Playwright – and review them for layout and design problems. Small fixes are made right away; bigger redesigns are only proposed. Use when the user types /design-review or asks to "die Oberfläche durchsehen", "Verbesserungsvorschläge fürs Design", "schau, was nicht gut aussieht".
+description: Look at Flowplan's UI the way a user sees it – screenshots of one area (desktop and phone, light and dark) from the UI gallery or, for the marketplace, website and admin, from Playwright – and review them for layout and design problems. The findings go to the maintainer first; only what he picks is built. Use when the user types /design-review or asks to "die Oberfläche durchsehen", "Verbesserungsvorschläge fürs Design", "schau, was nicht gut aussieht".
 ---
 
 # /design-review – look at the screens, fix what doesn't fit
@@ -52,18 +52,20 @@ For every screenshot, check and note what fails:
 
 Don't report taste – only what a user would notice as broken, inconsistent or hard to use.
 
-## 4. Report and fix
+## 4. Ask first, then fix
 
-Write a short German list, most important first: screen (scene id or path, variant), problem, proposal. Then:
+**Nothing is changed before Yannic has said what he thinks of the findings** – small fixes included.
 
-- **Small and clear** (spacing, alignment, width, an empty state, a missing translation, a dark-mode colour): fix it right away in the matching repo. Follow its rules (no inline styles – strict CSP; texts German + English via `t()`; French with "vous"). Take the screenshot again and look at it before/after. Run the repo's checks (`/ship` lists them).
-- **Bigger** (a page laid out anew, a different navigation, new components): only propose it, with a short sketch of the new layout, and ask Yannic with `AskUserQuestion` before building. Never redesign a whole page unasked.
+1. Write a short German list, most important first: screen (scene id or path, variant), problem, proposal, rough size (small / medium / redesign). Attach or point to the screenshots that show it.
+2. Ask him with `AskUserQuestion` (multiSelect) which proposals to build – group them sensibly, max 4 questions; for a redesign add a short sketch of the new layout and offer alternatives. Also offer "none of these" and let him add notes.
+3. Build only what he chose, as he chose it. Follow the repo's rules (no inline styles – strict CSP; texts German + English via `t()`; French with "vous"). Take the screenshot again and look at it before/after. Run the repo's checks (`/ship` lists them).
+4. Findings he declined: don't build them; mention them once in the report as "nicht umgesetzt" so the next run doesn't propose them again unchanged (the rotation commit message lists them).
 - **Visual tests:** a fix that changes screens covered by `tests/visual` needs new baselines – run `visual.yml` with `update=true` after pushing, then fast-forward `origin/visual-baselines` into main (as in `/issue`).
 - Commit fixes with the subject `Design review: <group or page> – <what>` (that's what the rotation in step 1 looks for) and the trailers from CLAUDE.md, then ship them (`/ship`).
 
 ## 5. Report (German, short)
 
-Area reviewed, the findings with what was fixed and what is only proposed, before/after for the fixes (one line each), checks and runs, open decisions for Yannic.
+Area reviewed, what he chose and what was built (before/after, one line each), what he declined, checks and runs, open points.
 
 ## Rules
 
