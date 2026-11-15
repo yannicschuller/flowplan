@@ -17,6 +17,7 @@ import {
   Check,
   CheckCircle,
   CheckSquare,
+  CheckSquareOffset,
   Code,
   Columns,
   Tabs as TabsIcon,
@@ -33,6 +34,7 @@ import {
   Scissors,
   Smiley,
   SmileyXEyes,
+  Square,
   Sparkle,
   Subtitles,
   SubtitlesSlash,
@@ -85,6 +87,7 @@ import {
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { nestBlocks } from "@/lib/toggle-nesting";
 import { canShiftBlocks, followBlocks, pressTab, textSelectionOver } from "@/lib/block-indent";
+import { blockMenuTasks, bulkTasks, canBulkTasks, type BulkTaskAction } from "@/lib/task-bulk";
 import { isToggleClosed, markToggleScope, toggleKey } from "@/lib/toggle-view";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
 import { dropContainer } from "@/lib/drop-container";
@@ -1779,6 +1782,25 @@ export function DocumentBlockControls({
       items.push({ icon: <ArrowsClockwise />, label: t("Umwandeln in …", "Turn into …"), keywords: "turn into convert umwandeln", view: "turn" });
       views.turn = { title: t("Umwandeln in …", "Turn into …"), items: turns };
     }
+    // All tasks at once (#309): the checklist of a task, or the tasks in
+    // the chosen blocks – back to open (a packing list used again) or done.
+    const taskPositions = editor.isEditable ? blockMenuTasks(editor.state.doc, selected.current) : [];
+    if (taskPositions.length) {
+      items.push({
+        icon: <Square />,
+        label: t("Alle als offen markieren", "Mark all as open"),
+        keywords: "reset uncheck untick open all tasks zurücksetzen aufgaben",
+        disabled: !canBulkTasks(editor.state.doc, taskPositions, "open"),
+        run: () => setAllTasks(taskPositions, "open"),
+      });
+      items.push({
+        icon: <CheckSquareOffset />,
+        label: t("Alle abhaken", "Check all"),
+        keywords: "check tick done complete all tasks erledigt aufgaben",
+        disabled: !canBulkTasks(editor.state.doc, taskPositions, "done"),
+        run: () => setAllTasks(taskPositions, "done"),
+      });
+    }
     // Block colours (#238): text and background, for the blocks that take one.
     if (chosenBlocks.length && chosenBlocks.every((b) => colorable(b.node))) {
       items.push({ icon: <Palette />, label: t("Farbe", "Colour"), keywords: "colour color farbe background hintergrund", view: "blockColor" });
@@ -2073,6 +2095,13 @@ export function DocumentBlockControls({
     const node = editor.state.doc.nodeAt(pos);
     if (node?.type.name !== "callout") return;
     editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, icon }));
+    setTick((t) => t + 1);
+  }
+  function setAllTasks(positions: number[], action: BulkTaskAction) {
+    if (!editor?.isEditable) return;
+    const tr = bulkTasks(editor.state, positions, action);
+    if (!tr) return;
+    editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
     setTick((t) => t + 1);
   }
   function setDirection(turnable: DocumentBlock[], direction: BlockDirection | null) {

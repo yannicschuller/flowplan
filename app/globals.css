@@ -19780,6 +19780,15 @@ h3 .block-reactions {
   color: var(--secondary);
   text-align: left;
 }
+/* All tasks of a checklist at once (#309), greyed out when nothing would change. */
+.text-menu-tasks button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.text-menu-tasks button:disabled:hover {
+  background: none;
+  color: var(--secondary);
+}
 /* The desktop app's spelling suggestions, first in the right-click menu. */
 .text-menu-spelling {
   border-top: 0;
