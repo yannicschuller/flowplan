@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity } from "../lib/types";
@@ -68,6 +68,22 @@ test("inheritance: no level is beginner, entries take their section's", () => {
   assert.equal(anchorLevel(section("appearance"), null), null);
   // Several entries on one anchor: the lowest.
   assert.equal(anchorLevel({ level: "normal", entries: [{ title: { de: "a", en: "a" }, anchor: "x", level: "expert" }, { title: { de: "b", en: "b" }, anchor: "x" }] }, "x"), "normal");
+});
+
+test("every card in Settings shows its level's mark", () => {
+  // SettingGroup marks its heading with its own level, else its parent's or
+  // its section's (components/settings-ui.tsx) – not only cards with a
+  // registry entry, so the marks are consistent. Cards are SettingGroups: no
+  // panel builds its own "setting-group" (the administration has no levels).
+  const ui = readFileSync("components/settings-ui.tsx", "utf8");
+  const group = ui.slice(ui.indexOf("export function SettingGroup"), ui.indexOf("export function DangerZone"));
+  assert.match(group, /\{gate\.level && <LevelDot level=\{gate\.level\} \/>\}/, "the card shows the mark of the level it resolves to");
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? files(join(dir, d.name)) : d.name.endsWith(".tsx") ? [join(dir, d.name)] : []));
+  for (const file of files("components")) {
+    if (file === join("components", "settings-ui.tsx") || file.startsWith(join("components", "settings", "admin"))) continue;
+    assert.doesNotMatch(readFileSync(file, "utf8"), /className=["{`][^"}`]*(?<![\w-])setting-group(?![\w-])/, `${file} builds a card without SettingGroup`);
+  }
 });
 
 test("filtering: a person sees the settings up to their level", () => {

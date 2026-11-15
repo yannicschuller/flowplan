@@ -7,6 +7,7 @@ import { JournalDaysPanel } from "./journal-days-settings";
 import { JournalAiSummary } from "./journal-ai-summary";
 import { useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { useT } from "./i18n";
+import { Select } from "./select";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -326,7 +327,7 @@ export function JournalSettingsDialog({
                 "Where the open tasks of the day before go in a new day. If the template no longer has the heading, they go after the template.",
               )}
             </small>
-            <select value={carriedValue} disabled={busy} onChange={(e) => void setCarried(e.target.value)}>
+            <Select value={carriedValue} disabled={busy} onChange={(e) => void setCarried(e.target.value)}>
               <option value="top">{t("Oben", "At the top")}</option>
               <option value="end">{t("Nach der Vorlage", "After the template")}</option>
               {headings.map((text) => (
@@ -339,7 +340,7 @@ export function JournalSettingsDialog({
                   {t(`Unter „${carriedHeading}“ (nicht in der Vorlage – nach der Vorlage)`, `Below “${carriedHeading}” (not in the template – after the template)`)}
                 </option>
               )}
-            </select>
+            </Select>
           </label>
           <strong className="js-label">{t("Fertige Vorlagen", "Ready-made templates")}</strong>
           <div className="journal-presets">

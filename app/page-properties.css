@@ -716,6 +716,39 @@ button.page-tag:focus-visible,
   flex: 1;
   max-width: 280px;
 }
+/* Phones: the name takes the whole line, the scope and the button below. */
+@media (max-width: 700px) {
+  .tag-settings-add {
+    flex-wrap: wrap;
+  }
+  .tag-settings-add input {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .tag-settings-add .fp-select {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .tag-settings-add .button {
+    flex: none;
+  }
+}
+@container main (max-width: 700px) {
+  .tag-settings-add {
+    flex-wrap: wrap;
+  }
+  .tag-settings-add input {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .tag-settings-add .fp-select {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .tag-settings-add .button {
+    flex: none;
+  }
+}
 .ws-item.tag-settings-row {
   display: flex;
   flex-wrap: wrap;

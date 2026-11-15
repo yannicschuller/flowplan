@@ -14438,6 +14438,38 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .settings-empty > :last-child:not(div, span) {
   margin-left: auto;
 }
+/* Phones: the action goes below the text (in line with it, at its own
+   width) instead of squeezing it into a narrow column. */
+@media (max-width: 700px) {
+  .settings-empty:has(> :last-child:not(div, span)) {
+    flex-wrap: wrap;
+  }
+  .settings-empty:has(> :last-child:not(div, span)) > div {
+    flex: 1 1 calc(100% - 48px);
+    min-width: 0;
+  }
+  .settings-empty > :last-child:not(div, span) {
+    margin-left: 0;
+  }
+  .settings-empty > .settings-empty-icon ~ :last-child:not(div, span) {
+    margin-left: 48px;
+  }
+}
+@container main (max-width: 700px) {
+  .settings-empty:has(> :last-child:not(div, span)) {
+    flex-wrap: wrap;
+  }
+  .settings-empty:has(> :last-child:not(div, span)) > div {
+    flex: 1 1 calc(100% - 48px);
+    min-width: 0;
+  }
+  .settings-empty > :last-child:not(div, span) {
+    margin-left: 0;
+  }
+  .settings-empty > .settings-empty-icon ~ :last-child:not(div, span) {
+    margin-left: 48px;
+  }
+}
 .responsive-table {
   width: 100%;
   border-collapse: collapse;
@@ -35705,6 +35737,10 @@ label.ws-search input {
   .my-security-checks li {
     flex-wrap: wrap;
   }
+  /* The text keeps the line beside the icon; the button goes below it. */
+  .my-security-checks li > div {
+    flex-basis: calc(100% - 34px);
+  }
   .my-security-checks .button {
     margin-left: 34px;
   }
@@ -37188,6 +37224,15 @@ html.native-app body {
   background: var(--bg);
   color: var(--text);
   font: inherit;
+}
+/* Settings → Besprechungen: transcription not set up, above the cards. */
+.meetings-note {
+  margin: 0 0 22px;
+  line-height: 1.5;
+}
+.meetings-note > svg {
+  flex: none;
+  color: var(--blue);
 }
 .meeting-settings label {
   display: grid;

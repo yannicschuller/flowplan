@@ -5,6 +5,7 @@
 // glossary the speech recognition gets (names, acronyms).
 // Members read, owners change.
 import { useEffect, useState } from "react";
+import { Info } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
 import { SettingGroup, SettingRow, SwitchRow } from "../../settings-ui";
 import { Select } from "../../select";
@@ -47,11 +48,14 @@ export default function MeetingsSection() {
   return (
     <>
       {!settings.transcription && (
-        <p className="setting-note">
-          {t(
-            "Transkription ist auf diesem Server nicht eingerichtet (WHISPER_URL). Besprechungsblöcke funktionieren dann nur mit eigener Agenda.",
-            "Transcription is not set up on this server (WHISPER_URL). Meeting blocks then only work with your own agenda.",
-          )}
+        <p className="callout meetings-note" role="note">
+          <Info size={18} aria-hidden />
+          <span>
+            {t(
+              "Transkription ist auf diesem Server nicht eingerichtet (WHISPER_URL). Besprechungsblöcke funktionieren dann nur mit eigener Agenda.",
+              "Transcription is not set up on this server (WHISPER_URL). Meeting blocks then only work with your own agenda.",
+            )}
+          </span>
         </p>
       )}
       <SettingGroup
