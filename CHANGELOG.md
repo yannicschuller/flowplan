@@ -2,6 +2,87 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.9.7 – 2026-11-15
+
+### Security
+
+- The image is based on Debian 13 (trixie) and no longer contains curl; the health check for Coolify works without it.
+- SMTP and LDAP: an own certificate authority for internal mail servers, a name to check certificates against, and an explicit opt-out of verification with warnings ([#286](https://github.com/yannicschuller/flowplan/issues/286)).
+
+### New
+
+- Settings levels Beginner, Normal and Expert: settings above your level are hidden, the search still finds everything. Admins set the level for new accounts and per person ([#294](https://github.com/yannicschuller/flowplan/issues/294)).
+- A new onboarding for moving over: "Where are you coming from?" with export guides and import, "What it's called here", a "First steps" checklist, a sample space, a setup overview for admins and the offer to work offline – per device ([#295](https://github.com/yannicschuller/flowplan/issues/295)).
+- Notion: import straight through the Notion API with an integration token; databases from the export come over more completely with properties and connected relations. Every import writes an import report.
+- Customize the formatting toolbar: hide, reorder and group buttons ([#292](https://github.com/yannicschuller/flowplan/issues/292)).
+- Quick capture as the start screen on phones.
+- Journal: create entries for earlier days from the day picker ([#288](https://github.com/yannicschuller/flowplan/issues/288)).
+- AI settings: "Fetch models" lists the provider's models ([#290](https://github.com/yannicschuller/flowplan/issues/290)).
+- Administration → Users shows the groups from the SSO provider at the last sign-in – to check the admin group ([#289](https://github.com/yannicschuller/flowplan/issues/289)).
+- Admins set "What's new after updates" per person ([#223](https://github.com/yannicschuller/flowplan/issues/223)).
+- Swiping from the left edge opens the sidebar over the page – on touch devices and in the Android app ([#285](https://github.com/yannicschuller/flowplan/issues/285)).
+
+### Improved
+
+- Offline shows as a small icon on the right of the top bar instead of a banner ([#296](https://github.com/yannicschuller/flowplan/issues/296)).
+- Phones: "New page" is a round "+", counters in the tab bar are centred ([#297](https://github.com/yannicschuller/flowplan/issues/297)).
+- The header row of tables stays at the top while scrolling ([#287](https://github.com/yannicschuller/flowplan/issues/287)).
+- Published pages follow the link arrow setting ([#217](https://github.com/yannicschuller/flowplan/issues/217)).
+- The text style button reads "Aa" and is as wide as the others ([#293](https://github.com/yannicschuller/flowplan/issues/293)).
+
+### Bug fixes
+
+- The block menu from the toolbar's "+" scrolls on the iPad ([#298](https://github.com/yannicschuller/flowplan/issues/298)).
+- The tab bar counts only visible tabs ([#291](https://github.com/yannicschuller/flowplan/issues/291)).
+- A server restart behind a proxy no longer leaves the page or drops pending changes ([#284](https://github.com/yannicschuller/flowplan/issues/284)).
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.9.7 ([ff3380e](https://github.com/yannicschuller/flowplan/commit/ff3380e1c9a3ea352611961d91d9d0b82a894fe3))
+- Quality budgets: database 1720 KB, workflow 1860 KB for 0.9.7's workspace bundle ([8396634](https://github.com/yannicschuller/flowplan/commit/83966348d98604b04b4593b2fcfe5f3682837664))
+- Visual baselines from ubuntu-latest ([9b36a8d](https://github.com/yannicschuller/flowplan/commit/9b36a8dc227c1098ade3424f929a87f9963d4f71))
+- Glossary: Notion relations are connected by the import; help docs for 0.9.7 ([d61be96](https://github.com/yannicschuller/flowplan/commit/d61be96e45a88cbe4ed8669b4316c076f82e0774))
+- Onboarding's goal suggests a settings level; specs start with the offline card answered ([e372c78](https://github.com/yannicschuller/flowplan/commit/e372c7881ae90589f2d53c106e4552acef373fe8))
+- Settings levels per person: Einsteiger, Normal, Experte (#294) ([36b4062](https://github.com/yannicschuller/flowplan/commit/36b4062a1acccd3dd5559350c1e3fd35921964ce))
+- Block menu from the toolbar's "+" scrolls by touch on iPad (#298) ([bbb2446](https://github.com/yannicschuller/flowplan/commit/bbb24466bd838d310b493344aba29424d6c27007))
+- Phone tab bar: New page is only the round "+", without a label (#297) ([27e74d7](https://github.com/yannicschuller/flowplan/commit/27e74d7dbade6523fa935c8cc04885e7913e1bf1))
+- Onboarding: moving from Notion & co., goals, checklist, admin setup, offline per device (#295) ([3d3bacf](https://github.com/yannicschuller/flowplan/commit/3d3bacf4177caa1dba4dd2bf700689f7a7505cb4))
+- Onboarding: checklist "Erste Schritte", sample space and admin setup status (server) ([906b56d](https://github.com/yannicschuller/flowplan/commit/906b56d301765a9aa06f9a2395044a7e812c8590))
+- Phone tab bar: round "+" for New page, centred counter badges (#297) ([0ec3a0f](https://github.com/yannicschuller/flowplan/commit/0ec3a0f62778d6b978e3e0474034e829d90e573f))
+- Offline icon on the right of the top bar, not in its middle (#296) ([46ac657](https://github.com/yannicschuller/flowplan/commit/46ac6570827e2ab7e3e911c9fcf0a233171012c7))
+- Offline as a small icon in the top bar instead of a banner (#296) ([8bd260f](https://github.com/yannicschuller/flowplan/commit/8bd260f8f13b233ccf23dc31deb7d85c33fb8ee4))
+- Quick capture as the start screen on phones ([c2964eb](https://github.com/yannicschuller/flowplan/commit/c2964eb99a603717a861651a68a44c7eed68823e))
+- Import from Notion through its API with an integration token ([3edcaa5](https://github.com/yannicschuller/flowplan/commit/3edcaa53645f2a6f52e368ccd9c0601e4b23401e))
+- Imports: Notion databases complete from the export, an import report for every importer ([568ab33](https://github.com/yannicschuller/flowplan/commit/568ab33405b6c50087cd728192b43fdc8379e975))
+- Postgres schema: users.toolbar_layout (#292) ([8a714c8](https://github.com/yannicschuller/flowplan/commit/8a714c89a5818530dfd08161487959c5346f82f5))
+- Toolbar: the text style button is as wide as the other buttons (#293) ([4e14923](https://github.com/yannicschuller/flowplan/commit/4e14923ed2e11899cf410c2bed12a663f7dc6a97))
+- Customize the formatting toolbar: choose, reorder and group buttons (#292) ([c0d6701](https://github.com/yannicschuller/flowplan/commit/c0d6701aa906d63a76d23dd015754e24b3d09ff7))
+- Comment wording ([9d0c021](https://github.com/yannicschuller/flowplan/commit/9d0c021124f1a2bcbfcf2661ee4935f43a540f77))
+- Edge swipe report says the choice is offered on Android (#285) ([b15b0a9](https://github.com/yannicschuller/flowplan/commit/b15b0a920ca94bf4b22e44d75aebce82ffb484b4))
+- "Swipe from the left edge" in the Android app too (#285) ([3834af4](https://github.com/yannicschuller/flowplan/commit/3834af47a16a17d906005238111b6108e5096604))
+- Admins set "Neuigkeiten nach Updates" per person (#223) ([885a08a](https://github.com/yannicschuller/flowplan/commit/885a08abc6aa0491cc2376aaa7a536bd1138dfa6))
+- Journal: create entries for earlier days from the day picker (#288) ([0504075](https://github.com/yannicschuller/flowplan/commit/05040750996cc704b58f9f4997abb74c918a44c3))
+- Administration → Users: groups from the SSO provider at the last sign-in (#289) ([29c4aec](https://github.com/yannicschuller/flowplan/commit/29c4aec353896523434e8065a7012161dd80fed1))
+- Tab bar: count only the frames on screen (#291) ([6504420](https://github.com/yannicschuller/flowplan/commit/650442067afc13c5886023b59817d3ad6d22c437))
+- Published pages follow the publisher's link arrow setting (#217) ([955a878](https://github.com/yannicschuller/flowplan/commit/955a87817d4002011ac8ae5dc89420f309d338e2))
+- AI settings: "Fetch models" lists the provider's models as typed (#290) ([2907eda](https://github.com/yannicschuller/flowplan/commit/2907edac0871d62baffc050ed3b4e834d13deb82))
+- Help docs: sticky table header (#287) ([71c8739](https://github.com/yannicschuller/flowplan/commit/71c87396dd42f7765cfe21fd0d7f6ae8ef4ae640))
+- frame-tabs spec: wait for the new tab's title before renaming ([249bc88](https://github.com/yannicschuller/flowplan/commit/249bc88d71e98ebf982272cf42b3ebde07e3dbd8))
+- Database tables: the header row sticks to the top while scrolling (#287) ([2256c5b](https://github.com/yannicschuller/flowplan/commit/2256c5b6a74f6cc11049f2a19941caef5e2a285d))
+- Image: no curl/libcurl – a health-check stand-in for Coolify's HTTP check ([f4d0a55](https://github.com/yannicschuller/flowplan/commit/f4d0a55b99c98d0fc47949519b6edaffafe586b4))
+- Image: Debian 13 (trixie) instead of 12; the scan also lists critical findings without a fix ([cb3cceb](https://github.com/yannicschuller/flowplan/commit/cb3cceb15837dbcfa68b286d65d97ab221f95bc7))
+- Help docs: TLS options for SMTP and LDAP (#286) ([49ad1c2](https://github.com/yannicschuller/flowplan/commit/49ad1c2a8257f3d5f3b4e80cf9a8f457d4609ab3))
+- SMTP/LDAP: name to check certificates against, explicit opt-out of verification with warnings (#286) ([201c368](https://github.com/yannicschuller/flowplan/commit/201c368c8ddd539b0c2db85675e6b6db2480294d))
+- SMTP: an own CA for internal mail servers (SMTP_TLS_CA); certificate errors say where the CA goes (#286) ([a01bcb4](https://github.com/yannicschuller/flowplan/commit/a01bcb4e273d404f9d129e86ee82e9023c289b4b))
+- Visual baselines from ubuntu-latest ([cd1d26f](https://github.com/yannicschuller/flowplan/commit/cd1d26f384e9cbe6cbbfa2d9ecf0470eebe10880))
+- Help docs: the swipe from the left edge (#285) ([12aeca1](https://github.com/yannicschuller/flowplan/commit/12aeca1f6344b486e3f62f290df13a3aa94f1132))
+- ipad-app spec: the app's own tabs (#279) are offered; no browser tab ([e188fce](https://github.com/yannicschuller/flowplan/commit/e188fceddd0cbcd8ba03c98c94471f9894007225))
+- Touch: the swipe from the left edge opens the sidebar over the page (#285) ([96189e0](https://github.com/yannicschuller/flowplan/commit/96189e07f03785ab49bad17be03c74549db3b173))
+- Server restart: a proxy's 404 no longer leaves the page or drops queued changes (#284) ([ebb1d99](https://github.com/yannicschuller/flowplan/commit/ebb1d992e076b8ef2cfa30528cd97aeae8bd3a6c))
+
+</details>
+
 ## v0.9.6 – 2026-11-14
 
 ### Security
