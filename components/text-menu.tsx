@@ -41,6 +41,7 @@ import {
   TextHTwo,
   TextHThree,
   ListBullets,
+  TreeView,
   ListNumbers,
   CheckSquare,
   Quotes,
@@ -745,7 +746,7 @@ export function TextMenu({
                     tools.suggesting,
                   )}
                   {subItem(t("Autoren anzeigen", "Show authors"), <UsersThree size={16} />, () => tools.setAuthors(!tools.authors), tools.authors)}
-                  {subItem(t("Inhaltsverzeichnis", "Table of contents"), <ListBullets size={16} />, () => tools.outline())}
+                  {subItem(t("Inhaltsverzeichnis", "Table of contents"), <TreeView size={16} />, () => tools.outline())}
                 </>
               ),
             })}

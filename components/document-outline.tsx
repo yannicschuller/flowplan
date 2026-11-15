@@ -9,7 +9,7 @@
 // on a heading, Escape or a click elsewhere (useOutline).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { ArrowsInLineVertical, ArrowsOutLineVertical, Link as LinkIcon, ListBullets, X } from "@phosphor-icons/react";
+import { ArrowsInLineVertical, ArrowsOutLineVertical, Link as LinkIcon, TreeView, X } from "@phosphor-icons/react";
 import { setAllFolded } from "@/lib/heading-folds-plugin";
 import { useT } from "./i18n";
 import { reveal } from "@/lib/motion";
@@ -270,7 +270,7 @@ export function DocumentOutline({
     >
       <div className="document-outline-head">
         <strong>
-          <ListBullets aria-hidden /> {t("Inhalt", "Contents")}
+          <TreeView aria-hidden /> {t("Inhalt", "Contents")}
         </strong>
         {editor && headings.length > 0 && (
           <span className="document-outline-folds">
@@ -373,7 +373,7 @@ export function OutlineToggle({
       }
       onClick={onToggle}
     >
-      <ListBullets size={16} aria-hidden />
+      <TreeView size={16} aria-hidden />
       {count > 0 && <span>{count}</span>}
     </button>
   );
