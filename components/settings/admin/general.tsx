@@ -1,7 +1,8 @@
 "use client";
 // Administration → Instanz: the instance's name and public demo, the running
-// version and whether a newer one is out, and what "Neuigkeiten nach
-// Updates" new accounts start with (#223). The other instance settings live
+// version and whether a newer one is out, what "Neuigkeiten nach
+// Updates" new accounts start with (#223) and the default formatting
+// toolbar (#292). The other instance settings live
 // where they belong: registration and two-factor under Anmeldung & SSO,
 // limits under Grenzen & Aufbewahrung, backups under Speicher & Sicherung,
 // the notice under Wartung & Hinweise, extensions and domains under
@@ -14,6 +15,7 @@ import { SettingGroup, SettingRow } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, InstanceSelect, InstanceSwitch, InstanceText, useDocs } from "./parts";
+import { InstanceToolbarLayout } from "./toolbar-layout-default";
 
 export default function GeneralSection() {
   const t = useT();
@@ -149,6 +151,10 @@ export default function GeneralSection() {
             { value: "expert", label: t("Experte", "Expert") },
           ]}
         />
+      </SettingGroup>
+      {/* The formatting toolbar of everyone without their own (#292). */}
+      <SettingGroup id="editor" title={t("Editor", "Editor")}>
+        <InstanceToolbarLayout />
       </SettingGroup>
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>

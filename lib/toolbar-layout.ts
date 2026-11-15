@@ -15,10 +15,15 @@ import { z } from "zod";
 // (after the button they follow by default), shown unless the default
 // hides them – never hidden without a choice.
 
+// An administrator may set a default for everyone without a layout of
+// their own (Administration → Instanz, instance setting
+// toolbarLayoutDefault, null = the built-in default below); a person's own
+// layout wins, "Zurücksetzen" goes back to the instance's default.
+//
 // Every button of the toolbar, in the default order. Some only show while
 // they apply (an image, a video or a task is selected); "Hide keyboard" on
 // phones is not part of it and always stays at the end.
-export const TOOLBAR_ITEMS = [
+export const TOOLBAR_BUTTONS = [
   "undo",
   "redo",
   "imageTools",
@@ -48,16 +53,70 @@ export const TOOLBAR_ITEMS = [
   "inlineMath",
   "addBlock",
 ] as const;
+export type ToolbarButton = (typeof TOOLBAR_BUTTONS)[number];
+// The blocks of the "/" menu (components/editor.tsx, `commands`) as buttons
+// of their own: "block:" and the slash entry's id. A click inserts the
+// block as choosing it in the menu does (the callout opens its kinds).
+// They are not in the toolbar until someone adds one: a stored layout
+// without them stays as it is, they are never put back at a default place,
+// and one taken out again leaves the order. Entries that are buttons
+// already (task, bulleted and numbered list, spoiler, inline formula) and
+// the blocks of extensions (they differ per instance) are not among them.
+export const TOOLBAR_BLOCKS = [
+  "block:ai",
+  "block:text",
+  "block:h1",
+  "block:h2",
+  "block:h3",
+  "block:h4",
+  "block:quote",
+  "block:divider",
+  "block:page-break",
+  "block:citation",
+  "block:bibliography",
+  "block:callout",
+  "block:toggle",
+  "block:code",
+  "block:table",
+  "block:columns",
+  "block:tabs",
+  "block:footnote",
+  "block:file",
+  "block:embed",
+  "block:mermaid",
+  "block:drawio",
+  "block:draw",
+  "block:whiteboard",
+  "block:meet",
+  "block:voice",
+  "block:scan",
+  "block:math",
+  "block:plot",
+  "block:fraction",
+  "block:metric",
+  "block:dashboard",
+  "block:mention",
+  "block:linked-database",
+  "block:synced",
+  "block:synced-insert",
+  "block:workflow-button",
+] as const;
+export type ToolbarBlock = (typeof TOOLBAR_BLOCKS)[number];
+export const TOOLBAR_ITEMS = [...TOOLBAR_BUTTONS, ...TOOLBAR_BLOCKS] as const;
 export type ToolbarItem = (typeof TOOLBAR_ITEMS)[number];
+const blocks = new Set<string>(TOOLBAR_BLOCKS);
+export const isToolbarBlock = (value: unknown): value is ToolbarBlock => typeof value === "string" && blocks.has(value);
+// The id of the "/" menu entry a block button stands for.
+export const slashIdOf = (block: ToolbarBlock) => block.slice("block:".length);
 export const TOOLBAR_DIVIDER = "|";
 export type ToolbarDivider = typeof TOOLBAR_DIVIDER;
 
-// Buttons that can share a group's menu: plain actions and toggles. Menus
-// of their own (colour, text style, alignment, media width), the image
-// tools (two buttons), the due date (it opens a picker at itself) and the
-// table of contents (it toggles a panel anchored to its button) stay
-// buttons of their own.
-export const GROUPABLE_ITEMS = [
+// Buttons that can share a group's menu: plain actions and toggles, and
+// every block. Menus of their own (colour, text style, alignment, media
+// width), the image tools (two buttons), the due date (it opens a picker at
+// itself) and the table of contents (it toggles a panel anchored to its
+// button) stay buttons of their own.
+export const GROUPABLE_BUTTONS = [
   "undo",
   "redo",
   "bold",
@@ -79,7 +138,9 @@ export const GROUPABLE_ITEMS = [
   "blockDown",
   "inlineMath",
   "addBlock",
-] as const satisfies readonly ToolbarItem[];
+] as const satisfies readonly ToolbarButton[];
+export type GroupableButton = (typeof GROUPABLE_BUTTONS)[number];
+export const GROUPABLE_ITEMS = [...GROUPABLE_BUTTONS, ...TOOLBAR_BLOCKS] as const;
 export type GroupableItem = (typeof GROUPABLE_ITEMS)[number];
 export type ToolbarGroup = GroupableItem[];
 export type ToolbarEntry = ToolbarItem | ToolbarDivider | ToolbarGroup;
@@ -186,16 +247,21 @@ export function entryIndexOf(order: readonly ToolbarEntry[], item: ToolbarItem):
 // its default place – right after the entry holding the nearest button
 // that precedes it by default, or at the start – hidden only if the
 // default hides it. Anything that is not a layout is the default.
-export function toolbarLayoutOf(value: unknown): ToolbarLayout {
+// `fallback` is what applies otherwise (the instance's default).
+export function toolbarLayoutOf(value: unknown, fallback: ToolbarLayout = defaultToolbarLayout()): ToolbarLayout {
+  return parsedToolbarLayout(value) ?? fallback;
+}
+// The same, null for anything that is not a layout.
+export function parsedToolbarLayout(value: unknown): ToolbarLayout | null {
   let raw = value;
   if (typeof raw === "string") {
     try {
       raw = JSON.parse(raw);
     } catch {
-      return defaultToolbarLayout();
+      return null;
     }
   }
-  if (!raw || typeof raw !== "object" || !Array.isArray((raw as { order?: unknown }).order)) return defaultToolbarLayout();
+  if (!raw || typeof raw !== "object" || !Array.isArray((raw as { order?: unknown }).order)) return null;
   const seen = new Set<ToolbarItem>();
   const order: ToolbarEntry[] = [];
   for (const entry of (raw as { order: unknown[] }).order.slice(0, TOOLBAR_ORDER_MAX * 2)) {
@@ -216,11 +282,18 @@ export function toolbarLayoutOf(value: unknown): ToolbarLayout {
   }
   const hiddenRaw = (raw as { hidden?: unknown }).hidden;
   const hidden = new Set<ToolbarItem>(Array.isArray(hiddenRaw) ? TOOLBAR_ITEMS.filter((item) => hiddenRaw.includes(item)) : []);
-  TOOLBAR_ITEMS.forEach((item, index) => {
+  // A hidden block of its own is out of the toolbar: it leaves the order
+  // (a hidden block in a group keeps its place there).
+  for (let i = order.length - 1; i >= 0; i--) {
+    const entry = order[i];
+    if (isToolbarBlock(entry) && hidden.has(entry)) order.splice(i, 1);
+  }
+  for (const item of hidden) if (isToolbarBlock(item) && entryIndexOf(order, item) < 0) hidden.delete(item);
+  TOOLBAR_BUTTONS.forEach((item, index) => {
     if (seen.has(item)) return;
     let at = 0;
     for (let i = index - 1; i >= 0; i--) {
-      const before = entryIndexOf(order, TOOLBAR_ITEMS[i]);
+      const before = entryIndexOf(order, TOOLBAR_BUTTONS[i]);
       if (before >= 0) {
         at = before + 1;
         break;
@@ -283,10 +356,27 @@ export function removeToolbarEntry(layout: ToolbarLayout, index: number): Toolba
   if (layout.order[index] !== TOOLBAR_DIVIDER) return layout;
   return { ...layout, order: layout.order.filter((_, i) => i !== index) };
 }
+// A block not in the toolbar yet is added at its end; one of its own taken
+// out leaves the order again (back among the blocks of the settings).
 export function setToolbarItemShown(layout: ToolbarLayout, item: ToolbarItem, shown: boolean): ToolbarLayout {
   const hidden = layout.hidden.filter((h) => h !== item);
+  const at = entryIndexOf(layout.order, item);
+  if (isToolbarBlock(item)) {
+    if (shown && at < 0) return { order: [...layout.order, item], hidden };
+    if (!shown && layout.order[at] === item) return { order: tidy(layout.order.filter((_, i) => i !== at)), hidden };
+  }
   if (!shown) hidden.push(item);
   return { ...layout, hidden: TOOLBAR_ITEMS.filter((i) => hidden.includes(i)) };
+}
+// The blocks not in the toolbar: what the settings offer to add.
+export function blocksOutside(layout: ToolbarLayout): ToolbarBlock[] {
+  return TOOLBAR_BLOCKS.filter((block) => entryIndexOf(layout.order, block) < 0);
+}
+// Where a divider may go: after every entry but the last, unless one is
+// already next to it there.
+export function dividerPlaces(layout: ToolbarLayout): number[] {
+  const { order } = layout;
+  return order.flatMap((entry, i) => (i < order.length - 1 && entry !== TOOLBAR_DIVIDER && order[i + 1] !== TOOLBAR_DIVIDER ? [i] : []));
 }
 // Whether the entry at `index` can join the next entry in one group: both
 // a groupable button or a group.

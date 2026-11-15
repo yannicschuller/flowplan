@@ -599,7 +599,7 @@ export default function WorkspaceApp({
   useEffect(() => setQuoteShortcutLocal(boot.quoteShortcut), [boot.quoteShortcut]);
   // "Formatierungsleiste" (#235): the editors read it.
   useEffect(() => setFormattingToolbarLocal(boot.formattingToolbar), [boot.formattingToolbar]);
-  useEffect(() => setToolbarLayoutFromServer(boot.toolbarLayout), [boot.toolbarLayout]);
+  useEffect(() => setToolbarLayoutFromServer(boot.toolbarLayout, boot.toolbarLayoutDefault, boot.toolbarLayoutCustom), [boot.toolbarLayout, boot.toolbarLayoutDefault, boot.toolbarLayoutCustom]);
   // The settings level (#294): Settings shows what is up to it.
   useEffect(() => setSettingsLevelFromServer(boot.settingsLevel), [boot.settingsLevel]);
   // "Animationen" (#260, lib/motion-pref.ts): data-motion on <html>, which

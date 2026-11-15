@@ -220,12 +220,15 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
 // A group of the toolbar (#292, lib/toolbar-layout.ts): several buttons as
 // one, showing the icon of the active one (else the first) with a caret,
 // its menu the buttons with their names – toggles as checkbox entries.
+// In the preview of the settings (`preview`) the menu opens without an
+// editor to show what is in it; choosing does nothing.
 export type ToolbarGroupEntry = { key: string; label: string; icon: ReactNode; run: () => void; active?: boolean; disabled?: boolean };
-export function ToolbarGroupMenu({ editor, label, entries }: { editor: Editor | null; label: string; entries: ToolbarGroupEntry[] }) {
+export function ToolbarGroupMenu({ editor, label, entries, preview = false }: { editor: Editor | null; label: string; entries: ToolbarGroupEntry[]; preview?: boolean }) {
   const selection = useRef<{ from: number; to: number } | null>(null);
   const shown = entries.find((entry) => entry.active) ?? entries[0];
   const name = shown?.active ? `${label}: ${shown.label}` : label;
   const choose = (entry: ToolbarGroupEntry) => {
+    if (preview) return;
     // Back to the text that was selected when the menu opened.
     if (editor && !editor.isDestroyed && selection.current) {
       const size = editor.state.doc.content.size;
@@ -243,7 +246,7 @@ export function ToolbarGroupMenu({ editor, label, entries }: { editor: Editor | 
       }}
     >
       <Dropdown.Trigger asChild>
-        <button type="button" className={`toolbar-menu-button toolbar-group-menu${shown?.active ? " active" : ""}`} title={name} aria-label={name} disabled={!editor?.isEditable}>
+        <button type="button" className={`toolbar-menu-button toolbar-group-menu${shown?.active ? " active" : ""}`} title={name} aria-label={name} disabled={!preview && !editor?.isEditable}>
           {shown?.icon}
           <CaretDown className="toolbar-menu-caret" weight="bold" aria-hidden />
         </button>

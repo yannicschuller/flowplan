@@ -3,6 +3,15 @@ import { all, run } from "./db";
 import { HttpError } from "./auth";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { settingsLevelSchema } from "./settings-level";
+import { isDefaultToolbarLayout, parsedToolbarLayout, toolbarLayoutSchema, type ToolbarLayout } from "./toolbar-layout";
+
+// The instance's default formatting toolbar, as stored: read leniently
+// (a button a later version drops does not void every setting), saved
+// strictly (below). The built-in default is null.
+const storedToolbarLayout = (value: unknown): ToolbarLayout | null => {
+  const layout = value ? parsedToolbarLayout(value) : null;
+  return layout && !isDefaultToolbarLayout(layout) ? layout : null;
+};
 
 // Instance-wide settings admins change in the interface. Environment
 // variables stay the defaults; stored values take precedence.
@@ -74,6 +83,10 @@ export const instanceSettingsSchema = z.object({
   // lib/dead-man-switch.ts): on by default (needs e-mail delivery); off
   // nothing is warned about or sent. FLOWPLAN_DEAD_MAN_SWITCH=off wins.
   deadManSwitch: z.boolean().default(true),
+  // "Standard-Formatierungsleiste" (#292, lib/toolbar-layout.ts): the
+  // formatting toolbar of everyone without a layout of their own (null =
+  // the built-in one).
+  toolbarLayoutDefault: z.unknown().transform(storedToolbarLayout),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -106,6 +119,7 @@ const defaults: InstanceSettings = {
   settingsLevelDefault: "normal",
   emergencyAccess: true,
   deadManSwitch: true,
+  toolbarLayoutDefault: null,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.
@@ -122,6 +136,8 @@ export async function instanceSettings(): Promise<InstanceSettings> {
   return parsed.success ? parsed.data : defaults;
 }
 export async function saveInstanceSettings(input: unknown) {
+  // The toolbar layout strictly: only known buttons, each once, bounded.
+  if (input && typeof input === "object" && "toolbarLayoutDefault" in input) toolbarLayoutSchema.parse((input as { toolbarLayoutDefault: unknown }).toolbarLayoutDefault);
   // Fields a form does not send keep their stored value.
   const next = instanceSettingsSchema.parse({
     ...(await instanceSettings()),

@@ -855,7 +855,7 @@ CommandProfileFormattingToolbarResult = TypedDict("CommandProfileFormattingToolb
     "formattingToolbar": Required[Literal["show", "hide"]],
 }, total=False)
 
-# Choose, order and group the buttons of the fixed formatting toolbar. For the caller, on all devices: `order` lists the toolbar's buttons (undo, redo, imageTools, bold, italic, underline, strike, highlight, comment, color, mediaWidth, superscript, subscript, spoiler, suggest, authors, link, heading, bulletList, orderedList, taskList, taskDue, align, blockUp, blockDown, outline, inlineMath, addBlock) each at most once, with "|" for a divider between two groups (at most 56 entries); `hidden` lists the buttons not shown. Buttons left out of `order` (for example ones added in a later version) appear at their default place. null restores the default. The result is the layout as it now applies.
+# Choose, order and group the buttons of the fixed formatting toolbar. For the caller, on all devices: `order` lists the toolbar's buttons (undo, redo, imageTools, bold, italic, underline, strike, highlight, comment, color, mediaWidth, superscript, subscript, spoiler, suggest, authors, link, heading, bulletList, orderedList, taskList, taskDue, align, blockUp, blockDown, outline, inlineMath, addBlock) each at most once, with "|" for a divider between two groups (at most 130 entries); `hidden` lists the buttons not shown. Buttons left out of `order` (for example ones added in a later version) appear at their default place; the blocks of the "/" menu (block:ai, block:text, block:h1, block:h2, block:h3, block:h4, block:quote, block:divider, block:page-break, block:citation, block:bibliography, block:callout, block:toggle, block:code, block:table, block:columns, block:tabs, block:footnote, block:file, block:embed, block:mermaid, block:drawio, block:draw, block:whiteboard, block:meet, block:voice, block:scan, block:math, block:plot, block:fraction, block:metric, block:dashboard, block:mention, block:linked-database, block:synced, block:synced-insert, block:workflow-button) are only in the toolbar where `order` lists them. null restores the default – the instance's default toolbar if an administrator set one, else the built-in one; a layout equal to that default is stored as none. The result is the layout as it now applies and whether it is the caller's own (`custom`).
 CommandProfileToolbarLayout = TypedDict("CommandProfileToolbarLayout", {
     "action": Required[Literal["profile.toolbarLayout"]],
     "toolbarLayout": Required[Optional[dict[str, Any]]],
@@ -863,6 +863,7 @@ CommandProfileToolbarLayout = TypedDict("CommandProfileToolbarLayout", {
 
 CommandProfileToolbarLayoutResult = TypedDict("CommandProfileToolbarLayoutResult", {
     "toolbarLayout": Required[dict[str, Any]],
+    "custom": Required[bool],
 }, total=False)
 
 # How much the interface animates: normal, reduced or off. For the caller, on all devices: normal (the default; menus and dialogs fade and scale slightly, side panels slide in), reduced (short fades only) or off (nothing animates). The system's reduce-motion setting always turns animations off.

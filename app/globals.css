@@ -30991,6 +30991,69 @@ html.split-resizing * {
 .toolbar-layout-check span {
   overflow-wrap: anywhere;
 }
+/* Whether the bar is customized, above its buttons. */
+.toolbar-layout-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.toolbar-layout-status[data-state="custom"] {
+  color: var(--blue);
+  font-weight: 500;
+}
+/* The preview: the toolbar as it will look, in place in the settings (not
+   sticky, not docked on a phone's keyboard). */
+.editor-toolbar.toolbar-layout-preview {
+  position: static;
+  margin: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.toolbar-layout-preview button[aria-disabled="true"] {
+  cursor: default;
+}
+.toolbar-layout-preview-width {
+  font-size: 11.5px;
+  padding: 0 4px;
+}
+.toolbar-layout-menu-label {
+  padding: 4px 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.toolbar-layout-remove {
+  min-height: 32px;
+  padding: 2px 8px;
+  gap: 4px;
+}
+/* The blocks of the "/" menu not in the bar. */
+.toolbar-layout-blocks {
+  display: grid;
+  gap: 6px;
+  max-width: 560px;
+}
+.toolbar-layout-blocks-title {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.toolbar-layout-blocks-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.toolbar-layout-block-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+}
+.toolbar-layout-block-list .toolbar-layout-check {
+  min-height: 32px;
+}
 /* Up and down of a space in Settings → Bereiche (issue #48). */
 .ws-order-buttons {
   display: inline-flex;
