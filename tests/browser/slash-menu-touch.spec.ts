@@ -159,11 +159,12 @@ test("iOS keyboard: the / menu lies in the visible area at the caret and scrolls
 });
 
 // #298 (iPad): the block menu opened with the toolbar's "+" has its own
-// search field, which has the focus. iOS moves the visible area along a
-// swipe then; the menu followed that move under the finger and the swipe
-// ended before the list scrolled. While a finger is on the menu it stays
-// put, and a swipe on the list puts the keyboard away (the search field
-// gives up the focus), as lists in iOS apps do.
+// search field. Tapped with a finger, the field waits for a tap of its own
+// (no keyboard comes up) and the list scrolls at once. Once the field has
+// the focus, iOS moves the visible area along a swipe; the menu followed
+// that move under the finger and the swipe ended before the list
+// scrolled. While a finger is on the menu it stays put, and a swipe on the
+// list puts the keyboard away, as lists in iOS apps do.
 test("toolbar \"+\": the block menu with its search field scrolls by touch while iOS moves the visible area", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "Touch.");
   test.setTimeout(180_000);
@@ -191,8 +192,17 @@ test("toolbar \"+\": the block menu with its search field scrolls by touch while
   await page.locator('button[title="Block hinzufügen"]').first().tap();
   const menu = page.locator(".slash-menu");
   const search = menu.getByRole("combobox", { name: "Block suchen" });
-  await expect(search).toBeFocused();
   const list = menu.locator(".slash-menu-list");
+  // Opened by a finger: the search field waits, the list scrolls at once.
+  await expect(menu).toBeVisible();
+  await expect(search).not.toBeFocused();
+  await swipeUp(page);
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(40);
+  await expect(menu).toBeVisible();
+  await list.evaluate((el) => (el.scrollTop = 0));
+  // A tap on the field brings the keyboard for searching.
+  await search.tap();
+  await expect(search).toBeFocused();
   expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight + 20)).toBe(true);
   const before = (await menu.boundingBox())!.y;
 

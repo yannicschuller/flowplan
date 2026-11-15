@@ -69,6 +69,7 @@ export function SlashMenu({
   anchor: givenAnchor,
   measureAnchor,
   search,
+  focusSearch = true,
   parent,
   onBack,
   onSearch,
@@ -86,6 +87,10 @@ export function SlashMenu({
   // bringing the line above the keyboard), the menu then follows it.
   measureAnchor?: () => { left: number; top: number; bottom: number } | null;
   search?: string;
+  // Whether the search field takes the focus when the menu opens: not when
+  // the toolbar's "+" was tapped with a finger (#298) – a tap on the field
+  // brings the keyboard then.
+  focusSearch?: boolean;
   // The entry whose second level is shown.
   parent?: SlashItem | null;
   onBack?: () => void;
@@ -243,7 +248,7 @@ export function SlashMenu({
     >
       {search !== undefined && (
         <input
-          autoFocus
+          autoFocus={focusSearch}
           role="combobox"
           aria-label={t("Block suchen", "Search block")}
           aria-controls={`${id}-list`}

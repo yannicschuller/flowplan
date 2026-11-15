@@ -155,6 +155,7 @@ import {
   Link as LinkIcon,
   Rows,
   ListBullets,
+  TreeView,
   ListNumbers,
   Books,
   CheckSquare,
@@ -413,6 +414,9 @@ export default function DocumentEditor({
       from: number;
       mode: "inline" | "button";
       query: string;
+      // Opened with a finger (#298): the search field waits for a tap, so
+      // the list scrolls right away and no keyboard comes up.
+      touch?: boolean;
       sub?: string | null;
     } | null>(null),
     [slashActive, setSlashActive] = useState(0),
@@ -2752,7 +2756,7 @@ export default function DocumentEditor({
                 dividers between groups (#292, lib/toolbar-layout.ts).
                 Some apply only to what is selected. */}
             {(() => {
-              const addBlockHere = () => {
+              const addBlockHere = (event?: { nativeEvent?: Event }) => {
                 if (!editor) return;
                 // A new block below the current one (#261), not the current
                 // one turned into another ("Turn into" in the block menu
@@ -2760,10 +2764,12 @@ export default function DocumentEditor({
                 const block = blockForInsert(editor.state);
                 const placed = block && editor.isEditable ? emptyBlockNear(editor.state, block) : null;
                 if (placed) editor.view.dispatch(placed.tr.setSelection(TextSelection.create(placed.tr.doc, placed.caret)).scrollIntoView());
+                const pointer = event?.nativeEvent as PointerEvent | undefined;
                 setSlash({
                   from: editor.state.selection.from,
                   mode: "button",
                   query: "",
+                  touch: pointer?.pointerType === "touch",
                 });
                 setSlashActive(0);
               };
@@ -3051,7 +3057,7 @@ export default function DocumentEditor({
                     data-outline-toggle
                     onClick={outline.toggle}
                   >
-                    <ListBullets />
+                    <TreeView />
                   </button>
                 ),
                 inlineMath: () => (
@@ -3352,6 +3358,7 @@ export default function DocumentEditor({
             }
           }}
           search={slash.mode === "button" ? slash.query : undefined}
+          focusSearch={!slash.touch}
           parent={slashParent}
           onBack={() => slashBack.current()}
           onSearch={(query) => {
