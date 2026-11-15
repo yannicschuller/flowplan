@@ -27,6 +27,7 @@
 // "Unterseiten einbeziehen" (include_children, recordSharePages): visitors
 // then open them as pages of the share – nothing above or beside them.
 import { z } from "zod";
+import { orderRecordFields, parseRecordLayout } from "./record-layout";
 import { all, audit, id, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
@@ -70,7 +71,7 @@ export type RecordScope = {
   role: RecordShareRole;
   fields: Field[];
   // The title property (shown as the heading) and the properties visitors
-  // see, in the database's order.
+  // see, in the record page's order.
   titleField: Field | undefined;
   shown: Field[];
 };
@@ -107,8 +108,13 @@ async function chosenFields(rowId: string) {
     return null;
   }
 }
-const databaseFields = async (pageId: string): Promise<Field[]> =>
-  JSON.parse(String((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]"));
+// In the record page's order (#305): a shared record lists its properties
+// as the record does inside Flowplan.
+const databaseFields = async (pageId: string): Promise<Field[]> => {
+  const db = await one<{ fields: string; record_layout: string | null }>("SELECT fields,record_layout FROM databases WHERE page_id=?", pageId);
+  const fields = JSON.parse(String(db?.fields || "[]")) as Field[];
+  return orderRecordFields(fields, parseRecordLayout(db?.record_layout).order);
+};
 
 // ---- Linked records ----
 

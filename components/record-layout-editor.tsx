@@ -3,6 +3,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import {
+  orderRecordFields,
   recordOpenLabels,
   recordOpenModes,
   type RecordLayout,
@@ -24,6 +25,10 @@ export function RecordLayoutEditor({
   const [draft, setDraft] = useState(layout),
     [busy, setBusy] = useState(false);
   async function change(next: RecordLayout) {
+    // The order is changed on the properties themselves
+    // (components/record-property-order.tsx): the current one is kept.
+    const { order: _order, ...rest } = next;
+    next = layout.order ? { ...rest, order: layout.order } : rest;
     setDraft(next);
     setBusy(true);
     await save(next);
@@ -93,7 +98,7 @@ export function RecordLayoutEditor({
       </label>
       <fieldset>
         <legend>{t("Sichtbare Eigenschaften", "Visible properties")}</legend>
-        {fields.slice(1).map((f) => (
+        {orderRecordFields(fields, layout.order).slice(1).map((f) => (
           <label className="checkbox-label" key={f.id}>
             <input
               type="checkbox"
