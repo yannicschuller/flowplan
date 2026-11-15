@@ -256,6 +256,8 @@ import { blockPaste, syncDomSelection } from "@/lib/block-paste";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
 const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
+// Text styles turn the current block into that style, as "Aa" does.
+const BLOCKS_IN_PLACE = new Set<ToolbarBlock>(["block:text", "block:h1", "block:h2", "block:h3", "block:h4", "block:quote"]);
 // A touch screen as wide as a phone: where the toolbar docks at the bottom,
 // above the on-screen keyboard (app/globals.css, max-width: 767px).
 const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
@@ -2789,13 +2791,14 @@ export default function DocumentEditor({
               // click does what choosing it in the menu of "+" does – the
               // block goes below the current one (mentions, fractions,
               // footnotes and citations stay at the caret, they belong in
-              // the sentence); an entry with a second level (the callout
-              // kinds) opens that level there.
+              // the sentence; text, headings and quote turn the current
+              // block, as "Aa" does); an entry with a second level (the
+              // callout kinds) opens that level there.
               const commandOf = (block: ToolbarBlock) => commands.find((command) => command.id === slashIdOf(block));
               const insertBlock = (block: ToolbarBlock, event?: { nativeEvent?: Event }) => {
                 const command = commandOf(block);
                 if (!editor || !command || command.disabled) return;
-                if (!BLOCKS_AT_CARET.has(block)) placeNewBlock();
+                if (!BLOCKS_AT_CARET.has(block) && !BLOCKS_IN_PLACE.has(block)) placeNewBlock();
                 if (command.children) return openSlash(event, command.id);
                 setSlashRecents(rememberSlashCommand(command.id));
                 editor.commands.focus();
