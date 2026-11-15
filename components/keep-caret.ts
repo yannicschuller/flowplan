@@ -54,7 +54,9 @@ export function keepCaretAboveKeyboard(view: EditorView) {
   // the visible area's top, moved down by what iOS moved the visible area
   // down the page (#307, app/globals.css): the text shows below it.
   const moved = parseFloat(document.documentElement.style.getPropertyValue("--keyboard-visible-top")) || 0;
-  const coverBottom = pane.matches(".app-shell.keyboard-open .main-scroll") ? box.top + moved : null;
+  // Only on iPads and tablets (min-width 768px); on phones the bar scrolls
+  // away with the page and covers nothing.
+  const coverBottom = pane.matches(".app-shell.keyboard-open .main-scroll") && window.matchMedia("(min-width: 768px)").matches ? box.top + moved : null;
   const delta = caretScroll(caret, visibleBand({ top: box.top, bottom: box.bottom }, vv, toolbarTop, coverBottom));
   if (delta) pane.scrollTop += delta;
   return true;
