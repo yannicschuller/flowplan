@@ -37689,3 +37689,13 @@ a.favorite-nav.selected {
   color: var(--blue);
   text-decoration: underline;
 }
+
+/* Touch devices: a document scrolls on past its end (#300), as notes apps
+   do – with the iPad's floating keyboard (and on Safari) the visible area
+   does not shrink, so the line being typed could stay behind the keyboard
+   with no way to scroll it into view. */
+@media (pointer: coarse) {
+  .page-content:has(.ProseMirror[contenteditable="true"]) {
+    padding-bottom: max(70px, 45vh);
+  }
+}
