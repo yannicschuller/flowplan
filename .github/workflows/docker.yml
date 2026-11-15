@@ -182,6 +182,57 @@ jobs:
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
           docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
 
+  # A release also gets the app as plain archives, one per platform:
+  # flowplan-<version>-linux-<amd64|arm64>.tar.gz with a .sha256 next to it,
+  # attached to the GitHub release. They hold the image's /app (the Next.js
+  # standalone build, static files, scripts) and run with `node server.js` on
+  # Node.js 26 – for installs without Docker such as the YunoHost package
+  # (yannicschuller/flowplan_ynh). Taken from the published image, so the
+  # archive is exactly what the image runs; a rebuild (version given)
+  # replaces them.
+  archives:
+    needs: image
+    if: needs.image.outputs.release != ''
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack and attach the archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.image.outputs.release }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$VERSION"
+          name="flowplan-$VERSION-linux-$ARCH"
+          cd "$RUNNER_TEMP"
+          docker pull --platform "linux/$ARCH" "$image"
+          id=$(docker create --platform "linux/$ARCH" "$image")
+          docker cp "$id:/app" "$name"
+          docker rm "$id" > /dev/null
+          # The container's empty data folder and build cache stay out.
+          rm -rf "$name/data" "$name/.next/cache"
+          printf '%s\n' "$VERSION" > "$name/VERSION"
+          tar --owner=0 --group=0 --numeric-owner -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          ls -l "$name.tar.gz"
+          gh release upload "v$VERSION" "$name.tar.gz" "$name.tar.gz.sha256" --clobber --repo "$GITHUB_REPOSITORY"
+
   # Rolls out every new :beta image on Coolify: every manual build without
   # a version, and a release newer than the last beta. Coolify's API must
   # accept GitHub's runners (Settings → Advanced → API access: allowed IPs);
