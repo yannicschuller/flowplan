@@ -120,3 +120,43 @@ test("renaming a select option keeps its records and filters", async ({ page }, 
   expect((await read(db.id)).database.fields[1].options).toEqual(["Erledigt", "In Bearbeitung"]);
   expect(errors).toEqual([]);
 });
+
+// #304: typing a new option with a space – the field kept dropping the
+// space after a word, as it was rebuilt from the trimmed options on every key.
+test("a new select option can be typed with spaces", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const command = async (data: Record<string, unknown>) => {
+    const response = await page.request.post("/api/command", { headers: { origin }, data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  const read = async (id: string) => (await page.request.get(`/api/pages/${id}`)).json();
+  const db = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Optionen ${info.project.name} ${Date.now()}`, kind: "database" });
+  await command({
+    action: "database.update",
+    pageId: db.id,
+    version: (await read(db.id)).database.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Offen"] },
+    ],
+    views: [{ id: "table", name: "Tabelle", type: "table", filters: [], sorts: [] }],
+  });
+  await page.goto(`/#page=${db.id}`);
+  const table = page.locator(".data-table");
+  await table.locator("thead").getByRole("button", { name: /^\W*Status$/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Eigenschaft bearbeiten" });
+  const field = dialog.getByLabel("Optionen, durch Komma getrennt");
+  await field.click();
+  await field.press("End");
+  // Key by key, as a person types.
+  await field.pressSequentially(", Lorem ipsum dolor");
+  await expect(field).toHaveValue("Offen, Lorem ipsum dolor");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await read(db.id)).database.fields[1].options).toEqual(["Offen", "Lorem ipsum dolor"]);
+});

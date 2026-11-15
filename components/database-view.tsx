@@ -444,6 +444,10 @@ export default function DatabaseView({
       name: "",
       type: "text",
     }),
+    // The options field as typed while it has the focus (#304): rebuilt
+    // from the trimmed options on every key, a space after a word vanished
+    // before the next word came.
+    [optionsText, setOptionsText] = useState<string | null>(null),
     [viewName, setViewName] = useState(""),
     [viewType, setViewType] = useState<View["type"]>("table"),
     [comment, setComment] = useState(""),
@@ -502,6 +506,8 @@ export default function DatabaseView({
   function closeRecord() {
     setRowId(null);
   }
+  // Another field (or a new one) starts from its saved options.
+  useEffect(() => setOptionsText(null), [fieldDraft.id, newField]);
   const ownHash = useRef("");
   useEffect(() => {
     if (!routeNavigation) return;
@@ -5178,8 +5184,10 @@ export default function DatabaseView({
               {t("Optionen, durch Komma getrennt", "Options, separated by commas")}
               <input
                 aria-describedby="option-rename-hint"
-                value={fieldDraft.options?.join(", ") || ""}
+                value={optionsText ?? (fieldDraft.options?.join(", ") || "")}
+                onBlur={() => setOptionsText(null)}
                 onChange={(e) => {
+                  setOptionsText(e.target.value);
                   setOptionConfirm(null);
                   setFieldDraft((f) => {
                     const options = e.target.value.split(",").map((s) => s.trim());
