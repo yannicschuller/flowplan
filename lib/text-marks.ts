@@ -1,20 +1,12 @@
 import { Mark } from "@tiptap/core";
 import Code from "@tiptap/extension-code";
+import { textColorList } from "./text-colors";
 
 // Text colours strong enough to stand out on the light and the dark
 // background; highlight colours clearly tinted (the text on them stays
 // dark, also in the dark theme – see globals.css).
-export const textColors = [
-  ["Grau", "#8b8a92"],
-  ["Braun", "#b5703c"],
-  ["Orange", "#ec6c0e"],
-  ["Gelb", "#d9a400"],
-  ["Grün", "#2f9e44"],
-  ["Blau", "#1c7ed6"],
-  ["Lila", "#8f4ad9"],
-  ["Pink", "#d6336c"],
-  ["Rot", "#e03131"],
-] as const;
+// The palette lives in lib/text-colors.ts (shared with inline Markdown).
+export const textColors = textColorList.map((c) => [c.de, c.hex] as const);
 export const highlightColors = [
   ["Grau", "#e2e1dd"],
   ["Braun", "#efd9c7"],

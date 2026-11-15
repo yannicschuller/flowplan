@@ -7832,6 +7832,40 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   color: #bd4e56;
   font-size: 12px;
 }
+/* Form descriptions (#306): the palette of the document editor as classes
+   (lib/text-colors.ts) – published forms allow no style attributes. */
+.text-color-gray { color: #8b8a92; }
+.text-color-brown { color: #b5703c; }
+.text-color-orange { color: #ec6c0e; }
+.text-color-yellow { color: #d9a400; }
+.text-color-green { color: #2f9e44; }
+.text-color-blue { color: #1c7ed6; }
+.text-color-purple { color: #8f4ad9; }
+.text-color-pink { color: #d6336c; }
+.text-color-red { color: #e03131; }
+.rich-text-input u,
+.inline-text u {
+  text-underline-offset: 2px;
+}
+.rich-text-bar .rich-text-colors {
+  flex-wrap: wrap;
+  max-width: 320px;
+}
+.rich-text-swatch {
+  font-weight: 700;
+}
+.rich-text-swatch.active {
+  outline: 2px solid var(--focus-border);
+  outline-offset: -2px;
+}
+.rich-text-swatch-none {
+  color: var(--text);
+  text-decoration: line-through;
+}
+.form-text-label .rich-text-input {
+  min-height: 58px;
+  font-weight: 400;
+}
 .relation-picker {
   border: 1px solid var(--border);
   border-radius: 6px;

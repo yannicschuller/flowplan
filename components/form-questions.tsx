@@ -3,6 +3,7 @@ import { useT } from "./i18n";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useState } from "react";
 import { CellInput } from "./cell-input";
+import { FormText } from "./inline-text";
 import {
   FORM_FILE_BYTES,
   FORM_FILES_PER_QUESTION,
@@ -52,7 +53,7 @@ export default function FormQuestions({
             )}
           </legend>
           {config.descriptions[f.id] && (
-            <p className="question-description">{config.descriptions[f.id]}</p>
+            <p className="question-description"><FormText value={config.descriptions[f.id]} /></p>
           )}
           {questionStyle(f, config) === "long" ? (
             <textarea

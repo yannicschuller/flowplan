@@ -212,6 +212,7 @@ import {
 } from "./page-templates";
 import { formSettings, saveFormSubmission } from "./forms";
 import { formConfigSchema } from "./form-settings";
+import { cleanFormConfigTexts } from "./form-text";
 import {
   bulkRows,
   databaseSnapshot,
@@ -2362,7 +2363,7 @@ async function runCommand(
           if (data.formConfig)
             await run(
               "UPDATE forms SET config=? WHERE page_id=?",
-              JSON.stringify(formConfigSchema.parse(data.formConfig)),
+              JSON.stringify(cleanFormConfigTexts(formConfigSchema.parse(data.formConfig))),
               p.id,
             );
           // Done rule, workflow, automations and the issue sync's status
@@ -3239,7 +3240,7 @@ async function runCommand(
           config =
             b.config === undefined
               ? previous?.config || formConfigSchema.parse({})
-              : formConfigSchema.parse(b.config);
+              : cleanFormConfigTexts(formConfigSchema.parse(b.config));
         const enabled = b.enabled === undefined ? previous?.enabled || 0 : b.enabled ? 1 : 0,
           internal = b.internal === undefined ? (previous?.internal ?? 1) : b.internal ? 1 : 0;
         // No public form in a journal with a PIN (lib/journal-extras.ts).

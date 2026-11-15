@@ -38,6 +38,7 @@ import { formRedirect, type FormConfig } from "@/lib/form-settings";
 import { validRedirect } from "@/lib/form-logic";
 import { FormConditionEditor, FormFollowUpSettings, type ConditionTarget } from "./form-logic-editor";
 import type { Field, Row } from "@/lib/types";
+import { FormTextInput } from "./form-text-input";
 
 type Texts = Record<string, { title: string; options?: string[] }>;
 type Form = { token: string; enabled: number; internal: number; anonymous: number; config: FormConfig } | null;
@@ -496,10 +497,15 @@ export function SurveyBuilder({
               {t("Titel", "Title")}
               <input value={formTexts.title} placeholder={pageTitle} maxLength={200} onChange={(e) => (setFormTexts({ ...formTexts, title: e.target.value }), setDirty(true))} />
             </label>
-            <label>
-              {t("Einleitung", "Introduction")}
-              <textarea rows={3} value={formTexts.description} maxLength={3000} onChange={(e) => (setFormTexts({ ...formTexts, description: e.target.value }), setDirty(true))} />
-            </label>
+            <div className="field-group form-text-label">
+              <span>{t("Einleitung", "Introduction")}</span>
+              <FormTextInput
+                label={t("Einleitung", "Introduction")}
+                value={formTexts.description}
+                maxLength={3000}
+                onChange={(description) => (setFormTexts((texts) => ({ ...texts, description })), setDirty(true))}
+              />
+            </div>
             <label>
               {t("Beschriftung zum Absenden", "Submit button label")}
               <input value={formTexts.submitLabel} maxLength={80} onChange={(e) => (setFormTexts({ ...formTexts, submitLabel: e.target.value }), setDirty(true))} />
@@ -678,10 +684,18 @@ function QuestionEditor({
           onChange={(e) => onText({ title: e.target.value.replace(/\s*\n\s*/g, " ") })}
         />
       </label>
-      <label>
-        {t("Hinweis (optional)", "Hint (optional)")}
-        <input placeholder={t("Erklärt die Frage, falls nötig", "Explains the question if needed")} value={q.description} disabled={disabled} maxLength={1000} onChange={(e) => onChange({ description: e.target.value })} />
-      </label>
+      <div className="field-group form-text-label">
+        <span>{t("Hinweis (optional)", "Hint (optional)")}</span>
+        <FormTextInput
+          key={q.id}
+          label={t("Hinweis (optional)", "Hint (optional)")}
+          placeholder={t("Erklärt die Frage, falls nötig", "Explains the question if needed")}
+          value={q.description}
+          disabled={disabled}
+          maxLength={1000}
+          onChange={(description) => onChange({ description })}
+        />
+      </div>
       <div className="question-editor-row">
         <label>
           {t("Fragetyp", "Question type")}

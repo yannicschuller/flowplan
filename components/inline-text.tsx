@@ -5,6 +5,7 @@
 // false): a link there would be a control inside a control.
 import { Fragment, type ReactNode } from "react";
 import { hasInlineMarkup, parseInline } from "@/lib/inline-markdown";
+import { isTextColorId } from "@/lib/text-colors";
 
 function lines(text: string, key: string, oneLine: boolean): ReactNode {
   if (!text.includes("\n")) return text;
@@ -19,10 +20,24 @@ function lines(text: string, key: string, oneLine: boolean): ReactNode {
   ));
 }
 
-export function InlineText({ value, links = true, oneLine = false, className }: { value: unknown; links?: boolean; oneLine?: boolean; className?: string }) {
+// `spans`: the dialect of form descriptions (#306, lib/form-text.ts) with
+// underline (<u>) and the palette's text colours (a text-color- class).
+export function InlineText({
+  value,
+  links = true,
+  oneLine = false,
+  spans = false,
+  className,
+}: {
+  value: unknown;
+  links?: boolean;
+  oneLine?: boolean;
+  spans?: boolean;
+  className?: string;
+}) {
   const text = typeof value === "string" ? value : value === null || value === undefined ? "" : String(value);
   if (!hasInlineMarkup(text)) return className ? <span className={className}>{lines(text, "t", oneLine)}</span> : <>{lines(text, "t", oneLine)}</>;
-  const runs = parseInline(text);
+  const runs = parseInline(text, { spans });
   const out: ReactNode[] = [];
   // Neighbouring runs of the same link become one <a>.
   for (let i = 0; i < runs.length; ) {
@@ -35,6 +50,8 @@ export function InlineText({ value, links = true, oneLine = false, className }: 
       if (run.strike) node = <s>{node}</s>;
       if (run.italic) node = <em>{node}</em>;
       if (run.bold) node = <strong>{node}</strong>;
+      if (run.underline) node = <u>{node}</u>;
+      if (run.color && isTextColorId(run.color)) node = <span className={`text-color-${run.color}`}>{node}</span>;
       return <Fragment key={k}>{node}</Fragment>;
     });
     out.push(
@@ -54,3 +71,6 @@ export function InlineText({ value, links = true, oneLine = false, className }: 
   }
   return <span className={["inline-text", className].filter(Boolean).join(" ")}>{out}</span>;
 }
+
+// A form's or a question's description (#306).
+export const FormText = ({ value }: { value: unknown }) => <InlineText value={value} spans />;

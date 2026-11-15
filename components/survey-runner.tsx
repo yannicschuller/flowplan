@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Star } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
 import { FormFiles } from "./form-questions";
+import { FormText } from "./inline-text";
 import { DraftControls, FormThanks, type Draft } from "./form-flow";
 import { logicPages } from "@/lib/form-logic";
 import { isQuestion, questionFields, range, surveyLogic, surveyLogicItems, validateSurvey, type Survey, type SurveyItem, type SurveyQuestion } from "@/lib/survey";
@@ -114,7 +115,7 @@ export function SurveyRunner({
       {!started ? (
         <div className="survey-welcome">
           <h2>{survey.welcome.title || texts.title}</h2>
-          {(survey.welcome.text || texts.description) && <p>{survey.welcome.text || texts.description}</p>}
+          {(survey.welcome.text || texts.description) && <p className="form-description">{survey.welcome.text || <FormText value={texts.description} />}</p>}
           <button className="button primary survey-primary" onClick={() => setStarted(true)}>
             {survey.welcome.button || t("Los geht's", "Start||survey")} <ArrowRight />
           </button>
@@ -206,7 +207,7 @@ function Item({
         {title}
         {item.required && <span className="survey-required" aria-hidden> *</span>}
       </legend>
-      {item.description && <p className="question-description">{item.description}</p>}
+      {item.description && <p className="question-description"><FormText value={item.description} /></p>}
       <Answer q={item} field={field} values={values} seed={seed} disabled={disabled} onChange={onChange} label={title} />
       {message && (
         <p className="error field-error" id={`${id}-error`} role="alert">
