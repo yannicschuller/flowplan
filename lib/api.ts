@@ -259,6 +259,7 @@ import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptInvite, acceptPendingInvites, inviteToken, type Invite } from "./auth";
 import { createInviteLink, revokeInviteLink } from "./invite-links";
+import { documentRevision } from "./document-revision";
 import {
   applyDocumentUpdate,
   cleanHtml,
@@ -2091,18 +2092,26 @@ async function runCommand(
             409,
             "Eine neue Dokumentversion ist verfügbar. Die Seite wird neu geladen.",
           );
+        // Writes without an editor (MCP update_page): based on the revision
+        // they read, checked under the lock – a change saved since (also
+        // from a collaborator's editor) refuses them (lib/document-revision.ts).
+        if (typeof b.revision === "string" && b.revision !== documentRevision({ ...existing!, title: p.title, icon: p.icon }))
+          throw new HttpError(409, "Die Seite wurde inzwischen geändert. Bitte neu lesen und erneut versuchen.");
+        // Replacing text keeps the state before it as a version, however
+        // recent the last one is (`keepVersion`); otherwise one per 5 minutes.
         if (
-          existing?.state &&
-          !(await one(
-            "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
-            p.id, nowText(Date.now() - 300_000),
-          ))
+          (existing?.state || (b.keepVersion === true && existing?.html)) &&
+          (b.keepVersion === true ||
+            !(await one(
+              "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
+              p.id, nowText(Date.now() - 300_000),
+            )))
         ) {
           await run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
             id(),
             p.id,
-            existing.state,
+            existing.state || htmlState(existing.html),
             existing.html,
             p.title,
             user.id,

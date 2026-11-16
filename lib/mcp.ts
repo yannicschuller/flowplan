@@ -8,6 +8,10 @@ import { aliasList } from "./aliases";
 import * as Y from "yjs";
 import { z } from "zod";
 import { Node as PMNode } from "@tiptap/pm/model";
+import { documentRevision } from "./document-revision";
+import { requirePlaintext } from "./e2ee-server";
+import { trashDays } from "./trash";
+import { TASK_STATUSES } from "./task-status";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { all, one } from "./db";
 import { HttpError, appUrl } from "./auth";
@@ -21,10 +25,10 @@ import { exportMarkdown } from "./markdown-export";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
 import { markdownToHtml } from "./markdown-import";
 import { cleanHtml, htmlState, htmlJson } from "./document-server";
-import { documentSchema } from "./document-schema";
+import { rewriteSchema } from "./document-rewrite";
 import { searchWorkspace, MARK_START, MARK_END } from "./search-index";
 import { listCollections, runCollection } from "./collections";
-import { myTasks } from "./doc-tasks";
+import { extractTasks, myTasks, taskKey } from "./doc-tasks";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { validateCellPatch } from "./database-operations";
 import { readableDatabase, stripHiddenCells } from "./field-access";
@@ -42,6 +46,10 @@ const MAX_TEXT = 200_000;
 const uuid = z.uuid();
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+// An answer in several text blocks (read_page: the Markdown, then its facts).
+class Parts {
+  constructor(readonly texts: string[]) {}
+}
 type Tool = {
   name: string;
   title: string;
@@ -50,6 +58,8 @@ type Tool = {
   write: boolean;
   // Needs the token's "KI und Transkription" permission (#199).
   ai?: boolean;
+  // Replaces or removes content (still restorable): a hint for the client to confirm.
+  destructive?: boolean;
   run: (user: Identity, args: never) => unknown;
 };
 
@@ -140,6 +150,60 @@ async function pageMarkdown(user: Identity, pageId: string) {
     includeSubpages: false,
   });
   return { page, markdown: bytes.toString("utf8") };
+}
+type StoredDocument = { state: Uint8Array | null; html: string; generation: string };
+async function storedDocument(pageId: string) {
+  const stored = await one<StoredDocument>("SELECT state,html,generation FROM documents WHERE page_id=?", pageId);
+  if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
+  return stored;
+}
+const revisionOf = (page: Page, stored: StoredDocument) => documentRevision({ ...stored, title: page.title, icon: page.icon });
+function documentNode(stored: Pick<StoredDocument, "state" | "html">) {
+  const ydoc = new Y.Doc();
+  try {
+    Y.applyUpdate(ydoc, stored.state || htmlState(stored.html));
+    return PMNode.fromJSON(rewriteSchema(), yDocToProsemirrorJSON(ydoc, "default"));
+  } finally {
+    ydoc.destroy();
+  }
+}
+// The tasks of a document as set_task names them: position, key (a hash of
+// the text, lib/doc-tasks.ts taskKey) and text.
+async function documentTasks(stored: Pick<StoredDocument, "state" | "html">, workspaceId: string) {
+  const people = new Map((await members(workspaceId)).map((m) => [m.id, m.name]));
+  return extractTasks(documentNode(stored).toJSON()).slice(0, 2000).map((t) => ({
+    index: t.index,
+    key: taskKey(t.text),
+    text: t.text,
+    done: t.checked,
+    status: t.status,
+    ...(t.due ? { due: t.due } : {}),
+    ...(t.assignees.length ? { assignees: t.assignees.map((uid) => people.get(uid) || uid) } : {}),
+  }));
+}
+// The headings directly in the document (not inside toggles, columns …):
+// what update_page replaces as a section.
+type Heading = { child: number; level: number; text: string };
+function sectionHeadings(doc: PMNode) {
+  const headings: Heading[] = [];
+  doc.forEach((node, _, child) => {
+    if (node.type.name === "heading")
+      headings.push({ child, level: Number(node.attrs.level) || 1, text: node.textContent.replace(/\s+/g, " ").trim() });
+  });
+  return headings;
+}
+// read_page: the Markdown, and for documents the revision to write against
+// (update_page), the headings and the task references (set_task).
+async function readPage(user: Identity, args: { pageId: string }) {
+  const { page, markdown } = await pageMarkdown(user, args.pageId);
+  const facts: Record<string, unknown> = { pageId: page.id, title: page.title, kind: page.kind, url: pageLink(page.id) };
+  if (page.kind === "document") {
+    const stored = await storedDocument(page.id);
+    facts.revision = revisionOf(page, stored);
+    facts.headings = sectionHeadings(documentNode(stored)).map((h) => ({ level: h.level, text: h.text }));
+    facts.tasks = await documentTasks(stored, page.workspace_id);
+  }
+  return new Parts([markdown, JSON.stringify(facts, null, 2)]);
 }
 // Plain links only; links to other pages and files stay addresses that need
 // a sign-in, nothing is resolved for the client.
@@ -244,7 +308,8 @@ async function getRecord(user: Identity, args: { databaseId: string; recordId: s
     { ...row, cells: typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells } as Row,
   ]);
   const cells = computedCells(parsed, schema.fields, related, relatedSchemas);
-  const html = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id))?.html || row.content || "";
+  const stored = await one<{ html: string; state: Uint8Array | null }>("SELECT html,state FROM row_documents WHERE row_id=?", row.id);
+  const html = stored?.html || row.content || "";
   const people = new Map((await members(page.workspace_id)).map((m) => [m.id, m.name]));
   return {
     id: row.id,
@@ -254,6 +319,8 @@ async function getRecord(user: Identity, args: { databaseId: string; recordId: s
     fields: schema.fields.map(fieldInfo),
     properties: recordProperties(cells, schema.fields, people),
     document: html ? htmlToMarkdown(html, plainLinks) : "",
+    // The tasks of the record's document, as set_task names them.
+    tasks: html ? await documentTasks({ state: stored?.html ? stored.state : null, html }, page.workspace_id) : [],
     url: `${pageLink(page.id)}&row=${row.id}`,
   };
 }
@@ -312,8 +379,12 @@ async function tasks(user: Identity, args: { workspaceId?: string; includeDone?:
     tasks: await flatMapAsync(ids, async (wid) => {
       await requireMember(user, wid);
       return (await myTasks(user, wid, !!args.includeDone)).map((t) => ({
+        // index and key name the task for set_task.
+        index: t.index,
+        key: taskKey(t.text),
         text: t.text,
         done: t.checked,
+        status: t.status,
         due: t.due,
         assignedToMe: t.assigned,
         pageId: t.pageId,
@@ -336,19 +407,23 @@ export async function appendToPage(user: Identity, args: { pageId: string; markd
 // The Yjs change that appends HTML to a stored document or replaces its
 // content, as the editor would send it.
 function documentUpdate(state: Uint8Array | null, html: string, input: string, mode: "append" | "replace") {
-  const schema = documentSchema();
-  const added = PMNode.fromJSON(
-    schema,
-    htmlJson(cleanHtml(input) || "<p></p>"),
-  );
+  const added = htmlNode(input);
+  return documentRewrite(state, html, (doc) => {
+    // An empty page starts with the new text instead of a blank line.
+    const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
+    return doc.type.create(doc.attrs, empty || mode === "replace" ? added.content : doc.content.append(added.content));
+  });
+}
+const htmlNode = (input: string) => PMNode.fromJSON(rewriteSchema(), htmlJson(cleanHtml(input) || "<p></p>"));
+// The Yjs change that turns the stored document into `change(doc)`: a diff
+// of the content (updateYFragment), so edits made meanwhile merge into it.
+function documentRewrite(state: Uint8Array | null, html: string, change: (doc: PMNode) => PMNode) {
   const ydoc = new Y.Doc();
   try {
     Y.applyUpdate(ydoc, state || htmlState(html));
     const before = Y.encodeStateVector(ydoc);
-    const doc = PMNode.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default"));
-    // An empty page starts with the new text instead of a blank line.
-    const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
-    const next = doc.type.create(doc.attrs, empty || mode === "replace" ? added.content : doc.content.append(added.content));
+    const doc = PMNode.fromJSON(rewriteSchema(), yDocToProsemirrorJSON(ydoc, "default"));
+    const next = change(doc);
     ydoc.transact(() =>
       updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }),
     );
@@ -394,6 +469,285 @@ export async function appendHtmlToPage(user: Identity, args: { pageId: string; h
     update: Buffer.from(update).toString("base64"),
   });
   return { ok: true, pageId: page.id, url: pageLink(page.id) };
+}
+
+// A page the MCP server may change: written to by this person, behind no
+// journal PIN, not locked and not end-to-end encrypted (the server holds no
+// plaintext of those, lib/e2ee-server.ts).
+async function changeable(user: Identity, pageId: string) {
+  const page = await requirePage(user, pageId, true);
+  await requireUnlocked(user, page);
+  await requirePlaintext(page);
+  if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+  return page;
+}
+const staleRevision = () =>
+  new HttpError(409, "The page was changed since you read it (outdated revision). Read it again with read_page and apply your change to the current text.");
+const headingList = (headings: Heading[]) =>
+  headings.length
+    ? headings.slice(0, 60).map((h) => `${"#".repeat(h.level)} ${h.text}`).join("; ")
+    : "(none)";
+const plain = (text: string) => text.replace(/^#+\s*/, "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+// One section replaced: its heading and everything up to the next heading
+// of the same or a higher level. Markdown that starts with a heading
+// replaces the heading too; otherwise the heading stays.
+function replaceSection(doc: PMNode, added: PMNode, section: string, occurrence?: number) {
+  const headings = sectionHeadings(doc);
+  const wanted = section.replace(/^#+\s*/, "").replace(/\s+/g, " ").trim();
+  let matches = headings.filter((h) => h.text === wanted);
+  if (!matches.length) matches = headings.filter((h) => plain(h.text) === plain(wanted));
+  if (!matches.length)
+    throw new HttpError(404, `No heading “${wanted}” in this document. Its headings: ${headingList(headings)}`);
+  if (occurrence !== undefined && !matches[occurrence - 1])
+    throw new HttpError(404, `The heading “${wanted}” appears ${matches.length} time(s) only.`);
+  if (matches.length > 1 && occurrence === undefined)
+    throw new HttpError(409, `The heading “${wanted}” appears ${matches.length} times. Pass occurrence (1 to ${matches.length}) to pick one. Its headings: ${headingList(headings)}`);
+  const heading = matches[(occurrence ?? 1) - 1];
+  const next = headings.find((h) => h.child > heading.child && h.level <= heading.level);
+  const children: PMNode[] = [];
+  doc.forEach((child) => children.push(child));
+  const replacement: PMNode[] = [];
+  added.forEach((child) => replacement.push(child));
+  // Empty Markdown: nothing in the section's place (or below its heading).
+  if (replacement.length === 1 && replacement[0].type.name === "paragraph" && !replacement[0].content.size) replacement.length = 0;
+  const from = replacement[0]?.type.name === "heading" ? heading.child : heading.child + 1;
+  const content = [...children.slice(0, from), ...replacement, ...children.slice(next ? next.child : children.length)];
+  return doc.type.create(doc.attrs, content.length ? content : [doc.type.schema.nodes.paragraph.create()]);
+}
+async function updatePage(
+  user: Identity,
+  args: {
+    pageId: string;
+    title?: string;
+    icon?: string;
+    markdown?: string;
+    mode?: "replace" | "append";
+    section?: string;
+    occurrence?: number;
+    revision?: string;
+  },
+) {
+  if (args.markdown === undefined && args.title === undefined && args.icon === undefined)
+    throw new HttpError(400, "Nothing to change: pass title, icon or markdown.");
+  if (args.markdown === undefined && (args.section !== undefined || args.mode !== undefined))
+    throw new HttpError(400, "section and mode need markdown.");
+  if (args.section !== undefined && args.mode === "append")
+    throw new HttpError(400, "section replaces one section; leave out mode \"append\".");
+  const page = await changeable(user, args.pageId);
+  if (page.kind !== "document")
+    throw new HttpError(400, "update_page changes documents only (use update_record for database records).");
+  const stored = await storedDocument(page.id);
+  if (args.revision !== undefined && args.revision !== revisionOf(page, stored)) throw staleRevision();
+  const mode = args.markdown === undefined ? undefined : args.section !== undefined ? "section" : args.mode || "replace";
+  if (args.markdown !== undefined) {
+    const html = markdownToHtml(args.markdown);
+    const update =
+      args.section !== undefined
+        ? documentRewrite(stored.state, stored.html, (doc) => replaceSection(doc, htmlNode(html), args.section!, args.occurrence))
+        : documentUpdate(stored.state, stored.html, html, mode as "replace" | "append");
+    try {
+      await command(user, {
+        action: "document.sync",
+        pageId: page.id,
+        generation: stored.generation,
+        update: Buffer.from(update).toString("base64"),
+        // Checked again under the document's lock (lib/api.ts).
+        ...(args.revision !== undefined ? { revision: args.revision } : {}),
+        // Replacing text always keeps the state before it as a version.
+        keepVersion: mode !== "append",
+      });
+    } catch (e) {
+      // A newer document generation (a version restored meanwhile) is a
+      // change since the read as well.
+      if (e instanceof HttpError && e.status === 409 && /Dokumentversion|inzwischen geändert/.test(e.message)) throw staleRevision();
+      throw e;
+    }
+  }
+  const patch = {
+    ...(args.title !== undefined && args.title !== page.title ? { title: args.title } : {}),
+    ...(args.icon !== undefined && args.icon !== page.icon ? { icon: args.icon } : {}),
+  };
+  if (Object.keys(patch).length) await command(user, { action: "page.update", pageId: page.id, patch });
+  const after = (await one<Page>("SELECT * FROM pages WHERE id=?", page.id))!;
+  return {
+    ok: true,
+    pageId: page.id,
+    ...(mode ? { content: mode, versionKept: mode !== "append" || undefined } : {}),
+    revision: revisionOf(after, await storedDocument(page.id)),
+    url: pageLink(page.id),
+  };
+}
+// The page and every page below it.
+async function subtreeOf(pageId: string) {
+  return (await all<{ id: string; deleted_at: string | null }>(
+    "WITH RECURSIVE tree(id) AS (SELECT id FROM pages WHERE id=? UNION ALL SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id) SELECT p.id,p.deleted_at FROM pages p JOIN tree t ON t.id=p.id",
+    pageId,
+  ));
+}
+async function movePage(
+  user: Identity,
+  args: {
+    pageId: string;
+    parentId?: string;
+    parentRowId?: string;
+    spaceId?: string;
+    afterId?: string;
+    beforeId?: string;
+    tagsAndProperties?: "auto" | "copy" | "remove";
+  },
+) {
+  const neighbour = args.afterId ?? args.beforeId;
+  if (args.afterId && args.beforeId) throw new HttpError(400, "Pass afterId or beforeId, not both.");
+  if (neighbour && (args.parentId || args.spaceId || args.parentRowId))
+    throw new HttpError(400, "Pass a new parent (parentId or spaceId) or a neighbour (afterId or beforeId), not both.");
+  if (!neighbour && !args.parentId && !args.spaceId)
+    throw new HttpError(400, "Nothing to do: pass parentId, spaceId, afterId or beforeId.");
+  if (args.parentRowId && !args.parentId) throw new HttpError(400, "parentRowId needs parentId (the record's database).");
+  const page = await changeable(user, args.pageId);
+  if (page.synced) throw new HttpError(400, "This page is the content of a synced block and moves with the block.");
+  // Where it would go: below the parent, or next to the neighbour (in its parent).
+  const destination = args.parentId ?? (neighbour ? (await requirePage(user, neighbour)).parent_id : null);
+  if (neighbour === page.id || (destination && (await subtreeOf(page.id)).some((p) => p.id === destination)))
+    throw new HttpError(400, "A page cannot be moved into itself or below one of its own sub-pages.");
+  if (destination) await requirePlaintext(await requirePage(user, destination));
+  if (args.spaceId && !destination) await requirePlaintext({ space_id: args.spaceId });
+  const meta = args.tagsAndProperties ? { meta: args.tagsAndProperties } : {};
+  try {
+    await command(
+      user,
+      neighbour
+        ? { action: "page.move", pageId: page.id, targetId: neighbour, placement: args.afterId ? "after" : "before", ...meta }
+        : args.parentId
+          ? { action: "page.move", pageId: page.id, targetId: args.parentId, placement: "inside", ...(args.parentRowId ? { parentRowId: args.parentRowId } : {}), ...meta }
+          : { action: "page.move", pageId: page.id, spaceId: args.spaceId, parentId: null, ...meta },
+    );
+  } catch (e) {
+    // Tags or properties of the source space (lib/meta-scope-server.ts):
+    // the choice the move dialog offers, as one argument.
+    const foreign = e instanceof HttpError && e.status === 409 && /^Die Seiten verwenden Tags[^(]*\((.*)\)\./.exec(e.message);
+    if (foreign)
+      throw new HttpError(409, `The pages use tags or properties the destination does not have (${foreign[1]}). Pass tagsAndProperties: "auto" (same name there, else a copy), "copy" or "remove".`);
+    throw e;
+  }
+  const moved = (await one<Page>("SELECT * FROM pages WHERE id=?", page.id))!;
+  return {
+    ok: true,
+    pageId: moved.id,
+    workspaceId: moved.workspace_id,
+    spaceId: moved.space_id,
+    parentId: moved.parent_id,
+    ...(moved.parent_row_id ? { parentRowId: moved.parent_row_id } : {}),
+    url: pageLink(moved.id),
+  };
+}
+async function restoreHint(what: string) {
+  const days = await trashDays();
+  return `${what} Restore in Flowplan: Trash (in the sidebar) → Restore${days > 0 ? `, within ${days} days – after that the trash deletes it for good` : ""}. Nothing was deleted permanently.`;
+}
+async function trashPage(user: Identity, args: { pageId: string }) {
+  const page = await changeable(user, args.pageId);
+  if (page.synced) throw new HttpError(400, "This page is the content of a synced block; remove the block from its page instead.");
+  const below = (await subtreeOf(page.id)).filter((p) => p.id !== page.id && !p.deleted_at).length;
+  await command(user, { action: "page.delete", pageId: page.id });
+  return {
+    ok: true,
+    pageId: page.id,
+    title: page.title,
+    inTrash: true,
+    subPages: below,
+    restore: await restoreHint(below ? `The page and ${below} page(s) below it are in the trash and come back together.` : "The page is in the trash."),
+  };
+}
+async function trashRecord(user: Identity, args: { databaseId: string; recordId: string }) {
+  const { page, row } = await requireRow(user, args.databaseId, args.recordId, true);
+  await requireUnlocked(user, page);
+  await requirePlaintext(page);
+  if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+  await command(user, { action: "row.delete", pageId: page.id, rowId: row.id });
+  return {
+    ok: true,
+    databaseId: page.id,
+    recordId: row.id,
+    inTrash: true,
+    restore: await restoreHint("The record (with its document, comments and the pages below it) is in the trash."),
+  };
+}
+// One task of a document or record document, found by its position (index)
+// and checked by key or text, or found by its text.
+async function setTask(
+  user: Identity,
+  args: {
+    pageId: string;
+    recordId?: string;
+    index?: number;
+    key?: string;
+    text?: string;
+    done?: boolean;
+    status?: (typeof TASK_STATUSES)[number];
+    due?: string | null;
+    assignee?: string | null;
+  },
+) {
+  if (args.done === undefined && args.status === undefined && args.due === undefined && args.assignee === undefined)
+    throw new HttpError(400, "Nothing to change: pass done, status, due or assignee.");
+  if (args.index === undefined && args.key === undefined && args.text === undefined)
+    throw new HttpError(400, "Name the task: index (with key or text from read_page or my_tasks), key or text.");
+  const page = await changeable(user, args.pageId);
+  let stored: Pick<StoredDocument, "state" | "html">;
+  if (args.recordId) {
+    const { row } = await requireRow(user, page.id, args.recordId, true);
+    stored = await ensureRowDocument(row);
+  } else {
+    if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+    stored = await storedDocument(page.id);
+  }
+  const tasks = extractTasks(documentNode(stored).toJSON());
+  const list = () =>
+    tasks.length
+      ? tasks.slice(0, 40).map((t) => `${t.index}: ${t.checked ? "[x]" : "[ ]"} ${t.text.slice(0, 80)}`).join("; ")
+      : "(none)";
+  const matches = (t: (typeof tasks)[number]) =>
+    args.key !== undefined
+      ? taskKey(t.text) === args.key
+      : args.text === undefined || t.text === args.text.trim() || plain(t.text) === plain(args.text);
+  let task: (typeof tasks)[number] | undefined;
+  if (args.index !== undefined) {
+    task = tasks[args.index];
+    if (!task) throw new HttpError(404, `There is no task ${args.index}; this document has ${tasks.length}. Its tasks: ${list()}`);
+    if (!matches(task))
+      throw new HttpError(409, `Task ${args.index} is no longer the one you named (the document changed). Its tasks now: ${list()}`);
+  } else {
+    const found = tasks.filter(matches);
+    if (!found.length) throw new HttpError(404, `No task matches. Its tasks: ${list()}`);
+    if (found.length > 1)
+      throw new HttpError(409, `${found.length} tasks match (${found.map((t) => t.index).join(", ")}). Pass index and key to pick one. Its tasks: ${list()}`);
+    task = found[0];
+  }
+  // The assignee by id, e-mail or name among the workspace's members.
+  let assignee: string | null | undefined = args.assignee === undefined ? undefined : null;
+  if (args.assignee) {
+    const wanted = args.assignee.trim().toLocaleLowerCase();
+    const person = (await members(page.workspace_id)).find(
+      (m) => m.id === args.assignee || m.email.toLocaleLowerCase() === wanted || m.name.toLocaleLowerCase() === wanted,
+    );
+    if (!person) throw new HttpError(400, `“${args.assignee}” is no member of this workspace (give an e-mail address or a name).`);
+    assignee = person.id;
+  }
+  await command(user, {
+    action: "task.update",
+    pageId: page.id,
+    rowId: args.recordId ?? null,
+    index: task.index,
+    key: taskKey(task.text),
+    ...(args.status !== undefined ? { status: args.status } : args.done !== undefined ? { checked: args.done } : {}),
+    ...(args.due !== undefined ? { due: args.due } : {}),
+    ...(assignee !== undefined ? { assignee } : {}),
+  });
+  const now = args.recordId
+    ? await ensureRowDocument((await requireRow(user, page.id, args.recordId)).row)
+    : await storedDocument(page.id);
+  const changed = (await documentTasks(now, page.workspace_id))[task.index];
+  return { ok: true, pageId: page.id, ...(args.recordId ? { recordId: args.recordId } : {}), task: changed };
 }
 async function createPage(
   user: Identity,
@@ -574,10 +928,10 @@ const tools: Tool[] = [
     name: "read_page",
     title: "Read a page as Markdown",
     description:
-      "Returns a page as Markdown: documents with their text, databases with their records and properties.",
+      "Returns a page as Markdown: documents with their text, databases with their records and properties. A second text block (JSON) gives for documents the `revision` to pass to update_page, the headings (update_page `section`) and the tasks with index and key (set_task).",
     input: z.object({ pageId: id("Page ID") }),
     write: false,
-    run: (async (user: Identity, args: { pageId: string }) => (await pageMarkdown(user, args.pageId)).markdown) as Tool["run"],
+    run: readPage as Tool["run"],
   },
   {
     name: "query_database",
@@ -607,7 +961,7 @@ const tools: Tool[] = [
     name: "my_tasks",
     title: "My tasks",
     description:
-      "Tasks in documents and records that are assigned to you or that you wrote, with due dates. Across all workspaces unless one is given.",
+      "Tasks in documents and records that are assigned to you or that you wrote, with due dates. Across all workspaces unless one is given. index and key name a task for set_task.",
     input: z.object({
       workspaceId: id("Only this workspace").optional(),
       includeDone: z.boolean().optional().describe("Also completed tasks"),
@@ -645,6 +999,71 @@ const tools: Tool[] = [
     run: appendToPage as Tool["run"],
   },
   {
+    name: "update_page",
+    title: "Update a page",
+    description:
+      "Changes a document: its title and/or icon (emoji), and its content as Markdown – `mode` \"replace\" (default) puts the Markdown in place of the whole text, \"append\" adds it at the end (like append_to_page); `section` replaces one section instead: the heading with that text and everything below it up to the next heading of the same or a higher level (Markdown starting with a heading replaces the heading too, otherwise the heading stays; empty Markdown removes the section's content). The text before a replace is kept as a version (restorable in Flowplan), open editors get the change live. Pass `revision` from read_page: if the page changed since (also by someone editing it), the call is refused – read it again and redo the change on the current text. Only documents (not databases, whiteboards, locked or encrypted pages). Returns the new revision. " + CODE_FENCES,
+    input: z.object({
+      pageId: id("Page ID of a document"),
+      title: z.string().trim().min(1).max(500).optional(),
+      icon: z.string().max(100).optional().describe("An emoji; empty removes the icon"),
+      markdown: z.string().max(1_000_000).optional(),
+      mode: z.enum(["replace", "append"]).optional().describe("Default: replace"),
+      section: z.string().trim().min(1).max(500).optional().describe("Heading text of the section to replace, as in read_page's headings"),
+      occurrence: z.number().int().min(1).max(1000).optional().describe("Which of several headings with that text (1 = first)"),
+      revision: z.string().max(64).optional().describe("revision from read_page"),
+    }),
+    write: true,
+    destructive: true,
+    run: updatePage as Tool["run"],
+  },
+  {
+    name: "move_page",
+    title: "Move a page",
+    description:
+      "Moves a page (with everything below it) below another page (`parentId`, or below a record of a database with parentRowId), to the top level of a space (`spaceId`, also in another workspace you belong to), or next to a page (`afterId`/`beforeId`, in that page's place in the tree). Without a neighbour it goes to the end. The same rules as moving in Flowplan: editor rights at both ends, not below itself, locked target pages refuse it. When the destination lacks tags or properties the pages use, pass tagsAndProperties (auto: map to ones with the same name, else copy; copy; remove).",
+    input: z.object({
+      pageId: id("Page ID to move"),
+      parentId: id("New parent page").optional(),
+      parentRowId: id("Record of the parent database (parentId) to put the page below").optional(),
+      spaceId: id("Space whose top level the page goes to (without parentId)").optional(),
+      afterId: id("Put it right after this page").optional(),
+      beforeId: id("Put it right before this page").optional(),
+      tagsAndProperties: z.enum(["auto", "copy", "remove"]).optional(),
+    }),
+    write: true,
+    run: movePage as Tool["run"],
+  },
+  {
+    name: "trash_page",
+    title: "Move a page to the trash",
+    description:
+      "Moves a page and the pages below it to the trash. Nothing is deleted permanently: it can be restored in Flowplan (Trash → Restore) until the trash's retention ends; the answer says how. Not for locked or encrypted pages. Records: use trash_record.",
+    input: z.object({ pageId: id("Page ID") }),
+    write: true,
+    destructive: true,
+    run: trashPage as Tool["run"],
+  },
+  {
+    name: "set_task",
+    title: "Change a task",
+    description:
+      "Checks or unchecks a task (task list item) in a document or a record's document, sets its state, sets or clears its due date and its assignee (the @mention in the task's line) – without touching the rest of the text; open editors get the change live, the assignee is notified. Name the task by `index` together with its `key` (or `text`) from read_page, get_record or my_tasks – refused if that task changed since – or by its text alone (refused when several tasks have it). Checking a task also checks its subtasks.",
+    input: z.object({
+      pageId: id("Page ID of the document (for a record: its database)"),
+      recordId: id("Record ID, for a task in a record's document").optional(),
+      index: z.number().int().min(0).max(5000).optional(),
+      key: z.string().min(1).max(64).optional(),
+      text: z.string().min(1).max(2000).optional(),
+      done: z.boolean().optional().describe("true: done, false: open"),
+      status: z.enum(TASK_STATUSES).optional().describe("Instead of done: open, progress, done, cancelled or deferred"),
+      due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().describe("YYYY-MM-DD; null clears it"),
+      assignee: z.string().max(200).nullable().optional().describe("E-mail address or name of a workspace member; null clears it"),
+    }),
+    write: true,
+    run: setTask as Tool["run"],
+  },
+  {
     name: "create_record",
     title: "Create a database record",
     description:
@@ -672,6 +1091,16 @@ const tools: Tool[] = [
     }),
     write: true,
     run: updateRecord as Tool["run"],
+  },
+  {
+    name: "trash_record",
+    title: "Move a record to the trash",
+    description:
+      "Moves a database record (with its document and the pages below it) to the trash. Nothing is deleted permanently: it can be restored in Flowplan (Trash → Restore) until the trash's retention ends; the answer says how. Not in locked databases.",
+    input: z.object({ databaseId: id("Page ID of the database"), recordId: id("Record ID") }),
+    write: true,
+    destructive: true,
+    run: trashRecord as Tool["run"],
   },
   {
     name: "create_meeting_note",
@@ -756,6 +1185,7 @@ async function callTool(user: Identity, name: unknown, args: unknown): Promise<T
     };
   try {
     const value = await tool.run(user, tool.input.parse(args ?? {}) as never);
+    if (value instanceof Parts) return { content: value.texts.map((text) => ({ type: "text" as const, text: clip(text) })) };
     return { content: [{ type: "text", text: typeof value === "string" ? clip(value) : json(value) }] };
   } catch (e) {
     if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) console.error("MCP tool failed", e);
@@ -811,7 +1241,7 @@ async function dispatch(user: Identity, method: string, params: Record<string, u
             title: t.title,
             description: t.description,
             inputSchema: (({ $schema: _, ...schema }) => schema)(z.toJSONSchema(t.input, { io: "input" })),
-            annotations: { title: t.title, readOnlyHint: !t.write, destructiveHint: false, openWorldHint: false },
+            annotations: { title: t.title, readOnlyHint: !t.write, destructiveHint: !!t.destructive, openWorldHint: false },
           })),
       };
     case "tools/call":
