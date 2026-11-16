@@ -95,23 +95,35 @@ test("guests with edit links change relations and files and move calendar entrie
     const dialog = guest.getByRole("dialog", { name: "Review verschieben" });
     await dialog.getByLabel("Neuer Beginn").fill(`${month}-17`);
     await dialog.getByRole("button", { name: "Verschieben" }).click();
-    await expect(day("17")).toContainText("Review");
+    // The calendar shows the move after the page's server part is loaded
+    // again (router.refresh), which takes its time on the dev server.
+    await expect(day("17")).toContainText("Review", { timeout: 15_000 });
     await expect(day("10")).not.toContainText("Review");
     // The record page edits the relation and attaches a file.
     await day("17").getByRole("link", { name: "Review" }).click();
     await expect(guest.getByRole("heading", { name: "Review" })).toBeVisible();
-    await guest
-      .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
-      .click();
-    await guest.getByRole("checkbox", { name: "Ada" }).check();
+    // The record page is rendered on the server: a click before hydration
+    // is lost (slow on the dev server), so it is repeated until the form
+    // is open.
+    const ada = guest.getByRole("checkbox", { name: "Ada" });
+    await expect(async () => {
+      if (!(await ada.isVisible()))
+        await guest
+          .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
+          .click({ timeout: 2_000 });
+      await expect(ada).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 30_000 });
+    await ada.check();
     await guest.getByLabel("Unterlagen: Datei hochladen").setInputFiles({
       name: "protokoll.txt",
       mimeType: "text/plain",
       buffer: Buffer.from("Protokoll"),
     });
+    // The first upload through a share link compiles its route on the dev
+    // server.
     await expect(
       guest.getByRole("group", { name: "Unterlagen" }),
-    ).toContainText("protokoll.txt");
+    ).toContainText("protokoll.txt", { timeout: 15_000 });
     await guest
       .getByRole("button", { name: "Änderungen speichern", exact: true })
       .click();
