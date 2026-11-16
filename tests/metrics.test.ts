@@ -106,7 +106,10 @@ test("active people per hour: each person once, never stored by name", async () 
   assert.equal((await one<{ active: number }>("SELECT active FROM metrics_hour WHERE at=?", base))?.active, 2);
   assert.equal((await one<{ active: number }>("SELECT active FROM metrics_hour WHERE at=?", base + HOUR))?.active, 1);
   const tables = (await mapAsync((await tableNames())
-    .filter((name) => name.startsWith("metrics_")), async (name) => `${name}(${(await tableColumns(name)).join(",")})`))
+    // The AI details name the person by id on purpose (administrators see AI
+    // use per person, lib/ai-statistics.ts); the request and activity tables
+    // never do.
+    .filter((name) => name.startsWith("metrics_") && name !== "metrics_ai_usage"), async (name) => `${name}(${(await tableColumns(name)).join(",")})`))
     .join(" ");
   assert.doesNotMatch(tables, /user|ip|path|agent/i);
   const series = await metrics.activeSeries(base + HOUR + 10, 24);

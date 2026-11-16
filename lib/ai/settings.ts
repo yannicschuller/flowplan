@@ -37,6 +37,13 @@ const providerSchema = z.object({
   embeddingModel: z.string().trim().max(200).default(""),
 });
 export type AiProviderSettings = z.infer<typeof providerSchema>;
+export const AI_CURRENCIES = ["EUR", "USD", "CHF", "GBP"] as const;
+export const aiPriceSchema = z.object({
+  model: z.string().trim().min(1).max(120),
+  input: z.number().min(0).max(100_000),
+  output: z.number().min(0).max(100_000),
+});
+export type AiPrice = z.infer<typeof aiPriceSchema>;
 const featureFlags = z.object(Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, z.boolean().optional()])) as Record<AiFeature, z.ZodOptional<z.ZodBoolean>>);
 const instanceSchema = z.object({
   enabled: z.boolean(),
@@ -56,6 +63,11 @@ const instanceSchema = z.object({
   // lib/api-tokens.ts) may use AI, transcription and meeting notes. On
   // unless switched off; each token still needs the permission.
   tokens: z.boolean().default(true),
+  // Prices per million input and output tokens per model, entered by the
+  // administrators (no price list is fetched) – for the estimated costs of
+  // the AI statistics (lib/ai-statistics.ts). Without a price: tokens only.
+  prices: z.array(aiPriceSchema).max(50).default([]),
+  currency: z.enum(AI_CURRENCIES).default("EUR"),
 });
 export type AiInstanceSettings = z.infer<typeof instanceSchema>;
 const userSchema = z.object({
@@ -113,6 +125,8 @@ function envDefaults(): AiInstanceSettings {
     device: !/^(0|off|false|no)$/i.test(process.env.FLOWPLAN_AI_DEVICE?.trim() || ""),
     tokens: !/^(0|off|false|no)$/i.test(process.env.FLOWPLAN_AI_TOKENS?.trim() || ""),
     features: Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, features.includes(id)])) as Record<AiFeature, boolean>,
+    prices: [],
+    currency: "EUR",
   };
 }
 

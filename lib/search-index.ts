@@ -22,6 +22,7 @@ import { isClassicQuery, parseQuery, type ItemType } from "./collection-query";
 import { evaluateQuery } from "./collections";
 import { isShortTerm } from "./ai/chunks";
 import { isLeader } from "./cluster/leader";
+import { inArea, shiftArea } from "./server-metrics";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -707,7 +708,8 @@ export function drainSearchIndex(): Promise<void> {
   const drain = (async () => {
     await nextTurn();
     try {
-      while (await processSearchIndex()) await nextTurn();
+      // Each batch is a span of the CPU per area (lib/server-metrics.ts).
+      while (await inArea("search", () => processSearchIndex())) await nextTurn();
     } catch (error) {
       console.error("Search indexing failed", error);
     }
@@ -722,10 +724,15 @@ export function drainSearchIndex(): Promise<void> {
 // background drain takes over the rest instead of one request stalling the
 // server for seconds.
 export async function refreshSearchIndex() {
-  for (let done = 0; done < INLINE_LIMIT; ) {
-    const n = await processSearchIndex(Math.min(BATCH, INLINE_LIMIT - done));
-    if (!n) return;
-    done += n;
+  const area = shiftArea("api", "search");
+  try {
+    for (let done = 0; done < INLINE_LIMIT; ) {
+      const n = await processSearchIndex(Math.min(BATCH, INLINE_LIMIT - done));
+      if (!n) return;
+      done += n;
+    }
+  } finally {
+    area();
   }
   void drainSearchIndex();
 }

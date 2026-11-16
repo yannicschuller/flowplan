@@ -29,6 +29,7 @@ export const GRANT_KINDS_STEP = "grant-kinds-100";
 export const SYNCED_JOURNAL_STEP = "synced-journal-parent";
 export const SEARCH_VISITS_STEP = "search-visits-243";
 export const SETTINGS_LEVEL_STEP = "settings-level-294";
+export const AI_DETAIL_STEP = "metrics-ai-usage";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -43,7 +44,18 @@ export const dataSteps = (): DataStep[] => [
   { name: SYNCED_JOURNAL_STEP, run: syncedBlocksIntoJournals },
   { name: SEARCH_VISITS_STEP, run: searchVisitsFromPageVisits },
   { name: SETTINGS_LEVEL_STEP, run: settingsLevelForExistingAccounts },
+  { name: AI_DETAIL_STEP, run: aiDetailFromTotals },
 ];
+
+// The AI tokens counted per day and feature before the detailed AI
+// statistics (lib/metrics.ts metrics_ai_usage): copied with an unknown
+// model, workspace and person, so the history goes on (once; a new
+// database has nothing to copy).
+async function aiDetailFromTotals() {
+  await run(
+    "INSERT INTO metrics_ai_usage(day,model,source,workspace_id,user_id,feature,requests,tokens_in,tokens_out) SELECT day,'','','','',feature,requests,tokens_in,tokens_out FROM metrics_ai WHERE true ON CONFLICT DO NOTHING",
+  );
+}
 
 // Runs the steps not done yet (`only`: just these). Several instances on
 // one PostgreSQL database take turns (advisory lock) and skip what another

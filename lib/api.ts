@@ -1,4 +1,6 @@
 import { withReadMemo } from "./read-memo";
+import { noteCommand } from "./metrics";
+import { shiftArea } from "./server-metrics";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { setUserPageIcon, userPageIcon } from "./user-page-icon";
 import { setUserExternalLinkIcon, userExternalLinkIcon } from "./user-external-link-icon";
@@ -823,9 +825,24 @@ export async function command(
   // (lib/idempotency.ts idempotencyHook).
   keyed?: TransactionHook,
 ): Promise<unknown> {
-  // Permission lookups are remembered until the next write (lib/read-memo.ts).
-  return await withReadMemo(async () => await runCommand(user, input, withinTransaction, keyed));
+  // Time per action and the CPU of live sync for the monitoring
+  // (lib/metrics.ts, lib/server-metrics.ts): two counters, no I/O.
+  const action = typeof (input as { action?: unknown })?.action === "string" ? (input as { action: string }).action : "";
+  const started = performance.now();
+  const area = LIVE_ACTIONS.has(action) ? shiftArea("api", "live") : null;
+  let failed = false;
+  try {
+    // Permission lookups are remembered until the next write (lib/read-memo.ts).
+    return await withReadMemo(async () => await runCommand(user, input, withinTransaction, keyed));
+  } catch (error) {
+    failed = !(error instanceof HttpError) || error.status >= 500;
+    throw error;
+  } finally {
+    area?.();
+    if (action) noteCommand(action, performance.now() - started, failed);
+  }
 }
+const LIVE_ACTIONS = new Set(["document.sync", "row.document.sync", "whiteboard.sync", "e2ee.append"]);
 async function runCommand(
   user: Identity,
   input: unknown,
