@@ -21,6 +21,8 @@ const baseURL = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 
 export default defineConfig({
   testDir: "./tests/browser",
+  // The demo account starts past the introduction (tests/browser/global-setup.ts).
+  globalSetup: "./tests/browser/global-setup.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 60000,
