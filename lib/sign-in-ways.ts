@@ -1,22 +1,24 @@
 // Which ways the sign-in page offers and which of them comes first
 // (components/login.tsx): one large button for the way last used on this
-// device, the others below it. On a first visit single sign-on comes first
-// where the instance has it, then passkeys, then e-mail and password. Ways
+// device, the others below it. On a first visit the portal of a reverse
+// proxy and single sign-on come first where the instance has them, then
+// passkeys, then e-mail and password. Ways
 // the instance has turned off are not offered at all.
-export type SignInWay = "sso" | "passkey" | "password";
+export type SignInWay = "proxy" | "sso" | "passkey" | "password";
 
 export const LAST_SIGN_IN_KEY = "flowplan:last-sign-in";
-const ORDER: SignInWay[] = ["sso", "passkey", "password"];
+const ORDER: SignInWay[] = ["proxy", "sso", "passkey", "password"];
 
 export const isSignInWay = (value: unknown): value is SignInWay => ORDER.includes(value as SignInWay);
 
 // What the instance and this browser allow:
+// - proxy: the portal of a reverse proxy (AUTH_PROXY_LOGIN_URL, lib/proxy-auth.ts);
 // - sso: OIDC is set up (OIDC_ISSUER);
 // - passkey: accounts of the instance (FLOWPLAN_LOCAL_LOGIN) and passkeys in
 //   this browser – or the app, which hands passkeys over to the system browser;
 // - password: accounts of the instance or the LDAP directory.
-export function availableSignInWays(flags: { sso: boolean; passkey: boolean; password: boolean }): SignInWay[] {
-  return ORDER.filter((way) => flags[way]);
+export function availableSignInWays(flags: { proxy?: boolean; sso: boolean; passkey: boolean; password: boolean }): SignInWay[] {
+  return ORDER.filter((way) => !!flags[way]);
 }
 
 export type SignInChoice = {

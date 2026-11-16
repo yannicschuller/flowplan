@@ -38,6 +38,13 @@ export default function SigninSection() {
         ? { tone: "ok", label: t("LDAP an", "LDAP on") }
         : { tone: "off", label: t("LDAP aus", "LDAP off") },
   ];
+  // Sign-in through a reverse proxy (lib/proxy-auth.ts): shown when on.
+  if (dir?.proxy?.enabled)
+    items.push(
+      dir.proxy.wideProxies.length
+        ? { tone: "warn", label: t("Proxy-Anmeldung: Proxys außerhalb dieses Rechners", "Proxy sign-in: proxies beyond this machine") }
+        : { tone: "ok", label: t("Proxy-Anmeldung an", "Proxy sign-in on") },
+    );
   // LDAP_TLS_REJECT_UNAUTHORIZED=false (#286): never silent.
   if (dir?.ldap.tlsUnverified) items.push({ tone: "warn", label: t("LDAP: Zertifikatsprüfung aus", "LDAP: certificate check off") });
   if (data.localLogin)

@@ -23,6 +23,7 @@ import { all, audit, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { securityEvent } from "./security-events";
 import { translate, type Locale } from "./i18n";
+import { proxyAuthConfig } from "./proxy-auth-config";
 
 export type IdentityRow = { id: string; user_id: string; provider: string; issuer: string; subject: string; email: string; created_at: number; last_used_at: number | null };
 export const subjectKey = (issuer: string, subject: string) => `${issuer}|${subject}`;
@@ -120,8 +121,9 @@ export async function signInOverview(userId: string) {
     list: (await listIdentities(userId)).map((i) => ({
       id: i.id,
       issuer: i.issuer,
-      // The provider's host, for a short label.
-      provider: hostOf(i.issuer),
+      // The provider's host, for a short label; the portal's name for the
+      // sign-in through a reverse proxy (lib/proxy-auth.ts).
+      provider: i.provider === "proxy" ? proxyAuthConfig()?.name || "Proxy" : hostOf(i.issuer),
       email: i.email,
       createdAt: i.created_at,
       lastUsedAt: i.last_used_at,

@@ -152,12 +152,6 @@ export async function proxy(request: NextRequest) {
   if (custom.status !== "none") return customHostResponse(request, custom, host);
   // The custom domain marker is set here only; nobody brings their own.
   const forged = request.headers.has(CUSTOM_HOST_HEADER);
-  const pass = () => {
-    if (!forged) return withBuild(NextResponse.next());
-    const headers = new Headers(request.headers);
-    headers.delete(CUSTOM_HOST_HEADER);
-    return withBuild(NextResponse.next({ request: { headers } }));
-  };
   // CalDAV speaks PROPFIND and REPORT, which route handlers do not accept.
   if (path.startsWith("/api/caldav") || path.startsWith("/.well-known/caldav")) {
     const { handleCalDav } = await import("./lib/caldav");
@@ -168,6 +162,18 @@ export async function proxy(request: NextRequest) {
     const { handleCardDav } = await import("./lib/carddav");
     return handleCardDav(request);
   }
+  // Signed in (or out) by a trusted reverse proxy: the request goes on with
+  // the new session cookie, and the answer sets it.
+  const auth = await proxySignIn(request, path);
+  const pass = () => {
+    if (!forged && !auth) return withBuild(NextResponse.next());
+    const headers = new Headers(request.headers);
+    headers.delete(CUSTOM_HOST_HEADER);
+    auth?.request(headers);
+    const response = NextResponse.next({ request: { headers } });
+    auth?.response(response);
+    return withBuild(response);
+  };
   if (POLICY_EXCLUDED.test(path) || prefetch(request)) return pass();
   // Trailing slashes are kept for CalDAV (next.config.ts); pages redirect
   // to the address without one, as before.
@@ -183,9 +189,26 @@ export async function proxy(request: NextRequest) {
   headers.delete(CUSTOM_HOST_HEADER);
   if (nonce) headers.set("x-nonce", nonce);
   headers.set("Content-Security-Policy", policy);
+  auth?.request(headers);
   const response = NextResponse.next({ request: { headers } });
   response.headers.set("Content-Security-Policy", policy);
+  auth?.response(response);
   return withBuild(response);
+}
+
+// Sign-in through a trusted reverse proxy (AUTH_PROXY_USER_HEADER,
+// lib/proxy-auth.ts) for pages and API requests – not for build files,
+// icons or the health check. null: nothing changes.
+const PROXY_AUTH_SKIPPED = /^\/(_next\/static|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$|api\/health$)/;
+async function proxySignIn(request: NextRequest, path: string) {
+  if (!process.env.AUTH_PROXY_USER_HEADER?.trim() || PROXY_AUTH_SKIPPED.test(path)) return null;
+  try {
+    const { proxySignInStep, proxyStepCookies } = await import("./lib/proxy-auth");
+    return proxyStepCookies(await proxySignInStep(request.headers));
+  } catch (e) {
+    console.error("Sign-in through the reverse proxy failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 async function customHostResponse(request: NextRequest, state: HostState, host: string) {

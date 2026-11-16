@@ -3439,8 +3439,11 @@ export default function WorkspaceApp({
   const signOut = async () => {
     await disableOffline().catch(() => undefined);
     clearAppCache();
-    await fetch("/api/auth/logout", { method: "POST" });
-    location.href = "/";
+    const done = await fetch("/api/auth/logout", { method: "POST" })
+      .then((r) => r.json() as Promise<{ redirect?: string }>)
+      .catch(() => ({}) as { redirect?: string });
+    // Signed in through a reverse proxy: its portal signs out as well.
+    location.href = done.redirect || "/";
   };
   // The account menu's entries in the phone's "Mehr" sheet (#197), in the
   // order of the "⋯" menu; signing out comes last, set apart.

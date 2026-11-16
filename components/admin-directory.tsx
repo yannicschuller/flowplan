@@ -12,9 +12,10 @@ import { when } from "./settings/admin/format";
 import type { ScimOverview } from "@/lib/scim";
 import type { LdapStatus } from "@/lib/ldap-auth";
 import type { ContactsLdapStatus } from "@/lib/contacts-ldap";
+import type { ProxyAuthStatus } from "@/lib/proxy-auth";
 import { AdminContactsLdap } from "./admin-contacts-ldap";
 
-export type DirectoryOverview = { scim: ScimOverview; ldap: LdapStatus; contacts?: ContactsLdapStatus };
+export type DirectoryOverview = { scim: ScimOverview; ldap: LdapStatus; contacts?: ContactsLdapStatus; proxy?: ProxyAuthStatus };
 
 // /api/admin/directory, loaded once; `act` runs a command and keeps its answer.
 export function useDirectory(onError: (message: string) => void) {
@@ -33,7 +34,7 @@ export function useDirectory(onError: (message: string) => void) {
     setBusy(action);
     try {
       const result = await api<DirectoryOverview & { token?: string }>("/api/admin/directory", { action, ...extra });
-      setData({ scim: result.scim, ldap: result.ldap, contacts: result.contacts });
+      setData({ scim: result.scim, ldap: result.ldap, contacts: result.contacts, proxy: result.proxy });
       return result;
     } catch (e) {
       report.current((e as Error).message);
@@ -282,7 +283,80 @@ export function AdminDirectory({ directory }: { directory: Awaited<ReturnType<ty
           </>
         )}
       </SettingGroup>
+      {data.proxy && <AdminProxyAuth status={data.proxy} />}
       {data.contacts && <AdminContactsLdap status={data.contacts} busy={busy} act={act} />}
     </>
+  );
+}
+
+// Sign-in through a reverse proxy (lib/proxy-auth.ts): configured through
+// the environment, shown read-only like LDAP.
+function AdminProxyAuth({ status }: { status: ProxyAuthStatus }) {
+  const t = useT();
+  const tone = !status.enabled ? "off" : status.wideProxies.length ? "warn" : "ok";
+  const none = t("nicht gesetzt", "not set");
+  return (
+    <SettingGroup
+      id="proxy-auth"
+      title={t("Anmeldung über einen Reverse-Proxy", "Sign-in through a reverse proxy")}
+      description={
+        status.enabled
+          ? t(
+              `Ein Portal vor Flowplan (z. B. YunoHost, Authelia, Authentik) meldet Personen an und nennt sie im Header ${status.userHeader}. ${status.accounts} Konten melden sich so an.`,
+              `A portal in front of Flowplan (e.g. YunoHost, Authelia, Authentik) signs people in and names them in the header ${status.userHeader}. ${status.accounts} accounts sign in this way.`,
+            )
+          : t(
+              "Nicht eingerichtet. Wird über Umgebungsvariablen (AUTH_PROXY_USER_HEADER, AUTH_PROXY_TRUSTED_PROXIES …) konfiguriert.",
+              "Not set up. Configured with environment variables (AUTH_PROXY_USER_HEADER, AUTH_PROXY_TRUSTED_PROXIES …).",
+            )
+      }
+      actions={<StatusBadge tone={tone}>{tone === "off" ? t("Aus", "Off") : tone === "warn" ? t("Prüfen", "Check") : t("An", "On")}</StatusBadge>}
+    >
+      {status.enabled && (
+        <>
+          <SettingRow
+            label={t("Vertrauenswürdige Proxys", "Trusted proxies")}
+            description={
+              status.wideProxies.length
+                ? t(
+                    `Nicht nur dieser Rechner: Wer Flowplans Port von ${status.wideProxies.join(", ")} aus erreicht, kann sich als beliebige Person ausgeben. Stelle sicher, dass der Port nur über den Proxy erreichbar ist.`,
+                    `Not only this machine: anyone who reaches Flowplan's port from ${status.wideProxies.join(", ")} can pose as anyone. Make sure the port is reachable only through the proxy.`,
+                  )
+                : t("Nur Verbindungen von diesem Rechner (AUTH_PROXY_TRUSTED_PROXIES).", "Only connections from this machine (AUTH_PROXY_TRUSTED_PROXIES).")
+            }
+          >
+            <code className="admin-break">{status.trustedProxies.join(", ")}</code>
+          </SettingRow>
+          <SettingRow
+            label={t("Header", "Headers")}
+            description={t(
+              `E-Mail: ${status.emailHeader || none} · Name: ${status.nameHeader || none} · Gruppen: ${status.groupsHeader || none}`,
+              `E-mail: ${status.emailHeader || none} · Name: ${status.nameHeader || none} · Groups: ${status.groupsHeader || none}`,
+            )}
+          >
+            <code className="admin-break">{status.userHeader}</code>
+          </SettingRow>
+          <SettingRow
+            label={t("Portal", "Portal")}
+            description={t(
+              `Anmelden: ${status.loginUrl || none} · Abmelden: ${status.logoutUrl || none}`,
+              `Sign in: ${status.loginUrl || none} · Sign out: ${status.logoutUrl || none}`,
+            )}
+          >
+            <StatusBadge tone={status.only ? "info" : "off"}>{status.only ? t("Nur Portal", "Portal only") : t("Auch Passwort", "Password too")}</StatusBadge>
+          </SettingRow>
+          <SettingRow
+            label={t("Neue Konten", "New accounts")}
+            description={
+              status.autoCreate
+                ? t("Personen ohne Konto bekommen bei der ersten Anmeldung eines (AUTH_PROXY_AUTO_CREATE).", "People without an account get one at their first sign-in (AUTH_PROXY_AUTO_CREATE).")
+                : t("Nur Personen mit Konto (LDAP, SCIM oder schon verbunden) melden sich an.", "Only people with an account (LDAP, SCIM or already connected) sign in.")
+            }
+          >
+            <StatusBadge tone={status.autoCreate ? "ok" : "off"}>{status.autoCreate ? t("An", "On") : t("Aus", "Off")}</StatusBadge>
+          </SettingRow>
+        </>
+      )}
+    </SettingGroup>
   );
 }

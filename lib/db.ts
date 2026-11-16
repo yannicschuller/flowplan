@@ -508,6 +508,11 @@ function migrate(d: DatabaseSync) {
     // When the person last proved who they are for this session (step-up,
     // lib/step-up.ts); an app hand-off carries the browser session's time.
     ["authenticated_at", "INTEGER"],
+    // Sessions the sign-in through a reverse proxy created (lib/proxy-auth.ts):
+    // the user name the proxy named, lowercase; NULL for every other session.
+    // An older version ignores it (the session then lasts its normal time),
+    // so the schema number stays.
+    ["proxy_user", "TEXT"],
   ])
     if (!sessionColumns.includes(name)) d.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
   // Sessions of the desktop and mobile apps (#133): they stay signed in by

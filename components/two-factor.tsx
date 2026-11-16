@@ -527,8 +527,11 @@ export function TwoFactorRequired({
           type="button"
           className="text-button"
           onClick={async () => {
-            await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-            location.assign("/");
+            const done = await fetch("/api/auth/logout", { method: "POST" })
+              .then((r) => r.json() as Promise<{ redirect?: string }>)
+              .catch(() => ({}) as { redirect?: string });
+            // Signed in through a reverse proxy: its portal signs out as well.
+            location.assign(done.redirect || "/");
           }}
         >
           <SignOut size={15} /> {t("Abmelden", "Sign out")}

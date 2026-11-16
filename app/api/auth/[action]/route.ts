@@ -51,6 +51,7 @@ import { readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { provesApp } from "@/lib/app-devices";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview, ssoOnlyAccount } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
+import { portalAddress, proxyAuthConfig } from "@/lib/proxy-auth-config";
 export const runtime = "nodejs";
 import { oidcConfig as config, oidcFailure } from "@/lib/oidc";
 import {
@@ -178,6 +179,14 @@ async function handleGET(
   const { action } = await params;
   let returnTo = "/";
   try {
+    // "Mit <Portal> anmelden": the reverse proxy's sign-in page
+    // (AUTH_PROXY_LOGIN_URL), back to this instance afterwards.
+    if (action === "proxy-login") {
+      const portal = proxyAuthConfig()?.loginUrl;
+      if (!portal) throw new HttpError(404, "Nicht gefunden");
+      returnTo = loginReturnPath(new URL(req.url).searchParams.get("returnTo"));
+      return NextResponse.redirect(new URL(portalAddress(portal, new URL(returnTo, appUrl()).toString()), appUrl()));
+    }
     if (action === "login") {
       const params = new URL(req.url).searchParams;
       returnTo = loginReturnPath(params.get("returnTo"));
@@ -748,9 +757,14 @@ async function handlePOST(
       if (demoUser?.demo) await endDemo(demoUser.id);
       const jar = await cookies(),
         token = jar.get(cookieName)?.value;
+      // A session from the reverse proxy (lib/proxy-auth.ts): the portal
+      // signs out too (AUTH_PROXY_LOGOUT_URL) – else the next page would
+      // sign the person in again.
+      const proxied = token ? !!(await one<{ proxy_user: string | null }>("SELECT proxy_user FROM sessions WHERE token=?", hash(token)))?.proxy_user : false;
       if (token) await run("DELETE FROM sessions WHERE token=?", hash(token));
       jar.delete(cookieName);
-      return NextResponse.json({ ok: true });
+      const portal = proxied ? proxyAuthConfig()?.logoutUrl : "";
+      return NextResponse.json(portal ? { ok: true, redirect: portalAddress(portal, `${appUrl()}/`) } : { ok: true });
     }
     throw new HttpError(404, "Nicht gefunden");
   } catch (e) {

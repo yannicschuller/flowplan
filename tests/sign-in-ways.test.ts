@@ -22,6 +22,9 @@ test("only the ways the instance offers are shown", () => {
   // LDAP without local accounts: the password form, no passkeys.
   assert.deepEqual(availableSignInWays({ sso: false, passkey: false, password: true }), ["password"]);
   assert.deepEqual(availableSignInWays({ sso: false, passkey: false, password: false }), []);
+  // The portal of a reverse proxy (AUTH_PROXY_LOGIN_URL) comes first.
+  assert.deepEqual(availableSignInWays({ ...all, proxy: true }), ["proxy", "sso", "passkey", "password"]);
+  assert.deepEqual(chooseSignInWays(["proxy", "password"], null), { main: "proxy", lastUsed: false, secondary: [], passwordLink: true });
 });
 
 test("a first visit starts with SSO, then passkeys, then the password", () => {
@@ -98,9 +101,11 @@ test("the last way is stored per device; blocked storage is a first visit", () =
 
 test("the sign-in page feeds the instance's flags into the choice", () => {
   const login = readFileSync(new URL("../components/login.tsx", import.meta.url), "utf8");
-  // SSO with OIDC, passkeys with local accounts (in the app as the hand-off),
-  // the form with local accounts or LDAP.
-  assert.match(login, /availableSignInWays\(\{ sso: configured, passkey: localLogin && \(passkeyHandOff \|\| passkeyButton\), password: passwordForm \}\)/);
+  // The reverse proxy's portal with AUTH_PROXY_LOGIN_URL, SSO with OIDC,
+  // passkeys with local accounts (in the app as the hand-off), the form with
+  // local accounts or LDAP.
+  assert.match(login, /availableSignInWays\(\{ proxy: !!proxyName, sso: configured, passkey: localLogin && \(passkeyHandOff \|\| passkeyButton\), password: passwordForm \}\)/);
+  assert.match(login, /aria-describedby=\{describedBy\("proxy"\)\}/);
   assert.match(login, /const passwordForm = localLogin \|\| ldap;/);
   // The way that signed in is remembered once the sign-in succeeded.
   assert.match(login, /if \(usedWay\.current\) writeLastSignIn\(usedWay\.current\)/);
