@@ -1,14 +1,20 @@
 # The browser specs (tests/browser, Playwright) against a production build,
-# on demand (Actions → Browser specs → Run workflow). Apart from CI so they do
-# not turn the required run red.
+# on demand (Actions → Browser specs → Run workflow) and every night on main.
+# Apart from CI so they do not turn the required run red; a failed run lists
+# the failed specs with file and line in its summary.
 name: Browser specs
 
 on:
   workflow_dispatch:
+  schedule:
+    # Nightly on the default branch (main), off the full hour.
+    - cron: "23 2 * * *"
 
 permissions:
   contents: read
 
+# A newer run of the same branch – by hand or the nightly one – cancels the
+# one still running.
 concurrency:
   group: browser-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +31,8 @@ jobs:
   # before an editor shows after a reload) and the 8 runners took up to an
   # hour.
   build:
+    # The nightly run only in this repository, not in forks.
+    if: github.event_name != 'schedule' || github.repository == 'yannicschuller/flowplan'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -122,10 +130,13 @@ jobs:
       # Playwright starts the servers (playwright.config.ts). One retry: a
       # spec that passes on the second attempt is reported as flaky, not as
       # passed. e2ee.spec.ts needs a data directory of its own (next step).
+      # The JSON report feeds the summary of failed specs below.
       - name: Browser specs
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/browser-results.json
         run: |
           npx playwright test $(ls tests/browser/*.spec.ts | grep -v '/e2ee\.spec\.ts$') \
-            --shard=${{ matrix.shard }}/4 --retries=1 --trace=retain-on-failure
+            --shard=${{ matrix.shard }}/4 --retries=1 --trace=retain-on-failure --reporter=list,json
       # The end-to-end encryption spec on a server of its own: its own data
       # directory (/tmp/flowplan-e2ee-e2e.*).
       - name: E2EE spec
@@ -134,9 +145,15 @@ jobs:
           TEST_SERVERS: "1"
           TEST_BASE_URL: http://127.0.0.1:3100
           FLOWPLAN_DATA_DIR: /tmp/flowplan-e2ee-e2e.ci
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2ee-results.json
         # Its own output directory: Playwright empties it at the start, and
         # test-results holds the failures of the step before.
-        run: npx playwright test tests/browser/e2ee.spec.ts --retries=1 --trace=retain-on-failure --output=test-results-e2ee
+        run: npx playwright test tests/browser/e2ee.spec.ts --retries=1 --trace=retain-on-failure --output=test-results-e2ee --reporter=list,json
+      - name: Failed specs in the summary
+        if: failure()
+        run: |
+          node scripts/playwright-summary.mjs "$RUNNER_TEMP/browser-results.json" "Browser specs, shard ${{ matrix.shard }}/4" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ matrix.shard }}" = 1 ]; then node scripts/playwright-summary.mjs "$RUNNER_TEMP/e2ee-results.json" "E2EE spec" >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Server logs
         if: failure()
         run: |
