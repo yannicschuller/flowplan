@@ -2992,7 +2992,11 @@ test("inline math edits in sentences, validates, supports undo and renders on sh
     .toMatch(
       /<p( data-block-id="[^"]+")?>Vor <span data-math="\\frac\{a\}\{b\}" class="math-inline">.*<\/span>nach\.<\/p>/,
     );
+  // After the reload the app boots first (against `next dev` several
+  // seconds of React's development checks, more the more pages the
+  // workspace has); the editor shows the text it opens with at once.
   await page.reload();
+  await editor.waitFor();
   await expect(formula).toHaveAttribute("data-math", String.raw`\frac{a}{b}`);
   await formula.focus();
   await formula.press("Enter");
@@ -3128,6 +3132,10 @@ test("inline math edits in sentences, validates, supports undo and renders on sh
     await context.close();
   }
   await page.goto(`/#page=${p.id}`);
+  // The page opens with its kept copy (lib/swr-cache.ts) from before the
+  // guest's change; the formula is deleted once the guest's version shows –
+  // a dialog opened on the old one rightly refuses to delete the changed one.
+  await expect(formula).toHaveAttribute("data-math", "z^3");
   await formula.click();
   await dialog
     .getByRole("button", { name: "Formel löschen", exact: true })
