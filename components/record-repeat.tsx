@@ -4,7 +4,7 @@
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { localDay, nextOccurrence, parseRepeat, type RepeatRule } from "@/lib/recurrence";
-import { browserZone, validDateValue } from "@/lib/date-values";
+import { browserZone, formatDateValue, validDateValue } from "@/lib/date-values";
 import type { Field, Row } from "@/lib/types";
 
 // i18n-table: 2 4 – [key, German, English, German unit, English unit]
@@ -67,8 +67,10 @@ export function RecordRepeat({
           ))}
         </Select>
         {rule && (
-          <>
-            <label>
+          // One sentence that wraps as a whole: "alle [1] Wochen · [Mo Di …]
+          // · gerechnet ab [Start ▾]".
+          <span className="record-repeat-rule">
+            <label className="record-repeat-every">
               {t("alle", "every")}
               <input
                 key={`${row.id}-${row.version}`}
@@ -112,26 +114,40 @@ export function RecordRepeat({
                 })}
               </span>
             )}
+            {/* The date property the next record moves on from (the rule's
+                field); the record's other dates move by as many days. Only
+                a choice with more than one date property. */}
             {dates.length > 1 && (
-              <Select
-                aria-label={t("Verschobenes Datum", "Date that moves on")}
-                disabled={!editable}
-                value={rule.field}
-                onChange={(e) => save({ ...rule, field: e.target.value, day: undefined })}
+              <span
+                className="record-repeat-field"
+                title={t(
+                  "Der nächste Eintrag rechnet ab diesem Datum weiter. Andere Datumswerte rücken um gleich viele Tage mit.",
+                  "The next record counts on from this date. Other dates move on by the same number of days.",
+                )}
               >
-                {dates.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </Select>
+                {t("gerechnet ab", "counted from")}
+                <Select
+                  aria-label={t("Gerechnet ab Datum", "Counted from date")}
+                  disabled={!editable}
+                  value={rule.field}
+                  onChange={(e) => save({ ...rule, field: e.target.value, day: undefined })}
+                >
+                  {dates.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </Select>
+              </span>
             )}
-            <small className="muted">
-              {next
-                ? t(`Wenn erledigt, folgt der nächste Eintrag am ${next}.`, `Once done, the next record follows on ${next}.`)
-                : t("Wenn erledigt, folgt der nächste Eintrag.", "Once done, the next record follows.")}
-            </small>
-          </>
+          </span>
+        )}
+        {rule && (
+          <small className="muted">
+            {next
+              ? t(`Wenn erledigt, folgt der nächste Eintrag am ${formatDateValue(next)}.`, `Once done, the next record follows on ${formatDateValue(next)}.`)
+              : t("Wenn erledigt, folgt der nächste Eintrag.", "Once done, the next record follows.")}
+          </small>
         )}
       </span>
     </div>

@@ -77,6 +77,15 @@ export function localToInstant(
     );
   return (choice === "later" ? later : earlier).toInstant().toString();
 }
+// Whether a local wall time occurs twice in `zone` (the hour repeated when
+// the clocks go back), so the field has to ask which occurrence is meant.
+export function repeatedLocalTime(local: string, zone: string) {
+  if (!validDateValue(local) || !isTimed(local) || hasOffset(local) || !validZone(zone)) return false;
+  const plain = Temporal.PlainDateTime.from(local);
+  const earlier = plain.toZonedDateTime(zone, { disambiguation: "earlier" }),
+    later = plain.toZonedDateTime(zone, { disambiguation: "later" });
+  return earlier.toPlainDateTime().equals(plain) && earlier.epochMilliseconds !== later.epochMilliseconds;
+}
 export function instantOf(value: string, zone: string) {
   if (!validDateValue(value) || !isTimed(value) || !validZone(zone))
     throw new Error("Ungültiger Zeitpunkt.");

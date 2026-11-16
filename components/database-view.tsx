@@ -2446,7 +2446,7 @@ export default function DatabaseView({
                       type="button"
                       className="chip"
                       disabled={!rowEditable(row)}
-                      aria-label={`${date} wieder einplanen`}
+                      aria-label={t(`${date} wieder einplanen`, `Schedule ${date} again`)}
                       onClick={() =>
                         void save({
                           ...rule,
@@ -2459,7 +2459,7 @@ export default function DatabaseView({
                   ))}
                 </span>
               )}
-              <small className="muted">{recurrenceText(rule)}</small>
+              <small className="muted">{recurrenceText(rule, t)}</small>
             </>
           )}
         </span>

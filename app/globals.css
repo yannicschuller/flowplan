@@ -3175,9 +3175,18 @@ tr:hover .row-open,
   width: 100%;
   min-width: 0;
 }
-.date-input .checkbox-label {
-  font-size: 12px;
-  margin: 0;
+/* With a time: date and time side by side, everything else below them. */
+.date-input:has(> .date-time) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr);
+}
+.date-input:has(> .date-time) > :not(input) {
+  grid-column: 1 / -1;
+}
+/* "Datum entfernen" and "+ Uhrzeit" / "Uhrzeit entfernen" in one row. */
+.date-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .date-input small {
   color: var(--muted);
@@ -4291,9 +4300,12 @@ tr:hover .row-open,
 }
 .recurrence-choice label {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
+  margin: 0;
   font-size: 13px;
+  font-weight: 400;
 }
 .recurrence-choice input[type="number"] {
   width: 64px;
@@ -6242,12 +6254,15 @@ h2:has(> .row-title-input) .row-title-icon {
 .row-property > * {
   min-width: 0;
 }
-/* A date with its "time" checkbox below: the name lines up with the field,
-   not with the middle of field and checkbox. */
-.row-property:has(> * > .date-input) {
+/* A date with its buttons below, and the reminder, recurrence and
+   repeating-task rows that wrap: the name lines up with the first line of
+   controls, not with the middle of the whole block. */
+.row-property:has(> * > .date-input),
+.row-property:is(.recurrence-property, .record-repeat) {
   align-items: start;
 }
-.row-property:has(> * > .date-input) > span:first-child {
+.row-property:has(> * > .date-input) > span:first-child,
+.row-property:is(.recurrence-property, .record-repeat) > span:first-child {
   display: flex;
   align-items: center;
   min-height: calc(1.5em + 22px);
@@ -16954,6 +16969,15 @@ label.task-due {
   border: 1px solid var(--border);
   font-size: 12px;
   padding: 2px 8px;
+}
+.date-time-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.date-time-add:hover {
+  color: var(--accent-strong);
+  background: var(--blue-light);
 }
 .my-tasks-done {
   flex-direction: row;
@@ -28564,20 +28588,44 @@ tr:hover .row-open-mark,
   margin: 0;
   font-size: 12px;
 }
+/* "Wiederkehrende Aufgabe": the choice, then the rule as one sentence
+   ("alle [1] Wochen · Mo Di … · gerechnet ab [Start ▾]") that wraps as a
+   whole, the hint below. Labels are columns elsewhere (label { … }); here
+   text and field sit on one line. */
 .record-repeat-choice {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
-.record-repeat-choice label {
+.record-repeat-rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.record-repeat-choice label,
+.record-repeat-field {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
+  margin: 0;
   font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 .record-repeat-choice input[type="number"] {
   width: 64px;
+}
+.record-repeat-field {
+  color: var(--secondary);
+  cursor: help;
+}
+.record-repeat-field > .fp-select {
+  color: var(--text);
+  cursor: pointer;
 }
 .record-repeat-choice small {
   flex-basis: 100%;

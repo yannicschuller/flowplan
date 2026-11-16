@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Temporal, hasOffset, isTimed, validDateValue, validZone } from "./date-values";
+import { tr } from "./locale-tag";
 
 // Repeating entries: the stored dates are the first occurrence; later ones
 // are derived for display only and share the record.
@@ -45,13 +46,22 @@ export function parseRecurrence(raw: unknown): Recurrence | null {
     return null;
   }
 }
-export function recurrenceText(rule: Recurrence) {
-  const [label, plural] = recurrenceLabels[rule.freq];
-  const base = rule.interval === 1 ? label : `Alle ${rule.interval} ${plural}`;
+// "Alle 2 Wochen bis 2026-12-31" in the reader's language (German on the
+// server); components pass their own t.
+export function recurrenceText(rule: Recurrence, t: (de: string, en: string) => string = tr) {
+  const n = rule.interval;
+  const base =
+    rule.freq === "daily"
+      ? n === 1 ? t("Täglich", "Daily") : t(`Alle ${n} Tage`, `Every ${n} days`)
+      : rule.freq === "weekly"
+        ? n === 1 ? t("Wöchentlich", "Weekly") : t(`Alle ${n} Wochen`, `Every ${n} weeks`)
+        : rule.freq === "monthly"
+          ? n === 1 ? t("Monatlich", "Monthly") : t(`Alle ${n} Monate`, `Every ${n} months`)
+          : n === 1 ? t("Jährlich", "Yearly") : t(`Alle ${n} Jahre`, `Every ${n} years`);
   return rule.until
-    ? `${base} bis ${rule.until}`
+    ? t(`${base} bis ${rule.until}`, `${base} until ${rule.until}`)
     : rule.count
-      ? `${base}, ${rule.count}-mal`
+      ? t(`${base}, ${rule.count}-mal`, `${base}, ${rule.count} times`)
       : base;
 }
 // The calendar day of a stored date value in `zone`: a timed value with an

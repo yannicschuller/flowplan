@@ -131,15 +131,19 @@
   font-size: 13px;
   color: var(--secondary);
 }
+/* The kinds share the row, each at least as wide as its icon and text
+   ("Dokumente" is the longest): a squeezed one put them on its border
+   (#314). Too narrow for all, they wrap to a second line. */
 .np-segmented {
+  flex-wrap: wrap;
   width: 100%;
   justify-self: stretch;
 }
 .np-segmented label {
-  flex: 1;
+  flex: 1 1 auto;
   gap: 5px;
-  min-width: 0;
-  padding: 6px;
+  min-width: max-content;
+  padding: 6px 10px;
   font-size: 12.5px;
   white-space: nowrap;
 }
@@ -277,7 +281,7 @@
     font-size: 11.5px;
   }
   .np-segmented label {
-    padding: 7px 4px;
+    padding: 7px 8px;
     font-size: 12px;
   }
   .np-segmented label svg {
