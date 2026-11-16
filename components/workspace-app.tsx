@@ -1017,6 +1017,9 @@ export default function WorkspaceApp({
   );
   const navigationVersion = useRef(0);
   const navigationPending = useRef(false);
+  // Set by a workspace switch in the sidebar that changes the address: the
+  // next navigation leaves the drawer on phones open (goStart).
+  const keepNavOnce = useRef(false);
   // The tags for multi-selects with the workspace's tags as options (#79):
   // those of the open database's context – the workspace's and its space's
   // (#136).
@@ -1527,7 +1530,7 @@ export default function WorkspaceApp({
   // For "Retry" on a page that failed to open.
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
-    async (id: string, target?: PageLocation) => {
+    async (id: string, target?: PageLocation, keepNav = false) => {
       const version = ++navigationVersion.current;
       navigationPending.current = true;
       screenRef.current = "page";
@@ -1549,7 +1552,7 @@ export default function WorkspaceApp({
       // (lib/view-transition.ts); its title appears in its place (#260).
       const view = transitionView(
         () => {
-          setMobile(false);
+          if (!keepNav) setMobile(false);
           setScreen("page");
           setPageId(id);
           setComments(false);
@@ -1631,15 +1634,18 @@ export default function WorkspaceApp({
     },
     [openPage],
   );
-  function go(s: Screen) {
+  // `keepNav`: the drawer on phones stays open – a workspace switched in
+  // the sidebar shows its pages there to pick one (see switchWorkspace).
+  function go(s: Screen, keepNav = false) {
     screenRef.current = s;
     transitionView(
       () => {
         setScreen(s);
-        setMobile(false);
+        if (!keepNav) setMobile(false);
       },
       { kind: "page" },
     );
+    if (keepNav && location.hash !== `#${s}`) keepNavOnce.current = true;
     location.hash = s;
   }
   useEffect(() => {
@@ -1653,6 +1659,10 @@ export default function WorkspaceApp({
     });
     const navigate = () => {
       const fragment = location.hash.slice(1);
+      // The address changed by a workspace switch in the sidebar: the
+      // drawer on phones stays open (go, goStart).
+      const keepNav = keepNavOnce.current;
+      keepNavOnce.current = false;
       if (fragment.startsWith("page=")) {
         const target = parsePageLocation(location.hash);
         if (!target) {
@@ -1660,7 +1670,7 @@ export default function WorkspaceApp({
           return;
         }
         if (currentId.current !== target.pageId || screenRef.current !== "page")
-          void openPage(target.pageId, target);
+          void openPage(target.pageId, target, keepNav);
         // A block link (#88): scroll to the block, which flashes; the block
         // then leaves the address, so the same link works again.
         if (target.blockId) {
@@ -1697,11 +1707,11 @@ export default function WorkspaceApp({
           transitionView(
             () => {
               setScreen(base);
-              setMobile(false);
+              if (!keepNav) setMobile(false);
             },
             { kind: "page" },
           );
-        } else setMobile(false);
+        } else if (!keepNav) setMobile(false);
         // The start page shows recently opened and edited pages: current.
         if (fragment === "home") void refresh().catch(() => {});
       } else if (fragment === "search" || fragment === "new" || fragment === "capture") {
@@ -2370,12 +2380,19 @@ export default function WorkspaceApp({
   const latestSwitch = useRef(0);
   // The first place of a workspace switched to: its tabs' active one
   // (#279), else the start page.
-  function goStart(b: Bootstrap) {
+  function goStart(b: Bootstrap, keepNav: boolean) {
     const place = tabsRef.current.switchTo(b.workspace.id, validPlaceIn(b.pages, !!b.user.isAdmin));
-    if (!place || place === "home") return go("home");
-    if (location.hash !== `#${place}`) location.hash = place;
+    if (!place || place === "home") return go("home", keepNav);
+    if (location.hash !== `#${place}`) {
+      if (keepNav) keepNavOnce.current = true;
+      location.hash = place;
+    }
   }
-  async function switchWorkspace(id: string) {
+  // `fromSidebar`: switched in the sidebar's workspace menu (or a workspace
+  // created there). On phones the drawer then stays open, showing the new
+  // workspace's pages to pick one; a switch from elsewhere (a notification,
+  // a link, Settings, a moved page) closes it as any navigation does.
+  async function switchWorkspace(id: string, { fromSidebar = false } = {}) {
     const version = ++navigationVersion.current;
     latestSwitch.current = version;
     navigationPending.current = true;
@@ -2389,7 +2406,7 @@ export default function WorkspaceApp({
       setPageId(null);
       currentId.current = null;
       setData(null);
-      goStart(kept);
+      goStart(kept, fromSidebar);
     }
     try {
       const b = await api<Bootstrap>(`/api/bootstrap?workspace=${id}`);
@@ -2399,11 +2416,11 @@ export default function WorkspaceApp({
       setPageId(null);
       currentId.current = null;
       setData(null);
-      goStart(b);
+      goStart(b, fromSidebar);
       setSpaceId(b.spaces[0]?.id || "");
     } catch (e) {
       if (kept && version === navigationVersion.current) setBoot(previous);
-      if (version === navigationVersion.current) notifyError(e, () => void switchWorkspace(id));
+      if (version === navigationVersion.current) notifyError(e, () => void switchWorkspace(id, { fromSidebar }));
     } finally {
       if (version === navigationVersion.current)
         navigationPending.current = false;
@@ -3763,7 +3780,7 @@ export default function WorkspaceApp({
                 <Dropdown.Item
                   className="dropdown-item"
                   key={w.id}
-                  onSelect={() => switchWorkspace(w.id)}
+                  onSelect={() => switchWorkspace(w.id, { fromSidebar: true })}
                 >
                   <WorkspaceIcon name={w.name} icon={w.icon} small />
                   {w.name}
@@ -6514,7 +6531,7 @@ export default function WorkspaceApp({
               name: workspaceName,
             });
             if (r?.id) {
-              await switchWorkspace(String(r.id));
+              await switchWorkspace(String(r.id), { fromSidebar: true });
               setNewWorkspace(false);
             }
           }}

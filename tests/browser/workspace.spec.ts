@@ -467,11 +467,7 @@ test("content archives download and restore through settings with files intact",
   await page.getByRole("menuitem", { name: new RegExp(title) }).click();
   // The export covers the workspace shown in the switcher.
   await expect(page.locator(".workspace-switch")).toContainText(title);
-  if (testInfo.project.name === "mobile")
-    await page
-      .locator(".topbar")
-      .getByRole("button", { name: "Navigation öffnen", exact: true })
-      .click();
+  // On phones the drawer stays open after the switch.
   await openSidebarTool(page, "Einstellungen");
   // The landing page of the settings: the tile leads to the section.
   await page.getByRole("link", { name: /^Import & Export/ }).click();
