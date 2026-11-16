@@ -39,8 +39,13 @@ const docsSyntax = (markdown) =>
     .replace(/\+\+(.+?)\+\+(?!\+)/g, "$1")
     .replace(/^(\s*>\s*)\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|ADMIN|DESKTOP)\]\s*/gim, "$1");
 
+// A version marker ({since=0.9.8}) shows as a badge on docs.flowplan.org
+// and is part of neither the heading's id nor its text there.
+const SINCE = /\s*\{since=[^}]*\}/g;
+
 const headingId = (text) =>
   text
+    .replace(SINCE, "")
     .toLowerCase()
     .replace(/ä/g, "ae")
     .replace(/ö/g, "oe")
@@ -98,7 +103,7 @@ function sections(slug, markdown) {
     if (heading) {
       flush();
       if (current.paragraphs.length) list.push(current);
-      const text = inline(heading[2]);
+      const text = inline(heading[2].replace(SINCE, ""));
       let anchor = headingId(
         heading[2]
           .replace(/\*\*|`/g, "")

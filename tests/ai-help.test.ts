@@ -28,3 +28,14 @@ test("help: topic questions keep their sections", () => {
   assert.equal(top("de", "journal pin")[0], "journal#PIN-Sperre");
   assert.equal(top("de", "kalender synchronisieren google")[0], "views#Mit Google Kalender oder Outlook synchronisieren");
 });
+
+test("help: version markers are part of neither a heading nor its link", async () => {
+  const docs = (await import("../lib/ai/help-docs.json", { with: { type: "json" } })).default as Record<
+    "de" | "en",
+    { heading: string; anchor: string }[]
+  >;
+  for (const s of [...docs.de, ...docs.en]) {
+    assert.doesNotMatch(s.heading, /\{since=/, s.heading);
+    assert.doesNotMatch(s.anchor, /-since-\d+-\d+-\d+/, s.anchor);
+  }
+});
