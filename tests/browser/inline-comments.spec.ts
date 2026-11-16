@@ -836,17 +836,21 @@ test("formatted comments support keyboard mentions, links, lists and rich edits 
     await page
       .locator(".inline-comment-panel")
       .evaluate((element) => element.scrollIntoView({ block: "start" }));
+    // The formatting toolbar does not cover the panel's start. On desktop
+    // it sticks at the top of the pane; on phones it is docked at the
+    // bottom of the screen (position: fixed, app/globals.css "The formatting
+    // tools dock at the bottom") and the text scrolls behind it by design,
+    // so there it has to stay below the panel's heading.
     await expect
       .poll(() =>
-        page.evaluate(
-          () =>
-            document.querySelector(".editor-toolbar")!.getBoundingClientRect()
-              .bottom <=
-            document
-              .querySelector(".inline-comment-panel")!
-              .getBoundingClientRect().top +
-              1,
-        ),
+        page.evaluate(() => {
+          const toolbar = document.querySelector(".editor-toolbar")!,
+            panel = document.querySelector(".inline-comment-panel")!;
+          const bar = toolbar.getBoundingClientRect();
+          if (getComputedStyle(toolbar).position === "fixed")
+            return bar.top >= panel.querySelector("header")!.getBoundingClientRect().bottom;
+          return bar.bottom <= panel.getBoundingClientRect().top + 1;
+        }),
       )
       .toBe(true);
     await page.screenshot({
