@@ -5,7 +5,9 @@
 #
 # The tests are split over runners (node --test-shard): one runner took
 # 9–11 min for them on SQLite and 15–19 min on PostgreSQL, with the build
-# and the budgets after them on the same runner. The jobs "test" and
+# and the budgets after them on the same runner. On PostgreSQL only the test
+# files that reach the database run (scripts/db-tests.mjs), and the
+# standalone check there uses the build of the job "build". The jobs "test" and
 # "postgres" only collect their parts' results, so their names – what branch
 # protection asks for – stay as they were.
 name: CI
@@ -69,6 +71,16 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
       - run: npm run check:standalone
+      # The standalone server for the check on PostgreSQL (postgres-standalone):
+      # the same build, not a second one. One file: the artifact keeps
+      # neither file modes nor links.
+      - run: tar -cf "$RUNNER_TEMP/standalone.tar" .next/standalone .next/static
+      - uses: actions/upload-artifact@v7
+        with:
+          name: standalone-build
+          path: ${{ runner.temp }}/standalone.tar
+          retention-days: 1
+          if-no-files-found: error
       # Accessibility and performance budgets on the production build
       # (scripts/quality-check.mjs). GitHub's runners download Chromium; the
       # own runner downloads nothing – it uses a Chromium that is installed
@@ -105,9 +117,13 @@ jobs:
           test "${{ needs.unit.result }}" = success && test "${{ needs.build.result }}" = success
 
   postgres-tests:
-    # The whole suite once more on PostgreSQL 16 (DATABASE_URL; each test
-    # process gets a schema of its own, tests/helpers/postgres-backend.ts),
-    # split over runners like the SQLite tests.
+    # The tests once more on PostgreSQL 16 (DATABASE_URL; each test process
+    # gets a schema of its own, tests/helpers/postgres-backend.ts), split
+    # over runners like the SQLite tests: the test files that reach the
+    # database layer – through any chain of imports, or with the marker
+    # `// db-test` (scripts/db-tests.mjs). A new test that touches the
+    # database comes along by itself; the others (about a fifth, pure
+    # functions and file checks) behave the same on either database.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -167,17 +183,20 @@ jobs:
           pg_dump --version
           psql "$DATABASE_URL" -tAc "SHOW server_version_num"
           test "$(pg_dump --version | grep -oE '[0-9]+' | head -1)" -ge 16
-      - run: npm test
+      - run: npm run test:db
         env:
           TEST_FLAGS: --test-shard=${{ matrix.shard }}/2
       - name: Leftover test schemas
         if: always()
         run: node --import tsx tests/helpers/postgres-backend.ts --drop-all
 
-  postgres-build:
-    # The production build against PostgreSQL (docs/architecture/database.md).
+  postgres-standalone:
+    # The production build against PostgreSQL (docs/architecture/database.md):
+    # the build of the job "build" – the bundle reads DATABASE_URL when it
+    # runs, not when it is built.
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:0.8.0-pg16
@@ -201,20 +220,23 @@ jobs:
         with:
           node-version: 26
           cache: npm
+      # pg and the schema helpers the check imports.
       - run: npm ci
-      - run: npm run build
-        env:
-          NEXT_TELEMETRY_DISABLED: "1"
+      - uses: actions/download-artifact@v7
+        with:
+          name: standalone-build
+          path: ${{ runner.temp }}
+      - run: tar -xf "$RUNNER_TEMP/standalone.tar"
       - run: node scripts/check-standalone-postgres.mjs
 
   # The result of everything on PostgreSQL, under the job's old name.
   postgres:
-    needs: [postgres-tests, postgres-build]
+    needs: [postgres-tests, postgres-standalone]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: All parts passed
         run: |
-          echo "tests: ${{ needs.postgres-tests.result }}, build: ${{ needs.postgres-build.result }}"
-          test "${{ needs.postgres-tests.result }}" = success && test "${{ needs.postgres-build.result }}" = success
+          echo "tests: ${{ needs.postgres-tests.result }}, standalone: ${{ needs.postgres-standalone.result }}"
+          test "${{ needs.postgres-tests.result }}" = success && test "${{ needs.postgres-standalone.result }}" = success
