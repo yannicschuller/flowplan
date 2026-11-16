@@ -108,6 +108,7 @@ import { shownPageIcon } from "@/lib/page-link-icons";
 import { structuralPath } from "@/lib/page-path";
 import { PageBreadcrumb } from "./page-breadcrumb";
 import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/lib/sidebar-folds";
+import { branchPath, branchUp, leavesBranch, readBranch, writeBranch } from "@/lib/sidebar-branch";
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { workspaceCookie } from "@/lib/last-workspace";
@@ -202,6 +203,8 @@ import {
   FolderSimple,
   ArrowsInSimple,
   ArrowsOutSimple,
+  ArrowLeft,
+  Crosshair,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -2190,6 +2193,81 @@ export default function WorkspaceApp({
       });
     folds.change({ [`p:${id}`]: !fold });
   };
+  // A branch of the tree focused in the sidebar (#318, lib/sidebar-branch.ts):
+  // the tree shows that page as its root, with "←", the path and "×" above.
+  // Per workspace on this device; a page opened outside the branch shows the
+  // whole tree again (with a hint), so the open page is always in the tree.
+  const [treeBranch, setTreeBranchState] = useState<string | null>(null),
+    [branchNote, setBranchNote] = useState("");
+  const branchPage = treeBranch ? activePages.find((p) => p.id === treeBranch) : undefined;
+  const branchRef = useRef<string | null>(null);
+  branchRef.current = branchPage ? branchPage.id : null;
+  useEffect(() => {
+    setTreeBranchState(readBranch(localStorage, boot.workspace.id, boot.pages));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boot.workspace.id]);
+  // Its page deleted or gone: the whole tree, also after a reload.
+  useEffect(() => {
+    if (treeBranch && !branchPage) {
+      setTreeBranchState(null);
+      writeBranch(localStorage, boot.workspace.id, null);
+    }
+  }, [treeBranch, branchPage, boot.workspace.id]);
+  const setTreeBranch = (id: string | null, { moveFocus = false } = {}) => {
+    const before = branchRef.current;
+    if (id === before) return;
+    const page = id ? activePages.find((p) => p.id === id) : undefined;
+    setTreeBranchState(page ? page.id : null);
+    branchRef.current = page ? page.id : null;
+    writeBranch(localStorage, boot.workspace.id, page ? page.id : null);
+    const untitled = t("Ohne Titel", "Untitled");
+    setBranchNote(
+      page
+        ? t(`Seitenbaum auf „${page.title || untitled}“ fokussiert`, `Page tree focused on “${page.title || untitled}”`)
+        : t("Ganzer Seitenbaum", "Whole page tree"),
+    );
+    // Back in the whole tree: the way to the branch stays unfolded, so it
+    // is found where it was.
+    if (!page && before) {
+      setRevealed((current) => new Set([...current, before, ...ancestorIds(boot.pages, before)]));
+      const space = activePages.find((p) => p.id === before)?.space_id;
+      if (space && folds.has(`s:${space}`)) foldSpace(space, false);
+    }
+    if (page || before) setTreeFocus(page ? page.id : before);
+    // A header button that went away (a crumb, "×"): the focus goes to the
+    // root of the tree shown now, or the page focused before.
+    if (moveFocus)
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active && active !== document.body && active.isConnected) return;
+        treeRoot.current?.querySelector<HTMLElement>(`[role="tree"] [data-tree-id="${page ? page.id : before}"]`)?.focus();
+      });
+  };
+  const hasSubPages = (id: string) => activePages.some((p) => p.parent_id === id);
+  // Opening a page outside the branch leaves it. Not for the page the app
+  // opens with (the address after a reload): only changes after that.
+  const branchSeen = useRef<{ armed: boolean; page: string | null }>({ armed: false, page: null });
+  useEffect(() => {
+    const seen = branchSeen.current;
+    if (screen === "page" && pageId) {
+      const branch = branchRef.current;
+      if (seen.armed && branch && leavesBranch(activePages, branch, seen.page, pageId)) {
+        const from = activePages.find((p) => p.id === branch),
+          to = activePages.find((p) => p.id === pageId);
+        const untitled = t("Ohne Titel", "Untitled");
+        setTreeBranch(null);
+        showToast({
+          text: t(
+            `„${to?.title || untitled}“ liegt nicht unter „${from?.title || untitled}“ – der Seitenbaum zeigt wieder alles.`,
+            `“${to?.title || untitled}” is not below “${from?.title || untitled}” – the page tree shows everything again.`,
+          ),
+          action: { label: t("Wieder fokussieren", "Focus again"), run: () => setTreeBranch(branch) },
+        });
+      }
+      branchSeen.current = { armed: true, page: pageId };
+    } else if (!location.hash.startsWith("#page=")) branchSeen.current = { armed: true, page: null };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, pageId]);
   // "Alle aufklappen" / "Alle zuklappen" in a space's menu.
   const foldAll = (spaceId: string, open: boolean) => {
     if (!open) {
@@ -2694,12 +2772,14 @@ export default function WorkspaceApp({
     folds.change({ [journalFoldKey(key, open)]: true, [journalFoldKey(key, !open)]: false });
   // Each space's tree has one Tab stop: the item focused last, else the open
   // page, else the first page – as long as it is shown (parents unfolded).
-  function treeStop(sid: string): string | null {
+  // With a focused branch (#318) only its pages, the root always unfolded.
+  function treeStop(sid: string, root?: string): string | null {
     const byId = new Map(activePages.map((p) => [p.id, p]));
     const shownPage = (page: Page | undefined): boolean => {
       if (!page || page.space_id !== sid || (filterMatches && !filterMatches.has(page.id))) return false;
-      for (let child = page, parent = page.parent_id ? byId.get(page.parent_id) : undefined; parent; child = parent, parent = parent.parent_id ? byId.get(parent.parent_id) : undefined) {
-        if (!filterMatches && !pageOpen(parent.id)) return false;
+      if (root && !branchPath(activePages, page.id).includes(root)) return false;
+      for (let child = page, parent = page.parent_id ? byId.get(page.parent_id) : undefined; parent && child.id !== root; child = parent, parent = parent.parent_id ? byId.get(parent.parent_id) : undefined) {
+        if (!filterMatches && parent.id !== root && !pageOpen(parent.id)) return false;
         // A day of a journal: only while the journal shows it.
         if (!filterMatches && parent.kind === "journal" && child.journal_date && !journalTree(parent).shown.has(child.id)) return false;
       }
@@ -2709,22 +2789,23 @@ export default function WorkspaceApp({
       if (id && isFolderKey(id)) {
         // A virtual item of a journal (today, a folder, "Alle Tage").
         const journal = byId.get(id.split(":")[1]);
-        return !filterMatches && !!journal && shownPage(journal) && pageOpen(journal.id) && journalTree(journal).shown.has(id);
+        return !filterMatches && !!journal && shownPage(journal) && (journal.id === root || pageOpen(journal.id)) && journalTree(journal).shown.has(id);
       }
       return shownPage(id ? byId.get(id) : undefined);
     };
     if (shown(treeFocus)) return treeFocus;
     if (screen === "page" && shown(pageId)) return pageId;
-    return treeLevel(null, sid)[0]?.id ?? null;
+    return root ?? treeLevel(null, sid)[0]?.id ?? null;
   }
   // Arrow keys in the tree (WAI-ARIA tree pattern): up and down move, right
   // unfolds or enters, left folds or goes to the parent, Enter opens.
-  function treeKey(e: React.KeyboardEvent<HTMLDivElement>, p: Page, children: boolean, closed: boolean, parentTree = p.parent_id) {
+  function treeKey(e: React.KeyboardEvent<HTMLDivElement>, p: Page, children: boolean, closed: boolean, parentTree = p.parent_id, root = false) {
     treeNavKey(e, {
       children,
       closed,
       parentTree,
-      fold: (fold) => foldPage(p.id, fold),
+      // The root of a focused branch stays unfolded.
+      fold: (fold) => !root && foldPage(p.id, fold),
       activate: () => void openPage(p.id),
     });
   }
@@ -2922,7 +3003,8 @@ export default function WorkspaceApp({
     sid: string,
     level: number,
     stop: string | null,
-    place: { parentTree?: string; today?: boolean } = {},
+    // root: the page of a focused branch (#318), always unfolded.
+    place: { parentTree?: string; today?: boolean; root?: boolean } = {},
   ): React.ReactNode {
         const journal = p.kind === "journal" && !filterMatches ? journalTree(p) : null;
         const records = p.kind === "database" ? recordsShown(p.id, sid) : [];
@@ -2930,7 +3012,7 @@ export default function WorkspaceApp({
             ? journal.entries.length > 0 || journal.others.some((x) => x.space_id === sid)
             : records.length > 0 || (treeIndex.get(p.id) || []).some((x) => !filterMatches || filterMatches.has(x.id)),
           // While filtering, the way to every match stays open.
-          closed = !filterMatches && !pageOpen(p.id);
+          closed = !place.root && !filterMatches && !pageOpen(p.id);
         // A record opened as a page whose row shows below its database
         // (#231): the record is the active entry, the database an ancestor.
         const recordActive = recordFull && pageId === p.id && !closed && records.some((r) => r.rowId === recordView?.rowId);
@@ -2949,7 +3031,7 @@ export default function WorkspaceApp({
               aria-owns={children && !closed ? `tree-group-${p.id}` : undefined}
               tabIndex={stop === p.id ? 0 : -1}
               onFocus={() => setTreeFocus(p.id)}
-              onKeyDown={(e) => treeKey(e, p, children, closed, place.parentTree)}
+              onKeyDown={(e) => treeKey(e, p, children, closed, place.parentTree, place.root)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setPageMenu({ page: p, x: e.clientX, y: e.clientY });
@@ -3028,7 +3110,7 @@ export default function WorkspaceApp({
               }}
               style={{ paddingLeft: 12 + level * 14 }}
             >
-              {children ? (
+              {children && !place.root ? (
                 <button
                   className="tree-toggle"
                   tabIndex={-1}
@@ -3183,6 +3265,73 @@ export default function WorkspaceApp({
             </Collapse>
           </div>
         );
+  }
+  // The sidebar's tree while a branch is focused (#318): "←" to the level
+  // above, the path (each step focuses that page, the space the whole
+  // tree), "×"; below, the page as the root of the tree. Esc in the tree
+  // shows the whole tree again.
+  function treeBranchView(root: Page): React.ReactNode {
+    const untitled = t("Ohne Titel", "Untitled");
+    const space = boot.spaces.find((sp) => sp.id === root.space_id);
+    const byId = new Map(activePages.map((p) => [p.id, p]));
+    const above = branchPath(activePages, root.id)
+      .slice(0, -1)
+      .flatMap((id) => byId.get(id) || []);
+    const up = branchUp(activePages, root.id);
+    const upTitle = up ? byId.get(up)?.title || untitled : "";
+    const upLabel = up ? t(`Zurück zu „${upTitle}“`, `Back to “${upTitle}”`) : t("Zurück zum ganzen Seitenbaum", "Back to the whole page tree");
+    const endLabel = t("Fokus beenden – ganzen Seitenbaum zeigen", "End focus – show whole page tree");
+    const shown = !filterMatches || filterMatches.has(root.id);
+    return (
+      <section className="nav-section tree-branch" aria-label={t(`Fokussiert: ${root.title || untitled}`, `Focused: ${root.title || untitled}`)}>
+        <div className="tree-branch-bar">
+          <button type="button" className="icon-button tree-branch-up" title={upLabel} aria-label={upLabel} onClick={() => setTreeBranch(up, { moveFocus: true })}>
+            <ArrowLeft size={14} />
+          </button>
+          <nav className="tree-branch-path" aria-label={t("Pfad im Seitenbaum", "Path in the page tree")}>
+            <ol>
+              <li>
+                <button type="button" title={t("Ganzen Seitenbaum zeigen", "Show whole page tree")} onClick={() => setTreeBranch(null, { moveFocus: true })}>
+                  {space && <SpaceIcon icon={space.icon} color={space.icon_color} />}
+                  <span>{space?.name || t("Bereich", "Space")}</span>
+                </button>
+              </li>
+              {above.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    title={t(`Auf „${p.title || untitled}“ fokussieren`, `Focus on “${p.title || untitled}”`)}
+                    onClick={() => setTreeBranch(p.id, { moveFocus: true })}
+                  >
+                    <span>{p.title || untitled}</span>
+                  </button>
+                </li>
+              ))}
+              <li aria-current="location">
+                <span>{root.title || untitled}</span>
+              </li>
+            </ol>
+          </nav>
+          <button type="button" className="icon-button tree-branch-close" title={endLabel} aria-label={endLabel} onClick={() => setTreeBranch(null, { moveFocus: true })}>
+            <X size={14} />
+          </button>
+        </div>
+        <div
+          role="tree"
+          aria-label={t(`Seiten unter ${root.title || untitled}`, `Pages under ${root.title || untitled}`)}
+          onKeyDown={(e) => {
+            // Rows handle arrows and Enter; an Esc no row, menu or field
+            // handled shows the whole tree, the focus on the same page.
+            if (e.key !== "Escape" || e.defaultPrevented) return;
+            e.preventDefault();
+            setTreeBranch(null, { moveFocus: true });
+          }}
+        >
+          {shown ? treeRow(root, root.space_id, 0, treeStop(root.space_id, root.id), { root: true }) : null}
+        </div>
+        {!shown && <p className="sidebar-empty tree-filter-empty">{t("Keine Seite heißt so.", "No page has that name.")}</p>}
+      </section>
+    );
   }
   // Journals by the last one used (opened or one of its days), for "Journal:
   // Heute" in the command palette and its shortcut.
@@ -3688,10 +3837,11 @@ export default function WorkspaceApp({
               aria-label={t("Seiten filtern", "Filter pages")}
             />
           </div>
-          {filterMatches && !filterMatches.size && (
+          {filterMatches && !filterMatches.size && !branchPage && (
             <p className="sidebar-empty tree-filter-empty">{t("Keine Seite heißt so.", "No page has that name.")}</p>
           )}
-          {!filterMatches && (favorites.length > 0 || !!boot.favoriteRows?.length) && (
+          {/* A focused branch (#318) is the tree alone, as while filtering. */}
+          {!filterMatches && !branchPage && (favorites.length > 0 || !!boot.favoriteRows?.length) && (
             <section
               className={`nav-section favorites-section${folds.has("g:favorites") ? " space-collapsed" : ""}`}
               aria-label={t("Favoriten", "Favourites")}
@@ -3760,7 +3910,7 @@ export default function WorkspaceApp({
               </Collapse>
             </section>
           )}
-          {!filterMatches && (
+          {!filterMatches && !branchPage && (
             <CollectionsNav
               collections={boot.collections ?? []}
               current={screen === "collection" ? collectionId : null}
@@ -3837,7 +3987,8 @@ export default function WorkspaceApp({
               </div>
             </div>
           )}
-          {boot.spaces
+          {branchPage && treeBranchView(branchPage)}
+          {!branchPage && boot.spaces
             .filter(
               (space) =>
                 !filterMatches ||
@@ -4020,7 +4171,10 @@ export default function WorkspaceApp({
           <p className="sr-only" role="status" aria-live="polite">
             {spaceMoveNote}
           </p>
-          {canCreate && (
+          <p className="sr-only" role="status" aria-live="polite">
+            {branchNote}
+          </p>
+          {canCreate && !branchPage && (
             <button className="add-space" onClick={() => setNewSpace(true)}>
               <Plus size={15} />
               {t("Bereich hinzufügen", "Add space")}
@@ -4497,6 +4651,20 @@ export default function WorkspaceApp({
                       <ArrowRight />
                       {t("Verschieben", "Move")}
                     </PageMenu.Item>
+                    {/* The sidebar's tree shows this branch (#318); on phones the drawer opens to show it. */}
+                    {hasSubPages(data.page.id) && branchRef.current !== data.page.id && (
+                      <PageMenu.Item
+                        className="dropdown-item"
+                        onSelect={() => {
+                          setTreeBranch(data.page.id);
+                          if (phone) setMobile(true);
+                          else setDesktopCollapsed(false);
+                        }}
+                      >
+                        <Crosshair />
+                        {t("Im Seitenbaum fokussieren", "Focus in sidebar")}
+                      </PageMenu.Item>
+                    )}
                     {data.page.kind === "document" && !data.encrypted && (
                       <PageMenu.Item
                         className="dropdown-item"
@@ -6705,6 +6873,20 @@ export default function WorkspaceApp({
                         <SquareSplitHorizontal />
                         {t("In geteilter Ansicht öffnen", "Open in split view")}
                       </Dropdown.Item>
+                    )}
+                    {/* Only pages with sub-pages: a branch of one row helps nobody (#318). */}
+                    {branchRef.current === target.id ? (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => setTreeBranch(null, { moveFocus: true })}>
+                        <X />
+                        {t("Ganzen Seitenbaum zeigen", "Show whole page tree")}
+                      </Dropdown.Item>
+                    ) : (
+                      hasSubPages(target.id) && (
+                        <Dropdown.Item className="dropdown-item" onSelect={() => setTreeBranch(target.id, { moveFocus: true })}>
+                          <Crosshair />
+                          {t("Im Seitenbaum fokussieren", "Focus in sidebar")}
+                        </Dropdown.Item>
+                      )
                     )}
                     <Dropdown.Item
                       className="dropdown-item"

@@ -493,6 +493,108 @@ kbd,
   display: block;
   margin: 4px 0 10px;
 }
+/* A branch of the tree focused (#318): "←", the path as small steps and
+   "×" above the tree, which starts at the focused page. */
+.tree-branch-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0 10px 6px 7px;
+  padding: 3px;
+  border-radius: 7px;
+  background: var(--hover);
+}
+.tree-branch-bar .icon-button {
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  border-radius: 5px;
+}
+.tree-branch-bar .icon-button:hover {
+  background: var(--sidebar);
+}
+.tree-branch-path {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+}
+.tree-branch-path ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.tree-branch-path li {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+.tree-branch-path li + li::before {
+  content: "/";
+  padding: 0 3px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+.tree-branch-path button,
+.tree-branch-path li > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 11em;
+  padding: 1px 3px;
+  border-radius: 4px;
+}
+.tree-branch-path button > span:last-child,
+.tree-branch-path li > span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tree-branch-path button {
+  color: var(--secondary);
+}
+.tree-branch-path button:hover {
+  background: var(--sidebar);
+  color: var(--text);
+}
+.tree-branch-path button:focus-visible,
+.tree-branch-bar .icon-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+}
+.tree-branch-path button > svg,
+.tree-branch-path button > span:first-child:not(:last-child) {
+  flex-shrink: 0;
+}
+.tree-branch-path li[aria-current] > span {
+  color: var(--text);
+  font-weight: 600;
+}
+/* Phones: "←" and "×" big enough for a finger. */
+@media (max-width: 767px) {
+  .tree-branch-bar .icon-button {
+    width: 34px;
+    height: 34px;
+    padding: 9px;
+  }
+  .tree-branch-path ol {
+    font-size: 12.5px;
+    line-height: 22px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tree-branch {
+    animation: fade-in 0.16s ease-out;
+  }
+}
 .nav-section {
   margin-bottom: 14px;
 }
