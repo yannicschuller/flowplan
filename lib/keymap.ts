@@ -252,16 +252,36 @@ export type KeyLike = {
   metaKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
-  getModifierState?: (key: string) => boolean;
+  getModifierState?(key: "AltGraph"): boolean;
+  isComposing?: boolean;
 };
 
-// The key of an event in written form. With Alt (⌥ on the Mac turns letters
-// into other characters) the physical key decides – unless it was AltGr
-// typing a character (Ctrl+Alt on Windows).
+// The US-layout character of the punctuation keys, by physical key. Used only
+// when the layout writes a letter of another script there (Cyrillic "х" on
+// the "[" key, #319); a Latin letter (German "ü" on the same key) or another
+// character stays what it is.
+const PUNCTUATION_CODES: Record<string, string> = {
+  BracketLeft: "[",
+  BracketRight: "]",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Backquote: "`",
+};
+const NON_LATIN_LETTER = /^(?=\p{L}$)\P{Script=Latin}$/u;
+
+// The key of an event in written form. A Latin letter or digit counts as the
+// layout writes it (Ctrl+Z on the key labelled Z, also with QWERTZ and
+// AZERTY). Otherwise – a Cyrillic, Greek … letter (#319), or Alt (⌥ on the
+// Mac turns letters into other characters) – the physical key decides,
+// unless it was AltGr typing a character (Ctrl+Alt on Windows) or an input
+// method composing text.
 export function eventKey(e: KeyLike): string | null {
   if (MODIFIER_KEYS.has(e.key)) return null;
   const direct = normalizeKey(e.key);
   if (direct && /^[A-Z0-9]$/.test(direct)) return direct;
+  if (e.isComposing || e.key === "Process") return direct;
   const altGraph = !!e.getModifierState?.("AltGraph");
   const code = e.code || "";
   if (!altGraph) {
@@ -270,8 +290,22 @@ export function eventKey(e: KeyLike): string | null {
     const digit = code.match(/^(?:Digit|Numpad)([0-9])$/);
     // With Shift the character counts ("Mod+/" is Shift+7 on German keyboards).
     if (digit && ((e.altKey && !e.shiftKey) || !direct)) return digit[1];
+    if (!direct && PUNCTUATION_CODES[code] && NON_LATIN_LETTER.test(e.key)) return PUNCTUATION_CODES[code];
   }
   return direct;
+}
+
+// The letter or digit a shortcut handler compares with ("z", "7"), lower
+// case, found the same way as for the keymap (eventKey): the Latin letter
+// of the layout, else the physical key – so Ctrl+Z also undoes with a
+// Russian layout, where the key writes "я" (#319). Any other key (Enter,
+// "?", "+") comes back as event.key, unchanged – except a non-Latin letter
+// on a bracket, comma … key, which comes back as the US character ("[").
+export function shortcutLetter(e: KeyLike): string {
+  const key = eventKey(e);
+  if (key && /^[A-Z0-9]$/.test(key)) return key.toLowerCase();
+  if (key && key !== e.key && NON_LATIN_LETTER.test(e.key)) return key;
+  return e.key;
 }
 
 // The combination an event presses, for recording a new shortcut.

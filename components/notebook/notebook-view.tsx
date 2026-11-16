@@ -80,6 +80,7 @@ import { NotebookPresentation } from "./notebook-presentation";
 import { useNotebookLive } from "./use-notebook-live";
 import { addOutlineHeading, NOTEBOOK_STRUCTURE_EVENT, type NotebookStructureEvent } from "./outline-api";
 import type { NotebookLink, NotebookLinkTarget, OutlineEntry } from "@/lib/notebook-organize-model";
+import { shortcutLetter } from "@/lib/keymap";
 
 export type { NotebookPayload };
 type CommandAnswer = {
@@ -650,10 +651,10 @@ export default function NotebookView({
       } else if (mod && event.key === "-") {
         event.preventDefault();
         zoomStep(-1);
-      } else if (mod && event.key === "0") {
+      } else if (mod && shortcutLetter(event) === "0") {
         event.preventDefault();
         setZoom(1);
-      } else if (mod && event.key.toLowerCase() === "s") {
+      } else if (mod && shortcutLetter(event) === "s") {
         event.preventDefault();
         void sync.flush();
       } else if (mod && event.shiftKey && event.key === "Enter" && canEdit) {

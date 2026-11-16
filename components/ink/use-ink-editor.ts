@@ -46,6 +46,7 @@ import {
   type InkFavorite,
 } from "@/lib/ink/favorites";
 import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly } from "@/lib/stylus";
+import { shortcutLetter } from "@/lib/keymap";
 
 export type InkSelection = { page: string; ids: string[] };
 // The picture or sticker in its frame (components/ink/ink-picture.tsx).
@@ -447,7 +448,7 @@ function pickedKey(ed: InkEditor, event: KeyboardEvent, mod: boolean) {
   const items = ed.docRef.current.pages[picked.page] || [];
   const item = items.find((i) => i.id === picked.id);
   if (!item || item.type !== "image") return false;
-  const k = event.key.toLowerCase();
+  const k = shortcutLetter(event);
   if (event.key === "Delete" || event.key === "Backspace") {
     ed.pick(null);
     ed.change(picked.page, (list) => list.filter((i) => i.id !== picked.id));
@@ -479,7 +480,7 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
       const target = event.target as HTMLElement | null;
       if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog]")) return;
       const mod = event.metaKey || event.ctrlKey;
-      const k = event.key.toLowerCase();
+      const k = shortcutLetter(event);
       if (mod && k === "z") {
         event.preventDefault();
         if (event.shiftKey) ed.redo();
@@ -496,9 +497,9 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
         if (ed.copySelection()) event.preventDefault();
       } else if (mod && k === "x" && ed.selection) {
         if (ed.cutSelection()) event.preventDefault();
-      } else if (mod && (event.key === "]" || event.key === "[") && ed.selection) {
+      } else if (mod && (k === "]" || k === "[") && ed.selection) {
         event.preventDefault();
-        ed.reorderSelection(event.key === "]" ? "front" : "back");
+        ed.reorderSelection(k === "]" ? "front" : "back");
       } else if (ed.selection && !mod && event.key.startsWith("Arrow")) {
         event.preventDefault();
         const step = event.shiftKey ? 10 : 1;

@@ -12,6 +12,7 @@ import { displayContext, issuesOf, nodeSummary, outline, portLabel, typeName, wo
 import { NodeIcon } from "./node-icon";
 import { stepStatus } from "./node-panel";
 import type { NodeStatus } from "./canvas";
+import { shortcutLetter } from "@/lib/keymap";
 
 export function ListView({
   graph,
@@ -52,8 +53,8 @@ export function ListView({
     else if (e.key === "Home") move(e.currentTarget, -1000);
     else if (e.key === "End") move(e.currentTarget, 1000);
     else if (editable && (e.key === "Delete" || e.key === "Backspace") && onDelete) onDelete(id);
-    else if (editable && e.key.toLowerCase() === "a" && !e.metaKey && !e.ctrlKey && onAppend) onAppend(id);
-    else if (editable && e.key.toLowerCase() === "c" && !e.metaKey && !e.ctrlKey && onConnect) onConnect(id);
+    else if (editable && shortcutLetter(e) === "a" && !e.metaKey && !e.ctrlKey && onAppend) onAppend(id);
+    else if (editable && shortcutLetter(e) === "c" && !e.metaKey && !e.ctrlKey && onConnect) onConnect(id);
     else return;
     e.preventDefault();
   };

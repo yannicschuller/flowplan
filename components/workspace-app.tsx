@@ -54,7 +54,7 @@ import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
 import { OVERLAY_MAX, OVERLAY_MIN, readOverlayWidth, writeOverlayWidth } from "@/lib/edge-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { activeKeymap, matchAction, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
+import { activeKeymap, matchAction, shortcutLetter, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PageReview, openPageReview } from "./page-review";
 import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
@@ -1725,7 +1725,7 @@ export default function WorkspaceApp({
       if (e.isComposing || presentingRef.current) return;
       // Ctrl/⌘+P on an open page: the print options first (#215), Enter
       // prints. Elsewhere (and with Shift or Alt) the browser's own.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p" && screenRef.current === "page" && dataRef.current && !dataRef.current.encrypted && document.querySelector(".page-content")) {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && shortcutLetter(e) === "p" && screenRef.current === "page" && dataRef.current && !dataRef.current.encrypted && document.querySelector(".page-content")) {
         e.preventDefault();
         if (!document.querySelector(".print-dialog")) printOpenPageRef.current();
         return;

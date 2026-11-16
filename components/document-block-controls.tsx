@@ -108,6 +108,7 @@ import { showToast } from "./toast";
 import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
 import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
+import { shortcutLetter } from "@/lib/keymap";
 type Positioned = DocumentBlock & {
   left: number;
   top: number;
@@ -1263,11 +1264,11 @@ export function DocumentBlockControls({
       editor.chain().focus().setTextSelection(Math.max(0, Math.min(first, editor.state.doc.content.size))).run();
       return;
     }
-    if (mod && !event.shiftKey && !event.altKey && key.toLowerCase() === "d") {
+    if (mod && !event.shiftKey && !event.altKey && shortcutLetter(event) === "d") {
       done();
       return perform("duplicate");
     }
-    if (mod && !event.shiftKey && key.toLowerCase() === "a") {
+    if (mod && !event.shiftKey && shortcutLetter(event) === "a") {
       done();
       const top = documentBlocks(editor.state.doc).filter((b) => b.parentPos === -1).map((b) => b.pos);
       return startSelection(top);
@@ -1395,7 +1396,7 @@ export function DocumentBlockControls({
     // ⌘A (#264, like Notion): first the text of the block with the caret,
     // then all blocks of the page – only their tint, no text highlight.
     const all = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "a") return;
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || shortcutLetter(event) !== "a") return;
       const target = event.target instanceof Element ? event.target : null;
       if (selectingRef.current || !target || !editor.view.dom.contains(target)) return;
       // Fields inside a block (a caption, a code editor) keep their own ⌘A.

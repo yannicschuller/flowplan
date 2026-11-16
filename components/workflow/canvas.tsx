@@ -33,6 +33,7 @@ import { displayContext, issuesOf, nodeSummary, orderedNodes, portLabel, typeNam
 import { NodeCard, inlineNodes, type CardNode } from "./node-card";
 import { DRAG_TYPE } from "./palette";
 import { stepStatus } from "./node-panel";
+import { shortcutLetter } from "@/lib/keymap";
 
 export type NodeStatus = { status: string; duration: string };
 export type CanvasProps = {
@@ -198,7 +199,7 @@ function Flow(props: CanvasProps) {
     if (target.closest("input, textarea, select, [contenteditable=true]")) return;
     const mod = e.metaKey || e.ctrlKey;
     const id = focusedNode();
-    const k = e.key.toLowerCase();
+    const k = shortcutLetter(e);
     if (mod && k === "z" && !e.shiftKey) props.onUndo();
     else if (mod && (k === "y" || (k === "z" && e.shiftKey))) props.onRedo();
     else if (mod && k === "d" && id && editable) props.onDuplicate(id);

@@ -257,6 +257,7 @@ import { PageLinkIcons } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { blockPaste, syncDomSelection } from "@/lib/block-paste";
+import { shortcutLetter } from "@/lib/keymap";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
 const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
@@ -1056,7 +1057,7 @@ export default function DocumentEditor({
             (event.metaKey || event.ctrlKey) &&
             !event.altKey &&
             !event.shiftKey &&
-            event.key.toLowerCase() === "j" &&
+            shortcutLetter(event) === "j" &&
             editable &&
             aiWriteRef.current !== "hidden"
           ) {
@@ -1069,7 +1070,7 @@ export default function DocumentEditor({
             (event.metaKey || event.ctrlKey) &&
             event.shiftKey &&
             !event.altKey &&
-            event.key.toLowerCase() === "l" &&
+            shortcutLetter(event) === "l" &&
             !embedded
           ) {
             event.preventDefault();

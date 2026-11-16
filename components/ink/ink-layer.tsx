@@ -81,6 +81,7 @@ import { InkShapeItem, paintDraft } from "./ink-shape";
 import { ShapeEditor, formatAngle, formatLength } from "./shape-editor";
 import { InkRuler, rulerGuide, type InkGuide } from "./ink-ruler";
 import { getShapeSettings, useRuler, type ShapeToolSettings } from "./ink-stores";
+import { shortcutLetter } from "@/lib/keymap";
 
 type XY = { x: number; y: number };
 // How long the pen rests at the end of a stroke before it snaps (ms).
@@ -1024,7 +1025,7 @@ export function InkLayer({
           onChange={(e) => setTyping({ ...typing, text: e.target.value })}
           onPointerDown={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
-            const k = e.key.toLowerCase();
+            const k = shortcutLetter(e);
             if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === "b" || k === "i" || k === "u")) {
               // ⌘B, ⌘I, ⌘U: bold, italic, underline of the whole box.
               e.preventDefault();

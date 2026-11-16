@@ -21,6 +21,7 @@ import {
 import { useT } from "./i18n";
 import { drawsWith, isEraser, notePen, onPencilAction, penOnlySetting, samples } from "@/lib/stylus";
 import { Modal } from "./ui";
+import { shortcutLetter } from "@/lib/keymap";
 
 type Tool = "pen" | "marker" | "arrow" | "rect" | "ellipse" | "text" | "eraser";
 type Point = [number, number];
@@ -308,7 +309,7 @@ export function ImageAnnotator({
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (typing) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      if ((event.metaKey || event.ctrlKey) && shortcutLetter(event) === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
         else undo();

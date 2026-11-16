@@ -38,6 +38,7 @@ import type { Paper, PaperLayout } from "@/lib/notebook-paper";
 import type { NotebookSheet } from "@/lib/notebook";
 import { BookmarkRibbon, SheetPicture } from "./sheet-thumb";
 import { NotebookOutline } from "./notebook-outline";
+import { shortcutLetter } from "@/lib/keymap";
 
 export type OverviewActions = {
   show: (sheetId: string, y?: number) => void;
@@ -234,7 +235,7 @@ export function NotebookOverview({
     } else if (event.key === " " && selecting) {
       event.preventDefault();
       toggle(sheet.id, event.shiftKey);
-    } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && canEdit) {
+    } else if ((event.metaKey || event.ctrlKey) && shortcutLetter(event) === "a" && canEdit) {
       event.preventDefault();
       setSelecting(true);
       setSelected(new Set(shown.map((s) => s.id)));
