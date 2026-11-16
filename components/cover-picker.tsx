@@ -2,7 +2,8 @@
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { UploadSimple } from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import {
   imageAccept,
@@ -38,6 +39,8 @@ export function CoverPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [uploads, setUploads] = useState<PageImage[]>([]);
+  const [fileName, setFileName] = useState("");
+  const uploadId = useId();
   const image = !!imageFileId(cover);
   async function save(value = cover) {
     setBusy(true);
@@ -93,16 +96,20 @@ export function CoverPicker({
             />
           ))}
         </div>
-        <label>
-          {t("Coverbild hochladen", "Upload cover image")}
+        {/* The file field as one of Flowplan's buttons: the input stays
+            focusable but hidden, its label is the button. */}
+        <div className="file-pick">
           <input
+            id={uploadId}
             type="file"
+            className="sr-only"
             accept={imageAccept}
-            aria-label={t("Coverbild hochladen", "Upload cover image")}
+            aria-describedby={`${uploadId}-name`}
             onChange={async (event) => {
               const picked = event.target.files?.[0];
               event.target.value = "";
               if (!picked) return;
+              setFileName(picked.name);
               const file = await compressImage(picked);
               if (file.size > 10 * 1024 * 1024) {
                 setError(t("Maximal 10 MB pro Bild.", "At most 10 MB per image."));
@@ -134,7 +141,14 @@ export function CoverPicker({
               }
             }}
           />
-        </label>
+          <label htmlFor={uploadId} className="button">
+            <UploadSimple size={16} aria-hidden />
+            {t("Coverbild hochladen", "Upload cover image")}
+          </label>
+          <span id={`${uploadId}-name`} className="file-pick-name muted">
+            {fileName || t("Keine Datei ausgewählt", "No file chosen")}
+          </span>
+        </div>
         <p className="muted">{t("PNG, JPEG, GIF, WebP oder AVIF · maximal 10 MB", "PNG, JPEG, GIF, WebP or AVIF · at most 10 MB")}</p>
         {[...uploads, ...images].length > 0 && (
           <label>
@@ -183,8 +197,10 @@ export function CoverPicker({
           {error}
         </p>
       )}
-      <div className="modal-actions">
-        <button className="button" disabled={busy} onClick={() => save("")}>
+      {/* Removing apart on the left (a row of its own on phones),
+          Cancel and Save together on the right. */}
+      <div className="modal-actions cover-actions">
+        <button className="button cover-remove" disabled={busy} onClick={() => save("")}>
           {t("Cover entfernen", "Remove cover")}
         </button>
         <button className="button" disabled={busy} onClick={onClose}>

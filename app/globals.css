@@ -5574,6 +5574,52 @@ mark[data-color],
 .history-list {
   margin-top: 23px;
 }
+/* Version history (components/workspace-app.tsx): a medium dialog; each
+   row the title on one line, date and kind on one line below it, the
+   buttons at the right end (below the text on phones), the line below the
+   row across the whole width. */
+.modal.version-history {
+  width: min(620px, calc(100% - 32px));
+}
+.version-list {
+  margin-top: 23px;
+}
+.version-row {
+  padding-inline: 0;
+}
+.version-row > svg {
+  flex-shrink: 0;
+}
+.version-row > .version-text {
+  min-width: 0;
+}
+.version-row > .version-text > :is(strong, small) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.version-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
+}
+.version-actions > .button {
+  margin-left: 0;
+}
+@media (max-width: 600px) {
+  .version-row {
+    flex-wrap: wrap;
+  }
+  .version-row > .version-text {
+    flex: 1 1 calc(100% - 40px);
+  }
+  .version-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
 .icon-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -9238,6 +9284,48 @@ tr.order-drop-after > td {
 .cover-colors button[aria-pressed="true"] {
   outline: 2px solid var(--accent, #3479ef);
   outline-offset: 2px;
+}
+/* The file field as a button (components/cover-picker.tsx): the input
+   is visually hidden, its label looks like a secondary button, the chosen
+   file's name beside it. */
+.file-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 14px;
+}
+.file-pick > label.button {
+  /* A button, not a field label (label above: a column with room below). */
+  flex-direction: row;
+  margin: 0;
+  cursor: pointer;
+}
+.file-pick:has(> input:focus-visible) > label.button {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.file-pick:has(> input:disabled) > label.button {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.file-pick-name {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+/* Removing the cover apart on the left, Cancel and Save on the right; on
+   narrow screens removing takes a row of its own above them. */
+.cover-actions {
+  flex-wrap: wrap;
+}
+.cover-actions > .cover-remove {
+  margin-inline-end: auto;
+}
+@media (max-width: 600px) {
+  .cover-actions > .cover-remove {
+    flex-basis: 100%;
+  }
 }
 .gallery-cover {
   height: 160px;

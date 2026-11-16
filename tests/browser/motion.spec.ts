@@ -196,7 +196,8 @@ test("“Animationen: Aus” lets nothing animate; “Reduziert” only fades", 
   expect(await page.evaluate(() => (window as unknown as { __vt: number }).__vt)).toBe(0);
   // A menu opens and closes; its animation and transitions end at once.
   await page.getByRole("button", { name: "Seitenaktionen" }).first().click();
-  const menu = page.locator(".dropdown").first();
+  // On phones the page menu is a bottom sheet (components/page-menu.tsx).
+  const menu = page.locator(".dropdown, .page-menu-sheet").first();
   await expect(menu).toBeVisible();
   const style = await menu.evaluate((el) => {
     const s = getComputedStyle(el);

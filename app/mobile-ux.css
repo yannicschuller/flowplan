@@ -735,3 +735,57 @@ label.hit-check {
     color: var(--blue);
   }
 }
+
+/* ===== The page's ⋯ menu as a bottom sheet (components/page-menu.tsx, up
+   to 600 px): rows of at least 44 px, the symbols in line with the title,
+   the whole list scrolls to its last entry above the home indicator. ===== */
+.page-menu-sheet-list {
+  display: grid;
+  gap: 2px;
+  margin: 0 -12px;
+}
+.page-menu-sheet-list > .page-menu-quick {
+  margin-bottom: 4px;
+}
+.page-menu-sheet-list button.dropdown-item {
+  width: 100%;
+  min-height: 48px;
+  gap: 14px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 16px;
+  text-align: start;
+  justify-content: flex-start;
+}
+.page-menu-sheet-list button.dropdown-item svg {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+}
+.page-menu-sheet-list button.page-menu-quick-item {
+  width: 100%;
+}
+.page-menu-sheet-list button:is(.dropdown-item, .page-menu-quick-item):is(:hover, :focus-visible):not([aria-disabled="true"]) {
+  background: var(--hover);
+  color: var(--text);
+}
+.page-menu-sheet-list button:focus-visible {
+  outline-offset: -2px;
+}
+.page-menu-sheet-list > .dropdown-separator {
+  margin: 5px 12px;
+}
+
+/* ===== Comments on phones (≤ 767 px, the phone layout of app/globals.css):
+   the panel covers the page's whole width – a strip of the page beside it
+   only showed cut-off words. ===== */
+@media (max-width: 767px) {
+  .comments-panel {
+    left: 0;
+    width: 100%;
+    border-left: 0;
+    box-shadow: none;
+    padding-left: calc(20px + var(--safe-left));
+    padding-right: calc(20px + var(--safe-right));
+  }
+}
