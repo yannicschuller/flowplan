@@ -16,6 +16,13 @@ function gitCommit() {
 }
 const pkg = JSON.parse(readFileSync("./package.json", "utf8")) as { version: string };
 
+// The browser specs' build (lib/e2e-build.ts, scripts/build-e2e.mjs) takes
+// the demo sign-in. Never in an image: every image build sets
+// FLOWPLAN_CHANNEL (docker.yml), and the two together stop the build.
+const e2eBuild = process.env.FLOWPLAN_E2E_BUILD === "1";
+if (e2eBuild && process.env.FLOWPLAN_CHANNEL)
+  throw new Error("FLOWPLAN_E2E_BUILD=1 is for the browser specs' build only, not for an image (FLOWPLAN_CHANNEL is set).");
+
 const config: NextConfig = {
   // The CI checks types; image builds there set FLOWPLAN_SKIP_TYPECHECK=1 so
   // the check does not run again per architecture.
@@ -29,6 +36,9 @@ const config: NextConfig = {
     FLOWPLAN_BUILT_AT: new Date().toISOString(),
     // "beta" or "release" from the image build (Settings → Über Flowplan).
     FLOWPLAN_CHANNEL: process.env.FLOWPLAN_CHANNEL || "",
+    // Always defined, also as "" – then the server's code holds the literal,
+    // not a lookup of the variable at runtime (lib/e2e-build.ts).
+    FLOWPLAN_E2E_BUILD: e2eBuild ? "1" : "",
   },
   // A second development server (e.g. for isolated browser tests) needs its
   // own build directory.

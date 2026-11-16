@@ -36,6 +36,7 @@ import { translate, type Locale } from "./i18n";
 import { ldapConfigured } from "./ldap";
 import { proxyAuthConfig } from "./proxy-auth-config";
 import { mapAsync, someAsync } from "./each-async";
+import { demoSignInAllowed } from "./e2e-build";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -876,7 +877,7 @@ export async function loginOptions(setup?: string, invite?: string, join?: strin
     proxyName: proxy?.loginUrl ? proxy.name : "",
     proxyOnly: !!proxy?.only,
     mail: !!mailConfig(),
-    demo: process.env.NODE_ENV !== "production",
+    demo: demoSignInAllowed(),
     // "Stay signed in on this device" (SESSION_REMEMBER=true).
     remember: !!(await rememberPolicy()),
     // The password form also signs in with the LDAP directory (LDAP_URL).
