@@ -24,7 +24,9 @@ test("table of contents beside a document", async ({ page }, info) => {
   for (const [h, text] of [["#", "Anfang"], ["##", "Mitte"], ["#", "Ende"]]) {
     await page.keyboard.type(`${h} ${text}`);
     await page.keyboard.press("Enter");
-    await page.keyboard.type("Ein Absatz mit etwas Text. ".repeat(30));
+    // The long paragraph in one go: typed key by key (800 characters, three
+    // times) it took most of the test's time on a phone in CI.
+    await page.keyboard.insertText("Ein Absatz mit etwas Text. ".repeat(30));
     await page.keyboard.press("Enter");
   }
   const toggle = page.locator(".outline-toggle");

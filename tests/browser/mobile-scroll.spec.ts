@@ -74,6 +74,15 @@ async function countCancelled(page: Page) {
 test("a swipe on the tab bar or the top bar moves nothing; one on the content scrolls it", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "The tab bar is shown on small screens.");
   const pageId = await signIn(page);
+  // The development server's badge lies over the tab bar's left end, where
+  // a swipe below starts.
+  await page.addInitScript(() =>
+    addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "nextjs-portal { display: none !important; }";
+      document.head.append(style);
+    }),
+  );
   await page.goto("/");
   const bar = page.locator(".mobile-tab-bar");
   await expect(bar).toBeVisible();

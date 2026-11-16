@@ -58,7 +58,8 @@ async function openDialog(page: Page) {
     data: { action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Neu ${Date.now()}`, kind: "document" },
   });
   await page.goto(`/#page=${(await created.json()).id}`);
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toBeVisible();
+  // The editor loads its code on demand (slow after a load on the dev server).
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toBeVisible({ timeout: 30_000 });
   const welcome = page.getByRole("dialog", { name: "Willkommen bei Flowplan" });
   await page.waitForTimeout(300);
   if (await welcome.isVisible()) {

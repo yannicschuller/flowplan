@@ -244,7 +244,7 @@ export function useFrameTabs({
       }
       // Back or forward to an entry of another tab: commit() shows this
       // tab's step instead.
-      const next = follow(l, 0, place, how);
+      const next = follow(l, 0, place, how, how === "replace" ? browserPlaceAt(-1) : null);
       if (next !== l) commit(next);
     };
     nav?.addEventListener("navigate", navigating);

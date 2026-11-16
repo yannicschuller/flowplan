@@ -126,6 +126,10 @@ async function fixture(page: Page, name: string) {
   const row = async () =>
     (await read()).rows.find((r: any) => r.id === meeting.id);
   const cleanup = async () => {
+    // After a timeout every request fails at once, and its error would take
+    // the place of the step that ran out of time; afterEach removes the
+    // area then, with time of its own.
+    if (test.info().status === "timedOut") return;
     await removeArea(page.request, { id: area.id, name });
     pendingAreas.delete(test.info().testId);
   };
