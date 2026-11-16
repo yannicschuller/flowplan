@@ -2,6 +2,9 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { join } from "node:path";
+// The first view after a full navigation (editor chunk, comments) may take
+// longer than an assertion's 5 s on a busy dev server.
+const LOAD = 30_000;
 
 // One button opens the text comments; "New" in the panel starts a comment
 // on the selection (#314).
@@ -114,7 +117,7 @@ async function fixture(page: Page, browser: Browser) {
     }
     if (record)
       await p.locator(`[data-row-id="${row.id}"] .title-cell`).click();
-    await expect(p.locator(".tiptap")).toContainText("Alpha Bravo");
+    await expect(p.locator(".tiptap")).toContainText("Alpha Bravo", { timeout: LOAD });
   }
   async function threads(record = false, p = page, detail = "") {
     return (
@@ -140,7 +143,7 @@ async function fixture(page: Page, browser: Browser) {
   };
 }
 async function select(page: Page, from = 7, to = 12) {
-  await page.locator(".tiptap").evaluate(
+  await page.locator(".tiptap.document-editor").evaluate(
     (el, range) => {
       const editor = (el as HTMLElement & { editor: any }).editor;
       editor.commands.focus();
@@ -148,7 +151,7 @@ async function select(page: Page, from = 7, to = 12) {
     },
     { from, to },
   );
-  await expect(page.locator(".tiptap")).toBeFocused();
+  await expect(page.locator(".tiptap.document-editor")).toBeFocused();
 }
 async function create(page: Page, body = "Please review") {
   await select(page);
@@ -354,7 +357,7 @@ test("comment anchors follow typing, stale edits keep drafts, and deleted text l
       })
       .toContain("New Alpha");
     await page.reload();
-    await expect(page.locator(".inline-comment-mark")).toHaveText("Bravo");
+    await expect(page.locator(".inline-comment-mark")).toHaveText("Bravo", { timeout: LOAD });
     await page.locator(".inline-comment-mark").click();
     await expect(page.locator(".inline-comment-message")).toContainText(
       "Concurrent edit",
@@ -438,13 +441,29 @@ test("row threads survive generation changes and lost acknowledgements do not du
       const e = (el as HTMLElement & { editor: any }).editor;
       e.commands.insertContentAt(e.state.doc.content.size, {
         type: "image",
-        attrs: { src: "/icon.svg", alt: "Commented image" },
+        // A width: the SVG has none of its own and would collapse to 0 × 0.
+        attrs: { src: "/icon.svg", alt: "Commented image", width: 96 },
       });
-      e.state.doc.descendants((node: any, pos: number) => {
-        if (node.type.name === "image") e.commands.setNodeSelection(pos);
-      });
-      e.commands.focus();
     });
+    // Selected once its view has settled: the editor re-reads the DOM
+    // selection while a new image renders, which would replace a node
+    // selection made in the same moment.
+    await expect(page.locator('.tiptap img[alt="Commented image"]')).toHaveCount(1);
+    await expect
+      .poll(() =>
+        page.locator(".tiptap").evaluate((el) => {
+          const e = (el as HTMLElement & { editor: any }).editor;
+          if (e.state.selection.node?.type.name !== "image")
+            e.state.doc.descendants((node: any, pos: number) => {
+              if (node.type.name === "image") e.commands.setNodeSelection(pos);
+            });
+          e.commands.focus();
+          return new Promise((done) =>
+            setTimeout(() => done(e.state.selection.node?.type.name ?? null), 300),
+          );
+        }),
+      )
+      .toBe("image");
     await expect(page.locator(".tiptap")).toBeFocused();
     await page.keyboard.press("ControlOrMeta+Alt+m");
     await page
@@ -546,7 +565,7 @@ test("comment notification links open exact row threads, survive reload and supp
     );
     await f.other.reload();
     await expect(f.other.locator(".inline-comment-message")).toContainText(
-      "Linked row discussion",
+      "Linked row discussion", { timeout: LOAD },
     );
     await f.other.goBack();
     await expect(
@@ -603,7 +622,7 @@ test("document thread links switch workspaces and enforce current permissions wi
     const target = `#page=${f.doc.id}&thread=${thread.id}`;
     await f.other.goto(`${origin}/${target}`);
     await expect(f.other.locator(".inline-comment-message")).toContainText(
-      "Cross workspace discussion",
+      "Cross workspace discussion", { timeout: LOAD },
     );
     // Polling the newly selected workspace must not bounce back to Home.
     await expect(f.other.locator(".workspace-switch")).toContainText(
@@ -619,7 +638,7 @@ test("document thread links switch workspaces and enforce current permissions wi
     await expect(f.other).toHaveURL(`${origin}/${target}`);
     await f.other.reload();
     await expect(f.other.locator(".inline-comment-message")).toContainText(
-      "Cross workspace discussion",
+      "Cross workspace discussion", { timeout: LOAD },
     );
     // A pending page request cannot reopen content after navigation to Home.
     let entered!: () => void;
@@ -693,7 +712,7 @@ test("unauthenticated comment links retain their destination after signing in", 
       .click();
     await expect(visitor).toHaveURL(target);
     await expect(visitor.locator(".inline-comment-message")).toContainText(
-      "Return after sign-in",
+      "Return after sign-in", { timeout: LOAD },
     );
     await expect(
       visitor.getByRole("dialog", { name: "Eintrag", exact: true }),
@@ -1010,7 +1029,16 @@ test("one text comment button and panel; comments stay with blocks moved up and 
     await expect(page.locator(".inline-comment-panel")).toHaveCount(0);
     // Move the paragraph below the list and back (⌘⇧↓ / ⌘⇧↑).
     for (const key of ["ArrowDown", "ArrowUp", "ArrowDown"]) {
-      await select(page, 3, 3);
+      // The caret in the commented paragraph, wherever it is now.
+      const at = await page.locator(".tiptap").evaluate((el) => {
+        const { state } = (el as HTMLElement & { editor: any }).editor;
+        let pos = -1;
+        state.doc.descendants((node: any, p: number) => {
+          if (pos < 0 && node.type.name === "paragraph" && node.textContent.startsWith("Alpha")) pos = p + 3;
+        });
+        return pos;
+      });
+      await select(page, at, at);
       const before = await page.locator(".tiptap > *").first().evaluate((el) => el.tagName);
       await page.keyboard.press(`ControlOrMeta+Shift+${key}`);
       await expect
