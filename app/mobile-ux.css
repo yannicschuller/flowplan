@@ -102,7 +102,7 @@
 /* Slides up from the bottom edge (#260); with "Reduziert" it only fades. */
 @keyframes sheet-in {
   from {
-    opacity: calc(1 - var(--motion-move));
+    opacity: 0;
     translate: 0 calc(100% * var(--motion-move));
   }
 }

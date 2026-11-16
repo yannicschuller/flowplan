@@ -226,7 +226,25 @@ test("“Animationen: Aus” lets nothing animate; “Reduziert” only fades", 
     const s = getComputedStyle(el);
     return { scale: s.getPropertyValue("--motion-scale").trim(), duration: s.animationDuration, name: s.animationName };
   });
-  expect(reduced).toEqual({ scale: "1", duration: "0.07s", name: "menu-in" });
+  if (info.project.name === "desktop") expect(reduced).toEqual({ scale: "1", duration: "0.07s", name: "menu-in" });
+  else {
+    // The phone's sheet: it fades, it does not rise. Its animation is
+    // started again and held at its first frame to read where it starts.
+    expect(reduced).toEqual({ scale: "1", duration: "0.12s", name: "sheet-in" });
+    const start = await menu.evaluate((el) => {
+      const sheet = el as HTMLElement;
+      sheet.style.animation = "none";
+      void sheet.offsetWidth;
+      sheet.style.animation = "";
+      const animation = sheet.getAnimations().find((a) => (a as CSSAnimation).animationName === "sheet-in")!;
+      animation.pause();
+      animation.currentTime = 0;
+      const s = getComputedStyle(sheet);
+      return { opacity: s.opacity, translate: s.translate };
+    });
+    expect(start.opacity).toBe("0");
+    expect(start.translate).toMatch(/^(none|0px( 0(px|%))?)$/);
+  }
 });
 
 test("the setting is under Darstellung and applies at once", async ({ page }) => {
