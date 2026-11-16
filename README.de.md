@@ -18,13 +18,12 @@
 [![CI](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml/badge.svg)](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml)
 [![Docker-Image](https://github.com/yannicschuller/flowplan/actions/workflows/docker.yml/badge.svg)](https://github.com/yannicschuller/flowplan/pkgs/container/flowplan)
 [![Release](https://img.shields.io/github/v/release/yannicschuller/flowplan?color=3b3fd8)](https://github.com/yannicschuller/flowplan/releases)
-[![Sterne](https://img.shields.io/github/stars/yannicschuller/flowplan?color=3b3fd8)](https://github.com/yannicschuller/flowplan/stargazers)
-[![Doku](https://img.shields.io/badge/Doku-docs.flowplan.org-3b3fd8)](https://docs.flowplan.org/de)
-[![Demo](https://img.shields.io/badge/Demo-jetzt_ausprobieren-3b3fd8)](https://flowplan.org/de/demo)
+[![Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fyannicschuller%2Fflowplan-status%2Fstatus-data%2Fbadge.json&cacheSeconds=300)](https://status.flowplan.org)
 [![Lizenz: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3b3fd8.svg)](LICENSE)
+<br>
+[![Sterne](https://img.shields.io/github/stars/yannicschuller/flowplan?color=3b3fd8)](https://github.com/yannicschuller/flowplan/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/bCEdB6MPrR)
 [![Sponsor](https://img.shields.io/github/sponsors/yannicschuller?logo=githubsponsors&label=sponsor&color=ea4aaa)](https://github.com/sponsors/yannicschuller)
-[![As seen on Open Source Alternatives](https://www.opensourcealternatives.to/badge-osa.svg)](https://www.opensourcealternatives.to)
 
 <br>
 
@@ -538,6 +537,16 @@ Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`) ode
 ## Community
 
 Fragen, Ideen, zeigen, was ihr gebaut habt, oder einfach Hallo sagen: Kommt in den **[Flowplan-Discord](https://discord.gg/bCEdB6MPrR)**. Fehler und Funktionswünsche am besten als [GitHub-Issue](https://github.com/yannicschuller/flowplan/issues) melden, damit nichts verloren geht.
+
+### Zu finden auf
+
+Flowplan ist auf diesen Seiten gelistet – Bewertungen und Stimmen dort helfen anderen, es zu finden.
+
+<p>
+  <a href="https://www.producthunt.com/products/flowplan-2/reviews/new?utm_source=badge-product_review&amp;utm_medium=badge&amp;utm_source=badge-flowplan-2"><img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1357090&amp;theme=dark" alt="Flowplan on Product Hunt" height="48"></a>
+  <a href="https://alternativeto.net/software/flowplan/about/?utm_source=badge&amp;utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="Flowplan on AlternativeTo" height="48"></a>
+  <a href="https://www.opensourcealternatives.to"><img src="https://www.opensourcealternatives.to/badge-osa.svg" alt="As seen on Open Source Alternatives" height="48"></a>
+</p>
 
 ### Hilf beim Übersetzen
 
