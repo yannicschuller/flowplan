@@ -2,6 +2,159 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.9.8 – 2026-11-16
+
+### Security
+
+- New security alerts for all admins: admin rights removed, an admin's two-factor sign-in turned off, emergency access granted or used for an export, access to the instance opened and SSO group mappings changed ([#321](https://github.com/yannicschuller/flowplan/issues/321)).
+
+### New
+
+- Invite links for several people with a role, an expiry and an optional maximum number of joins; inviting someone who already has an account with a confirmed address adds them right away ([#320](https://github.com/yannicschuller/flowplan/issues/320)).
+- Sidebar: "Focus in sidebar" shows only a page and the pages below it, with a path to go back up ([#318](https://github.com/yannicschuller/flowplan/issues/318)).
+- MCP: AI assistants can update, move and trash pages and change tasks (done, state, due date, assignee) – nothing is ever deleted for good.
+- Sign-in through a trusted reverse proxy such as YunoHost SSOwat, Authelia or Authentik (off by default).
+- Every release comes with archives for Linux (amd64, arm64) to run without Docker.
+- My tasks: one list for tasks from documents and records from databases, with filters for source, person and date range; records can be ticked off right there ([#314](https://github.com/yannicschuller/flowplan/issues/314)).
+- Journal: choose a saved template as the daily template ([#316](https://github.com/yannicschuller/flowplan/issues/316)).
+- Checklists: check all tasks at once or mark them all as open again ([#309](https://github.com/yannicschuller/flowplan/issues/309)).
+- Indent and outdent from the block menu and as optional toolbar buttons, also for several blocks ([#302](https://github.com/yannicschuller/flowplan/issues/302)).
+- Record pages: drag properties into an order of their own per database ([#305](https://github.com/yannicschuller/flowplan/issues/305)).
+- Forms: the description and hints take bold, italic, links, colours and line breaks ([#306](https://github.com/yannicschuller/flowplan/issues/306)).
+- ID property: the prefix is optional; without one it is the plain running number ([#313](https://github.com/yannicschuller/flowplan/issues/313)).
+- Formatting toolbar: a default for the whole instance, a preview while customizing and blocks from the "/" menu as buttons ([#292](https://github.com/yannicschuller/flowplan/issues/292)).
+- Drawing blocks on the iPad: drawing starts on insert, touches outside are ignored, Scribble no longer writes into the text, and the Apple Pencil shows where it hovers ([#311](https://github.com/yannicschuller/flowplan/issues/311), [#315](https://github.com/yannicschuller/flowplan/issues/315)).
+
+### Improved
+
+- Faster live editing: typing no longer re-renders the whole workspace.
+- The workspace loads less up front: settings, dialogs and rare views load when you open them.
+- Keyboard shortcuts work with Cyrillic and other non-Latin keyboard layouts ([#319](https://github.com/yannicschuller/flowplan/issues/319)).
+- The template gallery follows the current space, and new pages from templates go there ([#317](https://github.com/yannicschuller/flowplan/issues/317)).
+- Text comments: one button and one panel, line breaks in quotes, and comments follow moved blocks ([#314](https://github.com/yannicschuller/flowplan/issues/314)).
+- Records: "+ Time" for dates and a readable repeat row; onboarding and the whiteboard fit phones better ([#314](https://github.com/yannicschuller/flowplan/issues/314)).
+- Emoji categories, space colours and the default mood tracker follow the language ([#308](https://github.com/yannicschuller/flowplan/issues/308), [#310](https://github.com/yannicschuller/flowplan/issues/310)).
+- Documents scroll past their last line on touch devices, so the text stays above the keyboard ([#300](https://github.com/yannicschuller/flowplan/issues/300)).
+- iPads and tablets: with the keyboard open, the top bar follows the visible area, which should keep it from slipping out of view while typing ([#307](https://github.com/yannicschuller/flowplan/issues/307)).
+- Screen readers get one announcement in the sidebar for moved spaces and the focused branch.
+- Polish for phones and dialogs: consistent footers, the page menu as a bottom sheet, larger touch targets, room for the hide-keyboard button, a better hover colour in the dark theme.
+- The table of contents has its own icon ([#301](https://github.com/yannicschuller/flowplan/issues/301)).
+
+### Bug fixes
+
+- A newer state of a document shows at once instead of on the next sync – for example when deleting a formula changed elsewhere.
+- Your own selection no longer jumps while others type earlier in the same paragraph.
+- Tabs: "Open in database" from a related record keeps the view below it.
+- Pages made in quick succession keep the order they were made in.
+- Database tables: a save that finishes late no longer closes the cell you are editing.
+- Saving a cover right after opening a page no longer wrongly reports it as changed.
+- Split view: an address with ?split= opens the page in the right frame again.
+- Select options: spaces can be typed in new options ([#304](https://github.com/yannicschuller/flowplan/issues/304)).
+- Database cards: icons sit on the title's first line with a gap ([#299](https://github.com/yannicschuller/flowplan/issues/299)).
+- Block menu from the toolbar's "+" tapped with a finger: no keyboard, the list scrolls at once ([#298](https://github.com/yannicschuller/flowplan/issues/298)).
+- Whiteboard on phones: the selection's tool row fits the screen, and a tap with the shape tool gives a shape with a size.
+- With reduced motion, bottom sheets on phones fade in again.
+- Ask AI: help links lead to the right section, without a version marker in the anchor.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.9.8 ([727a026](https://github.com/yannicschuller/flowplan/commit/727a026526d21760f898bcda7075680666047f11))
+- Save status in a store of its own: typing no longer re-renders the workspace ([d9c5eef](https://github.com/yannicschuller/flowplan/commit/d9c5eeffcdadce4a986c3febfa8da1b1b250c1d9))
+- inline-comments spec: check the toolbar against the panel on phones too ([05aaa40](https://github.com/yannicschuller/flowplan/commit/05aaa405ac9b5b6565897c6c9bb3738caa8068ab))
+- record-linked-views spec: wait for the app to boot after the reload ([94916ff](https://github.com/yannicschuller/flowplan/commit/94916ffe5787cb70d16d3ebaadfeb07fc93b1cad))
+- Editors: keep the own selection on its text through others' typing ([d05722f](https://github.com/yannicschuller/flowplan/commit/d05722f541b6cdca7101ecc0a4cdd40513984c15))
+- Editor: merge a newer document state at once, not on the next sync ([68159c3](https://github.com/yannicschuller/flowplan/commit/68159c391bef68a9b891c0c6391386d9d9742bb6))
+- Browser CI: 10 s expect timeout for slow hosted runners ([088f5d1](https://github.com/yannicschuller/flowplan/commit/088f5d18380680d51f47e73294b9d017e8988365))
+- Stale build spec: allow the dev server's live reload in its own contexts ([6f0053c](https://github.com/yannicschuller/flowplan/commit/6f0053c4606afed86f289d4890c5e0f42e23f9c7))
+- Mobile scroll spec: hide the dev server's badge over the tab bar ([467412a](https://github.com/yannicschuller/flowplan/commit/467412a4375b6a9b469ae30a95abe30a8fdf08a1))
+- Relation records spec: ⌘-click opens a tab of the app on computers ([8d68194](https://github.com/yannicschuller/flowplan/commit/8d681945621826fd010072c0f2ff386fa050f47e))
+- Tabs: "In Datenbank öffnen" from a related record keeps the tasks below ([e33e887](https://github.com/yannicschuller/flowplan/commit/e33e887645a7f3337cf68394715343081935d5b5))
+- Slash menu touch spec: tap only once the swiped list has come to rest ([48ed624](https://github.com/yannicschuller/flowplan/commit/48ed624d4fd9db16a6b09d561ca93a6f0233de87))
+- Calendar time spec: a timeout reports the step that ran out of time ([2e2f98e](https://github.com/yannicschuller/flowplan/commit/2e2f98eb1bd0485f3e9ad7013ecf99c21b6e5ea4))
+- Browser specs: on-demand views after a load on phones; a faster outline spec ([e5aeef2](https://github.com/yannicschuller/flowplan/commit/e5aeef23310078f0ac3bf717aca07ea0a1bae90b))
+- Guest edit spec: wait for hydration and the dev server's slow steps ([7590fe2](https://github.com/yannicschuller/flowplan/commit/7590fe289e5ff23402ed195241e592bb5c088c48))
+- Formula spec: open the property again once the reload's fresh data is there ([bb21126](https://github.com/yannicschuller/flowplan/commit/bb211262363c21a6461723efb1c70acc3ad93e64))
+- Admins are alerted when admin rights are removed, an admin's two-factor goes off, emergency access is granted or access to the instance is opened ([f4bc1ff](https://github.com/yannicschuller/flowplan/commit/f4bc1ffeb8e26c234e7d44d27966d2e58fc98d89))
+- Sidebar: one live region for moved spaces and a focused branch ([845fbd5](https://github.com/yannicschuller/flowplan/commit/845fbd5fde8f745e032760898f2023545539d6a2))
+- Pages made in the same millisecond keep the order they were made in ([ca5785d](https://github.com/yannicschuller/flowplan/commit/ca5785d514729662fde82bf7c14566093b1c8eec))
+- MCP tests: order snapshots by seq, which Postgres has too ([e84d6d4](https://github.com/yannicschuller/flowplan/commit/e84d6d4e2dfb27f9fa2dd8c269e2cf6de4513243))
+- Browser specs: give views that load on demand their time after a page load ([a799fee](https://github.com/yannicschuller/flowplan/commit/a799fee9abd442be5d509698280f744590b6ead9))
+- Browser specs: follow today's UI changes ([8d0c23f](https://github.com/yannicschuller/flowplan/commit/8d0c23f3b67b57b7122ed88be0b0d52421fdbdc4))
+- Invite links for several people and direct add of registered accounts (#320) ([8532a4b](https://github.com/yannicschuller/flowplan/commit/8532a4b47ef99b6898c6c07b5bd872aefdccbde9))
+- MCP: update, move and trash pages, change tasks ([2fa77bc](https://github.com/yannicschuller/flowplan/commit/2fa77bca6426cb0d09dc994605aa6641c9786125))
+- Ask AI: help links no longer carry the docs' version marker ([ddb9ccd](https://github.com/yannicschuller/flowplan/commit/ddb9ccd50f83c680192b4e0ea6b7d1bb7d36a469))
+- Keyboard shortcuts work with Cyrillic and other non-Latin layouts (#319) ([ea6b8ca](https://github.com/yannicschuller/flowplan/commit/ea6b8caa1c0a7c6854d162e06dbab9823aafb56c))
+- Cover dialog: saving right after opening a page no longer reports it as changed ([33add32](https://github.com/yannicschuller/flowplan/commit/33add326c8278326051d8ee2af2db9aa7f08d25c))
+- Phones: full 44 px touch targets for the alignment button and the sidebar's "+" buttons ([12bfcd9](https://github.com/yannicschuller/flowplan/commit/12bfcd9d64e44d8bbd20a857e8040fc4f46568b4))
+- Records opened from a link load their editor together with the data ([723347c](https://github.com/yannicschuller/flowplan/commit/723347c6a122d4ebfe5389899ef6714047525fa2))
+- Split view: an address with ?split=<id> opens the page in the right frame again ([d38a39d](https://github.com/yannicschuller/flowplan/commit/d38a39d5fc8aa716e1c5772ffac901120350cd7a))
+- Sidebar: focus a branch of the page tree (#318) ([9d291a1](https://github.com/yannicschuller/flowplan/commit/9d291a1149c4166085c7ca65568d53fe60b53da0))
+- Browser specs: follow the record property handles, exact view names, first linked views, reader copy ([88d9a74](https://github.com/yannicschuller/flowplan/commit/88d9a7448ed97b467ea5aba8bc38d7b75cfc2c72))
+- Browser specs: the demo account starts past the introduction ([6437fa8](https://github.com/yannicschuller/flowplan/commit/6437fa8b9e5563db0108da725d50a6d9a20f03b1))
+- Database tables: a save that finishes late no longer closes the cell being edited ([f5829de](https://github.com/yannicschuller/flowplan/commit/f5829de509d7d49c39ef25bff57b198a77c1f1f9))
+- Browser specs: allow the first view after a load its time; open the gallery after hydration ([1e66936](https://github.com/yannicschuller/flowplan/commit/1e66936b7ae24becc68d8b9bfc4059fededd3386))
+- Inline comments spec: comment an image that has a size, move the commented paragraph ([cee170a](https://github.com/yannicschuller/flowplan/commit/cee170a171214c41ac9f2716eda1ee1848c78c9f))
+- Inline comments spec: read the new comment's quote from its composer ([457c8c2](https://github.com/yannicschuller/flowplan/commit/457c8c2d525eb8de1fb3cf3a3a91a7c0e235fe58))
+- Whiteboard on phones: the selection's tool row fits the screen; a tapped shape gets its size ([c51703e](https://github.com/yannicschuller/flowplan/commit/c51703eb7e7f9959fdff53e60cf2f1a5c7798a7b))
+- Phones: with "Animationen: Reduziert" bottom sheets fade in ([766ceaf](https://github.com/yannicschuller/flowplan/commit/766ceaf84f24bcd519a5ce3e011b86d261171e3b))
+- Template gallery spec: wait for the first page view of a page load ([7cb05b7](https://github.com/yannicschuller/flowplan/commit/7cb05b78fb891bed07c59df4c4e89134d7ea572a))
+- Drawing blocks: a pen tap on Done or a tool no longer starts Scribble ([7d0e3e3](https://github.com/yannicschuller/flowplan/commit/7d0e3e39a30aec78b8b40c9d07128c1e55242147))
+- Calendar spec: fill the date and the time field separately ([de829f4](https://github.com/yannicschuller/flowplan/commit/de829f4c8efbfd8ff4ce4c1eb0618e17f2732eac))
+- Gallery: the inline comments scene scrolls without the scene context in the page ([032cf2c](https://github.com/yannicschuller/flowplan/commit/032cf2cfe6506779789b67bdf70bc9b4418e13e3))
+- Help docs: regenerated from the docs for 0.9.8 ([bcd072b](https://github.com/yannicschuller/flowplan/commit/bcd072bc7523b360053b3ef8e253b7616f9c9789))
+- Trim the workspace bundle: settings, dialogs and rare views load on demand ([c7b5a48](https://github.com/yannicschuller/flowplan/commit/c7b5a487cc2df6f8a7c43ae332ce18e4f6a01ba8))
+- README: AlternativeTo badge follows light and dark mode ([6ff9946](https://github.com/yannicschuller/flowplan/commit/6ff9946766e9f12d886f38bcbeb302ad1c5d8722))
+- README: Product Hunt badge follows light and dark mode ([fceef70](https://github.com/yannicschuller/flowplan/commit/fceef70668754cd5fd567b7169f9574093308f95))
+- README: badges in two short rows, listings in their own block ([d08ca55](https://github.com/yannicschuller/flowplan/commit/d08ca5540326579e62f22cc73871c1599eabcc5a))
+- Status badge in the README ([131c9ba](https://github.com/yannicschuller/flowplan/commit/131c9ba2e45d5683c23205089b6328f21d74cad6))
+- Sign-in through a trusted reverse proxy (YunoHost SSOwat, Authelia, Authentik) ([72bd90f](https://github.com/yannicschuller/flowplan/commit/72bd90f3d9ec000df6d2b924a205a1e8e0dcfec0))
+- Point to the status page in the issue forms and the README ([2054909](https://github.com/yannicschuller/flowplan/commit/2054909f6c06dfd96b2fb45f0321d7eb55dc5f5b))
+- Template gallery follows the current space; saved templates as a journal's daily template (#317, #316) ([95c910e](https://github.com/yannicschuller/flowplan/commit/95c910edc54653496e96cef6ca041c3de7e9340d))
+- My tasks: one list for tasks from documents and records from databases (#314) ([86856a5](https://github.com/yannicschuller/flowplan/commit/86856a5f37185bed99e46a88b992c3deaf64b867))
+- Design review: Pages – tasks filter, journal row, record toolbar, workflow actions, graph select, gallery waits ([e2bb498](https://github.com/yannicschuller/flowplan/commit/e2bb49856fabd5fc8f2754a42b2fd4fb9d253eaf))
+- Onboarding and whiteboard on phones and in the apps (#314) ([fb64e2f](https://github.com/yannicschuller/flowplan/commit/fb64e2fb55278833685f209c8e45b57c836f1dc4))
+- Drawing blocks: hover feedback and a hover dot for the Apple Pencil, pen taps without Scribble (#315) ([705e69c](https://github.com/yannicschuller/flowplan/commit/705e69cb0d9f7f7047797f2156a1e4265b8c921b))
+- Records: "+ Time" button for dates, readable repeat row, even kind tabs (#314) ([e3d21aa](https://github.com/yannicschuller/flowplan/commit/e3d21aacd64d3e01c19874b5e80b6818128486f5))
+- Text comments: one button and panel, line breaks in quotes, comments follow moved blocks (#314) ([ba298f4](https://github.com/yannicschuller/flowplan/commit/ba298f45911f2c8c5bebd0f613ce8c8be240ba05))
+- Design review: Documents & editor – cover dialog footer and upload, full-width comments on phone, page menu sheet and icons, version history rows, callout scene ([d167828](https://github.com/yannicschuller/flowplan/commit/d16782823c6052b741da52520f6cbba90ea596ab))
+- Add the /sponsors skill ([6fd94f6](https://github.com/yannicschuller/flowplan/commit/6fd94f6adc778486032da3d1ae6dd361ec7b7ede))
+- Drawing blocks on the iPad: start drawing on insert, no Scribble into the text, one Done (#311) ([8be12da](https://github.com/yannicschuller/flowplan/commit/8be12da942ae0845d2583bb680076ff80b0b3e24))
+- Design review: Settings – tag form and empty-state buttons on phones, level marks on every card, meetings notice, journal select ([abb51a9](https://github.com/yannicschuller/flowplan/commit/abb51a99820d9511528c5c689c1b9f2f794181d9))
+- Release archives for installs without Docker ([cdfe68b](https://github.com/yannicschuller/flowplan/commit/cdfe68bd1f1f80de7e18491bca7f77eb7a60598f))
+- Design review: Dialogs – consistent footers, room for the hide-keyboard button, dark hover colour, two-line page selection bar ([7151e32](https://github.com/yannicschuller/flowplan/commit/7151e321ad1e3dbdebc6fdd2ea7faf778770eadd))
+- Enhance SKILL.md with writing style guidelines for bug reports and feature requests ([ff8ac41](https://github.com/yannicschuller/flowplan/commit/ff8ac4114874108030a2a6de873e69dbed155e68))
+- Skill /design-review: ask the maintainer about the findings before changing anything ([635e6c9](https://github.com/yannicschuller/flowplan/commit/635e6c9b9ef4db73a1f17fd9d5e49e606d5e2685))
+- Skill /design-review: review one UI area from screenshots and fix what doesn't fit ([b823311](https://github.com/yannicschuller/flowplan/commit/b823311e8d610f6d84e7d3d861a849ec8bc50e87))
+- Quality budgets: signed-in pages 1760 KB, workflow 1900 KB after #302–#313 ([5527bf9](https://github.com/yannicschuller/flowplan/commit/5527bf978469b05088306e5837968b3eb2a68489))
+- Help docs: ID properties without a prefix ([8ddf623](https://github.com/yannicschuller/flowplan/commit/8ddf62367888a87bb1df74e565c77c3ba8058ae1))
+- ID property: the prefix is optional (#313) ([c9b0140](https://github.com/yannicschuller/flowplan/commit/c9b01409f21599a8b48f07c909145969158c4762))
+- Top bar follows the visible area with the keyboard open on iPads and tablets only (#307) ([e716d8b](https://github.com/yannicschuller/flowplan/commit/e716d8b114a8646ad5e9ce5c579cf2b6d1eb4756))
+- Help docs: drawing block touch protection ([ba3eba8](https://github.com/yannicschuller/flowplan/commit/ba3eba8891cd958f31b6893806e8ba8bc4aa90da))
+- Ignore touches outside an active drawing block on tablets (#311) ([2e00438](https://github.com/yannicschuller/flowplan/commit/2e004389de8e4b017edfdc6625fa0331ce034c13))
+- Add some skills useful for testers to search the documentation and report feature requests and bug properly ([c4fee71](https://github.com/yannicschuller/flowplan/commit/c4fee715bbf61e6b1c2e7d21b59e1c695cfb1f6d))
+- Keep the top bar in view while typing with the keyboard open (#307) ([6e8fc90](https://github.com/yannicschuller/flowplan/commit/6e8fc90724e7b57fb79a9258679b97120c7bc8dd))
+- Help docs: reset a whole checklist ([c559163](https://github.com/yannicschuller/flowplan/commit/c5591633f8980d1044e988dacf6b3a8784ceca2f))
+- Checklists: mark all tasks as open or check all at once (#309) ([c126047](https://github.com/yannicschuller/flowplan/commit/c1260474b5b465a596f6cd5078145844092e8da2))
+- Emoji categories and names, space colours and the default mood tracker follow the language (#308, #310) ([d2d62bf](https://github.com/yannicschuller/flowplan/commit/d2d62bfdfefe8c7848591ff185643d626b57069c))
+- Help docs: indent without a keyboard, property order, formatted form descriptions ([cdd9f5b](https://github.com/yannicschuller/flowplan/commit/cdd9f5b9c003de38b91416d139fd54e0c2b947d2))
+- Form descriptions: inline formatting with a small editor (#306) ([58dc06f](https://github.com/yannicschuller/flowplan/commit/58dc06f37036b5bb46282193c1316b28eaade03c))
+- Indent and outdent from the block menu and the toolbar (#302) ([6d593a5](https://github.com/yannicschuller/flowplan/commit/6d593a5669cd0259b20820d40a56a74fd966517a))
+- Record pages: own property order per database (#305) ([ec9473e](https://github.com/yannicschuller/flowplan/commit/ec9473e2f0c1a34616c77a24e6c2a9e3da7fdc53))
+- Select options: spaces can be typed in new options (#304) ([a739c22](https://github.com/yannicschuller/flowplan/commit/a739c22f331152424703fa4c1bea94fc61a90a1f))
+- Toolbar blocks: text, headings and quote turn the current block (#292); help docs ([14ba88e](https://github.com/yannicschuller/flowplan/commit/14ba88eb421c57daf57ac979c67db06fc79f7d66))
+- Formatting toolbar: instance default, preview, clearer dividers, blocks as buttons (#292) ([67ea05b](https://github.com/yannicschuller/flowplan/commit/67ea05b5e79a3057878d265027e2934fe26a9c11))
+- Documents scroll past their last line on touch devices (#300) ([51d50e0](https://github.com/yannicschuller/flowplan/commit/51d50e0165e97671a08854a09277792d773abd74))
+- Block menu from the toolbar's "+" tapped by finger: the list scrolls at once (#298) ([07e4eb6](https://github.com/yannicschuller/flowplan/commit/07e4eb66038fd0788dca09f4832ed6c4def508c1))
+- Table of contents gets its own icon, not the bulleted list's (#301) ([714c493](https://github.com/yannicschuller/flowplan/commit/714c49318ba18c78cd99962d00f4a104971bf493))
+- Bump all Tiptap packages together to 3.33.1; Trivy 0.76.2 ([af36774](https://github.com/yannicschuller/flowplan/commit/af36774a22e931ae8bef26c0e287ef4723becbe1))
+- Database cards: the record icon sits on the title's first line with a gap (#299) ([db4ad98](https://github.com/yannicschuller/flowplan/commit/db4ad98f590b4c98846c2374cae70e9f5a1c2473))
+- Bump @babel/parser from 8.0.7 to 8.1.2 ([d7e379e](https://github.com/yannicschuller/flowplan/commit/d7e379e7b96bf10eb07f42186d25edd5cad7df67))
+- Bump marked from 18.1.2 to 18.2.0 ([a7a7517](https://github.com/yannicschuller/flowplan/commit/a7a7517ae452e5fdd3196595baad2b9ea9d703f9))
+- Bump @tiptap/y-tiptap from 3.0.10 to 3.3.0 ([7a3b355](https://github.com/yannicschuller/flowplan/commit/7a3b355daaca5210e6027d68bbf4895ed4ce96f6))
+
+</details>
+
 ## v0.9.7 – 2026-11-15
 
 ### Security

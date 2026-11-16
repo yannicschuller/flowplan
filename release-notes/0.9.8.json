@@ -1,0 +1,193 @@
+{
+  "security": [
+    {
+      "de": "Neue Sicherheitswarnungen an alle Admins: entzogene Admin-Rechte, abgeschaltete Zwei-Faktor-Anmeldung eines Admins, gewährter oder für einen Export genutzter Notfallzugriff, geöffneter Zugang zur Instanz und geänderte SSO-Gruppenzuordnungen.",
+      "en": "New security alerts for all admins: admin rights removed, an admin's two-factor sign-in turned off, emergency access granted or used for an export, access to the instance opened and SSO group mappings changed.",
+      "issues": [321]
+    }
+  ],
+  "features": [
+    {
+      "de": "Einladungslinks für mehrere Personen mit Rolle, Ablaufdatum und optionaler Höchstzahl; wer schon ein Konto mit bestätigter Adresse hat, wird beim Einladen direkt hinzugefügt.",
+      "en": "Invite links for several people with a role, an expiry and an optional maximum number of joins; inviting someone who already has an account with a confirmed address adds them right away.",
+      "issues": [320]
+    },
+    {
+      "de": "Seitenleiste: „Im Seitenbaum fokussieren“ zeigt nur eine Seite und ihre Unterseiten, mit einem Pfad zum Zurückgehen.",
+      "en": "Sidebar: \"Focus in sidebar\" shows only a page and the pages below it, with a path to go back up.",
+      "issues": [318]
+    },
+    {
+      "de": "MCP: KI-Assistenten können Seiten ändern, verschieben und in den Papierkorb legen und Aufgaben abhaken, mit Status, Fälligkeit und Zuständigen – endgültig gelöscht wird nichts.",
+      "en": "MCP: AI assistants can update, move and trash pages and change tasks (done, state, due date, assignee) – nothing is ever deleted for good."
+    },
+    {
+      "de": "Anmeldung über einen vertrauenswürdigen Reverse Proxy wie YunoHost SSOwat, Authelia oder Authentik (standardmäßig aus).",
+      "en": "Sign-in through a trusted reverse proxy such as YunoHost SSOwat, Authelia or Authentik (off by default)."
+    },
+    {
+      "de": "Jedes Release enthält Archive für Linux (amd64, arm64) zum Betrieb ohne Docker.",
+      "en": "Every release comes with archives for Linux (amd64, arm64) to run without Docker."
+    },
+    {
+      "de": "Meine Aufgaben: eine Liste für Aufgaben aus Dokumenten und Einträge aus Datenbanken, mit Filtern nach Quelle, Person und Zeitraum; Einträge lassen sich direkt abhaken.",
+      "en": "My tasks: one list for tasks from documents and records from databases, with filters for source, person and date range; records can be ticked off right there.",
+      "issues": [314]
+    },
+    {
+      "de": "Journal: eine gespeicherte Vorlage als Tagesvorlage wählen.",
+      "en": "Journal: choose a saved template as the daily template.",
+      "issues": [316]
+    },
+    {
+      "de": "Checklisten: alle Aufgaben auf einmal abhaken oder wieder als offen markieren.",
+      "en": "Checklists: check all tasks at once or mark them all as open again.",
+      "issues": [309]
+    },
+    {
+      "de": "Ein- und Ausrücken über das Blockmenü und als optionale Schaltflächen in der Leiste, auch für mehrere Blöcke.",
+      "en": "Indent and outdent from the block menu and as optional toolbar buttons, also for several blocks.",
+      "issues": [302]
+    },
+    {
+      "de": "Eintragsseiten: Eigenschaften lassen sich je Datenbank in eine eigene Reihenfolge ziehen.",
+      "en": "Record pages: drag properties into an order of their own per database.",
+      "issues": [305]
+    },
+    {
+      "de": "Formulare: Beschreibung und Hinweise mit Fett, Kursiv, Links, Farben und Zeilenumbrüchen.",
+      "en": "Forms: the description and hints take bold, italic, links, colours and line breaks.",
+      "issues": [306]
+    },
+    {
+      "de": "ID-Eigenschaft: das Präfix ist optional, ohne zählt sie einfach 1, 2, 3 …",
+      "en": "ID property: the prefix is optional; without one it is the plain running number.",
+      "issues": [313]
+    },
+    {
+      "de": "Formatierungsleiste: Standard für die ganze Instanz, Vorschau beim Anpassen und Blöcke aus dem „/“-Menü als Schaltflächen.",
+      "en": "Formatting toolbar: a default for the whole instance, a preview while customizing and blocks from the \"/\" menu as buttons.",
+      "issues": [292]
+    },
+    {
+      "de": "Zeichenblöcke auf dem iPad: Zeichnen startet beim Einfügen, Berührungen außerhalb werden ignoriert, Scribble schreibt nicht mehr in den Text, und der Apple Pencil zeigt beim Schweben, wo er ist.",
+      "en": "Drawing blocks on the iPad: drawing starts on insert, touches outside are ignored, Scribble no longer writes into the text, and the Apple Pencil shows where it hovers.",
+      "issues": [311, 315]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Schnelleres Live-Bearbeiten: Tippen rendert nicht mehr den ganzen Arbeitsbereich neu.",
+      "en": "Faster live editing: typing no longer re-renders the whole workspace."
+    },
+    {
+      "de": "Der Arbeitsbereich lädt weniger: Einstellungen, Dialoge und seltene Ansichten kommen erst, wenn du sie öffnest.",
+      "en": "The workspace loads less up front: settings, dialogs and rare views load when you open them."
+    },
+    {
+      "de": "Tastenkürzel funktionieren auch mit kyrillischen und anderen nicht-lateinischen Tastaturbelegungen.",
+      "en": "Keyboard shortcuts work with Cyrillic and other non-Latin keyboard layouts.",
+      "issues": [319]
+    },
+    {
+      "de": "Die Vorlagengalerie folgt dem aktuellen Bereich, und neue Seiten aus Vorlagen landen dort.",
+      "en": "The template gallery follows the current space, and new pages from templates go there.",
+      "issues": [317]
+    },
+    {
+      "de": "Textkommentare: ein Button und ein Panel, Zeilenumbrüche in Zitaten, und Kommentare wandern mit verschobenen Blöcken mit.",
+      "en": "Text comments: one button and one panel, line breaks in quotes, and comments follow moved blocks.",
+      "issues": [314]
+    },
+    {
+      "de": "Einträge: „+ Uhrzeit“ für Datumsfelder, eine lesbare Zeile für Wiederholungen; Onboarding und Whiteboard passen besser aufs Handy.",
+      "en": "Records: \"+ Time\" for dates and a readable repeat row; onboarding and the whiteboard fit phones better.",
+      "issues": [314]
+    },
+    {
+      "de": "Emoji-Kategorien, Bereichsfarben und der Standard-Tracker „Stimmung“ folgen der Sprache.",
+      "en": "Emoji categories, space colours and the default mood tracker follow the language.",
+      "issues": [308, 310]
+    },
+    {
+      "de": "Dokumente lassen sich auf Touch-Geräten über die letzte Zeile hinaus scrollen, damit der Text über der Tastatur bleibt.",
+      "en": "Documents scroll past their last line on touch devices, so the text stays above the keyboard.",
+      "issues": [300]
+    },
+    {
+      "de": "iPads und Tablets: Bei offener Tastatur folgt die obere Leiste dem sichtbaren Bereich – das sollte verhindern, dass sie beim Tippen aus dem Bild rutscht.",
+      "en": "iPads and tablets: with the keyboard open, the top bar follows the visible area, which should keep it from slipping out of view while typing.",
+      "issues": [307]
+    },
+    {
+      "de": "Screenreader hören in der Seitenleiste eine Ansage für verschobene Bereiche und den fokussierten Zweig.",
+      "en": "Screen readers get one announcement in the sidebar for moved spaces and the focused branch."
+    },
+    {
+      "de": "Feinschliff für Handys und Dialoge: einheitliche Fußzeilen, Seitenmenü als Bottom Sheet, größere Touch-Ziele, Platz für den Tastatur-Button, bessere Hover-Farbe im dunklen Design.",
+      "en": "Polish for phones and dialogs: consistent footers, the page menu as a bottom sheet, larger touch targets, room for the hide-keyboard button, a better hover colour in the dark theme."
+    },
+    {
+      "de": "Das Inhaltsverzeichnis hat ein eigenes Symbol.",
+      "en": "The table of contents has its own icon.",
+      "issues": [301]
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Ein neuerer Stand eines Dokuments erscheint sofort statt erst bei der nächsten Synchronisation – etwa beim Löschen einer Formel, die woanders geändert wurde.",
+      "en": "A newer state of a document shows at once instead of on the next sync – for example when deleting a formula changed elsewhere."
+    },
+    {
+      "de": "Deine Auswahl springt nicht mehr, wenn andere weiter vorn im selben Absatz tippen.",
+      "en": "Your own selection no longer jumps while others type earlier in the same paragraph."
+    },
+    {
+      "de": "Tabs: „In Datenbank öffnen“ aus einem verknüpften Eintrag behält die Ansicht darunter.",
+      "en": "Tabs: \"Open in database\" from a related record keeps the view below it."
+    },
+    {
+      "de": "Seiten, die kurz nacheinander angelegt werden, behalten ihre Reihenfolge.",
+      "en": "Pages made in quick succession keep the order they were made in."
+    },
+    {
+      "de": "Datenbanktabellen: Ein spät fertiges Speichern schließt nicht mehr die Zelle, die du gerade bearbeitest.",
+      "en": "Database tables: a save that finishes late no longer closes the cell you are editing."
+    },
+    {
+      "de": "Cover direkt nach dem Öffnen einer Seite speichern meldet nicht mehr fälschlich eine Änderung.",
+      "en": "Saving a cover right after opening a page no longer wrongly reports it as changed."
+    },
+    {
+      "de": "Geteilte Ansicht: Eine Adresse mit ?split= öffnet die Seite wieder im rechten Rahmen.",
+      "en": "Split view: an address with ?split= opens the page in the right frame again."
+    },
+    {
+      "de": "Auswahlfelder: In neuen Optionen lassen sich Leerzeichen tippen.",
+      "en": "Select options: spaces can be typed in new options.",
+      "issues": [304]
+    },
+    {
+      "de": "Datenbankkarten: Symbole sitzen mit Abstand auf der ersten Zeile des Titels.",
+      "en": "Database cards: icons sit on the title's first line with a gap.",
+      "issues": [299]
+    },
+    {
+      "de": "Blockmenü über „+“ mit dem Finger: keine Tastatur, die Liste scrollt sofort.",
+      "en": "Block menu from the toolbar's \"+\" tapped with a finger: no keyboard, the list scrolls at once.",
+      "issues": [298]
+    },
+    {
+      "de": "Whiteboard auf dem Handy: Die Werkzeugzeile der Auswahl passt auf den Bildschirm, ein Tipp mit dem Formwerkzeug ergibt eine Form mit Größe.",
+      "en": "Whiteboard on phones: the selection's tool row fits the screen, and a tap with the shape tool gives a shape with a size."
+    },
+    {
+      "de": "Mit reduzierten Animationen blenden Bottom Sheets auf dem Handy wieder ein.",
+      "en": "With reduced motion, bottom sheets on phones fade in again."
+    },
+    {
+      "de": "„KI fragen“: Hilfelinks führen zum richtigen Abschnitt, ohne Versionsmarke im Anker.",
+      "en": "Ask AI: help links lead to the right section, without a version marker in the anchor."
+    }
+  ]
+}
