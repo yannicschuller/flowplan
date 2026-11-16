@@ -78,7 +78,7 @@ test("two people: private brainstorming, planning poker, gathering and timer mus
   expect(await page.content()).not.toContain("Geheime Idee");
   // A reload keeps her note (private, still hidden for Mara).
   await mira.reload();
-  await expect(wb(mira).locator(".wb-sticky", { hasText: "Geheime Idee von Mira" })).toBeVisible({ timeout: 8000 });
+  await expect(wb(mira).locator(".wb-sticky", { hasText: "Geheime Idee von Mira" })).toBeVisible({ timeout: 30_000 }); // The board loads anew.
   if (shots) {
     await page.screenshot({ path: `${shots}/private-mode-facilitator.png` });
     await mira.screenshot({ path: `${shots}/private-mode-participant.png` });

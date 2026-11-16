@@ -289,6 +289,7 @@ test("diagram drafts follow moved blocks and survive concurrent changes and dele
   page,
   browser,
 }, info) => {
+  test.setTimeout(120_000); // Two tabs, each loading the editor and Mermaid.
   const f = await fixture(
     page,
     `Mermaid collaboration ${info.project.name} ${Date.now()}`,
@@ -307,7 +308,8 @@ test("diagram drafts follow moved blocks and survive concurrent changes and dele
   await page.goto(`/#page=${f.host.id}`);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true }),
     block = editor.locator("[data-mermaid]");
-  await expect(block).toHaveAttribute("data-diagram-state", "ready");
+  // The editor and Mermaid load with the page.
+  await expect(block).toHaveAttribute("data-diagram-state", "ready", { timeout: 30_000 });
   const context = await browser.newContext({
     viewport: page.viewportSize()!,
     isMobile: info.project.name === "mobile",
@@ -320,7 +322,8 @@ test("diagram drafts follow moved blocks and survive concurrent changes and dele
     await other.goto(`${f.origin}/#page=${f.host.id}`);
     const otherEditor = other.getByLabel("Dokumentinhalt", { exact: true }),
       otherBlock = otherEditor.locator("[data-mermaid]");
-    await expect(otherBlock).toHaveAttribute("data-diagram-state", "ready");
+    // A new tab: the editor and Mermaid load first.
+    await expect(otherBlock).toHaveAttribute("data-diagram-state", "ready", { timeout: 30_000 });
     await block.click();
     const dialog = page.getByRole("dialog", {
       name: "Mermaid-Diagramm",

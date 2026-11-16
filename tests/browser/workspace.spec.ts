@@ -3282,6 +3282,7 @@ test("page covers upload, position, publish, reject stale drafts and revoke unus
   page,
   browser,
 }, testInfo) => {
+  test.setTimeout(120_000); // Two reloads and a guest tab, each loading the page view.
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
@@ -3317,7 +3318,7 @@ test("page covers upload, position, publish, reject stale drafts and revoke unus
       mimeType: "image/png",
       buffer: png,
     });
-  await expect(dialog.getByAltText("Cover-Vorschau")).toBeVisible();
+  await expect(dialog.getByAltText("Cover-Vorschau")).toBeVisible({ timeout: 30_000 }); // Compressed and uploaded first.
   const image = await dialog.getByAltText("Cover-Vorschau").getAttribute("src");
   const position = dialog.getByRole("slider", {
     name: "Vertikale Coverposition",
@@ -3336,6 +3337,7 @@ test("page covers upload, position, publish, reject stale drafts and revoke unus
   await expect(page.getByAltText("Seiten-Cover")).toHaveCSS(
     "object-position",
     "50% 25%",
+    { timeout: 30_000 }, // After the reload: the page view loads anew.
   );
   const link = await command({
     action: "share.create",

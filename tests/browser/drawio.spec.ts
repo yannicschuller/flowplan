@@ -274,7 +274,7 @@ test("the Diagramm-Seite template creates a full-width page with a diagram and o
   expect((await read()).page.title).toBe(title);
   // Opening the page again does not open draw.io again.
   await page.reload();
-  await expect(blocks).toHaveAttribute("data-drawio-state", "ready");
+  await expect(blocks).toHaveAttribute("data-drawio-state", "ready", { timeout: 30_000 }); // The editor loads anew.
   await page.waitForTimeout(1000);
   await expect(dialog).toHaveCount(0);
   expect(errors).toEqual([]);

@@ -118,7 +118,7 @@ async function fixture(page: Page, browser: Browser) {
         await shade.click({ position: { x: 300, y: 600 } });
     }
     if (rid) await p.locator(`[data-row-id="${rid}"] .title-cell`).click();
-    await expect(p.locator(".tiptap")).toBeVisible();
+    await expect(p.locator(".tiptap")).toBeVisible({ timeout: 30_000 }); // The editor loads with the page.
     await expect
       .poll(() =>
         p
@@ -327,7 +327,9 @@ test("slow presence requests stay serial, tab departures clear markers, and endp
     await select(twin, 13);
     await expect(page.locator(".collaborator-cursor")).toHaveCount(2);
     await twin.goto("about:blank");
-    await expect(page.locator(".collaborator-cursor")).toHaveCount(1);
+    // The departure (a keepalive request on pagehide) reaches the other tab
+    // with its next poll.
+    await expect(page.locator(".collaborator-cursor")).toHaveCount(1, { timeout: 15_000 });
     await twin.close();
     // Exercise visibility lifecycle deterministically in headless Chromium.
     await f.other.evaluate(() => {

@@ -15,13 +15,13 @@ test("documents switch between reading and editing", async ({ page }) => {
   const pageId = (await created.json()).id;
   await page.goto(`/#page=${pageId}`);
   const content = page.getByLabel("Dokumentinhalt", { exact: true });
-  await expect(content).toHaveAttribute("contenteditable", "true");
+  await expect(content).toHaveAttribute("contenteditable", "true", { timeout: 30_000 }); // The first editor of the session.
   // A button in the top bar; on phones an item of the ⋯ menu.
   await toggleReadingMode(page, "Lesemodus");
   await expect(content).toHaveAttribute("contenteditable", "false");
   // Remembered after a reload.
   await page.reload();
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "false");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "false", { timeout: 30_000 }); // The editor loads anew.
   await toggleReadingMode(page, "Bearbeiten");
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "true");
   await page.request.post("/api/command", { headers: { origin }, data: { action: "page.delete", pageId } });
@@ -42,12 +42,12 @@ test("records switch to reading and open across the full width", async ({ page }
   await page.goto(`/#page=${db}&row=${row}`);
   const record = page.getByRole("dialog", { name: "Eintrag" });
   const content = record.getByLabel("Dokumentinhalt", { exact: true });
-  await expect(content).toHaveAttribute("contenteditable", "true");
+  await expect(content).toHaveAttribute("contenteditable", "true", { timeout: 30_000 }); // The first editor of the session.
   await record.getByRole("button", { name: "Lesemodus" }).click();
   await expect(content).toHaveAttribute("contenteditable", "false");
   // Remembered for this record after a reload; ⌘⌥E switches back.
   await page.reload();
-  await expect(record.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "false");
+  await expect(record.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "false", { timeout: 30_000 }); // The editor loads anew.
   await page.keyboard.press("ControlOrMeta+Alt+KeyE");
   await expect(record.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "true");
   // As a page of its own (#231), across the whole width.

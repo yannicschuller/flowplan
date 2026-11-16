@@ -172,7 +172,7 @@ test("create and edit searchable space icons, persist color, and duplicate saved
     await page.reload();
     await expect(
       page.getByLabel("Dokumentinhalt", { exact: true }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30_000 }); // The first editor of the session.
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });

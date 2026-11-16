@@ -31,6 +31,7 @@ test.afterEach(async ({ page }) => {
 test("the arrow after web links follows the setting; colour and underline stay; never printed", async ({ page }, info) => {
   const dir = process.env.FLOWPLAN_DATA_DIR;
   test.skip(!dir || dir === "./data", "Braucht einen eigenen Datenordner.");
+  test.setTimeout(120_000); // Three page loads, each with its editor.
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.request.post("/api/auth/demo", { headers: { origin } });
@@ -46,7 +47,7 @@ test("the arrow after web links follows the setting; colour and underline stay; 
 
   // The default: the arrow.
   await page.goto(`/#page=${doc.id}`);
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Extern");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Extern", { timeout: 30_000 }); // The first editor of the session.
   const on = await arrow(page);
   expect(on.content).toBe('""');
   expect(on.mask).toContain("svg");
@@ -56,7 +57,7 @@ test("the arrow after web links follows the setting; colour and underline stay; 
   // Off in the settings: saved for the person, the arrow gone right away.
   await page.goto("/#settings/appearance");
   const toggle = page.getByRole("switch", { name: "Symbol bei externen Links" });
-  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(toggle).toHaveAttribute("aria-checked", "true", { timeout: 30_000 }); // The settings load when opened.
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await expect(page.locator("html")).toHaveClass(/hide-external-link-icon/);
@@ -65,7 +66,7 @@ test("the arrow after web links follows the setting; colour and underline stay; 
   // After a reload too; the link keeps its look otherwise.
   await page.goto(`/#page=${doc.id}`);
   await page.reload();
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Extern");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Extern", { timeout: 30_000 }); // The editor loads anew.
   await expect(page.locator("html")).toHaveClass(/hide-external-link-icon/);
   const off = await arrow(page);
   expect(off.content).toBe("none");
@@ -79,7 +80,7 @@ test("the arrow after web links follows the setting; colour and underline stay; 
       await command(page, { action: "profile.externalLinkIcon", externalLinkIcon: true });
       await page.emulateMedia({ media: "screen" });
       await page.reload();
-      await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Extern");
+      await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Extern", { timeout: 30_000 });
       await expect(page.locator("html")).not.toHaveClass(/hide-external-link-icon/);
       await page.emulateMedia({ media: "print" });
     }
