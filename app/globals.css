@@ -32980,6 +32980,56 @@ label.ws-search input {
   font-size: 13px;
   line-height: normal;
 }
+/* The hovering Apple Pencil (#315, components/ink/pen-hover.ts): iPadOS
+   reports (hover: none), so the control under the pen is marked by script
+   – clearly, without the sticky hover a finger would leave. */
+.ink-block .ink-toolbar button.is-pen-hover:not(:disabled) {
+  background: var(--ink-bar-hover);
+  color: var(--ink-bar-strong);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ink-bar-active) 55%, transparent);
+}
+.ink-block .ink-toolbar .ink-swatch.is-pen-hover {
+  outline: 2px solid color-mix(in srgb, var(--ink-bar-active) 60%, transparent);
+  outline-offset: 2px;
+  transform: scale(1.12);
+}
+.ink-block .ink-toolbar .ink-swatch.is-pen-hover.active {
+  outline-color: var(--ink-bar-active);
+}
+.ink-block .ink-block-paper select.is-pen-hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.ink-block-start.is-pen-hover {
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--blue-light), 0 1px 3px #0002;
+}
+/* Where the hovering pen would draw: a dot in the pen's colour (a ring for
+   the eraser), as on whiteboards. */
+.ink-pen-dot {
+  position: absolute;
+  left: var(--dot-x, 0);
+  top: var(--dot-y, 0);
+  z-index: 3;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--dot-color, var(--text));
+  box-shadow: 0 0 0 1.5px var(--bg);
+  opacity: 0;
+  pointer-events: none;
+}
+.ink-pen-dot.is-shown {
+  opacity: 0.9;
+}
+.ink-pen-dot[data-tool="eraser"] {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--secondary), 0 0 0 1px var(--bg);
+}
 .ink-block-loading {
   display: grid;
   place-items: center;

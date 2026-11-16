@@ -23,7 +23,8 @@ import { InkTouchShield } from "./touch-shield";
 import { PaperSvg } from "../notebook/paper";
 import { emptyInk, parseInk, type InkDoc } from "@/lib/ink/model";
 import { recognitionAvailable } from "@/lib/ink/recognition";
-import { stylusTouch } from "@/lib/stylus";
+import { isHovering, stylusTouch } from "@/lib/stylus";
+import { penTapsWithoutScribble, trackPenHover } from "./pen-hover";
 import { blockPaperLayout } from "@/lib/notebook-paper";
 import { DRAW_BLOCK_HEIGHTS, DRAW_BLOCK_PAPERS, DRAW_BLOCK_WIDTH, drawBlockFrom, drawBlockHeight, drawBlockId, drawBlockPaper, type DrawBlockPaper } from "@/lib/draw-block-node";
 import type { DrawBlockOptions } from "./draw-block";
@@ -186,6 +187,44 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       surface.removeEventListener("pointerdown", pointer);
     };
   }, [writable, loaded]);
+  // The hovering Pencil (#315): its controls light up under it, pen taps on
+  // them feed no Scribble, and a dot shows where it would draw.
+  useEffect(() => {
+    const block = root.current;
+    if (!block || !writable) return;
+    const stops = [trackPenHover(block), penTapsWithoutScribble(block)];
+    return () => stops.forEach((stop) => stop());
+  }, [writable]);
+  const inkRef = useRef(ink);
+  inkRef.current = ink;
+  const dotRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const surface = surfaceRef.current,
+      dot = dotRef.current;
+    if (!surface || !dot || !writable) return;
+    const hide = () => dot.classList.remove("is-shown");
+    const move = (event: PointerEvent) => {
+      if (!isHovering(event) || (event.target as Element | null)?.closest?.(".ink-ui")) return hide();
+      const box = surface.getBoundingClientRect();
+      const { tool, style } = inkRef.current;
+      dot.style.setProperty("--dot-x", `${event.clientX - box.left}px`);
+      dot.style.setProperty("--dot-y", `${event.clientY - box.top}px`);
+      dot.style.setProperty("--dot-color", tool === "pen" || tool === "highlighter" || tool === "shape" || tool === "text" ? style.color : "var(--secondary)");
+      dot.dataset.tool = tool;
+      dot.classList.add("is-shown");
+    };
+    surface.addEventListener("pointerover", move);
+    surface.addEventListener("pointermove", move);
+    surface.addEventListener("pointerdown", hide, true);
+    surface.addEventListener("pointerleave", hide);
+    return () => {
+      hide();
+      surface.removeEventListener("pointerover", move);
+      surface.removeEventListener("pointermove", move);
+      surface.removeEventListener("pointerdown", hide, true);
+      surface.removeEventListener("pointerleave", hide);
+    };
+  }, [writable, loaded]);
   useEffect(() => {
     if (!active) return;
     const outside = (event: PointerEvent) => {
@@ -332,6 +371,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
             label={t("Handschrift", "Handwriting")}
           />
         )}
+        {writable && <div ref={dotRef} className="ink-pen-dot" aria-hidden="true" />}
       </div>
       {writable && (
         <div

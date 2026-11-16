@@ -15,6 +15,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { createPortal } from "react-dom";
 import { Check } from "@phosphor-icons/react";
 import { useT } from "../i18n";
+import { penTapsWithoutScribble } from "./pen-hover";
 
 // Room around the block for its focus ring.
 const RING = 6;
@@ -144,7 +145,11 @@ export function InkTouchShield({ block: blockRef, onDone }: { block: RefObject<H
       panel.addEventListener("pointerdown", pointer);
       for (const type of types) panel.addEventListener(type, cancel, { passive: false });
     }
+    // A pen tap on the pill's Done feeds no Scribble either (#315).
+    const pill = root.querySelector<HTMLElement>(".ink-shield-pill");
+    const stopPen = pill ? penTapsWithoutScribble(pill) : null;
     return () => {
+      stopPen?.();
       for (const panel of panels) {
         panel.removeEventListener("pointerdown", pointer);
         for (const type of types) panel.removeEventListener(type, cancel);

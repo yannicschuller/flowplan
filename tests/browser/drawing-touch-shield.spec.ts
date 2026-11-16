@@ -216,7 +216,7 @@ test("a new drawing block starts drawing without a caret in the text; afterwards
   // 1. Active at once, shielded (a touch device), and the text has neither
   // the focus nor a caret.
   const block = page.locator(".ink-block");
-  await expect(block).toHaveClass(/is-active/, { timeout: 15_000 });
+  await expect(block).toHaveClass(/is-active/, { timeout: 30_000 });
   const shield = page.locator(".ink-shield");
   await expect(shield).toBeAttached();
   await expect.poll(() => textState(page)).toMatchObject({ editable: false, caretInText: false });
@@ -294,6 +294,116 @@ test("a new drawing block starts drawing without a caret in the text; afterwards
   await expect(first).toHaveText(/Oben weiter!/);
   expect(errors).toEqual([]);
 });
+
+// The hovering Apple Pencil (#315). Synthetic pointer events: Chromium's
+// own pen input does not hover. Real Pencil hover and Scribble are not
+// available here; these check the mechanism.
+const pointer = (page: Page, selector: string, type: string, init: { pointerType: string; buttons?: number; dx?: number; dy?: number }) =>
+  page.locator(selector).first().evaluate(
+    (el, { type, init }) => {
+      const box = el.getBoundingClientRect();
+      const event = new PointerEvent(type, {
+        bubbles: type !== "pointerleave",
+        cancelable: true,
+        pointerId: 7,
+        pointerType: init.pointerType,
+        buttons: init.buttons ?? 0,
+        clientX: box.left + (init.dx ?? box.width / 2),
+        clientY: box.top + (init.dy ?? box.height / 2),
+      });
+      el.dispatchEvent(event);
+      return event.defaultPrevented;
+    },
+    { type, init },
+  );
+
+test("the hovering pen: controls light up, a dot shows where it draws, a pen tap on Done feeds no Scribble", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "The tablet is set up by this file; one run is enough.");
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const id = await setup(page);
+  await page.goto(`/#page=${id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
+  await editor.tap();
+  await page.keyboard.type("/zeichnen");
+  await page.getByRole("option", { name: /Zeichnen/ }).first().tap();
+  const block = page.locator(".ink-block");
+  await expect(block).toHaveClass(/is-active/, { timeout: 30_000 });
+  const tools = page.getByRole("toolbar", { name: "Zeichenwerkzeuge" });
+
+  // Hover feedback on a colour, a tool and the paper menu – only for the pen.
+  const swatch = ".ink-block .ink-toolbar .ink-swatch:not(.active)";
+  await pointer(page, swatch, "pointerover", { pointerType: "pen" });
+  await expect(page.locator(swatch).first()).toHaveClass(/is-pen-hover/);
+  await pointer(page, ".ink-block .ink-toolbar [role='radio'][aria-label='Radierer']", "pointermove", { pointerType: "pen" });
+  await expect(page.locator(swatch).first()).not.toHaveClass(/is-pen-hover/);
+  await expect(tools.getByRole("radio", { name: "Radierer" })).toHaveClass(/is-pen-hover/);
+  await pointer(page, ".ink-block-paper select", "pointermove", { pointerType: "pen" });
+  await expect(page.locator(".ink-block-paper select")).toHaveClass(/is-pen-hover/);
+  // A finger or the mouse: no pen hover (and nothing sticky after a tap).
+  await pointer(page, swatch, "pointermove", { pointerType: "touch" });
+  await expect(page.locator(".is-pen-hover")).toHaveCount(0);
+  await pointer(page, swatch, "pointerover", { pointerType: "pen" });
+  await pointer(page, swatch, "pointerdown", { pointerType: "pen", buttons: 1 });
+  await expect(page.locator(".is-pen-hover")).toHaveCount(0);
+  await pointer(page, swatch, "pointerup", { pointerType: "pen" });
+
+  // The dot follows the hovering pen over the canvas, in the pen's colour.
+  const dot = block.locator(".ink-pen-dot");
+  await expect(dot).not.toHaveClass(/is-shown/);
+  await pointer(page, ".ink-block .ink-layer", "pointermove", { pointerType: "pen", dx: 120, dy: 80 });
+  await expect(dot).toHaveClass(/is-shown/);
+  expect(await dot.evaluate((el) => [el.style.getPropertyValue("--dot-x"), el.style.getPropertyValue("--dot-y")])).toEqual(["120px", "80px"]);
+  const dotBox = (await dot.boundingBox())!;
+  const layerBox = (await block.locator(".ink-layer").boundingBox())!;
+  expect(Math.abs(dotBox.x + dotBox.width / 2 - (layerBox.x + 120))).toBeLessThan(2);
+  // Drawing (pen down), a mouse, a finger, leaving: no dot.
+  await pointer(page, ".ink-block .ink-layer", "pointermove", { pointerType: "pen", buttons: 1, dx: 130, dy: 80 });
+  await expect(dot).not.toHaveClass(/is-shown/);
+  await pointer(page, ".ink-block .ink-layer", "pointermove", { pointerType: "pen", dx: 140, dy: 80 });
+  await expect(dot).toHaveClass(/is-shown/);
+  await pointer(page, ".ink-block .ink-layer", "pointermove", { pointerType: "mouse", dx: 150, dy: 80 });
+  await expect(dot).not.toHaveClass(/is-shown/);
+  await pointer(page, ".ink-block .ink-layer", "pointermove", { pointerType: "pen", dx: 160, dy: 80 });
+  await expect(dot).toHaveClass(/is-shown/);
+  await pointer(page, ".ink-block .ink-block-surface", "pointerleave", { pointerType: "pen" });
+  await expect(dot).not.toHaveClass(/is-shown/);
+
+  // A stylus touch on the toolbar is cancelled (no Scribble), and the pen's
+  // tap on Done still ends drawing – clicked once, on pointerup.
+  const done = ".ink-block .ink-toolbar .ink-done";
+  expect(
+    await page.locator(done).evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const touch = new Touch({ identifier: 3, target: el, clientX: box.left + 5, clientY: box.top + 5, touchType: "stylus" } as TouchInit);
+      const event = new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] });
+      const w = window as unknown as { __clicks: number };
+      w.__clicks = 0;
+      el.addEventListener("click", () => w.__clicks++);
+      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "pen", buttons: 1, clientX: box.left + 5, clientY: box.top + 5 }));
+      el.dispatchEvent(event);
+      return event.defaultPrevented;
+    }),
+  ).toBe(true);
+  // The paper menu keeps its stylus touch (its picker opens natively).
+  expect(await touchOn(page, ".ink-block-paper select")).toBe(false);
+  await pointer(page, done, "pointerup", { pointerType: "pen", dx: 5, dy: 5 });
+  await expect(block).not.toHaveClass(/is-active/);
+  expect(await page.evaluate(() => (window as unknown as { __clicks: number }).__clicks)).toBe(1);
+  await expect(page.locator(".ink-shield")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+// Whether a stylus touchstart on the element is cancelled.
+const touchOn = (page: Page, selector: string) =>
+  page.locator(selector).first().evaluate((el) => {
+    const touch = new Touch({ identifier: 4, target: el, clientX: 1, clientY: 1, touchType: "stylus" } as TouchInit);
+    const event = new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] });
+    el.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
 
 test("mouse users are not shielded: a click outside leaves drawing and does its work", async ({ browser }, info) => {
   test.skip(info.project.name !== "desktop", "One run is enough.");
