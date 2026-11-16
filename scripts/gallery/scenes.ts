@@ -640,6 +640,41 @@ const databaseScenes: Scene[] = [
     },
   },
   {
+    // A due date with a time ("+ Uhrzeit", #314) and a weekly repeating task
+    // that counts on from it, with a second date property to choose from.
+    id: "record-date-time-repeat",
+    group: "Databases",
+    title: "Record with a time and a repeating task",
+    covers: ["components/record-repeat.tsx"],
+    steps: async (page, ctx) => {
+      const db = await ctx.fixture({ kind: "database", title: "Termine" });
+      const read = async () => (await ctx.api.get(`/api/pages/${db}`)).json();
+      const { database } = await read();
+      await ctx.command({
+        action: "database.update",
+        pageId: db,
+        version: database.version,
+        fields: [...database.fields, { id: "start", name: "Beginn", type: "date" }],
+        views: database.views,
+      });
+      const row = await ctx.command({
+        action: "row.create",
+        pageId: db,
+        cells: { title: "Wochenbericht", date: "2026-10-12T07:30:00Z", start: "2026-10-05" },
+      });
+      const version = (await read()).rows.find((r: { id: string }) => r.id === row.id).version;
+      await ctx.command({
+        action: "row.repeat",
+        pageId: db,
+        rowId: row.id,
+        version,
+        repeat: { freq: "weekly", interval: 1, weekdays: [1], field: "date", timeZone: "UTC" },
+      });
+      await ctx.open(`#page=${db}&row=${row.id}`);
+      await waitDialog(page, "Eintrag");
+    },
+  },
+  {
     id: "record-share",
     group: "Databases",
     title: "Share a record",
@@ -858,6 +893,19 @@ const dialogScenes: Scene[] = [
     covers: ["components/new-page-dialog.tsx"],
     steps: async (page) => {
       await waitDialog(page, "Neue Seite");
+    },
+  },
+  {
+    // "Datenbank" with its kinds as one segmented row (#314: "Dokumente"
+    // sat on its border).
+    id: "new-page-database",
+    group: "Dialogs",
+    title: "New page: database kinds",
+    path: "#new",
+    steps: async (page) => {
+      await waitDialog(page, "Neue Seite");
+      await dialog(page, "Neue Seite").getByRole("radio", { name: /^Datenbank/ }).click();
+      await page.locator(".np-kind").waitFor();
     },
   },
   {

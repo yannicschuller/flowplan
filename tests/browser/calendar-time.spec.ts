@@ -376,10 +376,11 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
       })
       .click();
     await dialog.getByLabel("Beginn", { exact: true }).fill("2026-10-25");
+    // "+ Uhrzeit" next to "Datum entfernen" (#314) shows a time field.
     await dialog
-      .getByRole("checkbox", { name: "Beginn: Uhrzeit", exact: true })
-      .check();
-    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-10-25T09:15");
+      .getByRole("button", { name: "Uhrzeit hinzufügen: Beginn", exact: true })
+      .click();
+    await dialog.getByLabel("Beginn: Uhrzeit", { exact: true }).fill("09:15");
     await dialog
       .getByRole("button", { name: "Termin speichern", exact: true })
       .click();
@@ -392,9 +393,10 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     const tableRow = page.locator(`tr[data-row-id="${f.meeting.id}"]`);
     await expect(tableRow.locator(".date-cell").first()).toContainText("01:30"); // Browser timezone is UTC.
     await tableRow.locator("td").nth(2).click();
-    const input = tableRow.getByLabel("Beginn", { exact: true });
-    await expect(input).toHaveAttribute("type", "datetime-local");
-    await input.fill("2026-10-25T01:45");
+    await expect(tableRow.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
+    const input = tableRow.getByLabel("Beginn: Uhrzeit", { exact: true });
+    await expect(input).toHaveAttribute("type", "time");
+    await input.fill("01:45");
     await (await databaseSearch(page)).click();
     await expect
       .poll(async () => (await f.row()).cells.start)
@@ -526,9 +528,10 @@ test("public date forms never submit a stale valid value after an invalid time e
     await guest.getByLabel("Name", { exact: true }).fill("Gasttermin");
     await guest.getByLabel("Beginn", { exact: true }).fill("2026-09-23");
     await guest
-      .getByRole("checkbox", { name: "Beginn: Uhrzeit", exact: true })
-      .check();
-    await guest.getByLabel("Beginn", { exact: true }).fill("2026-03-29T02:30");
+      .getByRole("button", { name: "Uhrzeit hinzufügen: Beginn", exact: true })
+      .click();
+    await guest.getByLabel("Beginn", { exact: true }).fill("2026-03-29");
+    await guest.getByLabel("Beginn: Uhrzeit", { exact: true }).fill("02:30");
     await expect(
       guest.locator(".form-preview").getByRole("alert"),
     ).toContainText("existiert");
@@ -539,7 +542,7 @@ test("public date forms never submit a stale valid value after an invalid time e
       guest.getByRole("button", { name: "Antwort senden", exact: true }),
     ).toBeVisible();
     expect((await f.read()).rows).toHaveLength(3);
-    await guest.getByLabel("Beginn", { exact: true }).fill("2026-10-25T02:30");
+    await guest.getByLabel("Beginn", { exact: true }).fill("2026-10-25");
     await guest
       .getByLabel("Beginn: Zeitumstellung", { exact: true })
       .selectOption("earlier");

@@ -2,6 +2,8 @@
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useRef, useState } from "react";
+import { Plus } from "@phosphor-icons/react";
+import { serverMessage } from "@/lib/i18n-errors";
 import {
   browserZone,
   dateInZone,
@@ -9,6 +11,7 @@ import {
   fieldValue,
   dateToSave,
   draftDateValue,
+  repeatedLocalTime,
   InvalidDateDraft,
   type TimeChoice,
 } from "@/lib/date-values";
@@ -35,6 +38,7 @@ export default function DateInput({
     [choice, setChoice] = useState<TimeChoice>("reject"),
     [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null),
+    timeInput = useRef<HTMLInputElement>(null),
     changed = useRef(false),
     last = useRef(value);
   useEffect(() => {
@@ -51,12 +55,18 @@ export default function DateInput({
   useEffect(() => {
     input.current?.setCustomValidity(error);
   }, [error]);
+  // The draft in two parts: the day ("2026-10-25") and, with a time, the
+  // time of day ("09:15"). The stored value stays one ISO text.
+  const day = draft.slice(0, 10),
+    time = timed ? draft.slice(11) : "";
   function resolve(text: string, mode: boolean, occurrence: TimeChoice) {
     try {
       return draftDateValue(text, mode, occurrence, value, zone);
     } catch (e) {
       if (e instanceof InvalidDateDraft)
         throw new Error(t("Bitte ein gültiges Datum eingeben.", "Please enter a valid date."));
+      // lib/date-values.ts words its errors in German, like the server.
+      if (e instanceof Error) throw new Error(serverMessage(e.message));
       throw e;
     }
   }
@@ -90,10 +100,14 @@ export default function DateInput({
     }
   }
   // "Datum entfernen": saves "" at once. A pending draft is dropped, so the
-  // blur that follows cannot bring the old date back.
+  // blur that follows cannot bring the old date back. The time goes with
+  // the date: the field is all-day again (#314).
   async function clear(keyboard: boolean) {
-    const before = draft;
+    const before = draft,
+      wasTimed = timed;
     setDraft("");
+    setTimed(false);
+    setChoice("reject");
     setError("");
     changed.current = false;
     // Keyboard users keep their place; a tap must not focus the date input,
@@ -103,7 +117,18 @@ export default function DateInput({
     const result = await onChange("");
     if (result === null || result === false) {
       setDraft(before);
+      setTimed(wasTimed);
       setError(failed().message);
+    }
+  }
+  // "+ Uhrzeit" / "Uhrzeit entfernen": one button in the same place, so
+  // removing keeps the focus on it; adding moves it to the new time field.
+  // A new time starts at 09:00 (on today without a date).
+  function toggleTime() {
+    if (timed) update(day, false, "reject");
+    else {
+      update(`${day || dateInZone(zone)}T09:00`, true, "reject");
+      requestAnimationFrame(() => timeInput.current?.focus({ preventScroll: true }));
     }
   }
   return (
@@ -120,54 +145,88 @@ export default function DateInput({
       <input
         ref={input}
         aria-label={name}
-        type={timed ? "datetime-local" : "date"}
-        // Seconds and milliseconds only for a time that has them ("08:30",
-        // not "08:30:00.000"); they are kept as they are.
-        step={timed && draft.length > 16 ? "0.001" : undefined}
-        min={timed ? "0001-01-01T00:00" : "0001-01-01"}
-        max={timed ? "9999-12-31T23:59:59.999" : "9999-12-31"}
+        type="date"
+        min="0001-01-01"
+        max="9999-12-31"
         disabled={disabled}
-        value={draft}
+        value={day}
         aria-invalid={!!error}
-        onChange={(e) => update(e.target.value)}
+        // Emptied by hand, the field is all-day again (like "Datum entfernen").
+        onChange={(e) => {
+          const next = e.target.value;
+          if (!timed) update(next);
+          else if (next) update(`${next}T${time}`);
+          else update("", false, "reject");
+        }}
       />
-      {draft && !disabled && (
-        <button
-          type="button"
-          className="date-clear"
-          // The accessible name starts with the visible text (WCAG 2.5.3).
-          aria-label={t(`Datum entfernen: ${name}`, `Remove date: ${name}`)}
-          title={t("Datum entfernen", "Remove date")}
-          // A tap must not reach the date input: inside a <label> WebKit
-          // hands the click on to it, which opens the picker and keeps the date.
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            void clear(e.detail === 0);
-          }}
-        >
-          {t("Datum entfernen", "Remove date")}
-        </button>
-      )}
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          disabled={disabled}
-          checked={timed}
-          onChange={(e) =>
-            update(
-              e.target.checked
-                ? `${draft.slice(0, 10) || dateInZone(zone)}T09:00`
-                : draft.slice(0, 10),
-              e.target.checked,
-              "reject",
-            )
-          }
-        />
-        {name}: {t("Uhrzeit", "Time")}
-      </label>
-      {timed && <small>{t("Zeitzone:", "Time zone:")}{" "}{zone}</small>}
       {timed && (
+        <input
+          ref={timeInput}
+          className="date-time"
+          aria-label={t(`${name}: Uhrzeit`, `${name}: Time`)}
+          type="time"
+          // Seconds and milliseconds only for a time that has them ("08:30",
+          // not "08:30:00.000"); they are kept as they are.
+          step={time.length > 5 ? "0.001" : undefined}
+          disabled={disabled}
+          value={time}
+          aria-invalid={!!error}
+          onChange={(e) => update(`${day || dateInZone(zone)}T${e.target.value}`)}
+        />
+      )}
+      {!disabled && (
+        <span className="date-actions">
+          {draft && (
+            <button
+              type="button"
+              className="date-clear"
+              // The accessible name starts with the visible text (WCAG 2.5.3).
+              aria-label={t(`Datum entfernen: ${name}`, `Remove date: ${name}`)}
+              title={t("Datum entfernen", "Remove date")}
+              // A tap must not reach the date input: inside a <label> WebKit
+              // hands the click on to it, which opens the picker and keeps the date.
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void clear(e.detail === 0);
+              }}
+            >
+              {t("Datum entfernen", "Remove date")}
+            </button>
+          )}
+          <button
+            type="button"
+            className={`date-clear date-time-toggle${timed ? "" : " date-time-add"}`}
+            aria-label={
+              timed
+                ? t(`Uhrzeit entfernen: ${name}`, `Remove time: ${name}`)
+                : t(`Uhrzeit hinzufügen: ${name}`, `Add time: ${name}`)
+            }
+            title={
+              timed
+                ? t("Nur das Datum behalten", "Keep only the date")
+                : t("Eine Uhrzeit zum Datum hinzufügen", "Add a time to the date")
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleTime();
+            }}
+          >
+            {timed ? (
+              t("Uhrzeit entfernen", "Remove time")
+            ) : (
+              <>
+                <Plus size={11} weight="bold" aria-hidden="true" />
+                {t("Uhrzeit", "Time")}
+              </>
+            )}
+          </button>
+        </span>
+      )}
+      {timed && <small>{t("Zeitzone:", "Time zone:")}{" "}{zone}</small>}
+      {/* Only for a time the clock change repeats (or one already chosen). */}
+      {timed && (choice !== "reject" || repeatedLocalTime(draft, zone)) && (
         <Select
           aria-label={t(`${name}: Zeitumstellung`, `${name}: clock change`)}
           disabled={disabled}

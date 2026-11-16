@@ -11,6 +11,7 @@ import {
   shiftDateValue,
   recurrenceSchema,
 } from "../lib/recurrence";
+import { translate } from "../lib/i18n";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
   join(tmpdir(), "flowplan-recurrence-"),
 );
@@ -88,6 +89,15 @@ test("occurrences follow the rule, skip ahead, clamp month ends and stop at limi
   assert.equal(
     recurrenceText({ freq: "weekly", interval: 2, count: 5 }),
     "Alle 2 Wochen, 5-mal",
+  );
+  // In the reader's language (#314: the record view showed it in German).
+  assert.equal(
+    recurrenceText({ freq: "weekly", interval: 2, count: 5 }, translate("en")),
+    "Every 2 weeks, 5 times",
+  );
+  assert.equal(
+    recurrenceText({ freq: "daily", interval: 1, until: "2026-12-31" }, translate("en")),
+    "Daily until 2026-12-31",
   );
   assert.equal(parseRecurrence("{bad"), null);
   assert.equal(

@@ -499,7 +499,7 @@ export default function DatabaseCalendar({
         {canEdit && !occurrence(row.id) && (
           <button
             className="calendar-drag"
-            aria-label={`${title(row)} verschieben`}
+            aria-label={t(`${title(row)} verschieben`, `Move ${title(row)}`)}
             disabled={busy}
             data-no-edge-swipe=""
             onPointerDown={(e) => beginChipDrag(e, row, day)}
@@ -1052,7 +1052,7 @@ export default function DatabaseCalendar({
             <label>
               {t("Beginn", "Start")}
               <DateInput
-                name="Beginn"
+                name={t("Beginn", "Start")}
                 value={draft.start}
                 timeZone={draft.zone}
                 commit="change"
@@ -1064,7 +1064,7 @@ export default function DatabaseCalendar({
               <label>
                 {t("Ende", "End")}
                 <DateInput
-                  name="Ende"
+                  name={t("Ende", "End")}
                   value={draft.end}
                   timeZone={draft.zone}
                   commit="change"
