@@ -66,14 +66,21 @@ function pushed(tab: Tab, place: string): Tab {
 // forward, as lib/history-nav.ts's trail does).
 export type Change = "push" | "replace" | "back" | "forward" | "unknown";
 
-// The active tab of `frame` follows a change of its place.
-export function follow(layout: Layout, frame: number, place: string, change: Change = "push"): Layout {
+// The active tab of `frame` follows a change of its place. `before`: the
+// place of the browser's entry before the current one, where known.
+export function follow(layout: Layout, frame: number, place: string, change: Change = "push", before?: string | null): Layout {
   const f = layout.frames[frame];
   if (!f) return layout;
   const tab = tabOf(f);
   if (placeOf(tab) === place) return layout;
   let next: Tab;
-  if (change === "replace") {
+  // A browser entry with the tab's place on top of the entry of that place
+  // – the related record's overlay (lib/related-record.ts), a step without
+  // an address of its own – replaced by a new place ("In Datenbank
+  // öffnen"): for the tab a new step, so that Back returns to the place
+  // below, as the browser does.
+  if (change === "replace" && before && before === placeOf(tab)) next = pushed(tab, place);
+  else if (change === "replace") {
     const stack = tab.stack.slice();
     stack[tab.index] = place;
     next = { ...tab, stack };

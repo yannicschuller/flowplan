@@ -177,6 +177,13 @@ test("history per tab: push, back, forward, replace, the browser's own steps", (
   assert.equal(tabOf(l.frames[0]).index, 2);
   l = follow(l, 0, C, "replace");
   assert.deepEqual(tabOf(l.frames[0]).stack, [A, B, C]);
+  // The browser's entry before holds another place: still a replace.
+  assert.deepEqual(tabOf(follow(l, 0, D, "replace", B).frames[0]).stack, [A, B, D]);
+  // An entry on top of the tab's place (the related record's overlay)
+  // replaced by a new place: a new step, Back returns to the place below.
+  const overlay = follow(l, 0, D, "replace", C);
+  assert.deepEqual(tabOf(overlay.frames[0]).stack, [A, B, C, D]);
+  assert.equal(activePlace(follow(overlay, 0, C, "back")), C);
   // The browser's back to an entry of another tab: this tab's own step.
   l = follow(l, 0, "inbox", "back");
   assert.equal(activePlace(l), B);
