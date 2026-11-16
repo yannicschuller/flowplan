@@ -20,6 +20,7 @@
     "test": "node --import tsx --import ./tests/helpers/cleanup.mjs --test ${TEST_FLAGS:-} tests/*.test.ts",
     "test:db": "node --import tsx --import ./tests/helpers/cleanup.mjs --test ${TEST_FLAGS:-} $(node scripts/db-tests.mjs)",
     "test:e2e": "playwright test",
+    "test:browser": "bash scripts/browser-local.sh",
     "build:e2e": "node scripts/build-e2e.mjs",
     "check:standalone": "node scripts/check-standalone.mjs",
     "check:offline": "node scripts/check-offline.mjs",
