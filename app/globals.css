@@ -33359,24 +33359,28 @@ label.ws-search input {
   left: var(--dot-x, 0);
   top: var(--dot-y, 0);
   z-index: 3;
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
+  /* A pinpoint, as in Freeform (#315): it marks the exact spot the tip
+     will touch without covering the line being aimed at. */
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
   border-radius: 50%;
   background: var(--dot-color, var(--text));
-  box-shadow: 0 0 0 1.5px var(--bg);
+  box-shadow: 0 0 0 0.5px var(--bg);
   opacity: 0;
   pointer-events: none;
 }
 .ink-pen-dot.is-shown {
   opacity: 0.9;
 }
+/* The eraser: a thin ring as wide as what it erases (--dot-size from
+   draw-block-editor.tsx). */
 .ink-pen-dot[data-tool="eraser"] {
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
+  width: var(--dot-size, 12px);
+  height: var(--dot-size, 12px);
+  margin: calc(var(--dot-size, 12px) / -2) 0 0 calc(var(--dot-size, 12px) / -2);
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--secondary), 0 0 0 1px var(--bg);
+  box-shadow: inset 0 0 0 1px var(--secondary), 0 0 0 0.5px var(--bg);
 }
 .ink-block-loading {
   display: grid;

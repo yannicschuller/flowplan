@@ -21,6 +21,7 @@ import { surfaceUrl, useSurfaceSync } from "./use-surface-sync";
 import { convertSelection } from "./convert";
 import { InkTouchShield } from "./touch-shield";
 import { PaperSvg } from "../notebook/paper";
+import { STROKE_ERASER_RADIUS } from "@/lib/ink/eraser";
 import { emptyInk, parseInk, type InkDoc } from "@/lib/ink/model";
 import { recognitionAvailable } from "@/lib/ink/recognition";
 import { isHovering, stylusTouch } from "@/lib/stylus";
@@ -206,7 +207,12 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
     const move = (event: PointerEvent) => {
       if (!isHovering(event) || (event.target as Element | null)?.closest?.(".ink-ui")) return hide();
       const box = surface.getBoundingClientRect();
-      const { tool, style } = inkRef.current;
+      const { tool, style, eraserMode, eraserSize } = inkRef.current;
+      // The eraser's ring is as wide as what it takes (#315): the partial
+      // eraser's size, the whole-stroke kinds' fixed radius (screen pixels,
+      // as in ink-layer.tsx).
+      const radius = eraserMode === "partial" ? eraserSize : STROKE_ERASER_RADIUS;
+      dot.style.setProperty("--dot-size", `${radius * 2}px`);
       dot.style.setProperty("--dot-x", `${event.clientX - box.left}px`);
       dot.style.setProperty("--dot-y", `${event.clientY - box.top}px`);
       dot.style.setProperty("--dot-color", tool === "pen" || tool === "highlighter" || tool === "shape" || tool === "text" ? style.color : "var(--secondary)");
