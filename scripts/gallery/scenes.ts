@@ -19,6 +19,16 @@ const waitDialog = (page: Page, name: string | RegExp) => dialog(page, name).fir
 const menu = (page: Page) => page.getByRole("menu").last();
 const button = (scope: Page | Locator, name: string | RegExp) => scope.getByRole("button", { name, exact: typeof name === "string" });
 const editor = (page: Page) => page.getByLabel("Dokumentinhalt", { exact: true });
+// Until no part of the page is still loading – no "Dokument wird geöffnet …"
+// or "Whiteboard wird geöffnet …" (the skeleton) left on screen.
+async function loaded(page: Page) {
+  await page.waitForFunction(() => !document.querySelector(".page-skeleton"), undefined, { timeout: 20_000 });
+}
+// A document's editor, ready.
+async function documentReady(page: Page) {
+  await editor(page).waitFor({ timeout: 20_000 });
+  await loaded(page);
+}
 
 const docPath = (c: SceneContext) => `#page=${c.ids.documentId}`;
 const dbPath = (c: SceneContext) => `#page=${c.ids.databaseId}`;
@@ -143,13 +153,14 @@ const pages: Scene[] = [
   { id: "tags", group: "Pages", title: "Tags", path: "#tags" },
   { id: "settings-home", group: "Pages", title: "Settings landing page", path: "#settings" },
   { id: "admin-home", group: "Pages", title: "Administration landing page", path: "#admin" },
-  { id: "document", group: "Pages", title: "Document", path: docPath },
+  { id: "document", group: "Pages", title: "Document", path: docPath, steps: documentReady },
   {
     id: "document-reading",
     group: "Pages",
     title: "Document in reading mode",
     path: docPath,
     steps: async (page, ctx) => {
+      await documentReady(page);
       if (ctx.phone) await pageAction(page, "Lesemodus");
       else {
         await button(page, "Lesemodus").click();
@@ -158,16 +169,26 @@ const pages: Scene[] = [
     },
   },
   { id: "database-table", group: "Pages", title: "Database (table)", path: dbPath },
-  { id: "whiteboard", group: "Pages", title: "Whiteboard", path: (c) => `#page=${c.ids.whiteboardId}` },
-  { id: "journal", group: "Pages", title: "Journal", path: (c) => `#page=${c.ids.journalId}` },
-  { id: "notebook", group: "Pages", title: "Notebook", path: (c) => `#page=${c.ids.notebookId}` },
-  { id: "dashboard", group: "Pages", title: "Dashboard", path: (c) => `#page=${c.ids.dashboardId}` },
-  { id: "workflow", group: "Pages", title: "Workflow", path: (c) => `#page=${c.ids.workflowId}` },
+  {
+    id: "whiteboard",
+    group: "Pages",
+    title: "Whiteboard",
+    path: (c) => `#page=${c.ids.whiteboardId}`,
+    steps: async (page) => {
+      await page.locator(".wb-canvas").first().waitFor({ timeout: 20_000 });
+      await loaded(page);
+    },
+  },
+  { id: "journal", group: "Pages", title: "Journal", path: (c) => `#page=${c.ids.journalId}`, steps: loaded },
+  { id: "notebook", group: "Pages", title: "Notebook", path: (c) => `#page=${c.ids.notebookId}`, steps: loaded },
+  { id: "dashboard", group: "Pages", title: "Dashboard", path: (c) => `#page=${c.ids.dashboardId}`, steps: loaded },
+  { id: "workflow", group: "Pages", title: "Workflow", path: (c) => `#page=${c.ids.workflowId}`, steps: loaded },
   {
     id: "record-full-page",
     group: "Pages",
     title: "Record as a full page",
     path: (c) => `#page=${c.ids.databaseId}&row=${c.ids.rowId}&full=1`,
+    steps: loaded,
   },
   { id: "welcome-page", group: "Pages", title: "Example page (Willkommen)", steps: async (page, ctx) => {
     await ctx.open("#home");

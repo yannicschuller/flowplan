@@ -6,6 +6,7 @@ import { useT } from "./i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Graph, MagnifyingGlass } from "@phosphor-icons/react";
 import { api } from "./ui";
+import { Select } from "./select";
 
 // Records carry the database they belong to (pageId); a month of a journal
 // the journal it opens (journalId) and how many days it stands for.
@@ -204,11 +205,11 @@ export function PageGraph({
         </label>
         <label className="graph-option graph-days">
           {t("Journaltage", "Journal days")}
-          <select aria-label={t("Journaltage im Graph", "Journal days in the graph")} value={days} onChange={(e) => chooseDays(e.target.value as DaysMode)}>
+          <Select aria-label={t("Journaltage im Graph", "Journal days in the graph")} value={days} onChange={(e) => chooseDays(e.target.value as DaysMode)}>
             <option value="hide">{t("ausblenden", "hide")}</option>
             <option value="month">{t("je Monat ein Punkt", "one dot per month")}</option>
             <option value="show">{t("einzeln zeigen", "show each day")}</option>
-          </select>
+          </Select>
         </label>
         <span className="graph-count">
           {pageCount} {t("Seiten ·", "pages ·")}{" "}
