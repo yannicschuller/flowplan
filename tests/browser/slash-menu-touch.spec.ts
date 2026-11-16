@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 // iOS app: typing "/" in a document with the keyboard open, the block menu
 // could not be scrolled. It was placed against innerHeight: below the caret
@@ -81,6 +81,20 @@ async function swipeUp(page: Page) {
   }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await cdp.detach();
+}
+
+// A swipe flings the list on for a moment; a tap while it moves only stops
+// it (as on a phone), so taps after a swipe wait until it has come to rest.
+async function atRest(list: Locator) {
+  await expect
+    .poll(() =>
+      list.evaluate(async (el) => {
+        const at = el.scrollTop;
+        await new Promise((r) => setTimeout(r, 150));
+        return el.scrollTop === at;
+      }),
+    )
+    .toBe(true);
 }
 
 async function expectUsable(page: Page, editor: ReturnType<Page["getByLabel"]>) {
@@ -199,6 +213,7 @@ test("toolbar \"+\": the block menu with its search field scrolls by touch while
   await swipeUp(page);
   await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(40);
   await expect(menu).toBeVisible();
+  await atRest(list);
   await list.evaluate((el) => (el.scrollTop = 0));
   // A tap on the field brings the keyboard for searching.
   await search.tap();
@@ -228,6 +243,7 @@ test("toolbar \"+\": the block menu with its search field scrolls by touch while
   await expect(search).not.toBeFocused();
   await expect(menu).toBeVisible();
   // A tap on an entry still chooses it.
+  await atRest(list);
   await menu.getByRole("option", { name: /Zitat/ }).tap();
   await expect(menu).toHaveCount(0);
   await expect(editor.locator("blockquote")).toHaveCount(1);
