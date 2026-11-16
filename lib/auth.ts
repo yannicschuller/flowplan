@@ -314,10 +314,13 @@ export async function acceptInvites(user: User, emailVerified: boolean) {
   if (!emailVerified) return;
   for (const inv of await all<Invite>("SELECT * FROM invites WHERE lower(email)=lower(?)", user.email)) await acceptInvite(user, inv);
 }
-type Invite = { id: string; workspace_id: string; email: string; role: string; guest: number };
+export type Invite = { id: string; workspace_id: string; email: string; role: string; guest: number };
 // One invitation for this person: membership (as guest when invited so),
-// the pages that waited for it, and a note in the inbox.
-async function acceptInvite(user: User, inv: Invite) {
+// the pages that waited for it, and a note in the inbox. Also right away
+// when an owner invites an address whose account is confirmed (#320,
+// member.invite in lib/api.ts). Returns whether the person was added.
+export async function acceptInvite(user: Pick<User, "id">, inv: Invite) {
+  let joined = false;
   // Two sign-ins at once (two devices, two instances) accept it once.
   await transaction(async () => {
     await lockMembership(inv.workspace_id);
@@ -328,8 +331,10 @@ async function acceptInvite(user: User, inv: Invite) {
       user.id,
       inv.role,
     )).changes;
-    // The person finds the workspace (or the shared page) in the inbox.
+    // The person finds the workspace (or the shared page) in the inbox,
+    // with "Öffnen" and "Verlassen" for a workspace (link workspace:<id>).
     if (added) {
+      joined = true;
       const ws = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", inv.workspace_id);
       const by = await one<{ name: string }>("SELECT u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
       const page = await one<{ id: string; title: string }>(
@@ -337,14 +342,16 @@ async function acceptInvite(user: User, inv: Invite) {
         inv.email,
         inv.workspace_id,
       );
+      const sharedPage = inv.guest && page ? page : null;
       await run(
-        "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'share')",
+        "INSERT INTO notifications(id,user_id,body,page_id,kind,link) VALUES(?,?,?,?,'share',?)",
         id(),
         user.id,
-        inv.guest && page
-          ? `${by?.name || "Jemand"} hat „${page.title}“ mit dir geteilt`
-          : `${by?.name || "Jemand"} hat dich zum Arbeitsbereich „${ws?.name || ""}“ hinzugefügt`,
+        sharedPage
+          ? `${by?.name || "Jemand"} hat „${sharedPage.title}“ mit dir geteilt`
+          : `${by?.name || "Jemand"} hat dich zu „${ws?.name || ""}“ hinzugefügt`,
         page?.id ?? null,
+        sharedPage ? null : `workspace:${inv.workspace_id}`,
       );
     }
     // An existing membership is never downgraded to guest by an invite.
@@ -367,6 +374,7 @@ async function acceptInvite(user: User, inv: Invite) {
     await run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", inv.email, inv.workspace_id);
     await run("DELETE FROM invites WHERE id=?", inv.id);
   });
+  return joined;
 }
 // The link from an invitation (?invite=…): whoever opens it signed in takes
 // the invitation over, whatever their address – the link is the proof. This

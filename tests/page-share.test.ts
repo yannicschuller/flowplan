@@ -105,7 +105,7 @@ test("an existing account takes over a later invitation when the app loads", asy
   // Before, the invitation only counted when confirming the address.
   const boot = await bootstrap(fritz, own);
   assert.ok(boot.workspaces.some((w) => w.id === wid));
-  assert.match((await one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND kind='share'", fritz.id))!.body, /Ada hat dich zum Arbeitsbereich „Familie“ hinzugefügt/);
+  assert.match((await one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND kind='share'", fritz.id))!.body, /Ada hat dich zu „Familie“ hinzugefügt/);
   assert.equal(await one("SELECT 1 FROM invites WHERE email=?", fritz.email), undefined);
   // Unconfirmed addresses wait.
   const gina = await person("Gina", false);

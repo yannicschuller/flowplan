@@ -85,6 +85,8 @@ export function notificationUrl(notification: {
 /** OIDC return paths are limited to the application root and validated hash targets. */
 export function loginReturnPath(value: unknown): string {
   if (value === "/#inbox") return value;
+  // An invitation link for several people (#320, lib/invite-links.ts).
+  if (typeof value === "string" && /^\/\?join=[A-Za-z0-9_-]{43}$/.test(value)) return value;
   // Where a notification leads (an incident of the instance).
   if (typeof value === "string" && value.startsWith("/#") && isNotificationLink(value.slice(1))) return value;
   // Signing in the desktop app through the browser (lib/desktop-sign-in.ts).

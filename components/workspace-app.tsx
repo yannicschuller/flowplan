@@ -94,6 +94,7 @@ import {
   registerServiceWorker,
 } from "./offline";
 import { useOfflineRefresh } from "./offline-refresh";
+import { joinRefusalText } from "./join-refusal";
 import { useAppOfflineOffer } from "./app-offline-offer";
 import { appCopyUnreachable } from "@/lib/offline-store";
 import SavedTemplates from "./saved-templates";
@@ -454,6 +455,7 @@ export default function WorkspaceApp({
   initial,
   useTemplate,
   inviteResult,
+  joinResult,
   layout,
 }: {
   initial: Bootstrap;
@@ -464,6 +466,9 @@ export default function WorkspaceApp({
   useTemplate?: string;
   // Opened through an invitation link (?invite=…).
   inviteResult?: "accepted" | "invalid";
+  // Opened through an invitation link for several people (?join=…, #320):
+  // joined, a member already, or why the link did not open.
+  joinResult?: string;
 }) {
   const toggleReadingRef = useRef(() => {});
   // What a global shortcut does (set each render, see runShortcut).
@@ -1196,6 +1201,18 @@ export default function WorkspaceApp({
     );
     const url = new URL(location.href);
     url.searchParams.delete("invite");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!joinResult) return;
+    notify(
+      joinResult === "joined" || joinResult === "member"
+        ? t(`Willkommen in „${boot.workspace.name}“.`, `Welcome to “${boot.workspace.name}”.`)
+        : joinRefusalText(joinResult, t),
+    );
+    const url = new URL(location.href);
+    url.searchParams.delete("join");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -5284,6 +5301,28 @@ export default function WorkspaceApp({
                       <ArrowUpRight />
                     </button>
                     <div className="notification-actions">
+                      {/* Added to a workspace (#320): open it, or leave it
+                          with the confirmation of Settings → Allgemein. */}
+                      {(() => {
+                        const added = /^workspace:([0-9a-f-]{36})$/i.exec(n.link || "")?.[1];
+                        const ws = added ? boot.workspaces.find((w) => w.id === added) : undefined;
+                        if (!ws) return null;
+                        const open = async (hash?: string) => {
+                          if (!n.read_at) void act({ action: "notification.mark", notificationId: n.id, read: true });
+                          if (ws.id !== boot.workspace.id) await switchWorkspace(ws.id);
+                          if (hash) location.hash = hash;
+                        };
+                        return (
+                          <>
+                            <button className="text-button" data-notification-open onClick={() => void open()}>
+                              {t("Öffnen", "Open")}
+                            </button>
+                            <button className="text-button" data-notification-leave aria-label={t(`„${ws.name}“ verlassen`, `Leave “${ws.name}”`)} onClick={() => void open("settings/workspace/danger")}>
+                              {t("Verlassen", "Leave")}
+                            </button>
+                          </>
+                        );
+                      })()}
                       <button
                         className="text-button"
                         onClick={() =>

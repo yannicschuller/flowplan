@@ -73,6 +73,8 @@ export type AdminData = {
   emergencyForcedOff?: boolean;
   // FLOWPLAN_DEAD_MAN_SWITCH=off (#282): the switch cannot turn it on.
   deadManForcedOff?: boolean;
+  // FLOWPLAN_INVITE_LINKS=off (#320): the switch cannot turn them on.
+  inviteLinksForcedOff?: boolean;
   localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean; password?: boolean }>;
   // Connected SSO identities (#101) and the accounts that sign in with LDAP.
   identities?: { user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }[];

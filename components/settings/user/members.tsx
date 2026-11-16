@@ -1,9 +1,10 @@
 "use client";
 // Settings → Arbeitsbereich → Mitglieder: the people of the workspace with
-// their role and badges (guest, SSO), the invitations still open, and the
-// invitation itself in a sheet.
+// their role and badges (guest, SSO), the invitations still open, the
+// invitation links for several people (#320) and the invitation itself in
+// a sheet.
 import { useState } from "react";
-import { EnvelopeSimple, Plus, UserPlus, X } from "@phosphor-icons/react";
+import { Copy, EnvelopeSimple, LinkSimple, Plus, UserPlus, X } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { Bootstrap } from "@/lib/types";
 import { useT } from "../../i18n";
@@ -11,7 +12,7 @@ import { Avatar, Modal } from "../../ui";
 import { showToast } from "../../toast";
 import { Select } from "../../select";
 import { EmptyState, SaveState, SettingGroup, StatusBadge, useSaveState } from "../../settings-ui";
-import { useUserSettings, type WorkspaceSettingsData } from "../user-context";
+import { useUserSettings, type InviteLinkRow, type WorkspaceSettingsData } from "../user-context";
 import { useSsoVia } from "./sso-via";
 
 type Member = Bootstrap["members"][number];
@@ -168,9 +169,168 @@ function InviteItem({ invite: i }: { invite: Invite }) {
   );
 }
 
+// Copies a link; where the clipboard is refused, the link shows as the error.
+function useCopyLink() {
+  const t = useT();
+  const { onError } = useUserSettings();
+  return async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast({ text: t("Einladungslink kopiert.", "Invitation link copied.") });
+    } catch {
+      onError(url);
+    }
+  };
+}
+
+function InviteLinkItem({ link: l }: { link: InviteLinkRow }) {
+  const t = useT();
+  const roleName = useRoleName();
+  const { act } = useUserSettings();
+  const copy = useCopyLink();
+  const until = new Date(l.expiresAt).toLocaleString(LOCALE_TAG, { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <li className="ws-item ws-invite" data-invite-link={l.id}>
+      <span className="ws-item-icon" aria-hidden>
+        <LinkSimple size={18} />
+      </span>
+      <div className="ws-item-text">
+        <strong>{t("Einladungslink", "Invite link")}</strong>
+        <span className="ws-badges">
+          {l.usedUp ? <StatusBadge tone="warn">{t("Ausgeschöpft", "Used up")}</StatusBadge> : <StatusBadge tone="ok">{t("Aktiv", "Active")}</StatusBadge>}
+          <StatusBadge tone="off">{roleName(l.role)}</StatusBadge>
+          {l.guest && <StatusBadge tone="off">{t("Gast", "Guest")}</StatusBadge>}
+        </span>
+        <small data-invite-link-uses>
+          {[
+            l.maxUses ? t(`${l.uses} von ${l.maxUses} Beitritten`, `${l.uses} of ${l.maxUses} joins`) : t(`${l.uses} Beitritte`, `${l.uses} joins`),
+            t(`gültig bis ${until}`, `valid until ${until}`),
+            l.creator ? t(`von ${l.creator}`, `by ${l.creator}`) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </small>
+      </div>
+      <div className="ws-item-controls">
+        {l.url && (
+          <button type="button" className="button" onClick={() => void copy(l.url!)}>
+            <Copy aria-hidden />
+            {t("Kopieren", "Copy")}
+          </button>
+        )}
+        <button
+          type="button"
+          className="button"
+          onClick={async () => {
+            if (!confirm(t("Einladungslink zurückziehen? Wer ihn noch hat, kann damit nicht mehr beitreten. Wer schon beigetreten ist, bleibt Mitglied.", "Revoke the invite link? Whoever still has it can no longer join with it. People who already joined stay members."))) return;
+            if (await act({ action: "inviteLink.revoke", linkId: l.id })) showToast({ text: t("Einladungslink zurückgezogen.", "Invite link revoked.") });
+          }}
+        >
+          {t("Zurückziehen", "Revoke")}
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function InviteLinkSheet({ onClose }: { onClose: () => void }) {
+  const t = useT();
+  const { boot, mutate, reload, onError } = useUserSettings();
+  const copy = useCopyLink();
+  const [role, setRole] = useState("editor"),
+    [guest, setGuest] = useState(false),
+    [expires, setExpires] = useState("7d"),
+    [maxUses, setMaxUses] = useState(""),
+    [busy, setBusy] = useState(false),
+    [created, setCreated] = useState<string | null>(null);
+  return (
+    <Modal open sheet className="ws-sheet" title={t("Einladungslink erstellen", "Create invite link")} onClose={() => !busy && onClose()}>
+      {created ? (
+        <div className="ws-form">
+          <div className="ws-field">
+            <label htmlFor="invite-link-url">{t("Einladungslink", "Invite link")}</label>
+            <input id="invite-link-url" readOnly value={created} onFocus={(e) => e.currentTarget.select()} />
+            <small>{t("Wer den Link hat, kann beitreten, solange er gilt. Teile ihn nur mit Personen, die dazugehören sollen.", "Whoever has the link can join while it is valid. Share it only with people who should belong.")}</small>
+          </div>
+          <div className="modal-actions ws-form-actions">
+            <button type="button" className="button" onClick={onClose}>
+              {t("Fertig", "Done")}
+            </button>
+            <button type="button" className="button primary" onClick={() => void copy(created)}>
+              <Copy aria-hidden />
+              {t("Kopieren", "Copy")}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form
+          className="ws-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              const limit = maxUses.trim() ? Number(maxUses) : null;
+              const result = (await mutate({ workspaceId: boot.workspace.id, action: "inviteLink.create", role, guest, expires, maxUses: limit })) as { url: string };
+              setCreated(result.url);
+              await reload();
+            } catch (error) {
+              onError((error as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <div className="ws-field">
+            <label htmlFor="invite-link-role">{t("Rolle", "Role")}</label>
+            <Select id="invite-link-role" value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
+              <option value="editor">{t("Bearbeiten", "Edit")}</option>
+              <option value="viewer">{t("Ansehen", "View||role")}</option>
+            </Select>
+          </div>
+          <label className="ws-check">
+            <input type="checkbox" checked={guest} onChange={(e) => setGuest(e.target.checked)} disabled={busy} />
+            <span>
+              {t("Als Gast beitreten", "Join as a guest")}
+              <small>{t("Gäste sehen nur Seiten, die mit ihnen geteilt sind.", "Guests see only pages shared with them.")}</small>
+            </span>
+          </label>
+          <div className="ws-field">
+            <label htmlFor="invite-link-expires">{t("Gültig für", "Valid for")}</label>
+            <Select id="invite-link-expires" value={expires} onChange={(e) => setExpires(e.target.value)} disabled={busy}>
+              <option value="24h">{t("24 Stunden", "24 hours")}</option>
+              <option value="7d">{t("7 Tage", "7 days")}</option>
+              <option value="30d">{t("30 Tage", "30 days")}</option>
+            </Select>
+          </div>
+          <div className="ws-field">
+            <label htmlFor="invite-link-max">{t("Höchstens so viele Beitritte", "At most this many joins")}</label>
+            <input id="invite-link-max" type="number" inputMode="numeric" min={1} max={1000} placeholder={t("unbegrenzt", "unlimited")} value={maxUses} onChange={(e) => setMaxUses(e.target.value)} disabled={busy} />
+            <small>{t("Leer lassen für beliebig viele, bis der Link abläuft.", "Leave empty for any number until the link expires.")}</small>
+          </div>
+          <p className="ws-note">
+            {t(
+              "Wer den Link öffnet, meldet sich an oder registriert sich – auch wenn die Registrierung sonst geschlossen ist – und tritt mit dieser Rolle bei. Du kannst den Link jederzeit zurückziehen.",
+              "Whoever opens the link signs in or signs up – even if sign-ups are otherwise closed – and joins with this role. You can revoke the link at any time.",
+            )}
+          </p>
+          <div className="modal-actions ws-form-actions">
+            <button type="button" className="button" onClick={onClose} disabled={busy}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+            <button className="button primary" disabled={busy}>
+              <LinkSimple aria-hidden />
+              {t("Link erstellen", "Create link")}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function InviteSheet({ onClose }: { onClose: () => void }) {
   const t = useT();
-  const { boot, act } = useUserSettings();
+  const { boot, act, onRefresh } = useUserSettings();
   const [email, setEmail] = useState(""),
     [role, setRole] = useState("editor"),
     [guest, setGuest] = useState(false),
@@ -184,7 +344,12 @@ function InviteSheet({ onClose }: { onClose: () => void }) {
           setBusy(true);
           const ok = await act({ action: "member.invite", email, role, guest });
           setBusy(false);
-          if (ok) onClose();
+          if (ok) {
+            // An account with a confirmed address is a member now (#320):
+            // the list of members follows.
+            void onRefresh();
+            onClose();
+          }
         }}
       >
         <div className="ws-field">
@@ -233,7 +398,9 @@ function InviteSheet({ onClose }: { onClose: () => void }) {
 export default function MembersSection() {
   const t = useT();
   const { boot, owner, workspace: settings } = useUserSettings();
-  const [inviting, setInviting] = useState(false);
+  const [inviting, setInviting] = useState(false),
+    [linking, setLinking] = useState(false);
+  const links = settings?.inviteLinks || [];
   const guests = boot.members.filter((m) => m.guest).length;
   const invites = settings?.invites || [];
   const members = [...boot.members].sort((a, b) => Number(b.id === boot.user.id) - Number(a.id === boot.user.id) || (a.role === "owner" ? 0 : 1) - (b.role === "owner" ? 0 : 1) || a.name.localeCompare(b.name));
@@ -278,7 +445,41 @@ export default function MembersSection() {
           )}
         </SettingGroup>
       )}
+      {owner && settings && (
+        <SettingGroup
+          id="invite-links"
+          title={t(`Einladungslinks · ${links.length}`, `Invite links · ${links.length}`)}
+          description={
+            settings.inviteLinksEnabled === false
+              ? t("Auf dieser Instanz von der Administration ausgeschaltet.", "Switched off on this instance by the administrators.")
+              : t("Ein Link für mehrere Personen – mit Rolle, Ablauf und auf Wunsch einer Höchstzahl an Beitritten.", "One link for several people – with a role, an expiry and, if you like, a maximum number of joins.")
+          }
+          actions={
+            settings.inviteLinksEnabled === false ? undefined : (
+              <button type="button" className="button" onClick={() => setLinking(true)}>
+                <LinkSimple aria-hidden />
+                {t("Einladungslink erstellen", "Create invite link")}
+              </button>
+            )
+          }
+        >
+          {links.length ? (
+            <ul className="ws-list" aria-label={t("Einladungslinks", "Invite links")}>
+              {links.map((l) => (
+                <InviteLinkItem key={l.id} link={l} />
+              ))}
+            </ul>
+          ) : (
+            <div className="setting-row wide">
+              <EmptyState icon={<LinkSimple size={20} />} title={t("Keine offenen Einladungslinks", "No open invite links")}>
+                {t("Links erscheinen hier, bis sie ablaufen oder du sie zurückziehst.", "Links show here until they expire or you revoke them.")}
+              </EmptyState>
+            </div>
+          )}
+        </SettingGroup>
+      )}
       {inviting && <InviteSheet onClose={() => setInviting(false)} />}
+      {linking && <InviteLinkSheet onClose={() => setLinking(false)} />}
     </>
   );
 }

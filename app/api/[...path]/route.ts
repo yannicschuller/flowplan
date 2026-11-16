@@ -163,6 +163,7 @@ import { onShutdown } from "@/lib/cluster/runtime";
 import { workflowGet } from "@/lib/workflows/commands";
 import { workflowPost } from "@/lib/workflows/rest";
 import { withReadMemo } from "@/lib/read-memo";
+import { inviteLinksEnabled, inviteLinksForcedOff, listInviteLinks } from "@/lib/invite-links";
 import { emergencyForcedOff, emergencyContent, emergencyExport, emergencyKeys, emergencyLog, emergencyOverview, emergencyPage } from "@/lib/emergency-access";
 import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
@@ -765,6 +766,9 @@ async function handleGET(
           wid,
         )).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] }));
         })(),
+        // Invitation links for several people (#320, lib/invite-links.ts).
+        inviteLinks: await listInviteLinks(wid),
+        inviteLinksEnabled: await inviteLinksEnabled(),
         groups: await all("SELECT * FROM groups WHERE workspace_id=?", wid),
         groupMembers: await all(
           "SELECT gm.* FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.workspace_id=?",
@@ -1163,6 +1167,8 @@ async function handleGET(
         adminIds: await adminUserIds(),
         localLogin: localLoginEnabled(),
         emergencyForcedOff: emergencyForcedOff(),
+        // FLOWPLAN_INVITE_LINKS=off (#320): the switch cannot turn them on.
+        inviteLinksForcedOff: inviteLinksForcedOff(),
         deadManForcedOff: deadmanForcedOff(),
         restorePending: pendingRestore(),
         // Who may use AI when the administration chose "selected people".

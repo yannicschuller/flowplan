@@ -149,6 +149,7 @@ export async function purgeWorkspace(wid: string) {
   );
   await run("DELETE FROM templates WHERE workspace_id=?", wid);
   await run("DELETE FROM invites WHERE workspace_id=?", wid);
+  await run("DELETE FROM invite_links WHERE workspace_id=?", wid);
   await run("DELETE FROM workspaces WHERE id=?", wid);
 }
 export async function manageSpace(user: Identity, input: Record<string, unknown>) {

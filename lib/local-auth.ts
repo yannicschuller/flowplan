@@ -23,6 +23,7 @@ import {
 import { all, id, inTransaction, lockFor, one, run } from "./db";
 import { db } from "./db-driver";
 import { HttpError, acceptInvites, acceptPendingInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
+import { acceptInviteLink, inviteLinkOpensSignup, inviteLinkPreview } from "./invite-links";
 import { instanceSettings } from "./instance-settings";
 import { loopbackHost, plainHttpInstance } from "./instance-https";
 import { mailConfig, queueLinkMail } from "./mail";
@@ -156,10 +157,16 @@ export async function invitedEmail(token?: string) {
   if (!token || !inviteTokenShape.test(token) || !localLoginEnabled() || await firstAccount()) return null;
   return (await db.one<{ email: string }>("SELECT email FROM invites WHERE token=?", token))?.email ?? null;
 }
-export async function signupOpen(setup?: string, invite?: string) {
+// An invitation link for several people (?join=…, lib/invite-links.ts)
+// opens sign-up for any address while it is valid – not before the
+// instance is set up and not without password sign-in.
+async function joinOpensSignup(join?: string) {
+  return !!join && localLoginEnabled() && !(await firstAccount()) && (await inviteLinkOpensSignup(join));
+}
+export async function signupOpen(setup?: string, invite?: string, join?: string) {
   return (
     localLoginEnabled() &&
-    ((await firstAccount() && setupAllowed(setup)) || (await instanceSettings()).allowSignup || (await invitedEmail(invite)) !== null)
+    ((await firstAccount() && setupAllowed(setup)) || (await instanceSettings()).allowSignup || (await invitedEmail(invite)) !== null || (await joinOpensSignup(join)))
   );
 }
 // The groups a local account signs in with (administrators).
@@ -176,6 +183,8 @@ const registerSchema = z.object({
   password: z.string(),
   // The invitation link the person came with (?invite=…).
   invite: z.string().max(80).optional(),
+  // An invitation link for several people (?join=…, lib/invite-links.ts).
+  join: z.string().max(80).optional(),
   // The setup link of the first account (?setup=…, FLOWPLAN_SETUP_TOKEN).
   setup: z.string().max(200).optional(),
 });
@@ -199,7 +208,10 @@ export async function register(input: unknown, locale: Locale, address = "") {
   // Without e-mail, an address alone (no link) is no proof of owning it.
   const linked = !!parsed.data.invite && (await invitedEmail(parsed.data.invite))?.toLowerCase() === email.toLowerCase();
   const byAddress = await invited(email) && !!mailConfig();
-  if (!first && !(await instanceSettings()).allowSignup && !byAddress && !linked)
+  // A valid link for several people is a pass for its own joins only: it
+  // opens sign-up, the account joins below (and the link counts it).
+  const joining = !first && (await joinOpensSignup(parsed.data.join));
+  if (!first && !(await instanceSettings()).allowSignup && !byAddress && !linked && !joining)
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
   const passwordHash = await hashPassword(password.data);
   if (await accountByEmail(email) || await db.one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {
@@ -241,6 +253,10 @@ export async function register(input: unknown, locale: Locale, address = "") {
     { lock: "flowplan:first-account" },
   );
   const user = (await db.one<User>("SELECT * FROM users WHERE id=?", uid))!;
+  // Joined through the link right away: the link is the proof, as with an
+  // invitation's own link (app/page.tsx). With e-mail set up the person
+  // still confirms the address before the first sign-in.
+  if (parsed.data.join && joining) await acceptInviteLink(user, parsed.data.join, address);
   if (confirm) await sendVerification(user, locale);
   return { user, groups: first ? [adminGroup()] : [], pending: confirm };
 }
@@ -835,7 +851,10 @@ export async function passkeyConfirm(userId: string, token: string | undefined, 
 }
 
 // What the sign-in page offers on this instance.
-export async function loginOptions(setup?: string, invite?: string) {
+export async function loginOptions(setup?: string, invite?: string, join?: string, address = "") {
+  // An invitation link for several people: the workspace it leads to, or why
+  // it does not open (lib/invite-links.ts).
+  const joinLink = join ? await inviteLinkPreview(join, address) : null;
   const first = await firstAccount();
   // Sign-in through a reverse proxy (lib/proxy-auth.ts): its portal's button
   // when AUTH_PROXY_LOGIN_URL is set; AUTH_PROXY_ONLY=true shows nothing
@@ -845,7 +864,9 @@ export async function loginOptions(setup?: string, invite?: string) {
   return {
     configured: !!process.env.OIDC_ISSUER,
     localLogin: local,
-    signupOpen: !proxy?.only && await signupOpen(setup, invite),
+    signupOpen: !proxy?.only && await signupOpen(setup, invite, joinLink?.ok ? join : undefined),
+    joinWorkspace: joinLink?.ok ? joinLink.workspace : "",
+    joinError: joinLink && !joinLink.ok ? joinLink.reason : "",
     // Opened through an invitation link: the account is created for its address.
     invitedEmail: await invitedEmail(invite) || "",
     firstAccount: local && first && setupAllowed(setup),

@@ -34,6 +34,11 @@ export const securityKinds = {
   "admin.settings": { severity: "warn", de: "Sicherheitsrelevante Einstellung geändert", en: "Security-relevant setting changed" },
   "role.changed": { severity: "info", de: "Rolle geändert", en: "Role changed" },
   "invite.created": { severity: "info", de: "Einladung verschickt", en: "Invitation sent" },
+  // Invitation links for several people (#320, lib/invite-links.ts).
+  "invite_link.created": { severity: "info", de: "Einladungslink erstellt", en: "Invite link created" },
+  "invite_link.revoked": { severity: "info", de: "Einladungslink zurückgezogen", en: "Invite link revoked" },
+  "invite_link.used": { severity: "info", de: "Über Einladungslink beigetreten", en: "Joined through an invite link" },
+  "invite_link.refused": { severity: "warn", de: "Einladungslink abgewiesen", en: "Invite link refused" },
   "share.created": { severity: "info", de: "Freigabelink erstellt", en: "Share link created" },
   "share.public": { severity: "warn", de: "Seite öffentlich gemacht", en: "Page made public" },
   "share.revoked": { severity: "info", de: "Freigaben widerrufen", en: "Shares revoked" },
