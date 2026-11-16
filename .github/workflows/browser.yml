@@ -38,6 +38,7 @@ jobs:
       - run: npm ci
       # Turbopack's build cache (on by default since Next.js 16.3): a build
       # on top of the last one's cache took 30 s instead of 3 min locally.
+      # Its own key: this build differs from CI's (lib/e2e-build.ts).
       - uses: actions/cache@v5
         with:
           path: .next-e2e/cache
@@ -90,6 +91,16 @@ jobs:
           cache: npm
       # Playwright, and the app modules some specs import.
       - run: npm ci
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        if: runner.environment == 'github-hosted'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       # GitHub's runners download Chromium (as in the test job: the browser
       # from Playwright's CDN, its Ubuntu packages best-effort); the own
       # runner downloads nothing and uses the Chromium installed there

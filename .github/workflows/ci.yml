@@ -67,6 +67,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Turbopack's build cache (on by default since Next.js 16.3), kept
+      # between runs: a build on top of the last one's cache took 30 s
+      # instead of 3 min locally. Keyed on the lockfile; the newest one of
+      # the same lockfile is restored. Image builds (Dockerfile) never see it.
+      - uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -81,6 +90,16 @@ jobs:
           path: ${{ runner.temp }}/standalone.tar
           retention-days: 1
           if-no-files-found: error
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        if: runner.environment == 'github-hosted'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       # Accessibility and performance budgets on the production build
       # (scripts/quality-check.mjs). GitHub's runners download Chromium; the
       # own runner downloads nothing – it uses a Chromium that is installed
