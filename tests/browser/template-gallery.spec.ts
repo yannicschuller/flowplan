@@ -5,8 +5,12 @@ test("the template gallery offers several templates per category and creates pag
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
   await page.goto("/#home");
-  await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click();
   const dialog = page.getByRole("dialog", { name: "Vorlagen" });
+  // The sidebar is server-rendered: a click before hydration does nothing.
+  await expect(async () => {
+    await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click({ timeout: 2_000 });
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   // Every category has at least three templates.
   for (const category of ["Projekte", "Meetings", "Wissen & Dokumentation", "Planung & Ziele", "Persönlich", "Sonstiges"]) {
     await dialog.getByRole("button", { name: category, exact: true }).click();
@@ -18,7 +22,9 @@ test("the template gallery offers several templates per category and creates pag
   const title = `Budget ${Date.now()}`;
   await page.getByPlaceholder("Wie heißt deine Seite?").fill(title);
   await page.getByRole("button", { name: "Seite erstellen" }).click();
-  await expect(page.locator(".data-table")).toContainText("Kampagne Herbst");
+  // The first database or document view of a page load comes as its own
+  // chunk; on a busy dev server that takes longer than an assertion's 5 s.
+  await expect(page.locator(".data-table")).toContainText("Kampagne Herbst", { timeout: 30_000 });
   await expect(page.locator(".data-table")).toContainText("-1.800,00 €");
   await expect(page.locator(".database-tabs")).toContainText("Plan und Ist");
 
@@ -32,7 +38,7 @@ test("the template gallery offers several templates per category and creates pag
   const create = page.getByRole("dialog", { name: "Neue Seite" });
   await expect(create.getByLabel("Name", { exact: true })).toHaveValue("Retrospektive");
   await create.getByLabel("Name", { exact: true }).press("Enter");
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?", { timeout: 30_000 });
 });
 
 // #112: the "New page" dialog offers templates as well.
@@ -58,7 +64,7 @@ test("the New page dialog opens the template gallery and comes back to it", asyn
   const title = `Retro ${Date.now()}`;
   await create.getByPlaceholder("Wie heißt deine Seite?").fill(title);
   await create.getByRole("button", { name: "Seite erstellen" }).click();
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?", { timeout: 30_000 });
 });
 
 // #132: saved templates have their own category, first after "Alle".
@@ -145,7 +151,7 @@ test("a page from a template keeps the name typed for it", async ({ page }, info
   await expect(create.locator(".np-desc")).toContainText("Retrospektive");
   await expect(name).toHaveValue(typed);
   await name.press("Enter");
-  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?");
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?", { timeout: 30_000 });
   expect(await titleOf(page.url())).toBe(typed);
 
   // Nothing typed: the template's name, selected – typing replaces it.
