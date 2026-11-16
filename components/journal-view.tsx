@@ -128,6 +128,8 @@ function level(words: number) {
 
 export function JournalView({
   pageId,
+  workspaceId,
+  spaceId,
   days,
   settings,
   editable,
@@ -139,6 +141,9 @@ export function JournalView({
   onRevealed,
 }: {
   pageId: string;
+  // The journal's workspace and space: saved templates for the day (#316).
+  workspaceId?: string;
+  spaceId?: string;
   days: JournalDay[];
   settings?: JournalSettings;
   editable: boolean;
@@ -461,6 +466,8 @@ export function JournalView({
       {settingsOpen && settings && (
         <JournalSettingsDialog
           pageId={pageId}
+          workspaceId={workspaceId}
+          spaceId={spaceId}
           settings={settings}
           todayId={current?.id}
           onClose={() => setSettingsOpen(false)}

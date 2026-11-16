@@ -19359,7 +19359,13 @@ h3 .block-reactions {
 }
 .js-current-actions {
   display: inline-flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+/* Saved templates as the daily template (#316), below the current one. */
+.journal-saved-templates {
+  display: grid;
+  gap: 6px;
 }
 .js-current .journal-template-preview {
   background: var(--bg);
