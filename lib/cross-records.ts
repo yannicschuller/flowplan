@@ -12,14 +12,24 @@ import { cellText } from "./cell-text";
 import { databaseSettings } from "./database-settings";
 import { doneRule, dueField, isDone } from "./database-settings-schema";
 import { ticketId } from "./ticket-ids";
+import { DUE_RANGES, inDueRange, ISO_DAY } from "./due-range";
 import type { Field, Identity, Page, Row } from "./types";
 
 export const crossFilterSchema = z.object({
   mine: z.boolean().default(true),
   open: z.boolean().default(true),
-  due: z.enum(["any", "overdue", "week", "dated"]).default("any"),
+  // lib/due-range.ts ("today" and "undated" since #314).
+  due: z.enum(DUE_RANGES).default("any"),
   databases: z.array(z.uuid()).max(100).default([]),
   query: z.string().trim().max(200).default(""),
+  // Only records that can be done – their database has a status or
+  // checkbox the reader sees (lib/database-settings-schema.ts, doneRule).
+  // "Meine Aufgaben" asks for this (#314): a record of a document, contact
+  // or reading list database has nothing to tick off and is no task.
+  tasks: z.boolean().default(false),
+  // The reader's day for the date ranges; the server's (UTC) without it,
+  // which is a different day for the hours around midnight elsewhere.
+  today: z.string().regex(ISO_DAY).optional(),
 });
 export type CrossFilter = z.infer<typeof crossFilterSchema>;
 
@@ -36,8 +46,7 @@ export const assignedTo = (people: Field[], cells: Record<string, unknown>, user
 export async function crossRecords(user: Identity, workspaceId: string, input: unknown) {
   await requireMember(user, workspaceId);
   const filter = crossFilterSchema.parse(input ?? {});
-  const today = new Date().toISOString().slice(0, 10);
-  const week = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const today = filter.today ?? new Date().toISOString().slice(0, 10);
   const pages = (await all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL", workspaceId)).filter(
     (p) => !filter.databases.length || filter.databases.includes(p.id),
   );
@@ -78,11 +87,13 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
     const people = fields.filter((f) => f.type === "person" && shown(f));
     // "Mine" needs a person property; such databases are skipped then.
     if (filter.mine && !people.length) continue;
-    databases.push({ id: page.id, title: page.title });
     // A hidden status or checkbox: "done" is unknown, the record counts as open.
     const settings = await databaseSettings(page.id);
     const found = doneRule(fields, settings);
     const rule = found && shown(found.field) ? found : null;
+    // Without one the database holds no tasks (and is not offered to pick).
+    if (filter.tasks && !rule) continue;
+    databases.push({ id: page.id, title: page.title });
     // A hidden due date: no date; "no due date" set: none either.
     const foundDue = dueField(fields, settings);
     const due = shown(foundDue) ? foundDue : undefined;
@@ -101,9 +112,7 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
       const done = isDone(rule, r.cells);
       if (filter.open && done) continue;
       const date = due && typeof r.cells[due.id] === "string" && r.cells[due.id] ? String(r.cells[due.id]).slice(0, 10) : null;
-      if (filter.due === "dated" && !date) continue;
-      if (filter.due === "overdue" && !(date && date < today && !done)) continue;
-      if (filter.due === "week" && !(date && date <= week)) continue;
+      if (!inDueRange(date, done, filter.due, today)) continue;
       const title = titleField ? cellText(r.cells[titleField.id]) : "";
       const key = idField ? ticketId(idField, r.number) : "";
       if (filter.query && !`${title} ${key}`.toLowerCase().includes(filter.query.toLowerCase())) continue;
@@ -157,10 +166,13 @@ export async function recordViews(user: Identity, workspaceId: string) {
 export async function saveRecordView(user: Identity, input: unknown) {
   const b = z.object({ workspaceId: z.uuid(), name: z.string().trim().min(1).max(80), filter: crossFilterSchema }).parse(input);
   await requireMember(user, b.workspaceId);
+  // A view keeps what the person chose; the day it was saved on and the
+  // "tasks only" of My tasks are the caller's, each time it is shown.
+  const { today: _today, tasks: _tasks, ...filter } = b.filter;
   if (((await one<{ n: number }>("SELECT count(*) n FROM record_views WHERE user_id=? AND workspace_id=?", user.id, b.workspaceId))?.n || 0) >= 30)
     throw new HttpError(400, "Höchstens 30 gespeicherte Ansichten.");
   const vid = id();
-  await run("INSERT INTO record_views(id,user_id,workspace_id,name,config,created_at) VALUES(?,?,?,?,?,?)", vid, user.id, b.workspaceId, b.name, JSON.stringify(b.filter), Date.now());
+  await run("INSERT INTO record_views(id,user_id,workspace_id,name,config,created_at) VALUES(?,?,?,?,?,?)", vid, user.id, b.workspaceId, b.name, JSON.stringify(filter), Date.now());
   return { id: vid };
 }
 export async function deleteRecordView(user: Identity, input: unknown) {

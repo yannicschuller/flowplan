@@ -58,6 +58,8 @@ export async function seedGallery(api: APIRequestContext, origin: string, { fres
       .catch((e) => console.warn(`Gallery seed: no ${extra.type} view (${String(e.message).slice(0, 120)})`));
   }
 
+  await seedTasks(api, command, { workspaceId, spaceId, parentId: sandboxId });
+
   await command({ action: "page.publish", pageId: base.documentId, enabled: true });
   const publicDocToken = (await read(base.documentId)).page.public_token as string;
   await command({ action: "page.publish", pageId: base.databaseId, enabled: true });
@@ -89,6 +91,61 @@ export async function seedGallery(api: APIRequestContext, origin: string, { fres
     shareLinkToken,
     formToken,
   };
+}
+
+// Something to do for "Meine Aufgaben" (#314), below "Spielwiese": dated
+// tasks in a document (own to-dos), a ticket database with a status and
+// the account as assignee, and a reading list without a status, whose
+// records are no tasks. Dates around GALLERY_DAY.
+async function seedTasks(
+  api: APIRequestContext,
+  command: ReturnType<typeof commandFor>,
+  { workspaceId, spaceId, parentId }: { workspaceId: string; spaceId: string; parentId: string },
+) {
+  const me = ((await (await api.get("/api/bootstrap")).json()).user?.id ?? "") as string;
+  const create = async (kind: string, title: string) =>
+    (await command({ action: "page.create", workspaceId, spaceId, parentId, kind, title })).id as string;
+  const plan = await create("document", "Wochenplanung");
+  const task = (text: string, due: string) => `<li data-type="taskItem" data-checked="false" data-due="${due}"><p>${text}</p></li>`;
+  const html = `<ul data-type="taskList">${[
+    task("Angebot an die Agentur schicken", "2026-10-14"),
+    task("Raum für den Workshop buchen", "2026-10-15"),
+    task("Präsentation für Freitag vorbereiten", "2026-10-16"),
+    task("Quartalsbericht abgeben", "2026-10-28"),
+  ].join("")}</ul>`;
+  const { htmlState } = await import("../../lib/document-server");
+  const { generation } = await (await api.get(`/api/pages/${plan}`)).json();
+  await command({ action: "document.sync", pageId: plan, generation, update: Buffer.from(htmlState(html)).toString("base64") });
+  const database = async (title: string, fields: Record<string, unknown>[], rows: Record<string, unknown>[]) => {
+    const id = await create("database", title);
+    const current = (await (await api.get(`/api/pages/${id}`)).json()).database;
+    await command({ action: "database.update", pageId: id, version: current.version, fields, views: current.views });
+    for (const cells of rows) await command({ action: "row.create", pageId: id, cells });
+  };
+  await database(
+    "Tickets",
+    [
+      { id: "title", name: "Titel", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Offen", "In Arbeit", "Erledigt"] },
+      { id: "who", name: "Zuständig", type: "person" },
+      { id: "due", name: "Fällig", type: "date" },
+      { id: "key", name: "ID", type: "id", prefix: "TIC" },
+    ],
+    [
+      { title: "Login auf dem Tablet repariert nicht", status: "In Arbeit", who: me, due: "2026-10-13" },
+      { title: "Export als PDF prüfen", status: "Offen", who: me, due: "2026-10-15" },
+      { title: "Hilfetexte übersetzen", status: "Offen", who: me, due: "2026-10-19" },
+      { title: "Farben im dunklen Modus abstimmen", status: "In Arbeit", who: me },
+    ],
+  );
+  await database(
+    "Leseliste",
+    [
+      { id: "title", name: "Titel", type: "text" },
+      { id: "who", name: "Empfohlen für", type: "person" },
+    ],
+    [{ title: "Shape Up", who: me }],
+  );
 }
 
 export function commandFor(api: APIRequestContext, origin: string) {

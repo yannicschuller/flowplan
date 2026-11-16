@@ -153,3 +153,82 @@ test("a title derived from a hidden property is not shown or searched", async ()
   assert.deepEqual(seen.map((r) => r.title), [""]);
   assert.equal((await crossRecords(other, wid, { mine: false, databases: [pageId], query: "zeus" })).records.length, 0);
 });
+
+// #314: "Meine Aufgaben" lists records as tasks only where they can be done.
+test("tasks only: databases without a status or checkbox hold no tasks", async () => {
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Reading list" })).id as string;
+  await act({
+    action: "database.update",
+    pageId,
+    version: (await database(pageId)).version,
+    fields: [
+      { id: "title", name: "Title", type: "text" },
+      { id: "who", name: "Owner", type: "person" },
+      { id: "due", name: "Due", type: "date" },
+    ],
+    views: (await database(pageId)).views,
+  });
+  await act({ action: "row.create", pageId, cells: { title: "Essay", who: me.id, due: "2020-01-01" } });
+  const plain = await crossRecords(me, wid, {});
+  assert.ok(plain.records.some((r) => r.title === "Essay" && !r.tracked));
+  assert.ok(plain.databases.some((d) => d.id === pageId));
+  const tasks = await crossRecords(me, wid, { tasks: true, databases: [web, app, pageId] });
+  assert.deepEqual(tasks.records.map((r) => r.title), ["Header", "Login"]);
+  assert.ok(tasks.records.every((r) => r.tracked));
+  // Not offered in the database picker either.
+  assert.equal(tasks.databases.some((d) => d.id === pageId), false);
+  // A status hidden from the reader: no task for them.
+  const secret = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Hidden status" })).id as string;
+  await act({
+    action: "database.update",
+    pageId: secret,
+    version: (await database(secret)).version,
+    fields: [
+      { id: "title", name: "Title", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Open", "Done"], access: { read: "owners" } },
+      { id: "who", name: "Owner", type: "person" },
+    ],
+    views: (await database(secret)).views,
+  });
+  await act({ action: "row.create", pageId: secret, cells: { title: "Audit", status: "Open", who: other.id } });
+  assert.equal((await crossRecords(other, wid, { tasks: true, databases: [secret] })).records.length, 0);
+  assert.equal((await crossRecords(other, wid, { databases: [secret] })).records.length, 1);
+});
+
+test("date ranges: today and the next 7 days keep what is overdue, undated is the rest", async () => {
+  const pageId = await project("Ranges", "RNG");
+  const rows: [string, string?, string?][] = [
+    ["Late", "2026-03-09"],
+    ["Late but done", "2026-03-09", "Done"],
+    ["Now", "2026-03-10"],
+    ["Soon", "2026-03-17"],
+    ["Later", "2026-03-18"],
+    ["Someday"],
+  ];
+  for (const [title, due, status = "Open"] of rows)
+    await act({ action: "row.create", pageId, cells: { title, status, who: me.id, ...(due ? { due } : {}) } });
+  const titles = async (due: string, today = "2026-03-10") =>
+    (await crossRecords(me, wid, { databases: [pageId], open: false, due, today, tasks: true })).records.map((r) => r.title).sort();
+  assert.deepEqual(await titles("overdue"), ["Late"]);
+  assert.deepEqual(await titles("today"), ["Late", "Now"]);
+  assert.deepEqual(await titles("week"), ["Late", "Now", "Soon"]);
+  assert.deepEqual(await titles("dated"), ["Late", "Late but done", "Later", "Now", "Soon"]);
+  assert.deepEqual(await titles("undated"), ["Someday"]);
+  assert.equal((await titles("any")).length, 6);
+  // The reader's day decides: a day later, "Now" is overdue as well.
+  assert.deepEqual(await titles("overdue", "2026-03-11"), ["Late", "Now"]);
+  await assert.rejects(async () => await crossRecords(me, wid, { today: "morgen" }));
+});
+
+test("a saved view keeps neither the day nor tasks-only", async () => {
+  const { id: viewId } = await act({
+    action: "recordView.save",
+    workspaceId: wid,
+    name: "Today",
+    filter: { due: "today", today: "2026-03-10", tasks: true },
+  });
+  const view = (await recordViews(me, wid)).find((v) => v.id === viewId)!;
+  assert.equal(view.filter.due, "today");
+  assert.equal(view.filter.today, undefined);
+  assert.equal(view.filter.tasks, false);
+});
