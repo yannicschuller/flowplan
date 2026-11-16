@@ -122,6 +122,7 @@ import { Collapse, CrossFade, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import * as PageMenu from "./page-menu";
 import {
   Images,
   BookmarkSimple,
@@ -181,6 +182,9 @@ import {
   TextAa,
   ArrowsInLineVertical,
   ArrowsOutLineVertical,
+  ArrowsOutLineHorizontal,
+  Image as ImageIcon,
+  UserCheck,
   Printer,
   ClockCounterClockwise,
   Graph,
@@ -226,6 +230,7 @@ import {
   reportError,
   setErrorToaster,
   SIGNED_OUT_EVENT,
+  SHEET_MEDIA,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
@@ -457,6 +462,8 @@ export default function WorkspaceApp({
   // Phones (≤ 767 px, app/globals.css): the page's top bar keeps the title;
   // follow, favourite, share and reading mode move into its ⋯ menu.
   const phone = useMedia("(max-width: 767px)");
+  // Up to 600 px the page's ⋯ menu is a bottom sheet (components/page-menu.tsx).
+  const sheetMenus = useMedia(SHEET_MEDIA);
   const locale = useLocale();
   // Related pages, backlinks and unlinked mentions below pages (#191).
   const discoveryPanels = useDiscoveryPanelsShown();
@@ -4276,24 +4283,16 @@ export default function WorkspaceApp({
                   {t("Teilen", "Share")}
                 </button>
               )}
-              <Dropdown.Root>
-                <Dropdown.Trigger
-                  className="icon-button"
-                  aria-label={t("Seitenaktionen", "Page actions")}
-                >
-                  <DotsThree size={24} />
-                </Dropdown.Trigger>
-                <Dropdown.Portal>
-                  <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
+              <PageMenu.Root label={t("Seitenaktionen", "Page actions")} sheet={sheetMenus} icon={<DotsThree size={24} />}>
                     {phone && (
                       <>
                         {/* Phones: what the top bar leaves out. Menu items
                             (a menu takes no Tab stops), their state as
                             aria-checked; follow and favourite keep the menu
                             open so the change shows. */}
-                        <Dropdown.Group className="page-menu-quick">
+                        <PageMenu.Group className="page-menu-quick">
                           {data.following !== undefined && (
-                            <Dropdown.CheckboxItem
+                            <PageMenu.CheckboxItem
                               className="page-menu-quick-item follow"
                               checked={data.following}
                               onSelect={(e) => {
@@ -4303,9 +4302,9 @@ export default function WorkspaceApp({
                             >
                               <Bell size={22} weight={data.following ? "fill" : "regular"} />
                               <span>{t("Folgen", "Follow")}</span>
-                            </Dropdown.CheckboxItem>
+                            </PageMenu.CheckboxItem>
                           )}
-                          <Dropdown.CheckboxItem
+                          <PageMenu.CheckboxItem
                             className="page-menu-quick-item favourite"
                             checked={boot.favorites.includes(data.page.id)}
                             onSelect={(e) => {
@@ -4315,52 +4314,52 @@ export default function WorkspaceApp({
                           >
                             <Star size={22} weight={boot.favorites.includes(data.page.id) ? "fill" : "regular"} />
                             <span>{t("Favorit", "Favourite")}</span>
-                          </Dropdown.CheckboxItem>
+                          </PageMenu.CheckboxItem>
                           {data.encrypted ? (
-                            <Dropdown.Item className="page-menu-quick-item" onSelect={() => setSpaceKeys(data.encrypted!.spaceId)}>
+                            <PageMenu.Item className="page-menu-quick-item" onSelect={() => setSpaceKeys(data.encrypted!.spaceId)}>
                               <LockKey size={22} />
                               <span>{t("Mitglieder", "Members")}</span>
-                            </Dropdown.Item>
+                            </PageMenu.Item>
                           ) : (
-                            <Dropdown.Item className="page-menu-quick-item" onSelect={() => setShare(true)}>
+                            <PageMenu.Item className="page-menu-quick-item" onSelect={() => setShare(true)}>
                               <ShareNetwork size={22} />
                               <span>{t("Teilen", "Share")}</span>
-                            </Dropdown.Item>
+                            </PageMenu.Item>
                           )}
-                        </Dropdown.Group>
+                        </PageMenu.Group>
                         {!data.encrypted && !openComments && !comments && (
-                          <Dropdown.Item className="dropdown-item" onSelect={() => setComments(true)}>
+                          <PageMenu.Item className="dropdown-item" onSelect={() => setComments(true)}>
                             <ChatCircle />
                             {t("Kommentare", "Comments")}
-                          </Dropdown.Item>
+                          </PageMenu.Item>
                         )}
                         {canRead && (
-                          <Dropdown.Item className="dropdown-item" onSelect={toggleReading}>
+                          <PageMenu.Item className="dropdown-item" onSelect={toggleReading}>
                             {reading ? <PencilSimple /> : <BookOpen />}
                             {reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
-                          </Dropdown.Item>
+                          </PageMenu.Item>
                         )}
-                        <Dropdown.Separator className="dropdown-separator" />
+                        <PageMenu.Separator className="dropdown-separator" />
                       </>
                     )}
                     {/* The desktop app: from a browser on a computer, the page
                         opens there (flowplan://open); inside the app, in a
                         window of its own. */}
                     {offerDesktopApp(currentOS(), inDesktopApp() || !!desktopApp(), nativeApp()) ? (
-                      <Dropdown.Item className="dropdown-item" onSelect={() => void (location.href = desktopPageLink(location.origin, data.page.id))}>
+                      <PageMenu.Item className="dropdown-item" onSelect={() => void (location.href = desktopPageLink(location.origin, data.page.id))}>
                         <Desktop />
                         {t("In Desktop-App öffnen", "Open in desktop app")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     ) : openInWindow() ? (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => openInWindow()?.(`${location.origin}${location.pathname}${pageLocationHash({ pageId: data.page.id })}`)}
                       >
                         <AppWindow />
                         {t("In neuem Fenster öffnen", "Open in new window")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     ) : null}
-                    <Dropdown.Item
+                    <PageMenu.Item
                       className="dropdown-item"
                       onSelect={() => {
                         setIconPicker(true);
@@ -4368,21 +4367,21 @@ export default function WorkspaceApp({
                     >
                       <Flag />
                       {t("Icon ändern", "Change icon")}
-                    </Dropdown.Item>
+                    </PageMenu.Item>
                     {!data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => setCoverPicker(true)}
                       >
-                        <SquaresFour />
+                        <ImageIcon />
                         {t("Cover ändern", "Change cover")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {/* With "Seiten in voller Breite anzeigen" on (#257) every
                         page is wide for this person: the page's own switch
                         shows as on and locked, and says why. It still
                         applies for everyone else. */}
-                    <Dropdown.Item
+                    <PageMenu.Item
                       className="dropdown-item"
                       disabled={allPagesWide}
                       title={
@@ -4401,12 +4400,12 @@ export default function WorkspaceApp({
                         })
                       }
                     >
-                      <ArrowSquareOut />
+                      <ArrowsOutLineHorizontal />
                       {t("Volle Breite", "Full width")}{" "}{showsFullWidth(data.page.full_width, allPagesWide) ? "✓" : ""}
                       {allPagesWide && <small className="dropdown-hint">{t("Deine Einstellung", "Your setting")}</small>}
-                    </Dropdown.Item>
+                    </PageMenu.Item>
                     {data.page.kind === "document" && !data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() =>
                           act({
@@ -4418,9 +4417,9 @@ export default function WorkspaceApp({
                       >
                         <ListNumbers />
                         {t("Beschriftungen nummerieren", "Number captions")}{" "}{data.page.caption_numbers ? "✓" : ""}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
-                    <Dropdown.Item
+                    <PageMenu.Item
                       className="dropdown-item"
                       onSelect={() =>
                         act({
@@ -4434,10 +4433,10 @@ export default function WorkspaceApp({
                     >
                       <FileText />
                       {t("Schrift wechseln", "Change font")}
-                    </Dropdown.Item>
-                    <Dropdown.Separator className="dropdown-separator" />
+                    </PageMenu.Item>
+                    <PageMenu.Separator className="dropdown-separator" />
                     {!data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={async () => {
                           const r = await act({
@@ -4449,44 +4448,44 @@ export default function WorkspaceApp({
                       >
                         <Copy />
                         {t("Duplizieren", "Duplicate")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
-                    <Dropdown.Item
+                    <PageMenu.Item
                       className="dropdown-item"
                       onSelect={() => setMove(true)}
                     >
                       <ArrowRight />
                       {t("Verschieben", "Move")}
-                    </Dropdown.Item>
+                    </PageMenu.Item>
                     {data.page.kind === "document" && !data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => setToRecord(true)}
                       >
                         <Table />
                         {t("In Datenbank verschieben …", "Move into database …")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {!data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => setTemplateName(true)}
                       >
                         <SquaresFour />
                         {t("Als Vorlage speichern", "Save as template")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {!data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => setPageExport(true)}
                       >
                         <DownloadSimple />
                         {t("Exportieren", "Export")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {data.page.kind === "document" && !data.locked && summaryRoute.availability !== "hidden" && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         disabled={summaryRoute.availability === "blocked"}
                         title={summaryRoute.availability === "blocked" ? t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page") : undefined}
@@ -4500,43 +4499,43 @@ export default function WorkspaceApp({
                         {summaryRoute.availability === "blocked" && (
                           <small className="dropdown-hint">{t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page")}</small>
                         )}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {!data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => printOpenPage()}
                       >
                         <FileText />
                         {t("Drucken / PDF", "Print / PDF")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {data.page.kind === "document" && !data.locked && !data.encrypted && (
-                      <Dropdown.Item className="dropdown-item" onSelect={startPresentation}>
+                      <PageMenu.Item className="dropdown-item" onSelect={startPresentation}>
                         <PresentIcon />
                         {t("Präsentieren", "Present")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {wide && (
-                      <Dropdown.Item className="dropdown-item" onSelect={openSplitSearch}>
+                      <PageMenu.Item className="dropdown-item" onSelect={openSplitSearch}>
                         <SquareSplitHorizontal />
                         {splitShown ? t("Andere Seite daneben öffnen …", "Open another page beside it …") : t("Seite daneben öffnen …", "Open a page beside it …")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {data.page.kind === "document" && !sourceOpen && (
                       <>
-                        <Dropdown.Item className="dropdown-item" onSelect={() => foldAllSections(true)}>
+                        <PageMenu.Item className="dropdown-item" onSelect={() => foldAllSections(true)}>
                           <ArrowsInLineVertical />
                           {t("Alle Abschnitte einklappen", "Collapse all sections")}
-                        </Dropdown.Item>
-                        <Dropdown.Item className="dropdown-item" onSelect={() => foldAllSections(false)}>
+                        </PageMenu.Item>
+                        <PageMenu.Item className="dropdown-item" onSelect={() => foldAllSections(false)}>
                           <ArrowsOutLineVertical />
                           {t("Alle Abschnitte ausklappen", "Expand all sections")}
-                        </Dropdown.Item>
+                        </PageMenu.Item>
                       </>
                     )}
                     {data.page.kind === "document" && !data.locked && !data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => setSourcePage(sourceOpen ? null : data.page.id)}
                       >
@@ -4546,29 +4545,29 @@ export default function WorkspaceApp({
                           : editable
                             ? t("Als Markdown bearbeiten", "Edit as Markdown")
                             : t("Als Markdown anzeigen", "View as Markdown")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
-                    <Dropdown.Item className="dropdown-item" onSelect={() => openPageReview(data.page.id)}>
-                      <UsersThree />
+                    <PageMenu.Item className="dropdown-item" onSelect={() => openPageReview(data.page.id)}>
+                      <UserCheck />
                       {t("Besitzer und Prüfung …", "Owner and review …")}
-                    </Dropdown.Item>
+                    </PageMenu.Item>
                     {!data.encrypted && (
-                      <Dropdown.Item className="dropdown-item" onSelect={() => openPageAliases(data.page.id)}>
+                      <PageMenu.Item className="dropdown-item" onSelect={() => openPageAliases(data.page.id)}>
                         <AliasIcon />
                         {t("Aliasse …", "Aliases …")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {!data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         onSelect={() => setHistory(true)}
                       >
                         <Clock />
                         {t("Versionsverlauf", "Version history")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
                     {data.page.kind === "document" && !data.encrypted && (
-                      <Dropdown.Item
+                      <PageMenu.Item
                         className="dropdown-item"
                         // The open editor shows or hides who wrote what.
                         onSelect={() =>
@@ -4577,9 +4576,9 @@ export default function WorkspaceApp({
                       >
                         <UsersThree />
                         {t("Autoren anzeigen", "Show authors")}
-                      </Dropdown.Item>
+                      </PageMenu.Item>
                     )}
-                    <Dropdown.Item
+                    <PageMenu.Item
                       className="dropdown-item"
                       onSelect={() =>
                         act({
@@ -4591,9 +4590,9 @@ export default function WorkspaceApp({
                     >
                       <Lock />
                       {data.page.locked ? t("Seite entsperren", "Unlock page") : t("Seite sperren", "Lock page")}
-                    </Dropdown.Item>
-                    <Dropdown.Separator className="dropdown-separator" />
-                    <Dropdown.Item
+                    </PageMenu.Item>
+                    <PageMenu.Separator className="dropdown-separator" />
+                    <PageMenu.Item
                       className="dropdown-item danger"
                       onSelect={async () => {
                         // Gone at once; a refusal opens the page again.
@@ -4606,10 +4605,8 @@ export default function WorkspaceApp({
                     >
                       <Trash />
                       {t("In den Papierkorb", "Move to trash")}
-                    </Dropdown.Item>
-                  </Dropdown.Content>
-                </Dropdown.Portal>
-              </Dropdown.Root>
+                    </PageMenu.Item>
+              </PageMenu.Root>
               </>)}
             </div>
           ) : (
@@ -6047,6 +6044,7 @@ export default function WorkspaceApp({
         open={history}
         onClose={() => setHistory(false)}
         title={t("Versionsverlauf", "Version history")}
+        className="version-history"
       >
         {data && (
           <>
@@ -6057,11 +6055,11 @@ export default function WorkspaceApp({
               <Plus />
               {t("Aktuelle Version sichern", "Save current version")}
             </button>
-            <div className="history-list">
+            <div className="version-list">
               {data.snapshots.map((s) => (
-                <div className="utility-row" key={s.id}>
+                <div className="utility-row version-row" key={s.id}>
                   <Clock />
-                  <span>
+                  <span className="version-text">
                     <strong>{s.title}</strong>
                     <small>
                       {new Date(s.created_at + "Z").toLocaleString(LOCALE_TAG)}
@@ -6071,6 +6069,7 @@ export default function WorkspaceApp({
                         : t("Automatisch", "Automatic")}
                     </small>
                   </span>
+                  <span className="version-actions">
                   <button
                     className="button compact"
                     onClick={() => {
@@ -6104,6 +6103,7 @@ export default function WorkspaceApp({
                   >
                     {t("Wiederherstellen", "Restore")}
                   </button>
+                  </span>
                 </div>
               ))}
               {!data.snapshots.length && (

@@ -246,7 +246,7 @@ const editorScenes: Scene[] = [
       await editorWith(
         page,
         ctx,
-        '<div data-callout="info"><p>Hinweis: Die Abgabe ist am Freitag.</p></div><div data-callout="warning"><p>Achtung: Nicht vergessen.</p></div><p>Ende</p>',
+        '<aside data-callout="note"><p>Hinweis: Die Abgabe ist am Freitag.</p></aside><aside data-callout="tip"><p>Tipp: Vorlagen sparen Zeit.</p></aside><aside data-callout="warning"><p>Achtung: Nicht vergessen.</p></aside><p>Ende</p>',
       );
     },
   },
@@ -447,6 +447,7 @@ const editorScenes: Scene[] = [
     group: "Documents & editor",
     title: "Page actions menu (⋯)",
     path: docPath,
+    covers: ["components/page-menu.tsx"],
     steps: async (page) => {
       await button(page, "Seitenaktionen").click();
       await menu(page).waitFor();
@@ -1343,6 +1344,7 @@ const mobileScenes: Scene[] = [
     group: "Mobile-only",
     title: "Page menu sheet",
     path: docPath,
+    covers: ["components/page-menu.tsx"],
     devices: ["phone"],
     steps: async (page) => {
       await button(page, "Seitenaktionen").click();
