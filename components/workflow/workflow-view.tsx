@@ -159,42 +159,45 @@ export default function WorkflowView(props: WorkflowViewProps) {
           {state.runner && state.status !== "draft" && <span className="muted">{t(`läuft als ${state.runner.name}`, `runs as ${state.runner.name}`)}</span>}
           {state.active && <span className="muted">{t(`Version ${state.active.number}`, `Version ${state.active.number}`)}</span>}
         </div>
-        {(manage || state.active) && (
-          <button
-            type="button"
-            className="icon-button wf-export"
-            aria-label={t("Als JSON exportieren", "Export as JSON")}
-            title={t("Als JSON exportieren", "Export as JSON")}
-            onClick={() => void downloadExport(pageId, onError)}
-          >
-            <DownloadSimple />
-          </button>
-        )}
-        {manage && props.workspaceId && <WorkflowPublish pageId={pageId} workspaceId={props.workspaceId} />}
-        {manage && (
-          <div className="wf-switch">
-            {phone ? (
-              <label className="wf-onoff">
-                <span>{t("Aktiv", "Active")}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  className="switch"
-                  aria-checked={state.status === "active"}
-                  aria-label={t("Workflow aktiv", "Workflow active")}
-                  disabled={busy || (!state.draft && state.status !== "active")}
-                  onClick={() => (state.status === "active" ? setPausing(true) : setActivating(true))}
-                >
-                  <span aria-hidden />
+        {/* Export, publish and the on/off switch: one group at the right end. */}
+        <div className="wf-head-actions">
+          {(manage || state.active) && (
+            <button
+              type="button"
+              className="icon-button wf-export"
+              aria-label={t("Als JSON exportieren", "Export as JSON")}
+              title={t("Als JSON exportieren", "Export as JSON")}
+              onClick={() => void downloadExport(pageId, onError)}
+            >
+              <DownloadSimple />
+            </button>
+          )}
+          {manage && props.workspaceId && <WorkflowPublish pageId={pageId} workspaceId={props.workspaceId} />}
+          {manage && (
+            <div className="wf-switch">
+              {phone ? (
+                <label className="wf-onoff">
+                  <span>{t("Aktiv", "Active")}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    className="switch"
+                    aria-checked={state.status === "active"}
+                    aria-label={t("Workflow aktiv", "Workflow active")}
+                    disabled={busy || (!state.draft && state.status !== "active")}
+                    onClick={() => (state.status === "active" ? setPausing(true) : setActivating(true))}
+                  >
+                    <span aria-hidden />
+                  </button>
+                </label>
+              ) : state.status === "active" ? (
+                <button type="button" className="button compact" disabled={busy} onClick={() => setPausing(true)}>
+                  <Pause /> {t("Pausieren", "Pause")}
                 </button>
-              </label>
-            ) : state.status === "active" ? (
-              <button type="button" className="button compact" disabled={busy} onClick={() => setPausing(true)}>
-                <Pause /> {t("Pausieren", "Pause")}
-              </button>
-            ) : null}
-          </div>
-        )}
+              ) : null}
+            </div>
+          )}
+        </div>
       </header>
       <div className="wf-tabs" role="tablist" aria-label={t("Ansicht", "View")}>
         {tabs.map((x) => (

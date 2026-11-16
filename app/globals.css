@@ -16120,6 +16120,22 @@ li[data-journal-since] > label::after {
   color: var(--text);
   box-shadow: 0 1px 2px #1d1a1418;
 }
+/* Phones: view switch on the left, "Rückblick" and the gear on the right –
+   one row. The switch keeps its words and drops its symbols to make room. */
+@media (max-width: 600px) {
+  .journal-toolbar {
+    gap: 6px;
+  }
+  .journal-layout button {
+    padding: 4px 9px;
+  }
+  .journal-layout button svg {
+    display: none;
+  }
+  .journal-toolbar > .button {
+    padding-inline: 10px;
+  }
+}
 .journal-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -17052,12 +17068,17 @@ label.task-due {
   .my-tasks-filter {
     width: 100%;
   }
+  /* "Aus Dokumenten & Datenbanken" is wider than a phone's share of the
+     row: it wraps onto two lines inside its segment instead of pushing the
+     filter past the screen's edge. */
   .my-tasks-filter label {
     flex: 1 1 auto;
+    min-width: 0;
     padding: 5px 8px;
     font-size: 12px;
-    white-space: nowrap;
+    line-height: 1.25;
     text-align: center;
+    text-wrap: balance;
   }
   .my-tasks-page-link {
     margin-left: 0;
@@ -37862,6 +37883,24 @@ sup.meeting-cite:hover,
 .record-page-bar .modal-heading-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+/* Phones: one row that scrolls sideways when the actions don't fit – no
+   lone button on a second line, every action still reachable. */
+@media (max-width: 600px) {
+  .record-page-bar .modal-heading-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding: 2px;
+  }
+  .record-page-bar .modal-heading-actions::-webkit-scrollbar {
+    display: none;
+  }
+  .record-page-bar .modal-heading-actions > * {
+    flex: none;
+  }
 }
 a.icon-button.record-page-toggle {
   display: inline-flex;

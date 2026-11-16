@@ -46,6 +46,16 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+/* Export, publish and the on/off switch as one group at the right end. */
+.wf-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.wf-head-actions .wf-switch:empty {
+  display: none;
+}
 .wf-state {
   display: flex;
   align-items: center;
@@ -1715,9 +1725,6 @@ p.wf-warning.small {
 }
 .wf-ai-nodes li.has-gap .wf-gap-mark {
   color: var(--wf-warn);
-}
-.wf-export {
-  margin-left: auto;
 }
 @media (max-width: 767px) {
   .wf-start {
