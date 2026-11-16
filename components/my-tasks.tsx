@@ -17,7 +17,7 @@ import { optimistic } from "@/lib/optimistic";
 import { api, PageIcon } from "./ui";
 import { MyRecords } from "./my-records";
 import { ListSkeleton } from "./skeleton";
-import { dueLabel, dueState } from "@/lib/task-due-plugin";
+import { dueLabel, dueState } from "@/lib/task-due";
 import { dueGroupName, groupByDue } from "@/lib/due-groups";
 import { statusName, type TaskStatus } from "@/lib/task-status";
 import { TaskStatusIcon } from "./task-status-menu";

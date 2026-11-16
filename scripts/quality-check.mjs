@@ -41,28 +41,40 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // shield and optional ID prefixes (#302–#313) – database 1760, workflow
 // 1900, the other signed-in pages 1760. The bundle needs trimming rather
 // than further raises.
+// 2026-11-16, after trimming the workspace bundle: a database and the start
+// page 962.1 KB, a workflow 1143.5 KB, a document 1936.9 KB, the settings
+// 978.2 KB (a section 1046.4 KB), the administration 983.3 KB (monitoring
+// 1000.3, push 992.0). Settings, the administration and each of their
+// sections, the presentation (KaTeX, the read-only renderer), the Ask panel,
+// the AI summaries, the space manager, the share dialog, "Meine Aufgaben",
+// the database views other than table/board/gallery/list and the "…" tools
+// of a database now load when opened; the workspace no longer pulls in
+// TipTap, ProseMirror and Yjs for small helpers (link icon store, link
+// rules, block lookup, due labels). The budgets are about 3 % above.
 const PAGES = [
   { path: "/login", jsKb: 290 },
   { path: "/register", jsKb: 290 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2300 },
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1760 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1990 },
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 990 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
-  // the inactivity message (#282) in the workspace bundle; 1860 since 0.9.7.
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1900, ready: ".react-flow__node, .wf-list-node" },
+  // the inactivity message (#282) in the workspace bundle; 1860 since 0.9.7;
+  // 1175 since the trimming of 2026-11-16 (the canvas is now about 180 KB
+  // more than a database page, the shared part shrank).
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1175, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
-  { path: "/#home", name: "home", signedIn: true, jsKb: 1760, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 1760, ready: ".settings-tile" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1760, ready: ".settings-detail .setting-group" },
-  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1760, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  { path: "/#home", name: "home", signedIn: true, jsKb: 990, ready: ".home-grid" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 1005, ready: ".settings-tile" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1075, ready: ".settings-detail .setting-group" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1010, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1760, ready: ".mon-health" },
+  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1030, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1760, ready: "#relay" },
+  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1020, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 290, lcpMs: 2500 };
 const LOCALE = "de-DE";

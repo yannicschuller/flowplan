@@ -5,7 +5,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { api, Avatar, PageIcon } from "./ui";
 import { ListSkeleton } from "./skeleton";
-import { dueLabel, dueState } from "@/lib/task-due-plugin";
+import { dueLabel, dueState } from "@/lib/task-due";
 import { dueGroupName, groupByDue } from "@/lib/due-groups";
 import type { CrossFilter } from "@/lib/cross-records";
 

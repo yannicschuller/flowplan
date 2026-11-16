@@ -8,12 +8,10 @@
 // be unique within their document. Shared by server and browser.
 import { Extension } from "@tiptap/core";
 import { Fragment, Slice, type Node } from "@tiptap/pm/model";
+import { linkableBlocks, validBlockId, type LinkableBlock } from "./block-find";
 
-// Generated ids are 8 lowercase letters and digits; imported ones (Obsidian
-// "^id", AFFiNE block ids …) keep this simple alphabet too.
-export const BLOCK_ID = /^[A-Za-z0-9_-]{1,64}$/;
-export const validBlockId = (value: unknown): string | null =>
-  typeof value === "string" && BLOCK_ID.test(value) ? value : null;
+// Finding blocks in a document needs no editor (lib/block-find.ts).
+export { BLOCK_ID, validBlockId, linkableBlocks, findBlock, type LinkableBlock } from "./block-find";
 
 // The blocks that get an id (the first paragraph of a list item is the
 // item's text: the item has the id).
@@ -53,7 +51,6 @@ export const BLOCK_ID_TYPES = [
   // The meeting block (#199): its reminder opens the page there.
   "meeting",
 ];
-const ITEMS = ["listItem", "taskItem"];
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 export function newBlockId() {
@@ -102,29 +99,6 @@ export const BlockIdAttribute = Extension.create({
     ];
   },
 });
-
-export type LinkableBlock = { node: Node; pos: number; parent: Node | null };
-const hasIdAttribute = (node: Node) => "blockId" in node.attrs;
-// The blocks a link can point to, in document order: inside callouts,
-// quotes, toggles, columns and lists, not inside tables or atoms.
-export function linkableBlocks(doc: Node): LinkableBlock[] {
-  const found: LinkableBlock[] = [];
-  const visit = (parent: Node, start: number) =>
-    parent.forEach((node, offset, index) => {
-      const pos = start + offset;
-      if (!node.isBlock) return;
-      const itemText = index === 0 && node.type.name === "paragraph" && ITEMS.includes(parent.type.name);
-      if (hasIdAttribute(node) && !itemText) found.push({ node, pos, parent: parent === doc ? null : parent });
-      if (!node.isAtom && node.type.name !== "table") visit(node, pos + 1);
-    });
-  visit(doc, 0);
-  return found;
-}
-
-export function findBlock(doc: Node, blockId: string): LinkableBlock | null {
-  if (!validBlockId(blockId)) return null;
-  return linkableBlocks(doc).find((b) => b.node.attrs.blockId === blockId) || null;
-}
 
 // The linkable block at a position (the innermost one containing it).
 export function linkableBlockAt(doc: Node, pos: number): LinkableBlock | null {

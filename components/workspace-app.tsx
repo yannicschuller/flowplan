@@ -39,14 +39,12 @@ import {
 } from "@/lib/page-location";
 import { SpaceAppearance, SpaceIcon } from "./space-appearance";
 import { CoverPicker } from "./cover-picker";
-import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import type { OnboardingStep } from "./onboarding";
 import { FindInPage } from "./find-in-page";
 import { InstanceBanners } from "./instance-banners";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
-import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, SplitUnsupported, clampSplit } from "./split-pane";
 import { TabBar, TabEdgeDrop, pageOfPlace, useFrameTabs, validPlaceIn, type PlaceLook } from "./frame-tabs";
 import { placeOf, tabOf } from "@/lib/frame-tabs";
@@ -70,12 +68,12 @@ import { Tag as TagIcon } from "@phosphor-icons/react";
 import { SidebarMore, SidebarToolRow, type SidebarAccountItem, type SidebarTool } from "./sidebar-tools";
 import { PageTitleField } from "./page-title-field";
 import { openPageAliases, AliasIcon } from "./page-aliases";
-import { ShareDialog } from "./share-dialog";
-import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
+import type { AskRequest } from "./ai-ask";
+import { useMedia } from "./use-media";
 import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
 import { proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
-import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
+import type { AiSummaryTarget } from "./ai-summary";
 import { aiUsable } from "@/lib/ai/client";
 import {
   imageFileId,
@@ -105,7 +103,7 @@ import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toa
 import { commandOverlay } from "@/lib/optimistic-commands";
 import { dropSpace, moveSpaceBy } from "@/lib/space-moves";
 import { useSidebarFolds } from "./sidebar-folds-state";
-import { setLinkTargetPages } from "./page-link-icons";
+import { setLinkTargetPages } from "./page-link-icons-store";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { structuralPath } from "@/lib/page-path";
 import { PageBreadcrumb } from "./page-breadcrumb";
@@ -115,7 +113,7 @@ import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/li
 import { workspaceCookie } from "@/lib/last-workspace";
 import { layoutCookie, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
-import { ListSkeleton, viewShapeOf } from "./skeleton";
+import { ListSkeleton, SettingsSkeleton, viewShapeOf } from "./skeleton";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, CrossFade, useLeaving } from "./motion";
@@ -228,8 +226,6 @@ import {
   SIGNED_OUT_EVENT,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
-import Settings from "./settings";
-import Admin from "./admin";
 import { MovePageDialog } from "./move-page-dialog";
 import { MetaResolveDialog, moveIntro, ScopeChoice } from "./meta-scope";
 import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
@@ -245,7 +241,6 @@ import {
   todayKey,
   type SidebarEntry,
 } from "@/lib/journal-nav";
-import { MyTasks } from "./my-tasks";
 import HomeScreen from "./home/home";
 import { relativeTime } from "./home/format";
 import TrashView from "./trash-view";
@@ -254,7 +249,6 @@ import { PageGraph } from "./page-graph";
 import { QuickCapture } from "./quick-capture";
 import { printPage } from "./print-page";
 import { PrintDialogHost, requestPrint } from "./print-dialog";
-import { exportDocumentHtml } from "@/lib/document-html";
 import { PageToRecord } from "./page-to-record";
 import {
   databaseChoicePayload,
@@ -291,7 +285,7 @@ import { CalendarX, Compass, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { WorkspaceFavicon } from "./workspace-favicon";
-import { setAutoLinkRules } from "@/lib/auto-link-plugin";
+import { setAutoLinkRules } from "@/lib/auto-link-active";
 import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
 import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
 import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
@@ -343,6 +337,25 @@ const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard"
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
 });
+// Settings and the administration (each section loads with its page,
+// components/settings/registry.tsx): loaded when opened.
+const SettingsLoading = () => (
+  <div className="settings-loading">
+    <SettingsSkeleton />
+  </div>
+);
+const Settings = dynamic(() => loadView(() => import("./settings")), { ssr: false, loading: SettingsLoading });
+const Admin = dynamic(() => loadView(() => import("./admin")), { ssr: false, loading: SettingsLoading });
+// Opened by an action: the presentation (KaTeX and the read-only document
+// renderer), the Ask panel, the AI summary, the space manager.
+const Presentation = dynamic(() => loadView(() => import("./presentation").then((m) => ({ default: m.Presentation }))), { ssr: false });
+const AskPanel = dynamic(() => loadView(() => import("./ai-ask").then((m) => ({ default: m.AskPanel }))), { ssr: false });
+const AiSummaryPanel = dynamic(() => loadView(() => import("./ai-summary").then((m) => ({ default: m.AiSummaryPanel }))), { ssr: false });
+const SpaceManager = dynamic(() => loadView(() => import("./space-manager").then((m) => ({ default: m.SpaceManager }))), { ssr: false });
+// Mounted with its first opening and kept (closing animation).
+const ShareDialog = dynamic(() => loadView(() => import("./share-dialog").then((m) => ({ default: m.ShareDialog }))), { ssr: false });
+// "Meine Aufgaben" brings the task status commands (Yjs): loaded when opened.
+const MyTasks = dynamic(() => loadView(() => import("./my-tasks").then((m) => ({ default: m.MyTasks }))), { ssr: false, loading: () => <ListSkeleton rows={6} /> });
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
   workflow?: import("./workflow/model").WorkflowState;
@@ -518,6 +531,7 @@ export default function WorkspaceApp({
     // back to the dialog when the gallery is closed.
     [templatesFor, setTemplatesFor] = useState<{ spaceId: string; parent: string | null } | null>(null),
     [share, setShare] = useState(false),
+    [shareMounted, setShareMounted] = useState(false),
     [pageExport, setPageExport] = useState(false),
     // The page shown as Markdown ("Als Markdown bearbeiten").
     [sourcePage, setSourcePage] = useState<string | null>(null),
@@ -615,6 +629,16 @@ export default function WorkspaceApp({
   const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
   // "Beim Öffnen auf dem Handy" (lib/start-screen.ts): the settings show it.
   useEffect(() => setStartScreenLocal(boot.startScreen), [boot.startScreen]);
+  // The share dialog loads with its first opening and stays mounted.
+  useEffect(() => {
+    if (share) setShareMounted(true);
+  }, [share]);
+  // A document known from the page tree: the editor (with TipTap) starts
+  // loading together with the page's data instead of after it.
+  const openingKind = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.kind : undefined;
+  useEffect(() => {
+    if (openingKind === "document") void import("./editor").catch(() => {});
+  }, [openingKind]);
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
     const root = document.documentElement;
@@ -6014,6 +6038,7 @@ export default function WorkspaceApp({
         }
         resolve={offlineQueue.resolve}
       />
+      {(share || shareMounted) && (
       <ShareDialog
         open={share}
         onClose={() => setShare(false)}
@@ -6039,6 +6064,7 @@ export default function WorkspaceApp({
         onChanged={() => void refresh().catch(() => {})}
         onError={notifyError}
       />
+      )}
       <Modal
         open={history}
         onClose={() => setHistory(false)}
@@ -6798,8 +6824,9 @@ export default function WorkspaceApp({
         <PageExportDialog
           page={data.page}
           onClose={() => setPageExport(false)}
-          legacy={() => {
+          legacy={async () => {
             if (data.page.kind === "document") {
+              const { exportDocumentHtml } = await import("@/lib/document-html");
               const body = exportDocumentHtml(html.current, { captionNumbers: !!data.page.caption_numbers });
               return {
                 name: `${data.page.title}.html`,

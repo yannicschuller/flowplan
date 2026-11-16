@@ -7,7 +7,7 @@ import { useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { CaretDown, Palette } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { colorLabel } from "./settings/user/tags";
+import { colorLabel } from "./color-label";
 import { safeCollisionPadding } from "./safe-area";
 import { OPTION_COLORS, autoColors, choiceChipClass, type OptionColor } from "@/lib/option-colors";
 

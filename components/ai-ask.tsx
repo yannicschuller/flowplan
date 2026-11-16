@@ -23,6 +23,7 @@ import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
 import { AiMarkdown } from "./ai-markdown";
 import { SidebarResize } from "./sidebar-resize";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
+import { useMedia } from "./use-media";
 import { addBackCloser } from "@/lib/app-back";
 import { ASK_DEFAULT, ASK_MIN, ASK_OVERLAY_MEDIA, ASK_SHEET_BELOW, askMax, clampAsk } from "@/lib/ask-panel";
 import { askAi, aiPageReadable, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, splitSources, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
@@ -81,17 +82,7 @@ function useViewportWidth() {
   return width;
 }
 
-export function useMedia(query: string) {
-  const [matches, setMatches] = useState(false);
-  useEffect(() => {
-    const media = matchMedia(query);
-    const update = () => setMatches(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, [query]);
-  return matches;
-}
+export { useMedia };
 
 export function AskPanel({
   open,

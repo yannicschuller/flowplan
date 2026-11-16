@@ -4,7 +4,7 @@ import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
-import { linkTargetInfo } from "./page-link-icons";
+import { linkTargetInfo } from "./page-link-icons-store";
 import { parsePageLocation, pageLocationHash, inAppPageHash } from "@/lib/page-location";
 import { openModeOf, requestOpen, type OpenMode } from "@/lib/open-place";
 import type { ContactCardData } from "@/lib/contacts-io";

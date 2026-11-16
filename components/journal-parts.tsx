@@ -4,7 +4,6 @@
 // appointments) and the lock screen.
 import { MeetingNoteButton } from "./meeting-note-button";
 import { JournalDaysPanel } from "./journal-days-settings";
-import { JournalAiSummary } from "./journal-ai-summary";
 import { useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { useT } from "./i18n";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
@@ -28,6 +27,10 @@ import { api, Modal, showNotice } from "./ui";
 import { post, StepUpDialog, type Pending } from "./sign-in-methods";
 import type { StepUpMethods } from "@/lib/step-up";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, type SidebarMode } from "@/lib/journal-nav";
+import dynamic from "next/dynamic";
+
+// The AI summary of a review (Markdown rendering): loaded when asked for.
+const JournalAiSummary = dynamic(() => import("./journal-ai-summary").then((m) => m.JournalAiSummary), { ssr: false });
 
 export const moodFaces = ["😞", "🙁", "😐", "🙂", "😄"];
 const moodNames = [tr("Schlecht", "Bad"), tr("Mäßig", "Poor"), "Okay", tr("Gut", "Good"), tr("Großartig", "Great")];
