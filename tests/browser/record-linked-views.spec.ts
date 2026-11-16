@@ -66,8 +66,15 @@ test("record documents embed linked database views", async ({
         ).content,
     )
     .toContain(`data-linked-source="${tasks.id}"`);
-  // Reopening the record loads the embedded view again.
+  // Reopening the record loads the embedded view again. First the app boots
+  // and the record's editor appears – as on the first visit (the click on
+  // the content above waits for it the same way, without an expect
+  // timeout): against `next dev` that alone takes about 4–6 s, the CPU busy
+  // with React's development checks over the whole workspace (StrictMode
+  // renders twice, every JSX element records its owner stack). Only the
+  // embed's own loading is what the check below times.
   await page.reload();
+  await content.waitFor();
   await expect(
     entry.locator(".linked-database .data-table tbody tr"),
   ).toHaveCount(2);
