@@ -113,3 +113,28 @@ test("a template of one space used in another brings its tags along as chosen", 
   expect(data.properties.tags).toEqual([copy.id]);
   expect(template.id).toBeTruthy();
 });
+
+test("the template gallery opened in a space filters by that space, not the first one (#317)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Same flow on mobile.");
+  const { command, stamp, home, other } = await setup(page, "Galerie");
+  const source = await command({ action: "page.create", spaceId: home.id, title: `Wochenplan ${stamp}`, kind: "document" });
+  await command({ action: "template.save", pageId: source.id, name: `Wochenplan ${stamp}` });
+  const doc = await command({ action: "page.create", spaceId: other.id, title: `Notiz ${stamp}`, kind: "document" });
+  await page.goto(`/#page=${doc.id}`);
+  await expect(page.locator(".page-title")).toHaveValue(`Notiz ${stamp}`);
+  await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click();
+  const gallery = page.getByRole("dialog", { name: "Vorlagen" });
+  const filter = gallery.getByRole("combobox", { name: "Vorlagen welcher Bereiche" });
+  // The open page's space first, then every other space, then all.
+  await expect(filter.locator("option").first()).toHaveText(`„${other.name}“ und Arbeitsbereich`);
+  await expect(filter.locator("option", { hasText: `„${home.name}“ und Arbeitsbereich` })).toHaveCount(1);
+  await expect(filter.locator("option").last()).toHaveText("Alle Bereiche");
+  const row = gallery.locator(".saved-template-row", { hasText: `Wochenplan ${stamp}` });
+  await expect(row).toHaveCount(0);
+  await filter.selectOption(home.id);
+  await expect(row).toHaveCount(1);
+  // Used: the page goes to the current space, not the first one.
+  await row.getByRole("button", { name: "Verwenden" }).click();
+  const create = page.getByRole("dialog", { name: "Neue Seite" });
+  await expect(create.getByRole("combobox", { name: "Bereich", exact: true })).toHaveValue(other.id);
+});

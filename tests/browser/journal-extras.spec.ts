@@ -99,6 +99,22 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   const settings = page.getByRole("dialog", { name: "Journal einrichten" });
   await settings.getByRole("button", { name: /Arbeitslog/ }).click();
   await expect(settings.locator(".journal-template-preview")).toContainText("Blockiert");
+  await expect(settings.getByRole("button", { name: "Heutigen Tag als Vorlage speichern" })).toHaveAttribute("title", /Vorlage für jeden neuen Tag/);
+  // A saved document template, copied as the daily template (#316); the
+  // database template is not offered.
+  const templateName = `Morgenroutine ${info.project.name} ${Date.now()}`;
+  const source = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: templateName });
+  const saved = await command({ action: "template.save", workspaceId: boot.workspace.id, pageId: source.id, name: templateName });
+  db.prepare("UPDATE templates SET payload=? WHERE id=?").run(JSON.stringify({ html: "<h3>Morgens</h3><p>Drei Dinge für heute</p>" }), saved.id);
+  const table = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Tabelle ${templateName}`, kind: "database" });
+  await command({ action: "template.save", workspaceId: boot.workspace.id, pageId: table.id, name: `Tabelle ${templateName}` });
+  await settings.getByRole("button", { name: "Aus Vorlage wählen …" }).click();
+  const picker = settings.locator(".journal-saved-templates");
+  await expect(picker).toContainText("erneut wählst");
+  await expect(picker.getByRole("button", { name: `Tabelle ${templateName}` })).toHaveCount(0);
+  await picker.getByRole("button", { name: templateName, exact: true }).click();
+  await expect(settings.locator(".journal-template-preview")).toContainText("Drei Dinge für heute");
+  await expect(picker).toHaveCount(0);
   await settings.getByRole("tab", { name: "Tracker" }).click();
   await settings.getByRole("button", { name: "Sport" }).click();
   await settings.getByRole("button", { name: "Tracker speichern" }).click();

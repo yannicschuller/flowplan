@@ -2181,6 +2181,19 @@ export default function WorkspaceApp({
     if (openSpaceId) foldSpace(openSpaceId, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openSpaceId]);
+  // The space one is in (#317) – where the template gallery looks and a page
+  // made from a template goes: the open page's, else the one of the page
+  // opened last in this visit, else the first space open in the sidebar,
+  // else the first space.
+  const [lastSpaceId, setLastSpaceId] = useState<string | null>(null);
+  const shownSpaceId = openSpaceId ?? (screen === "page" ? data?.page.space_id : undefined);
+  if (shownSpaceId && shownSpaceId !== lastSpaceId) setLastSpaceId(shownSpaceId);
+  const liveSpaces = boot.spaces.filter((sp) => !sp.deleted_at);
+  const currentSpaceId =
+    [shownSpaceId, lastSpaceId].find((sid) => sid && liveSpaces.some((sp) => sp.id === sid)) ??
+    liveSpaces.find((sp) => !folds.has(`s:${sp.id}`))?.id ??
+    liveSpaces[0]?.id ??
+    "";
   function addPage(
     kind: PageKind = "document",
     parentId: string | null = null,
@@ -4857,6 +4870,8 @@ export default function WorkspaceApp({
                   ) : data.page.kind === "journal" && data.journal ? (
                     <JournalView
                       pageId={data.page.id}
+                      workspaceId={data.page.workspace_id}
+                      spaceId={data.page.space_id}
                       days={data.journal.days}
                       settings={data.journal.settings}
                       editable={editable}
@@ -6447,7 +6462,7 @@ export default function WorkspaceApp({
                     setTemplates(false);
                     // From the "New page" dialog the page keeps its place
                     // and the name typed there (#213).
-                    newPageFromTemplate({ starter: templateKey, name: template.name, kind: template.kind }, templatesFor?.spaceId ?? spaceId, templatesFor?.parent ?? null, !!templatesFor);
+                    newPageFromTemplate({ starter: templateKey, name: template.name, kind: template.kind }, templatesFor?.spaceId ?? currentSpaceId, templatesFor?.parent ?? null, !!templatesFor);
                     setTemplatesFor(null);
                   }}
                 >
@@ -6476,17 +6491,18 @@ export default function WorkspaceApp({
           trashDays={boot.trashDays}
           onError={notifyError}
           onCount={setSavedTemplateCount}
-          // The space a new page goes to: its templates and the workspace's
-          // first; others bring their space's tags along (#136).
-          spaceId={templatesFor?.spaceId ?? boot.spaces[0]?.id}
-          spaces={boot.spaces.filter((sp) => !sp.deleted_at)}
+          // The space a new page goes to – the "New page" dialog's, else the
+          // current one (#317): its templates and the workspace's first;
+          // others bring their space's tags along (#136).
+          spaceId={templatesFor?.spaceId ?? (currentSpaceId || undefined)}
+          spaces={liveSpaces}
           manageWorkspace={!!boot.taxonomy?.manage}
           marketplace={boot.workspace.guest ? null : boot.instance?.marketplace}
           // The "New page" dialog with the template chosen: the name first
           // (#213), then the page.
           onUse={async (t, meta) => {
             setTemplates(false);
-            newPageFromTemplate({ saved: t.id, name: t.name, kind: t.kind, meta }, templatesFor?.spaceId ?? boot.spaces[0].id, templatesFor?.parent ?? null, !!templatesFor);
+            newPageFromTemplate({ saved: t.id, name: t.name, kind: t.kind, meta }, templatesFor?.spaceId ?? currentSpaceId, templatesFor?.parent ?? null, !!templatesFor);
             setTemplatesFor(null);
           }}
         />

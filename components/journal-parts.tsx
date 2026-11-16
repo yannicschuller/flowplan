@@ -148,8 +148,12 @@ const kindNames: Record<Tracker["kind"], string> = {
   check: tr("Ja / Nein", "Yes / no"),
 };
 
+// A saved page template offered as the daily template (#316).
+type SavedTemplate = { id: string; name: string; kind: string; deleted_at: string | null; shared?: boolean; space_id?: string | null; icon?: string };
 export function JournalSettingsDialog({
   pageId,
+  workspaceId,
+  spaceId,
   settings,
   todayId,
   onClose,
@@ -157,6 +161,9 @@ export function JournalSettingsDialog({
   onError,
 }: {
   pageId: string;
+  // Where the journal lies: the saved templates that apply there (#316).
+  workspaceId?: string;
+  spaceId?: string;
   settings: JournalSettings;
   todayId?: string;
   onClose: () => void;
@@ -172,6 +179,24 @@ export function JournalSettingsDialog({
   const [pinAgain, setPinAgain] = useState("");
   const [oldPin, setOldPin] = useState("");
   const [busy, setBusy] = useState(false);
+  // "Aus Vorlage wählen …" (#316): the saved document templates of the
+  // journal's space and the whole workspace (and one's own private ones),
+  // loaded when the picker opens; null: closed.
+  const [saved, setSaved] = useState<SavedTemplate[] | null>(null);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const openSaved = async () => {
+    if (saved) return setSaved(null);
+    if (!workspaceId) return;
+    setSavedLoading(true);
+    try {
+      const list = await api<SavedTemplate[]>(`/api/templates?workspace=${workspaceId}`);
+      setSaved(list.filter((item) => !item.deleted_at && item.kind === "document" && (item.shared || !item.space_id || item.space_id === spaceId)));
+    } catch (e) {
+      onError(message(e));
+    } finally {
+      setSavedLoading(false);
+    }
+  };
   const options = current.options || { place: true, events: true };
   const trackersChanged = JSON.stringify(trackers) !== JSON.stringify(current.trackers);
   const save = async (body: Record<string, unknown>, done?: string) => {
@@ -298,8 +323,19 @@ export function JournalSettingsDialog({
               <strong>{t("Aktuelle Vorlage", "Current template")}</strong>
               <span className="js-current-actions">
                 {todayId && (
-                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ templateFromDay: todayId }, t("Der heutige Tag ist jetzt die Vorlage.", "Today is now the template."))}>
-                    {t("Heutigen Tag übernehmen", "Use today")}
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    title={t("Der Inhalt des heutigen Tages wird zur Vorlage für jeden neuen Tag.", "Today's content becomes the template for every new day.")}
+                    onClick={() => void save({ templateFromDay: todayId }, t("Der heutige Tag ist jetzt die Vorlage.", "Today is now the template."))}
+                  >
+                    {t("Heutigen Tag als Vorlage speichern", "Save today as template")}
+                  </button>
+                )}
+                {workspaceId && (
+                  <button type="button" className="text-button" disabled={busy || savedLoading} aria-expanded={!!saved} aria-controls="journal-saved-templates" onClick={() => void openSaved()}>
+                    {t("Aus Vorlage wählen …", "Choose from templates …")}
                   </button>
                 )}
                 {current.template && (
@@ -319,6 +355,41 @@ export function JournalSettingsDialog({
               <p className="journal-template-empty">{t("Keine Vorlage – neue Tage beginnen leer.", "No template – new days start empty.")}</p>
             )}
           </div>
+          {saved && (
+            <div className="journal-saved-templates" id="journal-saved-templates">
+              <strong className="js-label">{t("Deine Vorlagen", "Your templates")}</strong>
+              <small className="muted">
+                {t(
+                  "Der Inhalt wird kopiert – spätere Änderungen an der Vorlage ändern das Journal erst, wenn du sie erneut wählst.",
+                  "The content is copied – later changes to the template only reach the journal when you choose it again.",
+                )}
+              </small>
+              {saved.length ? (
+                <div className="journal-presets">
+                  {saved.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="journal-preset"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (await save({ templateFromSaved: item.id }, t(`Vorlage „${item.name}“ gesetzt.`, `Template “${item.name}” set.`))) setSaved(null);
+                      }}
+                    >
+                      <strong>
+                        {item.icon && /^\p{Extended_Pictographic}/u.test(item.icon) ? `${item.icon} ` : ""}
+                        {item.name}
+                      </strong>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="journal-template-empty">
+                  {t("Keine gespeicherten Dokumentvorlagen für diesen Bereich.", "No saved document templates for this space.")}
+                </p>
+              )}
+            </div>
+          )}
           <label className="js-field js-carried">
             <strong className="js-label">{t("Übernommene Aufgaben", "Carried-over tasks")}</strong>
             <small className="muted">

@@ -74,7 +74,10 @@ export default function SavedTemplates({
     [deleted, setDeleted] = useState(false),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
-  const [scopeFilter, setScopeFilter] = useState<"here" | "all">("here"),
+  // Which space's templates (and the workspace's) show (#317): "here" the
+  // current one (`spaceId`), a space's id another one, "all" every space.
+  // Kept across refreshes of the list.
+  const [scopeFilter, setScopeFilter] = useState<string>("here"),
     // A template of another space waiting for its tags and properties.
     [resolving, setResolving] = useState<{ items: ForeignMeta[]; target: string; run: (meta: MetaPlan) => Promise<unknown> } | null>(null),
     [copying, setCopying] = useState<Template | null>(null),
@@ -172,10 +175,13 @@ export default function SavedTemplates({
   const [search, setSearch] = useState(""),
     [kind, setKind] = useState<"all" | "document" | "database">("all"),
     [category, setCategory] = useState<"all" | TemplateCategory>("all");
+  // A space chosen before and gone since (deleted, other workspace): the
+  // current one again.
+  const filterSpace = scopeFilter === "here" || !spaces.some((sp) => sp.id === scopeFilter) ? spaceId : scopeFilter;
   const shown = items.filter(
     (t) =>
       !!t.deleted_at === deleted &&
-      (scopeFilter === "all" || !spaceId || !t.space_id || t.space_id === spaceId) &&
+      (scopeFilter === "all" || !filterSpace || !t.space_id || t.space_id === filterSpace) &&
       (kind === "all" || t.kind === kind) &&
       (category === "all" || (t.category || "") === category) &&
       t.name.toLocaleLowerCase("de").includes(search.toLocaleLowerCase("de")),
@@ -226,8 +232,15 @@ export default function SavedTemplates({
           <option value="database">{t("Datenbanken", "Databases")}</option>
         </Select>
         {spaceId && (
-          <Select aria-label={t("Vorlagen welcher Bereiche", "Templates of which spaces")} value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)}>
+          <Select aria-label={t("Vorlagen welcher Bereiche", "Templates of which spaces")} value={scopeFilter === "all" ? "all" : filterSpace === spaceId ? "here" : scopeFilter} onChange={(e) => setScopeFilter(e.target.value)}>
             <option value="here">{t(`„${spaceName(spaceId)}“ und Arbeitsbereich`, `“${spaceName(spaceId)}” and workspace`)}</option>
+            {spaces
+              .filter((sp) => sp.id !== spaceId)
+              .map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {t(`„${sp.name}“ und Arbeitsbereich`, `“${sp.name}” and workspace`)}
+                </option>
+              ))}
             <option value="all">{t("Alle Bereiche", "All spaces")}</option>
           </Select>
         )}

@@ -107,6 +107,7 @@ import {
   unlockJournal,
 } from "./journal-extras";
 import { setCompletedMine } from "./journal-completed";
+import { templateFromSaved } from "./journal-saved-template";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
@@ -1907,6 +1908,8 @@ async function runCommand(
         if (typeof b.template === "string") await setJournalTemplate(journal, b.template);
         if (b.options !== undefined) await setJournalOptions(journal, b.options);
         if (b.templateFromDay) await templateFromDay(journal, uuid.parse(b.templateFromDay));
+        // A saved document template, copied (#316).
+        if (b.templateFromSaved) await templateFromSaved(user, journal, uuid.parse(b.templateFromSaved));
         if (b.trackers !== undefined)
           await setJournalTrackers(journal, z.array(trackerSchema).parse(b.trackers));
         if (b.icsUrl !== undefined) {
