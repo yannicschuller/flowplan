@@ -107,7 +107,7 @@ test("update_page replaces the text, keeps a version and reaches open editors", 
   assert.match(await html(page), /<strong>neu<\/strong>/);
   // The text before is a version (also right after the last one).
   assert.equal(await snapshots(page), before + 1);
-  const version = await one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1", page);
+  const version = await one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, seq DESC LIMIT 1", page);
   assert.match(version!.html, /Alt/);
   const stored = (await one<{ title: string; icon: string }>("SELECT title,icon FROM pages WHERE id=?", page))!;
   assert.deepEqual([stored.title, stored.icon], ["Plan 2", "🚀"]);
@@ -136,7 +136,7 @@ test("update_page refuses an outdated revision, also after a collaborator's edit
   // With the current revision it works, and Ana's text is part of the version.
   const fresh = await read(benWrite, page);
   await ok(benWrite, "update_page", { pageId: page, markdown: "Bens Fassung", revision: fresh.revision });
-  assert.match((await one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1", page))!.html, /Anas Absatz/);
+  assert.match((await one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, seq DESC LIMIT 1", page))!.html, /Anas Absatz/);
   // A renamed page has a new revision.
   const renamed = await read(benWrite, page);
   await command(ana, { action: "page.update", pageId: page, patch: { title: "Umbenannt" } });
