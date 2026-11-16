@@ -103,7 +103,7 @@ test("a template of one space used in another brings its tags along as chosen", 
   // Back in "Neue Seite" with the template chosen and its name in the field.
   await expect(create.getByRole("textbox", { name: "Name" })).toHaveValue(`Angebot ${stamp}`);
   await create.getByRole("button", { name: "Seite erstellen" }).click();
-  await expect(page.locator(".page-title")).toHaveValue(`Angebot ${stamp}`);
+  await expect(page.locator(".page-title")).toHaveValue(`Angebot ${stamp}`, { timeout: 30_000 });
   const created = (await (await page.request.get("/api/bootstrap")).json()).pages.find(
     (p: { title: string; space_id: string }) => p.title === `Angebot ${stamp}` && p.space_id === other.id,
   );

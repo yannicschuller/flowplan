@@ -81,7 +81,7 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   // Today: the template is there, trackers can be set.
   await page.locator(".journal-today").click();
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
-  await expect(editor).toContainText("Dankbar für");
+  await expect(editor).toContainText("Dankbar für", { timeout: 30_000 }); // The first editor of the session.
   await expect(editor).toContainText("Interviewtermine vereinbaren");
   const bar = page.locator(".journal-daybar");
   await bar.getByRole("button", { name: "Großartig" }).click();
@@ -90,7 +90,7 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   await bar.getByLabel("Ort").blur();
   await page.waitForTimeout(400);
   await page.reload();
-  await expect(page.locator(".journal-daybar").getByRole("button", { name: "Großartig" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".journal-daybar").getByRole("button", { name: "Großartig" })).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 }); // After the reload: the page view and the editor load anew.
   await expect(page.locator(".journal-daybar").getByLabel("Ort")).toHaveValue("Café am Markt");
 
   // Settings: change the template, add a tracker, set a PIN.

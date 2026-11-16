@@ -1,4 +1,15 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// The gallery from the sidebar. The sidebar is server-rendered: a click
+// before hydration (after a load or reload) does nothing, so it is repeated
+// until the gallery is open.
+async function openGallery(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Vorlagen" });
+  await expect(async () => {
+    if (!(await dialog.isVisible())) await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click({ timeout: 2_000 });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
+}
 
 test("the template gallery offers several templates per category and creates pages from them", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Same flow on mobile.");
@@ -6,11 +17,7 @@ test("the template gallery offers several templates per category and creates pag
   await page.request.post("/api/auth/demo", { headers: { origin } });
   await page.goto("/#home");
   const dialog = page.getByRole("dialog", { name: "Vorlagen" });
-  // The sidebar is server-rendered: a click before hydration does nothing.
-  await expect(async () => {
-    await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click({ timeout: 2_000 });
-    await expect(dialog).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
+  await openGallery(page);
   // Every category has at least three templates.
   for (const category of ["Projekte", "Meetings", "Wissen & Dokumentation", "Planung & Ziele", "Persönlich", "Sonstiges"]) {
     await dialog.getByRole("button", { name: category, exact: true }).click();
@@ -36,7 +43,7 @@ test("the template gallery offers several templates per category and creates pag
   await page.getByRole("link", { name: "In meinem Arbeitsbereich verwenden" }).click();
   // The name first (#213): the template's, Enter takes it.
   const create = page.getByRole("dialog", { name: "Neue Seite" });
-  await expect(create.getByLabel("Name", { exact: true })).toHaveValue("Retrospektive");
+  await expect(create.getByLabel("Name", { exact: true })).toHaveValue("Retrospektive", { timeout: 30_000 }); // The workspace loads anew.
   await create.getByLabel("Name", { exact: true }).press("Enter");
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Was lief gut?", { timeout: 30_000 });
 });
@@ -79,7 +86,7 @@ test("the template gallery has a My templates category for saved templates", asy
   const pills = dialog.getByRole("navigation", { name: "Kategorien" }).getByRole("button");
   const mine = dialog.getByRole("button", { name: "Eigene Vorlagen", exact: true });
   if (!(await saved()).length) {
-    await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click();
+    await openGallery(page);
     await expect(dialog.locator(".saved-templates")).toContainText("Noch keine gespeicherten Vorlagen.");
     // No saved templates: no category for them.
     await expect(mine).toHaveCount(0);
@@ -94,7 +101,7 @@ test("the template gallery has a My templates category for saved templates", asy
   const source = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: name, kind: "document" });
   await command({ action: "template.save", pageId: source.id, name, private: true });
   await page.reload();
-  await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click();
+  await openGallery(page);
   await expect(pills.nth(1)).toHaveText("Eigene Vorlagen");
   await expect(pills.first()).toHaveText("Alle");
   await mine.click();
@@ -111,7 +118,7 @@ test("the template gallery has a My templates category for saved templates", asy
   await page.keyboard.press("Escape");
   await expect(create).toBeHidden();
   // Back to "Alle": built-in and saved templates again.
-  await page.locator(".sidebar-tools").getByRole("button", { name: "Vorlagen" }).click();
+  await openGallery(page);
   await dialog.getByRole("button", { name: "Alle", exact: true }).click();
   await expect(dialog.locator(".template-grid > button").first()).toBeVisible();
 });

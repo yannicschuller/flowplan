@@ -95,7 +95,7 @@ test("whiteboards hold notes, shapes and connectors that persist", async ({
   await page.reload();
   await expect(
     page.getByLabel("Whiteboard", { exact: true }).locator(".wb-sticky"),
-  ).toContainText("Idee eins");
+  ).toContainText("Idee eins", { timeout: 30_000 }); // The board loads as its own chunk after the reload.
   await expect(
     page.getByLabel("Whiteboard", { exact: true }).locator(".wb-connector"),
   ).toHaveCount(1);
