@@ -11294,6 +11294,38 @@ img.inline-comment-mark {
 .inline-comment-panel h3 {
   margin: 0 0 12px;
 }
+/* "New" and the X share the header's right end (#314). */
+.inline-comment-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.inline-comment-hint {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--secondary);
+}
+/* The new comment sits above the list of threads. */
+.inline-comment-new {
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+/* Embedded media in a quoted passage (components/comment-quote.tsx). */
+.comment-quote-object {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 0.85em;
+  font-style: italic;
+  white-space: nowrap;
+}
 .inline-comment-panel blockquote {
   margin: 12px 0;
   padding: 8px 12px;
@@ -11758,6 +11790,7 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 .comment-text-actions {
   display: flex;

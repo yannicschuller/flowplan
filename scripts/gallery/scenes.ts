@@ -400,6 +400,34 @@ const editorScenes: Scene[] = [
       else await button(page, "Kommentare").click();
     },
   },
+  // Text comments (#314): one button, one panel with the threads and
+  // "Neu" for a comment on the selection; a hard line break stays a line
+  // break in the quote.
+  {
+    id: "inline-comments",
+    group: "Documents & editor",
+    title: "Text comments: threads and a new comment",
+    covers: ["components/inline-comments.tsx"],
+    steps: async (page, ctx) => {
+      await editorWith(
+        page,
+        ctx,
+        "<p>Wir bringen die neue Version im Herbst heraus.</p><p>Text 3<br>Text 4</p><p>Alpha</p>",
+      );
+      await selectText(page, "Wir bringen die neue Version im Herbst heraus.");
+      await button(page, /^Textkommentare \(/).click();
+      await button(page, "Neuer Textkommentar").click();
+      await page.getByLabel("Kommentar zur Textstelle", { exact: true }).fill("Passt der Termin noch?");
+      await button(page, "Kommentar senden").click();
+      await page.locator(".inline-comment-message").waitFor();
+      await button(page, "← Alle Textkommentare").click();
+      await editor(page).locator("p").nth(1).click({ clickCount: 3 });
+      await button(page, "Neuer Textkommentar").click();
+      await page.locator(".inline-comment-new blockquote").waitFor();
+      await page.locator(".inline-thread-link").waitFor();
+      await page.locator(".inline-comment-panel").evaluate((el) => el.scrollIntoView({ block: ctx.phone ? "start" : "center" }));
+    },
+  },
   {
     id: "markdown-edit",
     group: "Documents & editor",

@@ -356,8 +356,8 @@ export async function seedDemoShowcase(workspace: string, space: string, user: s
       '<iframe src="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ"></iframe>',
       "<hr>",
       ct(
-        "<p>Text markieren und „Text kommentieren“ wählen startet eine Diskussion direkt an der Stelle.</p>",
-        "<p>Select text and choose “Comment” to start a discussion right at that spot.</p>",
+        "<p>Text markieren und „Kommentieren“ wählen (oder unter „Textkommentare“ auf „Neu“ klicken) startet eine Diskussion direkt an der Stelle.</p>",
+        "<p>Select text and choose “Comment” (or click “New” under “Text comments”) to start a discussion right at that spot.</p>",
       ),
     ].join(""),
     "✍️",

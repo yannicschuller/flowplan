@@ -1,4 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// One button opens the text comments; "New" in the panel starts a comment
+// on the selection (#314).
+async function newComment(page: Page) {
+  const toggle = page.getByRole("button", { name: /^Textkommentare \(/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page.getByRole("button", { name: "Neuer Textkommentar", exact: true }).click();
+}
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 test("OIDC callback preserves an internal row thread and rejects external return paths", async ({
   page,
@@ -44,9 +52,8 @@ test("OIDC callback preserves an internal row thread and rejects external return
   await expect(page.locator(".tiptap")).toBeVisible();
   await page.locator(".tiptap").click();
   await page.keyboard.type("Return to this text after SSO");
-  await page
-    .getByRole("button", { name: "Text kommentieren", exact: true })
-    .click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await newComment(page);
   await page
     .getByLabel("Kommentar zur Textstelle", { exact: true })
     .fill("Preserved OIDC destination");

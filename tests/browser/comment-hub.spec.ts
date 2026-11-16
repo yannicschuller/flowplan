@@ -1,4 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// One button opens the text comments; "New" in the panel starts a comment
+// on the selection (#314).
+async function newComment(page: Page) {
+  const toggle = page.getByRole("button", { name: /^Textkommentare \(/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page.getByRole("button", { name: "Neuer Textkommentar", exact: true }).click();
+}
 
 test("page, guest and text comments share one list with filters", async ({
   page,
@@ -44,7 +52,7 @@ test("page, guest and text comments share one list with filters", async ({
   await content.click();
   await page.keyboard.type("Diese Zahl prüfen");
   await page.keyboard.press("ControlOrMeta+a");
-  await page.getByRole("button", { name: "Text kommentieren" }).click();
+  await newComment(page);
   await page.getByRole("textbox", { name: "Kommentar zur Textstelle" }).click();
   await page.keyboard.type("Stimmt das?");
   await page.getByRole("button", { name: "Kommentar senden" }).click();

@@ -2,6 +2,14 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { join } from "node:path";
+
+// One button opens the text comments; "New" in the panel starts a comment
+// on the selection (#314).
+async function newComment(page: Page) {
+  const toggle = page.getByRole("button", { name: /^Textkommentare \(/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page.getByRole("button", { name: "Neuer Textkommentar", exact: true }).click();
+}
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 async function fixture(page: Page, browser: Browser) {
   if (!process.env.FLOWPLAN_DATA_DIR?.startsWith("/tmp/flowplan-inline-e2e."))
@@ -144,9 +152,7 @@ async function select(page: Page, from = 7, to = 12) {
 }
 async function create(page: Page, body = "Please review") {
   await select(page);
-  await page
-    .getByRole("button", { name: "Text kommentieren", exact: true })
-    .click();
+  await newComment(page);
   await page.getByLabel("Kommentar zur Textstelle", { exact: true }).fill(body);
   await page
     .getByRole("button", { name: "Kommentar senden", exact: true })
@@ -217,7 +223,10 @@ test("inline document threads support reader replies, editing, reactions, resolu
       .getByRole("button", { name: "Textkommentare schließen", exact: true })
       .click();
     await expect(page.locator(".inline-comment-mark")).toHaveCount(0);
+    // Closing closed the whole panel: it opens on the list again.
     await page.getByRole("button", { name: /Textkommentare \(/ }).click();
+    await page.locator(".inline-comment-panel select").selectOption("resolved");
+    await page.locator(".inline-thread-link").first().click();
     await page
       .getByRole("button", { name: "Wieder öffnen", exact: true })
       .click();
@@ -268,9 +277,7 @@ test("inline document threads support reader replies, editing, reactions, resolu
       }
       document.dispatchEvent(new Event("selectionchange"));
     });
-    await f.other
-      .getByRole("button", { name: "Text kommentieren", exact: true })
-      .click();
+    await newComment(f.other);
     await expect(
       f.other.locator(".inline-comment-panel blockquote"),
     ).toHaveText("Delta");
@@ -383,9 +390,7 @@ test("row threads survive generation changes and lost acknowledgements do not du
       await route.abort();
     });
     await select(page);
-    await page
-      .getByRole("button", { name: "Text kommentieren", exact: true })
-      .click();
+    await newComment(page);
     await page
       .getByLabel("Kommentar zur Textstelle", { exact: true })
       .fill("Row review");
@@ -455,7 +460,7 @@ test("row threads survive generation changes and lost acknowledgements do not du
       1,
     );
     await expect(page.locator(".inline-comment-panel blockquote")).toHaveText(
-      "[Medienblock]",
+      "Medienblock",
     );
     await page
       .getByRole("button", { name: "Zur Textstelle", exact: true })
@@ -710,9 +715,7 @@ test("formatted comments support keyboard mentions, links, lists and rich edits 
   try {
     await f.open(page);
     await select(page);
-    await page
-      .getByRole("button", { name: "Text kommentieren", exact: true })
-      .click();
+    await newComment(page);
     const input = page.getByRole("textbox", {
       name: "Kommentar zur Textstelle",
       exact: true,
@@ -934,9 +937,7 @@ test("comment editors reject oversized input and unsafe links while retaining us
   try {
     await f.open(page);
     await select(page);
-    await page
-      .getByRole("button", { name: "Text kommentieren", exact: true })
-      .click();
+    await newComment(page);
     const input = page.getByRole("textbox", {
         name: "Kommentar zur Textstelle",
         exact: true,
@@ -975,6 +976,64 @@ test("comment editors reject oversized input and unsafe links while retaining us
     await expect(page.locator(".comment-rich-body a")).toHaveText(
       "Safe comment",
     );
+    expect(f.errors).toEqual([]);
+  } finally {
+    await f.context.close();
+    f.db.close();
+  }
+});
+test("one text comment button and panel; comments stay with blocks moved up and down (#314)", async ({
+  page,
+  browser,
+}, info) => {
+  const f = await fixture(page, browser);
+  try {
+    await f.open(page);
+    const toggle = page.getByRole("button", { name: /^Textkommentare \(/ });
+    await expect(page.getByRole("button", { name: "Text kommentieren" })).toHaveCount(0);
+    // Nothing selected: "New" asks for a selection first.
+    await select(page, 3, 3);
+    await newComment(page);
+    await expect(page.locator(".inline-comment-hint")).toContainText("Markiere zuerst");
+    await expect(page.getByLabel("Kommentar zur Textstelle", { exact: true })).toHaveCount(0);
+    // With a selection the new comment opens in the same panel.
+    await select(page);
+    await newComment(page);
+    await expect(page.locator(".inline-comment-hint")).toHaveCount(0);
+    await expect(page.locator(".inline-comment-new blockquote")).toHaveText("Bravo");
+    await page.getByLabel("Kommentar zur Textstelle", { exact: true }).fill("Moves along");
+    await page.getByRole("button", { name: "Kommentar senden", exact: true }).click();
+    await expect(page.locator(".inline-comment-message")).toContainText("Moves along");
+    await expect(page.locator(".inline-comment-mark")).toHaveText("Bravo");
+    // The button closes the whole panel.
+    await toggle.click();
+    await expect(page.locator(".inline-comment-panel")).toHaveCount(0);
+    // Move the paragraph below the list and back (⌘⇧↓ / ⌘⇧↑).
+    for (const key of ["ArrowDown", "ArrowUp", "ArrowDown"]) {
+      await select(page, 3, 3);
+      const before = await page.locator(".tiptap > *").first().evaluate((el) => el.tagName);
+      await page.keyboard.press(`ControlOrMeta+Shift+${key}`);
+      await expect
+        .poll(() => page.locator(".tiptap > *").first().evaluate((el) => el.tagName))
+        .not.toBe(before);
+      await expect(page.locator(".inline-comment-mark")).toHaveText("Bravo");
+    }
+    await expect(page.locator(".tiptap > *").first()).toHaveJSProperty("tagName", "UL");
+    // The server keeps the moved anchor: after a reload and for others.
+    await expect
+      .poll(async () => {
+        await f.open(page);
+        return await page.locator(".inline-comment-mark").textContent();
+      }, { timeout: 15000 })
+      .toBe("Bravo");
+    await page.screenshot({
+      path: `test-results/inline-comments-verification/moved-${info.project.name}.png`,
+      fullPage: true,
+    });
+    await openThread(page);
+    await expect(page.getByText("Textstelle nicht mehr verfügbar", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Textkommentare schließen", exact: true }).click();
+    await expect(page.locator(".inline-comment-panel")).toHaveCount(0);
     expect(f.errors).toEqual([]);
   } finally {
     await f.context.close();

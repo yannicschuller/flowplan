@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Y from "yjs";
+import { updateYFragment } from "@tiptap/y-tiptap";
 import type { Identity } from "../lib/types";
 import {
   commentAnchor,
@@ -1027,5 +1028,69 @@ test("rich comment drafts preserve formatting and mentions separately for new me
   } finally {
     if (previous) Object.defineProperty(globalThis, "sessionStorage", previous);
     else Reflect.deleteProperty(globalThis, "sessionStorage");
+  }
+});
+test("thread.reanchor moves a thread to its moved passage, only for editors, the same text and a lost anchor (#314)", async () => {
+  const f = await fixture(),
+    bravo = await f.create(),
+    nested = await f.create(f.owner, {
+      anchor: await withCommentDocument(f.pageId, null, (b, g) => commentAnchor(b, 24, 36, g)),
+    });
+  const reanchor = async (threadId: string, anchor: unknown, u = f.owner) =>
+    await f.act({ action: "thread.reanchor", pageId: f.pageId, threadId, anchor }, u);
+  // Nothing moved yet: the thread still has its passage.
+  await assert.rejects(
+    async () =>
+      await reanchor(bravo.threadId, {
+        ...bravo.anchor,
+        // The same passage, its ends swapped.
+        positions: { anchor: bravo.anchor.positions.head, head: bravo.anchor.positions.anchor },
+      }),
+    /noch/,
+  );
+  // The paragraph moves below the list, written to Yjs the way the
+  // editor's sync plugin does it: one of the two blocks is inserted anew.
+  const moved = await withCommentDocument(f.pageId, null, async (b, g) => {
+    const para = b.content.child(0),
+      list = b.content.child(1),
+      next = b.content.type.create(null, [list, para]);
+    b.doc.transact(() =>
+      updateYFragment(b.doc, b.type, next, { mapping: b.mapping, isOMark: new Map() } as never),
+    );
+    await run(
+      "UPDATE documents SET state=? WHERE page_id=?",
+      Y.encodeStateAsUpdate(b.doc),
+      f.pageId,
+    );
+    const after = { ...b, content: next };
+    return {
+      bravo: commentAnchor(after, list.nodeSize + 7, list.nodeSize + 12, g),
+      nested: commentAnchor(after, 3, 15, g),
+      lost: {
+        bravo: !commentRange(after, bravo.anchor, g),
+        nested: !commentRange(after, nested.anchor, g),
+      },
+    };
+  });
+  assert.ok(moved.lost.bravo || moved.lost.nested, "the move breaks an anchor");
+  for (const [name, thread] of [["bravo", bravo], ["nested", nested]] as const) {
+    const anchor = moved[name];
+    if (!moved.lost[name]) {
+      await assert.rejects(async () => await reanchor(thread.threadId, anchor), /noch/);
+      continue;
+    }
+    await assert.rejects(async () => await reanchor(thread.threadId, anchor, f.viewer), /Bearbeiter/);
+    // A passage with other text is refused.
+    await assert.rejects(
+      async () => await reanchor(thread.threadId, name === "bravo" ? moved.nested : moved.bravo),
+      /geändert/,
+    );
+    await reanchor(thread.threadId, anchor);
+    await reanchor(thread.threadId, anchor);
+    const stored = (await inlineThreads(f.owner, f.pageId)).find((t) => t.id === thread.threadId)!;
+    await withCommentDocument(f.pageId, null, (b, g) => {
+      const r = commentRange(b, stored.anchor, g)!;
+      assert.equal(commentQuote(b.content, r.from, r.to), name === "bravo" ? "Bravo" : "Nested words");
+    });
   }
 });

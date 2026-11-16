@@ -8,6 +8,7 @@ import { CommentComposer, CommentBody } from "./comment-composer";
 import type { CommentNode } from "@/lib/comment-content";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 import {
   ChatCircle,
   Check,
@@ -17,6 +18,7 @@ import {
   Trash,
   X,
   Link,
+  Plus,
 } from "@phosphor-icons/react";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { leaveTo } from "@/lib/history-nav";
@@ -24,8 +26,11 @@ import { api, Avatar, Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { readCommentDrafts, saveCommentDrafts } from "@/lib/comment-drafts";
 import { flushOpenDocuments } from "@/lib/document-flush";
+import { CommentQuote } from "./comment-quote";
+import { BLOCK_MOVE_META } from "@/lib/document-blocks";
 import {
   editorCommentBinding,
+  relocatedCommentAnchors,
   selectedCommentAnchor,
   setCommentHighlights,
 } from "@/lib/inline-comment-plugin";
@@ -102,6 +107,7 @@ export function InlineComments({
     [deleting, setDeleting] = useState<InlineMessage | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [hint, setHint] = useState(false),
     [revision, setRevision] = useState(0);
   const mounted = useRef(true),
     inflight = useRef<AbortController | null>(null);
@@ -194,8 +200,15 @@ export function InlineComments({
       scrolledThread.current = active;
     }
   }, [open, active, loadedActive]);
+  // The X and the panel button close the whole panel: list, thread and
+  // new comment (its text stays as a draft, lib/comment-drafts.ts).
   function close() {
     setOpen(false);
+    setDraft(null);
+    setActive(null);
+    setEditing(null);
+    setHint(false);
+    setError("");
     const target = parsePageLocation(location.hash);
     if (
       target?.pageId === pageId &&
@@ -207,8 +220,20 @@ export function InlineComments({
       leaveTo(pageLocationHash({ pageId, rowId }), "replace");
     }
   }
-  function begin() {
+  // A new comment on the selection; `blockFallback` (shortcut, toolbar and
+  // text menu) takes the current block when nothing is selected, the
+  // panel's "New" asks for a selection instead.
+  function begin(blockFallback = true) {
     if (!editor) return;
+    setHint(false);
+    if (!blockFallback && editor.state.selection.empty) {
+      setDraft(null);
+      setActive(null);
+      setError("");
+      setHint(true);
+      setOpen(true);
+      return;
+    }
     try {
       const anchor = selectedCommentAnchor(editor, generation);
       setDraft({
@@ -224,17 +249,60 @@ export function InlineComments({
       setOpen(true);
     }
   }
+  // Blocks moved up, down or by dragging take their comments along (#314):
+  // Yjs inserts a moved block anew, so the passage gets a fresh anchor,
+  // here at once and on the server (thread.reanchor).
+  function relocate(transaction: Transaction) {
+    if (!editor) return;
+    const moved = relocatedCommentAnchors(editor, transaction, generation);
+    if (!moved.length) {
+      // Highlights left by the structural change come back.
+      if (transaction.docChanged && transaction.getMeta(BLOCK_MOVE_META))
+        setThreads((prev) => [...prev]);
+      return;
+    }
+    const anchors = new Map(moved.map((m) => [m.id, m.anchor]));
+    setThreads((prev) =>
+      prev.map((t) => {
+        const anchor = anchors.get(t.id);
+        // The list shows a shortened quote; the stored one stays whole.
+        return anchor ? { ...t, anchor: { ...anchor, quote: t.anchor.quote } } : t;
+      }),
+    );
+    void (async () => {
+      try {
+        await flushOpenDocuments();
+        for (const m of moved)
+          await api("/api/command", {
+            action: "thread.reanchor",
+            pageId,
+            rowId,
+            threadId: m.id,
+            anchor: m.anchor,
+          });
+      } catch {
+        // The next refresh shows what the server kept.
+      }
+      void refresh(true);
+    })();
+  }
+  const relocateRef = useRef(relocate);
+  relocateRef.current = relocate;
   const beginRef = useRef(begin);
   beginRef.current = begin;
   useEffect(() => {
     if (!editor) return;
-    const create = () => beginRef.current(),
+    const create = () => beginRef.current(true),
       show = (event: Event) => {
         setActive((event as CustomEvent<string>).detail);
         setOpen(true);
         setDraft(null);
+        setHint(false);
       },
-      update = () => setRevision((n) => n + 1);
+      update = ({ transaction }: { transaction: Transaction }) => {
+        setRevision((n) => n + 1);
+        relocateRef.current(transaction);
+      };
     const dom = editor.view.dom;
     dom.addEventListener("comment-create", create);
     dom.addEventListener("comment-open", show);
@@ -292,21 +360,16 @@ export function InlineComments({
   void revision;
   return (
     <>
+      {/* One button, one panel (#314): the threads, and "New" in the
+          panel for a comment on the selection. */}
       <div className="inline-comment-tools">
         <button
           className="button compact"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={begin}
-          title={t("Auswahl oder aktuellen Block kommentieren", "Comment on the selection or current block") + keyHints.suffix("Mod+Alt+M")}
-        >
-          <ChatCircle /> {t("Text kommentieren", "Comment on text")}
-        </button>
-        <button
-          className="text-button"
           aria-expanded={open}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => (open ? close() : setOpen(true))}
         >
-          {t("Textkommentare (", "Text comments (")}{threads.filter((t) => !t.resolved).length})
+          <ChatCircle /> {t("Textkommentare (", "Text comments (")}{threads.filter((t) => !t.resolved).length})
         </button>
       </div>
       {open && (
@@ -317,14 +380,31 @@ export function InlineComments({
         >
           <header>
             <h3>{t("Textkommentare", "Text comments")}</h3>
-            <button
-              className="icon-button"
-              aria-label={t("Textkommentare schließen", "Close text comments")}
-              onClick={close}
-            >
-              <X />
-            </button>
+            <span className="inline-comment-header-actions">
+              <button
+                className="button compact"
+                aria-label={t("Neuer Textkommentar", "New text comment")}
+                aria-expanded={!!draft}
+                title={t("Markierte Textstelle oder markierten Block kommentieren", "Comment on the selected passage or block") + keyHints.suffix("Mod+Alt+M")}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => begin(false)}
+              >
+                <Plus /> {t("Neu", "New")}
+              </button>
+              <button
+                className="icon-button"
+                aria-label={t("Textkommentare schließen", "Close text comments")}
+                onClick={close}
+              >
+                <X />
+              </button>
+            </span>
           </header>
+          {hint && (
+            <p className="inline-comment-hint" role="status">
+              {t("Markiere zuerst im Text die Stelle oder den Block, den du kommentieren willst, und klicke dann auf „Neu“.", "First select the passage or block you want to comment on, then click “New”.")}
+            </p>
+          )}
           {draftStorageFailed && (
             <p role="status">
               {t("Dein Entwurf bleibt im geöffneten Editor. Der Browser konnte ihn für einen Seitenwechsel nicht sichern.", "Your draft stays in the open editor. The browser could not keep it for a page change.")}
@@ -335,8 +415,9 @@ export function InlineComments({
               {error}
             </p>
           )}
-          {draft ? (
+          {draft && (
             <form
+              className="inline-comment-new"
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (busy || !body.trim()) return;
@@ -364,7 +445,7 @@ export function InlineComments({
               }}
             >
               <blockquote>
-                {draft.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
+                <CommentQuote quote={draft.anchor.quote} />
               </blockquote>
               <CommentComposer
                 label={t("Kommentar zur Textstelle", "Comment on the passage")}
@@ -399,7 +480,8 @@ export function InlineComments({
                 {t("Die markierte Textstelle wird beim Speichern erneut geprüft. Bei Änderungen bleibt dein Entwurf erhalten.", "The marked passage is checked again when saving. If it changed, your draft is kept.")}
               </p>
             </form>
-          ) : active && !thread ? (
+          )}
+          {active && !thread ? (
             <p role="status">
               {loadedActive === active
                 ? t("Dieser Kommentar ist nicht mehr verfügbar oder gehört zu einer anderen Seite.", "This comment is no longer available or belongs to another page.")
@@ -419,7 +501,7 @@ export function InlineComments({
                 {t("← Alle Textkommentare", "← All text comments")}
               </button>
               <blockquote>
-                {thread.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
+                <CommentQuote quote={thread.anchor.quote} />
               </blockquote>
               <div className="inline-comment-actions">
                 <button
@@ -475,8 +557,8 @@ export function InlineComments({
                       {new Date(
                         m.created_at.replace(" ", "T") + "Z",
                       ).toLocaleString(LOCALE_TAG)}
-                      {m.edited_at && !m.deleted ? " · bearbeitet" : ""}
-                      {m.author_id === null ? " · importiert" : ""}
+                      {m.edited_at && !m.deleted ? t(" · bearbeitet", " · edited") : ""}
+                      {m.author_id === null ? t(" · importiert", " · imported") : ""}
                     </small>
                     {editing?.message.id === m.id ? (
                       <form
@@ -653,7 +735,7 @@ export function InlineComments({
                     onClick={() => navigate(thread.id)}
                   >
                     <blockquote>
-                      {thread.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
+                      <CommentQuote quote={thread.anchor.quote} />
                     </blockquote>
                     <span>
                       {thread.messages.find((m) => !m.deleted)?.body ||
@@ -665,9 +747,9 @@ export function InlineComments({
                     </small>
                   </button>
                 ))}
-              {!threads.length && (
+              {!threads.length && !draft && !hint && (
                 <p className="muted">
-                  {t("Wähle Text oder einen Block aus und klicke auf „Text kommentieren“.", "Select text or a block and click “Comment on text”.")}
+                  {t("Noch keine Textkommentare. Markiere Text oder einen Block und klicke auf „Neu“.", "No text comments yet. Select text or a block and click “New”.")}
                 </p>
               )}
             </>
