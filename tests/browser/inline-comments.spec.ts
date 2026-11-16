@@ -279,7 +279,7 @@ test("inline document threads support reader replies, editing, reactions, resolu
     });
     await newComment(f.other);
     await expect(
-      f.other.locator(".inline-comment-panel blockquote"),
+      f.other.locator(".inline-comment-new blockquote"),
     ).toHaveText("Delta");
     await f.other
       .getByLabel("Kommentar zur Textstelle", { exact: true })
