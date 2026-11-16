@@ -168,6 +168,17 @@ function incidentScope(i: { rule: string; key: string; actor_id: string | null; 
     }
     case "privilege_change":
       return { where: "(e.actor_id=? OR e.id=?)", args: [i.actor_id ?? "", Number(i.key.replace(/^event:/, "")) || 0], before: 10 * MINUTE };
+    // The admin account ("account:<id>"): what it did, and the reset by another admin.
+    case "admin_2fa_off": {
+      const account = i.key.replace(/^account:/, "");
+      return { where: "(e.actor_id=? OR (e.kind='admin.user' AND e.detail LIKE ?))", args: [account, `two-factor reset ${account}%`], before: 10 * MINUTE };
+    }
+    // What the administrator who changed it did around that time.
+    case "instance_policy_change":
+      return { where: "e.actor_id=?", args: [i.actor_id ?? ""], before: 10 * MINUTE };
+    // Every step of this emergency access ("holder:<id> contact:<id>").
+    case "emergency_access":
+      return { where: "e.kind LIKE 'emergency.%' AND e.detail LIKE ?", args: [`${i.key}%`], before: T.emergencyWindow };
   }
   return { where: "e.address_key=?", args: [i.address_key], before: T.window };
 }
@@ -183,7 +194,10 @@ function ruleReason(rule: SecurityRule) {
     login_after_failures: [`Eine erfolgreiche Anmeldung direkt nach mindestens ${T.failuresBeforeSuccess} Fehlversuchen beim selben Konto (${min(T.window)} Minuten) – das Passwort könnte erraten worden sein.`, `A successful sign-in right after at least ${T.failuresBeforeSuccess} failures on the same account (${min(T.window)} minutes) – the password may have been guessed.`],
     admin_new_device: ["Ein Admin hat sich von einem Gerät angemeldet, das in den letzten 90 Tagen nicht benutzt wurde.", "An admin signed in from a device not used in the last 90 days."],
     impossible_travel: [`Zwei Anmeldungen desselben Kontos aus verschiedenen Ländern innerhalb von ${min(T.travelWindow)} Minuten.`, `Two sign-ins of the same account from different countries within ${min(T.travelWindow)} minutes.`],
-    privilege_change: ["Adminrechte wurden vergeben oder etwas geändert, das bestimmt, wer sich anmelden darf (Verzeichnis, Provisionierung, Wiederherstellung, Erweiterungen, Domains).", "Admin rights were granted or something changed that decides who may sign in (directory, provisioning, restore, extensions, domains)."],
+    privilege_change: ["Adminrechte wurden vergeben oder entzogen (auch über die SSO- oder Verzeichnisgruppe bei der Anmeldung), oder etwas geändert, das bestimmt, wer sich anmelden darf (Verzeichnis, Provisionierung, Wiederherstellung, Erweiterungen, Domains).", "Admin rights were granted or removed (also through the SSO or directory group at sign-in), or something changed that decides who may sign in (directory, provisioning, restore, extensions, domains)."],
+    admin_2fa_off: ["Die Zwei-Faktor-Anmeldung eines Admin-Kontos wurde ausgeschaltet – von der Person selbst oder von einem anderen Admin zurückgesetzt.", "Two-factor sign-in of an admin account was turned off – by the person themselves, or reset by another admin."],
+    instance_policy_change: ["Ein Admin hat den Zugang zur Instanz geöffnet (Registrierung, Demo, Einladungslinks oder Notfallzugriff eingeschaltet, Zwei-Faktor-Pflicht gelockert) oder eine SSO-Gruppenzuordnung angelegt oder entfernt.", "An admin opened access to the instance (sign-up, demo, invite links or emergency access switched on, two-factor requirement relaxed) or added or removed an SSO group mapping."],
+    emergency_access: ["Eine Vertrauensperson hat Lesezugriff auf die Inhalte eines Kontos bekommen (Wartezeit abgelaufen oder Nachricht bei Inaktivität) oder darüber exportiert.", "A trusted contact got read access to an account's content (waiting period over or inactivity message) or exported through it."],
     e2ee_reset: ["Ein Konto hat seinen Schlüssel für verschlüsselte Bereiche zurückgesetzt („Passphrase und Wiederherstellungsschlüssel vergessen“).", "An account reset its key for encrypted spaces (“passphrase and recovery key lost”)."],
     e2ee_mass_reset: [`Mindestens ${T.e2eeResetAccounts} Konten haben innerhalb von ${min(T.e2eeResetWindow)} Minuten ihren Schlüssel für verschlüsselte Bereiche zurückgesetzt.`, `At least ${T.e2eeResetAccounts} accounts reset their key for encrypted spaces within ${min(T.e2eeResetWindow)} minutes.`],
     mass_export: [`Mindestens ${T.exportsPerHour} Exporte in einer Stunde und ein Vielfaches des Üblichen dieser Person in den letzten 30 Tagen.`, `At least ${T.exportsPerHour} exports in an hour and many times this person's usual amount over the last 30 days.`],

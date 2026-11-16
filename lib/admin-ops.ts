@@ -422,7 +422,7 @@ export async function checkHealthAlerts(now = Date.now()) {
 
 // A new security incident (lib/security-detect.ts), right away – not once
 // a day like the health alerts. Not to the administrators' chat apps: the
-// incident is also a notification of the kind "security" for each of them
+// incident is also a notification of the kind "incident" for each of them
 // (lib/security-detect.ts), which reaches their chat apps by that kind.
 export async function sendSecurityAlert(rule: SecurityRule, detail: string, now = Date.now()) {
   const config = await storedAlerts();

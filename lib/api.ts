@@ -912,20 +912,24 @@ async function runCommand(
         break;
       case "admin.settings": {
         requireAdmin(user);
-        const before = (await instanceSettings()).emergencyAccess;
-        const deadmanBefore = (await instanceSettings()).deadManSwitch;
-        const linksBefore = (await instanceSettings()).inviteLinks;
+        const previous = await instanceSettings();
+        const before = previous.emergencyAccess;
+        const deadmanBefore = previous.deadManSwitch;
         result = await saveInstanceSettings(b.settings);
-        // Invitation links (#320): who may get in without an invitation of
-        // their own – a security event.
-        const links = (result as Awaited<ReturnType<typeof instanceSettings>>).inviteLinks;
-        if (linksBefore !== links) securityEvent("admin.settings", { actorId: user.id, detail: `inviteLinks ${links ? "on" : "off"}` });
+        const saved = result as Awaited<ReturnType<typeof instanceSettings>>;
+        // Who may get in, and how: sign-up for anyone, demo accounts,
+        // invitation links (#320) and the two-factor requirement – a
+        // security event each; opening them alerts the administrators
+        // (lib/security-detect.ts, #321).
+        for (const key of ["allowSignup", "publicDemo", "inviteLinks"] as const)
+          if (previous[key] !== saved[key]) securityEvent("admin.settings", { actorId: user.id, detail: `${key} ${saved[key] ? "on" : "off"}` });
+        if (previous.twoFactor !== saved.twoFactor) securityEvent("admin.settings", { actorId: user.id, detail: `twoFactor ${previous.twoFactor}→${saved.twoFactor}` });
         // Switching the emergency access (#281) suspends or resumes every
         // granted access: a security event of its own.
-        const after = (result as Awaited<ReturnType<typeof instanceSettings>>).emergencyAccess;
+        const after = saved.emergencyAccess;
         if (before !== after) await audit(user.id, "admin.emergency", "instance", after ? "on" : "off");
         // The inactivity message (#282) likewise.
-        const deadman = (result as Awaited<ReturnType<typeof instanceSettings>>).deadManSwitch;
+        const deadman = saved.deadManSwitch;
         if (deadmanBefore !== deadman) await audit(user.id, "admin.deadman", "instance", deadman ? "on" : "off");
         break;
       }
@@ -3482,21 +3486,21 @@ async function runCommand(
       case "sso.mapping.add":
         await requireMember(user, wid(), "owner");
         requireAdmin(user);
-        result = await addSsoMapping(wid(), b);
+        result = await addSsoMapping(wid(), b, user.id);
         break;
       case "sso.mapping.delete":
         await requireMember(user, wid(), "owner");
         requireAdmin(user);
-        await deleteSsoMapping(wid(), b.id);
+        await deleteSsoMapping(wid(), b.id, user.id);
         break;
       // The same for any workspace, from the administration.
       case "admin.ssoMapping.add":
         requireAdmin(user);
-        result = await addSsoMapping(wid(), b);
+        result = await addSsoMapping(wid(), b, user.id);
         break;
       case "admin.ssoMapping.delete":
         requireAdmin(user);
-        await deleteSsoMapping(wid(), b.id);
+        await deleteSsoMapping(wid(), b.id, user.id);
         break;
       case "member.guest": {
         await lockMembership(wid());

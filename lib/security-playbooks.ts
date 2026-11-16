@@ -136,8 +136,8 @@ export const securityPlaybooks: Record<SecurityRule, Playbook> = {
   },
   privilege_change: {
     meaning: {
-      de: "Jemand hat Adminrechte vergeben oder geändert, wer sich anmelden darf (Verzeichnis, Provisionierung, Wiederherstellung, Erweiterungen, Domains). So verschaffen sich Angreifer dauerhaften Zugang.",
-      en: "Someone granted admin rights or changed who may sign in (directory, provisioning, restore, extensions, domains). This is how attackers get lasting access.",
+      de: "Jemand hat Adminrechte vergeben oder entzogen – auch über die SSO- oder Verzeichnisgruppe bei der Anmeldung – oder geändert, wer sich anmelden darf (Verzeichnis, Provisionierung, Wiederherstellung, Erweiterungen, Domains). So verschaffen sich Angreifer dauerhaften Zugang oder sperren die anderen Admins aus.",
+      en: "Someone granted or removed admin rights – also through the SSO or directory group at sign-in – or changed who may sign in (directory, provisioning, restore, extensions, domains). This is how attackers get lasting access or lock the other admins out.",
     },
     harmless: { de: "Eine geplante Änderung durch einen Admin – dann reicht es, sie zu bestätigen.", en: "A planned change by an admin – then it is enough to confirm it." },
     steps: [
@@ -145,6 +145,57 @@ export const securityPlaybooks: Record<SecurityRule, Playbook> = {
       { de: "War es nicht geplant: die Änderung rückgängig machen (Personen bzw. Anmeldung & SSO).", en: "If it was not planned: undo the change (People or Sign-in & SSO).", link: PEOPLE },
       { de: "Das Konto, das die Änderung gemacht hat, sperren – damit enden auch seine Sitzungen und Tokens.", en: "Disable the account that made the change – its sessions and tokens end with it.", action: "disable" },
       { de: "Alle Admins durchgehen und deren Passwörter, Passkeys und API-Tokens erneuern lassen.", en: "Go through all admins and have their passwords, passkeys and API tokens renewed.", link: PEOPLE },
+      RESOLVE,
+    ],
+  },
+  admin_2fa_off: {
+    meaning: {
+      de: "Bei einem Admin-Konto wurde die Zwei-Faktor-Anmeldung ausgeschaltet – von der Person selbst (mit Passwort oder Code bestätigt) oder von einem anderen Admin zurückgesetzt. Danach reicht das Passwort, um das Konto zu übernehmen, das die ganze Instanz verwaltet.",
+      en: "Two-factor sign-in was turned off for an admin account – by the person themselves (confirmed with password or code) or reset by another admin. From then on the password alone takes over the account that runs the whole instance.",
+    },
+    harmless: { de: "Ein neues Telefon: Die Person richtet die App gleich wieder ein oder meldet sich mit einem Passkey an.", en: "A new phone: the person sets the app up again right away or signs in with a passkey." },
+    steps: [
+      { de: "Die Person auf anderem Weg fragen, ob sie das war, und Zwei-Faktor gleich wieder einrichten lassen.", en: "Ask the person by another way whether it was them, and have them set up two-factor again right away." },
+      { de: "War sie es nicht: alle Sitzungen des Kontos beenden und das Passwort ändern lassen.", en: "If it wasn't: end all sessions of the account and have the password changed.", action: "sessions" },
+      { de: "Damit es nicht wieder geht: Zwei-Faktor für Admins vorschreiben (Anmeldung & SSO).", en: "So it cannot happen again: require two-factor for admins (Sign-in & SSO).", link: SIGN_IN },
+      RESOLVE,
+    ],
+  },
+  instance_policy_change: {
+    meaning: {
+      de: "Ein Admin hat den Zugang zur Instanz geöffnet – Registrierung für alle, Demo-Konten, Einladungslinks oder Notfallzugriff eingeschaltet, die Zwei-Faktor-Pflicht gelockert – oder eine SSO-Gruppenzuordnung angelegt oder entfernt, die ganze Gruppen des Identitätsanbieters in einen Arbeitsbereich bringt.",
+      en: "An admin opened access to the instance – sign-up for everyone, demo accounts, invite links or emergency access switched on, the two-factor requirement relaxed – or added or removed an SSO group mapping, which brings whole groups of the identity provider into a workspace.",
+    },
+    harmless: { de: "Eine geplante Änderung durch einen Admin – dann reicht es, sie zu bestätigen.", en: "A planned change by an admin – then it is enough to confirm it." },
+    steps: [
+      { de: "Im Verlauf nachsehen, wer was geändert hat, und mit der Person klären, ob es geplant war.", en: "See in the timeline who changed what, and check with the person whether it was planned." },
+      { de: "War es nicht geplant: die Einstellung oder Zuordnung zurücknehmen (Anmeldung & SSO).", en: "If it was not planned: undo the setting or mapping (Sign-in & SSO).", link: SIGN_IN },
+      { de: "Das Konto, das die Änderung gemacht hat, sperren – damit enden auch seine Sitzungen und Tokens.", en: "Disable the account that made the change – its sessions and tokens end with it.", action: "disable" },
+      RESOLVE,
+    ],
+  },
+  emergency_access: {
+    meaning: {
+      de: "Eine Vertrauensperson kann jetzt die eigenen Inhalte eines Kontos lesen – die Wartezeit ist abgelaufen, ohne dass die Person abgelehnt hat, oder die Nachricht bei Inaktivität hat den Zugriff übergeben – oder sie hat darüber exportiert. Ändern kann sie nichts.",
+      en: "A trusted contact can now read an account's own content – the waiting period ran out without the person denying it, or the inactivity message handed access over – or exported through it. They cannot change anything.",
+    },
+    harmless: { de: "Ein echter Notfall, für den die Person den Zugriff eingerichtet hat.", en: "A real emergency the person set up the access for." },
+    steps: [
+      {
+        de: "Im Aktivitätsprotokoll nach „emergency.“ suchen: wer angefragt hat, für wen, und was gelesen wurde.",
+        en: "Search the activity log for “emergency.”: who asked, for whom, and what was read.",
+        link: AUDIT,
+      },
+      {
+        de: "Die betroffene Person auf anderem Weg fragen, ob sie davon weiß. Sie beendet den Zugriff in ihren Einstellungen unter Konto & Sicherheit → Notfallzugriff.",
+        en: "Ask the person concerned by another way whether they know about it. They end the access in their settings under Account & security → Emergency access.",
+      },
+      {
+        de: "Wirkt es wie ein Missbrauch: die Sitzungen der Vertrauensperson beenden; notfalls den Notfallzugriff der Instanz ausschalten (Anmeldung & SSO) – freigegebene Zugriffe ruhen dann.",
+        en: "If it looks like abuse: end the trusted contact's sessions; if needed, switch off the instance's emergency access (Sign-in & SSO) – granted access is suspended then.",
+        action: "sessions",
+        link: SIGN_IN,
+      },
       RESOLVE,
     ],
   },
