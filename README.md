@@ -535,7 +535,7 @@ Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`) or 
 
 ## Community
 
-Questions, ideas, show-and-tell or just a hello: join the **[Flowplan Discord](https://discord.gg/bCEdB6MPrR)**. Bugs and feature requests are best filed as [GitHub issues](https://github.com/yannicschuller/flowplan/issues), so nothing gets lost.
+Questions, ideas, show-and-tell or just a hello: join the **[Flowplan Discord](https://discord.gg/bCEdB6MPrR)**. Bugs and feature requests are best filed as [GitHub issues](https://github.com/yannicschuller/flowplan/issues), so nothing gets lost. Is flowplan.org down or slow? The [status page](https://status.flowplan.org) shows disruptions and maintenance.
 
 ### Help translate
 

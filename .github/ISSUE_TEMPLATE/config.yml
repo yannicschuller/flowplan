@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: flowplan.org down or slow?
+    url: https://status.flowplan.org
+    about: Check the status page first – disruptions and maintenance of the hosted service show there.
   - name: Documentation
     url: https://docs.flowplan.org/en
     about: Guides for using, self-hosting and configuring Flowplan.

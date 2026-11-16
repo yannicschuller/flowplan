@@ -51,6 +51,7 @@ body:
     id: hosting
     attributes:
       label: Where does it run?
+      description: "On flowplan.org, please check [status.flowplan.org](https://status.flowplan.org) first – a disruption or maintenance shows there."
       options:
         - flowplan.org (hosted)
         - Self-hosted with Docker / Docker Compose
