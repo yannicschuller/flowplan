@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import type { DeviceOS } from "./device-os";
 
 // The apps for iPhone, iPad and Android (flowplan-app) put `window.FlowplanApp`
@@ -141,6 +142,23 @@ export function appDeviceKey(
     : null;
 }
 export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
+
+// Inside one of the Flowplan apps – iPhone, iPad, Android (FlowplanApp) or
+// the desktop app (FlowplanDesktop) – rather than a browser: by the bridge
+// or, for older apps without one, the user agent. Texts that speak of "the
+// browser" say "the device" there. Pure, for the tests.
+export function flowplanAppHost(
+  host: { FlowplanApp?: unknown; FlowplanDesktop?: unknown } | undefined = typeof window === "undefined" ? undefined : (window as never),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  return !!host?.FlowplanApp || !!host?.FlowplanDesktop || /\bFlowplan(Mobile|Desktop)\//.test(agent);
+}
+// The same for rendering: false on the server and in the first render,
+// so hydration matches; the app's answer right after.
+const noChange = () => () => {};
+export function useInFlowplanApp(): boolean {
+  return useSyncExternalStore(noChange, () => flowplanAppHost(), () => false);
+}
 
 // How "Im Marketplace veröffentlichen …" reaches the marketplace's submit
 // page. "handover": window.open with an opener and the package by

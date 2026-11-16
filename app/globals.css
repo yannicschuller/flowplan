@@ -12864,11 +12864,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   display: none;
 }
 /* The rail: creation and drawing tools, the "+" panel at its end. */
-.wb-toolbar .wb-draw {
+.wb-toolbar .wb-has-menu {
   position: relative;
 }
-/* A small corner mark: pen, eraser and laser share this button. */
-.wb-toolbar .wb-draw::after {
+/* A small corner mark on every tool with options (shape, note, pen, eraser
+   and laser – the last three share one button); tools without have none. */
+.wb-toolbar .wb-has-menu::after {
   content: "";
   position: absolute;
   right: 3px;
@@ -13925,6 +13926,57 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   max-width: none;
   width: fit-content;
   margin-inline: auto;
+}
+/* The selection's tools in one row that scrolls sideways (an arrow has
+   colours, width, path, ends, dashes, link, copy, layers, lock, delete –
+   wrapped, that was four rows over the board). Targets stay 40 px; the
+   menus of its buttons (arrange, link, tags) hang from the bar itself, so
+   the scroller does not cut them off. */
+.wb-style-scroll {
+  display: contents;
+}
+.whiteboard.wb-layout-dock .wb-style-bar {
+  padding: 2px;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll::-webkit-scrollbar {
+  display: none;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll > *,
+.whiteboard.wb-layout-dock .wb-style-scroll .wb-arrange > button {
+  flex: none;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll :is(button:not(.wb-swatch), .fp-select) {
+  min-height: 40px;
+  white-space: nowrap;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll button:not(.wb-swatch) {
+  min-width: 40px;
+  justify-content: center;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll .wb-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  margin: 6px;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll .wb-swatch::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+.whiteboard.wb-layout-dock .wb-style-scroll .wb-arrange {
+  position: static;
 }
 .whiteboard.wb-layout-dock :is(.wb-timer, .wb-presenting) {
   top: calc(56px + var(--wb-inset-top));
@@ -34084,8 +34136,21 @@ label.ws-search input {
   gap: 10px;
   min-width: 0;
 }
-.push-test > .button {
-  justify-self: start;
+/* The test button, in the introduction in one row with the device's own
+   button ("App-Einstellungen öffnen", "Push aktivieren"): side by side with
+   a gap, wrapping onto the next line aligned the same way. */
+.push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+}
+.push-test > .push-actions {
+  margin: 0;
+}
+.push-actions > .button {
   display: inline-flex;
   align-items: center;
   gap: 6px;

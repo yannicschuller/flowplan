@@ -16,6 +16,7 @@
 // "Was ist neu" (#223, profile, all devices), "Beim Öffnen auf dem Handy"
 // (lib/start-screen.ts, profile, all devices).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
+import { useInFlowplanApp } from "@/lib/native-app";
 import { CircleHalf, Gift, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
@@ -49,6 +50,8 @@ import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNote
 export default function AppearanceSection() {
   const t = useT();
   const keyHints = useKeyboardHints();
+  // Inside the apps "automatic" follows the device, not a browser.
+  const inApp = useInFlowplanApp();
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
   const [lookStatus, runLook] = useSaveState();
@@ -203,7 +206,7 @@ export default function AppearanceSection() {
               });
             }}
           >
-            <option value="">{`🌐 ${t("Automatisch (folgt dem Browser)", "Automatic (follows the browser)")}`}</option>
+            <option value="">{`🌐 ${inApp ? t("Automatisch (folgt dem Gerät)", "Automatic (follows the device)") : t("Automatisch (folgt dem Browser)", "Automatic (follows the browser)")}`}</option>
             {LOCALES.map((l) => (
               <option key={l} value={l} lang={l}>{`${LANGUAGES[l].flag} ${LANGUAGES[l].name}`}</option>
             ))}
