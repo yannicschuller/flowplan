@@ -108,6 +108,7 @@ import { useToolbarLayout } from "@/lib/toolbar-layout-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
+import { RemoteSelection } from "@/lib/remote-selection";
 import {
   commentMarkedNodeView,
   inlineCommentExtension,
@@ -373,6 +374,19 @@ export default function DocumentEditor({
     return created;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId, rowId]);
+  // A newer state of the same document as a prop – the fresh answer after a
+  // kept copy, the reload after a change – merges at once. Without this the
+  // kept copy stayed on screen until the editor's own sync (after the live
+  // channel opened, seconds later), and what one did meanwhile acted on the
+  // old text: e.g. a formula changed elsewhere could not be deleted.
+  const mergedState = useRef(state);
+  useEffect(() => {
+    if (!state || state === mergedState.current) return;
+    mergedState.current = state;
+    try {
+      Y.applyUpdate(doc, from64(state), "remote");
+    } catch {}
+  }, [doc, state]);
   // One id per open editor: the live channel does not echo its own changes
   // and cursor moves back to it.
   const liveId = useMemo(() => crypto.randomUUID(), [pageId, rowId, generation]);
@@ -926,6 +940,7 @@ export default function DocumentEditor({
         // Folding headings, per person and device (not in a synced block).
         HeadingFolds.configure({ pageId, rowId, enabled: !embedded }),
         Collaboration.configure({ document: doc }),
+        RemoteSelection,
         collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),
         CitationView,

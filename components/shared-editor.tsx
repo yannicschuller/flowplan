@@ -32,6 +32,7 @@ import { typedMenu } from "@/lib/mention-trigger";
 import { blockForInsert, emptyBlockNear } from "@/lib/document-blocks";
 import { useEditor, useEditorState, EditorContent } from "@tiptap/react";
 import Collaboration from "@tiptap/extension-collaboration";
+import { RemoteSelection } from "@/lib/remote-selection";
 import type * as Y from "yjs";
 import {
   mathNodeViews,
@@ -192,7 +193,7 @@ export default function SharedEditor({
         ),
       // Captions below images, tables and code (lib/block-captions.ts).
       BlockCaptions,
-      ...(ydoc ? [Collaboration.configure({ document: ydoc })] : []),
+      ...(ydoc ? [Collaboration.configure({ document: ydoc }), RemoteSelection] : []),
       ...(ydoc && presence ? [guestCursors(presence)] : []),
     ],
     ...(ydoc ? {} : { content: html }),

@@ -14,9 +14,9 @@ import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, 
 import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
-import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
+import { useLocale, useT, writeLocaleCookie } from "./i18n";
 import { OfflineStatus } from "./offline-status";
-import { saveStatusOf } from "@/lib/save-status";
+import { SaveStatusBadge, useSaveStatusStore } from "./save-status-badge";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
@@ -118,7 +118,7 @@ import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, pref
 import { ListSkeleton, SettingsSkeleton, viewShapeOf } from "./skeleton";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
-import { Collapse, CrossFade, useLeaving } from "./motion";
+import { Collapse, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
@@ -153,8 +153,6 @@ import {
   ShareNetwork,
   ChatCircle,
   Check,
-  CloudCheck,
-  WifiSlash,
   X,
   ArrowRight,
   FileText,
@@ -479,7 +477,10 @@ export default function WorkspaceApp({
   const printOpenPageRef = useRef(() => {});
   const printOpenPage = () => printOpenPageRef.current();
   const t = useT();
-  const statusLabel = useStatusLabel();
+  // The open page's save state: a store of its own, shown by
+  // SaveStatusBadge only (components/save-status-badge.tsx).
+  const saveStatus = useSaveStatusStore("Gespeichert");
+  const setStatus = saveStatus.set;
   // Phones (≤ 767 px, app/globals.css): the page's top bar keeps the title;
   // follow, favourite, share and reading mode move into its ⋯ menu.
   const phone = useMedia("(max-width: 767px)");
@@ -566,7 +567,6 @@ export default function WorkspaceApp({
     // Documents opened for reading on this device (no editing, no handles).
     [readPages, setReadPages] = useState<string[]>([]),
     [comment, setComment] = useState(""),
-    [status, setStatus] = useState("Gespeichert"),
     // The session ended while the app was open: a banner until the reader signs in again.
     [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
@@ -4410,15 +4410,7 @@ export default function WorkspaceApp({
                   On phones the cloud shows only when there is something to
                   report – offline, changes on their way, an error – not while all is
                   saved (nor while a page that just opened checks in). */}
-              <CrossFade
-                className={`save-status${online && ["saved", "changes-saved", "loading", "syncing"].includes(saveStatusOf(status) || "") ? " save-status-quiet" : ""}`}
-                value={`${online}:${statusLabel(status)}`}
-              >
-                {/* The icon after the text, so it stays put while the text
-                    changes its width. */}
-                <span>{statusLabel(status)}</span>
-                {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
-              </CrossFade>
+              <SaveStatusBadge store={saveStatus} online={online} />
               <PresenceAvatars users={data.present.filter((u) => u.id !== boot.user.id).slice(0, 3)} />
               {/* A record as a page (#231) has its own actions above it;
                   these belong to the database. */}
