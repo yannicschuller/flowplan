@@ -133,7 +133,6 @@ test("relation cells show record icons and open related records on top of the ta
   await expect(options.locator("label", { hasText: "Ohne Symbol" }).locator(".relation-icon")).toHaveCount(0);
   await page.goto(`/#page=${tasks}`);
   await expect(entry).toBeHidden();
-
   // "In Datenbank öffnen" goes to the customer in its database; Back
   // returns to the tasks.
   await link("Acme").click();
@@ -146,11 +145,29 @@ test("relation cells show record icons and open related records on top of the ta
   await expect(entry).toBeHidden();
   await expect(link("Acme")).toBeVisible();
 
-  // Ctrl/⌘-click keeps the link: the customer in its database, in a new tab.
-  const [tab] = await Promise.all([context.waitForEvent("page"), link("Acme").click({ modifiers: ["ControlOrMeta"] })]);
-  // (A new tab starts at about:blank before it navigates.)
-  await tab.waitForURL(new RegExp(`page=${customers}.*row=${acme}`));
-  await tab.close();
+  // Ctrl/⌘-click keeps the link: the customer in its database, in a new
+  // tab – on tablets and computers since #279 a tab of the app
+  // (components/frame-tabs.tsx), on phones the browser's.
+  if (testInfo.project.name === "desktop") {
+    await link("Acme").click({ modifiers: ["ControlOrMeta"] });
+    await expect(page).toHaveURL(new RegExp(`page=${customers}.*row=${acme}`));
+    await expect(entry.getByRole("heading", { name: "Acme", exact: true })).toBeVisible();
+    // (The record's dialog hides the tab bar from the accessibility tree.)
+    await entry.getByRole("button", { name: "Schließen", exact: true }).first().click();
+    await expect(entry).toBeHidden();
+    const tabs = page.locator('.frame-tabs[data-tab-frame="0"]').getByRole("tab");
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    // Closing the tab returns to the tasks.
+    await tabs.nth(1).hover();
+    await tabs.nth(1).getByRole("button", { name: /schließen$/ }).click();
+    await expect(tabs).toHaveCount(0);
+  } else {
+    const [tab] = await Promise.all([context.waitForEvent("page"), link("Acme").click({ modifiers: ["ControlOrMeta"] })]);
+    // (A new tab starts at about:blank before it navigates.)
+    await tab.waitForURL(new RegExp(`page=${customers}.*row=${acme}`));
+    await tab.close();
+  }
   await expect(page).toHaveURL(new RegExp(`#page=${tasks}$`));
   await expect(entry).toBeHidden();
 
