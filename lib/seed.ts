@@ -1,6 +1,6 @@
 import { createWorkflowRecord } from "./workflows/store";
 import { createNotebook } from "./notebook";
-import { id, run, all, transaction } from "./db";
+import { id, run, all, one, transaction } from "./db";
 import type { Field, View } from "./types";
 import { ct } from "./content-locale";
 import { contactsSetup } from "./contacts";
@@ -99,6 +99,13 @@ export async function createPage(
   // A journal day written into before it existed keeps its draft id.
   pid: string = id(),
 ) {
+  // At the end of its siblings: the time, but never level with a page made
+  // in the same millisecond (two would then sit in either order).
+  const last = await one<{ position: number | null }>(
+    "SELECT MAX(position) AS position FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ?",
+    space,
+    parent,
+  );
   await run(
     "INSERT INTO pages(id,workspace_id,space_id,parent_id,title,kind,created_by,position,icon) VALUES(?,?,?,?,?,?,?,?,?)",
     pid,
@@ -108,7 +115,7 @@ export async function createPage(
     title,
     kind,
     user,
-    Date.now(),
+    Math.max(Date.now(), Math.floor(Number(last?.position ?? 0)) + 1),
     kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : kind === "notebook" ? "notebook" : kind === "workflow" ? "workflow" : "file",
   );
   if (kind === "database") {

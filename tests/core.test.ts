@@ -1679,3 +1679,18 @@ test("each copy of a page sits directly after its source, without ties", async (
   assert.deepEqual(order.map((p) => p.id), [a, second, copyOfCopy, first, b]);
   assert.equal(new Set(order.map((p) => p.position)).size, order.length);
 });
+
+test("pages made in the same millisecond still sit in the order they were made", async (t) => {
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const create = async (title: string, parentId?: string) =>
+    ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: page.space_id, title, parentId })) as { id: string }).id;
+  const parent = await create("Gleichzeitig");
+  const made = [await create("1", parent), await create("2", parent), await create("3", parent)];
+  const order = await (await import("../lib/db")).all<{ id: string; position: number }>(
+    "SELECT id,position FROM pages WHERE parent_id=? ORDER BY position,id",
+    parent,
+  );
+  assert.deepEqual(order.map((p) => p.id), made);
+  assert.equal(new Set(order.map((p) => p.position)).size, 3);
+});
