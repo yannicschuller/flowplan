@@ -303,7 +303,11 @@ test("formula conflicts preserve the draft and never overwrite a concurrent prop
   ).toBe('prop("Aufwand") * 2');
   await edit.getByRole("button", { name: "Schließen", exact: true }).click();
   // Reload makes the new database version explicit before retrying the retained expression.
+  // The reload shows the copy kept from before (lib/swr-cache.ts) at once;
+  // the dialog is opened once the fresh data, with the remote property, is
+  // there – opened on the kept copy it rightly reports the newer version.
   await page.reload();
+  await expect(page.locator('th[data-field-id="remote"]').first()).toBeVisible();
   edit = await f.open("legacy");
   await edit.getByLabel("Formel", { exact: true }).fill('prop("Aufwand") * 3');
   await edit.getByRole("button", { name: "Speichern", exact: true }).click();
