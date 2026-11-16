@@ -33,6 +33,10 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       TEST_BASE_URL: http://127.0.0.1:3000
+      # Hosted runners differ up to about 2x in speed between shards: the
+      # editor shows after about 4 s locally, so the 5 s default is too
+      # tight on the slow ones.
+      TEST_EXPECT_TIMEOUT_MS: "10000"
       # Throwaway data under the name the cursor and inline-comment specs
       # insist on before they write to the database themselves.
       FLOWPLAN_DATA_DIR: /tmp/flowplan-inline-e2e.ci
