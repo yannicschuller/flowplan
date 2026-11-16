@@ -17,7 +17,8 @@ import { LevelDot, LevelHidden, LevelScope, useLevelGate } from "./settings-leve
 // search and of addresses like #settings/account/passkeys. In Settings the
 // card has a level (#294, components/settings-level.tsx): its own `level`,
 // else the one of the registry entry with its id, else the section's; above
-// the person's level it is left out, and its rows take its level.
+// the person's level it is left out, and its rows take its level. Every
+// card heading in Settings shows its level's mark, also an inherited one.
 export function SettingGroup({
   title,
   description,
@@ -40,8 +41,8 @@ export function SettingGroup({
   return (
     <section className={`setting-group${tone === "danger" ? " danger-zone" : ""}`} id={id} aria-labelledby={id ? `${id}-title` : undefined}>
       <header>
-        <div className={gate.own ? "setting-group-title" : undefined}>
-          {gate.own && gate.level && <LevelDot level={gate.level} />}
+        <div className={gate.level ? "setting-group-title" : undefined}>
+          {gate.level && <LevelDot level={gate.level} />}
           <h2 id={id ? `${id}-title` : undefined}>{title}</h2>
           {description && <p>{description}</p>}
         </div>
