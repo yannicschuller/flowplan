@@ -2917,6 +2917,11 @@ test("grouped tables and lists collapse independently, select visible rows and m
   await expect(
     open.getByRole("button", { name: "Gruppe Open einklappen", exact: true }),
   ).toBeVisible();
+  // The page kept from before the reload shows first, as editable; wait
+  // for the reader's copy (no "add record" button in the group).
+  await expect(
+    page.getByTitle("Eintrag in Open hinzufügen", { exact: true }),
+  ).toHaveCount(0, { timeout: 15_000 });
   const mutations: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().endsWith("/api/command"))

@@ -3,6 +3,8 @@ import { test, expect } from "@playwright/test";
 // Databases as note collections (issues #26, #27, #28): the kind on
 // creation, quick capture and sharing into a database, Markdown import.
 test("databases for notes: kind on creation, capture, share and Markdown import", async ({ page }, info) => {
+  // Several pages and dialogs, each loaded for the first time.
+  test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -22,7 +24,7 @@ test("databases for notes: kind on creation, capture, share and Markdown import"
   await kinds.getByText("Dokumente", { exact: true }).click();
   await page.screenshot({ path: `test-results/database-kind-${info.project.name}.png` });
   await dialog.getByRole("button", { name: "Seite erstellen" }).click();
-  await expect(page.locator(".page-title")).toHaveValue(`Notizen ${stamp}`);
+  await expect(page.locator(".page-title")).toHaveValue(`Notizen ${stamp}`, { timeout: 30_000 }); // The first database view of the session.
   const database = new URLSearchParams((await page.evaluate(() => location.hash)).slice(1)).get("page")!;
   const schema = await (await page.request.get(`/api/pages/${database}`)).json();
   expect(schema.database.fields.map((f: { type: string }) => f.type)).toEqual(["text", "multiselect", "created_at", "updated_at"]);

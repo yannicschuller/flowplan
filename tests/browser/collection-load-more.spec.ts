@@ -48,13 +48,14 @@ test("Mehr laden reaches every match of a large collection", async ({ page }, te
   await expect(list.getByRole("listitem")).toHaveCount(COUNT + 1);
 
   // The table: loaded matches stay after switching; a fresh visit pages again.
-  await page.getByRole("button", { name: "Tabelle" }).click();
+  // (Exact names: other specs leave pages like "Liste 1794811790133" in the sidebar.)
+  await page.getByRole("button", { name: "Tabelle", exact: true }).click();
   const table = page.getByRole("region", { name: "Treffer als Tabelle" });
   await expect(table.locator("tbody tr")).toHaveCount(COUNT + 1);
   await page.reload();
   await expect(table.locator("tbody tr")).toHaveCount(500, { timeout: 30_000 });
   await page.getByRole("button", { name: "Mehr laden" }).click();
   await expect(table.locator("tbody tr")).toHaveCount(COUNT + 1);
-  await page.getByRole("button", { name: "Liste" }).click();
+  await page.getByRole("button", { name: "Liste", exact: true }).click();
   expect(errors).toEqual([]);
 });

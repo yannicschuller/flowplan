@@ -55,7 +55,7 @@ test("record documents embed linked database views", async ({
   await expect(picker).not.toBeVisible();
   const embedded = entry.locator(".linked-database");
   await expect(embedded).toContainText(`Aufgaben ${tag}`);
-  await expect(embedded.locator(".data-table tbody tr")).toHaveCount(2);
+  await expect(embedded.locator(".data-table tbody tr")).toHaveCount(2, { timeout: 30_000 }); // The linked view loads its own code first.
   const read = async (id: string) =>
     (await page.request.get(`/api/pages/${id}`)).json();
   await expect

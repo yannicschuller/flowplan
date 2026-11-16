@@ -186,7 +186,7 @@ test("inline in a document: the header sticks while the table is in view and lea
   });
   await page.goto(`/#page=${host}`);
   const embed = page.locator(".linked-database");
-  await expect(embed.locator("tbody tr")).toHaveCount(80);
+  await expect(embed.locator("tbody tr")).toHaveCount(80, { timeout: 30_000 }); // The editor, then the linked view, load after the page.
   const main = page.locator(".main-scroll");
 
   let m = await measure(page, ".linked-database");
@@ -265,7 +265,7 @@ test("record dialog: the header of a database in the record sticks below the dia
   await page.goto(`/#page=${host}&row=${record.id}`);
   const dialog = page.getByRole("dialog", { name: "Eintrag", exact: true });
   const embed = dialog.locator(".linked-database");
-  await expect(embed.locator("tbody tr")).toHaveCount(60);
+  await expect(embed.locator("tbody tr")).toHaveCount(60, { timeout: 30_000 }); // The record's editor, then the linked view, load after the page.
   // The dialog's own scroller, and how far the table's top lies below it.
   const result = await embed.evaluate(async (el) => {
     let scroller = el.parentElement;

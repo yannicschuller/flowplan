@@ -2031,7 +2031,9 @@ export default function DatabaseView({
       version: row.version,
       cells: { [field.id]: value },
     });
-    if (result) setEditingCell(null);
+    // Only the cell that was saved closes: on a slow connection another one
+    // (the next cell, after the record's title) may be open by now.
+    if (result) setEditingCell((open) => (open?.rowId === row.id && open.fieldId === field.id ? null : open));
     return result;
   }
   async function createRow(
