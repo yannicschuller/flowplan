@@ -3,17 +3,18 @@ import { safeCollisionPadding } from "./safe-area";
 import { useState, type ReactNode } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, Lightning, FlowArrow, Copy, Timer, GitBranch } from "@phosphor-icons/react";
-import { TimeReport } from "./time-report";
-import { GitSettings } from "./git-settings";
+import dynamic from "next/dynamic";
 import { CalendarSyncButton } from "./calendar-sync-dialog";
 import { IssueSyncDialog, IssueSyncMenuItem } from "./issue-sync-database";
 import { useT } from "./i18n";
-import { Modal } from "./ui";
-import { DatabaseAutomations } from "./database-automations";
-import { DatabaseWorkflow } from "./database-workflow";
+import { loadView } from "./view-fallback";
 import type { Database, Page, User } from "@/lib/types";
 
 export type ToolPanel = "automations" | "workflow" | "time" | "git";
+
+// The dialogs load with the first one opened (components/database-tool-panels.tsx);
+// a dialog opens once its code is there, so its focus lands as before.
+const DatabaseToolPanels = dynamic(() => loadView(() => import("./database-tool-panels")), { ssr: false });
 
 // The "…" menu of a database: record templates and the optional tools.
 // Nothing here changes how a database works until it is set up.
@@ -36,9 +37,14 @@ export function DatabaseTools({
   templates?: { id: string; name: string; is_default?: number }[];
 }) {
   const t = useT();
-  const [panel, setPanel] = useState<ToolPanel | null>(null);
+  const [panel, setPanelState] = useState<ToolPanel | null>(null);
+  // Mounted with the first dialog and kept (closing animations, state).
+  const [used, setUsed] = useState(false);
+  const setPanel = (next: ToolPanel | null) => {
+    if (next) setUsed(true);
+    setPanelState(next);
+  };
   const settings = database.settings || {};
-  const save = async (patch: Record<string, unknown>) => !!(await act({ action: "database.settings", settings: patch }));
   const item = (icon: ReactNode, label: string, onSelect: () => void, hint?: string) => (
     <Dropdown.Item className="dropdown-item" onSelect={onSelect}>
       {icon}
@@ -50,7 +56,8 @@ export function DatabaseTools({
   return (
     <>
       <CalendarSyncButton pageId={page.id} fields={database.fields} views={database.views} editable={editable} />
-      <Dropdown.Root>
+      {/* Opening the menu fetches the dialogs, so one chosen opens at once. */}
+      <Dropdown.Root onOpenChange={(open) => open && void import("./database-tool-panels").catch(() => {})}>
         <Dropdown.Trigger asChild>
           <button title={t("Weitere Werkzeuge", "More tools")} aria-label={t("Weitere Werkzeuge", "More tools")}>
             <DotsThree size={20} />
@@ -68,29 +75,19 @@ export function DatabaseTools({
           </Dropdown.Content>
         </Dropdown.Portal>
       </Dropdown.Root>
-      <Modal open={panel === "automations"} onClose={() => setPanel(null)} title={t(`Automationen · ${page.title}`, `Automations · ${page.title}`)} wide>
-        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} pageId={page.id} />
-      </Modal>
-      <Modal open={panel === "git"} onClose={() => setPanel(null)} title={t("Git-Anbindung", "Git connection")} wide>
-        {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id" && !!f.prefix)} editable={editable} act={act} />}
-      </Modal>
       <IssueSyncDialog page={page} database={database} editable={editable} />
-      <Modal open={panel === "time"} onClose={() => setPanel(null)} title={t(`Zeiten · ${page.title}`, `Time · ${page.title}`)} wide>
-        {panel === "time" && <TimeReport pageId={page.id} workspaceId={page.workspace_id} title={page.title} />}
-      </Modal>
-      <Modal open={panel === "workflow"} onClose={() => setPanel(null)} title={t("Statusregeln und Erledigt", "Status rules and done")} wide>
-        <DatabaseWorkflow
-          key={String(database.version)}
-          fields={database.fields}
-          settings={settings}
+      {used && (
+        <DatabaseToolPanels
+          panel={panel}
+          setPanel={setPanel}
+          page={page}
+          database={database}
+          members={members}
           editable={editable}
-          save={async (patch) => {
-            const ok = await save(patch);
-            if (ok) setPanel(null);
-            return ok;
-          }}
+          act={act}
+          templates={templates}
         />
-      </Modal>
+      )}
     </>
   );
 }

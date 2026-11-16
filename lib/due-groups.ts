@@ -1,6 +1,6 @@
 // Groups by due date for "Meine Aufgaben": tasks from documents and records
 // from databases (components/my-tasks.tsx, components/my-records.tsx).
-import { localToday } from "./task-due-plugin";
+import { localToday } from "./task-due";
 
 const shift = (day: string, days: number) => {
   const d = new Date(`${day}T00:00:00Z`);

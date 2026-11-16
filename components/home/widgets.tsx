@@ -33,7 +33,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 import { notificationUrl, parsePageLocation, type PageLocation } from "@/lib/page-location";
 import { shownPageIcon } from "@/lib/page-link-icons";
-import { dueLabel, dueState } from "@/lib/task-due-plugin";
+import { dueLabel, dueState } from "@/lib/task-due";
 import { useCaptureTargets } from "../capture-target";
 import { Select } from "../select";
 import type { Bootstrap, Page, PageKind } from "@/lib/types";

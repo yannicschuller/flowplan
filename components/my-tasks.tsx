@@ -26,7 +26,7 @@ import { api, PageIcon } from "./ui";
 import { RecordRow, RecordTools, RecordViews, type RecordsResult, type RecordView, type TaskRecord } from "./my-records";
 import { ChipPopover } from "./chip-popover";
 import { ListSkeleton } from "./skeleton";
-import { dueLabel, dueState, localToday } from "@/lib/task-due-plugin";
+import { dueLabel, dueState, localToday } from "@/lib/task-due";
 import { dueGroupName, groupByDue } from "@/lib/due-groups";
 import { DUE_RANGES, inDueRange, type DueRange } from "@/lib/due-range";
 import { statusName, type TaskStatus } from "@/lib/task-status";

@@ -31,7 +31,6 @@ import { flushOpenDocuments } from "@/lib/document-flush";
 import { appCache, rowKey } from "@/lib/swr-cache";
 import { ContextMenu } from "./context-menu";
 import { formatDuration } from "@/lib/durations";
-import { DatabaseSprints } from "./database-sprints";
 import { tagByName, useTagOptions } from "./tag-options-context";
 import { isTagField } from "@/lib/page-properties";
 import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRename } from "@/lib/option-renames";
@@ -60,12 +59,10 @@ import { RelatedRecord, useRelatedRecord } from "./related-record";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { leaveTo } from "@/lib/history-nav";
 import { scheduleFields } from "@/lib/database-timeline";
-import DatabaseTimeline from "./database-timeline";
 import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, usePointerDrag, type DragPoint, type RecordDropDetail } from "./pointer-drag";
 import { keyboardStep, nearestIndex, placementIn, slotFor, type KeyPosition } from "@/lib/pointer-drag";
 import { Reactions } from "./reactions";
 import { startBoardCardDrag, type BoardCardDrag } from "./board-card-drag";
-import DatabaseCalendar from "./database-calendar";
 import FormulaEditor from "./formula-editor";
 import {
   validateFormula,
@@ -114,9 +111,7 @@ import {
   prefersReducedMotion,
   typedRecently,
 } from "@/lib/motion";
-import DatabaseFeed from "./database-feed";
 import { defaultFeed } from "@/lib/database-feed";
-import DatabaseChart from "./database-chart";
 import { useFilterClock } from "./use-filter-clock";
 import DatabaseFilterEditor from "./database-filter-editor";
 import {
@@ -126,7 +121,7 @@ import {
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
 import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
-import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
+import type { AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { DuplicateHint, RelatedPages } from "./related-pages";
 import { useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
@@ -162,7 +157,6 @@ import { describeRule } from "@/lib/field-access-rules";
 export { CellInput } from "./cell-input";
 import { AI_OUTPUT_TYPES, AiCellControl, AiFieldEditor, AiFillAll, AiFillDialog, unknownReferences, useAiDatabaseStatus } from "./ai-database";
 import { aiPageReadable, aiUsable, type AiStatus } from "@/lib/ai/client";
-import DatabaseForm from "./database-form";
 import type { FormConfig } from "@/lib/form-settings";
 import {
   Plus,
@@ -225,12 +219,26 @@ import { IconImagePicker } from "./icon-image-picker";
 import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
-import { rememberViewShape } from "./skeleton";
+import { rememberViewShape, ViewSkeleton } from "./skeleton";
 import { showToast, showUndo, toastSerial, undoShownSince } from "./toast";
-import { colorLabel } from "./settings/user/tags";
+import { colorLabel } from "./color-label";
 import { OptionColorList } from "./option-color-list";
 import { FieldTypeIcon } from "./field-type-icon";
 const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
+// The views besides table, board, gallery and list load when a database
+// shows one; their placeholder has the view's shape.
+const DatabaseSprints = dynamic(() => loadView(() => import("./database-sprints").then((m) => ({ default: m.DatabaseSprints }))), {
+  ssr: false,
+  loading: () => <ViewSkeleton type="sprint" />,
+});
+const DatabaseFeed = dynamic(() => loadView(() => import("./database-feed")), { ssr: false, loading: () => <ViewSkeleton type="feed" /> });
+const DatabaseCalendar = dynamic(() => loadView(() => import("./database-calendar")), { ssr: false, loading: () => <ViewSkeleton type="calendar" /> });
+const DatabaseTimeline = dynamic(() => loadView(() => import("./database-timeline")), { ssr: false, loading: () => <ViewSkeleton type="timeline" /> });
+const DatabaseChart = dynamic(() => loadView(() => import("./database-chart")), { ssr: false, loading: () => <ViewSkeleton type="chart" /> });
+// The AI summary dialog (Markdown and code highlighting): loaded with its
+// first opening and kept mounted from then on.
+const AiSummaryDialog = dynamic(() => loadView(() => import("./ai-summary").then((m) => ({ default: m.AiSummaryDialog }))), { ssr: false });
+const DatabaseForm = dynamic(() => loadView(() => import("./database-form")), { ssr: false, loading: () => <ViewSkeleton type="form" /> });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
   Database,
@@ -423,6 +431,10 @@ export default function DatabaseView({
   // Record backlinks, unlinked mentions and related pages (#191).
   const discoveryPanels = useDiscoveryPanelsShown();
   const [aiSummary, setAiSummary] = useState<AiSummaryTarget | null>(null);
+  const [aiSummaryUsed, setAiSummaryUsed] = useState(false);
+  useEffect(() => {
+    if (aiSummary) setAiSummaryUsed(true);
+  }, [aiSummary]);
   // The server sends this database's rows once (as rows); relations to
   // itself and rollups read them from here.
   const related = useMemo(
@@ -5900,7 +5912,7 @@ export default function DatabaseView({
           </div>
         ))}
       </Modal>
-      <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />
+      {(aiSummary || aiSummaryUsed) && <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />}
       {shareRecord && (
         <RecordShareDialog
           open

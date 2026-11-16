@@ -5,7 +5,7 @@
 import { reveal } from "./motion";
 import { isFolded } from "./heading-folds";
 import { parsePageLocation } from "./page-location";
-import { findBlock } from "./block-ids";
+import { findBlock } from "./block-find";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 /** Text blocks a jump can land on, innermost first wins. */

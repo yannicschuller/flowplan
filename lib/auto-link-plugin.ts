@@ -16,16 +16,11 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/p
 import type { EditorView } from "@tiptap/pm/view";
 import { ReplaceStep } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { AUTO_LINK_SCAN, compileRules, findAutoLinks, type AutoLinkRule, type CompiledRule } from "./auto-link";
+import { AUTO_LINK_SCAN, findAutoLinks, type CompiledRule } from "./auto-link";
+import { workspaceAutoLinkRules } from "./auto-link-active";
 
-// The rules of the open workspace (set by the app from the bootstrap),
-// compiled once per rule set.
-let current: { key: string; rules: CompiledRule[] } = { key: "[]", rules: [] };
-export function setAutoLinkRules(rules: readonly AutoLinkRule[] | null | undefined) {
-  const key = JSON.stringify(rules || []);
-  if (key !== current.key) current = { key, rules: compileRules(rules) };
-}
-export const workspaceAutoLinkRules = () => current.rules;
+// The rules of the open workspace (set by the app from the bootstrap).
+export { setAutoLinkRules, workspaceAutoLinkRules } from "./auto-link-active";
 
 type Range = { from: number; to: number };
 type State = { added: Range[] | null };

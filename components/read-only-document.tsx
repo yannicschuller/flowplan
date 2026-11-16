@@ -14,7 +14,7 @@ import { emptyBibliography, renderReferences } from "./citation-views";
 import { finishDocumentHtml, wrapTables } from "@/lib/document-html";
 import { mountPluginBlock } from "./plugin-block";
 import { mountWorkflowButton } from "./workflow-button";
-import { decorateLinkIcons, setLinkTargetPages } from "./page-link-icons";
+import { decorateLinkIcons, setLinkTargetPages } from "./page-link-icons-store";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
   html,

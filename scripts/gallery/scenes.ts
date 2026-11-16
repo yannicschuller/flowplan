@@ -661,6 +661,19 @@ const databaseScenes: Scene[] = [
     },
   },
   {
+    id: "database-automations",
+    group: "Databases",
+    title: "Automations dialog",
+    path: dbPath,
+    // The dialogs of the "…" menu load with the first one opened.
+    covers: ["components/database-tool-panels.tsx"],
+    steps: async (page) => {
+      await button(page, "Weitere Werkzeuge").first().click();
+      await menu(page).getByRole("menuitem", { name: "Automationen", exact: true }).click();
+      await waitDialog(page, /^Automationen ·/);
+    },
+  },
+  {
     id: "database-export",
     group: "Databases",
     title: "Export menu",

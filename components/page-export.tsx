@@ -23,7 +23,8 @@ export function PageExportDialog({
 }: {
   page: { id: string; title: string; kind: string };
   onClose: () => void;
-  legacy: () => LegacyExport;
+  // A document builds its HTML with lib/document-html.ts, loaded then.
+  legacy: () => LegacyExport | Promise<LegacyExport>;
 }) {
   const t = useT();
   const radioName = useId();
@@ -46,7 +47,7 @@ export function PageExportDialog({
   async function text(): Promise<{ text: string; html?: string }> {
     if (format === "legacy") {
       await flushOpenDocuments();
-      const result = legacy();
+      const result = await legacy();
       const origin = window.location.origin;
       return { text: absoluteLinks(result.text, origin), html: result.html === undefined ? undefined : absoluteLinks(result.html, origin) };
     }
@@ -90,7 +91,7 @@ export function PageExportDialog({
     try {
       await flushOpenDocuments();
       if (format === "legacy") {
-        const result = legacy();
+        const result = await legacy();
         downloadText(result.name, result.text, result.mime);
       } else if (format === "docx") await downloadExport(docxUrl(page.id), `${exportName(page.title)}.docx`);
       else if (format === "epub") await downloadExport(epubUrl({ pageId: page.id, children: treeChildren }), `${exportName(page.title)}.epub`);

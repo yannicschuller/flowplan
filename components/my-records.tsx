@@ -9,7 +9,7 @@ import { BookmarkSimple, Database, MagnifyingGlass, X } from "@phosphor-icons/re
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { Avatar, PageIcon } from "./ui";
-import { dueLabel, dueState } from "@/lib/task-due-plugin";
+import { dueLabel, dueState } from "@/lib/task-due";
 import type { CrossFilter } from "@/lib/cross-records";
 
 export type TaskRecord = {

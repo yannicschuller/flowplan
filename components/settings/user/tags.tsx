@@ -14,26 +14,14 @@ import { Modal, api } from "../../ui";
 import { EmptyState, SettingGroup } from "../../settings-ui";
 import { PropertyDialog, TagChip, TYPE_ICONS, typeLabel } from "../../page-properties";
 import { ScopeBadge } from "../../meta-scope";
-import { PAGE_TAG_COLORS, type PagePropertyDef, type PageTag, type PageTagColor } from "@/lib/page-properties";
+import { PAGE_TAG_COLORS, type PagePropertyDef, type PageTag } from "@/lib/page-properties";
 import { useUserSettings } from "../user-context";
+import { colorLabel } from "../../color-label";
 
 type ScopeTarget = { kind: "tag" | "property"; item: PageTag | PagePropertyDef };
 type Usage = { spaceId: string; spaceName: string; pages: number; records: number; titles: string[] };
 
-export function colorLabel(color: PageTagColor, t: (de: string, en: string) => string) {
-  const labels: Record<PageTagColor, string> = {
-    gray: t("Grau", "Gray"),
-    blue: t("Blau", "Blue"),
-    green: t("Grün", "Green"),
-    red: t("Rot", "Red"),
-    yellow: t("Gelb", "Yellow"),
-    orange: t("Orange", "Orange"),
-    purple: t("Lila", "Purple"),
-    pink: t("Rosa", "Pink"),
-    teal: t("Türkis", "Teal"),
-  };
-  return labels[color];
-}
+export { colorLabel };
 
 export default function TagsSection() {
   const t = useT();

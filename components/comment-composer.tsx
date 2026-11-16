@@ -1,5 +1,5 @@
 "use client";
-import { LinkTargetIcon } from "./page-link-icons";
+import { LinkTargetIcon } from "./page-link-icons-store";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";

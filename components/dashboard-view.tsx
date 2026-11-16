@@ -25,7 +25,7 @@ import { Modal, PageIcon, api } from "./ui";
 import { Select } from "./select";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
 import { currentStreak, localDay } from "./journal-view";
-import { localToday } from "@/lib/task-due-plugin";
+import { localToday } from "@/lib/task-due";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { chartGroupField, chartNumberField } from "@/lib/database-chart";
 import { tileTypes, tileSizes, type Tile, type TileSize, type TileType } from "@/lib/dashboard-schema";
