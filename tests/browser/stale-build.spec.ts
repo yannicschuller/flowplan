@@ -14,6 +14,11 @@ import { join } from "node:path";
 // back (no loop, no message over a working app).
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const OLDER = "older-build-182";
+// In these contexts (their page comes from route.fulfill()) Chromium's
+// Local Network Access blocked the dev server's live-reload WebSocket to
+// 127.0.0.1 (net::ERR_BLOCKED_BY_LOCAL_…); without it the dev server's page
+// never hydrated – no request, no check of the build.
+const contextOptions = { locale: "de-DE", permissions: ["local-network-access"] };
 
 function signIn() {
   const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
@@ -55,7 +60,7 @@ test.describe("#182 outdated page", () => {
   test("a page of an older build loads the live build once instead of running on", async ({ browser, request }) => {
     const live = (await request.get(`${origin}/api/health`)).headers()["x-flowplan-build"];
     expect(live).toBeTruthy();
-    const context = await browser.newContext({ locale: "de-DE" });
+    const context = await browser.newContext(contextOptions);
     await context.addCookies([{ name: "flowplan_session", value: signIn(), url: origin, httpOnly: true, sameSite: "Lax" }]);
     const loads = await olderPages(context, live, (n) => n === 1);
     const page = await context.newPage();
@@ -73,7 +78,7 @@ test.describe("#182 outdated page", () => {
 
   test("an older page that keeps coming back reloads only once and stays usable", async ({ browser, request }) => {
     const live = (await request.get(`${origin}/api/health`)).headers()["x-flowplan-build"];
-    const context = await browser.newContext({ locale: "de-DE" });
+    const context = await browser.newContext(contextOptions);
     await context.addCookies([{ name: "flowplan_session", value: signIn(), url: origin, httpOnly: true, sameSite: "Lax" }]);
     const loads = await olderPages(context, live, () => true);
     const page = await context.newPage();
