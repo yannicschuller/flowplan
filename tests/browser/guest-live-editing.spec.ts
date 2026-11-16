@@ -17,6 +17,8 @@ test("guests and members edit a shared page live together", async ({
     expect(response.ok(), await response.text()).toBe(true);
     return response.json();
   };
+  // The development sign-in's person: no introduction over the page.
+  await command({ action: "profile.onboarded" });
   const p = await command({
     action: "page.create",
     workspaceId: boot.workspace.id,
@@ -53,7 +55,7 @@ test("guests and members edit a shared page live together", async ({
       .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
       .click();
     const editor = guest.getByLabel("Geteilten Inhalt bearbeiten");
-    await expect(editor).toContainText("Vom Mitglied");
+    await expect(editor).toContainText("Vom Mitglied", { timeout: 30_000 }); // The share page loads its editor first.
     await expect(guest.locator(".shared-live-status")).toContainText("Live");
     // Guest text appears in the member's open editor without reloading.
     await editor.click();

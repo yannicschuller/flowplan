@@ -84,9 +84,14 @@ test("formulas written as text in copied HTML and in the document become formula
   await page.keyboard.type("Formel: \\(x^2\\) und");
   await page.keyboard.press("Enter");
   await page.keyboard.type("\\[ a^2+b^2=c^2 \\]");
-  await page.keyboard.press("ControlOrMeta+a");
-  await editor.locator("p", { hasText: "Formel:" }).click({ button: "right" });
-  await page.keyboard.press("ControlOrMeta+a");
+  // Both lines selected as text (⌘A chooses blocks from its second press,
+  // #264); a right click into the selection keeps it.
+  // At the start of the line: its middle is the formula (opens its editor).
+  await editor.locator("p", { hasText: "Formel:" }).click({ position: { x: 4, y: 8 } });
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+End");
+  await editor.locator("p", { hasText: "Formel:" }).click({ button: "right", position: { x: 4, y: 8 } });
   await page.getByRole("menuitem", { name: "In Formeln umwandeln" }).click();
   await expect(editor.locator("div[data-math]")).toHaveCount(4);
   await expect(editor.locator("p", { hasText: "Formel:" }).locator("[data-math]")).toHaveCount(1);

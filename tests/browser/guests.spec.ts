@@ -20,6 +20,8 @@ test("owners turn members into guests who only see shared pages", async ({
     expect(response.ok(), await response.text()).toBe(true);
     return response.json();
   };
+  // The development sign-in's person: no introduction over the page.
+  await command({ action: "profile.onboarded" });
   const tag = `${testInfo.project.name}${Date.now()}`;
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const workspace = boot.workspace;
