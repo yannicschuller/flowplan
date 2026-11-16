@@ -328,18 +328,22 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
       name: "Termin bearbeiten",
       exact: true,
     });
-    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-03-29T02:30");
+    // Date and time are two fields since #314 ("Beginn", "Beginn: Uhrzeit").
+    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-03-29");
+    await dialog.getByLabel("Beginn: Uhrzeit", { exact: true }).fill("02:30");
     await expect(dialog.getByRole("alert")).toContainText("existiert");
     await dialog
       .getByRole("button", { name: "Termin speichern", exact: true })
       .click();
     expect((await f.row()).cells.start).toBe("2026-09-23T07:00:00Z");
-    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-10-25T02:30");
+    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-10-25");
+    await dialog.getByLabel("Beginn: Uhrzeit", { exact: true }).fill("02:30");
     await expect(dialog.getByRole("alert")).toContainText("zweimal");
     await dialog
       .getByLabel("Beginn: Zeitumstellung", { exact: true })
       .selectOption("later");
-    await dialog.getByLabel("Ende", { exact: true }).fill("2026-10-25T03:30");
+    await dialog.getByLabel("Ende", { exact: true }).fill("2026-10-25");
+    await dialog.getByLabel("Ende: Uhrzeit", { exact: true }).fill("03:30");
     await dialog
       .getByRole("button", { name: "Termin speichern", exact: true })
       .click();
@@ -424,7 +428,8 @@ test("calendar conflicts preserve drafts, remote edits cancel gestures and locke
       name: "Termin bearbeiten",
       exact: true,
     });
-    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-09-23T08:30");
+    await dialog.getByLabel("Beginn", { exact: true }).fill("2026-09-23");
+    await dialog.getByLabel("Beginn: Uhrzeit", { exact: true }).fill("08:30");
     await f.command({
       action: "row.update",
       pageId: f.source.id,
@@ -439,8 +444,11 @@ test("calendar conflicts preserve drafts, remote edits cancel gestures and locke
       "inzwischen geändert",
     );
     await expect(dialog.getByLabel("Beginn", { exact: true })).toHaveValue(
-      "2026-09-23T08:30",
+      "2026-09-23",
     );
+    await expect(
+      dialog.getByLabel("Beginn: Uhrzeit", { exact: true }),
+    ).toHaveValue("08:30");
     await dialog
       .getByRole("button", { name: "Abbrechen", exact: true })
       .click();
