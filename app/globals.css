@@ -28129,16 +28129,18 @@ td.ai-filled {
   }
 }
 /* Its right edge over the page: inside the sidebar (which clips sideways),
-   a strip wide enough for a finger with a small grip in the middle. */
+   a strip with a small grip in the middle – as wide as the rows' right
+   padding (10 px), so it does not cover the "+" and ⋯ buttons at their
+   end. */
 .app-shell.nav-open > .sidebar .sidebar-resize {
   display: block;
   right: 0;
-  width: 14px;
+  width: 10px;
 }
 .app-shell.nav-open > .sidebar .sidebar-resize::after {
   top: 50%;
   bottom: auto;
-  left: 5px;
+  left: 3px;
   width: 4px;
   height: 40px;
   margin-top: -20px;

@@ -385,6 +385,11 @@ label.hit-check {
     width: 44px;
     height: 44px;
   }
+  /* The alignment menu's button is as wide as its icon and caret
+     (app/globals.css, #278): at least as wide as the others. */
+  :is(.page-layout, .record-dialog) .editor-toolbar button.toolbar-menu-button[type] {
+    min-width: 44px;
+  }
   /* Lists in documents: a row per finger, so the checkbox and the block
      handle of each item have their 44 px; the text keeps clear of the
      checkbox's area. */
