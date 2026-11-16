@@ -2147,6 +2147,7 @@ export default function WorkspaceApp({
     if (!result || !space) return;
     // Screen readers hear where the space went (the menu closes on select).
     const at = order.indexOf(moved) + 1;
+    setBranchNote("");
     setSpaceMoveNote(
       t(`„${space.name}“ steht jetzt an Position ${at} von ${order.length}.`, `“${space.name}” is now at position ${at} of ${order.length}.`),
     );
@@ -2239,6 +2240,7 @@ export default function WorkspaceApp({
     branchRef.current = page ? page.id : null;
     writeBranch(localStorage, boot.workspace.id, page ? page.id : null);
     const untitled = t("Ohne Titel", "Untitled");
+    setSpaceMoveNote("");
     setBranchNote(
       page
         ? t(`Seitenbaum auf „${page.title || untitled}“ fokussiert`, `Page tree focused on “${page.title || untitled}”`)
@@ -4186,11 +4188,9 @@ export default function WorkspaceApp({
             </section>
               );
             })}
+          {/* One live region for the sidebar: a moved space or a focused branch. */}
           <p className="sr-only" role="status" aria-live="polite">
-            {spaceMoveNote}
-          </p>
-          <p className="sr-only" role="status" aria-live="polite">
-            {branchNote}
+            {branchNote || spaceMoveNote}
           </p>
           {canCreate && !branchPage && (
             <button className="add-space" onClick={() => setNewSpace(true)}>

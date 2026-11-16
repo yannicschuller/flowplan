@@ -25,10 +25,12 @@ test("the tab bar's labels cannot be selected, the editor's text can", async ({ 
   await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const doc = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Auswahl ${Date.now()}` });
 
-  await page.goto("/");
+  // Opened by its address: a hash set before the app has hydrated is
+  // replaced by the start page.
+  await page.goto(`/#page=${doc.id}`);
   await expect(page.locator(".mobile-tab-bar")).toBeVisible();
-  await page.evaluate((id) => (location.hash = `page=${id}`), doc.id);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
   await editor.click();
   await page.keyboard.type("Kopierbarer Inhalt");
   await expect(editor.locator("p", { hasText: "Kopierbarer Inhalt" })).toBeVisible();
