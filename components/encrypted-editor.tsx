@@ -20,6 +20,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import { FlowCode } from "@/lib/text-marks";
 import Collaboration from "@tiptap/extension-collaboration";
+import { RemoteSelection } from "@/lib/remote-selection";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import * as Y from "yjs";
@@ -191,6 +192,7 @@ export default function EncryptedEditor({
         BlockIds,
         HeadingLinks.configure({ copy: (pos) => copyBlockLink.current(pos) }),
         Collaboration.configure({ document: doc }),
+        RemoteSelection,
       ],
       editorProps: {
         handleKeyDown: (view, event) => {

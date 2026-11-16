@@ -108,6 +108,7 @@ import { useToolbarLayout } from "@/lib/toolbar-layout-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
+import { RemoteSelection } from "@/lib/remote-selection";
 import {
   commentMarkedNodeView,
   inlineCommentExtension,
@@ -939,6 +940,7 @@ export default function DocumentEditor({
         // Folding headings, per person and device (not in a synced block).
         HeadingFolds.configure({ pageId, rowId, enabled: !embedded }),
         Collaboration.configure({ document: doc }),
+        RemoteSelection,
         collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),
         CitationView,
