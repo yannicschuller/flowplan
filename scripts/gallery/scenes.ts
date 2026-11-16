@@ -468,7 +468,8 @@ const editorScenes: Scene[] = [
       await button(page, "Neuer Textkommentar").click();
       await page.locator(".inline-comment-new blockquote").waitFor();
       await page.locator(".inline-thread-link").waitFor();
-      await page.locator(".inline-comment-panel").evaluate((el) => el.scrollIntoView({ block: ctx.phone ? "start" : "center" }));
+      // The page context has no `ctx`: pass where to scroll as an argument.
+      await page.locator(".inline-comment-panel").evaluate((el, block: ScrollLogicalPosition) => el.scrollIntoView({ block }), (ctx.phone ? "start" : "center") as ScrollLogicalPosition);
     },
   },
   {
