@@ -147,6 +147,28 @@ const pages: Scene[] = [
   { id: "home", group: "Pages", title: "Start page", path: "#home" },
   { id: "inbox", group: "Pages", title: "Inbox", path: "#inbox" },
   { id: "tasks", group: "Pages", title: "My tasks", path: "#tasks" },
+  {
+    id: "tasks-range",
+    group: "Pages",
+    title: "My tasks – date range",
+    covers: ["components/chip-popover.tsx"],
+    path: "#tasks",
+    steps: async (page) => {
+      await page.getByRole("button", { name: /^Fälligkeit: / }).click();
+      await page.getByRole("dialog", { name: "Fälligkeit" }).waitFor();
+    },
+  },
+  {
+    id: "tasks-databases",
+    group: "Pages",
+    title: "My tasks – all records from databases",
+    path: "#tasks",
+    steps: async (page) => {
+      await page.locator(".my-tasks-source label", { hasText: "Datenbanken" }).click();
+      await page.locator(".my-tasks-person label", { hasText: "Alle" }).click();
+      await page.getByRole("group", { name: "Nur für Einträge aus Datenbanken" }).waitFor();
+    },
+  },
   { id: "graph", group: "Pages", title: "Graph", path: "#graph" },
   { id: "trash", group: "Pages", title: "Trash", path: "#trash" },
   { id: "media", group: "Pages", title: "Media library", path: "#media" },

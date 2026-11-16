@@ -134,19 +134,36 @@ test("Aufgabe hinzufügen: Enter writes into the own page, the filter narrows to
   await expect(item).toBeVisible();
   await expect(item.locator(".my-task-text")).toHaveText(text);
   await expect(field).toHaveValue("");
-  // "Eigene" keeps it, "Aus Dokumenten & Datenbanken" does not; the choice stays.
-  await page.locator(".my-tasks-filter label", { hasText: "Eigene" }).click();
+  // Person "Eigene" keeps it, Quelle "Datenbanken" does not (#314); the
+  // choices stay on this device.
+  const person = page.locator(".my-tasks-person");
+  const source = page.locator(".my-tasks-source");
+  await person.locator("label", { hasText: "Eigene" }).click();
   await expect(item).toBeVisible();
-  await page.locator(".my-tasks-filter label", { hasText: "Aus Dokumenten & Datenbanken" }).click();
+  await source.locator("label", { hasText: "Datenbanken" }).click();
   await expect(item).toHaveCount(0);
-  await page.locator(".my-tasks-filter label", { hasText: "Eigene" }).click();
+  await expect(page.locator(".my-tasks .empty-state")).toBeVisible();
+  await source.locator("label", { hasText: "Dokumente" }).click();
+  await expect(item).toBeVisible();
+  // The tools for records are gone while only documents are shown.
+  await expect(page.getByRole("group", { name: "Nur für Einträge aus Datenbanken" })).toHaveCount(0);
+  // "Heute" hides a task due tomorrow, "Nächste 7 Tage" shows it.
+  await page.getByRole("button", { name: /^Fälligkeit: / }).click();
+  await page.getByRole("dialog", { name: "Fälligkeit" }).getByRole("radio", { name: /^Heute/ }).click();
+  await expect(item).toHaveCount(0);
+  await page.getByRole("button", { name: "Fälligkeit: Heute" }).click();
+  await page.getByRole("dialog", { name: "Fälligkeit" }).getByRole("radio", { name: /^Nächste 7 Tage/ }).click();
+  await expect(item).toBeVisible();
   await page.reload();
-  await expect(page.locator('.my-tasks-filter label[data-active="true"]')).toHaveText("Eigene");
+  await expect(person.locator('label[data-active="true"]')).toHaveText("Eigene");
+  await expect(source.locator('label[data-active="true"]')).toHaveText("Dokumente");
+  await expect(page.getByRole("button", { name: "Fälligkeit: Nächste 7 Tage" })).toBeVisible();
   await expect(page.locator(".my-tasks-group li", { hasText: text })).toBeVisible();
   // The page is a normal page: it opens from My tasks.
   await page.getByRole("button", { name: "Seite „Aufgaben“ öffnen" }).click();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(text);
   await page.goto("/#tasks");
-  await page.locator(".my-tasks-filter label", { hasText: "Alle" }).click();
+  await page.locator(".my-tasks-person label", { hasText: "Mir zugewiesen" }).click();
+  await page.locator(".my-tasks-source label", { hasText: "Alle" }).click();
   expect(errors).toEqual([]);
 });

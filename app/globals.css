@@ -17274,6 +17274,49 @@ label.task-due {
   margin-left: auto;
   font-size: 12.5px;
 }
+/* The date range (#314): a chip with its choices in a small panel, each
+   with a line on what it includes. */
+.my-tasks-range-panel {
+  min-width: 260px;
+  padding: 6px;
+}
+.my-tasks-ranges {
+  gap: 2px;
+}
+.chip-panel.my-tasks-ranges > label {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.my-tasks-ranges > label:hover {
+  background: var(--hover);
+}
+.my-tasks-ranges > label[data-active="true"] {
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.my-tasks-ranges > label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.my-tasks-ranges input {
+  margin: 0;
+  accent-color: var(--blue);
+}
+.my-tasks-ranges small {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
 /* A task given to me since I last looked (#208). */
 .my-task-new {
   display: inline-block;
@@ -17293,17 +17336,21 @@ label.task-due {
   background: var(--blue);
   color: #fff;
 }
+/* Phones: Quelle and Person each take a row of their own, the date chip and
+   "Erledigte zeigen" share the next (touch sizes in app/mobile-ux.css). */
 @media (max-width: 600px) {
+  .my-tasks-bar {
+    gap: 8px 14px;
+  }
   .my-tasks-filter {
     width: 100%;
   }
-  /* "Aus Dokumenten & Datenbanken" is wider than a phone's share of the
-     row: it wraps onto two lines inside its segment instead of pushing the
-     filter past the screen's edge. */
+  /* A label wider than a phone's share of the row wraps onto two lines
+     inside its segment instead of pushing the filter past the screen's edge. */
   .my-tasks-filter label {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-width: 0;
-    padding: 5px 8px;
+    padding: 5px 6px;
     font-size: 12px;
     line-height: 1.25;
     text-align: center;
@@ -22949,23 +22996,25 @@ h3 .block-reactions {
   gap: 4px;
 }
 
-/* ---------- Records across databases (components/my-records.tsx) ---------- */
-.my-tasks-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+/* ---------- Records in My tasks (components/my-records.tsx, #314) ----------
+   The tools that only apply to records (database, search, saved views)
+   below the shared filter row, then the records among the tasks. */
+.my-tasks-records {
+  margin: 10px 0 2px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
 }
-.my-tasks-tabs button {
-  margin-bottom: -1px;
-  padding: 8px 12px;
-  border-bottom: 2px solid transparent;
-  color: var(--secondary);
+.my-tasks-records .record-view-tabs {
+  margin: 8px 0 0;
+}
+.record-filters-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 600;
-}
-.my-tasks-tabs button[aria-selected="true"] {
-  border-color: var(--blue);
-  color: var(--text);
+  white-space: nowrap;
 }
 .record-view-tabs {
   display: flex;
@@ -22986,7 +23035,7 @@ h3 .block-reactions {
   border-radius: 999px;
   font-size: 12.5px;
 }
-.chip-button[aria-selected="true"] {
+.chip-button:is([aria-selected="true"], [aria-pressed="true"]) {
   border-color: var(--blue);
   background: var(--blue-light);
   color: var(--accent-strong);
@@ -22996,8 +23045,6 @@ h3 .block-reactions {
   height: 22px;
   margin-left: -4px;
 }
-/* The filter bar: every control 32 px high, toggles boxed like the
-   inputs next to them (the saved views above are the rounded chips). */
 .record-filters {
   display: flex;
   flex-wrap: wrap;
@@ -23006,48 +23053,12 @@ h3 .block-reactions {
   margin-bottom: 6px;
   font-size: 13px;
 }
-.record-filters :is(.fp-select, .record-toggle, .button.compact),
+/* Every control 32 px high (40 px on phones, app/mobile-ux.css). */
+.record-filters :is(.fp-select, .button.compact),
 .record-search input,
 .record-view-name input {
   height: 32px;
   font-size: 13px;
-}
-.record-toggle {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  font-weight: 400;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--secondary);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-.record-toggle:hover {
-  border-color: color-mix(in srgb, var(--border) 60%, var(--muted));
-}
-.record-toggle:has(input:checked) {
-  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
-  background: var(--blue-light);
-  color: var(--accent-strong);
-}
-.record-toggle:has(input:focus-visible) {
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-.record-toggle input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  padding: 0;
-  accent-color: var(--blue);
 }
 .record-filters .fp-select {
   padding: 0 10px;
@@ -23081,59 +23092,17 @@ h3 .block-reactions {
   padding: 0 10px;
 }
 
-/* The records, grouped by due date like the tasks from documents: state,
-   title with its database below, then status, due date and people. */
-.my-records-group h2 {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 18px 0 6px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.my-records-group.overdue h2 {
-  color: #b42318;
-}
-:root[data-theme="dark"] .my-records-group.overdue h2 {
-  color: #ff9d92;
-}
-.my-records-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--border);
-}
-.my-record {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 4px 12px;
-  padding: 9px 8px;
-  border-bottom: 1px solid var(--border);
+/* A record among the tasks: box, title with its database below, then
+   status, due date and people (the row's border and padding are those of
+   .my-tasks-group li). */
+.my-tasks-group li.my-record {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 10px;
   font-size: 13.5px;
-  transition: background-color 0.15s ease;
 }
-.my-record:hover,
-.my-record:focus-within {
-  background: var(--hover);
-}
-.my-record-state {
-  display: inline-flex;
+.my-tasks-group li.my-record > input[type="checkbox"] {
   align-self: start;
-  margin-top: 1px;
-  color: var(--muted);
-}
-.my-record-state.none {
-  opacity: 0.55;
-}
-.my-record[data-done="true"] .my-record-state {
-  color: #2f8a55;
-}
-:root[data-theme="dark"] .my-record[data-done="true"] .my-record-state {
-  color: #5cc98a;
+  margin-top: 2px;
 }
 .my-record-main {
   display: grid;
@@ -23167,10 +23136,6 @@ h3 .block-reactions {
 }
 .my-record-title .sprint-row-id {
   font-weight: 400;
-}
-.my-record[data-done="true"] .my-record-title {
-  color: var(--muted);
-  text-decoration: line-through;
 }
 .my-record-db {
   display: inline-flex;
@@ -23217,16 +23182,13 @@ h3 .block-reactions {
   font-size: 11.5px;
 }
 @container main (max-width: 640px) {
+  /* "Nur Datenbanken:" next to the database, search and saving below. */
   .record-filters {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
   }
-  .record-filters > .fp-select,
-  .record-toggle {
+  .record-filters > .fp-select {
     min-width: 0;
-  }
-  .record-toggle {
-    justify-content: center;
   }
   .record-search,
   .record-filters > .button,
@@ -23237,8 +23199,8 @@ h3 .block-reactions {
     flex: 1;
     min-width: 0;
   }
-  .my-record {
-    grid-template-columns: 20px minmax(0, 1fr);
+  .my-tasks-group li.my-record {
+    grid-template-columns: auto minmax(0, 1fr);
     padding: 11px 4px;
   }
   .my-record-meta {

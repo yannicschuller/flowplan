@@ -9,7 +9,6 @@
     "components/apply-template.tsx",
     "components/calculation-editor.tsx",
     "components/calendar-subscribe.tsx",
-    "components/chip-popover.tsx",
     "components/contacts.tsx",
     "components/context-menu.tsx",
     "components/database-calendar.tsx",

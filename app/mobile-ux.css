@@ -789,3 +789,30 @@ label.hit-check {
     padding-right: calc(20px + var(--safe-right));
   }
 }
+
+/* ===== My tasks (components/my-tasks.tsx, #314): on phones and touch
+   screens the filters – Quelle, Person, the date chip, "Erledigte zeigen"
+   and the tools for records – are at least 40 px high to hit. ===== */
+@media (max-width: 600px), (pointer: coarse) {
+  .my-tasks-filter label,
+  .my-tasks-bar .my-tasks-done {
+    min-height: 40px;
+  }
+  .my-tasks-range .toolbar-chip {
+    height: 40px;
+  }
+  .record-filters :is(.fp-select, .button.compact),
+  .record-search input,
+  .record-view-name input,
+  .record-view-name .icon-button {
+    height: 40px;
+  }
+  .record-view-tabs .chip-button {
+    min-height: 40px;
+  }
+  .record-view-tabs .chip-remove {
+    width: 40px;
+    height: 40px;
+    margin-left: -8px;
+  }
+}
