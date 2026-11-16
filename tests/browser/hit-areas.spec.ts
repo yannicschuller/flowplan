@@ -119,7 +119,7 @@ test("touch targets are at least 44 × 44 px on a phone", async ({ page }, info)
   found.push(...report("home", await smallTargets(page)));
 
   await page.goto(`/#page=${doc.id}`);
-  await expect(page.locator('.ProseMirror li[data-checked]').first()).toBeVisible();
+  await expect(page.locator('.ProseMirror li[data-checked]').first()).toBeVisible({ timeout: 30_000 }); // The first editor of the session.
   found.push(...report("document", await smallTargets(page)));
 
   await page.goto(`/#page=${db.id}`);

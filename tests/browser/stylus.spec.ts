@@ -1,4 +1,4 @@
-import { boardDraw } from "./whiteboard-ui";
+import { boardDraw, boardDrawOptions } from "./whiteboard-ui";
 import { test, expect, type Page, type CDPSession } from "@playwright/test";
 
 // Drawing with a pen (Apple Pencil, styluses): pressure, pen-only drawing,
@@ -43,7 +43,7 @@ async function board(page: Page) {
   ).json();
   await page.goto(`/#page=${created.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
-  await expect(wb).toBeVisible();
+  await expect(wb).toBeVisible({ timeout: 30_000 }); // The whiteboard loads with the page.
   // The tool rail in view first: picking a tool must not scroll the page
   // after the canvas was measured.
   await wb.getByRole("toolbar", { name: "Werkzeuge" }).scrollIntoViewIfNeeded();
@@ -64,7 +64,9 @@ test("the pen draws with pressure; then fingers move the board; the eraser and P
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
   // A pressure stroke is a filled outline.
   await expect(wb.locator(".wb-pen path").first()).toHaveAttribute("stroke", "none");
-  // The first pen switched on pen-only drawing.
+  // The first pen switched on pen-only drawing (the pen's options, put away
+  // by the touch on the board).
+  await boardDrawOptions(wb);
   await expect(wb.getByLabel("Nur mit dem Stift zeichnen")).toBeChecked();
 
   // A finger (a resting hand) does not draw, it moves the board.
@@ -133,8 +135,6 @@ test("the palm after a stroke does not draw, also with pen-only drawing off", as
   await wb.getByLabel("Nur mit dem Stift zeichnen").uncheck();
   await pen(cdp, at(-100, -60), at(80, 40));
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
-  // The setting stays off after the first pen (it was decided).
-  await expect(wb.getByLabel("Nur mit dem Stift zeichnen")).not.toBeChecked();
   // At once: the palm.
   await finger(cdp, at(-150, 100), at(-50, 160));
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
@@ -142,6 +142,10 @@ test("the palm after a stroke does not draw, also with pen-only drawing off", as
   await page.waitForTimeout(700);
   await finger(cdp, at(-150, 100), at(-50, 160));
   await expect(wb.locator(".wb-pen")).toHaveCount(2);
+  // The setting stayed off after the first pen (it was decided). Its
+  // options were put away by the touch on the board.
+  await boardDrawOptions(wb);
+  await expect(wb.getByLabel("Nur mit dem Stift zeichnen")).not.toBeChecked();
 });
 
 // Scribble: handwriting into a sticky note's text runs past its edges; the

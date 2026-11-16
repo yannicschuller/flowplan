@@ -1,4 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// ⌘K. The start page is server-rendered: the shortcut works once the app
+// has hydrated (slow after a load on the dev server), so it is pressed
+// again until the quick search is open.
+async function openPalette(page: Page) {
+  const input = page.getByLabel("Suchen oder Befehl");
+  await expect(async () => {
+    if (!(await input.isVisible())) await page.keyboard.press("ControlOrMeta+k");
+    await expect(input).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
+  return input;
+}
 
 test("⌘K runs commands; focus mode counts words towards a goal", async ({ page }, info) => {
   const errors: string[] = [];
@@ -15,10 +27,7 @@ test("⌘K runs commands; focus mode counts words towards a goal", async ({ page
     ).json()
   ).id;
   await page.goto("/#home");
-  // The shortcut works once the app is running.
-  await expect(page.locator(".recent-section")).toBeVisible();
-  await page.keyboard.press("ControlOrMeta+k");
-  const input = page.getByLabel("Suchen oder Befehl");
+  const input = await openPalette(page);
   await input.fill("> aufgaben");
   await expect(page.locator(".command-actions")).toContainText("Meine Aufgaben");
   await input.press("Enter");
@@ -28,8 +37,7 @@ test("⌘K runs commands; focus mode counts words towards a goal", async ({ page
   await page.goto(`/#page=${pageId}`);
   await page.getByLabel("Dokumentinhalt", { exact: true }).click();
   await page.keyboard.type("Eins zwei drei vier fünf");
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.getByLabel("Suchen oder Befehl").fill(">fokus");
+  await (await openPalette(page)).fill(">fokus");
   await page.getByLabel("Suchen oder Befehl").press("Enter");
   const bar = page.getByRole("status", { name: "Fokusmodus" });
   await expect(bar).toContainText("5 Wörter");
@@ -77,8 +85,7 @@ test("⌘K: hits with an emoji icon line their title up with the others", async 
     stamp);
   // Hits.
   await page.goto("/#home");
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.getByLabel("Suchen oder Befehl").fill(stamp);
+  await (await openPalette(page)).fill(stamp);
   // Both icons 18 px wide, both titles at the same x (polled: the palette
   // scales in when it opens).
   const lined = { icons: [18, 18], same: true };
@@ -93,9 +100,9 @@ test("⌘K: hits with an emoji icon line their title up with the others", async 
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toBeVisible({ timeout: 20_000 });
   await page.goto(`/#page=${plain.id}`);
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toBeVisible({ timeout: 20_000 });
-  await page.keyboard.press("ControlOrMeta+k");
+  await openPalette(page);
   await expect(page.locator("#palette-recent-title")).toBeVisible();
-  await expect.poll(lineup).toEqual(lined);
+  await expect.poll(lineup, { timeout: 15_000 }).toEqual(lined);
   await page.keyboard.press("Escape");
   for (const p of [rocket, plain]) await command({ action: "page.delete", pageId: p.id });
 });

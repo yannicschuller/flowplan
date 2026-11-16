@@ -42,7 +42,7 @@ test("cold load on a phone shows the capture focused; save, “Noch eins”, “
   await page.goto("/");
   const screen = page.getByRole("main", { name: "Erfassen" });
   await expect(screen).toBeVisible({ timeout: 30_000 });
-  const title = screen.getByLabel("Titel");
+  const title = screen.getByLabel("Titel", { exact: true });
   await expect(title).toBeFocused();
   // The default capture database is the target.
   await expect(screen).toContainText(`Eingang ${tag}`);
@@ -108,7 +108,7 @@ test("offline the capture waits on the device; the workspace sends it", async ({
   await expect(screen).toContainText(`Eingang ${tag}`, { timeout: 30_000 });
 
   await context.setOffline(true);
-  await screen.getByLabel("Titel").fill(`Offline ${tag}`);
+  await screen.getByLabel("Titel", { exact: true }).fill(`Offline ${tag}`);
   await screen.getByRole("button", { name: "Erfassen", exact: true }).click();
   await expect(screen.getByRole("status")).toHaveText(/Gespeichert auf diesem Gerät/);
   expect((await rows()).length).toBe(0);

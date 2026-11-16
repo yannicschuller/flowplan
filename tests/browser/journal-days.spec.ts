@@ -94,8 +94,13 @@ test("the search leaves journal days out on request and ranks them last", async 
   const note = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: `Notiz ${word}` });
   await write(note.id, `<p>${word}</p>`);
   await page.goto("/");
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
-  const input = page.getByRole("combobox").or(page.locator(".palette input")).first();
+  const input = page.getByLabel("Suchen oder Befehl");
+  // The start page is server-rendered: the shortcut works once the app has
+  // hydrated, so it is pressed again until the quick search is open.
+  await expect(async () => {
+    if (!(await input.isVisible())) await page.keyboard.press("ControlOrMeta+k");
+    await expect(input).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
   await input.fill(word);
   const results = page.locator(".palette-list [role=option]");
   await expect(results.filter({ hasText: "Notiz" })).toHaveCount(1);

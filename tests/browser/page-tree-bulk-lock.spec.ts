@@ -26,7 +26,7 @@ test("sidebar locks and unlocks a selection of pages and skips read-only pages",
   const locked = async (id: string) => (await (await page.request.get(`/api/pages/${id}`)).json()).page.locked;
   const mobile = testInfo.project.name === "mobile";
   await page.goto(`/#page=${a}`);
-  await expect(page.locator(".tiptap")).toBeVisible();
+  await expect(page.locator(".tiptap")).toBeVisible({ timeout: 30_000 }); // The first editor of the session.
   const openNav = async () => {
     if (mobile && !(await page.locator(".app-shell.nav-open").count()))
       await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
@@ -36,7 +36,8 @@ test("sidebar locks and unlocks a selection of pages and skips read-only pages",
   const select = async (names: string[]) => {
     await openNav();
     if (mobile) {
-      if (!(await nav.getByRole("checkbox").count()))
+      // The page tree's checkboxes (not the "Erste Schritte" list's).
+      if (!(await nav.locator(".page-select").count()))
         await nav.getByRole("button", { name: "Seiten auswählen" }).first().click();
       for (const name of names) await nav.getByRole("checkbox", { name: `${name} auswählen` }).check();
     } else {
@@ -49,12 +50,13 @@ test("sidebar locks and unlocks a selection of pages and skips read-only pages",
     await bar.getByRole("button", { name: "Weitere Aktionen für die Auswahl" }).click();
     return page.getByRole("menu", { name: "Weitere Aktionen für die Auswahl" });
   };
+  // Shown once the server has answered (slow on a busy dev server).
   const toast = page.locator(".toast-live[role=status]");
 
   await select([`Alpha ${tag}`, `Beta ${tag}`, `Gamma ${tag}`]);
   await expect(bar).toContainText("3 ausgewählt");
   await (await more()).getByRole("menuitem", { name: "Seiten sperren" }).click();
-  await expect(toast).toContainText("3 Seiten gesperrt.");
+  await expect(toast).toContainText("3 Seiten gesperrt.", { timeout: 15_000 });
   for (const id of [a, b, c]) await expect.poll(() => locked(id)).toBe(1);
   // The selection stays; every selected page shows the lock.
   await expect(bar).toContainText("3 ausgewählt");
@@ -67,7 +69,7 @@ test("sidebar locks and unlocks a selection of pages and skips read-only pages",
     await title(`Beta ${tag}`).click({ button: "right" });
     await page.getByRole("menu", { name: "Aktionen für 3 Seiten" }).getByRole("menuitem", { name: "Seiten entsperren" }).click();
   }
-  await expect(toast).toContainText("3 Seiten entsperrt.");
+  await expect(toast).toContainText("3 Seiten entsperrt.", { timeout: 15_000 });
   for (const id of [a, b, c]) await expect.poll(() => locked(id)).toBe(0);
   await bar.getByRole("button", { name: "Fertig" }).click();
   await expect(bar).toHaveCount(0);
@@ -76,7 +78,7 @@ test("sidebar locks and unlocks a selection of pages and skips read-only pages",
   await select([`Alpha ${tag}`, `Delta ${tag}`]);
   await expect(bar).toContainText("2 ausgewählt");
   await (await more()).getByRole("menuitem", { name: "Seiten sperren" }).click();
-  await expect(toast).toContainText("1 Seite gesperrt. 1 Seite ohne Bearbeitungsrechte übersprungen.");
+  await expect(toast).toContainText("1 Seite gesperrt. 1 Seite ohne Bearbeitungsrechte übersprungen.", { timeout: 15_000 });
   expect(await locked(a)).toBe(1);
   expect(await locked(d)).toBe(0);
   await page.screenshot({ path: `test-results/page-tree-verification/${testInfo.project.name}-bulk-lock.png` });

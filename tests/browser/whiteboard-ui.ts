@@ -33,3 +33,11 @@ export async function boardDraw(wb: Locator, name: "Stift" | "Radierer" | "Laser
   if (!(await choice.isVisible())) await wb.getByRole("button", { name: "Zeichnen", exact: true }).click();
   await choice.click();
 }
+
+// The options of the drawing tool again: on touch screens the first touch on
+// the board puts them away (#314); a tap on "Zeichnen" brings them back.
+export async function boardDrawOptions(wb: Locator) {
+  const options = wb.locator(".wb-draw-switch");
+  if (!(await options.isVisible())) await wb.getByRole("button", { name: "Zeichnen", exact: true }).click();
+  await options.waitFor();
+}

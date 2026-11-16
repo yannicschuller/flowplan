@@ -22,7 +22,11 @@ test("a placeholder picked with the mouse while scroll methods return a Promise"
   });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  // Not the development server's preload of a chunk it never writes (its
+  // react-loadable-manifest lists one for the workspace's next/dynamic entry).
+  const devPreload = (m: { text(): string; location(): { url: string } }) =>
+    m.text().startsWith("Failed to load resource") && /\/_next\/static\/chunks\//.test(m.location().url);
+  page.on("console", (m) => m.type() === "error" && !devPreload(m) && errors.push(`${m.text()} ${m.location().url}`));
 
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const boot = await (await page.request.get("/api/bootstrap")).json();

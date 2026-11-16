@@ -648,12 +648,13 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (share) setShareMounted(true);
   }, [share]);
-  // A document known from the page tree: the editor (with TipTap) starts
-  // loading together with the page's data instead of after it.
+  // A document known from the page tree, or a record in the address (its
+  // own document): the editor (with TipTap) starts loading together with
+  // the page's data instead of after it.
   const openingKind = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.kind : undefined;
   useEffect(() => {
-    if (openingKind === "document") void import("./editor").catch(() => {});
-  }, [openingKind]);
+    if (openingKind === "document" || (openingKind === "database" && parsePageLocation(location.hash)?.rowId)) void import("./editor").catch(() => {});
+  }, [openingKind, pageId]);
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
     const root = document.documentElement;

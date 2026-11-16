@@ -42,7 +42,7 @@ test("the record's heading stays at the top while the content scrolls", async ({
     await page.goto(`/#page=${db.id}&row=${row.id}`);
     const dialog = page.locator(".modal.record-dialog");
     const editor = dialog.locator(".ProseMirror.document-editor");
-    await expect(editor).toBeVisible();
+    await expect(editor).toBeVisible({ timeout: 30_000 }); // After a page load: the editor loads anew.
     if (mode === "center") {
       await editor.evaluate((el, html) => {
         (el as HTMLElement & { editor: TiptapLike }).editor.chain().insertContent(html).run();
@@ -104,7 +104,7 @@ test("the record's heading stays at the top while the content scrolls", async ({
   await page.goto("about:blank");
   await page.goto(`/#page=${db.id}&row=${row.id}`);
   const recordPage = page.locator(".record-page");
-  await expect(recordPage.locator(".ProseMirror.document-editor p").nth(39)).toBeAttached();
+  await expect(recordPage.locator(".ProseMirror.document-editor p").nth(39)).toBeAttached({ timeout: 30_000 }); // The editor loads with the page.
   await expect(page.locator(".modal.record-dialog")).toHaveCount(0);
   const bar = recordPage.locator(".record-page-bar");
   const top = (await bar.boundingBox())!.y;

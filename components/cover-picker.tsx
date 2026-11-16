@@ -2,7 +2,7 @@
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { UploadSimple } from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import {
@@ -33,9 +33,22 @@ export function CoverPicker({
   onClose: () => void;
 }) {
   const t = useT();
-  const [base] = useState(() => pageAppearance(page));
+  const [base, setBase] = useState(() => pageAppearance(page));
   const [cover, setCover] = useState(base.cover);
   const [position, setPosition] = useState(base.coverPosition);
+  // Opened from the page's kept copy (shown while the fresh one loads, lib/
+  // swr-cache.ts): the fresh cover arrives a moment later. Untouched, the
+  // dialog follows it, so saving does not report the page as changed in
+  // between; with a choice made, its base stays and saving says so.
+  const live = pageAppearance(page);
+  const touched = cover !== base.cover || position !== base.coverPosition;
+  useEffect(() => {
+    if (touched || (live.cover === base.cover && live.coverPosition === base.coverPosition)) return;
+    setBase(live);
+    setCover(live.cover);
+    setPosition(live.coverPosition);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.cover, live.coverPosition]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [uploads, setUploads] = useState<PageImage[]>([]);
