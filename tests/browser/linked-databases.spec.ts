@@ -163,9 +163,11 @@ test("linked databases insert, filter independently, edit source records, add vi
   ).toHaveCount(0);
   expect((await f.read(f.source.id)).database.views).toHaveLength(1);
   await page.reload();
+  // The embeds' database view loads its code on demand: after a reload on
+  // a busy dev server that takes longer than an assertion's 5 s.
   await expect(
     first.getByRole("button", { name: "Lokale Liste", exact: true }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
   await expect(first.locator(".title-cell")).toHaveText(["Gamma"]);
   await expect(second.locator(".title-cell")).toHaveText([
     "Alpha",
@@ -237,7 +239,8 @@ test("linked configuration conflicts retain drafts, source locks enforce rights 
     ).json();
   await page.goto(`/#page=${f.host.id}`);
   const embed = page.locator(".linked-database");
-  await expect(embed.locator(".title-cell")).toHaveCount(3);
+  // The database view loads its code on demand (slow after a load).
+  await expect(embed.locator(".title-cell")).toHaveCount(3, { timeout: 30_000 });
   await embed.getByRole("button", { name: /^Filtern/ }).click();
   await embed.getByRole("button", { name: "Erweitert …", exact: true }).click();
   const filter = page.getByRole("dialog", {

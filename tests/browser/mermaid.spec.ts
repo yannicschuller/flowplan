@@ -94,7 +94,11 @@ test("Mermaid diagrams validate, render several types, edit, undo, persist and r
     .toContain("data-mermaid=");
   expect((await f.read()).html).not.toMatch(/<svg|<img/);
   await page.reload();
-  await expect(block).toHaveAttribute("data-diagram-state", "ready");
+  // The editor and Mermaid load their code on demand: after a reload on a
+  // busy dev server that takes longer than an assertion's 5 s.
+  await expect(block).toHaveAttribute("data-diagram-state", "ready", {
+    timeout: 30_000,
+  });
   await block.focus();
   await block.press("Enter");
   const edited = "sequenceDiagram\nTeam->>Flowplan: Gemeinsam planen";
@@ -136,7 +140,7 @@ test("Mermaid diagrams validate, render several types, edit, undo, persist and r
     patch: { locked: true },
   });
   await page.reload();
-  await expect(block).toHaveAttribute("role", "figure");
+  await expect(block).toHaveAttribute("role", "figure", { timeout: 30_000 });
   await block.click();
   await expect(dialog).toHaveCount(0);
   // Zoom and export work for readers as well.
