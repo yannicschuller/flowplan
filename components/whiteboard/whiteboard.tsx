@@ -224,9 +224,17 @@ type Tool =
   | "comment"
   | "stamp"
   | "laser";
+// Tools with options that pop out next to the rail (above the dock on
+// phones); every button of one of them shows the small corner mark.
+const TOOL_MENUS: ReadonlySet<Tool> = new Set<Tool>(["shape", "sticky", "stamp", "pen", "eraser", "laser"]);
+// A finger that comes up within this time and distance was a tap, not a pan.
+const TAP_MS = 500,
+  TAP_PX = 8;
 type View = { x: number; y: number; zoom: number };
 type Gesture =
-  | { kind: "pan"; client: Point; view: View }
+  // `tap`: a pan of the select tool from the empty board – lifted again
+  // without moving, it clears the selection like a click with the mouse.
+  | { kind: "pan"; client: Point; view: View; tap?: number }
   | { kind: "marquee"; start: Point; current: Point; add: boolean }
   | {
       kind: "move";
@@ -413,7 +421,9 @@ export default function Whiteboard({
     [imagesOpen, setImagesOpen] = useState(false),
     [rowCards, setRowCards] = useState<Map<string, RowCard>>(new Map()),
     [cardDb, setCardDb] = useState<{ id: string; title: string; rows: { id: string; title: string }[] | null } | null>(null),
-    [shapeMenu, setShapeMenu] = useState(false),
+    // The tool whose options pop out next to the rail (or above the dock):
+    // shown while it is the current tool (see pickTool).
+    [menuFor, setMenuFor] = useState<Tool | null>(null),
     [emojiOpen, setEmojiOpen] = useState(false),
     [cardOpen, setCardOpen] = useState(false),
     [cardQuery, setCardQuery] = useState(""),
@@ -474,9 +484,25 @@ export default function Whiteboard({
     if (!editable) return;
     return onPencilAction(({ preferred }) => {
       const now = currentTool.current;
-      if (preferred === "switchEraser") setTool(now === "eraser" ? (previousTool.current === "eraser" ? "pen" : previousTool.current) : "eraser");
-      else if (preferred === "switchPrevious") setTool(previousTool.current === now ? "select" : previousTool.current);
-      else if (preferred !== "ignore") setTool("pen");
+      const next: Tool | null =
+        preferred === "switchEraser"
+          ? now === "eraser"
+            ? previousTool.current === "eraser"
+              ? "pen"
+              : previousTool.current
+            : "eraser"
+          : preferred === "switchPrevious"
+            ? previousTool.current === now
+              ? "select"
+              : previousTool.current
+            : preferred !== "ignore"
+              ? "pen"
+              : null;
+      if (!next) return;
+      // Like chooseTool below (the setters are stable).
+      setTool(next);
+      setMenuFor(TOOL_MENUS.has(next) ? next : null);
+      if (next === "hand") setSelection((s) => (s.size ? new Set() : s));
     });
   }, [editable]);
   // Board changes (own and remote) re-render once per frame.
@@ -1201,7 +1227,6 @@ export default function Whiteboard({
       actionsOpen ||
       plusOpen ||
       moderationOpen ||
-      shapeMenu ||
       emojiOpen ||
       cardOpen ||
       arrangeOpen ||
@@ -1389,13 +1414,14 @@ export default function Whiteboard({
   }
 
   // ---- pointer handling ----
-  function beginPan(e: ReactPointerEvent) {
+  function beginPan(e: ReactPointerEvent, tap = false) {
     stopFollowing.current();
     setPanning(true);
     gesture.current = {
       kind: "pan",
       client: { x: e.clientX, y: e.clientY },
       view: viewRef.current,
+      ...(tap ? { tap: e.timeStamp } : {}),
     };
   }
   // Runs before every pointer-down on the board (items, handles, background).
@@ -1409,6 +1435,10 @@ export default function Whiteboard({
       return;
     }
     stopCamera.current();
+    // On phones and touch screens the tool's options would cover the board
+    // while drawing: the first touch on the board puts them away (the tool
+    // button brings them back). Mouse and trackpad keep them open.
+    if (menuFor && (layout.dock || e.pointerType === "touch" || matchMedia("(pointer: coarse)").matches)) setMenuFor(null);
     const running = owner.current;
     if (gesture.current && running && running.id !== e.pointerId && running.type === "pen" && e.pointerType === "touch") {
       e.stopPropagation();
@@ -1456,7 +1486,10 @@ export default function Whiteboard({
       return;
     }
     if (!editable || tool === "select") {
-      if (!editable || e.pointerType === "touch") return beginPan(e);
+      // A finger (and a reader's mouse) moves the board; a tap that does not
+      // move clears the selection on lifting (onUp), like the marquee's
+      // click with the mouse.
+      if (!editable || e.pointerType === "touch") return beginPan(e, true);
       gesture.current = {
         kind: "marquee",
         start: p,
@@ -1787,6 +1820,7 @@ export default function Whiteboard({
       return;
     }
     if (g.kind === "pan") {
+      if (g.tap !== undefined && Math.hypot(e.clientX - g.client.x, e.clientY - g.client.y) > TAP_PX) g.tap = undefined;
       setView({
         ...g.view,
         x: g.view.x - (e.clientX - g.client.x) / g.view.zoom,
@@ -1963,6 +1997,12 @@ export default function Whiteboard({
     setPanning(false);
     setGuides([]);
     if (!g) return;
+    // A tap on the empty board (a second finger ends the gesture as a pinch
+    // before, onBackgroundDown) lets go of the selection.
+    if (g.kind === "pan" && g.tap !== undefined && e.type === "pointerup" && e.timeStamp - g.tap < TAP_MS && Math.hypot(e.clientX - g.client.x, e.clientY - g.client.y) <= TAP_PX) {
+      setSelection((s) => (s.size ? new Set() : s));
+      return;
+    }
     if (g.kind === "pen") {
       // Drawn lines, rectangles, ellipses, triangles and diamonds become
       // clean shapes (switch off in the pen menu).
@@ -2331,7 +2371,7 @@ export default function Whiteboard({
     };
     const next = keys[e.key.toLowerCase()];
     if (next && (editable || next === "select" || next === "hand" || next === "laser"))
-      setTool(next);
+      chooseTool(next);
   }
   async function upload(original: File): Promise<{ url: string; placeholder?: PlaceholderInfo }> {
     // Guests do not upload (#280): images from https addresses only.
@@ -2648,6 +2688,9 @@ export default function Whiteboard({
           style={{ left: Math.max(8, s.x), top: Math.max(8, s.y - 44) }}
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {/* Phones: one row that scrolls sideways (app/globals.css); the
+              menus of its buttons hang from the bar, outside the scroller. */}
+          <div className="wb-style-scroll">
           {types.has("sticky") &&
             stickyColors.map((c) => (
               <button
@@ -2774,7 +2817,7 @@ export default function Whiteboard({
                 aria-pressed={!!first.startArrow}
                 onClick={() => set({ startArrow: !first.startArrow })}
               >
-                ← Pfeil
+                {t("← Pfeil", "← Arrow")}
               </button>
               <button
                 className={first.endArrow !== false ? "active" : ""}
@@ -2938,6 +2981,7 @@ export default function Whiteboard({
           >
             <Trash size={16} />
           </button>
+          </div>
         </div>
       );
     })();
@@ -3065,9 +3109,24 @@ export default function Whiteboard({
   const dockKeys: (Tool | "draw")[] = editable
     ? ["select", "hand", "sticky", "text", "shape", "draw"]
     : railKeys;
-  const pickTool = (key: Tool) => {
+  // Switches the tool and shows its options. The hand lets go of the
+  // selection: moving the board is not editing it.
+  function chooseTool(key: Tool) {
     setTool(key);
-    setShapeMenu(key === "shape" && tool === "shape" ? !shapeMenu : key === "shape");
+    setMenuFor(TOOL_MENUS.has(key) ? key : null);
+    if (key === "hand") setSelection((s) => (s.size ? new Set() : s));
+  }
+  const toolMenu = menuFor === tool && TOOL_MENUS.has(tool);
+  // A tap on a tool opens its options; a second tap on the same button
+  // closes them again (pen, eraser and laser share one button).
+  const pickTool = (key: Tool) => {
+    const same = key === tool || (isDraw(key) && isDraw(tool));
+    if (same && TOOL_MENUS.has(key)) {
+      setTool(key);
+      setMenuFor(menuFor === tool ? null : key);
+      return;
+    }
+    chooseTool(key);
   };
   const shownDraw = isDraw(tool) ? tool : lastDraw;
   const railButton = (key: Tool | "draw") => {
@@ -3076,8 +3135,9 @@ export default function Whiteboard({
       return (
         <button
           key="draw"
-          className={`wb-draw${active ? " active" : ""}`}
+          className={`wb-draw wb-has-menu${active ? " active" : ""}`}
           aria-pressed={active}
+          aria-expanded={active && toolMenu}
           aria-label={t("Zeichnen", "Draw")}
           title={t("Zeichnen: Stift (P), Radierer (X), Laserpointer (K)", "Draw: pen (P), eraser (X), laser pointer (K)")}
           onClick={() => pickTool(shownDraw)}
@@ -3090,8 +3150,9 @@ export default function Whiteboard({
     return (
       <button
         key={key}
-        className={tool === key ? "active" : ""}
+        className={`${TOOL_MENUS.has(key) ? "wb-has-menu" : ""}${tool === key ? " active" : ""}`.trim() || undefined}
         aria-pressed={tool === key}
+        aria-expanded={TOOL_MENUS.has(key) ? tool === key && toolMenu : undefined}
         aria-label={label}
         title={`${label} (${shortcut})`}
         onClick={() => pickTool(key)}
@@ -3112,7 +3173,7 @@ export default function Whiteboard({
             aria-pressed={tool === key}
             aria-label={label}
             title={`${label} (${shortcut})`}
-            onClick={() => setTool(key)}
+            onClick={() => chooseTool(key)}
           >
             {icon}
           </button>
@@ -3460,7 +3521,7 @@ export default function Whiteboard({
       onClick={() => {
         const open = !plusOpen;
         closePopovers();
-        setShapeMenu(false);
+        setMenuFor(null);
         setPlusOpen(open);
       }}
     >
@@ -4328,7 +4389,7 @@ export default function Whiteboard({
                 onClick={() => {
                   const open = !moreOpen;
                   closePopovers();
-                  setShapeMenu(false);
+                  setMenuFor(null);
                   setMoreOpen(open);
                 }}
               >
@@ -4448,7 +4509,7 @@ export default function Whiteboard({
           {exportActions.map((a) => menuButton(a, closeActions))}
         </div>
       )}
-      {editable && tool === "shape" && shapeMenu && (
+      {editable && tool === "shape" && toolMenu && (
         <div
           className="wb-shape-menu"
           role="menu"
@@ -4465,7 +4526,7 @@ export default function Whiteboard({
               aria-label={t(...shapeNames[k])}
               onClick={() => {
                 setShapeKind(k);
-                setShapeMenu(false);
+                setMenuFor(null);
               }}
             >
               <svg width="22" height="22" viewBox="-2 -2 28 28">
@@ -4483,7 +4544,7 @@ export default function Whiteboard({
             title={t("Formenbibliothek", "Shape library")}
             aria-label={t("Weitere Formen …", "More shapes …")}
             onClick={() => {
-              setShapeMenu(false);
+              setMenuFor(null);
               setTool("select");
               setDiagram({ kind: "library" });
             }}
@@ -4492,7 +4553,7 @@ export default function Whiteboard({
           </button>
         </div>
       )}
-      {editable && tool === "sticky" && (
+      {editable && tool === "sticky" && toolMenu && (
         <div
           className="wb-shape-menu"
           aria-label={t("Zettelfarbe", "Note colour")}
@@ -4509,7 +4570,7 @@ export default function Whiteboard({
           ))}
         </div>
       )}
-      {editable && tool === "stamp" && (
+      {editable && tool === "stamp" && toolMenu && (
         <div className="wb-shape-menu" aria-label={t("Stempel wählen", "Choose stamp")} onPointerDown={(e) => e.stopPropagation()}>
           {stampChoices.map((c) => (
             <button
@@ -4525,7 +4586,7 @@ export default function Whiteboard({
           <span className="wb-menu-hint">{t("Auf Elemente klicken", "Click on elements")}</span>
         </div>
       )}
-      {editable && tool === "pen" && (
+      {editable && tool === "pen" && toolMenu && (
         <div className="wb-shape-menu" aria-label={t("Stift", "Pen")} onPointerDown={(e) => e.stopPropagation()}>
           {drawSwitch}
           {strokeColors.map((c) => (
@@ -4562,13 +4623,13 @@ export default function Whiteboard({
           </label>
         </div>
       )}
-      {editable && tool === "eraser" && (
+      {editable && tool === "eraser" && toolMenu && (
         <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
           {drawSwitch}
           <span className="wb-menu-hint">{t("Über Striche fahren, um sie zu löschen", "Move over strokes to erase them")}</span>
         </div>
       )}
-      {tool === "laser" && (
+      {tool === "laser" && toolMenu && (
         <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
           {drawSwitch}
           <span className="wb-menu-hint">{t("Laserpointer: alle sehen deine Spur", "Laser pointer: everyone sees your trail")}</span>

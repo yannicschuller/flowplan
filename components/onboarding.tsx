@@ -9,7 +9,9 @@
 // or skipping starts the checklist "Erste Schritte" (lib/getting-started.ts).
 // Loaded only when shown (components/workspace-app.tsx).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
+import { useInFlowplanApp } from "@/lib/native-app";
 import { useEffect, useRef, useState } from "react";
+import { prefersReducedMotion } from "@/lib/motion";
 import {
   Bell,
   BookOpen,
@@ -95,6 +97,8 @@ export function Onboarding({
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
+  // Inside the apps "automatic" follows the device, not a browser.
+  const inApp = useInFlowplanApp();
   const locale = useLocale();
   const owner = boot.workspace.role === "owner";
   const canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest;
@@ -127,6 +131,19 @@ export function Onboarding({
   // Each step starts at its heading, not at the Close button: screen readers
   // hear what the step is about first.
   const heading = useRef<HTMLHeadingElement>(null);
+  // "Das kann Flowplan": on phones the feature tabs are one row that scrolls
+  // sideways; the chosen one ("Nächste Funktion") scrolls into view – the
+  // row only, not the dialog around it.
+  const featureTabs = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const list = featureTabs.current;
+    const tab = list?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (!list || !tab || list.scrollWidth <= list.clientWidth) return;
+    const row = list.getBoundingClientRect(),
+      box = tab.getBoundingClientRect();
+    if (box.left >= row.left && box.right <= row.right) return;
+    list.scrollTo({ left: list.scrollLeft + box.left - row.left - (row.width - box.width) / 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  }, [feature, current]);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, [step]);
@@ -337,7 +354,7 @@ export function Onboarding({
                     }
                   }}
                 >
-                  <option value="">{`🌐 ${t("Automatisch (folgt dem Browser)", "Automatic (follows the browser)")}`}</option>
+                  <option value="">{`🌐 ${inApp ? t("Automatisch (folgt dem Gerät)", "Automatic (follows the device)") : t("Automatisch (folgt dem Browser)", "Automatic (follows the browser)")}`}</option>
                   {LOCALES.map((l) => (
                     <option key={l} value={l} lang={l}>{`${LANGUAGES[l].flag} ${LANGUAGES[l].name}`}</option>
                   ))}
@@ -503,7 +520,7 @@ export function Onboarding({
           <section aria-labelledby="onboarding-tour" className="onboarding-tour">
             <h2 id="onboarding-tour" tabIndex={-1} ref={heading}>{t("Das kann Flowplan", "What Flowplan does")}</h2>
             <div className="onboarding-tour-grid">
-              <div role="tablist" aria-label={t("Funktionen", "Features")} aria-orientation="vertical">
+              <div role="tablist" aria-label={t("Funktionen", "Features")} aria-orientation="vertical" ref={featureTabs}>
                 {features.map((f, index) => (
                   <button
                     key={f.slug}
@@ -614,7 +631,9 @@ export function Onboarding({
                 </span>
               </p>
             )}
-            {/* Shortcuts only with a keyboard (lib/keyboard-hints.ts); "/" is typed. */}
+            {/* Shortcuts only with a keyboard (lib/keyboard-hints.ts); "/" is
+                typed, but alone (a phone without a keyboard) it is no list. */}
+            {(keyHints.action("search") || keyHints.action("capture")) && (
             <ul className="onboarding-keys">
               {keyHints.action("search") && (
                 <li>
@@ -630,6 +649,7 @@ export function Onboarding({
                 </li>
               )}
             </ul>
+            )}
             <p className="muted">
               {t("Diese Einführung findest du wieder unter Einstellungen → Darstellung & Sprache.", "You find this introduction again under Settings → Appearance & language.")}
             </p>

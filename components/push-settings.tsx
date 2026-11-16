@@ -6,11 +6,13 @@
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { api } from "./ui";
-import { desktopApp, inDesktopApp, nativeApp } from "@/lib/native-app";
+import { desktopApp, inDesktopApp, nativeApp, useInFlowplanApp } from "@/lib/native-app";
 import { SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
 import PushTest, { type ThisBrowser } from "./push-test";
 export default function PushSettings({ group = false }: { group?: boolean }) {
   const t = useT();
+  // Inside the apps Safari's way to the Home Screen does not apply.
+  const inApp = useInFlowplanApp();
   // In the Flowplan app the app delivers push itself (flowplan-app).
   const [app, setApp] = useState<Awaited<ReturnType<typeof nativeApp>>>(undefined);
   // In the desktop app the app shows system notifications itself: Electron
@@ -157,6 +159,21 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
     "Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.",
     "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.",
   );
+  // The introduction: the button of this device (the app's settings, or
+  // switching Web Push) and the test in one row (.push-actions).
+  const testShown = !desktop && subscribed;
+  const primaryButton = app ? (
+    app.openSettings && (
+      <button className="button primary" onClick={() => app.openSettings?.()}>
+        {t("App-Einstellungen öffnen", "Open app settings")}
+      </button>
+    )
+  ) : !desktop && !installRequired && supported ? (
+    <button className={`button${subscribed ? "" : " primary"}`} disabled={busy || !registration || !key} onClick={subscribed ? disable : enable}>
+      {subscribed ? t("Push deaktivieren", "Disable push") : t("Push aktivieren", "Enable push")}
+    </button>
+  ) : null;
+  const primary = primaryButton ? <div className="push-actions">{primaryButton}</div> : null;
   if (group) {
     return (
       <SettingGroup
@@ -236,7 +253,7 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
             <PushTest thisBrowser={thisBrowser} />
           </SettingRow>
         )}
-        {!desktop && !app && !installRequired && (
+        {!desktop && !app && !inApp && !installRequired && (
           <SettingRow label={t("iPhone und iPad", "iPhone and iPad")} description={iosHint}>
             {null}
           </SettingRow>
@@ -258,7 +275,7 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
       </p>
       )}
       {/* The iOS steps matter on iOS; elsewhere they stay behind a disclosure. */}
-      {desktop ? null : ios ? (
+      {desktop || app || inApp ? null : ios ? (
         <p className="muted">
           {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
         </p>
@@ -287,7 +304,7 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
                 : t("Die Desktop-App zeigt keine Mitteilungen an", "The desktop app does not show notifications")}
             </strong>
           </p>
-          <div className="modal-actions">
+          <div className="push-actions">
             <button
               className="button primary"
               disabled={busy}
@@ -316,13 +333,7 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
                 : t("Die Flowplan-App erhält keine Benachrichtigungen", "The Flowplan app does not receive notifications")}
             </strong>
           </p>
-          <div className="modal-actions">
-            {app.openSettings && (
-              <button className="button primary" onClick={() => app.openSettings?.()}>
-                {t("App-Einstellungen öffnen", "Open app settings")}
-              </button>
-            )}
-          </div>
+          {!testShown && primary}
         </>
       ) : installRequired ? (
         <p role="status">
@@ -342,19 +353,11 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
                 : t("Auf diesem Gerät deaktiviert", "Disabled on this device")}
             </strong>
           </p>
-          <div className="modal-actions">
-            <button
-              className="button primary"
-              disabled={busy || !registration || !key}
-              onClick={subscribed ? disable : enable}
-            >
-              {subscribed ? t("Push deaktivieren", "Disable push") : t("Push aktivieren", "Enable push")}
-            </button>
-          </div>
+          {!testShown && primary}
         </>
       )}
       {message && <p role="status">{message}</p>}
-      {!desktop && subscribed && <PushTest thisBrowser={thisBrowser} />}
+      {testShown && <PushTest thisBrowser={thisBrowser} actions={primaryButton} />}
       {!desktop && (
         <p className="muted">
           {t("Die Aktivierung gilt für die aktuelle Anmeldung auf diesem Gerät. Nach Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.", "Enabling applies to the current sign-in on this device. After signing out or when the session expires, enable it again.")}

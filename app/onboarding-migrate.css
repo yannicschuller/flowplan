@@ -215,6 +215,23 @@
   margin-top: 2px;
   color: var(--blue);
 }
+/* The text of the callout ("Erste Schritte", #314): its box grows with it
+   and is never cut. Plain wrapping instead of the section paragraphs'
+   `text-wrap: pretty` (app/mobile-ux.css): in a flex item Safari 26 can
+   size the box for the greedy line breaks and then lay the text out with
+   the pretty ones, one line longer – the likely cause of the cut-off last
+   line on the iPhone. The selector outweighs that rule's :is(). */
+.onboarding-body > section > p.onboarding-next {
+  height: auto;
+  overflow: visible;
+  line-height: 1.5;
+  text-wrap: wrap;
+}
+.onboarding-next > span {
+  flex: 1;
+  min-width: 0;
+  text-wrap: wrap;
+}
 .onboarding-setup {
   display: grid;
   gap: 8px;

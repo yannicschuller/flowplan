@@ -110,7 +110,9 @@ function targetName(t: Translate, target: PushTestTarget) {
   return target.current ? `${name} (${t("dieser Browser", "this browser")})` : name;
 }
 
-export default function PushTest({ thisBrowser = null }: { thisBrowser?: ThisBrowser }) {
+// `actions`: buttons that go in one row with the test button (the
+// introduction's "App-Einstellungen öffnen" / "Push aktivieren").
+export default function PushTest({ thisBrowser = null, actions }: { thisBrowser?: ThisBrowser; actions?: React.ReactNode }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<PushTestReport | null>(null);
@@ -131,10 +133,13 @@ export default function PushTest({ thisBrowser = null }: { thisBrowser?: ThisBro
   const currentListed = !!report?.targets.some((target) => target.current);
   return (
     <div className="push-test">
-      <button type="button" className="button" onClick={() => void send()} disabled={busy} aria-busy={busy} aria-describedby="push-test-hint">
-        {busy && <CircleNotch size={14} aria-hidden className="spin" />}
-        {busy ? t("Wird gesendet …", "Sending …") : t("Testbenachrichtigung senden", "Send test notification")}
-      </button>
+      <div className="push-actions">
+        {actions}
+        <button type="button" className="button" onClick={() => void send()} disabled={busy} aria-busy={busy} aria-describedby="push-test-hint">
+          {busy && <CircleNotch size={14} aria-hidden className="spin" />}
+          {busy ? t("Wird gesendet …", "Sending …") : t("Testbenachrichtigung senden", "Send test notification")}
+        </button>
+      </div>
       <p id="push-test-hint" className="push-test-hint">
         {t(
           "An alle deine Browser und Apps mit Push – unabhängig von den Benachrichtigungsarten und Ruhezeiten, nicht aber von den Systemeinstellungen des Geräts.",

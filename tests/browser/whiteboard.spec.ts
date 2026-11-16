@@ -638,3 +638,75 @@ test("phones get one tool bar, a tool sheet and one actions menu, nothing clippe
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: board.id });
 });
+
+// #314: tool options open on the first tap and close on the second or when
+// the board is touched; a tap on the empty board lets go of the selection
+// (a finger pans instead of drawing a marquee); the selection's tools stay
+// one row.
+test("phones: tool options close by tapping, a tap on the board deselects, one row of selection tools", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Touch");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { command, board } = await setup(page, `Tippen ${Date.now()}`);
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  await expect(wb).toBeVisible();
+  const skip = page.getByRole("button", { name: "Überspringen" });
+  if (await skip.isVisible()) await skip.click();
+  const dock = wb.getByRole("toolbar", { name: "Werkzeuge" });
+  // Every tool with options has the corner mark, the others not.
+  for (const name of ["Zeichnen", "Form", "Notizzettel"])
+    await expect(dock.getByRole("button", { name, exact: true })).toHaveClass(/wb-has-menu/);
+  for (const name of ["Auswählen", "Verschieben", "Text"])
+    await expect(dock.getByRole("button", { name, exact: true })).not.toHaveClass(/wb-has-menu/);
+  const canvas = (await wb.locator(".wb-canvas").boundingBox())!;
+  const tapBoard = (dx: number, dy: number) => page.touchscreen.tap(canvas.x + dx, canvas.y + dy);
+  // The pen: open, closed by the second tap, open again, closed by drawing.
+  const draw = dock.getByRole("button", { name: "Zeichnen", exact: true });
+  const options = wb.locator(".wb-draw-switch");
+  await draw.tap();
+  await expect(options).toBeVisible();
+  await draw.tap();
+  await expect(options).toHaveCount(0);
+  await expect(draw).toHaveAttribute("aria-pressed", "true");
+  await draw.tap();
+  await expect(options).toBeVisible();
+  await tapBoard(120, 160);
+  await expect(options).toHaveCount(0);
+  await expect(draw).toHaveAttribute("aria-pressed", "true");
+  // The shapes the same way.
+  const shape = dock.getByRole("button", { name: "Form", exact: true });
+  const shapes = wb.getByRole("menu", { name: "Formen" });
+  await shape.tap();
+  await expect(shapes).toBeVisible();
+  await shape.tap();
+  await expect(shapes).toHaveCount(0);
+  // A shape, selected: its tools in one row.
+  await shape.tap();
+  await shapes.getByRole("menuitemradio").first().tap();
+  await tapBoard(canvas.width / 2, canvas.height / 2);
+  const styleBar = wb.getByRole("toolbar", { name: "Element gestalten" });
+  await expect(styleBar).toBeVisible();
+  const bar = (await styleBar.boundingBox())!;
+  expect(bar.height).toBeLessThan(60);
+  expect(bar.x).toBeGreaterThanOrEqual(0);
+  expect(bar.x + bar.width).toBeLessThanOrEqual(canvas.x + canvas.width + 0.5);
+  const small = await styleBar.locator("button:not(.wb-swatch)").evaluateAll((buttons) =>
+    buttons.filter((b) => (b as HTMLElement).offsetParent && b.getBoundingClientRect().height < 40).length,
+  );
+  expect(small).toBe(0);
+  // A tap on the empty board lets go of it, like a click with the mouse.
+  await dock.getByRole("button", { name: "Auswählen", exact: true }).tap();
+  await expect(styleBar).toBeVisible();
+  await tapBoard(30, canvas.height - 120);
+  await expect(styleBar).toHaveCount(0);
+  // Selected again, then the hand: no selection while moving the board.
+  await tapBoard(canvas.width / 2, canvas.height / 2);
+  await expect(styleBar).toBeVisible();
+  await dock.getByRole("button", { name: "Verschieben", exact: true }).tap();
+  await expect(styleBar).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await command({ action: "page.delete", pageId: board.id });
+});

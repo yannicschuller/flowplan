@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APP_PROFILES_LINK, appProfilesAction, armDesktopMarketplace, desktopPageLink, desktopPasskeysInWindow, marketplacePublishWay, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
+import { APP_PROFILES_LINK, appProfilesAction, armDesktopMarketplace, desktopPageLink, desktopPasskeysInWindow, flowplanAppHost, marketplacePublishWay, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
 import { readFileSync } from "node:fs";
 
 const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.4.0";
@@ -119,4 +119,15 @@ test("the publish dialog arms the desktop window right before window.open and fa
   assert.match(open, /if \(way !== "handover"\) \{/, "older desktop apps and the mobile apps: the file");
   assert.match(open, /if \(!win\) \{\s*void handToFile\("blocked"/, "no window: the file");
   assert.match(open, /window\.setTimeout\(\(\) => \{\s*if \(!ready\) void handToFile\("silent", pkg, false\);\s*\}, READY_MS\);/, "no \"ready\": the file");
+});
+
+test("inside a Flowplan app (#314): by the bridge or the user agent, not in browsers", () => {
+  const desktop = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) FlowplanDesktop/1.4.0 Chrome/140.0 Electron/38.0 Safari/537.36";
+  assert.equal(flowplanAppHost({ FlowplanApp: {} }, safari), true);
+  assert.equal(flowplanAppHost({ FlowplanDesktop: {} }, safari), true);
+  assert.equal(flowplanAppHost({}, iphone), true);
+  assert.equal(flowplanAppHost({}, android), true);
+  assert.equal(flowplanAppHost({}, desktop), true);
+  assert.equal(flowplanAppHost({}, safari), false);
+  assert.equal(flowplanAppHost(undefined, ""), false);
 });
