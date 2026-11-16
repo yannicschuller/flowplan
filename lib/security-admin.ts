@@ -28,6 +28,7 @@ import { incidentThreshold, notificationPrefs } from "./notification-prefs";
 import type { Identity } from "./types";
 import { dropLiveProjections } from "./shared-live";
 import { ct } from "./content-locale";
+import { proxyAuthConfig, wideTrustedProxies } from "./proxy-auth-config";
 
 const HOUR = 3_600_000,
   DAY = 24 * HOUR;
@@ -393,6 +394,7 @@ async function setup(now: number) {
   );
   const alerts = await alertSettingsForAdmin();
   const otlp = otlpLogsEndpoint();
+  const proxyAuth = proxyAuthConfig();
   let otlpHost = "";
   try {
     otlpHost = otlp ? new URL(otlp).host : "";
@@ -409,6 +411,9 @@ async function setup(now: number) {
     addressMissing: recent >= 3 && withAddress === 0,
     // SMTP/LDAP certificates not verified (*_TLS_REJECT_UNAUTHORIZED=false, #286).
     tlsUnverified: unverifiedTls(),
+    // Sign-in through a reverse proxy trusting more than this machine
+    // (AUTH_PROXY_TRUSTED_PROXIES, lib/proxy-auth-config.ts).
+    proxyAuthWide: proxyAuth ? wideTrustedProxies(proxyAuth) : [],
   };
 }
 

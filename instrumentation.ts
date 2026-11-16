@@ -1,5 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Sign-in through a reverse proxy (AUTH_PROXY_USER_HEADER): the address
+    // of each request's connection, which Next.js does not pass on, is
+    // stamped into the request (lib/proxy-auth-config.ts). As early as
+    // possible; requests before it count as coming from an unknown peer.
+    if (process.env.AUTH_PROXY_USER_HEADER?.trim()) {
+      const [{ installPeerStamp }, http] = await Promise.all([import("./lib/proxy-auth-config"), import("node:http")]);
+      installPeerStamp(http.Server);
+    }
     // Before anything reads it: Node.js's localStorage without a file
     // (lib/node-web-storage.ts, #194).
     const { quietUnconfiguredLocalStorage } = await import("./lib/node-web-storage");

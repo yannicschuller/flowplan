@@ -118,6 +118,14 @@ function Verdict({ d }: { d: Overview }) {
         `Certificate checks for ${service} are switched off (${service}_TLS_REJECT_UNAUTHORIZED=false) – anyone on the network path can pose as the server and read passwords. Safer: ${service}_TLS_CA and ${service}_TLS_SERVERNAME.`,
       ),
     );
+  // Sign-in through a reverse proxy that trusts more than this machine.
+  if (d.setup.proxyAuthWide?.length)
+    notes.push(
+      t(
+        `Die Anmeldung über einen Reverse-Proxy vertraut auch ${d.setup.proxyAuthWide.join(", ")} (AUTH_PROXY_TRUSTED_PROXIES) – wer Flowplans Port von dort erreicht, kann sich als beliebige Person ausgeben. Stelle sicher, dass der Port nur über den Proxy erreichbar ist.`,
+        `Sign-in through a reverse proxy also trusts ${d.setup.proxyAuthWide.join(", ")} (AUTH_PROXY_TRUSTED_PROXIES) – anyone who reaches Flowplan's port from there can pose as anyone. Make sure the port is reachable only through the proxy.`,
+      ),
+    );
   if (!d.setup.webhook && !d.setup.mail)
     notes.push(t("Vorfälle erscheinen nur im Posteingang der Admins und hier – richte E-Mail oder einen Webhook ein, um sie auch unterwegs zu bekommen.", "Incidents only show in the admins' inbox and here – set up e-mail or a webhook to get them on the go as well."));
   const state = s.criticalIncidents ? "error" : s.openIncidents ? "warn" : "ok";

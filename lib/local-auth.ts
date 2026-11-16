@@ -33,6 +33,7 @@ import { recordOpsEvent } from "./ops-events";
 import { blockedAddress, securityEvent } from "./security-events";
 import { translate, type Locale } from "./i18n";
 import { ldapConfigured } from "./ldap";
+import { proxyAuthConfig } from "./proxy-auth-config";
 import { mapAsync, someAsync } from "./each-async";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
@@ -836,22 +837,29 @@ export async function passkeyConfirm(userId: string, token: string | undefined, 
 // What the sign-in page offers on this instance.
 export async function loginOptions(setup?: string, invite?: string) {
   const first = await firstAccount();
+  // Sign-in through a reverse proxy (lib/proxy-auth.ts): its portal's button
+  // when AUTH_PROXY_LOGIN_URL is set; AUTH_PROXY_ONLY=true shows nothing
+  // else of the instance's own sign-in (password, passkeys, sign-up).
+  const proxy = proxyAuthConfig();
+  const local = localLoginEnabled() && !proxy?.only;
   return {
     configured: !!process.env.OIDC_ISSUER,
-    localLogin: localLoginEnabled(),
-    signupOpen: await signupOpen(setup, invite),
+    localLogin: local,
+    signupOpen: !proxy?.only && await signupOpen(setup, invite),
     // Opened through an invitation link: the account is created for its address.
     invitedEmail: await invitedEmail(invite) || "",
-    firstAccount: localLoginEnabled() && first && setupAllowed(setup),
+    firstAccount: local && first && setupAllowed(setup),
     // The first account can be created without a setup link although the
     // address is not this machine: a note recommends FLOWPLAN_SETUP_TOKEN.
-    unprotectedSetup: localLoginEnabled() && first && unprotectedSetup(),
+    unprotectedSetup: local && first && unprotectedSetup(),
+    proxyName: proxy?.loginUrl ? proxy.name : "",
+    proxyOnly: !!proxy?.only,
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).
     remember: !!(await rememberPolicy()),
     // The password form also signs in with the LDAP directory (LDAP_URL).
-    ldap: ldapConfigured(),
+    ldap: ldapConfigured() && !proxy?.only,
     // APP_URL is plain http on another machine: a calm note about HTTPS (#62).
     plainHttp: plainHttpInstance(appUrl()),
   };

@@ -10,6 +10,7 @@ import { blockedRequest, securityEvent } from "./security-events";
 import { noteActive } from "./metrics";
 import { readOnlyRefusal } from "./instance-read-only";
 import { rememberPolicy, rememberedEnd, sessionTerms } from "./session-policy";
+import { proxySessionEnds } from "./proxy-auth-config";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -69,14 +70,22 @@ export async function touchSession(s: SessionUse, now = Date.now()) {
   }
   if (stale) await db.run("UPDATE sessions SET last_seen=? WHERE token=?", now, s.token);
 }
-export async function identityFromToken(token: string): Promise<Identity | null> {
+// requestHeaders: the request the session came with. A session that the
+// sign-in through the reverse proxy created (lib/proxy-auth.ts) ends when
+// the proxy no longer names its person – signed out or switched at the
+// portal. Other sessions do not depend on those headers.
+export async function identityFromToken(token: string, requestHeaders?: Headers): Promise<Identity | null> {
   const now = Date.now();
-  const s = await db.one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
-    "SELECT u.*,s.groups_json,s.expires,s.created_at created_at_s,s.remember,s.sso,s.app,s.last_seen FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
+  const s = await db.one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; app: number; last_seen: number | null; proxy_user: string | null }>(
+    "SELECT u.*,s.groups_json,s.expires,s.created_at created_at_s,s.remember,s.sso,s.app,s.last_seen,s.proxy_user FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
     hash(token),
     now,
   );
   if (!s) return null;
+  if (s.proxy_user && requestHeaders && proxySessionEnds(s.proxy_user, requestHeaders)) {
+    await db.run("DELETE FROM sessions WHERE token=?", hash(token));
+    return null;
+  }
   const groups = JSON.parse(s.groups_json) as string[];
   await touchSession({ token: hash(token), expires: s.expires, created_at: s.created_at_s, remember: s.remember, sso: s.sso, app: s.app, last_seen: s.last_seen, demo_until: s.demo_until }, now);
   // Active people per hour (lib/metrics.ts): counted in memory, never stored.
@@ -111,7 +120,7 @@ export async function currentUser() {
   if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
   const jar = await cookies();
   const token = jar.get(cookieName)?.value;
-  return token ? identityFromToken(token) : null;
+  return token ? identityFromToken(token, requestHeaders) : null;
 }
 // The same from a request's own headers (route handlers that also run in
 // tests without a Next.js request around them): a personal API token, or
@@ -133,7 +142,7 @@ export async function sessionIdentityFromRequest(req: Request): Promise<Identity
     } catch {
       return null;
     }
-    return identityFromToken(token);
+    return identityFromToken(token, req.headers);
   }
   return null;
 }
@@ -171,7 +180,41 @@ export async function issueSession(
   // "Stay signed in on this device" (only when the instance allows it),
   // whether the groups came from an SSO provider, and whether the app proved
   // this sign-in its own (lib/app-devices.ts: the hand-off or its device key).
-  options: { remember?: boolean; sso?: boolean; app?: boolean; authenticatedAt?: number | null } = {},
+  options: SessionOptions = {},
+) {
+  const jar = await cookies();
+  const { token, maxAge } = await createSession(userId, groups, demo, options, await headers(), jar.get(cookieName)?.value);
+  jar.set(cookieName, token, sessionCookie(maxAge));
+}
+export type SessionOptions = {
+  remember?: boolean;
+  sso?: boolean;
+  app?: boolean;
+  authenticatedAt?: number | null;
+  // Sign-in through the reverse proxy (lib/proxy-auth.ts): the user name the
+  // proxy named. The session ends when it names someone else or nobody.
+  proxyUser?: string;
+};
+// The attributes of the session cookie.
+export const sessionCookie = (maxAge: number) => ({
+  httpOnly: true,
+  secure: new URL(appUrl()).protocol === "https:",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge,
+});
+// A new session for a request's headers – issueSession, and the sign-in
+// through the reverse proxy (lib/proxy-auth.ts), which runs in proxy.ts
+// without next/headers. previousToken: the session cookie the device had
+// (its app installations move over). Returns the token and how long its
+// cookie lasts, in seconds.
+export async function createSession(
+  userId: string,
+  groups: string[],
+  demo: { expires: number; until: number } | undefined,
+  options: SessionOptions,
+  requestHeaders: Headers,
+  previousToken?: string,
 ) {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
@@ -180,7 +223,6 @@ export async function issueSession(
     // Counted for the sign-in chart of the monitoring (lib/admin-ops.ts).
     recordOpsEvent("login_success", now);
   }
-  const requestHeaders = await headers();
   const agent = (requestHeaders.get("user-agent") || "").slice(0, 300);
   // How long it lasts (lib/session-policy.ts): the desktop and mobile apps
   // stay signed in unless the instance says otherwise – when they proved the
@@ -191,16 +233,16 @@ export async function issueSession(
   // with earlier sign-ins and failures of the same account.
   if (!demo) {
     const email = (await db.one<{ email: string }>("SELECT email FROM users WHERE id=?", userId))?.email || "";
-    securityEvent("login.success", { actorId: userId, subject: email, headers: requestHeaders, detail: options.sso ? "sso" : "" });
+    securityEvent("login.success", { actorId: userId, subject: email, headers: requestHeaders, detail: options.proxyUser ? "proxy" : options.sso ? "sso" : "" });
     // Admin rights that came with this sign-in (SSO or directory group) and
     // were not there at the previous one.
     const previous = await db.one<{ groups_json: string }>("SELECT groups_json FROM sessions WHERE user_id=? ORDER BY COALESCE(created_at,0) DESC LIMIT 1", userId);
     const admin = groups.includes(adminGroup());
     if (previous && admin !== (JSON.parse(previous.groups_json) as string[]).includes(adminGroup()))
-      securityEvent(admin ? "admin.granted" : "admin.revoked", { actorId: userId, headers: requestHeaders, detail: `${options.sso ? "SSO" : "directory"} group at sign-in` });
+      securityEvent(admin ? "admin.granted" : "admin.revoked", { actorId: userId, headers: requestHeaders, detail: `${options.proxyUser ? "proxy" : options.sso ? "SSO" : "directory"} group at sign-in` });
   }
   await db.run(
-    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent,authenticated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent,authenticated_at,proxy_user) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     userId,
     JSON.stringify(groups),
@@ -214,21 +256,14 @@ export async function issueSession(
     // A sign-in proves the person now; a hand-off from an older browser
     // session does not (#audit F3).
     options.authenticatedAt === undefined ? now : options.authenticatedAt,
+    options.proxyUser || null,
   );
-  const jar = await cookies();
   // Signing in again on the same device (the session ran out, or the app
   // signs in anew): its app installations move over to the new session.
-  const previous = jar.get(cookieName)?.value;
-  if (previous && !demo) await carryOverSession(hash(previous), hash(token), userId);
-  jar.set(cookieName, token, {
-    httpOnly: true,
-    secure: new URL(appUrl()).protocol === "https:",
-    sameSite: "lax",
-    path: "/",
-    // A remembered session keeps its cookie until its latest possible end;
-    // the server decides earlier whether it is still alive.
-    maxAge: terms ? terms.maxAge : Math.max(60, Math.round((demo!.until - now) / 1000)),
-  });
+  if (previousToken && !demo) await carryOverSession(hash(previousToken), hash(token), userId);
+  // A remembered session keeps its cookie until its latest possible end;
+  // the server decides earlier whether it is still alive.
+  return { token, maxAge: terms ? terms.maxAge : Math.max(60, Math.round((demo!.until - now) / 1000)) };
 }
 // The session a device signed in with before is replaced by a new one of the
 // same person: the mobile app installations (device tokens for widgets,

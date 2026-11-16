@@ -106,6 +106,8 @@ export default function Login({
   ldap = false,
   plainHttp = false,
   unprotectedSetup = false,
+  proxyName = "",
+  proxyOnly = false,
   error,
   notice: initialNotice,
   instanceName = "",
@@ -128,6 +130,8 @@ export default function Login({
     // Second step: a recovery code instead of the code from the app.
     [recovery, setRecovery] = useState(false);
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
+  // The reverse proxy's portal (AUTH_PROXY_LOGIN_URL, lib/proxy-auth.ts).
+  const [proxyUrl, setProxyUrl] = useState("/api/auth/proxy-login");
   const [passkeys, setPasskeys] = useState(false);
   // "Stay signed in on this device": for password, passkey and SSO alike.
   const [remember, setRemember] = useState(false);
@@ -182,8 +186,11 @@ export default function Login({
     setDesktopRequest(desktopReturn);
     setDesktopApp(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent));
     setAppKey(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent) && !!appDeviceKey());
-    const update = () =>
-      setLoginUrl(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`))}`);
+    const update = () => {
+      const back = encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`));
+      setLoginUrl(`/api/auth/login?returnTo=${back}`);
+      setProxyUrl(`/api/auth/proxy-login?returnTo=${back}`);
+    };
     update();
     setPasskeys(browserSupportsWebAuthn());
     setPasskeyInApp(desktopPasskeysInWindow() && browserSupportsWebAuthn());
@@ -343,7 +350,7 @@ export default function Login({
   // The ways this instance and this browser offer, the fastest first.
   const passkeyButton = localLogin && passkeys && (!desktopApp || passkeyInApp);
   const choice = chooseSignInWays(
-    availableSignInWays({ sso: configured, passkey: localLogin && (passkeyHandOff || passkeyButton), password: passwordForm }),
+    availableSignInWays({ proxy: !!proxyName, sso: configured, passkey: localLogin && (passkeyHandOff || passkeyButton), password: passwordForm }),
     lastWay,
   );
   const signingIn = mode === "signin" && !restoring;
@@ -393,6 +400,17 @@ export default function Login({
       {lastUsedHint("sso")}
     </>
   );
+  // The portal signs in and sends the person back here, where the proxy's
+  // headers sign them in (no hand-off in the apps: their web view follows).
+  const proxyWay = !!proxyName && (
+    <>
+      <a className={wayClass("proxy")} href={proxyUrl} onClick={() => noteAttempt("proxy")} aria-describedby={describedBy("proxy")}>
+        <ShieldCheck size={19} />
+        {t(`Mit ${proxyName} anmelden`, `Sign in with ${proxyName}`)}
+      </a>
+      {lastUsedHint("proxy")}
+    </>
+  );
   const passkeyWay = localLogin && (
     <>
       {passkeyHandOff && (
@@ -435,7 +453,7 @@ export default function Login({
       )}
     </>
   );
-  const way = (which: SignInWay | null) => (which === "sso" ? ssoWay : which === "passkey" ? passkeyWay : null);
+  const way = (which: SignInWay | null) => (which === "proxy" ? proxyWay : which === "sso" ? ssoWay : which === "passkey" ? passkeyWay : null);
   // In the app, password managers offer nothing: iOS AutoFill only matches
   // the app's own domains, never a self-hosted instance (flowplan-app#5).
   // The system browser's sign-in sheet shows this page with password and
@@ -657,7 +675,15 @@ export default function Login({
                   {passwordFormBlock}
                 </>
               )}
-              {!configured && !passwordForm && (
+              {proxyOnly && !proxyName && !configured && (
+                <div className="callout">
+                  {t(
+                    "Melde dich über das Portal an, über das du Flowplan erreichst – danach bist du hier automatisch angemeldet.",
+                    "Sign in through the portal you reach Flowplan from – you are then signed in here automatically.",
+                  )}
+                </div>
+              )}
+              {!configured && !passwordForm && !proxyName && !proxyOnly && (
                 <div className="callout">
                   {t(
                     "Die Anmeldung wird über deinen OIDC-Anbieter eingerichtet. Wie das geht, steht in der Dokumentation unter „Anmeldung mit OIDC“.",

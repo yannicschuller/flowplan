@@ -7,6 +7,7 @@ import { createScimToken, revokeScimToken, scimOverview, ScimError } from "@/lib
 import { ldapStatus, syncLdapAccounts, testLdapConnection } from "@/lib/ldap-auth";
 import { contactsLdapConfig, contactsLdapStatus, saveContactsLdapSettings } from "@/lib/contacts-ldap";
 import { ldapTest } from "@/lib/ldap";
+import { proxyAuthStatus } from "@/lib/proxy-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ async function admin() {
   requireAdmin(user);
   return user;
 }
-const overview = async () => ({ scim: await scimOverview(), ldap: await ldapStatus(), contacts: await contactsLdapStatus() });
+const overview = async () => ({ scim: await scimOverview(), ldap: await ldapStatus(), contacts: await contactsLdapStatus(), proxy: await proxyAuthStatus() });
 
 export async function GET() {
   try {
