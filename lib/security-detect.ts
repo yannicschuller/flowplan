@@ -45,19 +45,39 @@ export async function detectSecurity(e: SecurityEvent) {
       return await loginFailure(e);
     case "login.success":
       return await loginSuccess(e);
+    // Admin rights given or taken away – by an admin or through the SSO or
+    // directory group at sign-in. Taking them away is as critical as giving
+    // them: someone who took over an admin account locks the others out.
     case "admin.granted":
-      return await openIncident("privilege_change", `event:${e.id}`, e, e.detail);
-    case "admin.settings":
+    case "admin.revoked":
+      return await openIncident("privilege_change", `event:${e.id}`, e, e.kind === "admin.revoked" ? `revoked: ${e.detail}` : e.detail);
+    case "account.2fa_off":
+      return await adminTwoFactorOff(e, e.actorId, e.detail === "admin account");
+    case "admin.user": {
+      // An admin turned off the authenticator app of another admin.
+      const target = /^two-factor reset ([\w-]+)/.exec(e.detail)?.[1];
+      return target ? await adminTwoFactorOff(e, target, false) : undefined;
+    }
+    case "admin.sso_mapping_changed":
+      // Several mappings saved one after the other count on one incident.
+      return await openIncident("instance_policy_change", `sso-mapping:${e.actorId ?? ""}`, e, e.detail);
+    case "admin.settings": {
       // Who may sign in and with which rights: directory, provisioning,
       // restores, extensions and domains that run in the instance.
       if (/^(ldap|scim|instance\.restore|plugin\.register|domain\.add)/.test(e.detail))
         return await openIncident("privilege_change", `event:${e.id}`, e, e.detail);
+      // The door opened wider: sign-up, demo accounts, invitation links or
+      // emergency access switched on, two-factor no longer (as) required.
+      // Closing it is no incident.
+      const opened = OPENED_ACCESS.exec(e.detail);
+      if (opened) return await openIncident("instance_policy_change", `setting:${opened[1] ?? opened[2]}`, e, e.detail);
       // Someone started over with their own encryption key (passphrase and
       // recovery key lost): it only takes away their own access to
       // encrypted spaces, so a warning – unless several accounts do it in
       // a short time, which a taken-over admin or a script would.
       if (/^e2ee\.identity\.reset/.test(e.detail)) return await e2eeReset(e);
       return;
+    }
     case "data.export":
       return await exports(e);
     case "request.probing":
@@ -67,7 +87,32 @@ export async function detectSecurity(e: SecurityEvent) {
       return await attempts(e);
     case "emergency.requested":
       return await emergencyRequests(e);
+    // Someone reads another person's content now (the waiting period ran
+    // out, or the inactivity message handed it over) – or takes it out of
+    // the instance. One incident per holder and contact a day; reading
+    // alone (emergency.viewed) adds nothing the grant did not say.
+    case "emergency.granted":
+    case "emergency.exported": {
+      // The incident is the contact's (its steps end their sessions), also
+      // when the inactivity message granted it in the holder's name.
+      const pair = /holder:[\w-]+ contact:([\w-]+)/.exec(e.detail);
+      return pair ? await openIncident("emergency_access", pair[0], { ...e, actorId: pair[1] }, e.detail) : undefined;
+    }
   }
+}
+
+// Instance settings (the detail of admin.settings) that let more people in,
+// or in with less: the setting's name is the incident's key.
+const OPENED_ACCESS = /^(allowSignup|publicDemo|inviteLinks|admin\.emergency) on$|^(twoFactor) (?:all|admins)→(?:admins|off)$/;
+// The two-factor sign-in of an administrator ends: by themselves (marked
+// when recorded – they were an admin at that moment) or by another admin.
+async function adminTwoFactorOff(e: SecurityEvent, account: string | null, marked: boolean) {
+  if (!account) return;
+  const { adminUserIds } = await import("./auth");
+  if (!marked && !(await adminUserIds()).includes(account)) return;
+  // The incident is the admin account's (its steps end its sessions), also
+  // when another admin reset it.
+  return await openIncident("admin_2fa_off", `account:${account}`, { ...e, actorId: account }, e.kind === "admin.user" ? `${e.detail} by ${e.actorId ?? "?"}` : account);
 }
 
 // Requests for emergency access (lib/emergency-access.ts; detail

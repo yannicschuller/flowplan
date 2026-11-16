@@ -22,6 +22,7 @@ import { z } from "zod";
 import { all, id, one, run, transaction, lockFor, lockMembership } from "./db";
 import { HttpError } from "./auth";
 import { removeFromWorkspace } from "./workspace-lifecycle";
+import { securityEvent } from "./security-events";
 import type { Role } from "./types";
 
 export type SsoMapping = {
@@ -231,8 +232,17 @@ const mappingInput = z
   })
   .refine((m) => m.role || m.groupId, { message: "Rolle oder Gruppe erforderlich." });
 
+// A mapping lets a whole group of the identity provider into a workspace,
+// up to owner: a security event, which alerts the administrators
+// (lib/security-detect.ts, rule instance_policy_change).
+const mappingEvent = (actorId: string, change: string, m: { sso_group: string; role: string | null; group_id: string | null }, workspaceId: string) =>
+  securityEvent("admin.sso_mapping_changed", {
+    actorId,
+    detail: `${change} "${m.sso_group}" → ${[m.role && `role ${m.role}`, m.group_id && `group ${m.group_id}`].filter(Boolean).join(", ")} in workspace ${workspaceId}`,
+  });
+
 // Permission checks are the caller's (workspace owner or administrator).
-export async function addSsoMapping(workspaceId: string, input: unknown) {
+export async function addSsoMapping(workspaceId: string, input: unknown, actorId: string) {
   const b = mappingInput.parse(input);
   if (!(await one("SELECT 1 FROM workspaces WHERE id=?", workspaceId))) throw new HttpError(404, "Arbeitsbereich nicht gefunden.");
   if (b.groupId && !(await one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", b.groupId, workspaceId)))
@@ -261,10 +271,14 @@ export async function addSsoMapping(workspaceId: string, input: unknown) {
     Date.now(),
   );
   await reapplySsoMappings(workspaceId);
+  mappingEvent(actorId, "added", { sso_group: b.ssoGroup, role: b.role || null, group_id: b.groupId || null }, workspaceId);
   return { id: mappingId };
 }
 
-export async function deleteSsoMapping(workspaceId: string, mappingId: unknown) {
-  await run("DELETE FROM sso_mappings WHERE id=? AND workspace_id=?", z.string().max(100).parse(mappingId), workspaceId);
+export async function deleteSsoMapping(workspaceId: string, mappingId: unknown, actorId: string) {
+  const key = z.string().max(100).parse(mappingId);
+  const gone = await one<SsoMapping>("SELECT * FROM sso_mappings WHERE id=? AND workspace_id=?", key, workspaceId);
+  await run("DELETE FROM sso_mappings WHERE id=? AND workspace_id=?", key, workspaceId);
   await reapplySsoMappings(workspaceId);
+  if (gone) mappingEvent(actorId, "removed", gone, workspaceId);
 }

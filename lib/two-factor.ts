@@ -15,7 +15,7 @@ import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import { one, run } from "./db";
 import { securityEvent } from "./security-events";
-import { HttpError, appUrl } from "./auth";
+import { HttpError, adminUserIds, appUrl } from "./auth";
 import { addressKey } from "./client-address";
 import { checkAttempt, localGroups, verifyPassword } from "./local-auth";
 import { ldapGroups, verifyLdapPassword } from "./ldap-auth";
@@ -196,8 +196,11 @@ export async function disableTotp(userId: string, input: unknown, address: strin
   if (await twoFactorRequired(userId) && !(await hasPasskey(userId)))
     throw new HttpError(409, t("Auf dieser Instanz ist die Zwei-Faktor-Anmeldung vorgeschrieben. Lege zuerst einen Passkey an.", "Two-factor sign-in is required on this instance. Add a passkey first."));
   await confirmWithPasswordOrCode(userId, input, address, t);
+  // An administrator's account is marked: whether they were one at this
+  // moment decides the incident (lib/security-detect.ts), not later.
+  const admin = (await adminUserIds()).includes(userId);
   await removeTotp(userId);
-  securityEvent("account.2fa_off", { actorId: userId, address });
+  securityEvent("account.2fa_off", { actorId: userId, address, ...(admin ? { detail: "admin account", severity: "critical" as const } : {}) });
   return await twoFactorStatus(userId);
 }
 export async function regenerateRecoveryCodes(userId: string, input: unknown, address: string, locale: Locale) {

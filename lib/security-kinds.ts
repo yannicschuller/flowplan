@@ -32,6 +32,8 @@ export const securityKinds = {
   "admin.user": { severity: "warn", de: "Konto durch Admin geändert", en: "Account changed by an admin" },
   "admin.messenger_bot": { severity: "warn", de: "Telegram-Bot der Instanz geändert", en: "Instance Telegram bot changed" },
   "admin.settings": { severity: "warn", de: "Sicherheitsrelevante Einstellung geändert", en: "Security-relevant setting changed" },
+  // SSO groups → workspace roles and groups (lib/sso-mappings.ts, #321).
+  "admin.sso_mapping_changed": { severity: "warn", de: "SSO-Gruppenzuordnung geändert", en: "SSO group mapping changed" },
   "role.changed": { severity: "info", de: "Rolle geändert", en: "Role changed" },
   "invite.created": { severity: "info", de: "Einladung verschickt", en: "Invitation sent" },
   // Invitation links for several people (#320, lib/invite-links.ts).
@@ -92,6 +94,10 @@ export const securityRules = {
   admin_new_device: { severity: "warn", de: "Admin meldet sich von neuem Gerät an", en: "Admin signs in from a new device" },
   impossible_travel: { severity: "critical", de: "Anmeldungen aus zwei Ländern kurz nacheinander", en: "Sign-ins from two countries in a short time" },
   privilege_change: { severity: "critical", de: "Rechte oder Anmeldung der Instanz geändert", en: "Rights or sign-in of the instance changed" },
+  // Instance-wide alerts (#321).
+  admin_2fa_off: { severity: "critical", de: "Zwei-Faktor eines Admins ausgeschaltet", en: "Two-factor of an admin turned off" },
+  instance_policy_change: { severity: "warn", de: "Zugang zur Instanz geöffnet oder SSO-Zuordnung geändert", en: "Access to the instance opened or SSO mapping changed" },
+  emergency_access: { severity: "warn", de: "Notfallzugriff freigegeben oder für einen Export genutzt", en: "Emergency access granted or used for an export" },
   e2ee_reset: { severity: "warn", de: "Verschlüsselungsschlüssel zurückgesetzt", en: "Encryption key reset" },
   e2ee_mass_reset: { severity: "critical", de: "Mehrere Verschlüsselungsschlüssel zurückgesetzt", en: "Several encryption keys reset" },
   mass_export: { severity: "warn", de: "Ungewöhnlich viele Exporte", en: "Unusually many exports" },
