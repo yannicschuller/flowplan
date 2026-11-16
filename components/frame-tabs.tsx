@@ -109,6 +109,10 @@ export function useFrameTabs({
   // tab has moved already; when the browser arrives, only the address is
   // checked – another step may have been taken meanwhile.
   const ownSteps = useRef<{ at: number; place: string }[]>([]);
+  // An address from before the tabs (?split=<id>), read once when the app
+  // opens: the workspace drops it from the address while the layout is not
+  // known yet (the screen size is measured after the first render).
+  const splitAtOpen = useRef(typeof location === "undefined" ? null : new URLSearchParams(location.search).get("split"));
 
   const persist = useCallback((next: Layout, local: boolean) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -154,7 +158,8 @@ export function useFrameTabs({
       if (!next) {
         next = singleLayout(here || "home");
         // An address from before the tabs (?split=<id>): the right frame.
-        const split = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("split");
+        const split = splitAtOpen.current || (typeof location === "undefined" ? null : new URLSearchParams(location.search).get("split"));
+        splitAtOpen.current = null;
         if (split && /^[0-9a-f-]{36}$/i.test(split) && check(`page=${split}`)) next = focus(open(next, `page=${split}`, { frame: 1 }), 0);
         return next;
       }
