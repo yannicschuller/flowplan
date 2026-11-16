@@ -32,6 +32,8 @@ const BLOCKED = new Set([
   "page.shareUpdate",
   "invite.resend",
   "invite.cancel",
+  "inviteLink.create",
+  "inviteLink.revoke",
   "member.role",
   "member.guest",
   "group.member",

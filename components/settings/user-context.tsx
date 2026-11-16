@@ -8,8 +8,25 @@ import type { Bootstrap } from "@/lib/types";
 import { api } from "../ui";
 import type { SsoMappingRow } from "../sso-mappings";
 
+export type InviteLinkRow = {
+  id: string;
+  role: string;
+  guest: boolean;
+  uses: number;
+  maxUses: number | null;
+  usedUp: boolean;
+  expiresAt: number;
+  createdAt: number;
+  creator: string | null;
+  // Null when the link cannot be shown again (the secrets key changed).
+  url: string | null;
+};
+
 export type WorkspaceSettingsData = {
   invites: { id: string; email: string; role: string; guest?: number; created_at?: number | null; inviter?: string | null; pages?: string[]; token?: string }[];
+  // Invitation links for several people (#320, lib/invite-links.ts).
+  inviteLinks?: InviteLinkRow[];
+  inviteLinksEnabled?: boolean;
   groups: { id: string; name: string }[];
   groupMembers: { group_id: string; user_id: string }[];
   grants: { resource_id: string; user_id: string; group_id: string; role: string }[];

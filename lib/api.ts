@@ -257,7 +257,8 @@ import { colorOptions } from "./option-colors";
 import { restoreVersionSettings } from "./database-version-settings";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
-import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
+import { HttpError, acceptInvite, acceptPendingInvites, inviteToken, type Invite } from "./auth";
+import { createInviteLink, revokeInviteLink } from "./invite-links";
 import {
   applyDocumentUpdate,
   cleanHtml,
@@ -912,7 +913,12 @@ async function runCommand(
         requireAdmin(user);
         const before = (await instanceSettings()).emergencyAccess;
         const deadmanBefore = (await instanceSettings()).deadManSwitch;
+        const linksBefore = (await instanceSettings()).inviteLinks;
         result = await saveInstanceSettings(b.settings);
+        // Invitation links (#320): who may get in without an invitation of
+        // their own – a security event.
+        const links = (result as Awaited<ReturnType<typeof instanceSettings>>).inviteLinks;
+        if (linksBefore !== links) securityEvent("admin.settings", { actorId: user.id, detail: `inviteLinks ${links ? "on" : "off"}` });
         // Switching the emergency access (#281) suspends or resumes every
         // granted access: a security event of its own.
         const after = (result as Awaited<ReturnType<typeof instanceSettings>>).emergencyAccess;
@@ -3348,10 +3354,24 @@ async function runCommand(
           inviteToken(),
         );
         securityEvent("invite.created", { actorId: user.id, subject: email, detail: `${role}${b.guest === true ? " guest" : ""} workspace ${wid()}` });
-        // With SMTP configured the person hears about it by e-mail.
+        // An account whose address is confirmed (the rule of the take-over at
+        // sign-in, lib/auth.ts acceptPendingInvites) becomes a member right
+        // away (#320): the inbox says so with "Öffnen" and "Verlassen", the
+        // open app finds the workspace with its next refresh. The answer
+        // stays the same either way, so it does not tell whether the address
+        // has an account; other addresses keep the invitation.
+        const invited = (await one<Invite>("SELECT * FROM invites WHERE workspace_id=? AND email=?", wid(), email))!;
+        const target = await one<{ id: string }>(
+          "SELECT id FROM users WHERE lower(email)=? AND email_verified=1 AND disabled=0 AND demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at LIMIT 1",
+          email,
+        );
+        const added = !!target && (await acceptInvite(target, invited));
+        if (added) afterCommit.push(() => import("./push").then((m) => m.dispatchPush()));
+        // With SMTP configured the person hears about it by e-mail (once a
+        // member, without the invitation's own link, which is used up).
         {
           const ws = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
-          const token = (await one<{ token: string }>("SELECT token FROM invites WHERE workspace_id=? AND email=?", wid(), email))?.token;
+          const token = target ? undefined : (await one<{ token: string }>("SELECT token FROM invites WHERE workspace_id=? AND email=?", wid(), email))?.token;
           const invite = { email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: b.guest === true, token };
           if (mailAllowed(email))
             afterCommit.push(async () => {
@@ -3360,6 +3380,17 @@ async function runCommand(
         }
         break;
       }
+      // Invitation links for several people (#320, lib/invite-links.ts).
+      case "inviteLink.create":
+        await lockMembership(wid());
+        await requireMember(user, wid(), "owner");
+        result = await createInviteLink(user, wid(), b);
+        break;
+      case "inviteLink.revoke":
+        await lockMembership(wid());
+        await requireMember(user, wid(), "owner");
+        result = await revokeInviteLink(user, wid(), uuid.parse(b.linkId));
+        break;
       // Open invitations: withdraw (with the pages waiting for them) or send again.
       case "invite.cancel":
       case "invite.resend": {

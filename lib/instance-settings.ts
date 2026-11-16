@@ -83,6 +83,10 @@ export const instanceSettingsSchema = z.object({
   // lib/dead-man-switch.ts): on by default (needs e-mail delivery); off
   // nothing is warned about or sent. FLOWPLAN_DEAD_MAN_SWITCH=off wins.
   deadManSwitch: z.boolean().default(true),
+  // Invitation links for several people (#320, lib/invite-links.ts): on by
+  // default; off, no link can be created or opened. FLOWPLAN_INVITE_LINKS=off
+  // in the environment wins.
+  inviteLinks: z.boolean().default(true),
   // "Standard-Formatierungsleiste" (#292, lib/toolbar-layout.ts): the
   // formatting toolbar of everyone without a layout of their own (null =
   // the built-in one).
@@ -119,6 +123,7 @@ const defaults: InstanceSettings = {
   settingsLevelDefault: "normal",
   emergencyAccess: true,
   deadManSwitch: true,
+  inviteLinks: true,
   toolbarLayoutDefault: null,
 };
 // Read on every use: route handlers and pages run as separate module

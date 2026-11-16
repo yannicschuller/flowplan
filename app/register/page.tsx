@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { legalLinks } from "@/lib/legal-links";
 import { sourceUrl } from "@/lib/about";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { clientAddress } from "@/lib/client-address";
 import { currentUser } from "@/lib/auth";
 import Login from "@/components/login";
 import { loginOptions } from "@/lib/local-auth";
@@ -19,10 +21,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 // Creating an account; where sign-ups are closed (and no invitation link
 // came along) the page offers signing in.
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ setup?: string; invite?: string }> }) {
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ setup?: string; invite?: string; join?: string }> }) {
   if (await currentUser()) redirect("/");
-  const { setup, invite } = await searchParams;
-  const options = await loginOptions(setup, invite);
+  const { setup, invite, join } = await searchParams;
+  const options = await loginOptions(setup, invite, join, clientAddress(await headers()));
   return (
     <Login
         legal={legalLinks()}

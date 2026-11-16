@@ -1572,12 +1572,43 @@ CommandCommentResolveResult = TypedDict("CommandCommentResolveResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
-# Invite a person to a workspace. Owners only. At most 40 invitations per hour per person (429 beyond that).
+# Invite a person to a workspace. Owners only. At most 40 invitations per hour per person (429 beyond that). An address that belongs to an account with a confirmed address becomes a member right away (with a notification); any other gets an open invitation. The answer is the same either way.
 CommandMemberInvite = TypedDict("CommandMemberInvite", {
     "action": Required[Literal["member.invite"]],
     "workspaceId": Required[str],
     "email": Required[str],
     "role": Required[Literal["editor", "viewer"]],
+    "guest": bool,
+}, total=False)
+
+# Create an invite link for several people. Owners only. Whoever opens `url` signs in or signs up (also while sign-ups are closed) and joins the workspace with `role` (as a guest with `guest`); never as owner. The link expires after `expires` (24h, 7d or 30d) and accepts at most `maxUses` joins (null: no limit); joining as a member already counts nothing. The URL carries the link's secret: it is answered here and to owners in GET /api/settings (`inviteLinks`), never logged. 403 while the instance has invite links switched off; at most 40 invitations per hour per person and 50 open links per workspace.
+CommandInviteLinkCreate = TypedDict("CommandInviteLinkCreate", {
+    "action": Required[Literal["inviteLink.create"]],
+    "workspaceId": Required[str],
+    "role": Required[Literal["editor", "viewer"]],
+    "guest": bool,
+    "expires": Required[Literal["24h", "7d", "30d"]],
+    "maxUses": Optional[int],
+}, total=False)
+
+CommandInviteLinkCreateResult = TypedDict("CommandInviteLinkCreateResult", {
+    "id": Required[str],
+    "url": Required[str],
+    "expiresAt": Required[float],
+    "maxUses": Required[Optional[float]],
+    "role": Required[Literal["editor", "viewer"]],
+    "guest": Required[bool],
+}, total=False)
+
+# Revoke an invite link. Owners only. The link no longer opens; people who joined through it stay members.
+CommandInviteLinkRevoke = TypedDict("CommandInviteLinkRevoke", {
+    "action": Required[Literal["inviteLink.revoke"]],
+    "workspaceId": Required[str],
+    "linkId": Required[str],
+}, total=False)
+
+CommandInviteLinkRevokeResult = TypedDict("CommandInviteLinkRevokeResult", {
+    "ok": Required[Literal[True]],
 }, total=False)
 
 # Create the iCalendar link of a calendar view. Only signed in in the browser or the app: refused with 403 for personal API tokens, since the link would outlive the token.
@@ -1814,7 +1845,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -2556,7 +2587,7 @@ class FlowplanClient:
         return self._json("GET", "/api/trash/rows", query=dict(query) if query else None, headers=headers)
 
     def workspace_settings(self, query: "WorkspaceSettingsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Invitations, groups and grants of a workspace — Owners only. (GET /api/settings)"""
+        """Invitations, invite links, groups and grants of a workspace — Owners only. `inviteLinks`: the open invite links (neither revoked nor expired) with uses, limit, expiry and `url` (null when the instance's secrets key changed since). (GET /api/settings)"""
         return self._json("GET", "/api/settings", query=dict(query) if query else None, headers=headers)
 
     def command(self, body: "Command", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "CommandResult":

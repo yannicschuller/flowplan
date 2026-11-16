@@ -14,6 +14,7 @@ import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, S
 import { PlainHttpNote, SetupTokenNote } from "./plain-http-note";
 import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
+import { joinRefusalText } from "./join-refusal";
 import type { LegalLinks } from "@/lib/legal-links";
 import { LegalFooter } from "./legal-footer";
 import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
@@ -101,6 +102,8 @@ export default function Login({
   signupOpen = false,
   firstAccount = false,
   invitedEmail = "",
+  joinWorkspace = "",
+  joinError = "",
   mail = false,
   remember: rememberAvailable = false,
   ldap = false,
@@ -187,7 +190,9 @@ export default function Login({
     setDesktopApp(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent));
     setAppKey(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent) && !!appDeviceKey());
     const update = () => {
-      const back = encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`));
+      // Through an invitation link for several people, SSO comes back to it.
+      const join = new URLSearchParams(location.search).get("join");
+      const back = encodeURIComponent(desktopReturn || loginReturnPath(join ? `/?join=${join}` : `/${location.hash}`));
       setLoginUrl(`/api/auth/login?returnTo=${back}`);
       setProxyUrl(`/api/auth/proxy-login?returnTo=${back}`);
     };
@@ -221,8 +226,12 @@ export default function Login({
     if (usedWay.current) writeLastSignIn(usedWay.current);
     if (desktopRequest) return void location.assign(desktopRequest);
     const path = loginReturnPath(`/${location.hash}`);
-    const invite = registered && new URLSearchParams(location.search).get("invite");
-    history.replaceState(null, "", invite ? `/?invite=${encodeURIComponent(invite)}${path.slice(1)}` : path);
+    const query = new URLSearchParams(location.search);
+    const invite = registered && query.get("invite");
+    // An invitation link for several people (#320): signed in, the page
+    // joins the workspace (app/page.tsx) – after signing in as after signing up.
+    const join = joinWorkspace ? query.get("join") : null;
+    history.replaceState(null, "", invite ? `/?invite=${encodeURIComponent(invite)}${path.slice(1)}` : join ? `/?join=${encodeURIComponent(join)}${path.slice(1)}` : path);
     location.reload();
   };
   const run = async (key: string, action: () => Promise<void>) => {
@@ -261,8 +270,9 @@ export default function Login({
         usedWay.current = "password";
         const query = new URLSearchParams(location.search);
         const invite = query.get("invite") || undefined,
-          setup = query.get("setup") || undefined;
-        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password"), invite, setup });
+          setup = query.get("setup") || undefined,
+          join = (joinWorkspace && query.get("join")) || undefined;
+        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password"), invite, setup, join });
         // The instance sends e-mail: the account waits for the link.
         if (result?.pending) {
           setBusy("");
@@ -589,6 +599,18 @@ export default function Login({
           {notice && (
             <div role="status" className="login-notice">
               {notice}
+            </div>
+          )}
+          {joinWorkspace && !notice && (
+            <div role="status" className="login-notice" data-join-notice>
+              {signupOpen
+                ? t(`Du bist zu „${joinWorkspace}“ eingeladen. Melde dich an oder registriere dich, um beizutreten.`, `You are invited to “${joinWorkspace}”. Sign in or sign up to join.`)
+                : t(`Du bist zu „${joinWorkspace}“ eingeladen. Melde dich an, um beizutreten.`, `You are invited to “${joinWorkspace}”. Sign in to join.`)}
+            </div>
+          )}
+          {joinError && (
+            <div role="alert" className="error" data-join-error>
+              {joinRefusalText(joinError, t)}
             </div>
           )}
           {restoring && (

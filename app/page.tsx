@@ -1,4 +1,6 @@
 import { acceptInviteToken, currentUser } from "@/lib/auth";
+import { acceptInviteLink } from "@/lib/invite-links";
+import { clientAddress } from "@/lib/client-address";
 import { one } from "@/lib/db";
 import type { Bootstrap, User } from "@/lib/types";
 import { legalLinks } from "@/lib/legal-links";
@@ -28,7 +30,7 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ authError?: string; useTemplate?: string; invite?: string; confirmed?: string; setup?: string }>;
+  searchParams: Promise<{ authError?: string; useTemplate?: string; invite?: string; join?: string; confirmed?: string; setup?: string }>;
 }) {
   // An instance that has moved (lib/instance-move.ts) may send the browser
   // to its new address; otherwise a banner says where it went.
@@ -44,7 +46,7 @@ export default async function Home({
         <MarketplaceSignInReceiver config={await marketplaceConfig()} />
         <Login
           legal={legalLinks()}
-          {...await loginOptions((await searchParams).setup, (await searchParams).invite)}
+          {...await loginOptions((await searchParams).setup, (await searchParams).invite, (await searchParams).join, clientAddress(await headers()))}
           error={(await searchParams).authError}
           notice={(await searchParams).confirmed ? "confirmed" : undefined}
           instanceName={(await instanceSettings()).name}
@@ -57,22 +59,25 @@ export default async function Home({
   const locale = await requestLocale();
   await rememberLocale(user.id, locale);
   await withContentLocale(locale, async () => await ensureWorkspace(user.id));
-  const { useTemplate, invite } = await searchParams;
+  const { useTemplate, invite, join } = await searchParams;
   // An invitation link: taken over by whoever opens it signed in, and the
   // app opens in that workspace.
   const invited = invite ? (await acceptInviteToken((await one<User>("SELECT * FROM users WHERE id=?", user.id))!, invite)) : null;
+  // An invitation link for several people (#320, lib/invite-links.ts): the
+  // person joins with the link's role (a member already stays as is).
+  const joined = join && !invite ? await acceptInviteLink((await one<User>("SELECT * FROM users WHERE id=?", user.id))!, join, clientAddress(await headers())) : null;
   // Otherwise the workspace last open on this device (#188); bootstrap
   // falls back to the first one when the person is no longer a member.
   const jar = await cookies();
   const remembered = lastWorkspace(jar.get(WORKSPACE_COOKIE)?.value);
   const head = await headers();
-  const initial = (await bootstrap(user, invited || remembered, head.get("user-agent"))) as unknown as Bootstrap;
+  const initial = (await bootstrap(user, invited || (joined && joined.status !== "refused" ? joined.workspaceId : null) || remembered, head.get("user-agent"))) as unknown as Bootstrap;
   // "Beim Öffnen auf dem Handy: Schnellerfassung" (lib/start-screen.ts): on
   // a phone the capture may come first – components/start-capture.tsx
   // decides on the device and loads the workspace only when it is needed
   // (components/app-entry.tsx). Invitations and templates always open the
   // workspace.
-  const startGate = initial.startScreen === "capture" && !invite && !useTemplate && phoneUserAgent(head.get("user-agent"), head.get("sec-ch-ua-mobile"));
+  const startGate = initial.startScreen === "capture" && !invite && !join && !useTemplate && phoneUserAgent(head.get("user-agent"), head.get("sec-ch-ua-mobile"));
   return (
     <>
       {/* A scheduled maintenance announced in Administration → Operations. */}
@@ -82,6 +87,7 @@ export default async function Home({
         startGate={startGate}
         initial={initial as never}
         inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
+        joinResult={joined ? (joined.status === "refused" ? joined.reason : joined.status) : undefined}
         // The sidebar and "KI fragen" widths kept on this device, so the
         // first paint has them (lib/layout-cookie.ts).
         layout={parseLayout(jar.get(LAYOUT_COOKIE)?.value)}

@@ -92,6 +92,25 @@ export default function SigninSection() {
             }
           />
         )}
+        {/* Invitation links for several people (#320, lib/invite-links.ts). */}
+        {data.inviteLinksForcedOff ? (
+          <SettingRow label={t("Einladungslinks erlauben", "Allow invite links")} description={t("Über FLOWPLAN_INVITE_LINKS=off in der Umgebung ausgeschaltet.", "Switched off through FLOWPLAN_INVITE_LINKS=off in the environment.")}>
+            <StatusBadge tone="off">{t("Aus", "Off")}</StatusBadge>
+          </SettingRow>
+        ) : (
+          <InstanceSwitch
+            field="inviteLinks"
+            label={t("Einladungslinks erlauben", "Allow invite links")}
+            description={
+              s.inviteLinks
+                ? t(
+                    "Eigentümer können Links für mehrere Personen erstellen (mit Rolle, Ablauf und Höchstzahl). Wer einen gültigen Link hat, kann sich auch bei geschlossener Registrierung ein Konto anlegen.",
+                    "Owners can create links for several people (with a role, an expiry and a maximum). Whoever has a valid link can create an account even while sign-ups are closed.",
+                  )
+                : t("Aus: Niemand kann Einladungslinks erstellen, bestehende Links öffnen sich nicht. Einladungen an einzelne Adressen bleiben möglich.", "Off: nobody can create invite links, existing links do not open. Invitations to single addresses stay possible.")
+            }
+          />
+        )}
         <InstanceSwitch
           field="allowWorkspaceCreation"
           label={t("Alle dürfen Arbeitsbereiche anlegen", "Everyone may create workspaces")}

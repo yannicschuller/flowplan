@@ -91,6 +91,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "pages.created_by": "move",
   "spaces.owner_id": "move",
   "workspaces.created_by": "move",
+  // Who created an invitation link (#320).
+  "invite_links.created_by": "move",
   "group_members.user_id": "move",
   "scim_group_members.user_id": "move",
   "sso_sources.user_id": "move",
