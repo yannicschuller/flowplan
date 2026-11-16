@@ -122,6 +122,12 @@ export function pushPressure(track: PressureTrack, raw: number) {
 
 // ---- Scribble ----
 
+// A touch event of the Apple Pencil (WebKit's Touch.touchType "stylus").
+// Cancelling its touchstart keeps WebKit from starting Scribble, the
+// callout or a text selection under the pen.
+export const stylusTouch = (event: { touches: ArrayLike<unknown> }) =>
+  Array.from(event.touches).some((touch) => (touch as { touchType?: string }).touchType === "stylus");
+
 // How far handwriting may run past the edges of the field it goes into.
 export const SCRIBBLE_MARGIN = 40;
 type Box = { left: number; top: number; right: number; bottom: number };

@@ -3,16 +3,19 @@
 // hand rests beside the block while the pen draws, and those touches must
 // not scroll the document, press buttons, move the caret or open menus.
 // Four panels cover the window around the block – its toolbar and open
-// menus included – and swallow every finger, palm and pen there. A small
-// "Done" pill at the top (at the bottom when the block is up there) ends
-// drawing; so do the block's own Done button and Escape. A mouse click on
-// the shield ends drawing too, as a click outside does without it.
+// menus included – and swallow every finger, palm and pen there. The
+// block's own Done button and Escape end drawing; while that button is out
+// of sight (scrolled away), a small "Done" pill at the top of the window (at
+// the bottom when the block is up there) does. A mouse click on the shield
+// ends drawing too, as a click outside does without it. The shield lies in
+// <body>, outside the document's text: nothing on it is editable.
 // Placed through CSS variables on the shield (as the outline popover does);
 // modals stay above it.
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "@phosphor-icons/react";
 import { useT } from "../i18n";
+import { penTapsWithoutScribble } from "./pen-hover";
 
 // Room around the block for its focus ring.
 const RING = 6;
@@ -68,15 +71,11 @@ export function InkTouchShield({ block: blockRef, onDone }: { block: RefObject<H
       root.style.setProperty("--hole-bottom", `${Math.max(top, bottom)}px`);
       root.style.setProperty("--hole-left", `${clamp(box.left - RING, vw)}px`);
       root.style.setProperty("--hole-right", `${clamp(box.right + RING, vw)}px`);
-      // The pill goes where the shield has room for it. Without room (a
-      // block over the whole window) it is needed only while the block's
-      // own Done button is out of sight; then it sits over the block's top.
+      // The pill goes where the shield has room for it; without room (a
+      // block over the whole window) it sits over the block's top.
       const roomTop = top >= PILL_ROOM,
         roomBottom = vh - bottom >= PILL_ROOM;
-      const bar = block.querySelector(".ink-toolbar")?.getBoundingClientRect();
-      const barSeen = !!bar && bar.top >= 0 && bar.bottom <= vh;
       root.classList.toggle("is-pill-bottom", !roomTop && roomBottom);
-      root.classList.toggle("is-pill-hidden", !roomTop && !roomBottom && barSeen);
     };
     const place = () => {
       cancelAnimationFrame(frame);
@@ -102,6 +101,29 @@ export function InkTouchShield({ block: blockRef, onDone }: { block: RefObject<H
     };
   }, [mounted, blockRef]);
 
+  // The pill's Done is the way out while the block's own Done is out of
+  // sight (scrolled away, under the top bar); with that one on screen there
+  // is only one Done. Escape works either way.
+  useEffect(() => {
+    const root = shield.current,
+      button = blockRef.current?.querySelector(".ink-done");
+    if (!mounted || !root) return;
+    root.classList.toggle("is-done-hidden", !!button);
+    if (!button || typeof IntersectionObserver !== "function") return;
+    // What the top bar covers does not count as seen.
+    const bar = document.querySelector(".topbar")?.getBoundingClientRect();
+    const covered = bar && bar.top <= 0 ? Math.max(0, Math.round(bar.bottom)) : 0;
+    const seen = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1];
+        root.classList.toggle("is-done-hidden", entry.isIntersecting && entry.intersectionRatio >= 0.9);
+      },
+      { threshold: [0, 0.9, 1], rootMargin: `-${covered}px 0px 0px 0px` },
+    );
+    seen.observe(button);
+    return () => seen.disconnect();
+  }, [mounted, blockRef]);
+
   // Swallowing: touches never start a scroll, a click, a focus change or
   // the long-press callout (touchstart cancelled, so not passive – which
   // React's own touch handlers are). Pens and fingers stay put; a mouse
@@ -123,7 +145,11 @@ export function InkTouchShield({ block: blockRef, onDone }: { block: RefObject<H
       panel.addEventListener("pointerdown", pointer);
       for (const type of types) panel.addEventListener(type, cancel, { passive: false });
     }
+    // A pen tap on the pill's Done feeds no Scribble either (#315).
+    const pill = root.querySelector<HTMLElement>(".ink-shield-pill");
+    const stopPen = pill ? penTapsWithoutScribble(pill) : null;
     return () => {
+      stopPen?.();
       for (const panel of panels) {
         panel.removeEventListener("pointerdown", pointer);
         for (const type of types) panel.removeEventListener(type, cancel);

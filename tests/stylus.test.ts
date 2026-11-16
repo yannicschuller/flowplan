@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { drawsWith, forgetPen, isEraser, nearBox, notePenActivity, PALM_MS, palmLikely, pushPressure, SCRIBBLE_MARGIN, writingInField, type PressureTrack } from "../lib/stylus";
+import { drawsWith, forgetPen, isEraser, nearBox, notePenActivity, PALM_MS, palmLikely, pushPressure, SCRIBBLE_MARGIN, stylusTouch, writingInField, type PressureTrack } from "../lib/stylus";
 import { pressureOutline } from "../lib/whiteboard-tools";
 
 const track = (): PressureTrack => ({ pressures: [], measured: false });
@@ -93,4 +93,22 @@ test("Scribble: the pen next to the focused field writes into it", () => {
   // Without a document (server) or with a finger: nothing to protect.
   assert.equal(writingInField({ pointerType: "pen", clientX: 200, clientY: 120 }), false);
   assert.equal(writingInField({ pointerType: "touch", clientX: 200, clientY: 120 }), false);
+});
+
+test("Scribble: a stylus touch is told from fingers (cancelled on a drawing block's canvas, #311)", () => {
+  assert.equal(stylusTouch({ touches: [{ touchType: "stylus" }] }), true);
+  assert.equal(stylusTouch({ touches: [{ touchType: "direct" }, { touchType: "stylus" }] }), true, "pen with the palm down");
+  assert.equal(stylusTouch({ touches: [{ touchType: "direct" }] }), false);
+  // Browsers without touchType (not WebKit): no pen known.
+  assert.equal(stylusTouch({ touches: [{}] }), false);
+  assert.equal(stylusTouch({ touches: [] }), false);
+});
+
+test("a drawing block inserted from the slash menu starts drawing once, when its view is there", async () => {
+  const { queueDrawingStart, takeDrawingStart } = await import("../components/ink/drawing-start");
+  assert.equal(takeDrawingStart("ink-a"), false, "not inserted: a block shown or loaded stays as it is");
+  queueDrawingStart("ink-a");
+  assert.equal(takeDrawingStart("ink-b"), false, "another block");
+  assert.equal(takeDrawingStart("ink-a"), true);
+  assert.equal(takeDrawingStart("ink-a"), false, "only once (a remount, undo/redo, a copy)");
 });

@@ -21490,6 +21490,7 @@ h3 .block-reactions {
 }
 .ink-toolbar .ink-done {
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 0 12px;
   background: var(--ink-bar-active-bg);
@@ -33231,8 +33232,20 @@ label.ws-search input {
   outline: 2px solid var(--blue);
   outline-offset: -2px;
 }
+/* Paper, save state and Done in one row, centred on each other (#311).
+   The paper is a label: not the stacked field with room below of the
+   global label rule. */
+.ink-block .ink-group.ink-end {
+  gap: 8px;
+}
+.ink-block-paper {
+  flex-direction: row;
+  align-items: center;
+  margin: 0 4px 0 0;
+}
 .ink-block-paper select {
-  height: 32px;
+  width: auto;
+  height: 36px;
   padding: 0 24px 0 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -33240,6 +33253,56 @@ label.ws-search input {
   color: var(--text);
   font-size: 13px;
   line-height: normal;
+}
+/* The hovering Apple Pencil (#315, components/ink/pen-hover.ts): iPadOS
+   reports (hover: none), so the control under the pen is marked by script
+   – clearly, without the sticky hover a finger would leave. */
+.ink-block .ink-toolbar button.is-pen-hover:not(:disabled) {
+  background: var(--ink-bar-hover);
+  color: var(--ink-bar-strong);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ink-bar-active) 55%, transparent);
+}
+.ink-block .ink-toolbar .ink-swatch.is-pen-hover {
+  outline: 2px solid color-mix(in srgb, var(--ink-bar-active) 60%, transparent);
+  outline-offset: 2px;
+  transform: scale(1.12);
+}
+.ink-block .ink-toolbar .ink-swatch.is-pen-hover.active {
+  outline-color: var(--ink-bar-active);
+}
+.ink-block .ink-block-paper select.is-pen-hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.ink-block-start.is-pen-hover {
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--blue-light), 0 1px 3px #0002;
+}
+/* Where the hovering pen would draw: a dot in the pen's colour (a ring for
+   the eraser), as on whiteboards. */
+.ink-pen-dot {
+  position: absolute;
+  left: var(--dot-x, 0);
+  top: var(--dot-y, 0);
+  z-index: 3;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--dot-color, var(--text));
+  box-shadow: 0 0 0 1.5px var(--bg);
+  opacity: 0;
+  pointer-events: none;
+}
+.ink-pen-dot.is-shown {
+  opacity: 0.9;
+}
+.ink-pen-dot[data-tool="eraser"] {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--secondary), 0 0 0 1px var(--bg);
 }
 .ink-block-loading {
   display: grid;
@@ -33357,7 +33420,8 @@ label.ws-search input {
   top: auto;
   bottom: calc(10px + var(--safe-bottom, 0px));
 }
-.ink-shield.is-pill-hidden .ink-shield-pill {
+/* The block's own Done is on screen: no second one. */
+.ink-shield.is-done-hidden .ink-shield-done {
   display: none;
 }
 .ink-shield-done {
