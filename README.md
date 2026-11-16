@@ -542,7 +542,7 @@ Flowplan is listed on these sites – reviews and votes there help others find i
 
 <p>
   <a href="https://www.producthunt.com/products/flowplan-2/reviews/new?utm_source=badge-product_review&amp;utm_medium=badge&amp;utm_source=badge-flowplan-2"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1357090&amp;theme=dark"><img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1357090&amp;theme=light" alt="Flowplan on Product Hunt" height="48"></picture></a>
-  <a href="https://alternativeto.net/software/flowplan/about/?utm_source=badge&amp;utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="Flowplan on AlternativeTo" height="48"></a>
+  <a href="https://alternativeto.net/software/flowplan/about/?utm_source=badge&amp;utm_medium=referral"><picture><source media="(prefers-color-scheme: dark)" srcset="https://alternativeto.net/static/badges/badge-compact-dark.svg"><img src="https://alternativeto.net/static/badges/badge-compact-light.svg" alt="Flowplan on AlternativeTo" height="48"></picture></a>
   <a href="https://www.opensourcealternatives.to"><img src="https://www.opensourcealternatives.to/badge-osa.svg" alt="As seen on Open Source Alternatives" height="48"></a>
 </p>
 
