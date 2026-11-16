@@ -191,7 +191,9 @@ const touchCancelled = (page: Page, type: "stylus" | "direct") =>
   page.locator(".ink-block-surface").evaluate((surface, touchType) => {
     const box = surface.getBoundingClientRect();
     const target = surface.querySelector(".ink-layer") || surface;
-    const touch = new Touch({ identifier: Date.now(), target, clientX: box.left + 50, clientY: box.top + 50, touchType } as TouchInit);
+    const touch = new Touch({ identifier: Date.now(), target, clientX: box.left + 50, clientY: box.top + 50 });
+    // Chromium's Touch has no touchType (WebKit's has); set it by hand.
+    Object.defineProperty(touch, "touchType", { value: touchType });
     const event = new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] });
     target.dispatchEvent(event);
     return event.defaultPrevented;
@@ -377,7 +379,8 @@ test("the hovering pen: controls light up, a dot shows where it draws, a pen tap
   expect(
     await page.locator(done).evaluate((el) => {
       const box = el.getBoundingClientRect();
-      const touch = new Touch({ identifier: 3, target: el, clientX: box.left + 5, clientY: box.top + 5, touchType: "stylus" } as TouchInit);
+      const touch = new Touch({ identifier: 3, target: el, clientX: box.left + 5, clientY: box.top + 5 });
+      Object.defineProperty(touch, "touchType", { value: "stylus" });
       const event = new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] });
       const w = window as unknown as { __clicks: number };
       w.__clicks = 0;
@@ -399,7 +402,8 @@ test("the hovering pen: controls light up, a dot shows where it draws, a pen tap
 // Whether a stylus touchstart on the element is cancelled.
 const touchOn = (page: Page, selector: string) =>
   page.locator(selector).first().evaluate((el) => {
-    const touch = new Touch({ identifier: 4, target: el, clientX: 1, clientY: 1, touchType: "stylus" } as TouchInit);
+    const touch = new Touch({ identifier: 4, target: el, clientX: 1, clientY: 1 });
+    Object.defineProperty(touch, "touchType", { value: "stylus" });
     const event = new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] });
     el.dispatchEvent(event);
     return event.defaultPrevented;
@@ -408,7 +412,9 @@ const touchOn = (page: Page, selector: string) =>
 test("mouse users are not shielded: a click outside leaves drawing and does its work", async ({ browser }, info) => {
   test.skip(info.project.name !== "desktop", "One run is enough.");
   test.setTimeout(120_000);
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "de-DE", storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: "flowplan-offline-offer", value: "never" }] }] } });
+  // browser.newContext() takes this file's test.use() (a touch tablet): a
+  // mouse-only device says so.
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, isMobile: false, hasTouch: false, locale: "de-DE", storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: "flowplan-offline-offer", value: "never" }] }] } });
   const page = await context.newPage();
   const id = await setup(page);
   const block = await documentWithBlock(page, id, "mouse");

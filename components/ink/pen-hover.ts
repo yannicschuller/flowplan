@@ -50,8 +50,10 @@ export function penTapsWithoutScribble(root: HTMLElement) {
   let cancelled = false;
   const touch = (event: TouchEvent) => {
     if (!event.cancelable || !stylusTouch(event)) return;
-    const target = event.target as Element | null;
-    if (target?.closest?.(FIELD)) return;
+    // Only fields inside `root` count: a drawing block lies in the
+    // document's editor, which is contenteditable as a whole.
+    const field = (event.target as Element | null)?.closest?.(FIELD);
+    if (field && root.contains(field)) return;
     event.preventDefault();
     cancelled = true;
   };
