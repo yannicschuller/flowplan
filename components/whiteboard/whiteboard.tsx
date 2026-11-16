@@ -2082,7 +2082,9 @@ export default function Whiteboard({
         (s) => new Set([...(g.add ? s : []), ...extras.expand(inside.map((i) => i.id))]),
       );
     } else if (g.kind === "create") {
-      const item = byId.get(g.id);
+      // A quick tap lifts before the board has re-rendered (once per frame):
+      // the new item is in the shared map, not yet in `byId`.
+      const item = byId.get(g.id) || (itemsMap.get(g.id)?.toJSON() as WhiteboardItem | undefined);
       // A click without dragging gives a default size.
       if (item && item.w < 12 && item.h < 12)
         change(() =>
@@ -2096,7 +2098,7 @@ export default function Whiteboard({
       setTool("select");
       setSelection(new Set([g.id]));
     } else if (g.kind === "connector") {
-      const item = byId.get(g.id);
+      const item = byId.get(g.id) || (itemsMap.get(g.id)?.toJSON() as WhiteboardItem | undefined);
       if (
         item &&
         item.from &&

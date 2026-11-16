@@ -662,7 +662,11 @@ test("phones: tool options close by tapping, a tap on the board deselects, one r
   for (const name of ["Auswählen", "Verschieben", "Text"])
     await expect(dock.getByRole("button", { name, exact: true })).not.toHaveClass(/wb-has-menu/);
   const canvas = (await wb.locator(".wb-canvas").boundingBox())!;
-  const tapBoard = (dx: number, dy: number) => page.touchscreen.tap(canvas.x + dx, canvas.y + dy);
+  // Measured at each tap: a locator's tap() may scroll the page first.
+  const tapBoard = async (dx: number, dy: number) => {
+    const now = (await wb.locator(".wb-canvas").boundingBox())!;
+    await page.touchscreen.tap(now.x + dx, now.y + dy);
+  };
   // The pen: open, closed by the second tap, open again, closed by drawing.
   const draw = dock.getByRole("button", { name: "Zeichnen", exact: true });
   const options = wb.locator(".wb-draw-switch");
@@ -690,11 +694,13 @@ test("phones: tool options close by tapping, a tap on the board deselects, one r
   const styleBar = wb.getByRole("toolbar", { name: "Element gestalten" });
   await expect(styleBar).toBeVisible();
   const bar = (await styleBar.boundingBox())!;
+  const boardBox = (await wb.locator(".wb-canvas").boundingBox())!;
   expect(bar.height).toBeLessThan(60);
   expect(bar.x).toBeGreaterThanOrEqual(0);
-  expect(bar.x + bar.width).toBeLessThanOrEqual(canvas.x + canvas.width + 0.5);
+  expect(bar.x + bar.width).toBeLessThanOrEqual(boardBox.x + boardBox.width + 0.5);
+  // Layout heights: the bar scales in (menu-in), its boxes are smaller meanwhile.
   const small = await styleBar.locator("button:not(.wb-swatch)").evaluateAll((buttons) =>
-    buttons.filter((b) => (b as HTMLElement).offsetParent && b.getBoundingClientRect().height < 40).length,
+    buttons.filter((b) => (b as HTMLElement).offsetParent && (b as HTMLElement).offsetHeight < 40).length,
   );
   expect(small).toBe(0);
   // A tap on the empty board lets go of it, like a click with the mouse.

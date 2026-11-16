@@ -14059,7 +14059,9 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   left: calc(8px + var(--wb-inset-left)) !important;
   right: calc(8px + var(--wb-inset-right));
   top: calc(56px + var(--wb-inset-top)) !important;
-  max-width: none;
+  /* Capped by the board: fit-content alone takes the one-row scroller's
+     full length (its min-content), and the row could not scroll. */
+  max-width: calc(100% - 16px - var(--wb-inset-left) - var(--wb-inset-right));
   width: fit-content;
   margin-inline: auto;
 }
