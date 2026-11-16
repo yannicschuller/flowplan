@@ -120,7 +120,8 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
     updateAttributes({ page: pageId, from: "" });
   }, [loaded, writable, sync.status, sync, id, node.attrs.page, node.attrs.from, pageId, updateAttributes]);
 
-  // Activation: a click or a pen inside; leaving with a click outside.
+  // Activation: "Zeichnen" or a pen on the surface (#322); leaving with a
+  // click outside or Done.
   const root = useRef<HTMLDivElement>(null);
   const activate = useCallback(
     (shield: boolean) => {
@@ -319,9 +320,18 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
           if (touch && !shielded) setShielded(true);
           return;
         }
-        if ((e.target as Element).closest(".ink-block-resize")) return;
+        if ((e.target as Element).closest(".ink-block-resize, .ink-block-start")) return;
+        // Only a pen enters drawing by touching the surface (#322): a finger
+        // swiping across an existing block keeps scrolling the document, and
+        // a mouse click does nothing – both start drawing with "Zeichnen".
+        // The event stops here so the layer below doesn't take it as a stroke;
+        // its default (scrolling, text selection) stays.
+        if (e.pointerType !== "pen") {
+          e.stopPropagation();
+          return;
+        }
         // A pen switches to pen-only drawing at once (fingers keep scrolling).
-        if (e.pointerType === "pen" && !ink.penOnly) ink.setPenOnly(true);
+        if (!ink.penOnly) ink.setPenOnly(true);
         activate(touch);
       }}
     >

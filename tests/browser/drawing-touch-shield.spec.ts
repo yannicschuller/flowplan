@@ -138,6 +138,19 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
   await scroller.evaluate((el) => (el.scrollTop = 0));
 
+  // #322: a finger swiping across the existing block scrolls the document
+  // and does not enter drawing; "Zeichnen" does.
+  const inside = (await surface.boundingBox())!;
+  await swipe(cdp, page, inside.x + inside.width / 2, inside.y + inside.height - 20, inside.y + 20);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await expect(block).not.toHaveClass(/is-active/);
+  await expect(strokes(block)).toHaveCount(2);
+  await block.getByRole("button", { name: "Zeichnen" }).tap();
+  await expect(block).toHaveClass(/is-active/);
+  await page.getByRole("toolbar", { name: "Zeichenwerkzeuge" }).getByRole("button", { name: "Fertig" }).tap();
+  await expect(block).not.toHaveClass(/is-active/);
+  await scroller.evaluate((el) => (el.scrollTop = 0));
+
   // Again with the pen (no hint the second time). The block's Done is on
   // screen, so the shield has none of its own; scrolled away, the shield's
   // Done pill is the way out and ends it.
@@ -428,7 +441,14 @@ test("mouse users are not shielded: a click outside leaves drawing and does its 
   const id = await setup(page);
   const block = await documentWithBlock(page, id, "mouse");
   const box = (await block.locator(".ink-block-surface").boundingBox())!;
+  // A click on an existing block's surface does not enter drawing (#322);
+  // "Zeichnen" does.
+  const drawn = await strokes(block).count();
   await page.mouse.click(box.x + 100, box.y + 100);
+  await page.waitForTimeout(200);
+  await expect(block).not.toHaveClass(/is-active/);
+  await expect(strokes(block)).toHaveCount(drawn);
+  await block.getByRole("button", { name: "Zeichnen" }).click();
   await expect(block).toHaveClass(/is-active/);
   await expect(page.getByRole("toolbar", { name: "Zeichenwerkzeuge" })).toBeVisible();
   await expect(page.locator(".ink-shield")).toHaveCount(0);
