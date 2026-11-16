@@ -169,6 +169,7 @@ import { sharedUpdate } from "@/lib/whiteboard-private-mode";
 import { applyRackLayout, cableTypeFor, deviceOf, isCable, portAt, rackOf, remapRack, snapDevice, RACK_HEADER, RACK_U, RACK_FOOTER, RACK_MAX_U } from "@/lib/whiteboard-rack";
 import { DeviceCard, useDeviceCard } from "./rack-card";
 import { RACK_DRAG_TYPE, RackInspector, RackStyleControls, RackWorld, dropRackItem, rackItemClass, rackKey, setRackFocus } from "./rack-panels";
+import { shortcutLetter } from "@/lib/keymap";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -2224,7 +2225,7 @@ export default function Whiteboard({
       deviceCard.dismiss();
       return;
     }
-    if (e.key.toLowerCase() === "i" && !mod && !e.altKey && selection.size === 1 && byId.get([...selection][0])?.type === "device") {
+    if (shortcutLetter(e) === "i" && !mod && !e.altKey && selection.size === 1 && byId.get([...selection][0])?.type === "device") {
       e.preventDefault();
       const id = [...selection][0];
       if (deviceCard.card?.id === id) deviceCard.dismiss();
@@ -2236,30 +2237,30 @@ export default function Whiteboard({
       e.preventDefault();
       return;
     }
-    if (mod && e.key.toLowerCase() === "z") {
+    if (mod && shortcutLetter(e) === "z") {
       e.preventDefault();
       if (!editable) return;
       if (e.shiftKey) undo.redo();
       else undo.undo();
       return;
     }
-    if (mod && e.key.toLowerCase() === "y") {
+    if (mod && shortcutLetter(e) === "y") {
       e.preventDefault();
       if (editable) undo.redo();
       return;
     }
-    if (mod && e.key.toLowerCase() === "a") {
+    if (mod && shortcutLetter(e) === "a") {
       e.preventDefault();
       setSelection(new Set(items.map((i) => i.id)));
       return;
     }
-    if (mod && e.key.toLowerCase() === "d" && editable) {
+    if (mod && shortcutLetter(e) === "d" && editable) {
       e.preventDefault();
       duplicate();
       return;
     }
     // Ctrl+C and Ctrl+V go on as copy and paste events (onCopy, onPaste).
-    if (mod && e.key.toLowerCase() === "c") return;
+    if (mod && shortcutLetter(e) === "c") return;
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
       editable &&
@@ -2371,7 +2372,7 @@ export default function Whiteboard({
       e: "stamp",
       k: "laser",
     };
-    const next = keys[e.key.toLowerCase()];
+    const next = keys[shortcutLetter(e)];
     if (next && (editable || next === "select" || next === "hand" || next === "laser"))
       chooseTool(next);
   }

@@ -48,6 +48,7 @@ import { RunList, RunView, stepStatuses, useRun } from "./runs";
 import { AiBuilderDialog, StartScreen } from "./start";
 import { localizedMessage } from "@/lib/i18n-errors";
 import type { CanvasProps, NodeStatus } from "./canvas";
+import { shortcutLetter } from "@/lib/keymap";
 
 const NO_STATUS = new Map<string, NodeStatus>();
 const NOOP = () => {};
@@ -449,7 +450,7 @@ function Editor(props: EditorProps) {
 
   const key = (e: KeyboardEvent) => {
     if (inField(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key.toLowerCase() === "l") {
+    if (shortcutLetter(e) === "l") {
       setView((v) => (v === "canvas" ? "list" : "canvas"));
       e.preventDefault();
     }

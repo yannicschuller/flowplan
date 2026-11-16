@@ -19,6 +19,7 @@ import {
   parseCombo,
   platformCombo,
   resolveKeymap,
+  shortcutLetter,
   type KeyLike,
 } from "../lib/keymap";
 
@@ -170,4 +171,53 @@ test("shortcuts are stored per person (shortcuts.save)", async () => {
   await assert.rejects(async () => await command(me, { action: "shortcuts.save", bindings: { search: ["Mod+A", "Mod+B", "Mod+C", "Mod+D"] } }));
   await command(me, { action: "shortcuts.save", bindings: {} });
   assert.deepEqual((await bootstrap(me, mine)).shortcuts, {});
+});
+
+test("shortcut letters: the Latin letter of the layout, else the physical key (#319)", () => {
+  // Latin layouts: the letter as written, lower case.
+  assert.equal(shortcutLetter(key("z", { ctrlKey: true })), "z");
+  assert.equal(shortcutLetter(key("Z", { ctrlKey: true, shiftKey: true })), "z");
+  // QWERTZ: Z and Y keep their labels, not their US places.
+  assert.equal(shortcutLetter(key("z", { ctrlKey: true }, "KeyY")), "z");
+  assert.equal(shortcutLetter(key("y", { ctrlKey: true }, "KeyZ")), "y");
+  // AZERTY: A and Q swapped, the label counts.
+  assert.equal(shortcutLetter(key("a", { ctrlKey: true }, "KeyQ")), "a");
+  // Cyrillic and Greek: the physical key.
+  assert.equal(shortcutLetter(key("я", { ctrlKey: true }, "KeyZ")), "z");
+  assert.equal(shortcutLetter(key("в", { ctrlKey: true }, "KeyD")), "d");
+  assert.equal(shortcutLetter(key("Я", { ctrlKey: true, shiftKey: true }, "KeyZ")), "z");
+  assert.equal(shortcutLetter(key("м", {}, "KeyV")), "v");
+  assert.equal(shortcutLetter(key("ζ", { metaKey: true }, "KeyZ")), "z");
+  // ⌥ on the Mac writes another character: the physical key.
+  assert.equal(shortcutLetter(key("∂", { metaKey: true, altKey: true }, "KeyD")), "d");
+  // Digits, also where the layout writes a character without Shift (AZERTY).
+  assert.equal(shortcutLetter(key("0", { ctrlKey: true })), "0");
+  assert.equal(shortcutLetter(key("à", { ctrlKey: true }, "Digit0")), "0");
+  // With Shift the character of a digit key counts ("/" is Shift+7 in German).
+  assert.equal(shortcutLetter(key("/", { shiftKey: true }, "Digit7")), "/");
+  assert.equal(shortcutLetter(key("!", { shiftKey: true }, "Digit1")), "!");
+  // Other keys stay as they are.
+  assert.equal(shortcutLetter(key("Enter", {}, "Enter")), "Enter");
+  assert.equal(shortcutLetter(key(" ", {}, "Space")), " ");
+  assert.equal(shortcutLetter(key("Escape", {}, "Escape")), "Escape");
+  assert.equal(shortcutLetter(key("+", { ctrlKey: true }, "BracketRight")), "+");
+  // Punctuation keys: a Cyrillic letter there is the US character, a Latin
+  // one (German ü on the same key) is not.
+  assert.equal(shortcutLetter(key("х", { ctrlKey: true }, "BracketLeft")), "[");
+  assert.equal(shortcutLetter(key("ü", { ctrlKey: true }, "BracketLeft")), "ü");
+  // AltGr typing a character, and input methods composing text: unchanged.
+  const altGr = { ...key("€", { ctrlKey: true, altKey: true }, "KeyE"), getModifierState: (m: string) => m === "AltGraph" };
+  assert.equal(shortcutLetter(altGr), "€");
+  assert.equal(shortcutLetter(key("Process", {}, "KeyA")), "Process");
+  assert.equal(shortcutLetter(key("ф", { isComposing: true }, "KeyA")), "ф");
+});
+
+test("keymap shortcuts, own ones too, work with a Cyrillic layout (#319)", () => {
+  assert.ok(eventMatches(key("л", { ctrlKey: true }, "KeyK"), "Mod+K", false));
+  assert.ok(eventMatches(key("ш", { ctrlKey: true, altKey: true }, "KeyI"), "Mod+Alt+I", false));
+  assert.ok(eventMatches(key("х", { metaKey: true }, "BracketLeft"), "Mod+[", true));
+  assert.ok(!eventMatches(key("ü", { ctrlKey: true }, "BracketLeft"), "Mod+[", false));
+  assert.equal(comboFromEvent(key("з", { ctrlKey: true, shiftKey: true }, "KeyP"), false), "Mod+Shift+P");
+  const own = resolveKeymap({ search: ["Mod+Shift+F"] });
+  assert.ok(eventMatches(key("А", { ctrlKey: true, shiftKey: true }, "KeyF"), own.search[0], false));
 });

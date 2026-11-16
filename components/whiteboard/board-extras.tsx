@@ -54,6 +54,7 @@ import { continueList, insertLink, toggleList, toggleMark, type Edit } from "@/l
 import { boardEmbed, cleanCrop, type BoardEmbed } from "@/lib/whiteboard-embeds";
 import { parsePageLocation } from "@/lib/page-location";
 import type { Draft } from "@/lib/whiteboard-template-gallery";
+import { shortcutLetter } from "@/lib/keymap";
 
 type View = { x: number; y: number; zoom: number };
 export type ExtraAction = {
@@ -387,7 +388,7 @@ export function useBoardExtras(api: BoardApi) {
     const field = e.currentTarget;
     const item = ref.current.byId.get(id);
     if (!item || !["sticky", "text", "shape"].includes(item.type)) return false;
-    const mark = isMod(e) && !e.altKey ? ({ b: "**", i: "*", u: "__" } as const)[e.key.toLowerCase() as "b" | "i" | "u"] : undefined;
+    const mark = isMod(e) && !e.altKey ? ({ b: "**", i: "*", u: "__" } as const)[shortcutLetter(e) as "b" | "i" | "u"] : undefined;
     if (mark) {
       e.preventDefault();
       applyEdit(field, id, toggleMark(field.value, field.selectionStart, field.selectionEnd, mark));
@@ -426,7 +427,7 @@ export function useBoardExtras(api: BoardApi) {
 
   // ---- keyboard ----
   function onKeyDown(e: React.KeyboardEvent): boolean {
-    const key = e.key.toLowerCase();
+    const key = shortcutLetter(e);
     if (isMod(e) && !e.altKey && key === "f") {
       e.preventDefault();
       setSearchOpen(true);

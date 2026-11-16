@@ -20,7 +20,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { Extension, Mark, Node, type JSONContent } from "@tiptap/core";
 import { Slice } from "@tiptap/pm/model";
 import { Code, LinkSimple, Palette, TextB, TextItalic, TextStrikethrough, TextUnderline } from "@phosphor-icons/react";
-import { formatCombo, isMacPlatform } from "@/lib/keymap";
+import { formatCombo, isMacPlatform, shortcutLetter } from "@/lib/keymap";
 import { htmlRuns, mergeRuns, parseInline, safeHref, serializeInline, type HtmlNode, type InlineOptions, type InlineRun } from "@/lib/inline-markdown";
 import { isTextColorId, textColorList, type TextColorId } from "@/lib/text-colors";
 import { useT } from "./i18n";
@@ -287,7 +287,7 @@ export default function RichTextEditor({
       // quick search (a listener on the window). Without a selection the
       // quick search opens as everywhere.
       handleKeyDown: (_view, event) => {
-        if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "k") return false;
+        if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || shortcutLetter(event) !== "k") return false;
         const current = editorRef.current;
         if (!current || !openLink(current)) return false;
         event.preventDefault();

@@ -31,6 +31,7 @@ import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { recognitionAvailable, recognitionId, recognitionRequest, recognizeInk } from "@/lib/ink/recognition";
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./notebook/use-pinch-zoom";
+import { shortcutLetter } from "@/lib/keymap";
 
 // Zoom of the pages, relative to the window width: buttons and keys step,
 // two fingers and trackpads zoom freely (as in notebooks).
@@ -275,7 +276,7 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
     const key = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (event.key === "Escape") void closeRef.current();
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      if ((event.metaKey || event.ctrlKey) && shortcutLetter(event) === "s") {
         event.preventDefault();
         void saveRef.current();
       }

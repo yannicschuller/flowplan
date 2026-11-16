@@ -9,6 +9,7 @@ import { CaretDown, CaretUp, MagnifyingGlass, Tag, X } from "@phosphor-icons/rea
 import { useT } from "../i18n";
 import { Select } from "../select";
 import type { BoardMatch } from "@/lib/whiteboard-search";
+import { shortcutLetter } from "@/lib/keymap";
 
 export function BoardSearch({
   query,
@@ -57,7 +58,7 @@ export function BoardSearch({
             } else if (e.key === "Escape") {
               e.preventDefault();
               onClose();
-            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+            } else if ((e.metaKey || e.ctrlKey) && shortcutLetter(e) === "f") {
               e.preventDefault();
               e.currentTarget.select();
             }

@@ -54,6 +54,7 @@ import { useAiAvailability } from "./ai-context";
 import { BlockIdAttribute, blockLinkHref, linkableBlockAt, linkableBlocks, newBlockId, validBlockId } from "@/lib/block-ids";
 import { BlockIds, HeadingLinks } from "@/lib/block-ids-plugin";
 import { showToast } from "./toast";
+import { shortcutLetter } from "@/lib/keymap";
 
 type LogEntry = { seq: number; version: number; data: string };
 type Log = { keyVersion: number; snapshot: { upto: number; version: number; data: string } | null; updates: LogEntry[]; more: boolean; pending: number };
@@ -193,7 +194,7 @@ export default function EncryptedEditor({
       ],
       editorProps: {
         handleKeyDown: (view, event) => {
-          if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "l") {
+          if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && shortcutLetter(event) === "l") {
             event.preventDefault();
             const block = linkableBlockAt(view.state.doc, view.state.selection.from);
             if (block) copyBlockLink.current(block.pos);

@@ -25,6 +25,7 @@ import type { Paper, PaperLayout } from "@/lib/notebook-paper";
 import type { NotebookSheet } from "@/lib/notebook";
 import type { NotebookLinkTarget } from "@/lib/notebook-organize-model";
 import { pointerTrail, type TrailPoint } from "@/lib/notebook-pointer";
+import { shortcutLetter } from "@/lib/keymap";
 
 type Tool = "laser" | "marker" | "hand";
 type Stroke = { points: TrailPoint[]; ended: number | null };
@@ -201,7 +202,7 @@ export function NotebookPresentation({
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if ((event.target as HTMLElement | null)?.closest?.("input, textarea, [contenteditable=true]")) return;
-      const k = event.key;
+      const k = shortcutLetter(event);
       if (k === "Escape") {
         event.preventDefault();
         event.stopPropagation();
