@@ -341,8 +341,43 @@ export const taskChangeSchema = z
     // One of the five states (#201); wins over `checked`.
     status: z.enum(TASK_STATUSES).optional(),
     due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    // The person the task is given to (a member of the workspace), as the
+    // one @mention in its line; null takes every mention out of the line.
+    assignee: z.uuid().nullable().optional(),
   })
   .refine((change) => change.text !== undefined || change.key !== undefined, { message: "text or key" });
+// The task's first paragraph with its mentions (its assignees) replaced by
+// `mention`, or without any when null.
+function withAssignee(paragraph: PMNode, mention: PMNode | null) {
+  const schema = paragraph.type.schema;
+  // Text as [text, marks] so a space can be taken off without empty nodes.
+  type Part = PMNode | { text: string; marks: PMNode["marks"] };
+  const parts: Part[] = [];
+  paragraph.forEach((child) => parts.push(child.isText ? { text: child.text!, marks: child.marks } : child));
+  const isText = (part: Part | undefined): part is { text: string; marks: PMNode["marks"] } => !!part && !(part instanceof PMNode);
+  const kept: Part[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (isText(part) || part.type.name !== "mention") {
+      kept.push(part);
+      continue;
+    }
+    // One space next to the mention goes with it.
+    const next = parts[i + 1];
+    const previous = kept[kept.length - 1];
+    if (isText(next) && next.text.startsWith(" ")) parts[i + 1] = { ...next, text: next.text.slice(1) };
+    else if (isText(previous) && previous.text.endsWith(" ")) kept[kept.length - 1] = { ...previous, text: previous.text.slice(0, -1) };
+  }
+  const content = kept
+    .filter((part) => !isText(part) || part.text)
+    .map((part) => (isText(part) ? schema.text(part.text, part.marks) : part));
+  if (mention) {
+    const last = content[content.length - 1];
+    if (last && !(last.isText && last.text!.endsWith(" "))) content.push(schema.text(" "));
+    content.push(mention);
+  }
+  return paragraph.type.create(paragraph.attrs, content, paragraph.marks);
+}
 export async function changeDocTask(user: Identity, input: unknown) {
   const change = taskChangeSchema.parse(input);
   const page = await requirePage(user, change.pageId, true);
@@ -351,6 +386,15 @@ export async function changeDocTask(user: Identity, input: unknown) {
   const rowId = change.rowId || null;
   if (rowId) await requireRow(user, page.id, rowId, true);
   else if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+  // Only to a member of the page's workspace.
+  const assignee = change.assignee
+    ? await one<{ id: string; name: string }>(
+        "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE u.id=? AND m.workspace_id=?",
+        change.assignee,
+        page.workspace_id,
+      )
+    : null;
+  if (change.assignee && !assignee) throw new HttpError(400, "Die Person ist kein Mitglied dieses Arbeitsbereichs.");
   let found = false;
   const result = (await rewriteDocument(page.id, rowId, user.id, (doc) => {
     let index = -1;
@@ -359,6 +403,7 @@ export async function changeDocTask(user: Identity, input: unknown) {
       if (node.isText || node.isLeaf) return node;
       let attrs = node.attrs;
       let tick: boolean | "cancelled" = tickAll;
+      let target = false;
       if (node.type.name === "taskItem") {
         index++;
         if (tickAll && !node.attrs.checked) attrs = { ...node.attrs, ...statusAttrs(tickAll === "cancelled" ? "cancelled" : "done") };
@@ -367,6 +412,7 @@ export async function changeDocTask(user: Identity, input: unknown) {
           if (!sameTask(lineOf(json).text, change))
             throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
           found = true;
+          target = true;
           // Ticked off from My tasks or a widget: done (also a task in
           // progress); unticked: open. A state given wins.
           const status = change.status ?? (change.checked === undefined ? undefined : change.checked ? "done" : "open");
@@ -381,6 +427,13 @@ export async function changeDocTask(user: Identity, input: unknown) {
       }
       const children: PMNode[] = [];
       node.forEach((child) => children.push(edit(child, tick)));
+      // The assignee is the mention in the task's own line (its first paragraph).
+      if (target && change.assignee !== undefined) {
+        const first = children.findIndex((child) => child.type.name === "paragraph");
+        const mention = assignee ? node.type.schema.nodes.mention.create({ userId: assignee.id, label: assignee.name }) : null;
+        if (first >= 0) children[first] = withAssignee(children[first], mention);
+        else if (mention) children.unshift(node.type.schema.nodes.paragraph.create(null, mention));
+      }
       return node.type.create(attrs, children, node.marks);
     };
     const next = edit(doc);

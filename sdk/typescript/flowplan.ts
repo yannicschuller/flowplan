@@ -4691,7 +4691,7 @@ export class FlowplanClient {
   }>("POST", `/api/workflow-approvals/${encodeURIComponent(approvalId)}`, { json: body }, options);
   }
 
-  /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp) */
+  /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools. (POST /api/mcp) */
   async mcp(body: McpRequest, options?: RequestOptions): Promise<McpResponse> {
     return this.json<McpResponse>("POST", `/api/mcp`, { json: body }, options);
   }
