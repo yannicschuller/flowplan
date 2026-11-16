@@ -26,7 +26,7 @@ import {
 } from "./inline-comment-types";
 import {
   commentRange,
-  commentQuote,
+  sameCommentQuote,
   type CommentBinding,
 } from "./comment-positions";
 import { emojiEntries } from "./emoji-data";
@@ -325,7 +325,7 @@ export async function inlineCommentCommand(
       const range = commentRange(binding, anchor, generation);
       if (
         !range ||
-        commentQuote(binding.content, range.from, range.to) !== anchor.quote
+        !sameCommentQuote(binding.content, range.from, range.to, anchor.quote)
       )
         throw new HttpError(
           409,
@@ -381,6 +381,35 @@ export async function inlineCommentCommand(
     await run(
       "UPDATE inline_threads SET resolved=?,version=version+1 WHERE id=?",
       z.boolean().parse(input.resolved) ? 1 : 0,
+      thread.id,
+    );
+  } else if (action === "thread.reanchor") {
+    // A block moved up, down or by dragging (#314): Yjs inserts it anew,
+    // so the editor that moved it hands over where the same passage is now.
+    // Only for a thread that lost its passage, and only to the same text.
+    if ((await pageRole(user, page)) === "viewer")
+      throw new HttpError(403, "Nur Bearbeiter können Textstellen verschieben.");
+    const anchor = commentAnchorSchema.parse(input.anchor),
+      stored = commentAnchorSchema.parse(JSON.parse(thread.anchor));
+    if (thread.anchor === JSON.stringify(anchor)) return { ok: true };
+    await withCommentDocument(pageId, rowId || null, (binding, generation) => {
+      const range = commentRange(binding, anchor, generation),
+        before = commentRange(binding, stored, generation);
+      if (
+        !range ||
+        !sameCommentQuote(binding.content, range.from, range.to, anchor.quote) ||
+        !sameCommentQuote(binding.content, range.from, range.to, stored.quote)
+      )
+        throw new HttpError(409, "Die Textstelle des Kommentars hat sich geändert.");
+      if (
+        before &&
+        sameCommentQuote(binding.content, before.from, before.to, stored.quote)
+      )
+        throw new HttpError(409, "Der Kommentar hat seine Textstelle noch.");
+    });
+    await run(
+      "UPDATE inline_threads SET anchor=? WHERE id=?",
+      JSON.stringify(anchor),
       thread.id,
     );
   } else if (action === "thread.reply") {

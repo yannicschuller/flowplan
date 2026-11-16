@@ -25,7 +25,6 @@
     "components/image-tools.tsx",
     "components/ink/ai-convert.tsx",
     "components/ink/ink-style-picker.tsx",
-    "components/inline-comments.tsx",
     "components/issue-sync-database.tsx",
     "components/markdown-records-import.tsx",
     "components/marketplace.tsx",

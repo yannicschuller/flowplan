@@ -8,6 +8,7 @@ import {
 } from "@tiptap/pm/state";
 import { freshLinkedIds } from "./linked-paste";
 import { withoutBlockIds } from "./block-ids";
+import type { BlockMove } from "./comment-positions";
 export type DocumentBlock = {
   pos: number;
   end: number;
@@ -143,7 +144,8 @@ export function hasLinkedBlocks(node: Node) {
   return linked;
 }
 export const BLOCK_SELECTION_META = "flowplanBlockSelection";
-// Where moved blocks came from, for the slide animation.
+// Where moved blocks came from, for the slide animation, and where they
+// went, so comment anchors can follow them (lib/comment-positions.ts).
 export const BLOCK_MOVE_META = "flowplanBlockMove";
 function finish(tr: Transaction, start: number, content?: Fragment, lead?: { pos: number; content: Fragment }) {
   tr.doc.check();
@@ -244,7 +246,9 @@ export function changeBlocks(
     return finish(tr, placed.start, content, placed.lead).setMeta(BLOCK_MOVE_META, {
       from: range.from,
       to: range.to,
-    });
+      start: placed.start,
+      end: placed.start + content.size,
+    } satisfies BlockMove);
   // Next to a list of the same kind it joins that list (numbering goes on).
   const after = tr.doc.resolve(mapped + wrapped.nodeSize).nodeAfter;
   if (after?.type === wrapped.type) tr.join(mapped + wrapped.nodeSize);
@@ -256,7 +260,9 @@ export function changeBlocks(
   return finish(tr, itemsStart, wrapped.content).setMeta(BLOCK_MOVE_META, {
     from: range.from,
     to: range.to,
-  });
+    start: itemsStart,
+    end: itemsStart + wrapped.content.size,
+  } satisfies BlockMove);
 }
 const LIST_ITEMS = ["listItem", "taskItem"];
 const LISTS = ["bulletList", "orderedList", "taskList"];

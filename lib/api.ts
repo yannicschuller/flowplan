@@ -3000,6 +3000,7 @@ async function runCommand(
       case "thread.create":
       case "thread.reply":
       case "thread.resolve":
+      case "thread.reanchor":
       case "thread.edit":
       case "thread.deleteMessage":
       case "thread.react":

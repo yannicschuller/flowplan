@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ChatCircle, Quotes } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
 import { Reactions } from "./reactions";
+import { CommentQuote } from "./comment-quote";
 import { pageLocationHash } from "@/lib/page-location";
 import type { Comment } from "@/lib/types";
 import type { InlineThread } from "@/lib/inline-comment-types";
@@ -163,7 +164,7 @@ export function CommentHub({
               <small>{time(item.thread.created_at)}</small>
               <blockquote>
                 <Quotes size={12} />{" "}
-                {item.thread.anchor.quote.replaceAll("￼", "[Medienblock]")}
+                <CommentQuote quote={item.thread.anchor.quote} />
               </blockquote>
               <p>{item.thread.messages[0]?.body}</p>
               <span className="comment-text-actions">

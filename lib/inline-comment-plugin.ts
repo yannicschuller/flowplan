@@ -1,18 +1,30 @@
 import { Extension, type Editor, type NodeViewRenderer } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { ySyncPluginKey, isStructuralTransaction } from "@tiptap/y-tiptap";
 import type { InlineThread } from "./inline-comment-types";
 import {
   commentRange,
   commentAnchor,
+  commentQuote,
+  movedCommentRange,
+  type BlockMove,
   type CommentBinding,
 } from "./comment-positions";
-const key = new PluginKey<{
+import { BLOCK_MOVE_META } from "./document-blocks";
+// Passages of threads that moved with blocks (see movedCommentRange), in
+// the document after `source` and the transactions appended to it.
+export type RelocatedComments = {
+  source: Transaction;
+  ranges: { id: string; from: number; to: number; quote: string }[];
+};
+type CommentState = {
   threads: InlineThread[];
   active: string | null;
   marks: DecorationSet;
-}>("inlineComments");
+  relocated: RelocatedComments | null;
+};
+const key = new PluginKey<CommentState>("inlineComments");
 export function editorCommentBinding(editor: Editor): CommentBinding | null {
   const state = ySyncPluginKey.getState(editor.state);
   return state?.binding?.mapping.size
@@ -33,6 +45,30 @@ export function selectedCommentAnchor(editor: Editor, generation: string) {
     to = $from.end();
   }
   return commentAnchor(binding, from, to, generation);
+}
+// The threads whose passage moved in `tr` (a block moved up, down or
+// dragged), with fresh anchors now that Yjs holds the move – to store on
+// the server (thread.reanchor). Call it from the editor's transaction event.
+export function relocatedCommentAnchors(
+  editor: Editor,
+  tr: Transaction,
+  generation: string,
+) {
+  const relocated = key.getState(editor.state)?.relocated;
+  if (!relocated || relocated.source !== tr) return [];
+  const binding = editorCommentBinding(editor);
+  if (!binding) return [];
+  const result: { id: string; anchor: ReturnType<typeof commentAnchor> }[] = [];
+  for (const r of relocated.ranges) {
+    try {
+      if (commentQuote(binding.content, r.from, r.to) !== r.quote) continue;
+      const anchor = commentAnchor(binding, r.from, r.to, generation),
+        back = commentRange(binding, anchor, generation);
+      if (back?.from === r.from && back.to === r.to)
+        result.push({ id: r.id, anchor });
+    } catch {}
+  }
+  return result;
 }
 export function setCommentHighlights(
   editor: Editor,
@@ -91,17 +127,14 @@ export function inlineCommentExtension(generation: string) {
     },
     addProseMirrorPlugins() {
       return [
-        new Plugin<{
-          threads: InlineThread[];
-          active: string | null;
-          marks: DecorationSet;
-        }>({
+        new Plugin<CommentState>({
           key,
           state: {
             init: () => ({
               threads: [],
               active: null,
               marks: DecorationSet.empty,
+              relocated: null,
             }),
             apply(tr, prev, old, state) {
               const meta = tr.getMeta(key),
@@ -109,14 +142,56 @@ export function inlineCommentExtension(generation: string) {
                 active = meta ? meta.active : prev.active;
               const sync = ySyncPluginKey.getState(state),
                 remote = sync?.isChangeOrigin;
+              const move = tr.getMeta(BLOCK_MOVE_META) as BlockMove | undefined;
+              let relocated: RelocatedComments | null = null;
+              if (move && !remote && sync?.binding?.mapping.size) {
+                // Yjs and its mapping still describe the document before
+                // this transaction: where the passages were.
+                const before: CommentBinding = {
+                  doc: sync.doc,
+                  type: sync.type,
+                  mapping: sync.binding.mapping,
+                  content: old.doc,
+                };
+                const ranges: RelocatedComments["ranges"] = [];
+                for (const t of threads) {
+                  const range = commentRange(before, t.anchor, generation),
+                    next =
+                      range &&
+                      movedCommentRange(old.doc, tr.doc, tr.mapping, move, range);
+                  if (range && next)
+                    ranges.push({
+                      id: t.id,
+                      ...next,
+                      quote: commentQuote(old.doc, range.from, range.to),
+                    });
+                }
+                relocated = { source: tr, ranges };
+              } else if (
+                prev.relocated &&
+                tr.getMeta("appendedTransaction") === prev.relocated.source
+              )
+                // Transactions appended to the move (block ids …).
+                relocated = {
+                  source: prev.relocated.source,
+                  ranges: prev.relocated.ranges.map((r) => ({
+                    ...r,
+                    from: tr.mapping.map(r.from, 1),
+                    to: tr.mapping.map(r.to, -1),
+                  })),
+                };
               if (
                 tr.docChanged &&
                 !remote &&
                 isStructuralTransaction(tr, old.doc)
               )
-                return { threads, active, marks: DecorationSet.empty };
+                return { threads, active, marks: DecorationSet.empty, relocated };
               if (!meta && !remote)
-                return { ...prev, marks: prev.marks.map(tr.mapping, tr.doc) };
+                return {
+                  ...prev,
+                  marks: prev.marks.map(tr.mapping, tr.doc),
+                  relocated,
+                };
               const marks: Decoration[] = [];
               if (sync?.binding?.mapping.size)
                 for (const t of threads) {
@@ -153,6 +228,7 @@ export function inlineCommentExtension(generation: string) {
                 threads,
                 active,
                 marks: DecorationSet.create(state.doc, marks),
+                relocated,
               };
             },
           },
