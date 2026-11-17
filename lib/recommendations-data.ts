@@ -25,7 +25,7 @@ import { knownUpdate } from "./update-check";
 import { plainHttpInstance } from "./instance-https";
 import { transactionTimes } from "./runtime-metrics";
 import { instanceMetrics } from "./instance-ops";
-import { cleanThresholds, evaluate, RECOMMENDATION_IDS, type Recommendation, type RecommendationId, type RecommendationInput, type Thresholds } from "./recommendations";
+import { cleanThresholds, dataGrowthPerDay, evaluate, RECOMMENDATION_IDS, type Recommendation, type RecommendationId, type RecommendationInput, type Thresholds } from "./recommendations";
 
 const MINUTE = 60_000,
   DAY = 86_400_000;
@@ -91,15 +91,12 @@ export async function recommendationInput(now = Date.now()): Promise<Recommendat
     perDay.set(day, d);
   }
   const current = await serverNow(now);
-  // Disk growth per day from the storage rows of 30 days (free space falling).
-  const storage = await all<{ day: string; disk_free: number | null; at: number }>("SELECT day,disk_free,at FROM metrics_day WHERE disk_free IS NOT NULL ORDER BY day DESC LIMIT 30");
-  let growthPerDay: number | null = null;
-  if (storage.length >= 3) {
-    const newest = storage[0],
-      oldest = storage[storage.length - 1];
-    const span = (newest.at - oldest.at) / DAY;
-    if (span >= 2) growthPerDay = (Number(oldest.disk_free) - Number(newest.disk_free)) / span;
-  }
+  // Growth per day of Flowplan's own data (database and uploads) over the
+  // storage rows of up to 30 days – not the disk's free space, which also
+  // falls with Docker images, build caches and other apps on the same disk
+  // (a day with several deployments looked like 15 GB a day).
+  const storage = await all<{ database_bytes: number; upload_bytes: number; at: number }>("SELECT database_bytes,upload_bytes,at FROM metrics_day ORDER BY day DESC LIMIT 30");
+  const growthPerDay = dataGrowthPerDay(storage.map((r) => ({ at: Number(r.at), bytes: Number(r.database_bytes) + Number(r.upload_bytes) })));
   const metrics = await instanceMetrics().catch(() => null);
   const routes = await routeStats(now, 24, 50).catch(() => []);
   const weekRoutes = await routeStats(now, 7 * 24, 200).catch(() => []);
@@ -207,3 +204,4 @@ export async function recommendations(now = Date.now(), force = false) {
   };
 }
 export type Recommendations = Awaited<ReturnType<typeof recommendations>>;
+

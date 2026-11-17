@@ -15149,14 +15149,53 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   color: var(--secondary);
   cursor: pointer;
 }
+/* A plain numbers table inside the card – not the database grid it shares
+   .data-table with: no bleed to the card's edges (settings sections), no grey
+   row headers, compact rows, numbers right-aligned, header stays visible. */
 .vz-table .data-table-scroll {
   max-height: 280px;
   overflow: auto;
+  margin: 4px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.vz-table .data-table th,
+.vz-table .data-table td {
+  height: auto;
+  padding: 6px 12px;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.vz-table .data-table th:first-child,
+.vz-table .data-table td:first-child {
+  padding-left: 12px;
+}
+.vz-table .data-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.vz-table .data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.vz-table .data-table td,
+.vz-table .data-table thead th:not(:first-child) {
+  text-align: right;
+}
+.vz-table .data-table tr:hover td {
+  background: transparent;
 }
 .vz-table th[scope="row"] {
   font-weight: 450;
   text-align: left;
   white-space: nowrap;
+  color: var(--text);
+  background: transparent;
 }
 .sparkline {
   display: block;

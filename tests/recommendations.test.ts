@@ -182,3 +182,12 @@ test("evaluate: rules switched off are skipped, warnings first; thresholds are c
   assert.equal(clean.restarts, r.DEFAULT_THRESHOLDS.restarts);
   assert.equal("unknown" in clean, false);
 });
+
+test("disk growth counts Flowplan's own data, not the disk's free space", () => {
+  const day = 86_400_000;
+  // Newest first: 82 MB in 7 days.
+  const rows = [7, 3, 0].map((d) => ({ at: d * day, bytes: 149e6 - (7 - d) * (82e6 / 7) }));
+  assert.equal(Math.round(r.dataGrowthPerDay(rows)!), Math.round(82e6 / 7));
+  assert.equal(r.dataGrowthPerDay(rows.slice(0, 2)), null);
+  assert.equal(r.dataGrowthPerDay([{ at: 1.5 * day, bytes: 2 }, { at: day, bytes: 1 }, { at: 0, bytes: 0 }]), null);
+});

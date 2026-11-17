@@ -141,7 +141,7 @@ export type RecommendationInput = {
   now: number;
   days: DayLoad[];
   limits: { cpu: number; cpuLimited: boolean; memory: number; memoryLimited: boolean };
-  disk: { total: number | null; free: number | null; growthPerDay: number | null; uploads: number | null; database: number | null; trashedPages: number; versions: number };
+  disk: { total: number | null; free: number | null; growthPerDay: number | null /* Flowplan's own data, bytes a day */; uploads: number | null; database: number | null; trashedPages: number; versions: number };
   database: { backend: "sqlite" | "postgres"; commandP95: number | null; transactionMaxSeconds: number | null };
   setup: {
     backup: { enabled: boolean; lastAt: number | null; error: string | null };
@@ -314,7 +314,7 @@ export const disk: Rule = (x, t) => {
   if (x.disk.versions >= 50_000) extras.push(say([n(x.disk.versions), " alte Versionen"], [n(x.disk.versions), " old versions"]));
   if (x.disk.trashedPages >= 1000) extras.push(say([n(x.disk.trashedPages), " Seiten im Papierkorb"], [n(x.disk.trashedPages), " pages in the trash"]));
   const head = soon
-    ? say(["Bei ", size(growthPerDay!), " Zuwachs pro Tag ist der Speicherplatz in etwa ", n(Math.max(0, Math.floor(daysLeft!))), " Tagen voll (", pct(used), " belegt)"], ["At ", size(growthPerDay!), " growth per day the disk is full in about ", n(Math.max(0, Math.floor(daysLeft!))), " days (", pct(used), " used)"])
+    ? say(["Wachsen Flowplans Daten weiter um ", size(growthPerDay!), " pro Tag, ist der Speicherplatz in etwa ", n(Math.max(0, Math.floor(daysLeft!))), " Tagen voll (", pct(used), " belegt)"], ["If Flowplan's data keeps growing by ", size(growthPerDay!), " a day, the disk is full in about ", n(Math.max(0, Math.floor(daysLeft!))), " days (", pct(used), " used)"])
     : say(["Der Speicherplatz ist zu ", pct(used), " belegt (", size(free), " frei)"], ["The disk is ", pct(used), " used (", size(free), " free)"]);
   return make(
     "disk",
@@ -555,4 +555,14 @@ export function evaluate(input: RecommendationInput, thresholds: Thresholds = { 
     }
   }
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === "warn" ? -1 : 1));
+}
+
+// Bytes per day between the oldest and the newest of the rows (newest first),
+// over at least two days; null when there is too little history.
+export function dataGrowthPerDay(rows: { at: number; bytes: number }[]): number | null {
+  if (rows.length < 3) return null;
+  const newest = rows[0],
+    oldest = rows[rows.length - 1];
+  const span = (newest.at - oldest.at) / 86_400_000;
+  return span >= 2 ? (newest.bytes - oldest.bytes) / span : null;
 }
