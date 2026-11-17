@@ -12855,7 +12855,13 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   min-height: 420px;
   border: 1px solid var(--border);
   border-radius: 12px;
+  /* Clipped, not a scroll box: with overflow hidden, scrollIntoView or a
+     focus scrolled the board inside its frame whenever an overlay reached
+     past its edges (the style bar of an element the camera flies away
+     from); the next layout change snapped it back – between the two clicks
+     of a double click on a note, whose second click then made a new note. */
   overflow: hidden;
+  overflow: clip;
   background: #fafbfc;
   outline: none;
   touch-action: none;
