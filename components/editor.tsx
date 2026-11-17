@@ -462,6 +462,26 @@ export default function DocumentEditor({
   // column is too narrow for both (components/document-outline.tsx).
   const outline = useOutline();
   const [, setTick] = useState(0);
+  // The toolbar and menus follow the selection and the stored marks: at
+  // most once per frame, however many transactions a keystroke brings
+  // (input, input rules, the save's answer, decorations).
+  const tickFrame = useRef(0);
+  const tickSoon = useRef(() => {});
+  tickSoon.current = () => {
+    if (tickFrame.current) return;
+    tickFrame.current = requestAnimationFrame(() => {
+      tickFrame.current = 0;
+      setTick((t) => t + 1);
+    });
+  };
+  useEffect(() => () => cancelAnimationFrame(tickFrame.current), []);
+  // The document as HTML (for the save, the page's export and print): the
+  // whole document serialised, so not on every keystroke – when saving, and
+  // otherwise at most once a second.
+  const htmlStale = useRef(false),
+    htmlTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const currentHtml = useRef(() => lastHtml.current);
+  useEffect(() => () => clearTimeout(htmlTimer.current), []);
   const [references, setReferences] = useState(false),
     [referenceQuery, setReferenceQuery] = useState(""),
     // The highlighted hit of the mention dialog by its key; null is the first.
@@ -1154,8 +1174,20 @@ export default function DocumentEditor({
         if (slashState.current?.mode === "inline") setSlash(null);
       },
       onUpdate: ({ editor, transaction }) => {
-        lastHtml.current = editor.getHTML();
-        onHtml(lastHtml.current);
+        htmlStale.current = true;
+        currentHtml.current = () => {
+          if (htmlStale.current && !editor.isDestroyed) {
+            htmlStale.current = false;
+            lastHtml.current = editor.getHTML();
+            onHtml(lastHtml.current);
+          }
+          return lastHtml.current;
+        };
+        if (!htmlTimer.current)
+          htmlTimer.current = setTimeout(() => {
+            htmlTimer.current = undefined;
+            currentHtml.current();
+          }, 1000);
         if (
           ready.current &&
           editable &&
@@ -1167,14 +1199,14 @@ export default function DocumentEditor({
         slashFollow.current(editor);
       },
       onSelectionUpdate: ({ editor }) => {
-        setTick((t) => t + 1);
+        tickSoon.current();
         slashFollow.current(editor);
       },
       // Toggling a format without a selection only changes the marks for the
       // next character; the toolbar has to show that right away.
       onTransaction: ({ transaction }) => {
         if (!transaction.docChanged && !transaction.selectionSet)
-          setTick((t) => t + 1);
+          tickSoon.current();
       },
     },
     [doc],
@@ -1318,7 +1350,7 @@ export default function DocumentEditor({
             update: bytesTo64(update),
             vector: bytesTo64(Y.encodeStateVector(doc)),
             client: liveId,
-            html: lastHtml.current,
+            html: currentHtml.current(),
           });
           pending.current.splice(0, sent);
           if (all) sendAll.current = false;
@@ -1483,6 +1515,7 @@ export default function DocumentEditor({
       )
         editor.commands.setContent(initial.current.html);
       lastHtml.current = editor.getHTML();
+      htmlStale.current = false;
       onHtml(lastHtml.current);
       ready.current = true;
       // Only what this device has beyond the server's state needs a save

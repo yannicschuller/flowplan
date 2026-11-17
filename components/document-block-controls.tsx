@@ -208,6 +208,26 @@ function HandleDots() {
     </svg>
   );
 }
+// One element for every handle: React skips it on each render of the
+// handles instead of rendering 150 icons per keystroke.
+const HANDLE_DOTS = <HandleDots />;
+// A handle's key: its block's node. ProseMirror keeps the node objects of
+// the blocks a change did not touch, so typing in one block keeps the
+// handles of all others (keyed by position, every later block's handle was
+// mounted again per keystroke); a block that was added, moved or edited
+// gets its own. The same node twice (a duplicate) counts on.
+const nodeKeys = new WeakMap<object, number>();
+let nextNodeKey = 0;
+function blockKeys(blocks: { node: object }[]) {
+  const seen = new Map<number, number>();
+  return blocks.map((block) => {
+    let key = nodeKeys.get(block.node);
+    if (key === undefined) nodeKeys.set(block.node, (key = ++nextNodeKey));
+    const n = seen.get(key) ?? 0;
+    seen.set(key, n + 1);
+    return n ? `${key}.${n}` : String(key);
+  });
+}
 type Drag = {
   pointer: number;
   x: number;
@@ -2153,6 +2173,8 @@ export function DocumentBlockControls({
   const handles = handlesAlways
     ? visible
     : visible.filter((block) => !isEmptyParagraph(block) || block.pos === caret || block.pos === hovered || selected.current.includes(block.pos));
+  const visibleKeys = blockKeys(visible),
+    handleKeys = blockKeys(handles);
   // The block under the mouse (#236): anywhere on its row, the page margin
   // left of it included. The innermost block at the pointer's height wins;
   // inside a callout or quote only right of its handle, so the box's own
@@ -2283,11 +2305,11 @@ export function DocumentBlockControls({
               />
             ))}
             {picking
-              ? visible.map((block) => {
+              ? visible.map((block, index) => {
                   const on = chosen(block);
                   return (
                     <button
-                      key={block.pos}
+                      key={visibleKeys[index]}
                       type="button"
                       role="checkbox"
                       aria-checked={on}
@@ -2304,9 +2326,9 @@ export function DocumentBlockControls({
                     </button>
                   );
                 })
-              : handles.map((block) => (
+              : handles.map((block, index) => (
               <button
-                key={block.pos}
+                key={handleKeys[index]}
                 type="button"
                 data-block-pos={block.pos}
                 // Near the left edge on phones: dragging a block is not the
@@ -2375,7 +2397,7 @@ export function DocumentBlockControls({
                   if (event.detail === 0) openMenu(event.currentTarget, block);
                 }}
               >
-                <HandleDots />
+                {HANDLE_DOTS}
               </button>
             ))}
             {adding && (
