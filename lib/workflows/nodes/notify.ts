@@ -73,7 +73,9 @@ export const notifyPerson: NodeImpl = async (ctx) => {
       } else if (await one("SELECT 1 FROM pages WHERE id=?", target)) pageId = target;
     }
   }
-  const page = pageId ? await one<Page>("SELECT * FROM pages WHERE id=?", pageId) : undefined;
+  // A link only into the workflow's own workspace.
+  const page = pageId ? await one<Page>("SELECT * FROM pages WHERE id=? AND workspace_id=?", pageId, ctx.run.workspaceId) : undefined;
+  if (!page) rowId = null;
   const people = await recipients(ctx, c.to, cells, createdBy);
   if (people.length > MAX_RECIPIENTS) throw new StepError(`Höchstens ${MAX_RECIPIENTS} Empfänger je Schritt.`, "limit");
   if (dryRun(ctx)) return { port: "out", output: { wouldNotify: people, body: body.slice(0, 500) } };

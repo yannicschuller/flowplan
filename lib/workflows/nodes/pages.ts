@@ -73,16 +73,24 @@ export function blockNodes(blocks: WorkflowBlock[], scope: RenderScope): Json[] 
   return nodes;
 }
 
-async function targetPage(ctx: NodeRun, ref: unknown, write: boolean): Promise<Page> {
+// The page a node acts on – only one of the workflow's own workspace. The
+// runner may well belong to others, and command() acts with all of their
+// rights (it is bound to no workspace); a page id from a placeholder (a
+// form answer, an e-mail, an AI answer) must not reach into them.
+export async function targetPage(ctx: NodeRun, ref: unknown, write: boolean): Promise<Page> {
   const id = refId(typeof ref === "string" ? renderValue(ref, ctx.scope) : ref);
   if (!id) throw new StepError("Keine Seite angegeben.", "validation");
   if (!ctx.runner) throw new StepError("Keine ausführende Person.", "permission");
+  let page: Page;
   try {
-    return await requirePage(ctx.runner, id, write);
+    page = await requirePage(ctx.runner, id, write);
   } catch (e) {
     throw new StepError((e as Error).message, (e as { status?: number }).status === 404 ? "validation" : "permission");
   }
+  if (page.workspace_id !== ctx.run.workspaceId) throw new StepError(OTHER_WORKSPACE, "permission");
+  return page;
 }
+export const OTHER_WORKSPACE = "Die Seite liegt in einem anderen Arbeitsbereich als der Workflow.";
 
 // Writes blocks into a document as one change through "document.sync".
 // `where`: end, start, or below the first heading with that text (else the end).
