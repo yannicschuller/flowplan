@@ -25,7 +25,11 @@ test("large databases draw rows in steps and keep search over all records", asyn
   // Scrolling loads the next step; the rest comes with the button.
   await page.locator(".more-rows").scrollIntoViewIfNeeded();
   await expect(rows).toHaveCount(200);
-  await page.getByRole("button", { name: /Weitere 30 von 30/ }).click();
+  // The button itself, where it is: a click() would first scroll it into
+  // view, where it loads the rest on its own (600 px ahead) and goes away
+  // under the pointer – the click then waited for a button that never came
+  // back (CI run 43939413273).
+  await page.getByRole("button", { name: /Weitere 30 von 30/ }).dispatchEvent("click");
   await expect(rows).toHaveCount(230);
   await expect(page.locator(".more-rows")).toHaveCount(0);
   // Search still covers all records (the "Suchen" chip turns into the field).

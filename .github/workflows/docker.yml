@@ -82,8 +82,17 @@ jobs:
             GIT_COMMIT=${{ github.sha }}
             FLOWPLAN_CHANNEL=${{ (inputs.version || github.ref_type == 'tag') && 'release' || 'beta' }}
           # GitHub's Actions cache, one scope per platform, kept between runs.
+          # BuildKit takes a layer from it only for the same instruction on
+          # the same inputs (base image digest, files, build arguments – the
+          # build stage differs between beta and release by FLOWPLAN_CHANNEL
+          # alone). One layer would go stale that way: the runtime stage's
+          # `apt-get upgrade`, whose input never changes while the base image
+          # stays. A release builds that stage afresh, with the security
+          # updates of the day; betas reuse it (faster, rebuilt with every
+          # new base image or Dockerfile change).
           cache-from: type=gha,scope=image-${{ steps.platform.outputs.pair }}
           cache-to: type=gha,scope=image-${{ steps.platform.outputs.pair }},mode=max
+          no-cache-filters: ${{ (inputs.version || github.ref_type == 'tag') && 'runtime' || '' }}
       - name: Remember the digest
         run: |
           mkdir -p "$RUNNER_TEMP/digests"

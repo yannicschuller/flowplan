@@ -336,7 +336,14 @@ export function startBoardCardDrag(options: {
             const r = card.el.getBoundingClientRect();
             seen.set(card.id, { left: r.left, top: r.top });
           }
-      if (landed) seen.set(rowId, landed);
+      // The dropped card from where its copy is now: when the re-render
+      // comes before the copy's 220 ms flight to `landed` has ended (a quick
+      // server), the copy is still on its way, and starting the card at
+      // `landed` made it jump the rest of the way in one frame.
+      if (landed) {
+        const r = preview.isConnected ? preview.getBoundingClientRect() : null;
+        seen.set(rowId, r ? { left: r.left, top: r.top } : landed);
+      }
       clear();
       return seen;
     },

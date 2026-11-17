@@ -25,7 +25,10 @@ ARG FLOWPLAN_CHANNEL=""
 # The type check already runs in CI; image builds there skip it.
 ARG FLOWPLAN_SKIP_TYPECHECK=""
 # Next's build cache survives between builds as well.
-RUN --mount=type=cache,target=/app/.next/cache npm run build
+# FLOWPLAN_E2E_BUILD emptied: an image is never the browser specs' build,
+# whose server takes the demo sign-in (lib/e2e-build.ts) – whatever a build
+# argument or a later ENV says.
+RUN --mount=type=cache,target=/app/.next/cache FLOWPLAN_E2E_BUILD= npm run build
 # Per target platform, still without emulation: packages built for another
 # CPU are swapped for their twin of the target (e.g. sharp for arm64).
 FROM --platform=$BUILDPLATFORM node:26-trixie-slim AS standalone

@@ -252,7 +252,9 @@ test("no client code imports the marketplace-only templates", () => {
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
-      if (["node_modules", ".next", ".git", "tests", "scripts", "public", ".claude"].includes(name)) continue;
+      // Build output too: .next and the browser specs' .next-e2e, whose
+      // standalone server carries a copy of the sources.
+      if (["node_modules", ".git", "tests", "scripts", "public", ".claude"].includes(name) || name.startsWith(".next")) continue;
       const path = join(dir, name);
       if (statSync(path).isDirectory()) walk(path);
       else if (/\.(tsx?|mjs|js)$/.test(name)) files.push(path);

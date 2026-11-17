@@ -526,6 +526,7 @@ Development mode also offers **Open local workspace**, a shared local example ac
 | `npm run typecheck` | TypeScript |
 | `npm test` | Core tests (Node test runner, temporary data directories that are removed afterwards) |
 | `npm run test:e2e` | Browser tests (Playwright, desktop and mobile); start a server with its own `FLOWPLAN_DATA_DIR` and set `TEST_BASE_URL` |
+| `npm run build:e2e` | Production build for the browser tests in `.next-e2e` (its server takes the demo sign-in; never in an image). Then `TEST_SERVERS=3 FLOWPLAN_DATA_DIR=/tmp/flowplan-inline-e2e.local npm run test:e2e` starts 3 servers of it, one per worker |
 | `npm run check:standalone` | Runs the standalone build like the container and checks health, persistence and restore |
 | `npm run quality` | Accessibility and performance budgets on the production build: sign-in and a seeded workspace at 1280 and 390 px – no serious axe findings, nothing focusable inside `aria-hidden`, no horizontal scrolling, JavaScript (gzip) and LCP within budget |
 | `npm run test:visual` | Screenshots of key screens against the baselines in `tests/visual/__screenshots__` (`npm run test:visual:update` writes new ones); not part of `npm test` |
