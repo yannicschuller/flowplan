@@ -196,6 +196,7 @@
 }
 .mon-errors {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -272,6 +273,7 @@
 }
 .mon-error-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
   padding: 2px 2px 14px;

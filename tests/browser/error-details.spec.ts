@@ -54,6 +54,14 @@ test("a 5xx shows up in the error details with its stack frames and request id",
   await expect(group).toContainText(uncaughtId);
   await expect(group.getByRole("button", { name: "Kopieren für ein Issue" })).toBeVisible();
 
+  // Phone width: the frames scroll inside their box, the card stays within the page.
+  const boxes = await page.evaluate(() => {
+    const card = document.getElementById("errors")!.getBoundingClientRect();
+    const pre = document.querySelector("#errors .mon-error-stack")!.getBoundingClientRect();
+    return { card: [card.left, card.right], pre: [pre.left, pre.right], width: document.documentElement.clientWidth };
+  });
+  expect(boxes.pre[1]).toBeLessThanOrEqual(boxes.card[1] + 0.5);
+  expect(boxes.card[1]).toBeLessThanOrEqual(boxes.width + 0.5);
   await card.scrollIntoViewIfNeeded();
   await card.screenshot({ path: `test-results/error-details/${testInfo.project.name}-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
