@@ -107,7 +107,7 @@ import { showsFormattingToolbar } from "@/lib/toolbar-pref";
 import { useToolbarLayout } from "@/lib/toolbar-layout-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
-import { collaborationCursors } from "@/lib/collaboration-cursors";
+import { collaborationCursors, setLiveState } from "@/lib/collaboration-cursors";
 import { RemoteSelection } from "@/lib/remote-selection";
 import {
   commentMarkedNodeView,
@@ -1385,10 +1385,12 @@ export default function DocumentEditor({
       if (message.type === "revoked") {
         // Access ended: no reconnect; the next check reports it.
         live.current = false;
+        setLiveState(key, false);
         source.close();
         lastPoll.current = 0;
       } else if (message.type === "ready") {
         live.current = true;
+        setLiveState(key, true);
         // Anything missed while the channel was down comes with a full check.
         lastPoll.current = 0;
         void sync();
@@ -1402,9 +1404,11 @@ export default function DocumentEditor({
     };
     source.onerror = () => {
       live.current = false;
+      setLiveState(key, false);
     };
     return () => {
       live.current = false;
+      setLiveState(key, false);
       source.close();
     };
   }, [doc, pageId, rowId, generation, liveId, sync, applyRemote, liveOn]);

@@ -301,3 +301,31 @@ test("per-session instance limit is bounded and abandoned records are reclaimed"
   );
   await assert.doesNotReject(async () => await f.send(f.alice, f.request(), f.now + 300001));
 });
+
+test("presence: a cursor back after its lease is news for the others", async () => {
+  const f = await fixture();
+  const a = f.request();
+  assert.equal((await f.send(f.alice, a)).changed, true);
+  // The same place again within the lease: a heartbeat, no news.
+  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 1 }, f.now + 1000)).changed, false);
+  // The same place after the lease ran out: back for the others.
+  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 2 }, f.now + 1000 + CURSOR_LEASE_MS)).changed, true);
+});
+
+test("presence: a heartbeat while alone, moves of the others by signal", async () => {
+  // Imported here: the plugin module touches no DOM at import time.
+  const { presenceDelay, peerSignature } = await import("../lib/collaboration-cursors");
+  const { HEARTBEAT_ALONE_MS } = await import("../lib/cursor-protocol");
+  // Alone with the live channel open: a heartbeat of 15–30 s.
+  assert.equal(presenceDelay(true, false), HEARTBEAT_ALONE_MS);
+  assert.ok(HEARTBEAT_ALONE_MS >= 15_000 && HEARTBEAT_ALONE_MS <= 30_000);
+  // With others every second, as before (departures show within the lease).
+  assert.equal(presenceDelay(true, true), 1_000);
+  assert.equal(presenceDelay(false, true), 1_000);
+  assert.ok(presenceDelay(false, false) <= 5_000);
+  // Only what the others see counts as a change, not the expiry.
+  const peer = { id: "a", userId: "u", name: "Ann", cursor, expiresInMs: 1000 };
+  assert.equal(peerSignature([peer]), peerSignature([{ ...peer, expiresInMs: 40_000 }]));
+  assert.notEqual(peerSignature([peer]), peerSignature([{ ...peer, name: "Anna" }]));
+  assert.notEqual(peerSignature([peer]), peerSignature([]));
+});

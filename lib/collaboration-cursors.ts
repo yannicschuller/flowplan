@@ -10,10 +10,36 @@ import {
 import * as Y from "yjs";
 import {
   cursorColor,
+  CURSOR_LEASE_MS,
+  HEARTBEAT_ALONE_MS,
+  POLL_ALONE_WITHOUT_LIVE_MS,
+  POLL_WITH_PEERS_MS,
   type Cursor,
   type CursorPeer,
   type CursorRequest,
 } from "./cursor-protocol";
+
+// The editor's live channel (components/editor.tsx) tells whether it is
+// open: then the others' moves arrive as "presence" signals.
+export type LiveState = { key: string; open: boolean };
+export const LIVE_EVENT = "flowplan:live-state";
+const liveChannels = new Map<string, boolean>();
+// The wait until the next request: alone with the live channel open a
+// heartbeat (a newcomer arrives as a "presence" signal), with others every
+// second as before.
+export function presenceDelay(liveOpen: boolean, others: boolean) {
+  if (others) return POLL_WITH_PEERS_MS;
+  return liveOpen ? HEARTBEAT_ALONE_MS : POLL_ALONE_WITHOUT_LIVE_MS;
+}
+export function setLiveState(key: string, open: boolean) {
+  if (open) liveChannels.set(key, true);
+  else liveChannels.delete(key);
+  window.dispatchEvent(new CustomEvent<LiveState>(LIVE_EVENT, { detail: { key, open } }));
+}
+// What the others see of a peer – a response that changes none of it
+// (only the expiry moved on) needs no new decorations.
+export const peerSignature = (peers: CursorPeer[]) =>
+  JSON.stringify(peers.map((p) => [p.id, p.userId, p.name, p.cursor ?? null, p.text ?? null]));
 import { fromTextPoint, toTextCursor } from "./text-anchors";
 import { followCarets, type Point } from "./motion";
 
@@ -173,13 +199,25 @@ export function collaborationCursors(
             let timer: ReturnType<typeof setTimeout> | undefined;
             let scheduledAt = Infinity;
             let lastCursor = "",
-              nextSend = 0;
+              nextSend = 0,
+              liveOpen = liveChannels.get(`${scope.pageId}:${scope.rowId || ""}:${scope.generation}`) ?? false,
+              shown = peerSignature([]);
             const active = () =>
               !destroyed && !stopped && !document.hidden && navigator.onLine;
             const show = (peers: Peer[]) => {
               if (destroyed || view.isDestroyed) return;
+              const signature = peerSignature(peers);
+              const current = key.getState(view.state)?.peers || [];
+              // The same cursors: only their expiry moves (no transaction,
+              // so the toolbar and menus do not render again).
+              if (signature === shown && current.length === peers.length) {
+                current.forEach((p, i) => (p.deadline = peers[i].deadline));
+                return;
+              }
+              shown = signature;
               view.dispatch(view.state.tr.setMeta(key, peers));
             };
+            const idleDelay = () => presenceDelay(liveOpen, (key.getState(view.state)?.peers || []).length > 0);
             const request = (cursor: Cursor | null): CursorRequest => ({
               ...scope,
               clientId,
@@ -206,7 +244,7 @@ export function collaborationCursors(
               pending = false;
               const timeout = setTimeout(() => ownController.abort(), 8000);
               nextSend = Date.now() + 80;
-              let delay = 1000;
+              let delay = 0;
               try {
                 const response = await fetch("/api/presence", {
                   method: "POST",
@@ -235,7 +273,7 @@ export function collaborationCursors(
                       ...p,
                       deadline:
                         Date.now() +
-                        Math.min(15_000, Math.max(0, p.expiresInMs)),
+                        Math.min(CURSOR_LEASE_MS, Math.max(0, p.expiresInMs)),
                     })),
                   );
               } catch {
@@ -245,7 +283,7 @@ export function collaborationCursors(
                 clearTimeout(timeout);
                 if (controller === ownController) {
                   controller = null;
-                  schedule(pending ? 40 : delay);
+                  schedule(pending ? 40 : delay || idleDelay());
                 }
               }
             }
@@ -281,7 +319,15 @@ export function collaborationCursors(
             const ping = (event: Event) => {
               if ((event as CustomEvent<string>).detail === liveKey) schedule(0);
             };
+            const liveState = (event: Event) => {
+              const state = (event as CustomEvent<LiveState>).detail;
+              if (state?.key !== liveKey || state.open === liveOpen) return;
+              liveOpen = state.open;
+              // Opened: one request now (what was missed); closed: back to asking.
+              schedule(liveOpen ? 0 : POLL_ALONE_WITHOUT_LIVE_MS);
+            };
             window.addEventListener("flowplan:presence", ping);
+            window.addEventListener(LIVE_EVENT, liveState);
             view.dom.addEventListener("focusin", changed);
             view.dom.addEventListener("focusout", changed);
             document.addEventListener("visibilitychange", environment);
@@ -303,6 +349,7 @@ export function collaborationCursors(
                 clearInterval(expiry);
                 cancelAnimationFrame(layoutFrame);
                 window.removeEventListener("flowplan:presence", ping);
+                window.removeEventListener(LIVE_EVENT, liveState);
                 view.dom.removeEventListener("focusin", changed);
                 view.dom.removeEventListener("focusout", changed);
                 document.removeEventListener("visibilitychange", environment);

@@ -7,7 +7,7 @@ import { DecorationSet } from "@tiptap/pm/view";
 import { decorations, type Peer } from "./collaboration-cursors";
 import { toTextCursor } from "./text-anchors";
 import { followCarets, type Point } from "./motion";
-import type { CursorPeer } from "./cursor-protocol";
+import { CURSOR_LEASE_MS, type CursorPeer } from "./cursor-protocol";
 
 type State = { peers: Peer[]; decorations: DecorationSet };
 const key = new PluginKey<State>("flowplanGuestCursors");
@@ -42,7 +42,7 @@ export function guestCursors(scope: { token: string; pageId: string; rowId?: str
               view.dispatch(
                 view.state.tr.setMeta(
                   key,
-                  peers.map((p) => ({ ...p, deadline: Date.now() + Math.min(15_000, p.expiresInMs) })),
+                  peers.map((p) => ({ ...p, deadline: Date.now() + Math.min(CURSOR_LEASE_MS, p.expiresInMs) })),
                 ),
               );
             };
