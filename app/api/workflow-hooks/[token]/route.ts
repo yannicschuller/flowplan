@@ -2,6 +2,7 @@
 // §9.6): POST /api/workflow-hooks/<token>, signed (X-Flowplan-Timestamp,
 // X-Flowplan-Signature) or – chosen deliberately – by the token alone.
 // Answers 202 with the run's id, 200 for a repeated delivery.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { HOOK_BODY_BYTES, receiveWorkflowHook } from "@/lib/workflows/inbound";
@@ -39,6 +40,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     return NextResponse.json({ runId: result.runId, ...(result.duplicate ? { duplicate: true } : {}) }, { status: result.status });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
-    return NextResponse.json({ error: e instanceof HttpError ? e.message : "Der Webhook konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500 });
+    return NextResponse.json({ error: e instanceof HttpError ? e.message : "Der Webhook konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : serverError(e) });
   }
 }

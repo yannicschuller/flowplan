@@ -1,6 +1,7 @@
 // The scheduled maintenance notice (lib/admin-ops.ts) for the banner every
 // signed-in person sees until the maintenance has ended, and whether the
 // instance is read-only or has moved (lib/instance-read-only.ts).
+import { serverError } from "@/lib/request-context";
 import { HttpError, requireUser } from "@/lib/auth";
 import { maintenanceNotice } from "@/lib/admin-ops";
 import { readOnlyState } from "@/lib/instance-read-only";
@@ -13,6 +14,6 @@ export async function GET() {
     return Response.json({ notice: await maintenanceNotice(), move: await readOnlyState() }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
-    return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500 });
+    return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : serverError(e) });
   }
 }

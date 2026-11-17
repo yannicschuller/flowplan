@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -13,7 +14,7 @@ function failure(e: unknown) {
   if (!(e instanceof HttpError)) console.error(e);
   return NextResponse.json(
     { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 }
 const noStore = { headers: { "Cache-Control": "no-store" } };

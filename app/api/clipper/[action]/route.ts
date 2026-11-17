@@ -2,6 +2,7 @@
 // where the person may save, POST save stores a clip. Bearer tokens only
 // (scope "clipper" or "write"); CORS answers name browser-extension
 // origins only and never allow credentials.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { clipperCors, clipperTargets, clipperUser, saveClip } from "@/lib/clipper";
@@ -24,7 +25,7 @@ function failure(req: Request, e: unknown) {
   if (e instanceof z.ZodError) return answer(req, 400, { error: localizedMessage("Ungültige Eingabe.", localeOfRequest(req)) });
   if (!(e instanceof HttpError)) console.error(e);
   const message = e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden.";
-  return answer(req, e instanceof HttpError ? e.status : 500, { error: localizedMessage(message, localeOfRequest(req)) });
+  return answer(req, e instanceof HttpError ? e.status : serverError(e), { error: localizedMessage(message, localeOfRequest(req)) });
 }
 
 export function OPTIONS(req: Request) {

@@ -2,6 +2,7 @@
 // connect, which server addresses they may use, the instance's Telegram bot
 // and the deliveries of 24 hours. Administrators in the browser only; API
 // tokens never. The answer carries "…abcd" of the bot token, never the token.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
@@ -15,7 +16,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 function failure(e: unknown) {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe." }, { status: 400, ...noStore });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : 500, ...noStore });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : serverError(e), ...noStore });
 }
 
 export const GET = withRequestLocale(async () => {

@@ -12,6 +12,7 @@
 // audit trail and dropped. Each address takes at most 60 mails per hour,
 // attachments count against the workspace quota and a daily budget per
 // address, and a Message-ID is stored once.
+import { serverError } from "./request-context";
 import { pageCreatedEvent } from "./workflows/hooks";
 import { emitWorkflowEvent } from "./workflows/events";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -835,7 +836,7 @@ export async function pollInboundMailbox(options = imapOptionsFromEnv(), now: ()
           await client.markSeen(uid);
           continue;
         } catch (error) {
-          const status = error instanceof HttpError ? error.status : 500;
+          const status = error instanceof HttpError ? error.status : serverError(error);
           if (status === 429 || status === 413) full.set(token, (await inboundAddressByToken(token))?.id || "");
           else {
             console.error("E-Mail-Eingang fehlgeschlagen:", String((error as Error)?.message || error));

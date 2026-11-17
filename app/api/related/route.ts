@@ -1,6 +1,7 @@
 // Related pages of a page or record ("Verwandte Seiten") and, with
 // `title`, existing pages or records with a similar title (duplicate hint
 // when creating one). Everything as the signed-in person: lib/related-pages.ts.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, requireUser } from "@/lib/auth";
@@ -38,7 +39,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     if (!(e instanceof HttpError)) console.error(e);
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 });

@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { createWriteStream, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -22,7 +23,7 @@ const failure = (e: unknown) => {
   if (!(e instanceof HttpError)) console.error(e);
   return Response.json(
     { error: e instanceof HttpError ? e.message : "Sicherung fehlgeschlagen." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 };
 // Download of the whole instance (admins only), streamed. With

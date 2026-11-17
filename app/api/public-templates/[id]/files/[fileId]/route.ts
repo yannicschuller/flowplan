@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { publicTemplateFile } from "@/lib/public-templates";
 import { HttpError } from "@/lib/auth";
 export const runtime = "nodejs";
@@ -26,7 +27,7 @@ export async function GET(
   } catch (e) {
     return Response.json(
       { error: e instanceof HttpError ? e.message : "Datei nicht verfügbar." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

@@ -6,6 +6,7 @@
 // only with the permission "KI und Transkription" (#199,
 // lib/ai/token-access.ts); settings and everything that changes content
 // stay with the browser.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -48,7 +49,7 @@ function error(e: unknown) {
   if (!(e instanceof HttpError)) console.error("KI:", redactSecrets(String((e as Error)?.message || e)));
   return NextResponse.json(
     { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-    { status: e instanceof HttpError ? (e.status === 499 ? 400 : e.status) : 500 },
+    { status: e instanceof HttpError ? (e.status === 499 ? 400 : e.status) : serverError(e) },
   );
 }
 const noStore = { headers: { "Cache-Control": "no-store" } };

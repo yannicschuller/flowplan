@@ -133,6 +133,7 @@ export function LineChart({
   area = true,
   maxY,
   right,
+  onPick,
 }: {
   title: string;
   description: string;
@@ -149,6 +150,9 @@ export function LineChart({
   // Series on a second scale (lines, labelled on the right): e.g. CPU and
   // memory in % over the number of people.
   right?: { series: Series[]; format: (n: number) => string; max?: number };
+  // A click (or Enter) on a point: its index (the monitoring filters its
+  // error details to that time slot).
+  onPick?: (index: number) => void;
 }) {
   const [box, width] = useWidth<HTMLDivElement>();
   const id = useId();
@@ -216,11 +220,23 @@ export function LineChart({
         tabIndex={0}
         role="group"
         aria-label={`${title}. ${description}`}
-        onKeyDown={cursor.onKeyDown}
+        onKeyDown={(e) => {
+          if (onPick && e.key === "Enter" && cursor.index !== null) onPick(cursor.index);
+          cursor.onKeyDown(e);
+        }}
         onPointerMove={pick}
         onPointerDown={pick}
+        onClick={
+          onPick
+            ? (e) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                onPick(Math.max(0, Math.min(x.length - 1, Math.round(((e.clientX - rect.left - MARGIN.left) / inner.w) * (x.length - 1)))));
+              }
+            : undefined
+        }
         onPointerLeave={(e) => e.pointerType === "mouse" && cursor.setIndex(null)}
         onBlur={() => cursor.setIndex(null)}
+        data-pickable={onPick ? "" : undefined}
       >
         {width > 0 && (
           <svg width={width} height={height} role="img" aria-labelledby={`${id}-title ${id}-desc`}>

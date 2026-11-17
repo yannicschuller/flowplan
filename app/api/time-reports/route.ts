@@ -1,6 +1,7 @@
 // Time reports (lib/time-reports.ts): GET the report of a database (`page`)
 // or a workspace (`workspace`) as JSON or CSV; POST changes the billing
 // status of entries and the hourly rates of a workspace.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
@@ -14,7 +15,7 @@ function failure(e: unknown) {
   if (!(e instanceof HttpError)) console.error(e);
   return Response.json(
     { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 }
 

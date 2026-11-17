@@ -1,3 +1,6 @@
+import { currentRequestId, serverError } from "@/lib/request-context";
+import { e2eBuild } from "@/lib/e2e-build";
+import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
 import { CSV_FORMULA } from "@/lib/cell-text";
 import { jsonWithTag } from "@/lib/etag";
 import { linkTargets } from "@/lib/link-targets";
@@ -181,14 +184,18 @@ function error(e: unknown) {
       { status: 400 },
     );
   if (!(e instanceof HttpError)) console.error(e);
+  const status = e instanceof HttpError ? e.status : serverError(e);
+  // The request id (also in X-Request-Id) for a person to quote (lib/error-details.ts).
+  const requestId = status >= 500 ? currentRequestId() : undefined;
   return NextResponse.json(
     {
       error:
         e instanceof HttpError
           ? e.message
           : "Die Anfrage konnte nicht verarbeitet werden.",
+      ...(requestId ? { requestId } : {}),
     },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status },
   );
 }
 export const GET = withRequestLocale(handleGET);
@@ -196,6 +203,18 @@ async function handleGET(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  // The browser specs' failing endpoint (lib/e2e-failure.ts); `e2eBuild` is
+  // the constant `false` in every other build.
+  if (e2eBuild) {
+    const kind = e2eFailure((await params).path, new URL(req.url));
+    if (kind === "uncaught") failForE2e();
+    if (kind === "caught")
+      try {
+        failForE2e();
+      } catch (e) {
+        return error(e);
+      }
+  }
   try {
     const { path } = await params;
     const url = new URL(req.url);

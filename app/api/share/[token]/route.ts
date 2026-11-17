@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
@@ -17,7 +18,7 @@ function failure(e: unknown) {
       ? e.status
       : e instanceof z.ZodError || e instanceof SyntaxError
         ? 400
-        : 500;
+        : serverError(e);
   return NextResponse.json(
     {
       error:

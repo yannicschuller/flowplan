@@ -21,6 +21,7 @@
 //
 // Browser sessions and API tokens; tokens need "KI und Transkription" for
 // everything that records, transcribes or asks the AI.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -59,7 +60,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 function error(e: unknown) {
   if (e instanceof z.ZodError) return NextResponse.json({ error: "Ungültige Eingabe." }, { status: 400 });
   if (!(e instanceof HttpError)) console.error("Besprechung:", e);
-  const status = e instanceof HttpError ? e.status : 500;
+  const status = e instanceof HttpError ? e.status : serverError(e);
   return NextResponse.json(
     {
       error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden.",

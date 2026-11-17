@@ -30,7 +30,7 @@ export const rangeLabel = (range: string, t: (de: string, en: string) => string)
   range === "1h" ? t("1 Std.", "1 h") : range === "7d" ? t("7 Tage", "7 days") : t("24 Std.", "24 h");
 
 // Requests per minute (averaged over the bucket) – or the 5xx errors.
-export function RequestsChart({ requests, kind = "requests", height }: { requests: MonitoringLive["requests"]; kind?: "requests" | "errors"; height?: number }) {
+export function RequestsChart({ requests, kind = "requests", height, onPick }: { requests: MonitoringLive["requests"]; kind?: "requests" | "errors"; height?: number; onPick?: (at: number) => void }) {
   const t = useT();
   const perMinute = requests.bucketMs / 60_000;
   const values = requests.points.map((p) => {
@@ -53,6 +53,7 @@ export function RequestsChart({ requests, kind = "requests", height }: { request
       formatTip={dateTime}
       formatY={(n) => (n >= 1000 ? compact(n) : num(n, n < 10 && n % 1 ? 1 : 0))}
       height={height ?? (kind === "requests" ? 200 : 110)}
+      onPick={onPick ? (i) => requests.points[i] && onPick(requests.points[i].at) : undefined}
     />
   );
 }

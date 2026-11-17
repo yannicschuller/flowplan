@@ -19,6 +19,8 @@ export type ClassifiedError = {
   // The server's own words (an HttpError 4xx, already in the reader's
   // language) when they say more than the kind's copy.
   detail?: string;
+  // A server error's request id (X-Request-Id), for the person to quote.
+  requestId?: string;
 };
 
 export type Translate = (de: string, en: string) => string;
@@ -65,7 +67,16 @@ function recall(message: string) {
 
 type Statusful = { message?: unknown; status?: unknown; transient?: unknown; detail?: unknown };
 
+// "… Fehler-ID: abc123" (components/ui.tsx adds it to a 5xx message).
+const REQUEST_ID = /(?:Fehler-ID|Error ID): ([A-Za-z0-9]{4,32})\s*$/;
 export function classifyError(error: unknown): ClassifiedError {
+  const found = classifyKind(error);
+  if (found.kind !== "server" || found.requestId) return found;
+  const message = typeof error === "string" ? error : typeof (error as Statusful)?.message === "string" ? ((error as Statusful).message as string) : "";
+  const id = REQUEST_ID.exec(message)?.[1];
+  return id ? { ...found, requestId: id } : found;
+}
+function classifyKind(error: unknown): ClassifiedError {
   if (error && typeof error === "object" && "kind" in error && typeof (error as ClassifiedError).kind === "string")
     return error as ClassifiedError;
   // fetch() rejects with a TypeError when the network is gone.
@@ -98,7 +109,7 @@ export type ErrorText = { title: string; detail?: string };
 
 // The reader's words for a kind; `detail` from classifyError() stays as the
 // second line (or becomes the only line for an otherwise unknown failure).
-export function describeError({ kind, detail }: ClassifiedError, t: Translate): ErrorText {
+export function describeError({ kind, detail, requestId }: ClassifiedError, t: Translate): ErrorText {
   const title = {
     offline: t("Keine Verbindung – bitte prüfe dein Netz und versuche es erneut.", "No connection – check your network and try again."),
     unauthorized: t("Du wurdest abgemeldet – melde dich erneut an, um deine Änderungen zu behalten.", "You were signed out – sign in again to keep your changes."),
@@ -111,6 +122,8 @@ export function describeError({ kind, detail }: ClassifiedError, t: Translate): 
     unknown: t("Das hat nicht geklappt. Bitte erneut versuchen.", "That did not work. Try again."),
   }[kind];
   // Nothing new in it ("This page is locked." under the locked copy).
+  // A server error with its request id: the id is the second line.
+  if (kind === "server" && requestId) return { title, detail: t(`Fehler-ID: ${requestId}`, `Error ID: ${requestId}`) };
   const said = (s: string) => s.toLowerCase().replace(/[.!]+$/, "").trim();
   if (!informative(detail) || said(title).includes(said(detail))) return { title };
   // An unknown failure with the server's own explanation: that explanation

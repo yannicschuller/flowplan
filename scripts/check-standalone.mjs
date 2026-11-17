@@ -141,6 +141,12 @@ try {
   check("Kein Build für die Browser-Specs", serverFiles.config?.env?.FLOWPLAN_E2E_BUILD === "", JSON.stringify(serverFiles.config?.env?.FLOWPLAN_E2E_BUILD));
   const anonymous = await fetch(`${origin}/api/bootstrap`);
   check("API verlangt Anmeldung", anonymous.status === 401);
+  // Every answer names its request id (lib/request-context.ts) for the
+  // error details; the specs' failing endpoint (lib/e2e-failure.ts) is not
+  // in this build.
+  check("Antwort mit X-Request-Id", /^[A-Za-z0-9]{12}$/.test(anonymous.headers.get("x-request-id") || ""), anonymous.headers.get("x-request-id"));
+  const e2eFail = await fetch(`${origin}/api/e2e/fail?kind=uncaught`);
+  check("Kein Test-Fehlerendpunkt in Produktion", e2eFail.status !== 500, String(e2eFail.status));
   const unscraped = await fetch(`${origin}/api/metrics`);
   check("Metriken verlangen Token", unscraped.status === 401);
   const metrics = await fetch(`${origin}/api/metrics`, {

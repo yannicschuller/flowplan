@@ -2,6 +2,7 @@
 // only: connecting an account (OAuth redirect and callback), the person's
 // connections and mappings, the calendars of a connection, and "Jetzt
 // synchronisieren". Changing mappings goes through /api/command.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z } from "zod";
@@ -29,7 +30,7 @@ async function browserUser() {
   return user;
 }
 function failure(error: unknown) {
-  const status = error instanceof HttpError ? error.status : 500;
+  const status = error instanceof HttpError ? error.status : serverError(error);
   if (status === 500) console.error("Calendar sync route", error);
   return NextResponse.json({ error: error instanceof HttpError ? error.message : "Fehler" }, { status });
 }

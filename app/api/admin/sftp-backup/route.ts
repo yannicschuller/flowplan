@@ -1,6 +1,7 @@
 // Administration → Speicher & Sicherung → SFTP (lib/sftp-backup.ts, #128),
 // admins only. GET: settings (without secrets) and the last run.
 // POST { action }: save, remove, test, trust { fingerprint }, run.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/permissions";
@@ -21,7 +22,7 @@ const failure = (e: unknown) => {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe." }, { status: 400, headers });
   // Never the error object itself: it could carry what was entered.
   if (!(e instanceof HttpError)) console.error("SFTP-Sicherung:", (e as Error)?.message);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500, headers });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : serverError(e), headers });
 };
 const state = async () => ({ settings: await sftpBackupSettings(), status: await sftpBackupStatus() });
 

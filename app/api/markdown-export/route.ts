@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { requireUser, checkOrigin, HttpError } from "@/lib/auth";
 import { exportMarkdown } from "@/lib/markdown-export";
@@ -79,7 +80,7 @@ async function exportPost(req: Request) {
             ? error.status
             : error instanceof z.ZodError || error instanceof SyntaxError
               ? 400
-              : 500,
+              : serverError(error),
       },
     );
   }

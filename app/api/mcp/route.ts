@@ -1,6 +1,7 @@
 // MCP endpoint (Streamable HTTP, JSON answers, no sessions). Only personal
 // API tokens sign in here, never the browser session: a site the person
 // visits cannot use it, and every call carries the token's own rights.
+import { currentRequestId, serverError } from "@/lib/request-context";
 import { after } from "next/server";
 import { appUrl, HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { identityFromApiToken } from "@/lib/api-tokens";
@@ -91,7 +92,7 @@ async function handlePOST(req: Request) {
   } catch (e) {
     if (e instanceof HttpError) return rpcError(e.status, -32000, e.message);
     console.error("MCP request failed", e);
-    return rpcError(500, -32603, "Internal error.");
+    return rpcError(serverError(e), -32603, `Internal error.${currentRequestId() ? ` Request id: ${currentRequestId()}` : ""}`);
   }
 }
 

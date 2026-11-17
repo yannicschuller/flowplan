@@ -1,6 +1,7 @@
 // Administration → landing page: the facts behind each tile
 // (lib/admin-summary.ts). Administrators in the browser only; API tokens
 // never, as for the operations overview.
+import { serverError } from "@/lib/request-context";
 import { HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import { requireOpsAdmin } from "@/lib/admin-ops";
@@ -20,7 +21,7 @@ export const GET = withRequestLocale(async () => {
     if (!(e instanceof HttpError)) console.error(e);
     return Response.json(
       { error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 });

@@ -19,6 +19,8 @@ import { enterArea, noteStream, type CpuArea } from "./server-metrics";
 import { clientAddress } from "./client-address";
 import { noteRefusal } from "./security-detect";
 import { securityEvent } from "./security-events";
+import { enterRequest, newRequestId, roleOf, REQUEST_ID_HEADER, type RequestContext } from "./request-context";
+import { captureError } from "./error-details";
 
 const SKIP = /^\/(?:_next\/(?:static|image|webpack-hmr)|__nextjs|fonts\/|icons\/|favicon\.ico|sw\.js|manifest\.webmanifest|icon\.svg|fonts\.css|api\/health(?:[/?]|$)|api\/metrics(?:[/?]|$))/;
 
@@ -36,7 +38,7 @@ export function requestArea(url: string | undefined): CpuArea {
 
 const holder = globalThis as unknown as { flowplanRequestMetrics?: boolean };
 type Message = { request: IncomingMessage; response: ServerResponse };
-type Started = { at: number; route: string | null; done?: () => void; stream?: boolean };
+type Started = { at: number; route: string | null; done?: () => void; stream?: boolean; context?: RequestContext };
 
 export function startRequestMetrics() {
   if (holder.flowplanRequestMetrics) return;
@@ -44,12 +46,21 @@ export function startRequestMetrics() {
   const started = new WeakMap<object, Started>();
   diagnosticsChannel.subscribe("http.server.request.start", (message) => {
     const { request, response } = message as Message;
-    if (!countedPath(request?.url)) return;
+    if (!countedPath(request?.url)) {
+      enterRequest(undefined);
+      return;
+    }
     try {
       const stream = String(request.headers?.accept || "").includes("text/event-stream");
       if (stream) noteStream(1);
       const route = routeKey(request.method, request.url);
+      // The request's id and context for the error details (lib/error-details.ts):
+      // carried by everything this request runs, and named in the answer.
+      const context: RequestContext = { id: newRequestId(), method: route.split(" ")[0], route };
+      enterRequest(context);
+      if (!response.headersSent) response.setHeader(REQUEST_ID_HEADER, context.id);
       started.set(response, {
+        context,
         at: performance.now(),
         // /api/command is listed per action (noteCommand in lib/api.ts).
         route: route === COMMAND_ROUTE ? null : route,
@@ -79,6 +90,7 @@ export function startRequestMetrics() {
     } catch {
       // Counting never disturbs a request.
     }
+    noteFailure(response.statusCode, entry.context);
   });
   // A connection that closes before its response ends (an event stream the
   // browser left) never finishes: its span and stream end here.
@@ -89,6 +101,15 @@ export function startRequestMetrics() {
       if (!response.writableFinished) finish(response);
     });
   });
+}
+
+// An answer with status ≥ 500 is kept in detail (lib/error-details.ts) with
+// the exception the request noted, if any – and so is an exception Next.js
+// reported for a request that still answered below 500 (server rendering
+// that showed an error boundary).
+export function noteFailure(status: number, context: RequestContext | undefined) {
+  if (!context || !(status >= 500 || context.error !== undefined)) return;
+  captureError({ method: context.method, route: context.route, action: context.action, status, requestId: context.id, role: roleOf(context), error: context.error });
 }
 
 // Refused API requests per address (lib/security-detect.ts): many of them in

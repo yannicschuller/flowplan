@@ -143,6 +143,17 @@ live charts go above the tiles (`status` slot of the shell).
   from `lib/ai/run.ts`; storage per day), written once a minute by
   `lib/metrics-worker.ts`. Kept 48 h / 35 d / 400 d. `FLOWPLAN_METRICS=off`
   or the switch in the section turns it off. Tests: `tests/metrics.test.ts`.
+- Error details (`#admin/monitoring/errors`,
+  `components/settings/admin/monitoring-errors.tsx`,
+  `/api/admin/monitoring?view=errors`, POST `errors.clear`):
+  `lib/error-details.ts` groups every 5xx (and failing workers, jobs, MCP
+  tools) by route, command, error name and top app frame in `error_groups`
+  (14 days, 500 groups, the last 20 occurrences). The request's context
+  (`lib/request-context.ts`: request id, route pattern, command, role, the
+  exception) starts in `lib/request-metrics.ts` and travels by
+  AsyncLocalStorage; route handlers' catches note the exception with
+  `serverError(e)`, Next's own with `onRequestError` (instrumentation.ts).
+  Every answer carries `X-Request-Id`. Tests: `tests/error-details.test.ts`.
 
 ## Adding or moving a section
 

@@ -4,6 +4,7 @@
 // people click away once (`banners.*`) and the push
 // relay's signing keys (`pushRelay.keys`, `pushRelay.rotate`,
 // lib/push-identity.ts). Administrators only; API tokens never.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
@@ -19,7 +20,7 @@ function failure(e: unknown) {
   if (!(e instanceof HttpError)) console.error(e);
   return Response.json(
     { error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 }
 const admin = async () => requireOpsAdmin(await requireUser());

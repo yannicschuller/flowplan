@@ -10,6 +10,7 @@
 //   GET  env                 configuration: names and keyed hashes only
 //   POST freeze              read-only for the final copy
 //   POST finish              the move is done: banner, token used up
+import { serverError } from "@/lib/request-context";
 import { HttpError } from "@/lib/auth";
 import { authorizeMove, envReport, finishSource, freezeSource, moveManifest, movePath, serveMoveFile, snapshotPath } from "@/lib/instance-move";
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const failure = (e: unknown) => {
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500, headers });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : serverError(e), headers });
 };
 
 export async function GET(req: Request, { params }: { params: Promise<{ path: string[] }> }) {

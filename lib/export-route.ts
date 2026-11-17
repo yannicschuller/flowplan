@@ -1,6 +1,7 @@
 // What the download routes of the document exports share (app/api/export/*):
 // the signed-in person, the query, error answers as JSON in the reader's
 // language, and the attachment headers.
+import { serverError } from "./request-context";
 import { z } from "zod";
 import { requireUser, HttpError } from "./auth";
 import { withRequestLocale } from "./content-locale";
@@ -25,7 +26,7 @@ export function exportRoute(run: (user: Identity, query: URLSearchParams) => Pro
                 ? "Ungültige Exportoptionen."
                 : "Export konnte nicht erstellt werden.",
         },
-        { status: error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : 500, headers },
+        { status: error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : serverError(error), headers },
       );
     }
   });

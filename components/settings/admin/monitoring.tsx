@@ -6,7 +6,7 @@
 // actions – then the background workers, alerts by webhook
 // (/api/admin/operations) and the switch of the usage statistics. The
 // maintenance notice has its own section (#admin/maintenance).
-// Anchors: #admin/monitoring/<health|recommendations|traffic|server|people|signins|refused|storage|
+// Anchors: #admin/monitoring/<health|recommendations|traffic|errors|server|people|signins|refused|storage|
 // deliveries|ai|queues|events|actions|system|workers|instance|alerts|metrics>.
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -51,6 +51,7 @@ import { ago, bytes, clock, compact, dateTime, dayAt, longDay, ms, num, percent,
 import { pushTile, relayHost } from "./push-format";
 import { ServerCard } from "./monitoring-server";
 import { Recommendations } from "./monitoring-advice";
+import { ErrorDetailsCard, type ErrorSlot } from "./monitoring-errors";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
@@ -58,6 +59,9 @@ type Range = "1h" | "24h" | "7d";
 export default function MonitoringSection() {
   const t = useT();
   const [range, setRange] = useState<Range>("24h");
+  // A time slot picked in the error chart: the error details show only it.
+  const [slot, setSlot] = useState<ErrorSlot | null>(null);
+  useEffect(() => setSlot(null), [range]);
   const live = useLive<MonitoringOverview>(`/api/admin/monitoring?range=${range}`);
   const ops = useOps();
   const d = live.data;
@@ -95,7 +99,8 @@ export default function MonitoringSection() {
           <Health d={d} />
           <Kpis d={d} />
           <Recommendations data={d.advice} onChange={() => void live.reload()} />
-          <Traffic d={d} />
+          <Traffic d={d} onPick={(at) => setSlot({ from: at, to: at + d.requests.bucketMs })} />
+          <ErrorDetailsCard range={range} refreshKey={d.errorsDay.errors} slot={slot} onSlot={setSlot} />
           <ServerCard s={d.server} range={range} />
           {/* Two stacks of cards that never leave holes (one stack on narrow
               screens); each card stays in its column when it grows. */}
@@ -403,7 +408,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
         <Sparkline values={tokens} label={t("KI-Tokens je Tag, 14 Tage", "AI tokens per day, 14 days")} height={26} />
       </KpiTile>
       <KpiTile
-        href="#admin/monitoring/traffic"
+        href="#admin/monitoring/errors"
         icon={WarningCircle}
         tone={on && e.errors ? "error" : undefined}
         label={t("Fehler 24 Std.", "Errors 24 h")}
@@ -469,7 +474,7 @@ function Delta({ direction, bad, good, title, children }: { direction: "up" | "d
 
 /* ---------- Charts ---------- */
 
-function Traffic({ d }: { d: MonitoringOverview }) {
+function Traffic({ d, onPick }: { d: MonitoringOverview; onPick: (at: number) => void }) {
   const t = useT();
   const pts = d.requests.points;
   const total = pts.reduce((a, p) => a + (p.requests || 0), 0),
@@ -492,7 +497,14 @@ function Traffic({ d }: { d: MonitoringOverview }) {
         <>
           <RequestsChart requests={d.requests} />
           <h3 className="mon-subhead">{t(`Fehler (5xx) je ${long ? "Stunde" : d.requests.range === "24h" ? "5 Minuten" : "Minute"}`, `Errors (5xx) per ${long ? "hour" : d.requests.range === "24h" ? "5 minutes" : "minute"}`)}</h3>
-          <RequestsChart requests={d.requests} kind="errors" />
+          <RequestsChart
+            requests={d.requests}
+            kind="errors"
+            onPick={(at) => {
+              onPick(at);
+              document.getElementById("errors")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
           <ChartTable
             caption={t("Anfragen und Fehler", "Requests and errors")}
             head={[t("Zeit", "Time"), t("Anfragen", "Requests"), t("Fehler (5xx)", "Errors (5xx)"), "p95"]}
@@ -755,6 +767,7 @@ function eventText(e: MonitoringEvent, t: T): { title: string; detail?: string }
         "admin.ops.maintenance": t("Wartungshinweis", "Maintenance notice"),
         "admin.metrics": t("Statistik", "Statistics"),
         "admin.metrics.clear": t("Statistik gelöscht", "Statistics deleted"),
+        "admin.errors.clear": t("Fehlerdetails gelöscht", "Error details cleared"),
       };
       const name = names[e.subject || ""] || e.subject;
       return { title: t(`Einstellung geändert: ${name}`, `Setting changed: ${name}`), detail: e.detail };

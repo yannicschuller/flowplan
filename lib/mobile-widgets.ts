@@ -12,6 +12,7 @@
 // not entered ("locked") and only a status for end-to-end encrypted spaces,
 // whose content the server cannot read anyway. Titles follow the language
 // of the profile, else the app's (`lang`, Accept-Language).
+import { serverError } from "./request-context";
 import { toPlain } from "./inline-markdown";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -1235,7 +1236,7 @@ export async function widgetsData(user: Identity, input: unknown, now = Date.now
       try {
         return { id: w.id ?? null, kind: w.kind, ok: true as const, data: await widgetData(ctx, w.kind, w.config) };
       } catch (error) {
-        const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : 500;
+        const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : serverError(error);
         if (status === 500) console.error("Widget", w.kind, error);
         return {
           id: w.id ?? null,

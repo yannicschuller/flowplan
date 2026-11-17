@@ -118,3 +118,22 @@ export async function register() {
     startRuntimeMetrics();
   }
 }
+
+// An error Next.js caught itself (a route handler or server rendering that
+// threw, a server action): the request it belongs to keeps it for the error
+// details of the monitoring (lib/error-details.ts) – the 5xx answer that
+// follows is captured with it. Synchronous and without I/O.
+export async function onRequestError(error: unknown, request: { path: string; method: string }, context: { routePath?: string; routeType?: string }) {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { noteRequestError, requestContext } = await import("./lib/request-context");
+  if (requestContext()) {
+    noteRequestError(error);
+    return;
+  }
+  // No request context (should not happen): kept on its own, with the
+  // route file Next.js names – never the path as typed.
+  const { captureError } = await import("./lib/error-details");
+  const { routeKey } = await import("./lib/metrics");
+  const route = String(request?.path || "").startsWith("/api/") ? routeKey(request.method, request.path) : `${/^[A-Z]{3,7}$/.test(request?.method || "") ? request.method : "GET"} (pages)`;
+  captureError({ method: request?.method, route: context?.routePath ? `${route} [${String(context.routePath).slice(0, 80)}]` : route, status: 500, error });
+}
