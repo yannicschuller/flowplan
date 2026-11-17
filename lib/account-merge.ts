@@ -45,6 +45,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "local_accounts.user_id": "custom",
   "ldap_accounts.user_id": "custom",
   "scim_users.user_id": "custom",
+  // AI counts per person (lib/metrics.ts forgetAiPerson): kept without a person.
+  "metrics_ai_usage.user_id": "custom",
   "user_totp.user_id": "custom",
   "recovery_codes.user_id": "custom",
   "e2ee_identities.user_id": "custom",
