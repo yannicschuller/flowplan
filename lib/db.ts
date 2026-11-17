@@ -1553,6 +1553,13 @@ function migrate(d: DatabaseSync) {
   // number stays.
   d.exec(`CREATE TABLE IF NOT EXISTS invite_links(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,token_sealed TEXT,role TEXT NOT NULL CHECK(role IN ('editor','viewer')),guest INTEGER NOT NULL DEFAULT 0,max_uses INTEGER,uses INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL,created_by TEXT REFERENCES users(id),created_at INTEGER NOT NULL,revoked_at INTEGER);
     CREATE INDEX IF NOT EXISTS invite_links_workspace ON invite_links(workspace_id,expires_at);`);
+  // Formatted notification messages (#330, lib/notify-text.ts):
+  // notifications.markup holds the inline Markdown of a workflow's or a
+  // rule's message (with the title) when it has formatting; `body` stays
+  // its plain text for every other channel. A nullable column only – an
+  // older version reads the plain body – so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "markup"))
+    d.exec("ALTER TABLE notifications ADD COLUMN markup TEXT");
   migrateServerMetrics(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)

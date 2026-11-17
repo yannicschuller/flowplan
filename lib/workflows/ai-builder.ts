@@ -23,6 +23,7 @@ import { aiJson } from "../ai/json";
 import { requireAi } from "../ai/run";
 import { workflowChatHooks } from "../webhooks";
 import { catalogJson, isTrigger, nodeSpec } from "./catalog";
+import { cleanNotifyGraph } from "../notify-text";
 import { checkGraph, GRAPH_FORMAT, GRAPH_VERSION, issueMessage, nodePorts, parseGraph, type GraphIssue, type WorkflowEdge, type WorkflowGraph, type WorkflowNode } from "./graph";
 import { layoutGraph } from "./templates";
 import { draftOf, requireWorkflow } from "./store";
@@ -196,7 +197,9 @@ export function sanitizeAiGraph(answer: AiAnswer, meta: BuilderMeta, timeZone = 
     edges.push({ id: `e_ai${edges.length + 1}`, from: { node: from.id, port }, to: { node: to.id, port: "in" } });
   }
   const graph = layoutGraph({ format: GRAPH_FORMAT, version: GRAPH_VERSION, settings: { timeZone, triggerOnOwnChanges: false, limits: {} }, nodes, edges });
-  return { graph: parseGraph(graph), dropped, gaps };
+  // A message the AI wrote keeps its formatting, but no links or mentions
+  // (#330): text the model read must not add either.
+  return { graph: cleanNotifyGraph(parseGraph(graph), { links: false, mentions: false }), dropped, gaps };
 }
 
 // The metadata of the workspace for this person, filtered for the AI.

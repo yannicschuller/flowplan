@@ -408,6 +408,9 @@ export type Bootstrap = {
     thread_id: string | null;
     id: string;
     body: string;
+    // The formatted message (#330, lib/notify-text.ts) when it has
+    // formatting; `body` is its plain text.
+    markup?: string | null;
     page_id: string | null;
     // Where it leads beyond pages (lib/page-location.ts isNotificationLink).
     link?: string | null;

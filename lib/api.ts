@@ -510,7 +510,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     notifications: await mapAsync(await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
       "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC,seq DESC LIMIT 100",
       user.id,
-    ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE } : n)),
+    ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE, markup: null } : n)),
     // Which AI features work here, with which provider, and which pages the
     // AI may not read (lib/ai). Never keys or addresses beyond the host.
     ai: await aiStatus(user, workspace.id, pages),

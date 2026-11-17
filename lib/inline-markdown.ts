@@ -16,10 +16,20 @@
 // Pandoc's bracketed spans add underline and the text colours of the
 // document editor – [text]{.underline}, [text]{.color-blue}. Without the
 // option such a span stays text, so text properties read as before.
+//
+// Notification messages (#330, lib/notify-text.ts) add two atoms:
+// `{ mentions: true }` reads a person as a bracketed span with the
+// attribute of the editor's mention HTML – [@Anna]{data-mention=<id>} –
+// and `{ math: true }` an inline formula as $x^2$ (Pandoc; the opening $
+// is followed and the closing $ preceded by a non-space, the closing $ is
+// not followed by a digit, so "$5 and $10" stays text) or $`x^2`$ (the
+// Markdown export's form); \$ keeps a dollar sign literal. `{ slots: true }`
+// keeps the private-use markers U+E000 n U+E001 as atoms of their own (the
+// placeholders of a workflow's message while it is parsed).
 import type { Field } from "./types";
 import { isTextColorId, textColorByHex, type TextColorId } from "./text-colors";
 
-export type InlineOptions = { spans?: boolean };
+export type InlineOptions = { spans?: boolean; mentions?: boolean; math?: boolean; slots?: boolean };
 
 export type InlineRun = {
   // May contain "\n" (a line break).
@@ -33,10 +43,24 @@ export type InlineRun = {
   // Only with `{ spans: true }`.
   underline?: boolean;
   color?: TextColorId;
+  // Atoms (#330), never merged with their neighbours: a mention (the
+  // person's id; `text` is the label with its "@"), a formula (`text` is
+  // its LaTeX) and a slot (`text` is the marker, `slot` its number).
+  mention?: string;
+  math?: boolean;
+  slot?: number;
 };
 
 const ESCAPABLE = new Set(["\\", "*", "_", "~", "`", "[", "]"]);
 const SPECIAL = /[\\*_~`[\]]/g;
+// With formulas a dollar sign is escaped as well.
+const SPECIAL_MATH = /[\\*_~`[\]$]/g;
+const escapable = (c: string | undefined, options: InlineOptions) => c !== undefined && (ESCAPABLE.has(c) || (c === "$" && !!options.math));
+export const isAtom = (run: InlineRun) => !!run.mention || !!run.math || run.slot !== undefined;
+// A slot's marker (lib/notify-text.ts).
+export const slotMarker = (n: number) => `\uE000${n}\uE001`;
+const MENTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const MAX_INLINE_MATH = 1000;
 
 // Every text property but the title (the first property) carries inline
 // Markdown; the title stays plain text.
@@ -45,9 +69,12 @@ export function isFormattedText(field: Pick<Field, "id" | "type"> | undefined, f
 }
 
 // Plain text → inline Markdown that shows exactly this text.
-export function escapeInline(text: string): string {
-  // U+0001/U+0002 are the serializer's italic placeholders.
-  return normalizeBreaks(text).replace(/[\u0001\u0002]/g, "").replace(SPECIAL, (c) => `\\${c}`);
+export function escapeInline(text: string, options: InlineOptions = {}): string {
+  // U+0001/U+0002 are the serializer's italic placeholders, U+E000/U+E001
+  // the markers of slots.
+  return normalizeBreaks(text)
+    .replace(/[\u0001-\u0004\uE000\uE001]/g, "")
+    .replace(options.math ? SPECIAL_MATH : SPECIAL, (c) => `\\${c}`);
 }
 
 function normalizeBreaks(text: string) {
@@ -82,7 +109,7 @@ export function parseInline(markdown: unknown, options: InlineOptions = {}): Inl
   if (typeof markdown !== "string" || !markdown) return [];
   const source = normalizeBreaks(markdown);
   const runs: InlineRun[] = [];
-  parseRange(source, 0, source.length, {}, runs, 0, !!options.spans);
+  parseRange(source, 0, source.length, {}, runs, 0, options);
   return mergeRuns(runs);
 }
 
@@ -95,7 +122,7 @@ export function mergeRuns(runs: InlineRun[]): InlineRun[] {
   for (const run of runs) {
     if (!run.text) continue;
     const last = out[out.length - 1];
-    if (last && sameMarks(last, run)) last.text += run.text;
+    if (last && !isAtom(last) && !isAtom(run) && sameMarks(last, run)) last.text += run.text;
     else out.push(cleanRun(run));
   }
   return out;
@@ -110,6 +137,9 @@ function cleanRun(run: InlineRun): InlineRun {
   if (run.href) out.href = run.href;
   if (run.underline) out.underline = true;
   if (run.color) out.color = run.color;
+  if (run.mention) out.mention = run.mention;
+  if (run.math) out.math = true;
+  if (run.slot !== undefined) out.slot = run.slot;
   return out;
 }
 
@@ -132,7 +162,7 @@ function codeEnd(s: string, from: number, end: number, count: number) {
 // Skips one unit that a delimiter search must not look into: an escape or
 // a code span. Returns the next index.
 function skipUnit(s: string, i: number, end: number) {
-  if (s[i] === "\\" && i + 1 < end && ESCAPABLE.has(s[i + 1])) return i + 2;
+  if (s[i] === "\\" && i + 1 < end && (ESCAPABLE.has(s[i + 1]) || s[i + 1] === "$")) return i + 2;
   if (s[i] === "`") {
     let n = 0;
     while (i + n < end && s[i + n] === "`") n++;
@@ -168,6 +198,60 @@ function spanAt(s: string, i: number, end: number) {
     else if (cls.startsWith("color-") && isTextColorId(cls.slice(6))) marks.color = cls.slice(6) as TextColorId;
   }
   return { labelStart: i + 1, labelEnd: j, marks, next: close + 1 };
+}
+
+// A mention at `i` ("[@Anna]{data-mention=<id>}", #330): the label (with
+// its "@", escapes resolved), the person's id and the end, or null. The
+// label is plain text.
+function mentionAt(s: string, i: number, end: number, options: InlineOptions) {
+  if (s[i + 1] !== "@") return null;
+  let j = i + 1,
+    label = "";
+  while (j < end && j - i < 210) {
+    const c = s[j];
+    if (c === "\\" && escapable(s[j + 1], options)) {
+      label += s[j + 1];
+      j += 2;
+      continue;
+    }
+    if (c === "[" || c === "\n") return null;
+    if (c === "]") break;
+    label += c;
+    j++;
+  }
+  if (s[j] !== "]" || s[j + 1] !== "{") return null;
+  const m = /^\{\s*data-mention=([0-9a-fA-F-]{36})\s*\}/.exec(s.slice(j + 1, Math.min(end, j + 60)));
+  if (!m || !MENTION_ID.test(m[1]) || label.length < 2 || label.trim() !== label) return null;
+  return { label, id: m[1].toLowerCase(), next: j + 1 + m[0].length };
+}
+
+// A formula at `i` ("$x^2$" or "$`x^2`$", #330): its LaTeX and the end, or
+// null.
+function mathAt(s: string, i: number, end: number) {
+  if (s[i + 1] === "`") {
+    let n = 0;
+    while (i + 1 + n < end && s[i + 1 + n] === "`") n++;
+    const close = codeEnd(s, i + 1 + n, end, n);
+    if (close < 0 || s[close + n] !== "$") return null;
+    const expression = s.slice(i + 1 + n, close).trim();
+    return expression && expression.length <= MAX_INLINE_MATH ? { expression, next: close + n + 1 } : null;
+  }
+  if (isSpace(s[i + 1]) || s[i + 1] === "$") return null;
+  let j = i + 1;
+  while (j < end && j - i <= MAX_INLINE_MATH + 1) {
+    const c = s[j];
+    if (c === "\n") return null;
+    if (c === "\\") {
+      j += 2;
+      continue;
+    }
+    if (c === "$") {
+      if (isSpace(s[j - 1]) || /[0-9]/.test(s[j + 1] || "")) return null;
+      return { expression: s.slice(i + 1, j), next: j + 1 };
+    }
+    j++;
+  }
+  return null;
 }
 
 // A link at `i` ("[label](url)"): the label's range and the end, or null.
@@ -208,7 +292,8 @@ type DelimNode = { kind: "delim"; ch: string; len: number; orig: number; open: b
 // when no space follows (_ also not after a letter or digit) and closes
 // when no space precedes it (_ also not before a letter or digit); ~~ is
 // strike. Inner delimiters close first ("***a***", "**a*b***").
-function parseRange(s: string, start: number, end: number, marks: Marks, out: InlineRun[], depth: number, spans: boolean) {
+function parseRange(s: string, start: number, end: number, marks: Marks, out: InlineRun[], depth: number, options: InlineOptions) {
+  const spans = !!options.spans;
   const nodes: (TextNode | DelimNode)[] = [];
   let buf = "";
   const flush = () => {
@@ -218,10 +303,37 @@ function parseRange(s: string, start: number, end: number, marks: Marks, out: In
   let i = start;
   while (i < end) {
     const c = s[i];
-    if (c === "\\" && i + 1 < end && ESCAPABLE.has(s[i + 1])) {
+    if (c === "\\" && i + 1 < end && escapable(s[i + 1], options)) {
       buf += s[i + 1];
       i += 2;
       continue;
+    }
+    if (c === "\uE000" && options.slots) {
+      const m = /^\uE000(\d{1,4})\uE001/.exec(s.slice(i, Math.min(end, i + 6)));
+      if (m) {
+        flush();
+        nodes.push({ kind: "text", text: m[0], marks: { ...marks, slot: Number(m[1]) } });
+        i += m[0].length;
+        continue;
+      }
+    }
+    if (c === "$" && options.math && !marks.href && !marks.code) {
+      const math = mathAt(s, i, end);
+      if (math) {
+        flush();
+        nodes.push({ kind: "text", text: math.expression, marks: { ...marks, math: true } });
+        i = math.next;
+        continue;
+      }
+    }
+    if (c === "[" && options.mentions && !marks.href) {
+      const mention = mentionAt(s, i, end, options);
+      if (mention) {
+        flush();
+        nodes.push({ kind: "text", text: mention.label, marks: { ...marks, mention: mention.id } });
+        i = mention.next;
+        continue;
+      }
     }
     if (c === "`") {
       let n = 0;
@@ -245,7 +357,7 @@ function parseRange(s: string, start: number, end: number, marks: Marks, out: In
       if (span) {
         flush();
         const label: InlineRun[] = [];
-        parseRange(s, span.labelStart, span.labelEnd, { ...marks, ...span.marks }, label, depth + 1, spans);
+        parseRange(s, span.labelStart, span.labelEnd, { ...marks, ...span.marks }, label, depth + 1, options);
         for (const run of label) {
           const { text, ...runMarks } = run;
           nodes.push({ kind: "text", text, marks: runMarks });
@@ -260,7 +372,7 @@ function parseRange(s: string, start: number, end: number, marks: Marks, out: In
         flush();
         const href = safeHref(link.url);
         const label: InlineRun[] = [];
-        parseRange(s, link.labelStart, link.labelEnd, href ? { ...marks, href } : marks, label, depth + 1, spans);
+        parseRange(s, link.labelStart, link.labelEnd, href ? { ...marks, href } : marks, label, depth + 1, options);
         if (!label.length && href) label.push({ ...marks, href, text: link.url });
         for (const run of label) {
           const { text, ...runMarks } = run;
@@ -335,7 +447,7 @@ function parseRange(s: string, start: number, end: number, marks: Marks, out: In
 // The text without its formatting (line breaks stay "\n").
 export function toPlain(markdown: unknown, options: InlineOptions = {}): string {
   if (typeof markdown !== "string") return markdown === null || markdown === undefined ? "" : String(markdown);
-  if (!/[\\*_~`[]/.test(markdown)) return normalizeBreaks(markdown);
+  if (!(options.math ? /[\\*_~`[$]/ : /[\\*_~`[]/).test(markdown)) return normalizeBreaks(markdown);
   return parseInline(markdown, options)
     .map((run) => run.text)
     .join("");
@@ -343,16 +455,16 @@ export function toPlain(markdown: unknown, options: InlineOptions = {}): string 
 
 // Whether the value shows any formatting (or an escape) – plain values
 // render as plain strings.
-export function hasInlineMarkup(markdown: unknown): boolean {
-  return typeof markdown === "string" && /[\\*_~`[]/.test(markdown);
+export function hasInlineMarkup(markdown: unknown, options: InlineOptions = {}): boolean {
+  return typeof markdown === "string" && (options.math ? /[\\*_~`[$]/ : /[\\*_~`[]/).test(markdown);
 }
 
 const ORDER = ["href", "color", "underline", "bold", "italic", "strike"] as const;
 
 // Runs → inline Markdown. Marks never start or end with whitespace (a
 // space moves outside), italic is _x_ unless a letter touches it (then *x*).
-export function serializeInline(runs: InlineRun[]): string {
-  return resolveItalics(serializeLevel(mergeRuns(runs), 0));
+export function serializeInline(runs: InlineRun[], options: InlineOptions = {}): string {
+  return resolveMath(resolveItalics(serializeLevel(mergeRuns(runs), 0, options)));
 }
 
 // Italic is written with placeholders first; _x_ needs no letter or digit
@@ -386,15 +498,36 @@ function codeSpan(text: string) {
   return `${fence}${pad}${text}${pad}${fence}`;
 }
 
+// A formula is written with placeholders first (U+0003 … U+0004): $x$
+// where it reads back the same (no digit right after it), else $`x`$.
+const MATH_OPEN = "\u0003",
+  MATH_CLOSE = "\u0004";
+const mathSource = (expression: string) => {
+  const plain = expression.replace(/[\u0000-\u0008]/g, "").replace(/\n/g, " ").trim();
+  return plain ? `${MATH_OPEN}${plain}${MATH_CLOSE}` : "";
+};
+function resolveMath(text: string): string {
+  if (!text.includes(MATH_OPEN)) return text;
+  return text.replace(/\u0003([^\u0004]*)\u0004(?=(.?))/gs, (_, expression: string, next: string) =>
+    !/[$`]/.test(expression) && !expression.endsWith("\\") && !/[0-9]/.test(next) ? `$${expression}$` : `$${codeSpan(expression)}$`,
+  );
+}
+
 function escapeUrl(url: string) {
   return url.replace(/[\s()<>\\]/g, (c) => encodeURIComponent(c));
 }
 
-function serializeLevel(runs: InlineRun[], level: number): string {
+function serializeLevel(runs: InlineRun[], level: number, options: InlineOptions): string {
   if (level === ORDER.length) {
     let out = "";
-    // Whitespace alone is never code (two code spans must not touch).
-    for (const run of runs) out += run.code ? run.text.split("\n").map((part) => (part.trim() ? codeSpan(part) : part)).join("\n") : escapeInline(run.text);
+    for (const run of runs) {
+      if (run.slot !== undefined) out += slotMarker(run.slot);
+      else if (run.mention && MENTION_ID.test(run.mention)) out += `[${escapeInline(run.text, options)}]{data-mention=${run.mention}}`;
+      else if (run.math) out += mathSource(run.text);
+      // Whitespace alone is never code (two code spans must not touch).
+      else if (run.code) out += run.text.split("\n").map((part) => (part.trim() ? codeSpan(part) : part)).join("\n");
+      else out += escapeInline(run.text, options);
+    }
     return out;
   }
   const key = ORDER[level];
@@ -407,7 +540,7 @@ function serializeLevel(runs: InlineRun[], level: number): string {
     const group = runs.slice(i, j);
     i = j;
     if (!value) {
-      out += serializeLevel(group, level + 1);
+      out += serializeLevel(group, level + 1, options);
       continue;
     }
     // Leading and trailing whitespace goes outside the mark.
@@ -415,10 +548,10 @@ function serializeLevel(runs: InlineRun[], level: number): string {
     const trail = /\s*$/.exec(group.map((r) => r.text).join(""))![0];
     const inner = trimRuns(group, lead.length, trail.length);
     if (!inner.length) {
-      out += serializeLevel(group.map((r) => ({ ...r, [key]: undefined })), level + 1);
+      out += serializeLevel(group.map((r) => ({ ...r, [key]: undefined })), level + 1, options);
       continue;
     }
-    const body = serializeLevel(inner, level + 1);
+    const body = serializeLevel(inner, level + 1, options);
     let wrapped: string;
     if (key === "href") wrapped = `[${body}](${escapeUrl(String(value))})`;
     else if (key === "color") wrapped = `[${body}]{.color-${value}}`;
@@ -426,7 +559,7 @@ function serializeLevel(runs: InlineRun[], level: number): string {
     else if (key === "bold") wrapped = `**${body}**`;
     else if (key === "strike") wrapped = `~~${body}~~`;
     else wrapped = `${OPEN}${body}${CLOSE}`;
-    out += serializeLevel(edgeRuns(group, lead.length, true, key), level + 1) + wrapped + serializeLevel(edgeRuns(group, trail.length, false, key), level + 1);
+    out += serializeLevel(edgeRuns(group, lead.length, true, key), level + 1, options) + wrapped + serializeLevel(edgeRuns(group, trail.length, false, key), level + 1, options);
   }
   return out;
 }
@@ -471,7 +604,7 @@ function trimRuns(group: InlineRun[], lead: number, trail: number): InlineRun[] 
 // Normalises inline Markdown (e.g. from the API): the same text and marks,
 // written the way the editor writes them; unsafe links keep their label.
 export function normalizeInline(markdown: string, options: InlineOptions = {}): string {
-  return serializeInline(parseInline(markdown, options));
+  return serializeInline(parseInline(markdown, options), options);
 }
 
 // ---- HTML → inline Markdown (paste, imports) ----------------------------

@@ -3,12 +3,14 @@
 // wording) – in the app and, as chosen per node, by push, e-mail and chat
 // apps; the person's own settings per kind and channel always win. A link
 // only goes to recipients who may see the page or record.
-import { id, nowText, one, run } from "../../db";
+import { all, id, nowText, one, run } from "../../db";
+import { isAtom, type InlineRun } from "../../inline-markdown";
 import { pageRole } from "../../permissions";
 import { hiddenRowIds } from "../../row-access";
 import { cellText } from "../../cell-text";
 import type { Identity, Page } from "../../types";
 import { headerSafe, isEmpty, renderText, renderValue } from "../placeholders";
+import { hasNotifyMarkup, MAX_NOTIFY_MARKUP, notifyEscape, notifyMarkup, notifyPlain, renderNotifyRuns } from "../../notify-text";
 import { mailConfig, mailEscape, mailLayout, queueMail } from "../../mail";
 import { queueWorkflowMessage } from "../../webhooks";
 import { recordUrl } from "../../notification-events";
@@ -47,16 +49,29 @@ export const notifyPerson: NodeImpl = async (ctx) => {
   const triggerRowId = ctx.trigger.rowId;
   const cells = inline ? { ...inline.cells, ...inline.patch } : (((ctx.scope.values[ctx.run.triggerNodeId] as { record?: { fields?: Record<string, unknown> } })?.record?.fields || {}) as Record<string, unknown>);
   const createdBy = inline ? inline.row.created_by : ((ctx.scope.values[ctx.run.triggerNodeId] as { record?: { createdBy?: { id: string } } })?.record?.createdBy?.id ?? null);
+  // The message is formatted (#330): `body` is its plain text (push, chat
+  // apps, widgets, the API), `markup` the inline Markdown the inbox and
+  // e-mails show – only when there is formatting. Values of placeholders
+  // and the record's title are text in it, never Markdown.
+  const members = await workspaceMembers(ctx.run.workspaceId);
+  const automation = c.kind === "automation" && !!inline;
+  const runs = c.message ? renderNotifyRuns(c.message, { template: !automation, value: (raw) => renderText(raw, ctx.scope), members }) : [];
+  const trimmed = trimRuns(runs);
+  const message = notifyPlain(trimmed);
+  let markup: string | null = hasNotifyMarkup(trimmed) ? notifyMarkup(trimmed) : null;
   // The rules' wording (lib/automations.ts notify()).
   let body: string;
-  if (c.kind === "automation" && inline) {
+  if (automation) {
     const title = cellText(cells[inline.fields[0]?.id || "title"]) || "Ohne Titel";
-    body = c.message ? `${c.message} – „${title}“` : `${c.ruleName || "Automation"}: „${title}“ in „${inline.databasePage.title}“`;
+    body = message ? `${message} – „${title}“` : `${c.ruleName || "Automation"}: „${title}“ in „${inline.databasePage.title}“`;
+    if (markup) markup = `${markup} – „${notifyEscape(title)}“`;
   } else {
     const title = renderText(c.title || "", ctx.scope).trim();
-    const message = renderText(c.message || "", ctx.scope).trim();
     body = [title, message].filter(Boolean).join(" – ") || ctx.workflowPage?.title || "Workflow";
+    if (markup && title) markup = `${notifyEscape(title)} – ${markup}`;
   }
+  // Too long to keep whole: the plain text only (cut Markdown could break).
+  if (markup && markup.length > MAX_NOTIFY_MARKUP) markup = null;
   // Where the notification points: the trigger's page/record, none, or a placeholder.
   let pageId: string | null = null,
     rowId: string | null = null;
@@ -78,7 +93,7 @@ export const notifyPerson: NodeImpl = async (ctx) => {
   if (!page) rowId = null;
   const people = await recipients(ctx, c.to, cells, createdBy);
   if (people.length > MAX_RECIPIENTS) throw new StepError(`Höchstens ${MAX_RECIPIENTS} Empfänger je Schritt.`, "limit");
-  if (dryRun(ctx)) return { port: "out", output: { wouldNotify: people, body: body.slice(0, 500) } };
+  if (dryRun(ctx)) return { port: "out", output: { wouldNotify: people, body: body.slice(0, 500), ...(markup ? { markup } : {}) } };
   let notified = 0;
   for (const uid of people) {
     const member = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", uid);
@@ -95,10 +110,11 @@ export const notifyPerson: NodeImpl = async (ctx) => {
     }
     const nid = id();
     const inserted = await run(
-      "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
+      "INSERT INTO notifications(id,user_id,body,markup,page_id,row_id,kind) VALUES(?,?,?,?,?,?,?)",
       nid,
       uid,
       body.slice(0, 500),
+      markup,
       linkPage,
       linkRow,
       c.kind === "automation" ? "automation" : "workflow",
@@ -115,6 +131,18 @@ export const notifyPerson: NodeImpl = async (ctx) => {
   }
   return { port: "out", output: { notified } };
 };
+// The members of the workspace by id → name: mentions of others become text.
+async function workspaceMembers(workspaceId: string) {
+  const rows = await all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0", workspaceId);
+  return new Map(rows.map((r) => [r.id.toLowerCase(), r.name]));
+}
+// Leading and trailing whitespace of a message goes (as trim() did).
+function trimRuns(runs: InlineRun[]): InlineRun[] {
+  const out = runs.map((r) => ({ ...r }));
+  while (out.length && !isAtom(out[0]) && !(out[0].text = out[0].text.replace(/^\s+/, ""))) out.shift();
+  while (out.length && !isAtom(out[out.length - 1]) && !(out[out.length - 1].text = out[out.length - 1].text.replace(/\s+$/, ""))) out.pop();
+  return out;
+}
 export const hasRecipients = (to: unknown) => Array.isArray(to) && to.some((v) => !isEmpty(v));
 
 /* ---------- Wave 2: e-mail and chat ---------- */

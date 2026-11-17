@@ -710,6 +710,20 @@
 .wf-template {
   position: relative;
 }
+/* The message of "Notify a person" (#330): the editor, its buttons beside it. */
+.wf-notify-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wf-notify-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+}
+.wf-notify-message .rich-text-input {
+  min-height: 72px;
+}
 [aria-invalid="true"] {
   border-color: var(--wf-error, #b2393e) !important;
 }
