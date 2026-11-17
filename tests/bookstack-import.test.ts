@@ -313,7 +313,8 @@ test("the import: hierarchy and order, descriptions, content, images, attachment
 
   // Tags: "name" and "name: value".
   const tagsOf = async (pageId: string) =>
-    (await all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY t.name", pageId)).map((t) => t.name);
+    // Sorted here: SQLite's ORDER BY is case-sensitive, PostgreSQL's (en_US) is not.
+    (await all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=?", pageId)).map((t) => t.name).sort();
   assert.deepEqual(await tagsOf(chapter.id), ["Status: Entwurf"]);
   assert.deepEqual(await tagsOf(notizen.id), ["markdown", "Status: Entwurf"].sort());
   assert.deepEqual(await tagsOf(shelfA.id), ["Bereich: IT"]);

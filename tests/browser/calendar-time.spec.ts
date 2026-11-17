@@ -404,7 +404,13 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     // sits under the stuck header and the sticky title column, which then
     // take the click (CI, mobile). Centre the cell first.
     const startCell = tableRow.locator("td").nth(2);
-    await startCell.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
+    // Scrolled back to the top first: with only a few rows "center" cannot
+    // move the row out from under the stuck header (CI, mobile).
+    await startCell.evaluate((el) => {
+      for (let node: Element | null = el.parentElement; node; node = node.parentElement) if (node.scrollTop) node.scrollTop = 0;
+      window.scrollTo(0, 0);
+      el.scrollIntoView({ block: "nearest", inline: "center" });
+    });
     await startCell.click();
     await expect(tableRow.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
     const input = tableRow.getByLabel("Beginn: Uhrzeit", { exact: true });
