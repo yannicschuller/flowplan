@@ -429,7 +429,8 @@ export default function RichTextEditor({
   };
   const openLink = (editor: Editor) => {
     if (editor.state.selection.empty && !editor.isActive("link")) return false;
-    setLink(String(editor.getAttributes("link").href || ""));
+    // A placeholder in the address shows as written.
+    setLink(String(editor.getAttributes("link").href || "").replace(/\uE000(\d+)\uE001/g, (_, n: string) => raws.current[Number(n)] || ""));
     setLinkError(false);
     placeBar(editor);
     requestAnimationFrame(() => linkInput.current?.focus());
@@ -641,7 +642,9 @@ export default function RichTextEditor({
 
   const applyLink = () => {
     if (!editor) return;
-    const raw = (link || "").trim();
+    // A placeholder typed into the address (workflows): a slot behind the
+    // address the author wrote (lib/notify-text.ts checks that).
+    const raw = (slots ? (link || "").replace(TYPED_PLACEHOLDER, (p) => `\uE000${raws.current.push(p) - 1}\uE001`) : link || "").trim();
     if (!raw) editor.chain().focus().extendMarkRange("link").unsetLink().run();
     else {
       const href = safeHref(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(raw) ? `mailto:${raw}` : `https://${raw}`);
@@ -718,7 +721,7 @@ export default function RichTextEditor({
             <div className="text-menu-format">
               {mark("bold", `${t("Fett", "Bold")} (${key("Mod+B")})`, <TextB size={16} />, () => editor.chain().focus().toggleBold().run())}
               {mark("italic", `${t("Kursiv", "Italic")} (${key("Mod+I")})`, <TextItalic size={16} />, () => editor.chain().focus().toggleItalic().run())}
-              {form && mark("underline", `${t("Unterstrichen", "Underline")} (${key("Mod+U")})`, <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
+              {(form || notify) && mark("underline", `${t("Unterstrichen", "Underline")} (${key("Mod+U")})`, <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
               {mark("strike", `${t("Durchgestrichen", "Strikethrough")} (${key("Mod+Shift+X")})`, <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
               {mark("code", `Code (${key("Mod+E")})`, <Code size={16} />, () => editor.chain().focus().toggleCode().run())}
               {mark("link", `Link (${key("Mod+K")})`, <LinkSimple size={16} />, () => openLink(editor))}
