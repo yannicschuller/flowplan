@@ -55,6 +55,17 @@ const readStored = (storage: () => Storage, key: string) => {
   }
 };
 const hashPlace = () => (typeof location === "undefined" ? null : stepOf(location.hash));
+
+// The tabs follow the address before anything else hears of its change:
+// one listener, added with this module – before the workspace adds its own
+// in an effect. The workspace's changes the screen, which React renders at
+// once (a hash change is a discrete event); the tabs, a listener after it,
+// were still at the step before, and the pane's scroll position
+// (lib/pane-scroll.ts) was kept and looked up under that step – back to a
+// page or the start page started at the top.
+let addressChanged: (() => void) | null = null;
+if (typeof window !== "undefined") window.addEventListener("hashchange", () => addressChanged?.());
+
 // The page a place shows (null: a screen of the app).
 export const pageOfPlace = (place: string | null | undefined) => (place?.startsWith("page=") ? parsePageLocation(place)?.pageId ?? null : null);
 // Whether a kept place still exists for this person: pages they can read
@@ -248,10 +259,10 @@ export function useFrameTabs({
       if (next !== l) commit(next);
     };
     nav?.addEventListener("navigate", navigating);
-    window.addEventListener("hashchange", changed);
+    addressChanged = changed;
     return () => {
       nav?.removeEventListener("navigate", navigating);
-      window.removeEventListener("hashchange", changed);
+      if (addressChanged === changed) addressChanged = null;
     };
   }, [enabled, workspaceId, commit]);
 
