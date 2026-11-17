@@ -528,6 +528,7 @@ Im Entwicklungsmodus gibt es zusätzlich **Lokalen Arbeitsbereich öffnen**, ein
 | `npm run typecheck` | TypeScript |
 | `npm test` | Kerntests (Node-Testrunner, temporäre Datenverzeichnisse, die danach entfernt werden) |
 | `npm run test:e2e` | Browsertests (Playwright, Desktop und Handy); einen Server mit eigenem `FLOWPLAN_DATA_DIR` starten und `TEST_BASE_URL` setzen |
+| `npm run build:e2e` | Produktions-Build für die Browsertests in `.next-e2e` (sein Server nimmt die Demo-Anmeldung an; nie in einem Image). Danach startet `TEST_SERVERS=3 FLOWPLAN_DATA_DIR=/tmp/flowplan-inline-e2e.local npm run test:e2e` drei Server davon, einen pro Worker |
 | `npm run check:standalone` | Startet den Standalone-Build wie im Container und prüft Health, Persistenz und Wiederherstellung |
 | `npm run quality` | Budgets für Barrierefreiheit und Leistung am Produktions-Build: Anmeldung und ein Arbeitsbereich mit Beispielinhalten bei 1280 und 390 px – keine ernsten axe-Befunde, nichts Fokussierbares in `aria-hidden`, kein waagerechtes Scrollen, JavaScript (gzip) und LCP im Budget |
 | `npm run test:visual` | Bildschirmfotos wichtiger Ansichten gegen die Vorlagen in `tests/visual/__screenshots__` (`npm run test:visual:update` schreibt neue); nicht Teil von `npm test` |

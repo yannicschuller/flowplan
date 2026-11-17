@@ -42,6 +42,14 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       - name: Install Chromium
         # The browser itself comes from Playwright's CDN. Its system packages
         # come from Ubuntu, whose hosts GitHub's runners sometimes cannot
@@ -54,6 +62,15 @@ jobs:
           npx playwright install chromium
           printf 'Acquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null
           timeout 300 npx playwright install-deps chromium || echo "::warning::Chromium's Ubuntu packages could not be installed (Ubuntu mirrors unreachable?); using what the runner image has"
+      # Turbopack's build cache (on by default since Next.js 16.3), kept
+      # between runs: a build on top of the last one's cache took 30 s
+      # instead of 3 min locally. Keyed on the lockfile; the newest one of
+      # the same lockfile is restored. Image builds (Dockerfile) never see it.
+      - uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

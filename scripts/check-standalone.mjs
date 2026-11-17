@@ -54,6 +54,11 @@ async function start(dataDir) {
       APP_URL: origin,
       NEXT_TELEMETRY_DISABLED: "1",
       FLOWPLAN_METRICS_TOKEN: metricsToken,
+      // Both halves of the browser specs' switch for the demo sign-in
+      // (lib/e2e-build.ts) set at runtime: a normal build has no lookup of
+      // FLOWPLAN_E2E_BUILD left and refuses it all the same.
+      FLOWPLAN_E2E_BUILD: "1",
+      FLOWPLAN_E2E_DEMO: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -129,7 +134,11 @@ try {
     method: "POST",
     headers: { origin },
   });
-  check("Kein Demo-Login in Produktion", demo.status === 403);
+  check("Kein Demo-Login in Produktion", demo.status === 403, "auch mit FLOWPLAN_E2E_BUILD=1 und FLOWPLAN_E2E_DEMO=1 zur Laufzeit");
+  // The build itself: FLOWPLAN_E2E_BUILD compiled in as "" (next.config.ts),
+  // not the browser specs' build.
+  const serverFiles = JSON.parse(readFileSync(join(root, ".next/required-server-files.json"), "utf8"));
+  check("Kein Build für die Browser-Specs", serverFiles.config?.env?.FLOWPLAN_E2E_BUILD === "", JSON.stringify(serverFiles.config?.env?.FLOWPLAN_E2E_BUILD));
   const anonymous = await fetch(`${origin}/api/bootstrap`);
   check("API verlangt Anmeldung", anonymous.status === 401);
   const unscraped = await fetch(`${origin}/api/metrics`);

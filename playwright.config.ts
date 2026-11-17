@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { testServers } from "./tests/browser/test-servers";
 
 // Which Chromium runs the specs: Playwright's own (`npx playwright install
 // chromium`, as in CI) unless PLAYWRIGHT_CHROMIUM_EXECUTABLE names another
@@ -17,14 +18,37 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
 // the test (`await import(...)`), not at the top of the file.
 process.env.PLAYWRIGHT_FORCE_ASYNC_LOADER ??= "1";
 
+// TEST_SERVERS=n: n servers of the specs' production build
+// (scripts/build-e2e.mjs), one per worker (tests/browser/test-servers.ts).
+// In a worker process this config is read with TEST_PARALLEL_INDEX set, and
+// the worker's specs then see its own server's address and data directory.
+const servers = testServers();
+const own = servers[Number(process.env.TEST_PARALLEL_INDEX)];
+if (own) {
+  process.env.TEST_BASE_URL = own.origin;
+  process.env.FLOWPLAN_DATA_DIR = own.dataDir;
+}
+
 const baseURL = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 
 export default defineConfig({
   testDir: "./tests/browser",
   // The demo account starts past the introduction (tests/browser/global-setup.ts).
   globalSetup: "./tests/browser/global-setup.ts",
+  // The files of a worker run one after another; a file's tests in order.
   fullyParallel: false,
-  workers: 1,
+  workers: servers.length || 1,
+  // The servers start before globalSetup (marks each demo account as
+  // onboarded) and stop after the run. Started fresh: an old server on the
+  // port would have the data of another run.
+  webServer: servers.map((server) => ({
+    command: "node scripts/e2e-server.mjs",
+    url: `${server.origin}/api/health`,
+    env: { PORT: new URL(server.origin).port, FLOWPLAN_DATA_DIR: server.dataDir, APP_URL: server.origin },
+    reuseExistingServer: false,
+    timeout: 60_000,
+    gracefulShutdown: { signal: "SIGTERM" as const, timeout: 5000 },
+  })),
   timeout: 60000,
   expect: {
     timeout: Number(process.env.TEST_EXPECT_TIMEOUT_MS || 5000),
