@@ -8,7 +8,7 @@
 // "Woher kommst du?", lib/migration-sources.ts).
 export const ONBOARDING_GOALS = ["personal", "team", "projects", "study", "other"] as const;
 export type OnboardingGoal = (typeof ONBOARDING_GOALS)[number];
-export const ONBOARDING_SOURCES = ["notion", "affine", "obsidian", "evernote", "confluence", "gdocs", "fresh"] as const;
+export const ONBOARDING_SOURCES = ["notion", "affine", "obsidian", "evernote", "confluence", "gdocs", "bookstack", "fresh"] as const;
 export type OnboardingSource = (typeof ONBOARDING_SOURCES)[number];
 
 // In this order in the sidebar. How each one ticks:

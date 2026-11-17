@@ -31258,7 +31258,11 @@ html.split-resizing * {
 }
 .import-notion-list label {
   display: flex;
+  /* Not the column of a form's label (above). */
+  flex-direction: row;
   align-items: center;
+  margin-bottom: 0;
+  font-weight: 400;
   gap: 8px;
   padding: 3px 0;
   min-width: 0;
@@ -31272,6 +31276,22 @@ html.split-resizing * {
 .import-notion-list small {
   color: var(--muted);
   font-size: 12px;
+}
+/* BookStack through its API (components/import-bookstack.tsx): shelves
+   with their books below them, then the books on no shelf. */
+.import-bookstack > .ws-form {
+  margin-top: 12px;
+}
+.import-bookstack-list ul {
+  margin: 0;
+  padding-left: 24px;
+  list-style: none;
+}
+.import-bookstack-group {
+  display: block;
+  padding: 6px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
 }
 /* ===== End of imports from other tools. ===== */
 

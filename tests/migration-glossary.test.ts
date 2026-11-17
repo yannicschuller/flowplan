@@ -18,7 +18,9 @@ test("every tool of the introduction has its export guide and its glossary", () 
   assert.deepEqual(Object.keys(MIGRATION_GLOSSARY).sort(), [...tools].sort());
   for (const source of MIGRATION_SOURCES) {
     assert.ok(source.steps.length >= 1, source.id);
-    assert.ok(source.accept.split(",").every((a) => /^(\.[a-z]+|[a-z]+\/[a-z.+-]+)$/.test(a)), `${source.id}: ${source.accept}`);
+    // A file route has the picker's types; BookStack's API takes none.
+    if (source.route.kind === "bookstack") assert.equal(source.accept, undefined, source.id);
+    else assert.ok(source.accept?.split(",").every((a) => /^(\.[a-z]+|[a-z]+\/[a-z.+-]+)$/.test(a)), `${source.id}: ${source.accept}`);
     // The routes the server has: the ZIP import or a known importer.
     if (source.route.kind === "source")
       assert.ok(["auto", "affine", "confluence", "evernote", "gdocs", "obsidian", "word"].includes(source.route.source), source.id);

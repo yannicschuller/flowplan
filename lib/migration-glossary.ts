@@ -152,6 +152,21 @@ export const MIGRATION_GLOSSARY: Record<GlossaryTool, GlossaryEntry[]> = {
     { theirs: "Google Sheets / Excel", ours: T.database, match: "similar", note: { de: "Eine Datenbank hat Eigenschaften je Spalte und Formeln je Eintrag, aber keine freien Zellformeln.", en: "A database has properties per column and formulas per record, but no free cell formulas." } },
     { theirs: "Google Forms", ours: T.form, match: "same" },
   ],
+  bookstack: [
+    { theirs: "Shelf", ours: T.page, match: "similar", note: { de: "Ein Regal wird eine Seite mit seinen Büchern als Unterseiten; ein Buch in mehreren Regalen kommt einmal unter das erste.", en: "A shelf becomes a page with its books as sub-pages; a book on several shelves comes once, below the first." } },
+    { theirs: "Book", ours: T.page, match: "similar", note: { de: "Ein Buch wird eine Seite mit seiner Beschreibung als Text und Kapiteln und Seiten darunter.", en: "A book becomes a page with its description as text and chapters and pages below it." } },
+    { theirs: "Chapter", ours: T.subpages, match: "similar", note: { de: "Ein Kapitel wird eine Unterseite des Buchs mit seinen Seiten darunter.", en: "A chapter becomes a sub-page of the book with its pages below it." } },
+    { theirs: "Page", ours: T.page, match: "same", note: { de: "Seiten lassen sich beliebig tief verschachteln.", en: "Pages nest as deep as you like." } },
+    { theirs: "Tags (name: value)", ours: T.tags, match: "similar", note: { de: "Ein Tag mit Wert wird ein Tag „Name: Wert“.", en: "A tag with a value becomes a tag “name: value”." } },
+    { theirs: "Callouts", ours: T.callout, match: "same" },
+    { theirs: "Attachments", ours: { de: "Dateien", en: "Files" }, match: "same", note: { de: "Dateien kommen als Anhang auf die Seite; Link-Anhänge bleiben Links.", en: "Files come as attachments on the page; link attachments stay links." } },
+    { theirs: "Image gallery / Diagrams.net", ours: { de: "Bilder", en: "Images" }, match: "similar", note: { de: "Bilder und gezeichnete Diagramme kommen als Bilder auf ihre Seite; ein Diagramm zeichnest du in Flowplan auf einem Whiteboard.", en: "Images and drawn diagrams come as images on their page; in Flowplan you draw a diagram on a whiteboard." } },
+    { theirs: "Revisions", ours: T.versions, match: "same", note: { de: "Frühere Fassungen aus BookStack werden nicht übernommen; Flowplan legt ab dem Import eigene Versionen an.", en: "Earlier revisions from BookStack are not imported; Flowplan keeps its own versions from the import on." } },
+    { theirs: "Page templates", ours: T.templates, match: "similar", note: { de: "Vorlagen aus BookStack kommen als normale Seiten; speichere eine Seite in Flowplan als Vorlage.", en: "Templates from BookStack come as normal pages; save a page as a template in Flowplan." } },
+    { theirs: "Roles & permissions", ours: { de: "Rechte (Teilen)", en: "Permissions (Share)" }, match: "similar", note: { de: "Rechte werden nicht übernommen; du teilst Bereiche und Seiten in Flowplan neu.", en: "Permissions are not imported; you share spaces and pages in Flowplan again." } },
+    { theirs: "Comments", ours: T.comments, match: "same", note: { de: "Kommentare aus BookStack werden nicht übernommen.", en: "Comments from BookStack are not imported." } },
+    { theirs: "Recycle bin", ours: T.trash, match: "same" },
+  ],
 };
 
 export const glossaryFor = (tool: GlossaryTool | null) => (tool ? MIGRATION_GLOSSARY[tool] : []);

@@ -8,8 +8,9 @@ import type { Field, View } from "../types";
 import type { FrontmatterValue } from "../frontmatter";
 
 // "notion": Notion's API (lib/importers/notion-api.ts) – not a file; its
-// export ZIP goes through lib/zip-import.ts.
-export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "notion" | "obsidian" | "word";
+// export ZIP goes through lib/zip-import.ts. "bookstack": BookStack's API
+// (lib/importers/bookstack-api.ts), not a file either.
+export type ImportSource = "affine" | "bookstack" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "notion" | "obsidian" | "word";
 
 // The import report (lib/importers/report.ts): what an import did not carry
 // over or only approximated, each entry with the imported page it concerns

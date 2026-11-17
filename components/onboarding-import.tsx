@@ -9,7 +9,8 @@ import { ArrowRight, CheckCircle, Equals, Minus, Sparkle, UploadSimple, WarningC
 import { MIGRATION_SOURCES, migrationSource, type MigrationSource } from "@/lib/migration-sources";
 import { MIGRATION_GLOSSARY, SHARED_HABITS, type GlossaryEntry } from "@/lib/migration-glossary";
 import type { OnboardingSource } from "@/lib/getting-started-items";
-import { importSourceFile, importZipFile, type ImportOutcome, type ImportProgress } from "./import-client";
+import { importSourceFile, importZipFile, waitForJob, type ImportOutcome, type ImportProgress } from "./import-client";
+import { ImportBookStack } from "./import-bookstack";
 import { useT } from "./i18n";
 
 export function SourcePicker({ value, disabled, onChange }: { value: OnboardingSource | null; disabled?: boolean; onChange: (source: OnboardingSource) => void }) {
@@ -68,6 +69,9 @@ export function ImportPanel({
         case "source":
           result = await importSourceFile({ workspaceId, spaceId: space.id, source: source.route.source, file }, setProgress);
           break;
+        // No file: its own panel below.
+        case "bookstack":
+          return;
       }
       await onImported({ ...result, source: source.id });
     } catch (e) {
@@ -78,11 +82,32 @@ export function ImportPanel({
       onBusy(false);
     }
   };
+  // BookStack (no file, components/import-bookstack.tsx): its preview and
+  // import as jobs, with the progress here.
+  const waitJob = async (job: string) => {
+    setError("");
+    onBusy(true);
+    setProgress({ phase: "work", share: null });
+    try {
+      return await waitForJob(job, (share) => setProgress({ phase: "work", share }));
+    } finally {
+      setProgress(null);
+      onBusy(false);
+    }
+  };
+  const bookStackDone = async (value: unknown) => {
+    const result = value as { rootIds?: string[]; pages?: number; folders?: number; rows?: number; files?: number };
+    await onImported({ rootIds: result.rootIds || [], pages: (result.pages || 0) + (result.folders || 0), rows: result.rows || 0, files: result.files || 0, source: source.id });
+  };
   const busy = !!progress;
   const done = imported?.source === source.id ? imported : null;
   return (
     <section className="onboarding-guide" aria-labelledby="onboarding-guide-title">
-      <h3 id="onboarding-guide-title">{t(`So kommst du an deinen Export aus ${source.name}`, `How to get your export from ${source.name}`)}</h3>
+      <h3 id="onboarding-guide-title">
+        {source.route.kind === "bookstack"
+          ? t(`So holst du deine Inhalte aus ${source.name}`, `How to bring your content from ${source.name}`)
+          : t(`So kommst du an deinen Export aus ${source.name}`, `How to get your export from ${source.name}`)}
+      </h3>
       <ol className="onboarding-guide-steps">
         {source.steps.map((step) => (
           <li key={step.en}>{t(step.de, step.en)}</li>
@@ -91,7 +116,9 @@ export function ImportPanel({
       <p className="onboarding-guide-file">
         <ArrowRight size={15} aria-hidden /> <span>{t(source.file.de, source.file.en)}</span>
       </p>
-      {canWrite && space ? (
+      {canWrite && space && source.route.kind === "bookstack" ? (
+        <ImportBookStack workspaceId={workspaceId} spaceId={space.id} canWrite={canWrite} busy={busy} wait={waitJob} onImported={bookStackDone} onError={setError} />
+      ) : canWrite && space ? (
         <div className="onboarding-import-row">
           <button type="button" className="button primary" disabled={busy} onClick={() => input.current?.click()}>
             <UploadSimple size={16} aria-hidden /> {done ? t("Weitere Datei importieren", "Import another file") : t("Datei auswählen und importieren", "Choose file and import")}
