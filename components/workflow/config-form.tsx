@@ -13,6 +13,7 @@ import { nodeSpec } from "@/lib/workflows/catalog";
 import { operatorNames, operatorsFor, valuelessOperators } from "@/lib/database-filters";
 import type { WorkflowNode } from "@/lib/workflows/graph";
 import type { Field } from "@/lib/types";
+import { NotifyMessageInput } from "./notify-message-input";
 import { TemplateInput, type PickerContext } from "./template-input";
 import { isUuid, recipientName, displayContext, type Credential, type Resources, type T, type Workspace, useStableT } from "./model";
 import { api, Modal } from "../ui";
@@ -437,6 +438,9 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
   if (name === "values" && (type === "action.record.create" || type === "action.record.update"))
     return <ValuesEditor label={label} value={(value as Record<string, unknown>) || {}} fields={info?.fields || []} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "blocks") return <BlocksEditor label={label} value={(value as Block[]) || []} ctx={ctx} onChange={onChange} t={t} />;
+  // A formatted message with mentions and formulas (#330).
+  if (name === "message" && type === "notify.person")
+    return <NotifyMessageInput label={label} value={String(value ?? "")} picker={ctx.picker} members={ctx.ws.members} disabled={ctx.disabled} template={config.kind !== "automation"} onChange={onChange} />;
   if (name === "to" && type === "notify.person") return <Recipients label={label} value={(value as string[]) || []} ctx={ctx} fields={info?.fields || []} onChange={onChange} t={t} />;
   // One person at most (#208).
   if (name === "assignee" && type === "action.task.create")

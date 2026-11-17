@@ -4,6 +4,7 @@ import { Lightning, Plus, Trash, PencilSimple, FlowArrow, ArrowSquareOut } from 
 import { useT } from "./i18n";
 import { api, reportError } from "./ui";
 import { Select } from "./select";
+import { NotifyTextInput } from "./notify-text-input";
 import type { Automation, AutomationAction, DatabaseSettings } from "@/lib/database-settings-schema";
 import { doneRule, dueField } from "@/lib/database-settings-schema";
 import { browserZone } from "@/lib/date-values";
@@ -524,7 +525,8 @@ function AutomationEditor({
                     </option>
                   ))}
                 </Select>
-                <input aria-label={t("Nachricht", "Message")} placeholder={t("Nachricht (optional)", "Message (optional)")} maxLength={300} value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} />
+                {/* Formatted, with mentions and formulas (#330). */}
+                <NotifyTextInput label={t("Nachricht", "Message")} placeholder={t("Nachricht (optional)", "Message (optional)")} maxLength={300} members={members} value={a.message} onChange={(message) => setAction(i, { ...a, message })} />
               </>
             )}
             {r.actions.length > 1 && (

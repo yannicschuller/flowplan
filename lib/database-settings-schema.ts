@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { filterSchema } from "./database-filters";
 import type { Field } from "./types";
+import { cleanNotifyMessage } from "./notify-text";
 
 const fid = z.string().min(1).max(500);
 const optionValue = z.string().max(100);
@@ -47,7 +48,8 @@ export const automationTrigger = z.discriminatedUnion("type", [
 export const automationAction = z.discriminatedUnion("type", [
   // A fixed value; "@today" / "@now" for dates, "@actor" / "@creator" for people.
   z.object({ type: z.literal("set"), field: fid, value: z.unknown() }),
-  z.object({ type: z.literal("notify"), to: z.string().max(600), message: z.string().trim().max(300).default("") }),
+  // The message is formatted (#330, lib/notify-text.ts), cleaned here.
+  z.object({ type: z.literal("notify"), to: z.string().max(600), message: z.string().trim().max(300).default("").transform((m) => cleanNotifyMessage(m, { template: false })) }),
   // Scheduled rules only: a new record from a record template (empty: none)
   // plus fixed values; `dates` sets date properties to the run's day plus
   // the given number of days ("Fällig: +3 Tage").

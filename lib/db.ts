@@ -1559,6 +1559,13 @@ function migrate(d: DatabaseSync) {
   // the schema number stays.
   if (!(d.prepare("PRAGMA table_info(spaces)").all() as { name: string }[]).some((c) => c.name === "library"))
     d.exec("ALTER TABLE spaces ADD COLUMN library INTEGER NOT NULL DEFAULT 0");
+  // Formatted notification messages (#330, lib/notify-text.ts):
+  // notifications.markup holds the inline Markdown of a workflow's or a
+  // rule's message (with the title) when it has formatting; `body` stays
+  // its plain text for every other channel. A nullable column only – an
+  // older version reads the plain body – so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "markup"))
+    d.exec("ALTER TABLE notifications ADD COLUMN markup TEXT");
   migrateServerMetrics(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)

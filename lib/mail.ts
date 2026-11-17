@@ -16,6 +16,7 @@ import { userLocale } from "./user-locale";
 import { notificationOn } from "./notification-kinds";
 import { notificationUrl } from "./page-location";
 import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
+import { notifyHtml } from "./notify-text";
 import { mapAsync } from "./each-async";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
@@ -326,6 +327,7 @@ export async function queueNotificationDigests(now = Date.now()) {
     id: string;
     user_id: string;
     body: string;
+    markup: string | null;
     page_id: string | null;
     row_id: string | null;
     thread_id: string | null;
@@ -334,7 +336,7 @@ export async function queueNotificationDigests(now = Date.now()) {
     email: string;
     name: string;
   }>(
-    `SELECT n.id,n.user_id,n.body,n.page_id,n.row_id,n.thread_id,n.link,n.kind,u.email,u.name FROM notifications n
+    `SELECT n.id,n.user_id,n.body,n.markup,n.page_id,n.row_id,n.thread_id,n.link,n.kind,u.email,u.name FROM notifications n
      JOIN users u ON u.id=n.user_id
      WHERE n.read_at IS NULL AND n.emailed_at IS NULL AND n.created_at<=? AND u.disabled=0 AND u.demo_until IS NULL
        AND u.email LIKE '%@%'
@@ -372,7 +374,13 @@ export async function queueNotificationDigests(now = Date.now()) {
           : t(`${items.length} neue Benachrichtigungen`, `${items.length} new notifications`),
         [
           t(`Hallo ${escape(first.name)}, das ist in Flowplan passiert:`, `Hello ${escape(first.name)}, this happened in Flowplan:`),
-          `<ul style="padding-left:18px;margin:0">${(await mapAsync(shown, async (n) => `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(await body(n))}</a></li>`))
+          `<ul style="padding-left:18px;margin:0">${(await mapAsync(shown, async (n) =>
+            // A formatted message (#330) keeps its formatting and its own
+            // links; the notification's link follows it (no link in a link).
+            n.markup && !(await locked(n))
+              ? `<li style="margin:0 0 8px">${notifyHtml(n.markup, "color:#3b3fd8")} · <a href="${escape(link(n))}" style="color:#3b3fd8">${escape(t("Öffnen", "Open"))}</a></li>`
+              : `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(await body(n))}</a></li>`,
+          ))
             .join("")}${more > 0 ? `<li>${andMore}</li>` : ""}</ul>`,
         ],
         { label: t("Posteingang öffnen", "Open inbox"), url: `${url}/#inbox` },

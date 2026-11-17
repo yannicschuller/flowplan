@@ -88,6 +88,7 @@ import { IconLibraryPicker } from "./icon-library-picker";
 import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
+import { NotificationText } from "./notification-text";
 import { edgeScroller } from "./edge-scroll";
 import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, touchHold as holdForTouch, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
 import { MediaLibrary } from "./media-library";
@@ -5544,9 +5545,8 @@ export default function WorkspaceApp({
                     className={`notification-item${n.read_at ? "" : " unread"}`}
                     key={n.id}
                   >
-                    <button
-                      className="notification-row"
-                      onClick={() => {
+                    {(() => {
+                      const open = () => {
                         if (!n.read_at)
                           void act({
                             action: "notification.mark",
@@ -5568,18 +5568,45 @@ export default function WorkspaceApp({
                             : bySelector(`[data-mention="${CSS.escape(boot.user.id)}"]`),
                         );
                         void openPage(target.pageId, target);
-                      }}
-                    >
-                      <ChatCircle size={22} />
-                      <span>
-                        {!n.read_at && (
-                          <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />
-                        )}
-                        {serverMessage(n.body)}
-                        <small>{relativeTime(n.created_at, clock, locale)}</small>
-                      </span>
-                      <ArrowUpRight />
-                    </button>
+                      };
+                      // A formatted message (#330) has its own links and
+                      // person chips – no controls inside a button: the row
+                      // opens on a click beside them, the arrow is the button.
+                      if (n.markup)
+                        return (
+                          <div
+                            className="notification-row formatted"
+                            data-notification-formatted
+                            onClick={(e) => {
+                              if ((e.target as Element).closest("a, button, [data-mention], .math-inline") || window.getSelection()?.toString()) return;
+                              open();
+                            }}
+                          >
+                            <ChatCircle size={22} />
+                            <span>
+                              {!n.read_at && <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />}
+                              <NotificationText value={n.markup} members={boot.members} />
+                              <small>{relativeTime(n.created_at, clock, locale)}</small>
+                            </span>
+                            <button type="button" className="icon-button notification-open" aria-label={t(`Öffnen: ${n.body}`, `Open: ${n.body}`)} onClick={open}>
+                              <ArrowUpRight />
+                            </button>
+                          </div>
+                        );
+                      return (
+                        <button className="notification-row" onClick={open}>
+                          <ChatCircle size={22} />
+                          <span>
+                            {!n.read_at && (
+                              <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />
+                            )}
+                            {serverMessage(n.body)}
+                            <small>{relativeTime(n.created_at, clock, locale)}</small>
+                          </span>
+                          <ArrowUpRight />
+                        </button>
+                      );
+                    })()}
                     <div className="notification-actions">
                       {/* Added to a workspace (#320): open it, or leave it
                           with the confirmation of Settings → Allgemein. */}

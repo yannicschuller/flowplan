@@ -31,6 +31,7 @@ import { mayObserve, runnerIdentity } from "./runner";
 import { personValue } from "./nodes/data";
 import { outputFor, sampleOutput, triggerOutput } from "./nodes/triggers";
 import { notePause } from "./notices";
+import { cleanNotifyGraph } from "../notify-text";
 
 const uuid = z.string().uuid();
 
@@ -174,7 +175,7 @@ export async function replaceDraft(user: Identity, raw: unknown) {
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   let graph: WorkflowGraph;
   try {
-    graph = parseGraph(b.graph);
+    graph = cleanNotifyGraph(parseGraph(b.graph));
   } catch (error) {
     throw new HttpError(400, error instanceof z.ZodError ? "Ungültiger Workflow." : (error as Error).message);
   }
@@ -240,7 +241,8 @@ export async function activateWorkflow(user: Identity, raw: unknown) {
   if (!limits.enabled) throw new HttpError(409, "Workflows sind auf dieser Instanz abgeschaltet.");
   const role = await pageRole(user, page);
   if (role !== "editor" && role !== "owner") throw new HttpError(403, "Keine Berechtigung für diese Seite.");
-  const graph = await draftOf(page);
+  // Messages of notifications are cleaned once more (#330).
+  const graph = cleanNotifyGraph(await draftOf(page));
   const runner = { ...user, isAdmin: false, groups: [], apiScope: undefined } as Identity;
   const issues = await checked(user, page, graph, runner);
   // Not activated: the answer says why (no error, nothing written).
