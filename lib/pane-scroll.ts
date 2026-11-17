@@ -89,4 +89,19 @@ export function usePaneScroll(pane: RefObject<HTMLElement | null>, place: string
     step();
     return stop;
   }, [pane, place]);
+
+  // The tabs (#279) come on after the workspace's first render, and with
+  // them the entries' keys: the place shown at that moment – the first one
+  // of the visit – belongs to the entry under its new key, or its position
+  // was kept under a key nothing asks for any more and back to it started
+  // at the top.
+  const keyed = !!entryKey;
+  useLayoutEffect(() => {
+    const before = shownIn.current;
+    const now = keyOf.current?.() ?? currentEntryKey();
+    if (before === now) return;
+    shownIn.current = now;
+    const entry = before ? kept.current.get(before) : undefined;
+    if (now && entry && entry.place === shown.current) keepPosition(kept.current, now, entry.place, entry.top);
+  }, [keyed]);
 }
