@@ -1987,6 +1987,7 @@ test("nested filters preview and persist AND/OR groups and retain drafts on conc
   await page.getByRole("button", { name: "Board", exact: true }).click();
   await expect(page.locator(".record-card")).toHaveCount(4);
   await page.getByRole("button", { name: "Tabelle", exact: true }).click();
+  await expect(page.locator("tbody .title-cell")).toHaveText(["Alpha", "Beta"]);
   await page.getByRole("button", { name: /^Filtern/ }).click();
   await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await root
