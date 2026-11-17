@@ -1,9 +1,11 @@
 "use client";
 // Administration → Grenzen & Aufbewahrung → Workflows (docs/specs/workflows.md
-// §12): the main switch and the limits of wave 1. Stored values take
+// §12): the main switch, outside e-mail (also to addresses from
+// placeholders) and the limits of wave 1. Stored values take
 // precedence, empty follows the environment (its value is the placeholder);
 // beside them the current load (monitoring counters).
 import { useCallback, useEffect, useId, useState } from "react";
+import { Info } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
 import { api, reportError } from "../../ui";
 import { SaveState, SettingGroup, SettingRow, Switch, useSaveState } from "../../settings-ui";
@@ -15,6 +17,8 @@ type Answer = {
   stored: Record<string, number | boolean | null | undefined>;
   defaults: Limits;
   monitoring: { activeWorkflows: number; runsPerMinute: number; queuedSteps: number; runningSteps: number; waitingSteps: number; failureRate: number; undispatchedEvents: number };
+  // The update to 0.9.9 kept e-mail to addresses from placeholders for these.
+  mailMigration: { at: number; workflows: { pageId: string; title: string }[] } | null;
 };
 
 // i18n-table: 2 4 – [key, German, English, German help, English help, min, max, unit]
@@ -69,6 +73,44 @@ export function WorkflowLimits() {
           >
             <Switch checked={data.limits.enabled !== false} label={t("Workflows erlaubt", "Workflows allowed")} onChange={(on) => save({ enabled: on })} />
           </SettingRow>
+          <SettingRow
+            label={t("E-Mails an Adressen außerhalb der Mitglieder", "E-mail to addresses outside the members")}
+            description={t("Aus: Workflows schreiben nur Mitgliedern des Arbeitsbereichs.", "Off: workflows only write to members of the workspace.")}
+          >
+            <Switch checked={data.limits.externalMail !== false} label={t("E-Mails an Adressen außerhalb der Mitglieder", "E-mail to addresses outside the members")} onChange={(on) => save({ externalMail: on })} />
+          </SettingRow>
+          <SettingRow
+            label={t("… auch an Adressen aus Platzhaltern", "… also to addresses from placeholders")}
+            description={t(
+              "Aus (Standard): nach außen nur an Adressen, die fest im Knoten stehen. An eine Adresse aus einer Formularantwort, einer E-Mail oder einer KI-Antwort könnte sonst jeder, der diese Daten schickt, E-Mails der Instanz lenken.",
+              "Off (default): outside only to addresses written in the node. Otherwise anyone sending a form answer, an e-mail or text for an AI answer could direct the instance's e-mail to an address of their choice.",
+            )}
+          >
+            <Switch
+              checked={data.limits.externalMailDynamic === true}
+              disabled={data.limits.externalMail === false}
+              label={t("E-Mails auch an Adressen aus Platzhaltern", "E-mail also to addresses from placeholders")}
+              onChange={(on) => save({ externalMailDynamic: on })}
+            />
+          </SettingRow>
+          {data.mailMigration && (
+            <div className="callout admin-update" role="note">
+              <Info size={20} aria-hidden="true" />
+              <span>
+                {t(
+                  `Beim Update auf 0.9.9 eingeschaltet geblieben, weil ${data.mailMigration.workflows.length === 1 ? "ein aktiver Workflow" : `${data.mailMigration.workflows.length} aktive Workflows`} E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.`,
+                  `Left on by the update to 0.9.9 because ${data.mailMigration.workflows.length === 1 ? "an active workflow sends" : `${data.mailMigration.workflows.length} active workflows send`} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.`,
+                )}
+              </span>
+              <span className="admin-update-links">
+                {data.mailMigration.workflows.map((w) => (
+                  <a key={w.pageId} href={`/#page=${w.pageId}`}>
+                    {w.title || t("Ohne Titel", "Untitled")}
+                  </a>
+                ))}
+              </span>
+            </div>
+          )}
           {NUMBERS.map(([key, de, en, helpDe, helpEn, min, max, unit]) => (
             <LimitRow
               key={key}

@@ -38176,6 +38176,23 @@ html.native-app body {
   margin: 4px 0 0;
   font-size: 13px;
 }
+/* The AI summary's tasks: their people are told only once someone confirms. */
+.meeting-assignees {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.meeting-assignees > span:first-child {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.meeting-assignees-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
 /* The transcript's switches: edit (locked by default), find, hidden lines. */
 .meeting-transcript-bar {
   display: flex;

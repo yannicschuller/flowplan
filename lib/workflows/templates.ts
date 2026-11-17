@@ -80,7 +80,9 @@ export function layoutGraph(graph: WorkflowGraph): WorkflowGraph {
   };
 }
 // Unique edge ids (the layout of a template is deterministic).
-function finish(nodes: WorkflowNode[], edges: WorkflowEdge[], timeZone: string): WorkflowGraph {
+// `untrustedTargets`: the template lets data from outside choose a
+// recipient by design (lib/workflows/provenance.ts) – the setting is on.
+function finish(nodes: WorkflowNode[], edges: WorkflowEdge[], timeZone: string, untrustedTargets = false): WorkflowGraph {
   const seen = new Set<string>();
   const unique = edges.map((e, i) => {
     let id = e.id.slice(0, 22);
@@ -88,7 +90,7 @@ function finish(nodes: WorkflowNode[], edges: WorkflowEdge[], timeZone: string):
     seen.add(id);
     return { ...e, id };
   });
-  return layoutGraph({ format: GRAPH_FORMAT, version: GRAPH_VERSION, settings: { timeZone, triggerOnOwnChanges: false, limits: {} }, nodes, edges: unique });
+  return layoutGraph({ format: GRAPH_FORMAT, version: GRAPH_VERSION, settings: { timeZone, triggerOnOwnChanges: false, limits: {}, ...(untrustedTargets ? { untrustedTargets: true } : {}) }, nodes, edges: unique });
 }
 const fieldsOf = (ctx: TemplateContext, answers: GapAnswers, gap: string) => ctx.fields(str(answers[gap])) || [];
 
@@ -335,7 +337,8 @@ export function workflowTemplates(t: T): WorkflowTemplate[] {
           // The ticket stands even when the confirmation cannot go out.
           }, { onError: { retry: 1, then: "continue" } }),
         ];
-        return finish(nodes, [link("n_trigger", "n_extract"), link("n_extract", "n_create"), link("n_create", "n_confirm")], ctx.timeZone);
+        // The confirmation goes to the sender: the setting is on (a warning when activating).
+        return finish(nodes, [link("n_trigger", "n_extract"), link("n_extract", "n_create"), link("n_create", "n_confirm")], ctx.timeZone, true);
       },
     },
     {

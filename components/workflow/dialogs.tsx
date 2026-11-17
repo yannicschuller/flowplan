@@ -506,6 +506,49 @@ function CustomValues({ trigger, form, setForm, json, setJson, jsonId, t }: { tr
   );
 }
 
+// The workflow's own settings (versioned with the graph): whether outside
+// data may choose recipients and targets (lib/workflows/provenance.ts).
+// Off is the absent setting: the graph is the same as before it existed.
+export function withUntrustedTargets(graph: WorkflowGraph, on: boolean): WorkflowGraph {
+  const { untrustedTargets: _off, ...rest } = graph.settings;
+  return { ...graph, settings: on ? { ...rest, untrustedTargets: true } : rest };
+}
+export function SettingsDialog({ open, graph, editable, onChange, onClose }: { open: boolean; graph: WorkflowGraph; editable: boolean; onChange: (change: (graph: WorkflowGraph) => WorkflowGraph) => void; onClose: () => void }) {
+  const t = useStableT();
+  const id = useId();
+  const allowed = !!graph.settings?.untrustedTargets;
+  const set = (on: boolean) => onChange((g) => withUntrustedTargets(g, on));
+  return (
+    <Modal open={open} onClose={onClose} title={t("Einstellungen des Workflows", "Workflow settings")}>
+      <div className="wf-dialog">
+        <label className="wf-check wf-setting">
+          <input type="checkbox" checked={allowed} disabled={!editable} aria-describedby={`${id}-help`} onChange={(e) => set(e.target.checked)} />
+          <span>{t("KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen", "AI and trigger data may choose recipients and targets")}</span>
+        </label>
+        <div id={`${id}-help`} className="wf-setting-help muted">
+          <p>
+            {t(
+              "Aus (Standard): Wen der Workflow benachrichtigt, wem er E-Mails schickt, wer freigibt und welche Seite oder welchen Eintrag er ändert, darf nicht aus einer KI-Antwort, einer HTTP-Antwort oder aus Daten kommen, die der Auslöser von außen bringt – Formularantworten, Webhook-Inhalte, eingehende E-Mails, Kommentartexte. Wer solche Daten schickt, kann darin Anweisungen verstecken und so bestimmen, an wen der Workflow schreibt oder was er ändert.",
+              "Off (default): whom the workflow notifies or e-mails, who approves and which page or record it changes must not come from an AI answer, an HTTP answer or data the trigger brings from outside – form answers, webhook bodies, inbound e-mails, comment texts. Whoever sends such data can hide instructions in it and so decide whom the workflow writes to or what it changes.",
+            )}
+          </p>
+          <p>
+            {t(
+              "Schalte es nur ein, wenn genau das gewollt ist – etwa eine Bestätigung an die Adresse aus dem Formular. Die Prüfung zeigt dann jede solche Stelle als Hinweis; auch eingeschaltet bleiben Ziele im Arbeitsbereich des Workflows.",
+              "Turn it on only when that is exactly what you want – a confirmation to the address from the form, say. The check then shows each such place as a note; even with it on, targets stay in the workflow’s workspace.",
+            )}
+          </p>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button primary" onClick={onClose}>
+            {t("Fertig", "Done")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // Pausing (§8.11, open question 8): open runs are held – or cancelled.
 export function PauseDialog({ open, pageId, onClose, onDone, onError }: { open: boolean; pageId: string; onClose: () => void; onDone: () => void; onError: (e: unknown) => void }) {
   const t = useStableT();

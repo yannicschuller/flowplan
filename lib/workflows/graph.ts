@@ -38,6 +38,9 @@ export const workflowSettingsSchema = z.object({
   // Language of the date and number filters (§13); default: the activating person's.
   locale: z.string().max(10).optional(),
   triggerOnOwnChanges: z.boolean().default(false),
+  // "KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen" (lib/workflows/
+  // provenance.ts): off unless set – absent, so graphs from before keep their hash.
+  untrustedTargets: z.boolean().optional(),
   // Lower limits than the instance's (§12): never higher.
   limits: z.object({ runsPerMinute: z.number().int().min(1).max(1000).optional(), stepsPerRun: z.number().int().min(10).max(2000).optional() }).default({}),
 });
@@ -308,10 +311,13 @@ const ISSUE_TEXT: Record<string, [string, string]> = {
   unknown_webhook: ["Der Chat-Webhook gibt es nicht oder er ist nicht für Workflows freigegeben.", "The chat webhook does not exist or is not released for workflows."],
   unknown_address: ["Die E-Mail-Adresse gibt es nicht oder sie geht nicht an diesen Workflow.", "The e-mail address does not exist or does not go to this workflow."],
   external_mail_off: ["E-Mails an Adressen außerhalb der Mitglieder sind auf dieser Instanz abgeschaltet.", "E-mails to addresses outside the members are switched off on this instance."],
+  external_mail_dynamic_off: ["Adressen aus Platzhaltern oder Eigenschaften bekommen auf dieser Instanz nur Mitglieder – E-Mails nach außen nur an Adressen, die im Knoten stehen.", "Addresses from placeholders or properties only reach members on this instance – e-mail goes outside only to addresses written in the node."],
   token_webhook: ["„Nur Token“: Wer die Adresse kennt, kann den Workflow starten. Signiert ist sicherer.", "“Token only”: anyone who knows the address can start the workflow. Signed is safer."],
-  ai_to_recipients: ["Eine KI-Ausgabe bestimmt hier die Empfänger – prüfen, ob das gewollt ist.", "An AI output decides the recipients here – check that this is intended."],
+  ai_to_recipients: ["„{node}“ – eine KI-Ausgabe oder Daten von außen – bestimmt hier die Empfänger. Die Einstellungen des Workflows erlauben das; prüfe, ob es gewollt ist.", "“{node}” – an AI output or data from outside – decides the recipients here. The workflow’s settings allow it; check that this is intended."],
   ai_to_url: ["Eine KI-Ausgabe bestimmt hier den URL-Pfad – prüfen, ob das gewollt ist.", "An AI output decides the URL path here – check that this is intended."],
-  ai_to_target: ["Eine KI-Ausgabe bestimmt hier das Ziel – prüfen, ob das gewollt ist.", "An AI output decides the target here – check that this is intended."],
+  ai_to_target: ["„{node}“ – eine KI-Ausgabe oder Daten von außen – bestimmt hier das Ziel. Die Einstellungen des Workflows erlauben das; prüfe, ob es gewollt ist.", "“{node}” – an AI output or data from outside – decides the target here. The workflow’s settings allow it; check that this is intended."],
+  untrusted_recipients: ["„{node}“ – eine KI-Ausgabe oder Daten von außen – würde hier die Empfänger bestimmen. Lege sie fest oder erlaube es in den Einstellungen des Workflows („KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen“).", "“{node}” – an AI output or data from outside – would decide the recipients here. Set them yourself or allow it in the workflow’s settings (“AI and trigger data may choose recipients and targets”)."],
+  untrusted_target: ["„{node}“ – eine KI-Ausgabe oder Daten von außen – würde hier das Ziel bestimmen. Lege es fest oder erlaube es in den Einstellungen des Workflows („KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen“).", "“{node}” – an AI output or data from outside – would decide the target here. Set it yourself or allow it in the workflow’s settings (“AI and trigger data may choose recipients and targets”)."],
   unknown_journal: ["Das Journal gibt es nicht oder es hat eine PIN.", "The journal does not exist or has a PIN."],
   no_journal: ["Ein Journal wählen.", "Choose a journal."],
   no_journal_date: ["Ein Datum angeben (oder einen Platzhalter darauf).", "Give a date (or a placeholder on one)."],

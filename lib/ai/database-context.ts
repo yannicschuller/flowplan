@@ -29,6 +29,7 @@ import type { Field, Identity, Page } from "../types";
 import { aiFilter } from "./access";
 import type { DatabaseNote } from "./database-note";
 import { cellPlain, nameLookup, recordLines, SKIPPED } from "./sources";
+import { neutralizeTags } from "./prompts";
 
 export const DATABASE_CONTEXT_LIMITS = {
   databases: 3,
@@ -135,8 +136,9 @@ export async function referencedDatabases(user: Identity, input: DatabaseRefInpu
 }
 
 const escapeAttr = (text: string) => text.replace(/["<>\n\r]/g, " ").slice(0, 200);
-// Data never closes its own wrapper (nor an Ask source around it).
-const escapeBody = (text: string) => text.replace(/<\/(daten|quelle)/gi, "</ $1");
+// Data never closes its own wrapper (nor an Ask source around it), nor
+// opens another block (lib/ai/prompts.ts neutralizeTags).
+const escapeBody = (text: string) => neutralizeTags(text);
 const oneLine = (text: string) => {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > DATABASE_CONTEXT_LIMITS.value ? flat.slice(0, DATABASE_CONTEXT_LIMITS.value) + " …" : flat;

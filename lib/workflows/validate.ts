@@ -15,7 +15,7 @@ import { hasPlaceholders } from "./placeholders";
 import { databaseFields } from "./nodes/data";
 import { behindJournalPin } from "./runner";
 import { AI_TYPES, fixedHost } from "./catalog";
-import { parseTemplate, placeholderRoots } from "./placeholders";
+import { dynamicMailEntry, untrustedOrigin, untrustedTargetIssues } from "./provenance";
 import { workflowLimits } from "./limits";
 import { resolveAi } from "../ai/resolve";
 import { workflowChatHooks } from "../webhooks";
@@ -149,25 +149,14 @@ export async function validateGraph(graph: WorkflowGraph, ctx: { workspaceId: st
 }
 export const hasErrors = (issues: GraphIssue[]) => issues.some((i) => i.level === "error");
 
-// Where an AI answer would decide a recipient, an address or a target
-// page (§9.8): a warning, the activating person decides.
-const AI_TARGETS: Record<string, [string[], string]> = {
-  "notify.email": [["to"], "recipients"],
-  "notify.person": [["to"], "recipients"],
-  "logic.approval": [["approvers"], "approvers"],
-  "http.request": [["url", "query"], "url"],
-  "action.page.append": [["page"], "target"],
-  "action.page.create": [["parent"], "target"],
-  "action.page.move": [["page", "parent"], "target"],
-  "action.page.tag": [["page"], "target"],
-  "action.task.create": [["page"], "target"],
-  "action.record.update": [["record"], "target"],
-};
-const WHAT: Record<string, string> = { recipients: "ai_to_recipients", approvers: "ai_to_recipients", url: "ai_to_url", target: "ai_to_target" };
+// Where an AI answer or data from outside would decide a recipient, an
+// approver or a target (§9.8, lib/workflows/provenance.ts): an error unless
+// the workflow's settings allow it. An AI answer in a URL's path or query
+// (the host is fixed text): a warning, the activating person decides.
 
 async function waveTwoChecks(graph: WorkflowGraph, ctx: { workspaceId: string; runner: Identity | null; pageId?: string }, issues: GraphIssue[]) {
   const limits = await workflowLimits();
-  const aiNodes = new Set(graph.nodes.filter((n) => AI_TYPES.has(n.type)).map((n) => n.id));
+  issues.push(...untrustedTargetIssues(graph));
   let chatHooks: Set<string> | null = null;
   let aiOk: boolean | null = null;
   for (const n of graph.nodes) {
@@ -203,6 +192,9 @@ async function waveTwoChecks(graph: WorkflowGraph, ctx: { workspaceId: string; r
     }
     if (n.type === "notify.email" && !limits.externalMail && ((c.to as string[]) || []).some((t) => typeof t === "string" && t.includes("@")))
       issues.push({ level: "warning", code: "external_mail_off", nodeId: n.id });
+    // Addresses from placeholders reach members only, unless the instance allows more.
+    if (n.type === "notify.email" && limits.externalMail && !limits.externalMailDynamic && ((c.to as unknown[]) || []).some(dynamicMailEntry))
+      issues.push({ level: "warning", code: "external_mail_dynamic_off", nodeId: n.id });
     if (n.type === "trigger.webhook" && c.mode === "token") issues.push({ level: "warning", code: "token_webhook", nodeId: n.id });
     if (n.type === "trigger.mail.received") {
       const address = await one<{ page_id: string; workspace_id: string }>("SELECT page_id,workspace_id FROM inbound_addresses WHERE id=?", String(c.address || ""));
@@ -216,22 +208,9 @@ async function waveTwoChecks(graph: WorkflowGraph, ctx: { workspaceId: string; r
       for (const a of (c.approvers as string[]) || [])
         if (UUID.test(a) && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=? AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=members.workspace_id AND g.user_id=members.user_id)", ctx.workspaceId, a)))
           issues.push({ level: "error", code: "unknown_person", nodeId: n.id });
-    const target = AI_TARGETS[n.type];
-    if (target && aiNodes.size) {
-      const texts: string[] = [];
-      for (const key of target[0]) {
-        const v = c[key];
-        if (typeof v === "string") texts.push(v);
-        else if (Array.isArray(v)) for (const x of v) texts.push(typeof x === "string" ? x : typeof (x as { value?: unknown })?.value === "string" ? String((x as { value: string }).value) : "");
-      }
-      const fromAi = texts.some((t) => {
-        try {
-          return placeholderRoots(parseTemplate(t)).some((r) => aiNodes.has(r));
-        } catch {
-          return false;
-        }
-      });
-      if (fromAi) issues.push({ level: "warning", code: WHAT[target[1]], nodeId: n.id });
+    if (n.type === "http.request" && !n.disabled) {
+      const texts = [typeof c.url === "string" ? c.url : "", ...((c.query as { value?: string }[]) || []).map((q) => String(q?.value || ""))];
+      if (untrustedOrigin(graph, n.id, texts)?.kind === "ai") issues.push({ level: "warning", code: "ai_to_url", nodeId: n.id });
     }
   }
 }

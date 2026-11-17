@@ -77,6 +77,10 @@ async function databasePage(ctx: NodeRun, databaseId: string, write: boolean): P
     throw new StepError((e as Error).message, (e as { status?: number }).status === 404 ? "validation" : "permission");
   });
   if (page.kind !== "database") throw new StepError("Keine Datenbank.", "validation");
+  // Only the workflow's own workspace (see targetPage in ./pages.ts): a
+  // record or database id from a placeholder must not reach into another
+  // workspace the runner belongs to. Every record action goes through here.
+  if (page.workspace_id !== ctx.run.workspaceId) throw new StepError("Die Datenbank liegt in einem anderen Arbeitsbereich als der Workflow.", "permission");
   return page;
 }
 // The record a node acts on: the triggering one, or a placeholder/id.

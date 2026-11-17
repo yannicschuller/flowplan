@@ -22,6 +22,7 @@ import { resolveAi } from "./resolve";
 import { cellPlain, recordContent, recordTitle } from "./sources";
 import { isContentReferenceName } from "./content-references";
 import { forEachAsync, mapAsync, replaceAsync } from "../each-async";
+import { fence } from "./prompts";
 
 export const AI_OUTPUT_TYPES = ["text", "select", "multiselect", "number"] as const satisfies readonly FieldType[];
 // Properties "Mit KI ausfüllen" can fill.
@@ -235,10 +236,15 @@ export function fillRelationTitlesFor(user: Identity, page: Page) {
 // same text with the volatile values ({Zuletzt geändert} …) left as their
 // references – what the input hash is made of, so that a value's own write
 // does not count as a changed input.
+// `text`: the prompt with the values in place (what the hash and the
+// "empty" check see); `task` and `data`: what the model gets – the prompt
+// with "[Wert N]" where a value goes and the values as delimited data
+// blocks after it, so a value cannot pass for the instruction.
 export async function renderAiPrompt(prompt: string, fields: Field[], cells: Record<string, unknown>, row: RowLike, context: PromptContext) {
   let references = 0,
     filled = 0;
-  const render = (volatile: boolean) =>
+  const values: { name: string; value: string }[] = [];
+  const render = (volatile: boolean, collect = false) =>
     replaceAsync(prompt, /\{([^{}\n]{1,100})\}/g, async (whole, raw: string) => {
       const name = raw.trim();
       const field = referencedField(name, fields);
@@ -252,6 +258,10 @@ export async function renderAiPrompt(prompt: string, fields: Field[], cells: Rec
             : await cellPlain(field, cells[field.id], row, context.names);
       } else if (isContentReference(name, fields)) value = await context.content();
       else return whole;
+      if (collect) {
+        values.push({ name: field?.name || name, value: value.slice(0, 8000) });
+        return `[Wert ${values.length}]`;
+      }
       if (volatile) {
         references++;
         if (value.trim()) filled++;
@@ -259,7 +269,9 @@ export async function renderAiPrompt(prompt: string, fields: Field[], cells: Rec
       return value.slice(0, 8000);
     });
   const text = await render(true);
-  return { text, input: await render(false), empty: references > 0 && filled === 0 };
+  const task = await render(true, true);
+  const data = values.map((v, i) => fence("wert", v.value, ` nr="${i + 1}" eigenschaft="${v.name.replace(/["<>\n\r]/g, " ").slice(0, 100)}"`)).join("\n");
+  return { text, task, data, input: await render(false), empty: references > 0 && filled === 0 };
 }
 export const aiInputHash = (field: Field, rendered: string) =>
   createHash("sha256")

@@ -172,6 +172,50 @@ test("phones: the flow as a list, the switch and the runs, no editor", async ({ 
   await expect(page.getByText(/Noch keine Läufe/)).toBeVisible();
 });
 
+// A webhook's body choosing whom to notify (lib/workflows/provenance.ts).
+const untrustedGraph = () => {
+  const hook = { id: "n_hook0001", type: "trigger.webhook", typeVersion: 1, label: "Webhook", note: "", position: { x: 0, y: 0 }, disabled: false, config: { mode: "signed" } };
+  const tell = { id: "n_tell0001", type: "notify.person", typeVersion: 1, label: "Melden", note: "", position: { x: 300, y: 0 }, disabled: false, config: { to: ["{{n_hook0001.body.who}}"], title: "Hallo", message: "", channels: ["inbox"] } };
+  return { nodes: [hook, tell], edges: [{ id: "e_1", from: { node: hook.id, port: "out" }, to: { node: tell.id, port: "in" } }] };
+};
+
+test("outside data choosing recipients: an error until the workflow's settings allow it (desktop), not activated on the phone", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const { command, workflow } = await setup(page, `Untrusted ${info.project.name}`);
+  await command({ action: "workflow.draft", pageId: workflow, graph: untrustedGraph() });
+  await open(page, workflow);
+  if (info.project.name === "mobile") {
+    // No editor on the phone: the switch's check names the problem and does not activate.
+    await page.getByRole("switch", { name: "Workflow aktiv" }).click();
+    const activate = page.getByRole("dialog", { name: "Workflow aktivieren" });
+    await expect(activate.getByText(/würde hier die Empfänger bestimmen/)).toBeVisible();
+    await expect(activate.getByRole("button", { name: "Aktivieren", exact: true })).toBeDisabled();
+    return;
+  }
+  await expect(page.locator(".wf-check-state")).toHaveText("1 Fehler", { timeout: 10_000 });
+  await page.getByRole("button", { name: "Einstellungen des Workflows" }).click();
+  const settings = page.getByRole("dialog", { name: "Einstellungen des Workflows" });
+  const allow = settings.getByRole("checkbox", { name: "KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen" });
+  await expect(allow).not.toBeChecked();
+  await expect(allow).toHaveAccessibleDescription(/Formularantworten, Webhook-Inhalte, eingehende E-Mails, Kommentartexte/);
+  await allow.check();
+  await settings.getByRole("button", { name: "Fertig" }).click();
+  await expect(settings).toBeHidden();
+  await expect(page.locator(".wf-check-state")).toHaveText("1 Warnung", { timeout: 10_000 });
+  // Stored with the draft, and it activates – the note stays in the dialog.
+  await expect.poll(async () => (await (await page.request.get(`/api/workflows/${workflow}`)).json()).draft.graph.settings.untrustedTargets, { timeout: 10_000 }).toBe(true);
+  await page.getByRole("button", { name: "Aktivieren", exact: true }).click();
+  const activate = page.getByRole("dialog", { name: "Workflow aktivieren" });
+  await expect(activate.getByText(/Die Einstellungen des Workflows erlauben das/)).toBeVisible();
+  await activate.getByRole("button", { name: "Aktivieren", exact: true }).click();
+  await expect(page.locator(".wf-head .status-badge")).toHaveText("Aktiv");
+  // Off again: the setting is gone from the draft, the error is back.
+  await page.getByRole("button", { name: "Einstellungen des Workflows" }).click();
+  await settings.getByRole("checkbox", { name: "KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen" }).uncheck();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".wf-check-state")).toHaveText("1 Fehler", { timeout: 10_000 });
+});
+
 test("a database rule opens in the canvas; once activated, the rule links to its workflow", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Editing is for tablets and computers.");
   test.setTimeout(120_000);

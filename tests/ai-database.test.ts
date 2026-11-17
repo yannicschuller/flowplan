@@ -184,7 +184,8 @@ test("one value: computed, constrained, written like an edit, with metadata", as
   const before = mock.chats.length;
   const result = await runAiCell(ben, books, "summary", moby, "compute");
   assert.deepEqual(result, { status: "ok", value: "Ahab jagt den Wal." });
-  assert.match(mock.chats[before].prompt, /Fasse Ein Kapitän jagt einen weißen Wal\. in einem Satz zusammen/);
+  // The value as a data block after the task (tests/ai-delimiting.test.ts).
+  assert.match(mock.chats[before].prompt, /Fasse \[Wert 1\] in einem Satz zusammen\n\nWerte des Eintrags:\n<wert nr="1" eigenschaft="Beschreibung">\nEin Kapitän jagt einen weißen Wal\.\n<\/wert>/);
   assert.equal((await cells(moby)).summary, "Ahab jagt den Wal.");
   const meta = (await one<{ model: string; provider: string; computed_by: string; status: string }>("SELECT * FROM ai_cell_meta WHERE row_id=? AND field_id='summary'", moby))!;
   assert.deepEqual([meta.model, meta.provider, meta.computed_by, meta.status], ["chat", "ollama", ben.id, "ok"]);
@@ -336,7 +337,7 @@ test("automatic values never take 'Zuletzt geändert' as input: refused when sav
   assert.equal(await settle(), 1);
   await work();
   assert.equal(asked().length, 1);
-  assert.match(asked()[0].prompt, /Stand \d{4}-\d{2}-\d{2}/, "the prompt itself carries the timestamp");
+  assert.match(asked()[0].prompt, /Stand \[Wert 2\][\s\S]*eigenschaft="Geändert">\n\d{4}-\d{2}-\d{2}/, "the prompt itself carries the timestamp");
   assert.ok(await one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "marked dirty by its own write");
   await run("UPDATE rows SET cells=cells,updated_at=? WHERE id=?", nowText(Date.now() + 120_000), r);
   assert.equal(await settle(), 0, "a later minute is no new input");

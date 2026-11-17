@@ -1299,6 +1299,18 @@ const dialogScenes: Scene[] = [
     },
   },
   {
+    id: "workflow-settings",
+    group: "Dialogs",
+    title: "Workflow: settings",
+    devices: ["desktop"],
+    path: (c) => `#page=${c.ids.workflowId}`,
+    covers: ["components/workflow/dialogs.tsx"],
+    steps: async (page) => {
+      await button(page, "Einstellungen des Workflows").click();
+      await waitDialog(page, "Einstellungen des Workflows");
+    },
+  },
+  {
     id: "workflow-activate",
     group: "Dialogs",
     title: "Workflow: activate",

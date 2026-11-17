@@ -49,6 +49,7 @@ import {
   Warning,
   Waveform,
   X,
+  BellRinging,
 } from "@phosphor-icons/react";
 import { useLocale, useT } from "./i18n";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -82,6 +83,7 @@ import {
 } from "@/lib/meeting-transcript-edit";
 import { formatTimestamp } from "@/lib/transcript";
 import { tr } from "@/lib/locale-tag";
+import { localeTag } from "@/lib/i18n";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { streamAiFrom } from "@/lib/ai/client";
 import { BlockMenu, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
@@ -109,6 +111,8 @@ type Status = {
   audio: { session: number; track: MeetingTrack; url: string }[];
   audioUntil: number | null;
   summarizedAt?: number | null;
+  // People the AI summary gave a task to who are not told yet.
+  pendingAssignees?: { id: string; name: string }[];
   consentRequired: boolean;
   transcription: boolean;
   [key: string]: unknown;
@@ -485,6 +489,19 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       handle(error);
     }
     await load();
+  };
+  // The summary's tasks tell their people only once someone here confirms
+  // (the AI chose them from what was said).
+  const [telling, setTelling] = useState(false);
+  const names = (people: { name: string }[]) => new Intl.ListFormat(localeTag(locale), { type: "conjunction" }).format(people.map((p) => p.name));
+  const confirmAssignees = async (notify: boolean) => {
+    setTelling(true);
+    try {
+      setStatus(await postJson<Status>(`/api/meetings/${meetingId}/assignees`, { notify }));
+    } catch (error) {
+      handle(error);
+    }
+    setTelling(false);
   };
   const retry = async () => {
     try {
@@ -1020,6 +1037,24 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
           <p className="muted meeting-empty">
             {recorded ? t("Noch keine Zusammenfassung.", "No summary yet.") : t("Die Zusammenfassung erscheint nach der Aufnahme: zuerst die Aufgaben, dann die Themen und offenen Punkte.", "The summary appears after the recording: action items first, then topics and open points.")}
           </p>
+        )}
+        {tab === "summary" && canEdit && !summaryEmpty && !busy && !!status?.pendingAssignees?.length && (
+          <div className="meeting-notice meeting-assignees" role="status">
+            <span>
+              {t(
+                `Die KI-Zusammenfassung hat Aufgaben an ${names(status.pendingAssignees)} vergeben. Benachrichtigt wird erst, wenn du es bestätigst.`,
+                `The AI summary gave tasks to ${names(status.pendingAssignees)}. Nobody is notified until you confirm.`,
+              )}
+            </span>
+            <span className="meeting-assignees-actions">
+              <button type="button" className="button" disabled={telling} onClick={() => void confirmAssignees(true)}>
+                <BellRinging size={14} aria-hidden /> {t("Zuständige benachrichtigen", "Notify assignees")}
+              </button>
+              <button type="button" className="meeting-bar-button" disabled={telling} onClick={() => void confirmAssignees(false)}>
+                {t("Nicht benachrichtigen", "Don’t notify")}
+              </button>
+            </span>
+          </div>
         )}
         {tab === "transcript" && transcriptEmpty && <p className="muted meeting-empty">{t("Noch kein Transkript.", "No transcript yet.")}</p>}
         {tab === "transcript" && !transcriptEmpty && (canEdit || counts.hidden > 0) && (

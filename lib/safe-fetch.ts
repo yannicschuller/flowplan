@@ -236,6 +236,18 @@ function once(url: URL, maxBytes: number, timeout: number, accept: string, allow
     req.end(extra.body);
   });
 }
+// The request after a redirect (RFC 9110 §15.4) that safeSend's callers
+// follow themselves (workflow HTTP requests): 303, and 301/302 after
+// anything but GET, become a GET without a body; 307/308 keep the method,
+// but a body – and the request's own headers – go only to the origin they
+// were meant for: a redirect to another host or scheme gets neither (a
+// browser drops credentials there the same way).
+export function redirectHop(status: number, from: URL, to: URL, method: string, body: string) {
+  const sameOrigin = from.origin === to.origin;
+  if (status === 303 || ((status === 301 || status === 302) && method !== "GET")) return { method: "GET", body: "", sameOrigin };
+  return { method, body: sameOrigin ? body : "", sameOrigin };
+}
+
 export async function safeFetch(
   raw: string,
   {

@@ -93,7 +93,7 @@ export type WorkflowState = {
   pausedAt: number | null;
   throttled: number;
   canEdit: boolean;
-  active: { id: string; number: number; graph: WorkflowGraph; activatedBy: Person | null; activatedAt: number; note: string } | null;
+  active: { id: string; number: number; graph: WorkflowGraph; activatedBy: Person | null; activatedAt: number; note: string; needsUntrustedSetting?: boolean } | null;
   draft: { graph: WorkflowGraph; generation: string; state: string; changed: boolean; issues: Issue[] } | null;
   lastRun: { id: string; status: string; mode: string; created_at: number; finished_at: number | null } | null;
 };

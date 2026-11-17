@@ -340,3 +340,34 @@ test("set_task ticks, dates and assigns one task without replacing the text", as
   assert.equal(done.task.done, true);
   assert.equal((await ok(benWrite, "get_record", { databaseId: db, recordId: record.id })).tasks[0].done, true);
 });
+
+test("Markdown written through MCP keeps only images uploaded here; remote image addresses are left out", async () => {
+  const file = "0b9c7a52-6f1e-4c55-9a3e-2f7d1c8b4e10";
+  const markdown = [
+    "![Spur](https://evil.example/pixel.png?d=geheim)",
+    "![Daten](data:image/png;base64,iVBORw0KGgo=)",
+    "![Protokoll](//evil.example/x.png)",
+    "![Andere Route](https://flowplan.example.test/api/workflows/x)",
+    `![Eigenes Bild](https://flowplan.example.test/api/files/${file})`,
+    `![Relativ](/api/files/${file})`,
+    "[Ein Link](https://example.org/doc)",
+  ].join("\n\n");
+  const page = await createPage(wid, teamSpace, ana.id, "Bilder");
+  // append_to_page, update_page (replace) and create_page with content.
+  await ok(benWrite, "append_to_page", { pageId: page, markdown });
+  const appended = await html(page);
+  assert.doesNotMatch(appended, /evil\.example|data:image|api\/workflows/);
+  assert.equal(appended.match(new RegExp(`<img[^>]*src="/api/files/${file}"`, "g"))?.length, 2);
+  for (const alt of ["Spur", "Daten", "Protokoll", "Andere Route"]) assert.ok(appended.includes(alt), alt);
+  assert.match(appended, /href="https:\/\/example\.org\/doc"/);
+  await ok(benWrite, "update_page", { pageId: page, markdown: "![x](https://evil.example/a.gif)" });
+  assert.doesNotMatch(await html(page), /<img|evil\.example/);
+  const created = await ok(benWrite, "create_page", { workspaceId: wid, spaceId: teamSpace, title: "Neu mit Bild", markdown: "![y](https://evil.example/b.gif)" });
+  assert.doesNotMatch(await html(created.id), /<img|evil\.example/);
+  // A record's document.
+  const db = await createPage(wid, teamSpace, ana.id, "Bilddaten", "database");
+  const titleField = JSON.parse((await call(benWrite, "query_database", { databaseId: db })).text).fields[0].name as string;
+  const record = await ok(benWrite, "create_record", { databaseId: db, properties: { [titleField]: "Mit Bild" }, document: "![z](https://evil.example/c.gif)" });
+  const doc = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", record.id))!.html;
+  assert.doesNotMatch(doc, /<img|evil\.example/);
+});

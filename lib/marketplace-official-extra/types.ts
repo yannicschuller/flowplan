@@ -35,7 +35,9 @@ export type ExtraWhiteboard = ExtraBase & { kind: "whiteboard"; items: Draft[] }
 // A graph with "$ask:<gap>" tokens where the importing person picks a
 // database, a property, a page or a person (lib/workflows/templates.ts).
 export type ExtraGap = { id: string; kind: Exclude<GapKind, "toggle">; label: Text; optional?: boolean };
-export type ExtraWorkflow = ExtraBase & { kind: "workflow"; nodes: WorkflowNode[]; edges: WorkflowEdge[]; gaps: ExtraGap[] };
+// `untrustedTargets`: by design data from outside (a form's e-mail answer)
+// chooses a recipient – the workflow setting of lib/workflows/provenance.ts.
+export type ExtraWorkflow = ExtraBase & { kind: "workflow"; nodes: WorkflowNode[]; edges: WorkflowEdge[]; gaps: ExtraGap[]; untrustedTargets?: true };
 // Bundled typefaces only (lib/theme-fonts.ts), no uploaded fonts.
 export type ExtraAppearance = ExtraBase & { kind: "appearance"; theme: WorkspaceTheme };
 export type ExtraLinkRule = { name: string; pattern: string; template: string };
