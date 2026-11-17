@@ -66,6 +66,8 @@ export type Space = {
   owner_id: string;
   deleted_at?: string | null;
   version?: number;
+  // 1: shown as a library of books (#329, lib/library.ts).
+  library?: number;
 };
 export type Page = {
   id: string;

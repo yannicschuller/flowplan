@@ -29,6 +29,7 @@ export function SpaceManager({
     [color, setColor] = useState(space.icon_color || "none"),
     [name, setName] = useState(space.name),
     [visibility, setVisibility] = useState(space.visibility),
+    [library, setLibrary] = useState(!!space.library),
     [confirmation, setConfirmation] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -59,6 +60,7 @@ export function SpaceManager({
         visibility,
         icon,
         iconColor: color,
+        library,
         confirmName: confirmation,
       });
       await onDone();
@@ -154,6 +156,21 @@ export function SpaceManager({
                   setColor(nextColor);
                 }}
               />
+            )}
+            {!duplicating && (
+              // "Als Bibliothek anzeigen" (#329, lib/library.ts).
+              <label className="checkbox-label space-library-toggle">
+                <input type="checkbox" checked={library} disabled={busy} onChange={(event) => setLibrary(event.target.checked)} />
+                <span>
+                  {t("Als Bibliothek anzeigen", "Show as library")}
+                  <small>
+                    {t(
+                      "Seiten oben im Bereich werden zu Büchern, ihre Unterseiten zu Kapiteln. In der Seitenleiste steht dann nur „Bibliothek öffnen“ – der Seitenbaum bleibt aufklappbar.",
+                      "Pages at the top of the space become books, their sub-pages chapters. The sidebar then shows just “Open library” – the page tree can still be expanded.",
+                    )}
+                  </small>
+                </span>
+              </label>
             )}
             {!duplicating && <AiBlockToggle targetId={space.id} kind="space" onError={setError} />}
             {!duplicating && <SpaceGitExport spaceId={space.id} onError={setError} />}

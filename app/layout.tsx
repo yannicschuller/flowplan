@@ -9,6 +9,7 @@ import "./contacts.css";
 import "./page-properties.css";
 import "./option-colors.css";
 import "./collections.css";
+import "./library.css";
 import "./instance-move.css";
 import "./backup-restore.css";
 import "./admin-monitoring.css";

@@ -285,6 +285,8 @@ export const archiveSchema = z.object({
         name: str,
         icon: symbol,
         icon_color: spaceColorSchema.default("none"),
+        // Shown as a library (#329); archives from before have none.
+        library: z.boolean().optional(),
         visibility: z.enum(["team", "private"]),
         // Archives from before schema 67 have none: their list order counts.
         position: z.number().finite().optional(),
@@ -567,6 +569,7 @@ async function snapshotFor(user: Identity, wid: string) {
         name: s.name,
         icon: s.icon,
         icon_color: s.icon_color || "none",
+        ...(s.library ? { library: true } : {}),
         visibility: s.visibility,
         position: i + 1,
       })),
@@ -1348,7 +1351,7 @@ async function importEntries(
         : data.spaces;
       for (const s of spacesInOrder)
         await run(
-          "INSERT INTO spaces(id,workspace_id,name,icon,visibility,owner_id,icon_color) VALUES(?,?,?,?,?,?,?)",
+          "INSERT INTO spaces(id,workspace_id,name,icon,visibility,owner_id,icon_color,library) VALUES(?,?,?,?,?,?,?,?)",
           spaceMap.get(s.id)!,
           wid,
           `${s.name} (Import)`,
@@ -1356,6 +1359,7 @@ async function importEntries(
           "private",
           user.id,
           s.icon_color,
+          s.library ? 1 : 0,
         );
       for (const p of data.pages)
         await run(

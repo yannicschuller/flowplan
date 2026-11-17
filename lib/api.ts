@@ -1476,12 +1476,15 @@ async function runCommand(
             409,
             "Der Bereich wurde inzwischen geändert. Bitte neu laden.",
           );
+        // "Als Bibliothek anzeigen" (#329): left as it is when not sent.
+        const library = b.library === undefined ? (s.library ? 1 : 0) : z.boolean().parse(b.library) ? 1 : 0;
         await run(
-          "UPDATE spaces SET name=?,visibility=?,icon=?,icon_color=?,version=version+1 WHERE id=?",
+          "UPDATE spaces SET name=?,visibility=?,icon=?,icon_color=?,library=?,version=version+1 WHERE id=?",
           str.parse(b.name),
           b.private ? "private" : "team",
           spaceIconSchema.parse(b.icon ?? s.icon),
           spaceColorSchema.parse(b.iconColor ?? s.icon_color ?? "none"),
+          library,
           sid,
         );
         break;
