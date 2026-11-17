@@ -47,7 +47,10 @@ test("the toolbar copies the selected image as PNG", async ({ page }) => {
   // The introduction a new account sees first.
   const skip = page.getByRole("button", { name: "Überspringen" });
   if (await skip.waitFor({ timeout: 30_000 }).then(() => true, () => false)) await skip.click();
-  await editor.click();
+  // Focused without a click: the click on the picture below lands a few
+  // pixels from the editor's centre, and two clicks there within 500 ms are
+  // a double click to ProseMirror – which opens "Bild markieren".
+  await editor.focus();
   await page.evaluate((s) => {
     const el = document.querySelector(".ProseMirror") as HTMLElement & { editor: { chain: () => { focus: () => { setImage: (a: object) => { run: () => void } } } } };
     el.editor.chain().focus().setImage({ src: s, alt: "foto.png" }).run();
