@@ -120,6 +120,8 @@ import { workspaceCookie } from "@/lib/last-workspace";
 import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
 import { ListSkeleton, SettingsSkeleton, viewShapeOf } from "./skeleton";
+import { RoutePendingPlaceholder } from "./route-pending";
+import { routePendingDone } from "@/lib/route-pending";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, useLeaving } from "./motion";
@@ -522,6 +524,10 @@ export default function WorkspaceApp({
   const [bootState, setBoot] = useState(initial),
     [pageId, setPageId] = useState<string | null>(null),
     [screen, setScreen] = useState<Screen>("home"),
+    // The placeholder drawn with the server's start page for a reload on
+    // another place (lib/route-pending.ts): gone once the app shows the
+    // place in the address.
+    [routeSettled, setRouteSettled] = useState(false),
     [dataState, setData] = useState<PageData | null>(null),
     [mobile, setMobile] = useState(false),
     [search, setSearch] = useState(false),
@@ -1807,6 +1813,13 @@ export default function WorkspaceApp({
     };
     // What the app opens with comes without a transition.
     withoutViewTransition(navigate);
+    // The address names no other place (or one that does not open): the
+    // start page is the right one. Otherwise the layout effect below ends
+    // the wait with the commit that draws the place.
+    if (screenRef.current === "home") {
+      routePendingDone();
+      setRouteSettled(true);
+    }
     window.addEventListener("hashchange", navigate);
     // The global shortcuts, as the keymap says (lib/keymap.ts; own
     // combinations in the shortcut overlay). Combinations without Ctrl, ⌘ or
@@ -1856,6 +1869,11 @@ export default function WorkspaceApp({
       window.removeEventListener(SIGNED_OUT_EVENT, signedOut);
     };
   }, [initial.pages, openPage, notify, openSearch]);
+  useLayoutEffect(() => {
+    if (screen === "home") return;
+    routePendingDone();
+    setRouteSettled(true);
+  }, [screen]);
   const templateUsed = useRef(false);
   useEffect(() => {
     if (!useTemplate || templateUsed.current) return;
@@ -4508,7 +4526,7 @@ export default function WorkspaceApp({
                 )}
               </span>
             ) : (
-              <span>
+              <span className={screen === "home" ? "breadcrumb-home" : undefined}>
                 {
                   {
                     home: t("Startseite", "Home"),
@@ -4992,6 +5010,7 @@ export default function WorkspaceApp({
           role={tabBars ? "tabpanel" : undefined}
           aria-labelledby={tabBars && tabs.layout ? `tab-${tabs.layout.frames[0].active}` : undefined}
         >
+          {screen === "home" && !routeSettled && <RoutePendingPlaceholder />}
           {screen === "home" && (
             <HomeScreen
               boot={boot}

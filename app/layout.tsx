@@ -38,6 +38,7 @@ import { PdfViewerHost } from "@/components/pdf-viewer";
 import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
+import { ROUTE_PENDING_SCRIPT } from "@/lib/route-pending";
 import { UUID_POLYFILL_SCRIPT } from "@/lib/uuid-polyfill";
 import { NativeAppZoomLock } from "@/components/native-app-zoom-lock";
 import { APP_BARS_SCRIPT } from "@/lib/app-safe-areas";
@@ -106,6 +107,10 @@ export default async function RootLayout({
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: selfHealScript(build) }} />
         {/* Light or dark before the first paint (lib/theme.ts). */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* A reload on another place than the start page (#page=…,
+            #settings/…): a placeholder instead of the server's start page
+            until the app shows that place (lib/route-pending.ts). */}
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: ROUTE_PENDING_SCRIPT }} />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: UUID_POLYFILL_SCRIPT }} />
         {/* The Android app's own bars instead of the page's safe areas
             (lib/app-safe-areas.ts, #61). */}

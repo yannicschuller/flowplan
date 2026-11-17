@@ -34077,6 +34077,65 @@ label.ws-search input {
   --home-gap: 20px;
   --home-pad: 18px;
 }
+/* A reload on another place than the start page (lib/route-pending.ts):
+   the server rendered the start page, which never shows – a placeholder of
+   the coming place lies over it until the app draws that place and removes
+   <html data-route-pending>. Should the app's scripts never get there, the
+   start page appears after a few seconds instead of an empty pane (the
+   animations are steps, not motion: they also run with reduced motion and
+   "Animationen: Aus", hence !important against their resets). */
+.route-pending,
+.route-pending > div {
+  display: none;
+}
+html[data-route-pending] .main-scroll {
+  position: relative;
+}
+html[data-route-pending] .main-scroll > .route-pending {
+  display: block;
+  position: absolute;
+  inset: 0 0 auto;
+  animation: route-pending-hide 0s linear 6s forwards !important;
+}
+html[data-route-pending="page"] .route-pending > .route-pending-page,
+html[data-route-pending="settings"] .route-pending > .route-pending-settings,
+html[data-route-pending="list"] .route-pending > .route-pending-list {
+  display: block;
+}
+html[data-route-pending] .main-scroll > .route-pending ~ .home-screen,
+html[data-route-pending] .breadcrumb-home {
+  visibility: hidden;
+  opacity: 0;
+  animation: route-pending-show 0s linear 6s forwards !important;
+}
+/* A rule of its own: a browser without :has() keeps the rule above. */
+html[data-route-pending] .breadcrumb-divider:has(+ .breadcrumb-home) {
+  visibility: hidden;
+  animation: route-pending-show 0s linear 6s forwards !important;
+}
+/* Home is not where the address leads: not highlighted meanwhile. */
+html[data-route-pending] .main-nav > button.selected {
+  background: transparent !important;
+  color: var(--secondary) !important;
+  font-weight: inherit;
+}
+html[data-route-pending] .mobile-tab[aria-current="page"] {
+  color: var(--muted);
+}
+html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
+  font-weight: 500;
+}
+@keyframes route-pending-hide {
+  to {
+    visibility: hidden;
+  }
+}
+@keyframes route-pending-show {
+  to {
+    visibility: visible;
+    opacity: 1;
+  }
+}
 .home-screen.bg-dots {
   background-image: radial-gradient(color-mix(in srgb, var(--text) 12%, transparent) 1px, transparent 1.3px);
   background-size: 18px 18px;
