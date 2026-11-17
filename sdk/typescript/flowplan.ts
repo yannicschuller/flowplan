@@ -915,6 +915,7 @@ export type WorkflowGraph = {
     timeZone?: string;
     locale?: string;
     triggerOnOwnChanges?: boolean;
+    untrustedTargets?: boolean;
     limits?: {
       runsPerMinute?: number;
       stepsPerRun?: number;
