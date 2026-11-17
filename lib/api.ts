@@ -63,6 +63,7 @@ import {
 } from "./whiteboard";
 import { journalDate, openJournalDay, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
+import { OFFLINE_JOURNAL_MAX, offlineEntryHasText } from "./journal-offline";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { commentRecipients, commentTextMentions } from "./comment-recipients";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
@@ -2019,6 +2020,15 @@ async function runCommand(
         } else {
           await requireMember(user, wid());
           result = { changed: await rollJournals(user, wid(), date) };
+        }
+        // Text written in the entry without a connection (#333,
+        // lib/journal-offline.ts): appended to the day, sent like an edit.
+        const append = b.pageId ? z.string().max(OFFLINE_JOURNAL_MAX).optional().parse(b.append) : undefined;
+        const rolled = result as { dayId?: string; trashed?: boolean; draft?: boolean; changed?: boolean };
+        if (append && offlineEntryHasText(append) && rolled.dayId && !rolled.trashed && !rolled.draft) {
+          const { appendHtml } = await import("./ai/actions");
+          await appendHtml(user, rolled.dayId, append);
+          rolled.changed = true;
         }
         break;
       }

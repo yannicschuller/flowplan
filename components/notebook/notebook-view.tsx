@@ -38,7 +38,7 @@ import {
 import { useT } from "../i18n";
 import { FileSrcContext, fileSrc } from "../ink/ink-picture";
 import { shareFileUrl, shareNotebookUrl, type ShareGuest } from "../share-guest";
-import { api, downloadBlob, Modal } from "../ui";
+import { api, downloadBlob, Modal, needsConnection } from "../ui";
 import { InkLayer } from "../ink/ink-layer";
 import { InkToolbar } from "../ink/ink-toolbar";
 import { useMenuPlacement } from "../ink/menu-placement";
@@ -508,6 +508,7 @@ export default function NotebookView({
         onError(t(`Ein Notizbuch hat höchstens ${MAX_SHEETS} Blätter.`, `A notebook has at most ${MAX_SHEETS} sheets.`));
         return;
       }
+      if (needsConnection()) return;
       setBusy(t("PDF wird hochgeladen …", "Uploading PDF …"));
       try {
         await sync.flush();

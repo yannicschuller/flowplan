@@ -4,6 +4,7 @@
 // waiting for a background import (#163). The work itself is the server's
 // (lib/importers, lib/zip-import.ts).
 import { serverMessage } from "@/lib/server-message";
+import { deviceOffline, OfflineNotice } from "./ui";
 
 // Warnings carry a count ("… (3×)"); the text before it is translated.
 export const warningText = (warning: string) => {
@@ -13,6 +14,8 @@ export const warningText = (warning: string) => {
 
 // POST /api/import/source with the file as the raw body (#76).
 export function sendImport(query: URLSearchParams, body: File | null, onProgress: (share: number) => void) {
+  // Imports need the server (#333): offline the calm note instead.
+  if (deviceOffline()) return Promise.reject(new OfflineNotice());
   return new Promise<unknown>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `/api/import/source?${query}`);

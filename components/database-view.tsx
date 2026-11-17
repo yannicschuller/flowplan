@@ -195,7 +195,7 @@ import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
-import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, PageIcon, requireConnection } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
@@ -2080,6 +2080,7 @@ export default function DatabaseView({
   async function uploadFile(file: File) {
     if (file.size > 10 * 1024 * 1024)
       throw new Error(t(`${file.name}: maximal 10 MB pro Datei.`, `${file.name}: at most 10 MB per file.`));
+    requireConnection();
     const body = new FormData();
     body.set("pageId", page.id);
     body.set("file", file);

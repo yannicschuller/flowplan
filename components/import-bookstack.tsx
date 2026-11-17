@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Books, BookOpen } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
+import { requireConnection } from "./ui";
 import { warningText } from "./import-client";
 
 type Listing = { shelves: { id: number; name: string; books: { id: number; name: string }[] }[]; books: { id: number; name: string }[] };
@@ -56,6 +57,7 @@ export function ImportBookStack({
   const [preview, setPreview] = useState<BookStackPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const post = async (body: Record<string, unknown>) => {
+    requireConnection();
     const response = await fetch("/api/import/bookstack", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

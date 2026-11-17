@@ -78,7 +78,7 @@ import {
   Plugs,
   ChalkboardTeacher,
 } from "@phosphor-icons/react";
-import { Modal, api, sessionEnded } from "../ui";
+import { Modal, api, requireConnection, sessionEnded } from "../ui";
 import { shareBoardUrl, type ShareGuest } from "../share-guest";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
 import {
@@ -2413,6 +2413,7 @@ export default function Whiteboard({
   async function upload(original: File): Promise<{ url: string; placeholder?: PlaceholderInfo }> {
     // Guests do not upload (#280): images from https addresses only.
     if (guest) throw new Error(t("Hochladen ist für Gäste nicht möglich.", "Uploading is not available to guests."));
+    requireConnection();
     const file = await compressImage(original);
     const body = new FormData();
     body.set("pageId", pageId);

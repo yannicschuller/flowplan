@@ -330,8 +330,35 @@ export function showError(kind: ErrorKind, detail?: string, options: ErrorOption
   else console.error(view.title, view.detail || "");
 }
 export function reportError(error: unknown, options: ErrorOptions = {}) {
+  // Something new that needs the server, asked for offline: a calm note.
+  if (isOfflineNotice(error)) return showNotice(offlineNotice());
   const { kind, detail } = classifyError(error);
   showError(kind, detail, options);
+}
+// What cannot work offline (#333) – a new page, database or whiteboard, a
+// template, an import, a file or picture – says so in the same calm words
+// instead of doing nothing or showing a red error. Editing what the device
+// keeps, database records and today's journal entry work offline.
+export const offlineNotice = () => tr("Geht nur mit Verbindung – du bist gerade offline.", "Needs a connection – you're offline right now.");
+// Offline: shows the note and returns true (the caller stops there).
+export function needsConnection() {
+  if (!deviceOffline()) return false;
+  showNotice(offlineNotice());
+  return true;
+}
+// Thrown where a caller expects a failure (an upload): reportError() and the
+// onError handlers that hand its message on show the note instead.
+export class OfflineNotice extends Error {
+  constructor() {
+    super(offlineNotice());
+    this.name = "OfflineNotice";
+  }
+}
+export const isOfflineNotice = (error: unknown) =>
+  error instanceof OfflineNotice || (typeof error === "string" ? error : error instanceof Error ? error.message : "") === offlineNotice();
+// Offline: throws OfflineNotice.
+export function requireConnection() {
+  if (deviceOffline()) throw new OfflineNotice();
 }
 // Stays in the dialog until dismissed or the dialog closes.
 export function showNotice(text: string) {
