@@ -1,13 +1,15 @@
 "use client";
 // The top of the administration's landing page: the state of the instance
-// (problems and notices of the tiles below, linked), four live numbers and
-// the requests of the last 24 hours – refreshed every 15 seconds while the
-// page is visible (/api/admin/monitoring?view=live).
-import { CheckCircle, Info, WarningCircle, XCircle } from "@phosphor-icons/react";
+// (problems and notices of the tiles below, linked), the live numbers and a
+// carousel of charts of the last 24 hours (components/settings/admin/
+// strip-charts.tsx) – refreshed every 15 seconds while the page is visible
+// (/api/admin/monitoring?view=live).
+import { CheckCircle, WarningCircle, XCircle } from "@phosphor-icons/react";
 import type { MonitoringLive } from "@/lib/admin-monitoring";
 import { settingsHash } from "@/lib/settings-sections";
 import { useT } from "../../i18n";
-import { LiveBadge, LiveKpis, RequestsChart, rangeLabel } from "./live";
+import { LiveBadge, LiveKpis, rangeLabel } from "./live";
+import { ChartCarousel, stripSlides } from "./strip-charts";
 import { useLive } from "./use-live";
 import { uptime } from "./monitoring-format";
 
@@ -56,18 +58,16 @@ export function LiveStrip({ problems, notices, version, uptimeSeconds, loaded }:
         {live.data ? <LiveKpis live={live.data} /> : <div className="kpi-grid placeholder" aria-hidden />}
       </div>
       <div className="live-strip-chart">
-        <header>
-          <h2>{t("Anfragen pro Minute", "Requests per minute")}</h2>
-          <LiveBadge state={live.state} label={rangeLabel("24h", t)} />
-        </header>
-        {live.data && !live.data.collecting.enabled ? (
-          <p className="muted live-strip-off">
-            <Info size={16} aria-hidden /> {t("Die Statistik ist ausgeschaltet (Überwachung → Statistik).", "Statistics are switched off (Monitoring → Statistics).")}
-          </p>
-        ) : live.data ? (
-          <RequestsChart requests={live.data.requests} height={170} />
+        {live.data ? (
+          <ChartCarousel slides={stripSlides(live.data, t)} badge={<LiveBadge state={live.state} label={rangeLabel("24h", t)} />} />
         ) : (
-          <div className="vz-placeholder" aria-hidden />
+          <>
+            <header>
+              <h2>{t("Diagramme", "Charts")}</h2>
+              <LiveBadge state={live.state} label={rangeLabel("24h", t)} />
+            </header>
+            <div className="vz-placeholder" aria-hidden />
+          </>
         )}
       </div>
     </section>

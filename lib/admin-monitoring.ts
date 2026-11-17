@@ -37,10 +37,13 @@ import {
   metricsSetting,
   METRICS_KEEP,
   requestSeries,
+  routeStats,
   storageTrend,
   type RequestRange,
 } from "./metrics";
 import { pushSummary } from "./push-status";
+import { cpuByArea, serverNow, serverSeries } from "./server-metrics";
+import { aiDaily } from "./ai-statistics";
 import type { UpdateStatus } from "./update-check";
 import type { Identity } from "./types";
 import { systemOverview } from "./cluster/system";
@@ -130,9 +133,21 @@ export const activeSince = async (since: number) =>
   );
 const events = async (kind: string, since: number) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind=? AND at>=?", kind, since))?.n || 0);
 
+// Whether AI is set up at all (switched on with a provider of the instance,
+// or own providers allowed) – the live strip shows its chart only then.
+async function aiConfigured() {
+  try {
+    const s = await instanceAiSettings();
+    return s.enabled && (!!s.provider || s.userProviders);
+  } catch {
+    return false;
+  }
+}
+
 export async function monitoringLive(now = Date.now(), range: RequestRange = "24h") {
   const setting = await metricsSetting();
   const live = await liveNumbers(now);
+  const ai = setting.enabled && (await aiConfigured());
   return {
     at: now,
     collecting: { enabled: setting.enabled, locked: setting.locked, since: await collectingSince() },
@@ -145,8 +160,33 @@ export async function monitoringLive(now = Date.now(), range: RequestRange = "24
       failedSigninsToday: await events("login_failure", midnight(now)),
     },
     requests: await requestSeries(range, now),
+    // The other charts of the strip's carousel: the server (always), AI
+    // tokens (when AI is set up) and the slowest routes (with the statistics).
+    server: await serverSeries("24h", now),
+    ai: ai ? await aiDaily(now, 14) : null,
+    slowRoutes: setting.enabled
+      ? (await routeStats(now, 24, 30))
+          .filter((r) => r.p95 !== null && r.requests >= 3)
+          .sort((a, b) => (b.p95 ?? 0) - (a.p95 ?? 0))
+          .slice(0, 5)
+      : [],
   };
 }
+
+const RANGE_HOURS: Record<RequestRange, number> = { "1h": 1, "24h": 24, "7d": 168 };
+// Administration → Überwachung → Server: CPU, memory and disk over the
+// range, what uses the memory now, the CPU per area and the routes that
+// take the most time.
+export async function monitoringServer(now = Date.now(), range: RequestRange = "24h") {
+  const hours = RANGE_HOURS[range];
+  return {
+    series: await serverSeries(range, now),
+    now: await serverNow(now),
+    areas: await cpuByArea(now - hours * HOUR),
+    routes: await routeStats(now, hours, 12),
+  };
+}
+export type MonitoringServer = Awaited<ReturnType<typeof monitoringServer>>;
 
 /* ---------- Storage (cached a minute) ---------- */
 
@@ -353,6 +393,7 @@ export async function monitoringOverview(now = Date.now(), range: RequestRange =
     // Single container or cluster, database, Redis, object storage,
     // instances and leader (lib/cluster/system.ts).
     system: await systemOverview(now),
+    server: await monitoringServer(now, range),
   };
 }
 export type MonitoringOverview = Awaited<ReturnType<typeof monitoringOverview>>;

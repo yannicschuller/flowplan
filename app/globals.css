@@ -15300,6 +15300,268 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   gap: 8px;
   font-size: 13px;
 }
+/* The strip's chart carousel (components/settings/admin/strip-charts.tsx). */
+.strip-carousel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 32px;
+  margin-bottom: 8px;
+}
+.strip-carousel > header h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 14.5px;
+}
+.strip-carousel-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.strip-carousel-nav {
+  display: inline-flex;
+  gap: 2px;
+}
+.strip-carousel-nav .icon-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.strip-carousel-slide {
+  min-height: 190px;
+  /* Vertical scrolling stays with the page; a horizontal swipe changes the chart. */
+  touch-action: pan-y;
+}
+.strip-carousel-slide.enter-next {
+  animation: strip-enter-next 220ms ease-out;
+}
+.strip-carousel-slide.enter-prev {
+  animation: strip-enter-prev 220ms ease-out;
+}
+@keyframes strip-enter-next {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes strip-enter-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .strip-carousel-slide.enter-next,
+  .strip-carousel-slide.enter-prev {
+    animation: none;
+  }
+}
+.strip-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 6px;
+}
+.strip-carousel-dots button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.strip-carousel-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 150ms, transform 150ms;
+}
+.strip-carousel-dots button:hover i {
+  background: var(--muted);
+}
+.strip-carousel-dots button[aria-current="true"] i {
+  background: var(--chart-1);
+  transform: scale(1.25);
+}
+.strip-carousel-dots button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+/* Phones: swipe and the dots; the arrows only take room from the title. */
+@container main (max-width: 767px) {
+  .strip-carousel-nav {
+    display: none;
+  }
+  .strip-carousel-dots button {
+    width: 32px;
+    height: 32px;
+  }
+}
+.strip-chart-note {
+  margin: 6px 0 0;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.strip-chart-sub {
+  margin: 8px 0 4px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.strip-routes {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+}
+.strip-routes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.strip-routes code {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strip-routes span {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+/* Monitoring → Server and KI → Statistik (monitoring-server.tsx, ai-statistics.tsx). */
+.mon-finding {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13.5px;
+}
+.mon-finding p {
+  margin: 0;
+}
+.mon-server-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 28px;
+}
+@container main (max-width: 767px) {
+  .mon-server-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mon-shares {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mon-shares li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  font-size: 13px;
+}
+.mon-shares li > span {
+  display: grid;
+  min-width: 0;
+}
+.mon-shares small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.mon-shares strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.mon-share {
+  grid-column: 1 / -1;
+  display: block;
+  width: 100%;
+  height: 6px;
+}
+.mon-share-track {
+  fill: var(--chart-grid);
+}
+.mon-share-fill {
+  fill: var(--chart-1);
+}
+.mon-small {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+}
+.mon-route {
+  font-size: 12px;
+  word-break: break-all;
+}
+/* Administration → KI → Preise (components/ai-settings.tsx). */
+.ai-price-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+}
+.ai-price-row label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.ai-price-row input {
+  width: 100%;
+  min-width: 0;
+}
+.ai-price-add {
+  padding: 12px 22px 16px;
+  border-top: 1px solid var(--border);
+}
+/* The statistics' body inside its setting group (as wide as a row). */
+.ai-stats {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 22px 18px;
+}
+#ai-statistics > .settings-loading,
+#ai-statistics > .empty-state {
+  margin: 0 22px 18px;
+}
+@container main (max-width: 767px) {
+  .ai-price-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .ai-price-row label:first-child {
+    grid-column: 1 / -1;
+  }
+  .ai-price-row .button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+.ai-stats-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

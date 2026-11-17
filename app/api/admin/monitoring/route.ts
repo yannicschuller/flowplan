@@ -1,6 +1,7 @@
 // Administration → Überwachung (lib/admin-monitoring.ts): the dashboard,
 // polled while the page is open. `?view=live` answers only the live strip
-// of the landing page (numbers and the request chart); `?range=1h|24h|7d`
+// of the landing page (numbers and the charts of its carousel), `?view=ai`
+// the AI statistics (`&days=7|30|90`, per person too); `?range=1h|24h|7d`
 // picks the request chart's span. POST switches the usage statistics on or
 // off (`metrics.save`), deletes them (`metrics.clear`) or checks the AI
 // provider again (`ai.ping`). Administrators in the browser only; API
@@ -11,6 +12,7 @@ import { audit } from "@/lib/db";
 import { withRequestLocale } from "@/lib/content-locale";
 import { requireOpsAdmin } from "@/lib/admin-ops";
 import { monitoringLive, monitoringOverview } from "@/lib/admin-monitoring";
+import { aiStatistics } from "@/lib/ai-statistics";
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
 import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
@@ -32,6 +34,11 @@ export const GET = withRequestLocale(async (req: Request) => {
     const url = new URL(req.url);
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(await monitoringLive(Date.now(), range), noStore);
+    // Administration → KI → Statistik: per model, workspace and person.
+    if (url.searchParams.get("view") === "ai") {
+      const days = [7, 30, 90].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 30;
+      return Response.json(await aiStatistics(Date.now(), days), noStore);
+    }
     const [update] = await Promise.all([updateStatus().catch(() => null), warmPushChecks(1000)]);
     return Response.json(await monitoringOverview(Date.now(), range, update), noStore);
   } catch (e) {
