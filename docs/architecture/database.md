@@ -1580,8 +1580,9 @@ for several pods that can come and go at any time:
   and a database schema at least this version's.
 - **Metrics:** per-pod process figures with `instance_id`; the
   installation's figures from the database only on the leader.
-- **Image:** `USER 1000:1000`; the entrypoint keeps working started as root
-  (PUID/PGID, `user: 0:0`) and as 1000. The chart runs it on a read-only
+- **Image:** no `USER` (#193): `docker run` starts as root and the
+  entrypoint drops to PUID/PGID. The chart starts the pod directly as
+  uid 1000 (`runAsUser`), which the entrypoint supports too, on a read-only
   root (`emptyDir`s for /tmp, /app/.next/cache, /home/node).
 
 Not tested here: a real Kubernetes cluster (no container runtime in the

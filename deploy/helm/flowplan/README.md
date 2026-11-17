@@ -176,7 +176,7 @@ as redirect URI at the identity provider.
 | `ingress.hosts`, `ingress.tls` | `flowplan.example.org`, `[]` | |
 | `serviceAccount.create`, `.name`, `.annotations`, `.automount` | `true`, –, `{}`, `false` | Flowplan does not use the Kubernetes API |
 | `podAnnotations`, `podLabels` | `{}` | |
-| `podSecurityContext` | uid/gid 1000, non-root, `RuntimeDefault` seccomp | The image's user `node` (`USER 1000:1000`) |
+| `podSecurityContext` | uid/gid 1000, non-root, `RuntimeDefault` seccomp | The image's user `node`: the pod starts directly as uid 1000 (`runAsUser`); a plain `docker run` starts as root and drops to PUID/PGID |
 | `securityContext` | no privilege escalation, no capabilities, read-only root | |
 | `scratch.tmpSizeLimit`, `.nextCacheSizeLimit`, `.homeSizeLimit` | `2Gi`, `512Mi`, `64Mi` | `emptyDir`s for `/tmp`, `/app/.next/cache` and `/home/node` (the read-only root's writable places) |
 | `resources` | requests 1 CPU / 2Gi, limit 4Gi memory | From the sizing guide; no CPU limit (throttling slows live editing) |
