@@ -273,8 +273,12 @@ test.describe("iPad (app)", () => {
     await expect(sidebar(page)).toBeHidden();
     expect(await place(page)).toEqual(before);
 
-    // Docked again: its own width.
+    // After a reload it is still hidden (#331); docked again: its own width.
     await page.reload();
+    await expect(shell(page)).toHaveClass(/\bdesktop-collapsed\b/);
+    await page.locator(".topbar .mobile-menu").tap();
+    await expect(shell(page)).not.toHaveClass(/\bdesktop-collapsed\b/);
+    await expect(shell(page)).not.toHaveClass(/\bnav-open\b/);
     await expect.poll(() => sidebarWidth(page)).toBe(280);
     await page.locator(".sidebar-hide").tap();
     await swipe(page, 3, 420);

@@ -22,7 +22,7 @@ test("a reload keeps the dragged sidebar width from the first paint", async ({ p
   expect(width).toBeGreaterThan(300);
   await expect
     .poll(async () => (await page.context().cookies()).find((c) => c.name === "flowplan-layout")?.value)
-    .toBe(`${width}.0.0`);
+    .toBe(`${width}.0.0.0`);
 
   // The server's HTML already has the width on the app shell …
   const html = await (await page.request.get("/")).text();

@@ -117,7 +117,7 @@ import { branchPath, branchUp, leavesBranch, readBranch, writeBranch } from "@/l
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { workspaceCookie } from "@/lib/last-workspace";
-import { layoutCookie, type StoredLayout } from "@/lib/layout-cookie";
+import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
 import { ListSkeleton, SettingsSkeleton, viewShapeOf } from "./skeleton";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
@@ -687,7 +687,22 @@ export default function WorkspaceApp({
   } | null>(null);
   // Profile pictures for every Avatar below, from the current member list.
   setAvatarDirectory([...boot.members, boot.user]);
-  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  // The sidebar hidden on wide screens. It starts as the person left it on
+  // this device (#331; the cookie below, so the server's first paint already
+  // has it hidden), and the app collapses or reveals it for a moment on its
+  // own (the pinned "KI fragen" panel on a narrow window, "Focus in
+  // sidebar"). Only the person's own choice – the hide button, the button
+  // that brings it back, the shortcut and the command palette, on a wide
+  // window (phones have the drawer) – is kept: `collapsedChoice`.
+  const [desktopCollapsed, setDesktopCollapsed] = useState(layout?.collapsed ?? false);
+  const [collapsedChoice, setCollapsedChoice] = useState(layout?.collapsed ?? false);
+  const desktopCollapsedRef = useRef(desktopCollapsed);
+  desktopCollapsedRef.current = desktopCollapsed;
+  const chooseCollapsed = (collapsed: boolean) => {
+    setDesktopCollapsed(collapsed);
+    if (matchMedia("(min-width: 768px)").matches) setCollapsedChoice(collapsed);
+  };
+  const toggleCollapsed = () => chooseCollapsed(!desktopCollapsedRef.current);
   // The sidebar's width on wide screens, dragged at its right edge (null:
   // the default from the stylesheet), the width of the "KI fragen" panel the
   // same way (dragged at its left edge; the stylesheet keeps it within
@@ -713,6 +728,9 @@ export default function WorkspaceApp({
         } catch {}
         setAskWidth(readAskWidth());
         setAskPinned(readAskPinned());
+        const collapsed = readSidebarCollapsed();
+        setCollapsedChoice(collapsed);
+        setDesktopCollapsed(collapsed);
         return;
       }
     }
@@ -722,9 +740,10 @@ export default function WorkspaceApp({
     } catch {}
     writeAskWidth(askWidth);
     writeAskPinned(askPinned);
-    document.cookie = layoutCookie({ sidebar: sidebarWidth, ask: askWidth, askPinned });
+    writeSidebarCollapsed(collapsedChoice);
+    document.cookie = layoutCookie({ sidebar: sidebarWidth, ask: askWidth, askPinned, collapsed: collapsedChoice });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sidebarWidth, askWidth, askPinned]);
+  }, [sidebarWidth, askWidth, askPinned, collapsedChoice]);
   // The sidebar's width while it lies over the page (phones, and tablets
   // whose sidebar is collapsed; #285): its own, dragged at its right edge
   // and kept per device apart from the docked width (lib/edge-swipe.ts).
@@ -1992,7 +2011,7 @@ export default function WorkspaceApp({
         toggleReadingRef.current();
         break;
       case "sidebar":
-        setDesktopCollapsed((v) => !v);
+        toggleCollapsed();
         break;
       case "focusMode":
         if (screenRef.current === "page" && dataRef.current) setFocusMode((v) => !v);
@@ -3525,7 +3544,7 @@ export default function WorkspaceApp({
       ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
       : []),
     { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
-    { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: () => setDesktopCollapsed((v) => !v) },
+    { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: toggleCollapsed },
     ...(wide
       ? [
           splitShown
@@ -3810,7 +3829,7 @@ export default function WorkspaceApp({
             title={t("Navigation schließen", "Close navigation")}
             onClick={() => {
               setMobile(false);
-              setDesktopCollapsed(true);
+              chooseCollapsed(true);
             }}
           >
             <SidebarSimple size={19} />
@@ -4443,7 +4462,7 @@ export default function WorkspaceApp({
               aria-label={t("Navigation öffnen", "Open navigation")}
               onClick={() => {
                 setMobile(true);
-                setDesktopCollapsed(false);
+                chooseCollapsed(false);
               }}
             >
               <SidebarSimple size={21} />
