@@ -36,6 +36,40 @@ ARG TARGETARCH
 COPY --from=build /app/.next/standalone /out
 COPY scripts/standalone-arch.mjs /tmp/standalone-arch.mjs
 RUN --mount=type=cache,target=/root/.npm node /tmp/standalone-arch.mjs /out "$TARGETARCH"
+# The PostgreSQL client tools (pg_dump, pg_restore, psql) for the backups of
+# an instance on PostgreSQL (lib/pg-backup.ts): from the PostgreSQL project's
+# own repository (Debian's are older), the newest major version – a client
+# dumps servers up to its own version, never newer ones. Only the three
+# programs and the packages of the libraries they link go into the image:
+# the package postgresql-client-<n> also brings postgresql-client-common,
+# whose wrappers are Perl scripts, and with them perl and libperl. Flowplan
+# calls the programs in /usr/lib/postgresql/<n>/bin directly and needs no
+# Perl; image scans listed Perl's findings (Pod::Text) all the same.
+# curl only fetches the repository key here, in a stage of its own: image
+# scans showed critical curl findings that Debian has no fix for, and
+# Flowplan never needs it.
+FROM node:26-trixie-slim AS pgclient
+ARG PG_CLIENT_MAJOR=18
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+  && install -d /usr/share/postgresql-common/pgdg /out/bin \
+  && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && . /etc/os-release \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_MAJOR}" \
+  && cp /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc /etc/apt/sources.list.d/pgdg.list /out/ \
+  && cd "/usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin" && cp pg_dump pg_restore psql /out/bin/ \
+  && for lib in $(ldd /out/bin/* | awk '/=> \//{print $3}' | sort -u); do \
+       owner=""; \
+       for path in "$lib" "$(realpath "$lib")" "/usr$lib"; do \
+         owner=$(dpkg -S "$path" 2>/dev/null | grep -v '^diversion by' | sed 's|: /.*||' | head -n1); \
+         [ -n "$owner" ] && break; \
+       done; \
+       [ -n "$owner" ] || { echo "no package owns $lib" >&2; exit 1; }; \
+       echo "$owner"; \
+     done > /tmp/owners \
+  && tr ',' '\n' < /tmp/owners | sed 's|^ *||; s|:.*||' | sort -u > /out/packages \
+  && cat /out/packages
 FROM litestream/litestream:0.5.18 AS litestream
 FROM node:26-trixie-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \
@@ -46,33 +80,31 @@ LABEL org.opencontainers.image.title="Flowplan" \
   org.opencontainers.image.licenses="AGPL-3.0-only"
 WORKDIR /app
 # Certificates for HTTPS to the S3 endpoint (Litestream is a static binary).
-# The PostgreSQL client tools (pg_dump, pg_restore, psql) for the backups of
-# an instance on PostgreSQL (lib/pg-backup.ts): from the PostgreSQL project's
-# own repository (Debian's are older), the newest major version – a client
-# dumps servers up to its own version, never newer ones.
 # The base image's Debian packages get their security updates (apt and others
 # fixed after the base image was built). Debian 13 (trixie) instead of 12:
 # newer curl and glibc that get security fixes first.
-# curl only fetches the repository key here and is removed again with
-# libcurl: image scans showed critical curl findings that Debian has no fix
-# for, and Flowplan never needs it. Health checks that call `curl` inside
-# the container (Coolify's HTTP check) get docker/healthcheck-curl.mjs.
+# The PostgreSQL client tools come from the stage pgclient, their libraries
+# (libpq from the same PostgreSQL repository) as packages; the build checks
+# that every tool starts and that neither Perl nor curl is in the image.
+# Health checks that call `curl` inside the container (Coolify's HTTP check)
+# get docker/healthcheck-curl.mjs.
 # util-linux brings setpriv (the entrypoint's drop to PUID:PGID), installed
 # explicitly in case the base image drops it. npm, npx and corepack are only
 # needed to build; the image runs node alone, and their bundled packages
 # (undici, brace-expansion …) would otherwise be scanned as part of the image.
 ARG PG_CLIENT_MAJOR=18
-RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-  && apt-get install -y --no-install-recommends ca-certificates curl util-linux \
-  && install -d /usr/share/postgresql-common/pgdg \
-  && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-  && . /etc/os-release \
-  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+RUN --mount=type=bind,from=pgclient,source=/out,target=/pgclient \
+  apt-get update && apt-get upgrade -y --no-install-recommends \
+  && apt-get install -y --no-install-recommends ca-certificates util-linux \
+  && install -d /usr/share/postgresql-common/pgdg "/usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin" \
+  && cp /pgclient/apt.postgresql.org.asc /usr/share/postgresql-common/pgdg/ \
+  && cp /pgclient/pgdg.list /etc/apt/sources.list.d/ \
   && apt-get update \
-  && apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_MAJOR}" \
-  && /usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/pg_dump --version \
-  && apt-get purge -y --auto-remove curl \
-  && ! dpkg -l 'libcurl*' 2>/dev/null | grep -q '^ii' \
+  && xargs -a /pgclient/packages apt-get install -y --no-install-recommends \
+  && install -m 755 /pgclient/bin/* "/usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/" \
+  && for tool in pg_dump pg_restore psql; do "/usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/$tool" --version; done \
+  && ! ldd "/usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/"* | grep 'not found' \
+  && ! dpkg -l perl 'libperl*' 'libcurl*' curl postgresql-client-common 2>/dev/null | grep -q '^ii' \
   && rm -rf /var/lib/apt/lists/* \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack

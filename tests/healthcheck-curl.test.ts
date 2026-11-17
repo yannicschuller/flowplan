@@ -48,6 +48,11 @@ test("the health-check curl answers like curl for the calls health checks make",
 
 test("the image has no real curl or libcurl, only the stand-in", () => {
   const dockerfile = readFileSync("Dockerfile", "utf8");
-  assert.match(dockerfile, /apt-get purge -y --auto-remove curl/);
+  // curl only fetches the PostgreSQL repository key in the stage pgclient;
+  // the runtime stage never installs it and fails the build if it is there.
+  const runtime = dockerfile.slice(dockerfile.indexOf(" AS runtime"));
+  assert.ok(runtime.length > 0 && dockerfile.includes(" AS runtime"));
+  assert.doesNotMatch(runtime, /apt-get install[^\n]*\bcurl\b/);
+  assert.match(runtime, /! dpkg -l perl 'libperl\*' 'libcurl\*' curl postgresql-client-common/);
   assert.match(dockerfile, /COPY --chmod=755 docker\/healthcheck-curl\.mjs \/usr\/local\/bin\/curl/);
 });

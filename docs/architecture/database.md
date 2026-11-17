@@ -420,8 +420,9 @@ Two formats (phase 3):
   - **Tools**: pg_dump refuses servers newer than itself, so the client must
     be at least the server's major version. Found in `FLOWPLAN_PG_BIN`, on
     `PATH` or in `/usr/lib/postgresql/<n>/bin` (the newest that fits); the
-    Docker image installs `postgresql-client-18` from the PostgreSQL
-    project's apt repository (Debian trixie ships 17). Without fitting
+    Docker image takes pg_dump, pg_restore and psql 18 from the PostgreSQL
+    project's apt repository (Debian trixie ships 17), with their libraries
+    but without `postgresql-client-common` and its Perl wrappers. Without fitting
     tools – or with `FLOWPLAN_BACKUP_FORMAT=sqlite` – the scheduled backup
     falls back to the portable SQLite file and logs why.
   - The password goes to the tools through `PGPASSWORD`, never on the
@@ -1175,7 +1176,7 @@ What changed (details in §3, §5a, §5b, §6):
 - **pg_dump backups** (`lib/pg-backup.ts`): scheduled backups and "Back up
   now" on PostgreSQL; restore of the dump's rows only, through psql, into a
   schema made from this code (§3, "Restores run no SQL of the dump"); setup restore from upload, S3 and SFTP; the Docker image has
-  `postgresql-client-18`; the container start leaves a pending restore to
+  the PostgreSQL 18 client tools (without Perl); the container start leaves a pending restore to
   the app on PostgreSQL.
 - **Migration tool**: all tables by default, streaming verification,
   progress, the empty search table on the target, `ANALYZE` of its own
