@@ -56,7 +56,10 @@ test("offline use is opt-in per device and its copies are removable", async ({
   expect(await shell()).not.toContain('data-signed-out=""');
   await page.context().clearCookies();
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Willkommen zurück." })).toBeVisible();
+  // (The sign-in page – "Willkommen zurück." once the instance has an
+  // account of its own, "Willkommen bei deinem Flowplan." on a fresh one
+  // whose only account is the demo's.)
+  await expect(page.locator("main.login[data-signed-out]")).toBeVisible();
   expect(await shell()).not.toContain('data-signed-out=""');
   expect(await shell()).not.toBe("");
   await page.request.post("/api/auth/demo", { headers: { origin } });
