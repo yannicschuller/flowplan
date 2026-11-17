@@ -17,7 +17,7 @@ import { notificationOn } from "./notification-kinds";
 import { notificationUrl } from "./page-location";
 import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
 import { mapAsync } from "./each-async";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export type MailConfig = {
@@ -439,7 +439,7 @@ export function startMailWorker() {
     if (await workersPaused()) return;
     // Digests are put together by the leader (cluster mode); every instance
     // sends from the queue (each message is claimed before it goes).
-    if (isLeader()) {
+    await leaderDuty("digests", async () => {
       try {
         await queueNotificationDigests();
       } catch (error) {
@@ -447,10 +447,10 @@ export function startMailWorker() {
       }
       // The weekly digest (Monday 07:00 in each person's time zone) goes into
       // the same queue; loaded lazily, it imports this module.
-      void import("./weekly-digest")
+      await import("./weekly-digest")
         .then((digest) => digest.queueWeeklyDigests())
         .catch((error) => console.error("Wöchentliche Zusammenfassung fehlgeschlagen", error));
-    }
+    });
     void dispatchMail();
   }, 60_000);
   runtime.flowplanMailTimer.unref?.();

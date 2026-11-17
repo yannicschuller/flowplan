@@ -38,17 +38,34 @@ const applicationName = () => `flowplan${process.env.FLOWPLAN_INSTANCE_ID ? `:${
 // restore is loaded, the object storage queue set up), on both the data
 // steps (lib/data-steps.ts). Every call waits for that; the calls they
 // make themselves do not.
+// How far the opening steps are, for readiness (lib/cluster/health.ts): an
+// instance is ready only once they are done; when they failed, it stays
+// unready with the error (requests are still answered, as before).
+export type OpeningState = { state: "pending" | "running" | "done" | "failed"; error?: string; since?: number };
+const opening = globalThis as unknown as { flowplanOpening?: OpeningState };
+export const openingState = (): OpeningState => opening.flowplanOpening ?? { state: "pending" };
+// Starts the opening steps if nothing did yet (the readiness probe of a new
+// instance) and returns their promise.
+export function startOpening(): Promise<void> {
+  return database().one("SELECT 1").then(
+    () => undefined,
+    () => undefined,
+  );
+}
 function opened(inner: Db): Db {
-  const opening = new AsyncLocalStorage<boolean>();
+  const store = new AsyncLocalStorage<boolean>();
   let ready: Promise<void> | null = null;
   let done = false;
   const wait = (): Promise<void> | null => {
-    if (done || opening.getStore() || currentTx()) return null;
-    return (ready ??= opening.run(true, async () => {
+    if (done || store.getStore() || currentTx()) return null;
+    return (ready ??= store.run(true, async () => {
+      opening.flowplanOpening = { state: "running", since: Date.now() };
       try {
         await dbContext.hooks.open?.(inner.backend);
+        opening.flowplanOpening = { state: "done", since: Date.now() };
       } catch (error) {
         console.error("Database: opening steps failed", error);
+        opening.flowplanOpening = { state: "failed", error: String((error as Error)?.message || error).slice(0, 300), since: Date.now() };
       } finally {
         done = true;
       }

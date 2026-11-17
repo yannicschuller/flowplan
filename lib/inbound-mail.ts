@@ -38,7 +38,7 @@ import { ImapClient, type ImapOptions } from "./imap";
 import type { Field, Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 import { mailVerdict, sendgridVerdict, type MailVerdict } from "./mail-auth";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
@@ -862,9 +862,10 @@ export async function pollInboundMailbox(options = imapOptionsFromEnv(), now: ()
 const runtime = globalThis as unknown as { flowplanInboundTimer?: ReturnType<typeof setInterval>; flowplanInboundBusy?: boolean };
 export function startInboundMailWorker() {
   if (runtime.flowplanInboundTimer || !imapOptionsFromEnv()) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("inbound-mail", round);
+  const round = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanInboundBusy || !isLeader()) return;
+    if (runtime.flowplanInboundBusy) return;
     runtime.flowplanInboundBusy = true;
     try {
       await pollInboundMailbox();

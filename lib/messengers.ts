@@ -71,7 +71,7 @@ import {
   type SendOutcome,
 } from "./messenger-send";
 import { filterAsync } from "./each-async";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export const MAX_ATTEMPTS = 6;
@@ -1066,12 +1066,14 @@ export function startMessengerWorker() {
     void dispatchMessengers();
     // A code may have been made by another process (several replicas).
     // Telegram's long poll runs on the leader only (one getUpdates at a time).
-    if (!isLeader() || (await workersPaused())) return;
-    try {
-      if (await pendingLinks()) ensureTelegramPolling();
-    } catch (error) {
-      console.error("Chat-App-Verknüpfungen nicht lesbar", error);
-    }
+    await leaderDuty("telegram-links", async () => {
+      if (await workersPaused()) return;
+      try {
+        if (await pendingLinks()) ensureTelegramPolling();
+      } catch (error) {
+        console.error("Chat-App-Verknüpfungen nicht lesbar", error);
+      }
+    });
   }, 15_000);
   runtime.flowplanMessengerTimer.unref?.();
   void dispatchMessengers();

@@ -3,9 +3,11 @@
 //
 // - Liveness (/api/health/live): the process answers. A failing database
 //   does not make it "dead" – restarting would not help.
-// - Readiness (/api/health/ready): it should get requests: the database
-//   answers, and in cluster mode Redis and the bucket too; not while the
-//   instance is stopping (lib/cluster/runtime.ts).
+// - Readiness (/api/health/ready): it should get requests: the opening
+//   steps are done (schema, data steps – checkOpening below), the database
+//   answers, and in cluster mode Redis and the bucket too (which of those
+//   two count: FLOWPLAN_READY_REQUIRE); not while the instance is stopping
+//   (lib/cluster/runtime.ts).
 import { one } from "../db";
 import { clusterMode } from "./config";
 import { redis } from "./bus";
@@ -62,8 +64,51 @@ export function readinessRequires(env: Record<string, string | undefined> = proc
   return new Set(raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["database", "redis", "objectStorage"]);
 }
 
+// The opening steps (lib/db-driver/index.ts): the schema of this version on
+// PostgreSQL, a staged restore, the storage queue and the data steps. Ready
+// only once they are done; a failure keeps the instance out of the rotation
+// with the reason (a rolling update then stops at this pod instead of
+// replacing working ones). Failed data steps are tried again at most once
+// a minute; the database's schema must be at least this version's
+// (FLOWPLAN_PG_SCHEMA_AUTO=off leaves it to the migration Job).
+const retry = globalThis as unknown as { flowplanStepRetry?: number };
+export async function checkOpening(now = Date.now()): Promise<Check> {
+  const start = performance.now();
+  const ms = () => Math.round(performance.now() - start);
+  const { openingState, startOpening } = await import("../db-driver");
+  let opening = openingState();
+  if (opening.state === "pending") {
+    // A new instance: the probe starts the opening, and waits briefly.
+    await Promise.race([startOpening(), new Promise((r) => setTimeout(r, 2000).unref?.())]);
+    opening = openingState();
+  }
+  if (opening.state === "pending" || opening.state === "running") return { ok: false, ms: ms(), error: "opening steps still running" };
+  if (opening.state === "failed") return { ok: false, ms: ms(), error: `opening steps failed: ${opening.error}` };
+  const { failedDataSteps, runDataSteps } = await import("../data-steps");
+  const failed = failedDataSteps();
+  if (failed.size) {
+    if (now - (retry.flowplanStepRetry ?? 0) > 60_000) {
+      retry.flowplanStepRetry = now;
+      void runDataSteps([...failed.keys()]).catch(() => {});
+    }
+    const [name, error] = [...failed.entries()][0];
+    return { ok: false, ms: ms(), error: `data step ${name} failed: ${error}` };
+  }
+  const { schemaVersion, SCHEMA_VERSION } = await import("../db");
+  const have = await schemaVersion();
+  if (have < SCHEMA_VERSION) return { ok: false, ms: ms(), error: `database schema ${have} is older than this version's ${SCHEMA_VERSION}` };
+  return { ok: true, ms: ms() };
+}
+
+// The database and the opening steps always count.
+const ALWAYS = new Set(["database", "opening"]);
 export async function readiness() {
-  const checks: Record<string, Check> = { database: await checkDatabase() };
+  const checks: Record<string, Check> = {};
+  // While the opening steps run, a query would only wait for them: the
+  // database is checked once they are done.
+  checks.opening = await checkOpening().catch((error) => ({ ok: false, ms: 0, error: String((error as Error)?.message || error).slice(0, 200) }));
+  const { openingState } = await import("../db-driver");
+  if (openingState().state === "done" || openingState().state === "failed") checks.database = await checkDatabase();
   if (clusterMode()) {
     const [redisCheck, bucket] = await Promise.all([checkRedis(), checkBucket()]);
     checks.redis = redisCheck;
@@ -71,7 +116,6 @@ export async function readiness() {
   }
   const stopping = shuttingDown();
   const required = readinessRequires();
-  // The database always counts.
-  const ready = !stopping && Object.entries(checks).every(([name, c]) => c.ok || (name !== "database" && !required.has(name)));
+  const ready = !stopping && !!checks.database && Object.entries(checks).every(([name, c]) => c.ok || (!ALWAYS.has(name) && !required.has(name)));
   return { ready, stopping, checks };
 }

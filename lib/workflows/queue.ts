@@ -5,12 +5,14 @@
 // the other instances over the cluster bus, by a timer on the next due
 // step and by polling every 5 s (Redis is never needed for correctness).
 // A sweeper puts steps whose lease ran out back into the queue; a stopping
-// instance gives its leases back at once.
+// instance claims nothing more, lets its running steps finish within the
+// shutdown budget (lib/cluster/runtime.ts) and gives back the leases of
+// those still running then.
 import { randomUUID } from "node:crypto";
 import { all, one, run, sql } from "../db";
 import { instanceId } from "../cluster/config";
 import { onBus, publish } from "../cluster/bus";
-import { onShutdown } from "../cluster/runtime";
+import { onShutdown, onShutdownTask, SHUTDOWN_PHASE, untilDeadline } from "../cluster/runtime";
 import { afterTransaction } from "../db-driver/context";
 import { backoff, executeStep, LEASE_MS, type StepRow } from "./engine";
 import { dispatchEvents } from "./events";
@@ -177,15 +179,24 @@ export function startWorkflowWorker() {
     Number(process.env.FLOWPLAN_WORKFLOW_SWEEP_MS) || 60_000,
   );
   s.sweep.unref?.();
-  onShutdown(() => void stopWorkflowWorker());
+  // At once: no more claims. Then the running steps get the budget.
+  onShutdown(() => haltWorkflowWorker());
+  onShutdownTask("workflows", SHUTDOWN_PHASE.work, (deadline) => stopWorkflowWorker(deadline));
   void import("./schedules").then((m) => m.startWorkflowSchedules());
   wake();
 }
-export async function stopWorkflowWorker() {
+function haltWorkflowWorker() {
   const s = state();
   s.stopping = true;
   for (const t of [s.poll, s.sweep]) if (t) clearInterval(t);
   if (s.timer) clearTimeout(s.timer);
+}
+// Stops claiming; with a deadline the running steps may finish until then.
+// The leases of steps still running are given back (no attempt used).
+export async function stopWorkflowWorker(deadline = 0) {
+  const s = state();
+  haltWorkflowWorker();
+  if (deadline > Date.now() && s.running.size) await untilDeadline(Promise.allSettled([...s.running]), deadline - 500);
   await releaseLeases().catch(() => {});
 }
 

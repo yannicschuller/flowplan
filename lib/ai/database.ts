@@ -46,7 +46,7 @@ import {
   type PromptContext,
 } from "./database-fields";
 import { nameLookup } from "./sources";
-import { isLeader } from "../cluster/leader";
+import { leaderDuty } from "../cluster/leader";
 import { workersPaused } from "../instance-read-only";
 
 export type AiCellMode = "compute" | "fill" | "auto";
@@ -432,9 +432,10 @@ export async function proposeDatabase(user: Identity, workspaceId: string, descr
 const runtime = globalThis as typeof globalThis & { flowplanAiTimer?: ReturnType<typeof setInterval>; flowplanAiBusy?: boolean };
 export function startAiWorker() {
   if (runtime.flowplanAiTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("ai", round);
+  const round = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanAiBusy || !isLeader() || (await workersPaused())) return;
+    if (runtime.flowplanAiBusy || (await workersPaused())) return;
     runtime.flowplanAiBusy = true;
     try {
       await processAutoDirty();

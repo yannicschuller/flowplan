@@ -17,7 +17,7 @@ function encode(value: Reply): string {
   return `+${value.simple}\r\n`;
 }
 
-export async function startFakeRedis() {
+export async function startFakeRedis(port = 0) {
   const hashes = new Map<string, Map<string, string>>();
   const zsets = new Map<string, { score: number; member: string }[]>();
   const subscribers = new Map<string, Set<net.Socket>>();
@@ -108,10 +108,11 @@ export async function startFakeRedis() {
     });
     socket.on("error", () => {});
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  const bound = (server.address() as net.AddressInfo).port;
   return {
-    url: `redis://127.0.0.1:${port}/0`,
+    url: `redis://127.0.0.1:${bound}/0`,
+    port: bound,
     // Drops every connection (clients reconnect), as a Redis restart would.
     dropConnections() {
       for (const socket of sockets) socket.destroy();

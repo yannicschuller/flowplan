@@ -46,7 +46,7 @@ import { onIssueQueued, quietly } from "./issue-sync-queue";
 import { noteWorkerRun } from "./ops-events";
 import type { Field, Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export type IssueProvider = "github" | "gitlab" | "forgejo";
@@ -1450,10 +1450,11 @@ export function startIssueSyncWorker() {
   // Cluster mode: the poll on the leader only (lib/cluster/leader.ts); the
   // quick pushes below on the instance where the change was made.
   const poll = () =>
-    void (isLeader() &&
+    void leaderDuty("issue-sync", () =>
       workersPaused().then(async (paused) => {
         if (!paused) await pollAll();
-      }));
+      }),
+    );
   runtime.flowplanIssueTimer = setInterval(poll, POLL_EVERY);
   runtime.flowplanIssueTimer.unref();
   setTimeout(poll, 90_000).unref();

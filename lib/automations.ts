@@ -23,7 +23,7 @@ import { emitWebhook } from "./webhooks";
 import { runInlineWorkflows, runRuleAutomations, runScheduledRule } from "./workflows/inline";
 import { recordWorkflowEvents } from "./workflows/hooks";
 import { queueIssuePush } from "./issue-sync-queue";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 type Cells = Record<string, unknown>;
@@ -249,16 +249,16 @@ export async function processScheduledAutomations(now = Date.now()) {
 const runtime = globalThis as typeof globalThis & { flowplanAutomationTimer?: ReturnType<typeof setInterval> };
 export function startAutomationWorker(onFired: () => void) {
   if (runtime.flowplanAutomationTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("automations", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       if (await transactionalOverdue()) onFired();
       if (await transaction(async () => await processScheduledAutomations())) onFired();
     } catch (error) {
       console.error("Automations failed", error);
     }
-  };
+  });
   runtime.flowplanAutomationTimer = setInterval(tick, 5 * 60_000);
   runtime.flowplanAutomationTimer.unref();
   setTimeout(tick, 20_000).unref();

@@ -22,7 +22,7 @@ import { DELETED_UPLOADS, oldestBackup, parseDeleted, purgeable } from "./delete
 import { sendToSftp, sftpBackupActive, sftpBackupStatus } from "./sftp-backup";
 import { runDueSpaceGitExports } from "./space-git-export";
 import { firstAccount } from "./local-auth";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -165,9 +165,10 @@ export function startBackupWorker() {
     if (status.last && Date.now() - status.last.at < (status.hourly ? HOUR_MS - 5 * 60_000 : DAY_MS) && !status.last.error) return false;
     return !(status.last?.error && Date.now() - status.last.at < 3600_000);
   };
-  const tick = async () => {
+  const tick = () => leaderDuty("scheduled-backup", round);
+  const round = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanBackupBusy || !isLeader() || (await workersPaused())) return;
+    if (runtime.flowplanBackupBusy || (await workersPaused())) return;
     runtime.flowplanBackupBusy = true;
     try {
       if (await backupDue()) {

@@ -19,7 +19,7 @@ import {
 } from "./date-reminder-options";
 import { rememberTaskTarget } from "./notification-targets";
 import type { Field, Identity, Page } from "./types";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export const MAX_REMINDERS_PER_USER = 1000;
@@ -279,15 +279,15 @@ const runtime = globalThis as typeof globalThis & {
 };
 export async function startReminderWorker(onFired: () => void) {
   if (runtime.flowplanReminderTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("date-reminders", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       if (await processDateReminders()) onFired();
     } catch (error) {
       console.error("Date reminders failed", error);
     }
-  };
+  });
   runtime.flowplanReminderTimer = setInterval(tick, 30000);
   runtime.flowplanReminderTimer.unref();
   await tick();

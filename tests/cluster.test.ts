@@ -2,7 +2,7 @@
 // configuration check, the Redis client, and – with PostgreSQL – several
 // instances as child processes on one database and one Redis: leader
 // election and failover, heartbeats, live document updates between
-// instances, rate limits shared across them.
+// instances, rate limits shared across them, fencing of leader rounds.
 //
 // Redis: FLOWPLAN_TEST_REDIS_URL (a real one; CI's postgres job has one),
 // else an in-process double (tests/helpers/fake-redis.ts).
@@ -92,7 +92,8 @@ test("liveness answers without the database; readiness checks it and turns 503 w
   const { GET: ready } = await import("../app/api/health/ready/route");
   const answer = await ready(new Request("http://localhost/api/health/ready"));
   assert.equal(answer.status, 200);
-  assert.deepEqual(await answer.json(), { service: "flowplan", status: "ok", checks: { database: "ok" } });
+  // The opening steps (schema, data steps) are done before it counts as ready.
+  assert.deepEqual(await answer.json(), { service: "flowplan", status: "ok", checks: { opening: "ok", database: "ok" } });
   // Stopping: open live streams are closed, readiness says so.
   const { onShutdown, stopInstance } = await import("../lib/cluster/runtime");
   let closed = 0;
@@ -165,7 +166,7 @@ after(() => {
 });
 const prefix = `flowplan-test-${randomBytes(4).toString("hex")}:`;
 let requests = 0;
-function startInstance(name: string): Instance {
+function startInstance(name: string, extra: Record<string, string> = {}): Instance {
   const child = spawn(process.execPath, ["--import", "tsx", "tests/helpers/cluster-instance.ts"], {
     env: {
       ...process.env,
@@ -174,6 +175,7 @@ function startInstance(name: string): Instance {
       FLOWPLAN_REDIS_PREFIX: prefix,
       FLOWPLAN_INSTANCE_ID: name,
       FLOWPLAN_LEADER_INTERVAL: "300",
+      ...extra,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -284,4 +286,102 @@ test("two instances: one leader, heartbeats of both, live updates and rate limit
   follower.child.kill("SIGKILL");
   await c.waitFor((m) => m.leader === true, 15_000);
   await c.send({ op: "stop" });
+});
+
+test("fencing: a round of a leader that lost its connection blocks the next leader's round of that duty; terms only rise", { skip: needsPostgres, timeout: 90_000 }, async () => {
+  const { default: pg } = await import("pg");
+  const admin = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await admin.connect();
+  try {
+    // Names of this run only: the connection is found by them.
+    const tag = randomBytes(3).toString("hex");
+    const a = startInstance(`fence-a-${tag}`);
+    const b = startInstance(`fence-b-${tag}`);
+    const first = await oneLeader([a, b]);
+    const firstName = first === a ? `fence-a-${tag}` : `fence-b-${tag}`;
+    const before = Number((await first.send({ op: "term" })).term);
+    assert.ok(before >= 1, "the leader has a term");
+    // A long round starts on the leader …
+    const long = first.send({ op: "duty", name: "probe", ms: 5000 });
+    await first.waitFor((m) => m.dutyStarted === "probe");
+    // … which then loses its session connection (the leader lock goes with
+    // it); its round goes on, holding the duty's lock on the other one.
+    await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name=$1", [`flowplan-session:${firstName}`]);
+    // A new term: whoever leads now (the other one, or the same after a
+    // reconnect) has a higher one.
+    let leader: Instance | null = null;
+    let term = before;
+    for (let i = 0; i < 100 && term <= before; i++) {
+      await settle(100);
+      for (const instance of [a, b]) {
+        const t = Number((await instance.send({ op: "term" })).term);
+        if (t > before) [leader, term] = [instance, t];
+      }
+    }
+    assert.ok(leader && term > before, `term ${term} after ${before}`);
+    // While the old round runs, the same duty runs nowhere else …
+    assert.equal((await a.send({ op: "duty", name: "probe", ms: 10 })).ran, false);
+    assert.equal((await b.send({ op: "duty", name: "probe", ms: 10 })).ran, false);
+    // … other duties do, on the leader only.
+    assert.equal((await leader!.send({ op: "duty", name: "other", ms: 10 })).ran, true);
+    const follower = leader === a ? b : a;
+    assert.equal((await follower.send({ op: "duty", name: "other", ms: 10 })).ran, false);
+    // The old round ends normally; then the duty is free for the leader.
+    assert.equal((await long).ran, true);
+    assert.equal((await leader!.send({ op: "duty", name: "probe", ms: 10 })).ran, true);
+    // A stopping instance starts no rounds and waits for its running ones.
+    const last = leader!.send({ op: "duty", name: "last", ms: 800 });
+    await leader!.waitFor((m) => m.dutyStarted === "last");
+    const stopped = leader!.send({ op: "stop" });
+    assert.equal((await last).ran, true, "finished before the stop");
+    await stopped;
+    // (Its earlier {leader:true} may still be in the messages: ask.)
+    let next = 0;
+    for (let i = 0; i < 150 && !next; i++) {
+      next = Number((await follower.send({ op: "term" })).term) || 0;
+      if (!next) await settle(100);
+    }
+    assert.ok(next > term, `the next leader's term is higher again (${next} after ${term})`);
+    await follower.send({ op: "stop" });
+  } finally {
+    await admin.end();
+  }
+});
+
+test("Redis away for a while: nothing fails, live updates between instances resume once it is back", { skip: needsPostgres, timeout: 90_000 }, async () => {
+  // A Redis of this test only, so it can go away and come back on its port.
+  let redis = await startFakeRedis();
+  const port = redis.port;
+  const url = redis.url;
+  const tag = randomBytes(3).toString("hex");
+  const a = startInstance(`redis-a-${tag}`, { REDIS_URL: url });
+  const b = startInstance(`redis-b-${tag}`, { REDIS_URL: url });
+  try {
+    await oneLeader([a, b]);
+    const key = `page-${tag}::gen`;
+    await b.send({ op: "watch", key });
+    await b.waitFor((m) => typeof m.event === "string" && (m.event as string).includes('"ready"'));
+    await settle(300);
+    await a.send({ op: "publish", key, update: "AAE1" });
+    await b.waitFor((m) => typeof m.event === "string" && (m.event as string).includes("AAE1"));
+    // Gone: publishing still answers (the update itself is in PostgreSQL;
+    // the other instance's browsers fetch it with their next check).
+    await redis.close();
+    await settle(300);
+    assert.equal((await a.send({ op: "publish", key, update: "AAE2" })).ok, true);
+    await settle(500);
+    assert.ok(!b.messages.some((m) => typeof m.event === "string" && (m.event as string).includes("AAE2")), "lost while Redis was away");
+    // Back on the same address: both reconnect and subscribe again.
+    redis = await startFakeRedis(port);
+    let arrived = false;
+    for (let i = 0; i < 60 && !arrived; i++) {
+      await a.send({ op: "publish", key, update: `AAE3${i}` });
+      await settle(250);
+      arrived = b.messages.some((m) => typeof m.event === "string" && /AAE3\d+/.test(m.event as string));
+    }
+    assert.ok(arrived, "live updates flow again");
+  } finally {
+    for (const i of [a, b]) i.child.kill("SIGKILL");
+    await redis.close().catch(() => {});
+  }
 });

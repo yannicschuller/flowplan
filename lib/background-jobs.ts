@@ -15,6 +15,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { all, one, run } from "./db";
 import type { Identity } from "./types";
+import { clusterMode } from "./cluster/config";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
 export type JobKind = (typeof jobKinds)[number];
@@ -22,6 +23,13 @@ export type JobKind = (typeof jobKinds)[number];
 const KEEP_MS = 24 * 3_600_000;
 // A process id: jobs of an earlier run of the server cannot finish any more.
 const BOOT = randomUUID();
+// Cluster mode: a job runs on one instance and is asked about on any – the
+// instance running it marks it alive every half minute; one not marked for
+// two minutes counts as interrupted (its instance stopped).
+const ALIVE_EVERY = 30_000;
+const ALIVE_LIMIT = 120_000;
+const alive = globalThis as unknown as { flowplanJobsAlive?: Map<string, ReturnType<typeof setInterval>> };
+const aliveTimers = () => (alive.flowplanJobsAlive ??= new Map());
 
 const current = new AsyncLocalStorage<{ id: string; reported: number }>();
 
@@ -39,10 +47,17 @@ export async function startJob(user: Pick<Identity, "id">, kind: JobKind, label:
     now,
   );
   await run("DELETE FROM background_jobs WHERE updated_at<?", now - KEEP_MS);
+  if (clusterMode()) {
+    const timer = setInterval(() => void run("UPDATE background_jobs SET updated_at=? WHERE id=? AND status='running'", Date.now(), jobId).catch(() => {}), ALIVE_EVERY);
+    timer.unref?.();
+    aliveTimers().set(jobId, timer);
+  }
   return jobId;
 }
 
 export async function finishJob(jobId: string, error?: unknown) {
+  clearInterval(aliveTimers().get(jobId));
+  aliveTimers().delete(jobId);
   const now = Date.now();
   await run(
     "UPDATE background_jobs SET status=?,progress=CASE WHEN ?='done' THEN 1 ELSE progress END,error=?,updated_at=?,finished_at=? WHERE id=? AND status='running'",
@@ -185,6 +200,7 @@ export async function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_
     status: "running" | "done" | "failed";
     error: string | null;
     boot: string;
+    updated_at: number;
     started_at: number;
     finished_at: number | null;
   }>(
@@ -192,7 +208,7 @@ export async function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_
     user.id,
     now - recentMs,
   )).map((job) => {
-    const interrupted = job.status === "running" && job.boot !== BOOT;
+    const interrupted = job.status === "running" && (clusterMode() ? now - Number(job.updated_at) > ALIVE_LIMIT : job.boot !== BOOT);
     return {
       id: job.id,
       kind: job.kind,

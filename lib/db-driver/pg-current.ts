@@ -3,7 +3,9 @@
 // fresh PostgreSQL needs no separate step. Several instances starting at
 // once take turns (advisory lock; the limits of lib/db-driver/postgres.ts
 // lifted for it). FLOWPLAN_PG_SCHEMA_AUTO=off leaves it to
-// scripts/db-schema.mjs (the Helm chart's migration Job).
+// scripts/db-schema.mjs alone; the Helm chart's migration Job runs it before
+// the pods but leaves this check on as a safety net (nothing to do then).
+// Readiness waits for it (lib/cluster/health.ts).
 import schemaJson from "./postgres-schema.json";
 import { ensureSchemaVersion } from "./pg-ddl.mjs";
 import { postgresSchema } from "./context";

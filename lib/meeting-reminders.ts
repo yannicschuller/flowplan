@@ -31,7 +31,7 @@ import { rewriteSchema } from "./document-rewrite";
 import { validBlockId } from "./block-ids";
 import { reminderTarget } from "./date-reminder-options";
 import { validZone } from "./date-values";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import type { Identity, Page } from "./types";
 
@@ -178,15 +178,15 @@ export async function processMeetingReminders(now = Date.now()) {
 const runtime = globalThis as typeof globalThis & { flowplanMeetingReminderTimer?: ReturnType<typeof setInterval> };
 export function startMeetingReminderWorker(onFired: () => void) {
   if (runtime.flowplanMeetingReminderTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("meeting-reminders", async () => {
     // Cluster mode: the leader only; nothing while the instance moves.
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       if (await processMeetingReminders()) onFired();
     } catch (error) {
       console.error("Besprechungserinnerungen fehlgeschlagen", error);
     }
-  };
+  });
   runtime.flowplanMeetingReminderTimer = setInterval(() => void tick(), 30_000);
   runtime.flowplanMeetingReminderTimer.unref();
   void tick();
