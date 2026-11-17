@@ -211,6 +211,26 @@ test("stale requests and departures cannot resurrect cursors; leases expire", as
     0,
   );
 });
+test("a closed live channel takes its tab's cursor along; the tab, if still there, shows it again", async () => {
+  const { editorLeft } = await import("../lib/editor-presence");
+  const { documentKey } = await import("../lib/document-live");
+  const f = await fixture(),
+    a = f.request(),
+    b = f.request({ cursor: null });
+  await f.send(f.alice, a);
+  assert.equal((await f.send(f.bob, b)).peers.length, 1);
+  // The departure on pagehide got lost; the live channel of a's tab closes.
+  assert.equal(await editorLeft(f.alice.token, a.clientId), documentKey(f.page, undefined, "g1"));
+  assert.equal((await f.send(f.bob, { ...b, sequence: 2 }, f.now + 1)).peers.length, 0);
+  // Nothing more to take: no signal to the others.
+  assert.equal(await editorLeft(f.alice.token, a.clientId), null);
+  assert.equal(await editorLeft(f.alice.token, id()), null);
+  // Only another session's own channel counts.
+  await f.send(f.alice, { ...a, sequence: 2 }, f.now + 2);
+  assert.equal(await editorLeft(f.bob.token, a.clientId), null);
+  // The channel only reconnected: the tab's next request brings the cursor back.
+  assert.equal((await f.send(f.bob, { ...b, sequence: 3 }, f.now + 3)).peers.length, 1);
+});
 test("fresh page rights and live session status govern both publishing and receiving", async () => {
   const f = await fixture(),
     a = f.request(),

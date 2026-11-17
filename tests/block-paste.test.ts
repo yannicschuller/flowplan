@@ -136,3 +136,15 @@ test("text, code and selections go the usual way", () => {
   assert.equal(blockPaste(EditorState.create({ schema, doc, selection: TextSelection.create(doc, start, start + 2) }), BRAVO), null);
   assert.equal(blockPaste(EditorState.create({ schema, doc, selection: NodeSelection.create(doc, 0) }), BRAVO), null);
 });
+
+test("a key reads the caret from the page first, except while an input method composes", async () => {
+  const { syncDomSelectionOnKey } = await import("../lib/block-paste");
+  let flushed = 0;
+  const view = { domObserver: { flush: () => flushed++ } } as never;
+  // The key goes on to ProseMirror in every case.
+  assert.equal(syncDomSelectionOnKey(view, { key: "Enter", keyCode: 13, isComposing: false } as KeyboardEvent), false);
+  assert.equal(flushed, 1);
+  assert.equal(syncDomSelectionOnKey(view, { key: "Process", keyCode: 229, isComposing: false } as KeyboardEvent), false);
+  assert.equal(syncDomSelectionOnKey(view, { key: "a", keyCode: 65, isComposing: true } as KeyboardEvent), false);
+  assert.equal(flushed, 1);
+});

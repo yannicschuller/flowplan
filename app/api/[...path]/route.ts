@@ -28,7 +28,7 @@ import { resolveEmbed } from "@/lib/oembed";
 import { instanceSettings } from "@/lib/instance-settings";
 import { pendingRestore } from "@/lib/instance-backup";
 import { linkedDatabaseData } from "@/lib/linked-databases";
-import { editorPresence } from "@/lib/editor-presence";
+import { editorLeft, editorPresence } from "@/lib/editor-presence";
 import { marketplaceOrigin, requireMarketplace } from "@/lib/marketplace-config";
 import { buildPackage, importPackage, packageDraft, packagePreview, readPackage, MARKETPLACE_KINDS } from "@/lib/marketplace-package";
 import { checkPackage, requireMarketplaceCheck } from "@/lib/marketplace-check";
@@ -1009,12 +1009,20 @@ async function handleGET(
         }
       };
       await check();
-      const allowed = streamGuard(
-        hash((await cookies()).get(cookieName)?.value || ""),
-        check,
-      );
+      const session = hash((await cookies()).get(cookieName)?.value || "");
+      const allowed = streamGuard(session, check);
       const encoder = new TextEncoder();
       let stop = () => {};
+      // The tab closed the channel: its cursor goes with it, also when its
+      // own departure request is lost (lib/editor-presence.ts, editorLeft).
+      let gone = false;
+      const left = () => {
+        if (gone) return;
+        gone = true;
+        void editorLeft(session, clientId)
+          .then((key) => key && publishPresence(key, clientId))
+          .catch(() => {});
+      };
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
           const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
@@ -1042,10 +1050,14 @@ async function handleGET(
               controller.close();
             } catch {}
           };
-          req.signal.addEventListener("abort", () => stop());
+          req.signal.addEventListener("abort", () => {
+            stop();
+            left();
+          });
         },
         cancel() {
           stop();
+          left();
         },
       });
       return new Response(stream, {

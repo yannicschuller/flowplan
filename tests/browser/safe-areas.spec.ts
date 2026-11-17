@@ -38,16 +38,20 @@ test("dialogs stay clear of the status bar and home indicator; related pages fit
   test.skip(info.project.name !== "mobile", "Safe areas are a phone matter.");
   await insets(page, ":root{--safe-top:47px!important;--safe-bottom:34px!important}");
   const { db, row } = await setup(page);
-  // A long related title must not widen the dialog.
-  await page.route("**/api/related?*", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        semantic: false,
-        items: [{ pageId: db.id, title: "Bei automatischer Zuordnung der Rechnung eine Email an die Buchhaltung senden", pageTitle: "Teamspace", icon: "file", reasons: ["title"] }],
-      }),
-    }),
-  );
+  // A long related title must not widen the dialog. The record view gets its
+  // related pages with the rest of its surroundings in one request
+  // (GET /api/pages/:id/rows/:rowId/context, lib/record-context.ts); the
+  // part's own endpoint is the fallback.
+  const related = {
+    semantic: false,
+    items: [{ pageId: db.id, title: "Bei automatischer Zuordnung der Rechnung eine Email an die Buchhaltung senden", pageTitle: "Teamspace", icon: "file", reasons: ["title"] }],
+  };
+  await page.route("**/api/related?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(related) }));
+  await page.route(`**/api/pages/${db.id}/rows/${row.id}/context`, async (route) => {
+    const response = await route.fetch();
+    const context = await response.json();
+    await route.fulfill({ response, json: { ...context, related, failed: (context.failed || []).filter((part: string) => part !== "related") } });
+  });
   await page.goto(`/#page=${db.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await expect(entry.locator(".related-page")).toBeVisible();

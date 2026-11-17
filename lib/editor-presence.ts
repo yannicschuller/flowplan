@@ -13,6 +13,28 @@ import { filterAsync } from "./each-async";
 
 // Tombstones outlive a lease so a delayed request cannot resurrect a departed tab.
 const RETENTION_MS = 300_000;
+
+// The editor's live channel closed (the tab went, components/editor.tsx:
+// its client id is the cursors' one): its cursor goes too. The departure
+// the tab sends itself on pagehide (a keepalive request) does not always
+// arrive – Chromium loses it now and then while a service worker controls
+// the page – and the others then saw the cursor until its lease ran out.
+// The sequence stays: a request of the same tab, should it still be there
+// (a live channel that only reconnects), shows the cursor again. Returns
+// the document's key when a cursor went, for the others to hear about it.
+export async function editorLeft(sessionToken: string, clientId: string) {
+  const row = await one<{ page_id: string; row_id: string | null; generation: string; cursor: string | null }>(
+    "SELECT page_id,row_id,generation,cursor FROM editor_presence WHERE session_token=? AND client_id=?",
+    sessionToken,
+    clientId,
+  );
+  if (!row) return null;
+  const textGone = setTextPresence(presencePrefix(row.page_id, row.row_id), { id: clientId, text: null });
+  if (row.cursor === null && !textGone) return null;
+  if (row.cursor !== null)
+    await run("UPDATE editor_presence SET cursor=NULL WHERE session_token=? AND client_id=?", sessionToken, clientId);
+  return documentKey(row.page_id, row.row_id, row.generation);
+}
 export async function editorPresence(
   user: Identity,
   sessionToken: string,
