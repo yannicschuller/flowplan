@@ -28,6 +28,18 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 - Update the documentation ([flowplan-docs](https://github.com/yannicschuller/flowplan-docs)) when behaviour changes.
 - New UI strings are written in German and English side by side (`t("Anmelden", "Sign in")`). Run `npm run i18n` afterwards: it adds them to the catalogues in `locales/`, where further languages (French and Simplified Chinese so far) translate the English text; missing translations show in English.
 
+## Browser tests
+
+`npm run test:browser -- tests/browser/journal.spec.ts` runs one or more browser specs against a server of their own: a fresh data folder and build directory, a free port, `APP_URL` and `FLOWPLAN_DATA_DIR` set, Playwright pointed at it (with `/opt/pw-browsers/chromium` when that exists). It waits for `/api/health`, and at the end stops only the server it started.
+
+| Option | |
+| --- | --- |
+| `--repeat <n>` | Every test n times, to find flaky ones |
+| `--build` | The production build of the browser specs (`npm run build:e2e`, as in CI) instead of the development server: longer to start, several times faster per test |
+| anything else | Passed to Playwright, e.g. `--project=desktop`, `-g "title"` |
+
+CI runs all specs against that production build (Actions → Browser specs; also nightly): `npm run build:e2e`, then `TEST_SERVERS=2 FLOWPLAN_DATA_DIR=/tmp/flowplan-inline-e2e.local npm run test:e2e` starts two servers of it, one per Playwright worker, each with its own port and data folder.
+
 ## UI gallery
 
 `npm run gallery` puts every page, dialog, menu and popover of the app on one local HTML page – desktop and phone, light and dark – to spot quickly where something does not fit. It starts the production build with an empty data directory (built once with `npm run build` if there is none; `--build` rebuilds), seeds an account with example content like the visual tests, clicks through the scenes in `scripts/gallery/scenes.ts` with Playwright and writes `gallery-out/index.html` (git-ignored; open it in the browser or pass `--open`). Nothing of it is served by the app.

@@ -1,5 +1,6 @@
 node_modules
 .next/
+.next-*/
 data/
 .env*
 !.env.example
@@ -9,3 +10,4 @@ test-results/
 __pycache__/
 extensions/browser/dist/
 gallery-out/
+test-results-e2ee/

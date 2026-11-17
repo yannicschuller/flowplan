@@ -594,8 +594,13 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
   slice end to end, on whichever backend is configured.
 - `tests/no-sync-database.test.ts`: no bridge, no `Atomics.wait`, the
   synchronous SQLite statements only in the SQLite driver.
-- CI: the job `postgres` runs the suite, `next build` and
-  `scripts/check-standalone-postgres.mjs` against a `postgres:16` service.
+- CI: the job `postgres` runs the test files that reach the database
+  (`npm run test:db`, chosen by `scripts/db-tests.mjs` through their
+  imports of `lib/db.ts`, `lib/db-driver/*`, the test backends, `node:sqlite`
+  or `pg`; a file that needs Postgres without such an import carries the
+  comment `// db-test`) in two shards, and
+  `scripts/check-standalone-postgres.mjs` on the build of the job `build`,
+  against a `postgres:16` service.
 - Results: §11 (phase 1), §12 (phase 2).
 
 ```sh

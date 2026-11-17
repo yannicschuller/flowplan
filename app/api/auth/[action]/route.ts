@@ -171,6 +171,7 @@ const LINK_COOKIE = "flowplan_link";
 const wantsRemember = (input: unknown) => !!input && typeof input === "object" && (input as { remember?: unknown }).remember === true;
 import { clientAddress } from "@/lib/client-address";
 import { groupsClaimMissing, groupsClaimName, recordSsoGroups } from "@/lib/sso-group-report";
+import { demoSignInAllowed } from "@/lib/e2e-build";
 export const GET = withRequestLocale(handleGET);
 async function handleGET(
   req: Request,
@@ -411,7 +412,8 @@ async function handlePOST(
       return new Response(null, { status: 204 });
     }
     if (action === "demo") {
-      if (process.env.NODE_ENV === "production")
+      // Development only – and the browser specs' own build (lib/e2e-build.ts).
+      if (!demoSignInAllowed())
         throw new HttpError(
           403,
           "Demo-Anmeldung ist in Produktion deaktiviert.",

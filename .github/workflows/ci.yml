@@ -1,7 +1,15 @@
-# Every push and pull request: typecheck, tests (on SQLite and, in a job of
-# its own, on PostgreSQL 16), production build, a check
+# Every push and pull request: typecheck, tests (on SQLite and, in jobs of
+# their own, on PostgreSQL 16), production build, a check
 # of the standalone server (health, security defaults, persistence) and the
 # accessibility and performance budgets. The browser specs run in browser.yml.
+#
+# The tests are split over runners (node --test-shard): one runner took
+# 9–11 min for them on SQLite and 15–19 min on PostgreSQL, with the build
+# and the budgets after them on the same runner. On PostgreSQL only the test
+# files that reach the database run (scripts/db-tests.mjs), and the
+# standalone check there uses the build of the job "build". The jobs "test" and
+# "postgres" only collect their parts' results, so their names – what branch
+# protection asks for – stay as they were.
 name: CI
 
 on:
@@ -17,11 +25,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  unit:
     # GitHub's runners (free for public repositories): no waiting for a
     # self-hosted machine busy with another workflow.
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,12 +44,62 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
+      # Every test file is a process of its own with its own data folder
+      # (tests/helpers/cleanup.mjs); the shards split the files between
+      # runners. Six at a time instead of the default three (cores - 1): many
+      # wait for their database or a child process, and the whole suite took
+      # 8.6–9.2 min instead of 10.7 min locally, three times in a row without
+      # a failure.
       - run: npm test
+        env:
+          TEST_FLAGS: --test-shard=${{ matrix.shard }}/2 --test-concurrency=6
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Turbopack's build cache (on by default since Next.js 16.3), kept
+      # between runs: a build on top of the last one's cache took 30 s
+      # instead of 3 min locally. Keyed on the lockfile; the newest one of
+      # the same lockfile is restored. Image builds (Dockerfile) never see it.
+      - uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
       - run: npm run check:standalone
+      # The standalone server for the check on PostgreSQL (postgres-standalone):
+      # the same build, not a second one. One file: the artifact keeps
+      # neither file modes nor links.
+      - run: tar -cf "$RUNNER_TEMP/standalone.tar" .next/standalone .next/static
+      - uses: actions/upload-artifact@v7
+        with:
+          name: standalone-build
+          path: ${{ runner.temp }}/standalone.tar
+          retention-days: 1
+          if-no-files-found: error
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        if: runner.environment == 'github-hosted'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       # Accessibility and performance budgets on the production build
       # (scripts/quality-check.mjs). GitHub's runners download Chromium; the
       # own runner downloads nothing – it uses a Chromium that is installed
@@ -60,12 +122,33 @@ jobs:
         env:
           QUALITY_OPTIONAL: ${{ runner.environment == 'github-hosted' && '0' || '1' }}
 
-  postgres:
-    # The whole suite once more on PostgreSQL 16 (DATABASE_URL; each test
-    # process gets a schema of its own, tests/helpers/postgres-backend.ts),
-    # then the production build against it (docs/architecture/database.md).
+  # The result of the tests on SQLite, the build and the budgets, under the
+  # job's old name.
+  test:
+    needs: [unit, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All parts passed
+        run: |
+          echo "unit: ${{ needs.unit.result }}, build: ${{ needs.build.result }}"
+          test "${{ needs.unit.result }}" = success && test "${{ needs.build.result }}" = success
+
+  postgres-tests:
+    # The tests once more on PostgreSQL 16 (DATABASE_URL; each test process
+    # gets a schema of its own, tests/helpers/postgres-backend.ts), split
+    # over runners like the SQLite tests: the test files that reach the
+    # database layer – through any chain of imports, or with the marker
+    # `// db-test` (scripts/db-tests.mjs). A new test that touches the
+    # database comes along by itself; the others (about a fifth, pure
+    # functions and file checks) behave the same on either database.
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     services:
       postgres:
         # PostgreSQL 16 with pgvector (the semantic search's tests run with
@@ -119,11 +202,60 @@ jobs:
           pg_dump --version
           psql "$DATABASE_URL" -tAc "SHOW server_version_num"
           test "$(pg_dump --version | grep -oE '[0-9]+' | head -1)" -ge 16
-      - run: npm test
-      - run: npm run build
+      - run: npm run test:db
         env:
-          NEXT_TELEMETRY_DISABLED: "1"
-      - run: node scripts/check-standalone-postgres.mjs
+          TEST_FLAGS: --test-shard=${{ matrix.shard }}/2
       - name: Leftover test schemas
         if: always()
         run: node --import tsx tests/helpers/postgres-backend.ts --drop-all
+
+  postgres-standalone:
+    # The production build against PostgreSQL (docs/architecture/database.md):
+    # the build of the job "build" – the bundle reads DATABASE_URL when it
+    # runs, not when it is built.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: flowplan_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/flowplan_test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      # pg and the schema helpers the check imports.
+      - run: npm ci
+      - uses: actions/download-artifact@v7
+        with:
+          name: standalone-build
+          path: ${{ runner.temp }}
+      - run: tar -xf "$RUNNER_TEMP/standalone.tar"
+      - run: node scripts/check-standalone-postgres.mjs
+
+  # The result of everything on PostgreSQL, under the job's old name.
+  postgres:
+    needs: [postgres-tests, postgres-standalone]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All parts passed
+        run: |
+          echo "tests: ${{ needs.postgres-tests.result }}, standalone: ${{ needs.postgres-standalone.result }}"
+          test "${{ needs.postgres-tests.result }}" = success && test "${{ needs.postgres-standalone.result }}" = success

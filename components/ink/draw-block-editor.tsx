@@ -389,7 +389,9 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
         )}
         {writable && <div ref={dotRef} className="ink-pen-dot" aria-hidden="true" />}
       </div>
-      {writable && (
+      {/* Only while not drawing (#324): a palm resting on the block's edge
+          must not change its height mid-stroke. */}
+      {writable && !active && (
         <div
           className="ink-block-resize"
           role="separator"

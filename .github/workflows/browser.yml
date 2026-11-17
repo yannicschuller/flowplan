@@ -1,41 +1,90 @@
-# The browser specs (tests/browser, Playwright) against the dev server, on
-# demand (Actions → Browser specs → Run workflow). Not on every push: the
-# 8 runners take up to an hour each, and a few specs still fail or flake
-# against `next dev` (see the commit that moved them here). Apart from CI so
-# they do not turn the required run red.
+# The browser specs (tests/browser, Playwright) against a production build,
+# on demand (Actions → Browser specs → Run workflow) and every night on main.
+# Apart from CI so they do not turn the required run red; a failed run lists
+# the failed specs with file and line in its summary.
 name: Browser specs
 
 on:
   workflow_dispatch:
+  schedule:
+    # Nightly on the default branch (main), off the full hour.
+    - cron: "23 2 * * *"
 
 permissions:
   contents: read
 
+# A newer run of the same branch – by hand or the nightly one – cancels the
+# one still running.
 concurrency:
   group: browser-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
-  browser:
-    # The browser specs (tests/browser, playwright.config.ts), desktop and
-    # phone, split over 8 runners. They run against `next dev`, not the
-    # production build: every spec signs in with POST /api/auth/demo, which a
-    # production build refuses (403, asserted by check:standalone), and some
-    # open the server's database (FLOWPLAN_DATA_DIR). The specs share the one
-    # demo account, so each runner has a server and data directory of its own
-    # and a single worker.
+  # One production build for all runners: `next build` with the switch that
+  # lets its server take the demo sign-in every spec signs in with
+  # (lib/e2e-build.ts – compiled in only here; an image build never has it).
+  # Against `next dev` the specs spent most of their time in React's
+  # development checks (StrictMode renders twice, owner stacks: about 5 s
+  # before an editor shows after a reload) and the 8 runners took up to an
+  # hour.
+  build:
+    # The nightly run only in this repository, not in forks.
+    if: github.event_name != 'schedule' || github.repository == 'yannicschuller/flowplan'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      # Turbopack's build cache (on by default since Next.js 16.3): a build
+      # on top of the last one's cache took 30 s instead of 3 min locally.
+      # Its own key: this build differs from CI's (lib/e2e-build.ts).
+      - uses: actions/cache@v5
+        with:
+          path: .next-e2e/cache
+          key: e2e-build-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: e2e-build-${{ hashFiles('package-lock.json') }}-
+      # CI checks the types.
+      - run: npm run build:e2e
+        env:
+          FLOWPLAN_SKIP_TYPECHECK: "1"
+      # One file: the artifact keeps neither file modes nor links.
+      - run: tar -cf "$RUNNER_TEMP/e2e-build.tar" .next-e2e/standalone
+      - uses: actions/upload-artifact@v7
+        with:
+          name: e2e-build
+          path: ${{ runner.temp }}/e2e-build.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  browser:
+    # Desktop and phone, split over 4 runners. On each runner Playwright
+    # starts 2 servers of the build, one per worker, each with its own port
+    # (3000, 3001) and data directory (/tmp/flowplan-inline-e2e.ciw0, …w1): the
+    # specs share the demo account and instance settings of their server,
+    # so a worker runs them one after another, as before on a runner of its
+    # own (tests/browser/test-servers.ts).
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4]
     env:
-      NEXT_TELEMETRY_DISABLED: "1"
+      # Two workers on the runner's four cores: a third one made the specs
+      # faster again locally, but tripled the flaky ones (busy CPU).
+      TEST_SERVERS: "2"
       TEST_BASE_URL: http://127.0.0.1:3000
-      # Hosted runners differ up to about 2x in speed between shards: the
-      # editor shows after about 4 s locally, so the 5 s default is too
-      # tight on the slow ones.
+      # Hosted runners differ up to about 2x in speed.
       TEST_EXPECT_TIMEOUT_MS: "10000"
       # Throwaway data under the name the cursor and inline-comment specs
       # insist on before they write to the database themselves.
@@ -48,7 +97,18 @@ jobs:
         with:
           node-version: 26
           cache: npm
+      # Playwright, and the app modules some specs import.
       - run: npm ci
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        if: runner.environment == 'github-hosted'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       # GitHub's runners download Chromium (as in the test job: the browser
       # from Playwright's CDN, its Ubuntu packages best-effort); the own
       # runner downloads nothing and uses the Chromium installed there
@@ -62,44 +122,51 @@ jobs:
       - name: Installed Chromium
         if: runner.environment != 'github-hosted'
         run: echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium" >> "$GITHUB_ENV"
-      - name: Start the dev server
-        run: |
-          rm -rf "$FLOWPLAN_DATA_DIR" && mkdir -p "$FLOWPLAN_DATA_DIR"
-          # A large heap: near its limit `next dev` restarts itself, and the
-          # open pages then reload over and over (the specs time out).
-          APP_URL="$TEST_BASE_URL" NODE_OPTIONS=--max-old-space-size=8192 \
-            nohup npm run dev -- --port 3000 > "$RUNNER_TEMP/dev-server.log" 2>&1 &
-          for i in $(seq 1 90); do curl -sf -o /dev/null "$TEST_BASE_URL/api/health" && break; sleep 2; done
-          # The first request compiles the app; the specs' timeouts do not
-          # have to cover that.
-          curl -sf -o /dev/null --max-time 600 "$TEST_BASE_URL/"
-      # One retry: a dev server compiles routes on first use, and a spec that
-      # passes on the second attempt is reported as flaky, not as passed.
-      # e2ee.spec.ts needs a data directory of its own (next step).
+      - uses: actions/download-artifact@v7
+        with:
+          name: e2e-build
+          path: ${{ runner.temp }}
+      - run: tar -xf "$RUNNER_TEMP/e2e-build.tar"
+      # Playwright starts the servers (playwright.config.ts). One retry: a
+      # spec that passes on the second attempt is reported as flaky, not as
+      # passed. e2ee.spec.ts needs a data directory of its own (next step).
+      # The JSON report feeds the summary of failed specs below.
       - name: Browser specs
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/browser-results.json
         run: |
           npx playwright test $(ls tests/browser/*.spec.ts | grep -v '/e2ee\.spec\.ts$') \
-            --shard=${{ matrix.shard }}/8 --retries=1 --trace=retain-on-failure
-      # The end-to-end encryption spec on a second server: its own data
-      # directory (/tmp/flowplan-e2ee-e2e.*) and build directory.
+            --shard=${{ matrix.shard }}/4 --retries=1 --trace=retain-on-failure --reporter=list,json
+      # The end-to-end encryption spec on a server of its own: its own data
+      # directory (/tmp/flowplan-e2ee-e2e.*).
       - name: E2EE spec
         if: ${{ !cancelled() && matrix.shard == 1 }}
         env:
-          TEST_BASE_URL: http://127.0.0.1:3001
+          TEST_SERVERS: "1"
+          TEST_BASE_URL: http://127.0.0.1:3100
           FLOWPLAN_DATA_DIR: /tmp/flowplan-e2ee-e2e.ci
-        run: |
-          rm -rf "$FLOWPLAN_DATA_DIR" && mkdir -p "$FLOWPLAN_DATA_DIR"
-          APP_URL="$TEST_BASE_URL" FLOWPLAN_DIST_DIR=.next-e2ee \
-            nohup npm run dev -- --port 3001 > "$RUNNER_TEMP/dev-server-e2ee.log" 2>&1 &
-          for i in $(seq 1 90); do curl -sf -o /dev/null "$TEST_BASE_URL/api/health" && break; sleep 2; done
-          curl -sf -o /dev/null --max-time 600 "$TEST_BASE_URL/"
-          npx playwright test tests/browser/e2ee.spec.ts --retries=1 --trace=retain-on-failure
-      - name: Dev server log
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2ee-results.json
+        # Its own output directory: Playwright empties it at the start, and
+        # test-results holds the failures of the step before.
+        run: npx playwright test tests/browser/e2ee.spec.ts --retries=1 --trace=retain-on-failure --output=test-results-e2ee --reporter=list,json
+      - name: Failed specs in the summary
         if: failure()
-        run: tail -n 300 "$RUNNER_TEMP"/dev-server*.log
+        run: |
+          node scripts/playwright-summary.mjs "$RUNNER_TEMP/browser-results.json" "Browser specs, shard ${{ matrix.shard }}/4" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ matrix.shard }}" = 1 ]; then node scripts/playwright-summary.mjs "$RUNNER_TEMP/e2ee-results.json" "E2EE spec" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Server logs
+        if: failure()
+        run: |
+          for log in /tmp/flowplan-*-e2e.ci*.log; do
+            echo "::group::$log"
+            tail -n 300 "$log"
+            echo "::endgroup::"
+          done
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: browser-results-${{ matrix.shard }}
-          path: test-results
+          path: |
+            test-results
+            test-results-e2ee
           if-no-files-found: ignore

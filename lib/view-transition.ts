@@ -20,7 +20,7 @@ export type ViewKind = "page";
 /** Changes closer together than this go without a transition. */
 export const RAPID_MS = 350;
 
-type Transition = { finished: Promise<void>; skipTransition: () => void };
+type Transition = { finished: Promise<void>; ready?: Promise<void>; skipTransition: () => void };
 type StartViewTransition = (update: () => void) => Transition;
 
 const state = {
@@ -129,6 +129,11 @@ export function transitionView(update: () => void, { kind }: { kind: ViewKind })
     return { flush: () => {}, transition: null };
   }
   state.active = transition;
+  // A transition skipped before its animation began (a tap, a key, a quick
+  // next change) rejects `ready` – "Transition was skipped" – which nobody
+  // waits for: unhandled, the page reported it as an error. The skip is
+  // intended; only `finished` matters here.
+  transition.ready?.catch(() => {});
   const done = () => {
     if (state.active === transition) {
       state.active = null;
