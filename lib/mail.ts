@@ -378,7 +378,7 @@ export async function queueNotificationDigests(now = Date.now()) {
             // A formatted message (#330) keeps its formatting and its own
             // links; the notification's link follows it (no link in a link).
             n.markup && !(await locked(n))
-              ? `<li style="margin:0 0 8px">${notifyHtml(n.markup)} · <a href="${escape(link(n))}" style="color:#3b3fd8">${escape(t("Öffnen", "Open"))}</a></li>`
+              ? `<li style="margin:0 0 8px">${notifyHtml(n.markup, "color:#3b3fd8")} · <a href="${escape(link(n))}" style="color:#3b3fd8">${escape(t("Öffnen", "Open"))}</a></li>`
               : `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(await body(n))}</a></li>`,
           ))
             .join("")}${more > 0 ? `<li>${andMore}</li>` : ""}</ul>`,

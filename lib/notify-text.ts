@@ -237,8 +237,9 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
 // Escaped HTML for e-mails: marks as tags, links with their address, a
 // mention as plain "@Name", a formula as its LaTeX in code style. Styles
-// are inline (mail clients), never from the text.
-export function notifyHtml(markup: string): string {
+// are inline (mail clients; `linkStyle` from lib/mail.ts), never from
+// the text.
+export function notifyHtml(markup: string, linkStyle = ""): string {
   const runs = parseNotify(markup);
   let out = "";
   for (let i = 0; i < runs.length; ) {
@@ -256,7 +257,7 @@ export function notifyHtml(markup: string): string {
       if (run.bold) html = `<strong>${html}</strong>`;
       inner += html;
     }
-    out += href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" style="color:#3b3fd8">${inner}</a>` : inner;
+    out += href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer"${linkStyle ? ` style="${esc(linkStyle)}"` : ""}>${inner}</a>` : inner;
     i = j;
   }
   return out;
