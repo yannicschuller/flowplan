@@ -78,6 +78,7 @@ export async function writeImportReport(
 // The source as the report's title names it.
 const SOURCE_NAMES: Record<string, string> = {
   affine: "AFFiNE",
+  bookstack: "BookStack",
   confluence: "Confluence",
   evernote: "Evernote",
   gdocs: "Google Docs",

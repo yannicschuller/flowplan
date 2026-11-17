@@ -1873,6 +1873,44 @@ async function handlePOST(
       const job = await launchJob(user, "import", "Notion", () => importNotion(user, body.workspaceId, body.spaceId, body.token, body.items || []), (task) => after(task));
       return NextResponse.json({ job }, { status: 202 });
     }
+    // BookStack through its API (#329): "list" the shelves and books the
+    // token sees, "preview" (counts, nothing downloaded) and "import" the
+    // chosen ones – both as a background job unless background is false,
+    // its state at GET /api/import/source/job. The token comes in the body
+    // and stays in this request (or the job's memory): never stored or
+    // logged.
+    if (path.length === 2 && path[0] === "import" && path[1] === "bookstack") {
+      const body = z
+        .object({
+          action: z.enum(["list", "preview", "import"]),
+          workspaceId: z.uuid(),
+          spaceId: z.uuid(),
+          url: z.string().max(500),
+          tokenId: z.string().max(200),
+          tokenSecret: z.string().max(200),
+          shelves: z.array(z.number().int().positive()).max(5000).optional(),
+          books: z.array(z.number().int().positive()).max(20000).optional(),
+          background: z.boolean().optional(),
+        })
+        .parse(await req.json());
+      const { importBookStack, listBookStackFor } = await import("@/lib/importers/bookstack-import");
+      const input = { url: body.url, tokenId: body.tokenId, tokenSecret: body.tokenSecret, shelves: body.shelves, books: body.books };
+      if (body.action === "list") return NextResponse.json(await listBookStackFor(user, body.workspaceId, body.spaceId, input), { headers: { "Cache-Control": "no-store" } });
+      const { requireSpace } = await import("@/lib/importers/write");
+      await requireSpace(user, body.workspaceId, body.spaceId);
+      const dryRun = body.action === "preview";
+      const work = () =>
+        (dryRun ? importBookStack(user, body.workspaceId, body.spaceId, input, { dryRun: true }) : importBookStack(user, body.workspaceId, body.spaceId, input)).then(async (result) => {
+          // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
+          if (!dryRun) await noteGettingStarted(user.id, body.workspaceId, "import").catch(() => {});
+          return result;
+        });
+      const { launchJob, runningJob } = await import("@/lib/background-jobs");
+      if (runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+      if (body.background === false) return NextResponse.json(dryRun ? await work() : await trackJob(user, "import", "BookStack", work));
+      const job = await launchJob(user, "import", "BookStack", work, (task) => after(task));
+      return NextResponse.json({ job }, { status: 202 });
+    }
     if (path[0] === "import" && path[1] === "zip") {
       const data = await req.formData();
       const file = data.get("file");

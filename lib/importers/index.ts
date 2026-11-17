@@ -132,6 +132,9 @@ export async function parseImport(name: string, input: Buffer | { path: string }
       // Notion comes through its API (lib/importers/notion-api.ts); its
       // export ZIP through the Markdown/Notion ZIP import (lib/zip-import.ts).
       throw new HttpError(400, "Notion-Exporte bitte über „Notion, AppFlowy oder Markdown-Export (ZIP)“ importieren oder Notion direkt über ein Integrations-Token verbinden.");
+    case "bookstack":
+      // BookStack comes through its API (lib/importers/bookstack-api.ts).
+      throw new HttpError(400, "BookStack bitte direkt über die Adresse und ein API-Token importieren (Quelle „BookStack (API)“).");
     case "word": {
       // A single document or a ZIP of them (folders become parent pages);
       // a .docx is a ZIP itself.

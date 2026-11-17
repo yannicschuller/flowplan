@@ -5,6 +5,12 @@
 // (lib/importers, lib/zip-import.ts).
 import { serverMessage } from "@/lib/server-message";
 
+// Warnings carry a count ("… (3×)"); the text before it is translated.
+export const warningText = (warning: string) => {
+  const counted = /^(.*) \((\d+)×\)$/.exec(warning);
+  return counted ? `${serverMessage(counted[1])} (${counted[2]}×)` : serverMessage(warning);
+};
+
 // POST /api/import/source with the file as the raw body (#76).
 export function sendImport(query: URLSearchParams, body: File | null, onProgress: (share: number) => void) {
   return new Promise<unknown>((resolve, reject) => {

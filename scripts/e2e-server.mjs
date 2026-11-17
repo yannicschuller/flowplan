@@ -36,6 +36,8 @@ const child = spawn(process.execPath, ["server.js"], {
     NEXT_TELEMETRY_DISABLED: "1",
     // The runtime half of the demo sign-in's switch (lib/e2e-build.ts).
     FLOWPLAN_E2E_DEMO: "1",
+    // The BookStack import's spec asks a mock on 127.0.0.1 (#329).
+    FLOWPLAN_IMPORT_ALLOW_PRIVATE: "true",
   },
   stdio: ["ignore", log, log],
 });

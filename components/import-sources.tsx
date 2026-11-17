@@ -1,5 +1,6 @@
 "use client";
-// Import from AFFiNE, Confluence, Evernote, Google Docs, GoodNotes (PDFs as
+// Import from AFFiNE, BookStack (through its API,
+// components/import-bookstack.tsx), Confluence, Evernote, Google Docs, GoodNotes (PDFs as
 // notebooks), Microsoft Word and Obsidian (lib/importers): the file is uploaded once – as the raw request body,
 // streamed to disk on the server (#76) – for a preview (counts and
 // warnings); the import then names that upload instead of sending it again.
@@ -12,12 +13,12 @@
 import { useState } from "react";
 import { FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
 import { storedZip } from "@/lib/stored-zip";
-import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
-import { sendImport as send, waitForJob } from "./import-client";
+import { sendImport as send, waitForJob, warningText } from "./import-client";
 import { Select } from "./select";
 import { Switch } from "./settings-ui";
 import { ImportNotion } from "./import-notion";
+import { ImportBookStack } from "./import-bookstack";
 
 type Preview = {
   source: string;
@@ -57,11 +58,6 @@ type Preview = {
 // only approximated (lib/importers/report.ts).
 type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string; report?: { pageId: string; total: number } };
 
-// Warnings carry a count ("… (3×)"); the text before it is translated.
-const warningText = (warning: string) => {
-  const counted = /^(.*) \((\d+)×\)$/.exec(warning);
-  return counted ? `${serverMessage(counted[1])} (${counted[2]}×)` : serverMessage(warning);
-};
 
 export function ImportSources({
   workspaceId,
@@ -100,7 +96,9 @@ export function ImportSources({
     evernote: "Evernote",
     gdocs: "Google Docs",
     goodnotes: "GoodNotes",
-    // Not a file: its API with an integration token (components/import-notion.tsx).
+    // Not files: their APIs with a token (components/import-notion.tsx,
+    // components/import-bookstack.tsx).
+    bookstack: t("BookStack (API)", "BookStack (API)"),
     notion: t("Notion (API)", "Notion (API)"),
     word: "Microsoft Word",
     obsidian: "Obsidian",
@@ -182,6 +180,17 @@ export function ImportSources({
       setProgress(null);
     }
   };
+  // A BookStack preview or import (components/import-bookstack.tsx): the
+  // job's progress here, its result back to the panel.
+  const waitBookStack = async (job: string) => {
+    setDone(null);
+    setProgress({ phase: "work", share: null });
+    try {
+      return await waitForJob(job, (share) => setProgress({ phase: "work", share }));
+    } finally {
+      setProgress(null);
+    }
+  };
   // Several files at once: PDFs only, packed into one ZIP.
   const chooseMany = async (chosen: File[]) => {
     if (chosen.length === 1) return void choose(chosen[0]);
@@ -200,11 +209,11 @@ export function ImportSources({
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
-        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) or Obsidian")}</span>
+        <span className="setting-label">{t("AFFiNE, BookStack (API), Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) oder Obsidian", "AFFiNE, BookStack (API), Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) or Obsidian")}</span>
         <small>
           {t(
-            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Notion (API): direkt aus Notion mit einem Integrations-Token, ohne Exportdatei. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird; danach listet ein Importbericht, was nicht oder nur angenähert übernommen wurde.",
-            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Notion (API): straight from Notion with an integration token, without an export file. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported; afterwards an import report lists what was not or only approximately carried over.",
+            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). BookStack (API): direkt aus BookStack mit Adresse und API-Token, Regale, Bücher und Kapitel werden zu Seiten. Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Notion (API): direkt aus Notion mit einem Integrations-Token, ohne Exportdatei. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird; danach listet ein Importbericht, was nicht oder nur angenähert übernommen wurde.",
+            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). BookStack (API): straight from BookStack with its address and an API token, shelves, books and chapters become pages. Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Notion (API): straight from Notion with an integration token, without an export file. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported; afterwards an import report lists what was not or only approximately carried over.",
           )}
         </small>
       </div>
@@ -214,7 +223,7 @@ export function ImportSources({
           <Select id="import-source" value={source} onChange={(e) => {
               setSource(e.target.value);
               // Notebooks (and Notion's pages) only come as pages.
-              if (e.target.value === "goodnotes" || e.target.value === "notion") setMode("pages");
+              if (e.target.value === "goodnotes" || e.target.value === "notion" || e.target.value === "bookstack") setMode("pages");
               discard(preview?.upload);
               setPreview(null);
               setFile(null);
@@ -239,7 +248,7 @@ export function ImportSources({
             </Select>
           </div>
         )}
-        {source !== "notion" && (
+        {source !== "notion" && source !== "bookstack" && (
           <div className="ws-field">
             <label htmlFor="import-source-mode">{t("Importieren als", "Import as")}</label>
             <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy || source === "goodnotes"} aria-label={t("Importieren als", "Import as")}>
@@ -248,7 +257,7 @@ export function ImportSources({
             </Select>
           </div>
         )}
-        {source !== "notion" && (
+        {source !== "notion" && source !== "bookstack" && (
           <div className="ws-form-actions">
             <label className={`button file-label ws-file${canWrite && !busy ? "" : " disabled"}`}>
               <UploadSimple aria-hidden />
@@ -272,6 +281,17 @@ export function ImportSources({
       </div>
       {source === "notion" && (
         <ImportNotion workspaceId={workspaceId} spaceId={space || spaces[0]?.id || ""} canWrite={canWrite} busy={busy} onJob={runNotion} onError={onError} />
+      )}
+      {source === "bookstack" && (
+        <ImportBookStack
+          workspaceId={workspaceId}
+          spaceId={space || spaces[0]?.id || ""}
+          canWrite={canWrite}
+          busy={busy}
+          wait={waitBookStack}
+          onImported={(result) => finish(result as Result, "pages")}
+          onError={onError}
+        />
       )}
       {source === "word" && (
         <p className="import-sources-hint">

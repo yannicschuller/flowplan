@@ -7,7 +7,9 @@
 // their own: "zip" is POST /api/import/zip (lib/zip-import.ts: Markdown,
 // CSV and Notion's HTML export), "source" POST /api/import/source
 // (lib/importers: AFFiNE, Confluence, Evernote, Google Docs, Word, Obsidian)
-// as a background job (components/import-client.ts).
+// as a background job (components/import-client.ts); "bookstack" is no
+// file but BookStack's API with an API token (POST /api/import/bookstack,
+// components/import-bookstack.tsx, #329).
 //
 // Adding a source: one entry below. A source that is not a file – such as
 // an import through the Notion API with an integration token – gets a
@@ -19,18 +21,20 @@ import type { OnboardingSource } from "./getting-started-items";
 type Text = { de: string; en: string };
 export type ImportRoute =
   | { kind: "zip" }
-  | { kind: "source"; source: "auto" | "affine" | "confluence" | "evernote" | "gdocs" | "obsidian" | "word" };
+  | { kind: "source"; source: "auto" | "affine" | "confluence" | "evernote" | "gdocs" | "obsidian" | "word" }
+  | { kind: "bookstack" };
 
 export type MigrationSource = {
   id: Exclude<OnboardingSource, "fresh">;
   // The tool's own name (not translated).
   name: string;
   route: ImportRoute;
-  // The file picker's types.
-  accept: string;
-  // Where the export is, step by step (menu paths in the tool's English UI).
+  // The file picker's types (routes with a file).
+  accept?: string;
+  // Where the export (or the token) is, step by step (menu paths in the
+  // tool's English UI).
   steps: Text[];
-  // What to pick here.
+  // What to pick (or enter) here.
   file: Text;
   // Which glossary of lib/migration-glossary.ts applies (default: id).
   glossary?: Exclude<OnboardingSource, "fresh">;
@@ -149,6 +153,25 @@ export const MIGRATION_SOURCES: MigrationSource[] = [
       },
     ],
     file: { de: "Die Takeout-ZIP, eine .docx- oder HTML-Datei oder eine ZIP mit .docx-Dateien.", en: "The Takeout ZIP, a .docx or HTML file, or a ZIP with .docx files." },
+  },
+  {
+    id: "bookstack",
+    name: "BookStack",
+    route: { kind: "bookstack" },
+    steps: [
+      {
+        de: "In BookStack: dein Profil → „Access & Security“ → „API Tokens“ → „Create Token“ (ältere Versionen: Profil bearbeiten → API Tokens).",
+        en: "In BookStack: your profile → “Access & Security” → “API Tokens” → “Create Token” (older versions: edit profile → API Tokens).",
+      },
+      {
+        de: "Deine Rolle braucht die Berechtigung „Access system API“ (Settings → Roles). Token-ID und Token-Secret kopieren – das Secret zeigt BookStack nur einmal.",
+        en: "Your role needs the permission “Access system API” (Settings → Roles). Copy the token ID and token secret – BookStack shows the secret only once.",
+      },
+    ],
+    file: {
+      de: "Die Adresse deiner BookStack-Instanz, Token-ID und Token-Secret. Regale, Bücher, Kapitel und Seiten mit Bildern, Anhängen und Tags werden übernommen.",
+      en: "The address of your BookStack instance, the token ID and token secret. Shelves, books, chapters and pages with images, attachments and tags come along.",
+    },
   },
 ];
 

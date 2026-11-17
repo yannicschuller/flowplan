@@ -4087,6 +4087,23 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/import/source`, { form, idempotent: true }, options);
   }
 
+  /** Import shelves, books, chapters and pages from BookStack through its API — A one-time import from a BookStack instance (`url`, its address; a path such as `/wiki` stays) with a BookStack API token (`tokenId`, `tokenSecret`: BookStack profile → API Tokens; the role needs "Access system API"). The token is sent only to that address as `Authorization: Token <id>:<secret>`, used for this request or its job only and never stored or logged. Internal addresses (a BookStack in the LAN) and `http://` only with `FLOWPLAN_IMPORT_ALLOW_PRIVATE=true`. `action: "list"` answers at once with `shelves` (each with its `books`) and the `books` on no shelf the token sees. `preview` (the counts – `shelves`, `books`, `chapters`, `pages`, `images`, `attachments`, `links`, `tags` – with `warnings` and `tooMany`, nothing downloaded) and `import` run as a background job: 202 with `job`, its state at `GET /api/import/source/job` (`background: false` answers when done instead). Without `shelves` and `books` everything is imported; `shelves` alone takes those shelves with all their books; `books` takes exactly those books, each below the first of the chosen `shelves` it is on (else at the top). A shelf becomes a page with its books below it, a book a page with its chapters and pages, a chapter a sub-page with its pages, in BookStack's order; descriptions become the text of their page, tags `name: value` tags, images of the instance and file attachments files of the page (within the person's upload limit), links between imported pages links to the new pages. Drafts and revisions are left out. One import per person at a time (409); the page limit `FLOWPLAN_IMPORT_MAX_DOCS` applies (the preview says `tooMany`, the import answers 413). (POST /api/import/bookstack) */
+  async importBookStack(body: {
+    action: "list" | "preview" | "import";
+    workspaceId: string;
+    spaceId: string;
+    /** The BookStack instance, e.g. https://wiki.example.org */
+    url: string;
+    tokenId: string;
+    tokenSecret: string;
+    shelves?: number[];
+    books?: number[];
+    /** false: answer with the preview or result instead of a job */
+    background?: boolean;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/import/bookstack`, { json: body }, options);
+  }
+
   /** State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job) */
   async importSourceJob(query: { id: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/import/source/job`, { query }, options);
