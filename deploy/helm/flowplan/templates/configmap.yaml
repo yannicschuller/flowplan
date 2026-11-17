@@ -8,6 +8,8 @@ data:
   APP_URL: {{ include "flowplan.appUrl" . | quote }}
   FLOWPLAN_DATA_DIR: /app/data
   FLOWPLAN_LOCAL_LOGIN: {{ .Values.localLogin | toString | quote }}
+  # The user node's home (an emptyDir: the root file system is read-only).
+  HOME: /home/node
   {{- with .Values.oidc }}
   {{- if .issuer }}
   OIDC_ISSUER: {{ .issuer | quote }}

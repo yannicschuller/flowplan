@@ -1,0 +1,54 @@
+{{- if .Values.networkPolicy.enabled }}
+# Incoming: only the HTTP port, only from networkPolicy.ingressFrom (the
+# ingress controller; add Prometheus for the ServiceMonitor). The pods of a
+# cluster do not talk to each other – they meet in PostgreSQL and Redis.
+# Outgoing (restrictEgress): DNS and networkPolicy.egress only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flowplan.fullname" . }}
+  labels:
+    {{- include "flowplan.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flowplan.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    {{- if .Values.networkPolicy.restrictEgress }}
+    - Egress
+    {{- end }}
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+      {{- with .Values.networkPolicy.ingressFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    # helm test: the chart's own test pod.
+    - ports:
+        - port: http
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: test
+  {{- if .Values.networkPolicy.restrictEgress }}
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- with .Values.networkPolicy.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

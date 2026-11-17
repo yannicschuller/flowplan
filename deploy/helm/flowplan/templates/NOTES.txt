@@ -13,8 +13,8 @@ and open http://localhost:3000 (set appUrl to http://localhost:3000 for this).
 {{- if .Values.cluster.enabled }}
 
 Cluster mode: {{ .Values.cluster.replicas }} pods against PostgreSQL ({{ .Values.cluster.database.existingSecret }}), Redis ({{ .Values.cluster.redis.existingSecret }}) and the bucket {{ .Values.s3.bucket }}.
-Updates roll pod by pod{{ if .Values.cluster.migration.enabled }} after the schema Job{{ end }}. The administration shows the pods, the
-leader and the connections under Monitoring → System.
+Updates roll pod by pod{{ if .Values.cluster.migration.enabled }} after the schema Job{{ end }}; a pod is ready once its schema and data steps are
+done. The administration shows the pods, the leader and the connections under Monitoring → System.
 {{- else }}
 {{- if not .Values.persistence.enabled }}
 
@@ -24,11 +24,9 @@ WARNING: persistence is disabled – the database and uploads are lost when the 
 Flowplan runs as a single pod with SQLite (strategy Recreate): updates have a short downtime.
 {{- end }}
 {{- if .Values.localLogin }}
+
 The first account registered with e-mail and password administers the instance.
-Create it with the setup link (FLOWPLAN_SETUP_TOKEN, generated unless set), printed by:
-  echo "{{ include "flowplan.appUrl" . }}/register?setup=$(kubectl --namespace {{ .Release.Namespace }} get secret {{ include "flowplan.fullname" . }} -o jsonpath='{.data.FLOWPLAN_SETUP_TOKEN}' | base64 -d)"
-{{- if .Values.existingSecret }}
-(If {{ .Values.existingSecret }} sets FLOWPLAN_SETUP_TOKEN, that one counts.)
-{{- end }}
+Create it with the setup link (FLOWPLAN_SETUP_TOKEN in the Secret {{ include "flowplan.setupTokenSecret" . }}):
+  echo "{{ include "flowplan.appUrl" . }}/register?setup=$(kubectl --namespace {{ .Release.Namespace }} get secret {{ include "flowplan.setupTokenSecret" . }} -o jsonpath='{.data.{{ include "flowplan.setupTokenKey" . }}}' | base64 -d)"
 {{- end }}
 Check it: helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

@@ -1,16 +1,18 @@
 {{- if and .Values.cluster.enabled .Values.cluster.migration.enabled }}
-{{- include "flowplan.clusterCheck" . }}
+{{- include "flowplan.check" . }}
 # Cluster mode: this version's schema in PostgreSQL before the pods of a new
 # version start (scripts/db-schema.mjs in the image; adds, never drops;
 # nothing to do when the database is current). Runs before install and
-# every upgrade; the pods then skip it (FLOWPLAN_PG_SCHEMA_AUTO=off).
+# every upgrade; a failure stops the upgrade before any pod is replaced.
+# The pods check the schema again at their start (under the same advisory
+# lock – nothing to do then) and are not ready while it is older than
+# theirs.
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "flowplan.fullname" . }}-schema
   labels:
-    {{- include "flowplan.labels" . | nindent 4 }}
-    app.kubernetes.io/component: schema
+    {{- include "flowplan.otherPodLabels" (dict "root" . "component" "schema") | nindent 4 }}
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "0"
@@ -20,9 +22,10 @@ spec:
   activeDeadlineSeconds: {{ .Values.cluster.migration.activeDeadlineSeconds }}
   template:
     metadata:
+      # Not the selector labels: the Service and the PodDisruptionBudget must
+      # not count this pod as a Flowplan server.
       labels:
-        {{- include "flowplan.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: schema
+        {{- include "flowplan.otherPodLabels" (dict "root" . "component" "schema") | nindent 8 }}
     spec:
       restartPolicy: Never
       {{- with .Values.imagePullSecrets }}
@@ -43,13 +46,26 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           env:
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.cluster.database.existingSecret }}
-                  key: {{ .Values.cluster.database.key }}
+            {{- include "flowplan.databaseEnv" . | nindent 12 }}
+            - name: HOME
+              value: /tmp
           {{- with .Values.cluster.migration.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}

@@ -1,0 +1,101 @@
+# The Helm chart (deploy/helm/flowplan): lint and render it with the
+# defaults and both examples (one pod with SQLite, several pods with
+# PostgreSQL, Redis and S3), validate the manifests against the Kubernetes
+# API schemas (kubeconform; the ServiceMonitor against its CRD), and make
+# sure a render refuses what it must refuse. Helm and kubeconform are
+# pinned; their downloads are checked against the published checksums.
+name: Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/helm/**
+      - .github/workflows/helm.yml
+  pull_request:
+    paths:
+      - deploy/helm/**
+      - .github/workflows/helm.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v3.18.6
+  KUBECONFORM_VERSION: v0.7.0
+  KUBECONFORM_SHA256: c31518ddd122663b3f3aa874cfe8178cb0988de944f29c74a0b9260920d115d3
+  KUBERNETES_VERSION: 1.30.0
+  CHART: deploy/helm/flowplan
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install helm and kubeconform
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl -fsSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          sha256sum -c "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz" linux-amd64/helm
+          mv linux-amd64/helm bin/helm
+          curl -fsSLo kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  kubeconform.tar.gz" | sha256sum -c
+          tar -xzf kubeconform.tar.gz -C bin kubeconform
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: helm version && kubeconform -v
+      - name: Lint
+        run: |
+          set -eu
+          helm lint --strict "$CHART" --set appUrl=https://flowplan.example.org
+          helm lint --strict "$CHART" -f "$CHART/values-small.yaml"
+          helm lint --strict "$CHART" -f "$CHART/values-ha.yaml"
+      - name: Render and validate
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/rendered"
+          mkdir -p "$out"
+          render() { helm template flowplan "$CHART" --namespace flowplan --kube-version "$KUBERNETES_VERSION" "$@"; }
+          render --set appUrl=https://flowplan.example.org > "$out/default.yaml"
+          render -f "$CHART/values-small.yaml" > "$out/small.yaml"
+          render -f "$CHART/values-ha.yaml" > "$out/ha.yaml"
+          render -f "$CHART/values-ha.yaml" --set networkPolicy.restrictEgress=true \
+            --set cluster.database.schema=team --set cluster.database.sessionUrl.existingSecret=flowplan-cluster > "$out/ha-extras.yaml"
+          kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            "$out"/*.yaml
+      - name: What the chart must refuse
+        run: |
+          set -eu
+          refuse() {
+            if helm template flowplan "$CHART" --kube-version "$KUBERNETES_VERSION" "$@" > /dev/null 2>&1; then
+              echo "rendered, but should have refused: $*" >&2
+              exit 1
+            fi
+          }
+          # No address.
+          refuse
+          # Cluster mode without its services.
+          refuse --set appUrl=https://flowplan.example.org --set cluster.enabled=true
+          # A secret as a value (chart 0.2's keys).
+          refuse --set appUrl=https://flowplan.example.org --set oidc.clientSecret=placeholder
+          refuse --set appUrl=https://flowplan.example.org --set s3.secretAccessKey=placeholder
+          # A grace period too short for the graceful stop.
+          refuse -f "$CHART/values-ha.yaml" --set terminationGracePeriodSeconds=12
+      - name: The schema Job and the test pod are not selected by the Service
+        run: |
+          set -eu
+          helm template flowplan "$CHART" --kube-version "$KUBERNETES_VERSION" -f "$CHART/values-ha.yaml" > "$RUNNER_TEMP/ha.yaml"
+          # Pods other than the Deployment's carry their own app.kubernetes.io/name.
+          ! grep -A12 -E '^kind: (Job|Pod)$' "$RUNNER_TEMP/ha.yaml" | grep -qx '    app.kubernetes.io/name: flowplan'
