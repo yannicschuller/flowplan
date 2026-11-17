@@ -178,6 +178,10 @@ test("text and links shared from another app become a page", async ({ page }) =>
   await page.goto(`/share-target?${query}`);
   await expect(page.getByRole("heading", { name: "In Flowplan speichern" })).toBeVisible();
   await expect(page.getByLabel("Geteilter Inhalt")).toContainText("example.com/artikel");
+  // "Als Seite" chosen: a default capture database of the workspace – set by
+  // notes-databases.spec.ts on the same server – makes "Als Eintrag" the
+  // first choice as soon as the capture targets have loaded.
+  await page.getByRole("radio", { name: "Als Seite", exact: true }).click();
   await page.getByRole("button", { name: "Als Seite speichern" }).click();
   await expect(page).toHaveURL(/#page=/);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
