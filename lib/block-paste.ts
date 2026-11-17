@@ -65,3 +65,13 @@ export function syncDomSelection(view: EditorView) {
   (view as unknown as { domObserver?: { flush?: () => void } }).domObserver?.flush?.();
   return false;
 }
+// The same before a key: a click right after the document appeared can
+// put the caret on the page without ProseMirror taking it (its
+// "selectionchange" never reached the DOM observer), and Enter or Delete
+// then acted at the old place – the start of the document. ProseMirror's
+// own keydown only reads the DOM when a change is pending. Not while an
+// input method composes.
+export function syncDomSelectionOnKey(view: EditorView, event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return false;
+  return syncDomSelection(view);
+}

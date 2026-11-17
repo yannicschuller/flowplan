@@ -259,7 +259,7 @@ import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
-import { blockPaste, syncDomSelection } from "@/lib/block-paste";
+import { blockPaste, syncDomSelection, syncDomSelectionOnKey } from "@/lib/block-paste";
 import { shortcutLetter } from "@/lib/keymap";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
@@ -988,11 +988,13 @@ export default function DocumentEditor({
         // With the on-screen keyboard docked, the caret stays above it and
         // its toolbar (#181, components/keep-caret.ts).
         handleScrollToSelection: (view) => keepCaretAboveKeyboard(view),
-        // The caret moved by a key just before ⌘V/⌘C/⌘X (lib/block-paste.ts).
+        // The caret moved by a key just before ⌘V/⌘C/⌘X, or by a click just
+        // before a key (lib/block-paste.ts).
         handleDOMEvents: {
           paste: syncDomSelection,
           copy: syncDomSelection,
           cut: syncDomSelection,
+          keydown: syncDomSelectionOnKey,
         },
         // Images and files from the clipboard or dropped on the page are
         // uploaded and inserted where the caret is.
