@@ -213,7 +213,7 @@ import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { WorkflowButtonView } from "./workflow-button";
-import { api, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
+import { api, apiIfChanged, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
@@ -1330,9 +1330,13 @@ export default function DocumentEditor({
         // check (new document version, missed updates) runs less often.
         if (live.current && Date.now() - lastPoll.current < 20_000) return;
         lastPoll.current = Date.now();
-        const result = await api<{ state: string | null; generation: string }>(
+        // With the ETag of the last answer: unchanged (304) is the same
+        // object, and its state was applied already.
+        const result = await apiIfChanged<{ state: string | null; generation: string }>(
           rowId ? `/api/pages/${pageId}/rows/${rowId}` : `/api/pages/${pageId}`,
         );
+        if (result === lastChecked.current) return;
+        lastChecked.current = result;
         // A restored or guest-edited document has a new CRDT identity. The parent
         // remounts this editor with that generation; merging it into this one duplicates content.
         if (result.generation !== generation) {
@@ -1362,6 +1366,8 @@ export default function DocumentEditor({
   }, [doc, editor, editable, pageId, rowId, generation, liveId, applyRemote, onStatus, onError, ensureCreated]);
   // Changes go out shortly after typing instead of on the next interval.
   const saveSoon = useRef(() => {});
+  // The last answer of the full check (apiIfChanged).
+  const lastChecked = useRef<unknown>(null);
   saveSoon.current = () => {
     if (saveTimer.current) return;
     saveTimer.current = setTimeout(() => {

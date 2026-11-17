@@ -1,4 +1,5 @@
 import { CSV_FORMULA } from "@/lib/cell-text";
+import { jsonWithTag } from "@/lib/etag";
 import { linkTargets } from "@/lib/link-targets";
 import { withRequestLocale } from "@/lib/content-locale";
 import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
@@ -420,10 +421,9 @@ async function handleGET(
       await requireMember(user, wid);
       return NextResponse.json(await listCollections(user, wid), { headers });
     }
+    // With an ETag: the app's 10 s refresh gets 304 while nothing changed.
     if (path[0] === "bootstrap")
-      return NextResponse.json(
-        await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")),
-      );
+      return jsonWithTag(req, await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")));
     // Offline copies on a device: readable pages and what changed since.
     if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -734,7 +734,7 @@ async function handleGET(
       // Opening a record (dialog or full page, X-Flowplan-Visit) counts for
       // the person's own quick search (#243); reloads and prefetches do not.
       if (req.headers.get("x-flowplan-visit") === "1") await recordSearchVisit(user, path[1], path[3]);
-      return NextResponse.json(data);
+      return jsonWithTag(req, data);
     }
     // Opening a page (header X-Flowplan-Visit) records the visit: read
     // receipts and changes since then. Reloads and embeds do not.
@@ -745,7 +745,8 @@ async function handleGET(
       if (draft) return NextResponse.json(draft.data, { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "pages" && path[1])
-      return NextResponse.json(
+      return jsonWithTag(
+        req,
         await withActivity(
           user,
           // Offline refreshes (X-Flowplan-Offline) and loading ahead on hover

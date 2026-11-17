@@ -222,6 +222,7 @@ import {
   Avatar,
   setAvatarDirectory,
   api,
+  apiIfChanged,
   ApiError,
   isTransient,
   PageSkeleton,
@@ -1041,7 +1042,8 @@ export default function WorkspaceApp({
     const count = ++refreshCount.current;
     let result: Bootstrap;
     try {
-      result = await api<Bootstrap>(
+      // Unchanged (304): the same object, setBoot changes nothing.
+      result = await apiIfChanged<Bootstrap>(
         `/api/bootstrap?workspace=${currentWorkspace.current}`,
       );
     } catch (error) {
@@ -1084,11 +1086,9 @@ export default function WorkspaceApp({
       // A page shown for the first time (e.g. opened by its link) counts
       // as a visit; later reloads of the same page do not.
       const first = dataRef.current?.page.id !== pid;
-      const p = await api<PageData>(
-        `/api/pages/${pid}`,
-        undefined,
-        first ? { "X-Flowplan-Visit": "1" } : {},
-      );
+      const p = first
+        ? await api<PageData>(`/api/pages/${pid}`, undefined, { "X-Flowplan-Visit": "1" })
+        : await apiIfChanged<PageData>(`/api/pages/${pid}`);
       if (
         pid === currentId.current &&
         version === navigationVersion.current &&
