@@ -10,11 +10,31 @@ import { applyRackLayout } from "./whiteboard-rack";
 import type { Identity, Page } from "./types";
 // Private mode: private writers' changes stay out of the shared board.
 import { assertNoPrivateGap, withoutPrivateChanges } from "./whiteboard-private-guard";
+import { afterTransaction } from "./db-driver/context";
+import { signalBoard } from "./whiteboard-presence";
 
 // Whiteboards: the board is a Yjs document (see whiteboard-model.ts) that
 // clients exchange like documents. The texts on the board are kept as a
 // summary in documents.html for search, previews and exports.
 type Stored = { state: Uint8Array; generation: string };
+// The board changed: everyone on it syncs now (components/whiteboard,
+// lib/share-canvas.ts for guests) instead of asking every second. Once the
+// write has committed – asked before, they would read the old state. `from`
+// names the browser that wrote, which needs no signal.
+export function boardChanged(pageId: string, from?: string) {
+  afterTransaction(() => signalBoard(pageId, { type: "changed", ...(from ? { from } : {}) }));
+}
+// What a client is missing: with its state vector only the difference
+// (and the delete set), without one – older clients – the whole state.
+export function missingFor(doc: Y.Doc, vector?: string) {
+  if (vector)
+    try {
+      return Y.encodeStateAsUpdate(doc, Buffer.from(vector, "base64"));
+    } catch {
+      // Not a state vector: the whole state.
+    }
+  return Y.encodeStateAsUpdate(doc);
+}
 export function whiteboardItems(doc: Y.Doc): WhiteboardItem[] {
   const items: WhiteboardItem[] = [];
   doc.getMap<Y.Map<unknown>>("items").forEach((value, key) => {
@@ -78,6 +98,10 @@ const syncInput = z.object({
   pageId: z.string().uuid(),
   generation: z.string().max(100),
   update: z.string().max(8_000_000).optional(),
+  // The client's state vector: the answer carries only what it lacks.
+  vector: z.string().max(100_000).optional(),
+  // The client's id on the board's live channel (no signal back to it).
+  client: z.string().max(100).optional(),
   cursor: z
     .object({ x: z.number().finite(), y: z.number().finite() })
     .nullable()
@@ -136,6 +160,7 @@ export async function syncWhiteboard(user: Identity, raw: unknown) {
           "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
           page.id,
         );
+        boardChanged(page.id, b.client);
       }
     }
     if (b.cursor !== undefined)
@@ -157,7 +182,7 @@ export async function syncWhiteboard(user: Identity, raw: unknown) {
           user.id,
         );
     return {
-      state: Buffer.from(Y.encodeStateAsUpdate(doc)).toString("base64"),
+      state: Buffer.from(missingFor(doc, b.vector)).toString("base64"),
       presence: await all<{ user_id: string; name: string; x: number; y: number }>(
         "SELECT user_id,name,x,y FROM whiteboard_presence WHERE page_id=? AND user_id!=? AND seen>?",
         page.id,
@@ -238,6 +263,8 @@ export async function restoreWhiteboardSnapshot(page: Page, state: Uint8Array) {
     id(), nowText(),
     page.id,
   );
+  // A new generation: the open boards reload.
+  boardChanged(page.id);
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, state);

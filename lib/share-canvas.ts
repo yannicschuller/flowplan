@@ -33,7 +33,7 @@ import { isEncryptedPage } from "./e2ee-server";
 import { liveKey, loadLive, saveLive } from "./shared-live";
 import { limitLiveChanges, limitShareRequests } from "./shared-content";
 import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
-import { whiteboardData, whiteboardItems, whiteboardSummary } from "./whiteboard";
+import { boardChanged, missingFor, whiteboardData, whiteboardItems, whiteboardSummary } from "./whiteboard";
 import { sharedArray, whiteboardItemTypes } from "./whiteboard-model";
 import { ITEM_ID, parseElementLink, safeHref } from "./whiteboard-links";
 import { parseTimeline } from "./whiteboard-diagram-model";
@@ -340,6 +340,9 @@ const boardInput = z.object({
   // The projection's generation the guest works on (from the first load).
   generation: z.string().max(100).optional(),
   update: z.string().max(5_600_000).optional(),
+  // The guest's state vector: the answer carries only what it lacks.
+  vector: z.string().max(100_000).optional(),
+  client: z.string().max(100).optional(),
 });
 // Loads (without `generation`) or synchronises a guest's board: the
 // projection's full state and its generation, like whiteboard.sync.
@@ -407,6 +410,7 @@ export async function syncSharedBoard(token: string, input: unknown) {
             await audit("guest", "share.whiteboard", page.id);
           }
           await run("UPDATE whiteboards SET state=?,updated_at=? WHERE page_id=?", Y.encodeStateAsUpdate(real), nowText(), page.id);
+          boardChanged(page.id, b.client);
           await run("UPDATE documents SET html=?,updated_at=? WHERE page_id=?", whiteboardSummary(items), nowText(), page.id);
           await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
           ctx = await boardContext(token, page, shared, plainItems(real));
@@ -416,7 +420,7 @@ export async function syncSharedBoard(token: string, input: unknown) {
       }
       const state = Y.encodeStateAsUpdate(projection);
       await saveLive(key, { state, source_html: "", generation: board.generation, pgen });
-      return { state: b64(state), generation: pgen, presence: [] as never[] };
+      return { state: b64(b.vector && b.generation === pgen ? missingFor(projection, b.vector) : state), generation: pgen, presence: [] as never[] };
     } finally {
       real.destroy();
       projection.destroy();
@@ -465,6 +469,8 @@ export function watchSharedBoard(token: string, pageId: string, clientId: string
     }
     if (data.type === "snapshot") send(`data: ${JSON.stringify({ type: "snapshot", cursors: ((data.cursors as Props[]) || []).map(rename) })}\n\n`);
     else if (data.type === "cursor" || data.type === "leave") send(`data: ${JSON.stringify(rename(data))}\n\n`);
+    // The board changed (no content in the signal): the guest syncs.
+    else if (data.type === "changed") send(`data: ${JSON.stringify({ type: "changed", ...(typeof data.from === "string" ? { from: data.from } : {}) })}\n\n`);
   });
 }
 
