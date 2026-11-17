@@ -18,23 +18,17 @@ import {
   type CursorPeer,
   type CursorRequest,
 } from "./cursor-protocol";
+import { LIVE_EVENT, liveOpen as isLiveOpen, type LiveState } from "./live-state";
 
-// The editor's live channel (components/editor.tsx) tells whether it is
-// open: then the others' moves arrive as "presence" signals.
-export type LiveState = { key: string; open: boolean };
-export const LIVE_EVENT = "flowplan:live-state";
-const liveChannels = new Map<string, boolean>();
+// The editor's live channel (lib/live-state.ts) tells whether it is open:
+// then the others' moves arrive as "presence" signals and the cursors only
+// need a heartbeat.
 // The wait until the next request: alone with the live channel open a
 // heartbeat (a newcomer arrives as a "presence" signal), with others every
 // second as before.
 export function presenceDelay(liveOpen: boolean, others: boolean) {
   if (others) return POLL_WITH_PEERS_MS;
   return liveOpen ? HEARTBEAT_ALONE_MS : POLL_ALONE_WITHOUT_LIVE_MS;
-}
-export function setLiveState(key: string, open: boolean) {
-  if (open) liveChannels.set(key, true);
-  else liveChannels.delete(key);
-  window.dispatchEvent(new CustomEvent<LiveState>(LIVE_EVENT, { detail: { key, open } }));
 }
 // What the others see of a peer – a response that changes none of it
 // (only the expiry moved on) needs no new decorations.
@@ -200,7 +194,7 @@ export function collaborationCursors(
             let scheduledAt = Infinity;
             let lastCursor = "",
               nextSend = 0,
-              liveOpen = liveChannels.get(`${scope.pageId}:${scope.rowId || ""}:${scope.generation}`) ?? false,
+              liveOpen = isLiveOpen(`${scope.pageId}:${scope.rowId || ""}:${scope.generation}`),
               shown = peerSignature([]);
             const active = () =>
               !destroyed && !stopped && !document.hidden && navigator.onLine;

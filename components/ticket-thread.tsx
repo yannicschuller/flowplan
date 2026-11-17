@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Copy, EnvelopeSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
+import { recordPart } from "@/lib/record-context-client";
 
 type Thread = {
   ticket: { email: string | null; created_at: number; url: string | null } | null;
@@ -29,14 +30,15 @@ export default function TicketThread({
     [busy, setBusy] = useState(false),
     [copied, setCopied] = useState(false);
   const load = useCallback(
-    () =>
-      api<Thread>(`/api/ticket-thread?page=${pageId}&row=${rowId}`)
-        .then(setThread)
-        .catch(() => setThread(null)),
+    (first = false) => {
+      const own = () => api<Thread>(`/api/ticket-thread?page=${pageId}&row=${rowId}`);
+      // The first load comes with the record view's other parts.
+      return (first ? recordPart(pageId, rowId, "ticketThread", own) : own()).then(setThread).catch(() => setThread(null));
+    },
     [pageId, rowId],
   );
   useEffect(() => {
-    void load();
+    void load(true);
     // Customer replies show up while the record is open.
     const timer = setInterval(() => document.visibilityState === "visible" && void load(), 30_000);
     return () => clearInterval(timer);

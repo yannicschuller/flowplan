@@ -8,6 +8,7 @@ import { ISSUE_PROVIDER_NAMES, IssueProviderLogo, type IssueProvider as Provider
 import { Select } from "./select";
 import { api, Modal } from "./ui";
 import type { Database, Field, Page } from "@/lib/types";
+import { recordPart } from "@/lib/record-context-client";
 
 // GitHub/GitLab/Forgejo issue sync of a database (lib/issue-sync.ts): the
 // entry in the "…" menu, the mapping dialog with the sync status, and the
@@ -320,7 +321,7 @@ export function IssueSyncChip({ pageId, rowId }: { pageId: string; rowId: string
   const [link, setLink] = useState<{ provider: Provider; label: string; url: string } | null>(null);
   useEffect(() => {
     let alive = true;
-    void api<{ provider: Provider; label: string; url: string } | null>(`/api/issue-sync?page=${pageId}&row=${rowId}`)
+    void recordPart(pageId, rowId, "issue", () => api<{ provider: Provider; label: string; url: string } | null>(`/api/issue-sync?page=${pageId}&row=${rowId}`))
       .then((next) => alive && setLink(next))
       .catch(() => alive && setLink(null));
     return () => {

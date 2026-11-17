@@ -259,6 +259,7 @@ import {
   reminderTarget,
   type DateReminder,
 } from "@/lib/date-reminder-options";
+import { recordPart } from "@/lib/record-context-client";
 export type DatabaseData = {
   images?: PageImage[];
   relationPairs?: RelationPair[];
@@ -6761,7 +6762,7 @@ function RelationBacklinks({
   const [links, setLinks] = useState<Backlink[] | null>(null);
   useEffect(() => {
     let active = true;
-    api<Backlink[]>(`/api/pages/${pageId}/rows/${rowId}/backlinks`)
+    recordPart(pageId, rowId, "backlinks", () => api<Backlink[]>(`/api/pages/${pageId}/rows/${rowId}/backlinks`))
       .then((result) => active && setLinks(result))
       .catch(() => active && setLinks([]));
     return () => {

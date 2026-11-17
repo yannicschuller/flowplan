@@ -35,6 +35,22 @@ function decorate(doc: PMNode, prefixes: Set<string>, titles: Map<string, string
   return DecorationSet.create(doc, found);
 }
 
+// The prefixes of a workspace change seldom: asked once per page for a
+// while, not again for every editor that is created (an editor opening is
+// set up more than once, records have one per field).
+const PREFIX_TTL_MS = 60_000;
+const prefixCache = new Map<string, { at: number; list: Promise<{ prefix: string }[]> }>();
+export function ticketPrefixes(pageId: string, now = Date.now(), load = (id: string) => fetch(`/api/ticket-refs?page=${id}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : []))) {
+  const hit = prefixCache.get(pageId);
+  if (hit && now - hit.at < PREFIX_TTL_MS) return hit.list;
+  const list = (load(pageId) as Promise<{ prefix: string }[]>).catch(() => {
+    prefixCache.delete(pageId);
+    return [];
+  });
+  prefixCache.set(pageId, { at: now, list });
+  return list;
+}
+
 async function resolve(pageId: string, ticket: string) {
   const response = await fetch(`/api/ticket-ref?page=${pageId}&key=${encodeURIComponent(ticket)}`, { cache: "no-store" });
   return response.ok ? ((await response.json()) as { pageId: string; rowId: string; title: string; status: string; database: string }) : null;
@@ -101,9 +117,8 @@ export const TicketRefs = Extension.create<{ pageId: string }>({
         view: (view) => {
           let alive = true;
           if (pageId)
-            void fetch(`/api/ticket-refs?page=${pageId}`, { cache: "no-store" })
-              .then((r) => (r.ok ? r.json() : []))
-              .then((list: { prefix: string }[]) => {
+            void ticketPrefixes(pageId)
+              .then((list) => {
                 if (alive && list.length && !view.isDestroyed)
                   view.dispatch(view.state.tr.setMeta(key, { prefixes: new Set(list.map((p) => p.prefix)) }));
               })

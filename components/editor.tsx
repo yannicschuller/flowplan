@@ -107,7 +107,9 @@ import { showsFormattingToolbar } from "@/lib/toolbar-pref";
 import { useToolbarLayout } from "@/lib/toolbar-layout-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
-import { collaborationCursors, setLiveState } from "@/lib/collaboration-cursors";
+import { collaborationCursors } from "@/lib/collaboration-cursors";
+import { setLiveState, THREADS_EVENT, threadsKey } from "@/lib/live-state";
+import { sameAsServer } from "@/lib/yjs-compare";
 import { RemoteSelection } from "@/lib/remote-selection";
 import {
   commentMarkedNodeView,
@@ -1401,6 +1403,9 @@ export default function DocumentEditor({
         void sync();
       } else if (message.type === "presence")
         window.dispatchEvent(new CustomEvent("flowplan:presence", { detail: key }));
+      // The comment threads changed (components/inline-comments.tsx).
+      else if (message.type === "threads")
+        window.dispatchEvent(new CustomEvent(THREADS_EVENT, { detail: threadsKey(pageId, rowId) }));
     };
     source.onerror = () => {
       live.current = false;
@@ -1474,7 +1479,10 @@ export default function DocumentEditor({
       lastHtml.current = editor.getHTML();
       onHtml(lastHtml.current);
       ready.current = true;
-      dirty.current = editable;
+      // Only what this device has beyond the server's state needs a save
+      // right away (changes kept in IndexedDB, content set from the HTML):
+      // opening an unchanged document asks nothing.
+      dirty.current = editable && !sameAsServer(doc, initial.current.state);
       onStatus(navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline");
     });
     const update = (change: Uint8Array, origin: unknown) => {

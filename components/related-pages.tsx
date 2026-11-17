@@ -10,6 +10,7 @@ import { useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { pageLocationHash } from "@/lib/page-location";
 import type { RelatedItem, RelatedReason, SimilarItem } from "@/lib/related-pages";
+import { recordPart } from "@/lib/record-context-client";
 
 const go = (pageId: string, rowId?: string) => {
   location.hash = pageLocationHash({ pageId, rowId });
@@ -22,8 +23,8 @@ export function RelatedPages({ pageId, rowId, onOpen = go }: { pageId: string; r
     let live = true;
     setData(null);
     const params = new URLSearchParams({ page: pageId, ...(rowId ? { row: rowId } : {}) });
-    fetch(`/api/related?${params}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+    const own = () => fetch(`/api/related?${params}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
+    (rowId ? recordPart<{ items: RelatedItem[]; semantic: boolean } | null>(pageId, rowId, "related", own) : own())
       .then((d) => live && setData(d && Array.isArray(d.items) ? d : { items: [], semantic: false }))
       .catch(() => live && setData({ items: [], semantic: false }));
     return () => {

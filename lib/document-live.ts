@@ -48,7 +48,8 @@ type Signal =
   | { k: "e2ee"; key: string; update: { seq: number; version: number; data: string }; from?: string }
   | { k: "presence"; key: string; from?: string }
   | { k: "changed"; pageId: string; rowId?: string | null; except?: string }
-  | { k: "presenceFor"; pageId: string; rowId?: string | null; from?: string };
+  | { k: "presenceFor"; pageId: string; rowId?: string | null; from?: string }
+  | { k: "threads"; pageId: string; rowId?: string | null };
 const bus = globalThis as unknown as { flowplanDocumentBus?: boolean };
 if (!bus.flowplanDocumentBus) {
   bus.flowplanDocumentBus = true;
@@ -69,6 +70,8 @@ function deliver(signal: Signal) {
       return changedHere(signal.pageId, signal.rowId, signal.except);
     case "presenceFor":
       return presenceHere(signal.pageId, signal.rowId, signal.from);
+    case "threads":
+      return threadsHere(signal.pageId, signal.rowId);
   }
 }
 // Here, then on the other instances.
@@ -106,6 +109,21 @@ function changedHere(pageId: string, rowId?: string | null, except?: string) {
     if (key.startsWith(prefix)) {
       const listeners = documents.get(key);
       if (listeners) send(listeners, { type: "check" }, except);
+    }
+}
+
+// A comment thread of the page or record was written: the members' open
+// editors fetch the threads now instead of every few seconds (guests keep
+// their own way of reading comments).
+export function threadsChanged(pageId: string, rowId?: string | null) {
+  signal({ k: "threads", pageId, rowId });
+}
+function threadsHere(pageId: string, rowId?: string | null) {
+  const prefix = `${pageId}:${rowId || ""}:`;
+  for (const key of documents.keys())
+    if (key.startsWith(prefix)) {
+      const listeners = documents.get(key);
+      if (listeners) send(listeners, { type: "threads" });
     }
 }
 

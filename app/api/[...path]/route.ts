@@ -112,6 +112,7 @@ import { recordToPagePlan } from "@/lib/record-to-page";
 import { importTracker } from "@/lib/tracker-import";
 import { trackJob } from "@/lib/background-jobs";
 import { recordBacklinks } from "@/lib/relation-backlinks";
+import { recordContext } from "@/lib/record-context";
 import { hiddenFileIds } from "@/lib/row-files";
 import { pagePreview } from "@/lib/page-preview";
 import { blockPreview, searchBlocks } from "@/lib/block-links";
@@ -710,6 +711,11 @@ async function handleGET(
             : undefined,
         ),
       );
+    // The record view's surroundings in one request (lib/record-context.ts).
+    if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "context")
+      return NextResponse.json(await recordContext(user, z.uuid().parse(path[1]), z.uuid().parse(path[3])), {
+        headers: { "Cache-Control": "no-store" },
+      });
     if (
       path[0] === "pages" &&
       path[2] === "rows" &&

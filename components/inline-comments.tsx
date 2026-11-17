@@ -35,6 +35,7 @@ import {
   setCommentHighlights,
 } from "@/lib/inline-comment-plugin";
 import { commentRange } from "@/lib/comment-positions";
+import { liveOpenFor, THREADS_EVENT, threadsKey } from "@/lib/live-state";
 import type {
   InlineThread,
   CommentAnchor,
@@ -151,15 +152,28 @@ export function InlineComments({
   useEffect(() => {
     mounted.current = true;
     void refresh(true);
+    // With the document's live channel open, a written thread arrives as a
+    // signal; then only a full check every minute, else every 5 s.
+    let last = Date.now();
     const interval = setInterval(() => {
-      if (navigator.onLine && !document.hidden) void refresh();
+      if (!navigator.onLine || document.hidden) return;
+      if (liveOpenFor(pageId, rowId) && Date.now() - last < 60_000) return;
+      last = Date.now();
+      void refresh();
     }, 5000);
+    const signal = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== threadsKey(pageId, rowId)) return;
+      last = Date.now();
+      void refresh(true);
+    };
+    window.addEventListener(THREADS_EVENT, signal);
     return () => {
       mounted.current = false;
       inflight.current?.abort();
       clearInterval(interval);
+      window.removeEventListener(THREADS_EVENT, signal);
     };
-  }, [refresh]);
+  }, [refresh, pageId, rowId]);
   useEffect(() => {
     if (editor) setCommentHighlights(editor, threads, open ? active : null);
   }, [editor, threads, active, open]);
