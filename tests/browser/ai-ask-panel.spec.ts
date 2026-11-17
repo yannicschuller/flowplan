@@ -229,8 +229,12 @@ test("Ask AI on phones: a bottom sheet minimised to a pill while the answer goes
     await panel.getByLabel("Deine Frage").blur();
     await expect(page.locator(".mobile-tab-bar")).toBeVisible();
     const bar = (await page.locator(".mobile-tab-bar").boundingBox())!;
+    // Measured once it has slid in (mid-animation it still reaches lower).
+    await expect.poll(async () => {
+      const box = (await panel.boundingBox())!;
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(bar.y + 1);
     const sheet = (await panel.boundingBox())!;
-    expect(sheet.y + sheet.height).toBeLessThanOrEqual(bar.y + 1);
     expect(sheet.width).toBeGreaterThan(380);
 
     const field = panel.getByLabel("Deine Frage");

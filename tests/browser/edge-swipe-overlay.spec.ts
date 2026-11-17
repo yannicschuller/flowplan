@@ -75,6 +75,11 @@ async function swipe(page: Page, x0: number, x1: number, y = 420) {
     await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + ((x1 - x0) * i) / steps, y }] });
     await page.waitForTimeout(16);
   }
+  // The finger rests a moment before it lifts: released while still moving,
+  // the browser starts a fling, and the next tap only stops that fling – no
+  // click (the tap beside the open sidebar then did not close it).
+  await page.waitForTimeout(150);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x1, y }] });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await cdp.detach();
 }

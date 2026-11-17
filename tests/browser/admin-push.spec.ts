@@ -87,7 +87,8 @@ test("admins see the push relay's state: tile, monitoring and detail page", asyn
   await signInAdmin(page);
   await page.route("**/api/admin/summary", (route) => patch(route, (b) => (b.push = summary({ ok: true, ms: 85, error: null, httpStatus: 200 }))));
   await page.route("**/api/admin/monitoring*", (route) =>
-    new URL(route.request().url()).searchParams.get("view") === "live" || route.request().method() !== "GET"
+    // Only the dashboard itself: the live strip and the error details (?view=…) stay real.
+    new URL(route.request().url()).searchParams.has("view") || route.request().method() !== "GET"
       ? route.fallback()
       : patch(route, (b) => ((b.health as Record<string, unknown>).push = summary({ ok: false, ms: null, error: "timeout", httpStatus: null }))),
   );

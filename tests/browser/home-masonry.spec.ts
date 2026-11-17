@@ -76,7 +76,9 @@ test("widgets of different heights leave no gap larger than the gutter; the orde
   await expect(page.locator('[data-widget-id="tall"]')).toContainText("Link 12");
   // Loaded: "Meine Aktivität" with its charts, the tallest widget.
   await expect(page.locator('[data-widget-id="mine"]').getByRole("region", { name: "Seiten erstellt" })).toBeVisible();
-  await expect(page.locator('[data-widget-id="dates"]').getByText("Heute", { exact: false }).first()).toBeVisible();
+  // The agenda has loaded – with today's dates, or the empty note when no
+  // other spec left a date for today in this data directory.
+  await expect(page.locator('[data-widget-id="dates"]')).toContainText(/Heute|Keine Termine in diesem Zeitraum|Noch kein Kalender/);
   // DOM order (Tab, screen readers) = configured order.
   expect(await page.locator(".home-grid > .home-widget").evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.widgetId))).toEqual(ids);
   const gutter = await grid.evaluate((el) => parseFloat(getComputedStyle(el).rowGap));
