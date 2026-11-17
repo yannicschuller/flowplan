@@ -5,8 +5,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ssh2 from "ssh2";
-import { startSftpServer } from "./helpers/sftp-server";
+import { keyPairThatParses, startSftpServer } from "./helpers/sftp-server";
 
 const dir = mkdtempSync(join(tmpdir(), "flowplan-sftp-backup-"));
 process.env.FLOWPLAN_DATA_DIR = dir;
@@ -200,7 +199,7 @@ test("a wrong password is reported, not retried with something else", async () =
 });
 
 test("sign-in with a private key and passphrase", async () => {
-  const keys = ssh2.utils.generateKeyPairSync("ed25519", { passphrase: "schluessel-satz", cipher: "aes256-ctr", rounds: 16 });
+  const keys = keyPairThatParses({ passphrase: "schluessel-satz", cipher: "aes256-ctr", rounds: 16 });
   const keyRemote = mkdtempSync(join(tmpdir(), "flowplan-sftp-key-"));
   const keyServer = await startSftpServer(keyRemote, { user: "schluessel", publicKey: keys.public });
   try {

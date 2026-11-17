@@ -31,6 +31,16 @@ function hostKeyThatParses() {
   throw new Error("ssh2 produced no usable test host key");
 }
 
+// The same for a user's key pair (with a passphrase): ssh2 now and then
+// refuses its own public key ("Malformed OpenSSH public key", seen in CI).
+export function keyPairThatParses(options: { passphrase: string; cipher: string; rounds: number }) {
+  for (let i = 0; i < 20; i++) {
+    const keys = utils.generateKeyPairSync("ed25519", options);
+    if (!(utils.parseKey(keys.public) instanceof Error) && !(utils.parseKey(keys.private, options.passphrase) instanceof Error)) return keys;
+  }
+  throw new Error("ssh2 produced no usable test key pair");
+}
+
 export async function startSftpServer(root: string, options: { user: string; password?: string; publicKey?: string; hostKey?: string }): Promise<TestSftp> {
   const hostKey = options.hostKey ?? hostKeyThatParses();
   const allowedKey = options.publicKey ? utils.parseKey(options.publicKey) : null;
