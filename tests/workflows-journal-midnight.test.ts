@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as Y from "yjs";
 import type { Page } from "../lib/types";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-wf-journal-midnight-"));
@@ -24,6 +25,7 @@ const { rollJournal, ensureJournalDay } = await import("../lib/journal");
 const { htmlState } = await import("../lib/document-server");
 const { drainWorkflows } = await import("../lib/workflows/queue");
 const { processWorkflowSchedules } = await import("../lib/workflows/schedules");
+const { draftGraph } = await import("../lib/workflows/draft");
 const { startOllamaMock } = await import("./helpers/ai-mock");
 const S = await import("./helpers/workflow-setup");
 const { act, owner, node, chain, workflow, runsOf, outputOf, wid, space } = S;
@@ -214,4 +216,62 @@ test("after a wait, “today” is the day the run went on", async () => {
   assert.equal((await outputOf(r.id, append.id)).date, "2026-11-18");
   // The 17th stays although it had only carried tasks.
   await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
+});
+
+test("a workflow made in Berlin runs “täglich · 23:55” at 23:55 Berlin, before midnight", async () => {
+  // The reporter's run came at 00:55 Berlin: the workflow's time zone was
+  // UTC, the default of every new workflow.
+  const { jid, d17 } = await setup("made");
+  const zoneOf = async (pageId: string) => {
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, (await one<{ state: Uint8Array }>("SELECT state FROM workflow_drafts WHERE page_id=?", pageId))!.state);
+    return draftGraph(doc).settings;
+  };
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: space, kind: "workflow", title: "Nacht made", timeZone: BERLIN })).id as string;
+  const settings = await zoneOf(pageId);
+  assert.equal(settings.timeZone, BERLIN);
+  // Not a time zone: the old default.
+  const odd = (await act({ action: "page.create", workspaceId: wid, spaceId: space, kind: "workflow", title: "Odd", timeZone: "Mars/Olympus" })).id as string;
+  assert.equal((await zoneOf(odd)).timeZone, "UTC");
+  const t = node("trigger.schedule", { freq: "daily", interval: 1, time: "23:55" }, "Zeitplan");
+  const read = node("action.journal.read", { journal: jid, day: "today" }, "Journaltag lesen");
+  const prompt = node("ai.prompt", { prompt: PROMPT(read.id) }, "KI: Eigene Anweisung");
+  const append = node("action.journal.append", { journal: jid, day: "today", content: `{{${prompt.id}.text}}` }, "An Journaltag anhängen");
+  await S.redraft(pageId, { ...chain(t, read, prompt, append), settings });
+  await run("UPDATE workflows SET activated_at=? WHERE page_id=?", Date.parse("2026-11-17T08:00:00Z"), pageId);
+  ai.answer = () => "# Tageszusammenfassung – Erledigte Aufgaben";
+  // Not at 22:50 UTC (23:50 Berlin) yet, at 22:55 UTC it is.
+  clock("2026-11-17T22:50:00Z");
+  assert.equal(await processWorkflowSchedules(Date.now()), 0);
+  clock("2026-11-17T22:55:30Z");
+  assert.equal(await processWorkflowSchedules(Date.now()), 1);
+  await drainWorkflows();
+  const r = (await runsOf(pageId)).at(-1)!;
+  assert.equal(r.status, "succeeded", r.error || "");
+  assert.equal((await outputOf(r.id, append.id)).date, "2026-11-17");
+  assert.match(await html(d17!), /Tageszusammenfassung/);
+  // Opening the journal after midnight keeps the 17th: it has the summary.
+  clock("2026-11-17T23:10:00Z");
+  await rollJournal(owner, await journalPage(jid), berlinDay(), "2026-11-17");
+  await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
+});
+
+test("the reporter's night with the old UTC default: an empty day is tidied away by opening the journal, the late run makes it again", async () => {
+  // What happened (and still happens for workflows left on UTC): the run
+  // fires 23:55 UTC = 00:55 Berlin. Opening the journal at 00:10 Berlin
+  // starts the 18th and removes the 17th, which had nothing of its own yet
+  // (journal.md "Leere Tage verschwinden"). The run then finds no 17th and
+  // makes it again, with the template and the summary – it never removes a day.
+  const { jid, d17 } = await setup("old");
+  const { pageId, append } = await nightly("old", jid);
+  clock("2026-11-17T23:10:00Z");
+  await rollJournal(owner, await journalPage(jid), berlinDay(), "2026-11-17");
+  assert.deepEqual((await days(jid)).map((d) => d.journal_date), ["2026-11-16", "2026-11-18"]);
+  assert.equal(await one("SELECT 1 FROM pages WHERE id=?", d17), undefined);
+  const r = await fire(pageId, "2026-11-17T23:55:00Z");
+  const out = await outputOf(r.id, append.id);
+  assert.deepEqual([out.date, out.created], ["2026-11-17", true]);
+  const [, k17, k18] = await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
+  assert.match(await html(k17.id), /Tageszusammenfassung/);
+  assert.match(await html(k18.id), /Offen A old/);
 });

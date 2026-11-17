@@ -1092,7 +1092,10 @@ Benachrichtigungen bleiben, die Freigabeansicht sagt „nicht mehr nötig“.
 ### 8.12 Zeitzonen
 
 - Jeder Workflow hat `settings.timeZone` (Standard: Zeitzone des Browsers
-  der anlegenden Person, wie `browserZone()` in `components/database-automations.tsx`).
+  der anlegenden Person, wie `browserZone()` in `components/database-automations.tsx`;
+  `page.create` mit `timeZone` für `kind: "workflow"`, ohne gültige Zone UTC).
+  Ändern lässt sie sich in den Einstellungen des Workflows; ein Zeitplan
+  zeigt seine Zone („täglich · 23:55 (UTC)“), wenn sie nicht die eigene ist.
 - Gilt für: Zeitpläne (Standard, je Auslöser überschreibbar wie heute),
   Datums-Auslöser mit Uhrzeit, `$today`/`$now`-Darstellung, Filter `date`,
   Warten bis Uhrzeit, Datumsvergleiche in Bedingungen (wie

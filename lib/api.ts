@@ -227,7 +227,7 @@ import {
   addImportedOptions,
   assertNoNewTimes,
 } from "./database-operations";
-import { cleanNoTime, withoutNewTimes } from "./date-values";
+import { cleanNoTime, validZone, withoutNewTimes } from "./date-values";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
 import { protectionChanges } from "./share-access";
@@ -1545,6 +1545,10 @@ async function runCommand(
           b.aiDatabase !== undefined ? "empty" : z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
         );
         if (parentRow) await run("UPDATE pages SET parent_row_id=? WHERE id=?", parentRow, created);
+        // A new workflow runs in the creator's time zone (their browser's):
+        // "täglich · 23:55" and "today" mean their 23:55 and their day, not UTC's.
+        if (kind === "workflow" && !savedTemplate && typeof b.timeZone === "string" && b.timeZone.length <= 100 && validZone(b.timeZone))
+          await createWorkflowRecord(created, wid(), user.id, emptyGraph(b.timeZone));
         if (savedTemplate)
           await applyPageTemplate(
             user,
@@ -4261,7 +4265,8 @@ import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { workflowCommand } from "./workflows/commands";
 import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
-import { assertWorkflowsEnabled, restoreVersion, workflowState } from "./workflows/store";
+import { assertWorkflowsEnabled, createWorkflowRecord, restoreVersion, workflowState } from "./workflows/store";
+import { emptyGraph } from "./workflows/graph";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct, contentLocale } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";

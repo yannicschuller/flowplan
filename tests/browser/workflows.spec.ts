@@ -387,3 +387,29 @@ test("tablets: connect by tapping an output, then the target", async ({ browser 
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   await context.close();
 });
+
+test.describe("time zone", () => {
+  test.use({ timezoneId: "Europe/Berlin" });
+  test("a schedule shows a zone that is not yours; the workflow's settings choose the zone", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "Editing is for tablets and computers.");
+    test.setTimeout(120_000);
+    // Made without a zone (as before): UTC – "täglich · 23:55" is 00:55 in Berlin.
+    const { command, workflow } = await setup(page, "Zone");
+    const graph = {
+      nodes: [{ id: "n_zone01", type: "trigger.schedule", typeVersion: 1, label: "Zeitplan", note: "", position: { x: 0, y: 0 }, disabled: false, config: { freq: "daily", interval: 1, time: "23:55" } }],
+      edges: [],
+    };
+    await command({ action: "workflow.draft", pageId: workflow, graph });
+    await open(page, workflow);
+    await expect(page.getByText("täglich · 23:55 (UTC)").first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Einstellungen des Workflows" }).click();
+    const settings = page.getByRole("dialog", { name: "Einstellungen des Workflows" });
+    const zone = settings.getByRole("combobox", { name: "Zeitzone" });
+    await expect(zone).toHaveValue("UTC");
+    await expect(zone).toHaveAccessibleDescription(/Deine Zeitzone ist Europe\/Berlin/);
+    await zone.selectOption("Europe/Berlin");
+    await settings.getByRole("button", { name: "Fertig" }).click();
+    await expect(page.getByText("täglich · 23:55", { exact: true }).first()).toBeVisible();
+    await expect.poll(async () => (await (await page.request.get(`/api/workflows/${workflow}`)).json()).draft.graph.settings.timeZone, { timeout: 10_000 }).toBe("Europe/Berlin");
+  });
+});

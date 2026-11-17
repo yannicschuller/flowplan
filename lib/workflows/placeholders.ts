@@ -468,6 +468,8 @@ export type DisplayContext = {
   // A path key's name in the interface and back (output fields, properties).
   keyName?: (root: string, keys: PathKey[], key: string) => string;
   keyId?: (root: string, keys: PathKey[], name: string) => string;
+  // The workflow's time zone (summaries of schedules).
+  timeZone?: string;
 };
 const langIndex = (locale: Locale) => (locale.startsWith("de") ? 0 : locale.startsWith("fr") ? 2 : 1);
 

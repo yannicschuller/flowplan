@@ -518,9 +518,32 @@ export function SettingsDialog({ open, graph, editable, onChange, onClose }: { o
   const id = useId();
   const allowed = !!graph.settings?.untrustedTargets;
   const set = (on: boolean) => onChange((g) => withUntrustedTargets(g, on));
+  const zone = graph.settings?.timeZone || "UTC";
+  const browser = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  // The browser's zone and UTC first, the workflow's own always listed.
+  const zones = useMemo(() => [...new Set([browser, "UTC", zone, ...Intl.supportedValuesOf("timeZone")])], [browser, zone]);
   return (
     <Modal open={open} onClose={onClose} title={t("Einstellungen des Workflows", "Workflow settings")}>
       <div className="wf-dialog">
+        <div className="wf-field">
+          <label className="wf-field-label" htmlFor={`${id}-zone`}>
+            {t("Zeitzone", "Time zone")}
+          </label>
+          <Select id={`${id}-zone`} value={zone} disabled={!editable} aria-describedby={`${id}-zone-help`} onChange={(e) => { const value = e.target.value; onChange((g) => ({ ...g, settings: { ...g.settings, timeZone: value } })); }}>
+            {zones.map((z) => (
+              <option key={z} value={z}>
+                {z}
+              </option>
+            ))}
+          </Select>
+          <div id={`${id}-zone-help`} className="muted wf-setting-zone">
+            {t(
+              "Gilt für Zeitpläne ohne eigene Zeitzone, für „Heute“ und „Gestern“ (etwa bei Journaltagen) und für Datumswerte. „Heute“ ist der Tag, an dem ein Lauf beginnt. Wirkt nach dem Aktivieren.",
+              "Applies to schedules without a time zone of their own, to “Today” and “Yesterday” (journal days, say) and to date values. “Today” is the day a run starts. Takes effect once activated.",
+            )}
+            {zone !== browser && <> {t(`Deine Zeitzone ist ${browser}.`, `Your time zone is ${browser}.`)}</>}
+          </div>
+        </div>
         <label className="wf-check wf-setting">
           <input type="checkbox" checked={allowed} disabled={!editable} aria-describedby={`${id}-help`} onChange={(e) => set(e.target.checked)} />
           <span>{t("KI und Auslöser-Daten dürfen Empfänger und Ziele bestimmen", "AI and trigger data may choose recipients and targets")}</span>

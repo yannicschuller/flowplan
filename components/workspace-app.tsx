@@ -6623,6 +6623,8 @@ export default function WorkspaceApp({
             ...(parent && parentRow ? { parentRowId: parentRow } : {}),
             title: titleEncrypted ? ENCRYPTED_TITLE : newTitle.trim() || savedTemplate?.name || (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.name) || t("Ohne Titel", "Untitled"),
             kind: newKind,
+            // A workflow's schedule and "today" in the creator's time zone.
+            ...(newKind === "workflow" ? { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } : {}),
             ...(savedTemplate
               ? {
                   templateId: savedTemplate.id,
