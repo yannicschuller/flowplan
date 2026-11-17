@@ -15,6 +15,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { all, one, run } from "./db";
 import type { Identity } from "./types";
+import { enterArea, shiftArea } from "./server-metrics";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
 export type JobKind = (typeof jobKinds)[number];
@@ -82,11 +83,15 @@ export async function trackJob<T>(user: Pick<Identity, "id">, kind: JobKind, lab
   } catch {}
   if (!jobId) return await work();
   const id = jobId;
+  // The request's CPU counts as background job while it runs (lib/server-metrics.ts).
+  const area = shiftArea("api", "jobs");
   try {
     const value = await current.run({ id, reported: 0 }, work);
+    area();
     await finishJob(id);
     return value;
   } catch (error) {
+    area();
     await finishJob(id, error);
     throw error;
   }
@@ -114,6 +119,7 @@ export async function launchJob<T>(
   const outcome: Outcome = { userId: user.id, kind, at: now, done: false };
   outcomes.set(jobId, outcome);
   schedule(async () => {
+    const area = enterArea("jobs");
     try {
       outcome.value = await current.run({ id: jobId, reported: 0 }, work);
       await finishJob(jobId).catch(() => {});
@@ -121,6 +127,7 @@ export async function launchJob<T>(
       outcome.error = error;
       await finishJob(jobId, error).catch(() => {});
     } finally {
+      area();
       outcome.done = true;
       outcome.at = Date.now();
     }

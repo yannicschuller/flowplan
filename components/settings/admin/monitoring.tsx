@@ -6,7 +6,7 @@
 // actions – then the background workers, alerts by webhook
 // (/api/admin/operations) and the switch of the usage statistics. The
 // maintenance notice has its own section (#admin/maintenance).
-// Anchors: #admin/monitoring/<health|traffic|people|signins|refused|storage|
+// Anchors: #admin/monitoring/<health|recommendations|traffic|server|people|signins|refused|storage|
 // deliveries|ai|queues|events|actions|system|workers|instance|alerts|metrics>.
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -49,6 +49,8 @@ import { LiveBadge, RequestsChart, rangeLabel } from "./live";
 import { useLive } from "./use-live";
 import { ago, bytes, clock, compact, dateTime, dayAt, longDay, ms, num, percent, shortDay, uptime, weekday } from "./monitoring-format";
 import { pushTile, relayHost } from "./push-format";
+import { ServerCard } from "./monitoring-server";
+import { Recommendations } from "./monitoring-advice";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
@@ -92,7 +94,9 @@ export default function MonitoringSection() {
           )}
           <Health d={d} />
           <Kpis d={d} />
+          <Recommendations data={d.advice} onChange={() => void live.reload()} />
           <Traffic d={d} />
+          <ServerCard s={d.server} range={range} />
           {/* Two stacks of cards that never leave holes (one stack on narrow
               screens); each card stays in its column when it grows. */}
           <div className="mon-columns">

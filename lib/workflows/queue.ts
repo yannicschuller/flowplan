@@ -17,6 +17,7 @@ import { dispatchEvents } from "./events";
 import { workflowLimits } from "./limits";
 import { workersPaused } from "../instance-read-only";
 import { noteWorkflow } from "./monitoring";
+import { inArea } from "../server-metrics";
 
 type State = {
   active: number;
@@ -109,7 +110,7 @@ async function pump() {
       const steps = await claimSteps(free);
       for (const step of steps) {
         s.active++;
-        const p = executeStep(step)
+        const p = inArea("workflows", () => executeStep(step))
           .catch((error) => console.error("Workflow step failed", error))
           .finally(() => {
             s.active--;

@@ -23,6 +23,7 @@
 // - none: not an account (a Git author's name).
 // User ids inside content – person properties of records, mentions in
 // comments and documents, filters of views – are replaced as well.
+import { forgetAiPerson } from "./metrics";
 import { all, audit, foreignKeyColumns, one, run, tableColumns, tableNames, updateIgnoringConflicts, inSavepoint, sql } from "./db";
 import { HttpError } from "./auth";
 import { securityEvent } from "./security-events";
@@ -44,6 +45,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "local_accounts.user_id": "custom",
   "ldap_accounts.user_id": "custom",
   "scim_users.user_id": "custom",
+  // AI counts per person (lib/metrics.ts forgetAiPerson): kept without a person.
+  "metrics_ai_usage.user_id": "custom",
   "user_totp.user_id": "custom",
   "recovery_codes.user_id": "custom",
   "e2ee_identities.user_id": "custom",
@@ -461,6 +464,8 @@ export async function mergeAccounts(admin: Identity, sourceId: string, targetId:
   }
   // The target is the one that stays: active if either was in use.
   await run(`UPDATE users SET last_login_at=${sql.greatest("COALESCE(last_login_at,0)", "COALESCE((SELECT last_login_at FROM users WHERE id=?),0)")} WHERE id=?`, from, to);
+  // AI counts of the merged account (lib/metrics.ts): kept without a person.
+  await forgetAiPerson(from);
   // A reference this list does not know makes the delete fail and the whole
   // merge roll back – nothing is lost half-way.
   await run("DELETE FROM users WHERE id=?", from);
