@@ -3,16 +3,25 @@
 // blank, lined or grid paper and a height that can be dragged. The ink is
 // stored per block in page_ink (lib/page-ink-store.ts) with its own
 // versions; saves merge with what collaborators drew at the same time.
-// Pens draw at once; with a finger or mouse the block is first activated
-// (so fingers keep scrolling the document). Entered with a pen or finger,
-// a touch shield (touch-shield.tsx) keeps the resting hand from the rest of
-// the app until Done (#311). Loaded with the first block.
+// An existing block is drawn on only after "Zeichnen" – with the pen, a
+// finger or the mouse alike (#322): until then it is a picture in the text
+// that the pen scrolls like a finger. A new block starts drawing at once.
+// Entered with a pen or finger, a touch shield (touch-shield.tsx) keeps the
+// resting hand from the rest of the app until Done (#311). Beside
+// "Zeichnen", a "…" menu deletes, duplicates and moves the block – the
+// block handle is out of reach on a tablet (#322). Loaded with the first
+// block.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { NodeViewProps } from "@tiptap/react";
 import { Selection } from "@tiptap/pm/state";
-import { Check, PencilSimple } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowDown, ArrowUp, Check, CopySimple, DotsThree, PencilSimple, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { api } from "../ui";
+import { BlockMenu, type BlockMenuClose, type BlockMenuItem } from "../block-menu";
+import { layerHost } from "../layer-host";
+import { applyBlockChange } from "@/lib/block-shortcuts";
+import { drawBlockChange, drawBlockMoves, takeHeightTip, HEIGHT_TIP_MS, type DrawBlockAction } from "@/lib/draw-block-actions";
 import { InkLayer } from "./ink-layer";
 import { InkToolbar } from "./ink-toolbar";
 import { useInkEditor, useInkShortcuts } from "./use-ink-editor";
@@ -120,8 +129,8 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
     updateAttributes({ page: pageId, from: "" });
   }, [loaded, writable, sync.status, sync, id, node.attrs.page, node.attrs.from, pageId, updateAttributes]);
 
-  // Activation: "Zeichnen" or a pen on the surface (#322); leaving with a
-  // click outside or Done.
+  // Activation: only "Zeichnen" (#322) – editing is intentional; leaving
+  // with a click outside or Done.
   const root = useRef<HTMLDivElement>(null);
   const activate = useCallback(
     (shield: boolean) => {
@@ -164,18 +173,31 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
     },
     [ink, sync, doc, getPos, node.nodeSize],
   );
-  // A block just inserted from the slash menu starts in drawing mode.
+  // A block just inserted from the slash menu starts in drawing mode. The
+  // first one on this device shows for a few seconds, at its top (the hand
+  // covers the bottom), where its height is changed after Done (#324).
+  const [tip, setTip] = useState(false);
   useEffect(() => {
-    if (loaded && writable && id && takeDrawingStart(id)) activate(coarse());
+    if (!loaded || !writable || !id || !takeDrawingStart(id)) return;
+    activate(coarse());
+    if (takeHeightTip(() => window.localStorage)) setTip(true);
   }, [loaded, writable, id, activate]);
-  // Stylus touches on the canvas never start Scribble, the long-press
-  // callout or a text selection – also before the block is active (the pen
-  // is what activates it). Native and not passive: React's are. The
-  // floating text box and bars on the canvas (.ink-ui) keep their taps.
+  useEffect(() => {
+    if (!tip) return;
+    const timer = window.setTimeout(() => setTip(false), HEIGHT_TIP_MS);
+    return () => window.clearTimeout(timer);
+  }, [tip]);
+  useEffect(() => {
+    if (!active) setTip(false);
+  }, [active]);
+  // Stylus touches on the canvas of the block being drawn on never start
+  // Scribble, the long-press callout or a text selection. Native and not
+  // passive: React's are. The floating text box and bars on the canvas
+  // (.ink-ui) keep their taps. Not drawing, the pen scrolls (#322).
   const surfaceRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const surface = surfaceRef.current;
-    if (!surface || !writable) return;
+    if (!surface || !writable || !active) return;
     const touch = (event: TouchEvent) => {
       if (event.cancelable && stylusTouch(event) && !onInkUi(event.target)) event.preventDefault();
     };
@@ -188,13 +210,15 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       surface.removeEventListener("touchstart", touch);
       surface.removeEventListener("pointerdown", pointer);
     };
-  }, [writable, loaded]);
+  }, [writable, loaded, active]);
   // The hovering Pencil (#315): its controls light up under it, pen taps on
   // them feed no Scribble, and a dot shows where it would draw.
+  const activeRef = useRef(active);
+  activeRef.current = active;
   useEffect(() => {
     const block = root.current;
     if (!block || !writable) return;
-    const stops = [trackPenHover(block), penTapsWithoutScribble(block)];
+    const stops = [trackPenHover(block), penTapsWithoutScribble(block, (target) => !activeRef.current && !!target.closest(".ink-block-surface"))];
     return () => stops.forEach((stop) => stop());
   }, [writable]);
   const inkRef = useRef(ink);
@@ -203,7 +227,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
   useEffect(() => {
     const surface = surfaceRef.current,
       dot = dotRef.current;
-    if (!surface || !dot || !writable) return;
+    if (!surface || !dot || !writable || !active) return;
     const hide = () => dot.classList.remove("is-shown");
     const move = (event: PointerEvent) => {
       if (!isHovering(event) || (event.target as Element | null)?.closest?.(".ink-ui")) return hide();
@@ -231,7 +255,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       surface.removeEventListener("pointerdown", hide, true);
       surface.removeEventListener("pointerleave", hide);
     };
-  }, [writable, loaded]);
+  }, [writable, loaded, active]);
   // The listeners stay registered while drawing, with the latest `finish`
   // from a ref: `finish` changes with every save of the ink, and a listener
   // replaced while the browser is dispatching the event (another listener's
@@ -290,6 +314,53 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
     updateAttributes({ height: next });
   };
 
+  // The "…" menu beside "Zeichnen" (#322): the block's own way to be
+  // deleted, duplicated and moved where its handle is out of reach.
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const [menu, setMenu] = useState<DOMRect | null>(null);
+  const position = () => {
+    const at = typeof getPos === "function" ? getPos() : undefined;
+    return typeof at === "number" ? at : null;
+  };
+  const blockAction = (action: DrawBlockAction) => {
+    const at = position();
+    if (at === null || !doc.isEditable) return;
+    const tr = drawBlockChange(doc.state, at, action);
+    if (!tr) return;
+    applyBlockChange(doc, tr);
+    // Moved, the block is drawn anew: its "…" keeps the focus for the next
+    // step from the keyboard.
+    if (action === "up" || action === "down")
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ink-block="${CSS.escape(id)}"] .ink-block-more`)?.focus({ preventScroll: true }));
+  };
+  const menuItems = (): BlockMenuItem[] => {
+    const at = position();
+    const moves = at === null ? { up: false, down: false } : drawBlockMoves(doc.state, at);
+    return [
+      { icon: <ArrowUp />, label: t("Nach oben", "Move up"), disabled: !moves.up, run: () => blockAction("up") },
+      { icon: <ArrowDown />, label: t("Nach unten", "Move down"), disabled: !moves.down, run: () => blockAction("down") },
+      { icon: <CopySimple />, label: t("Duplizieren", "Duplicate"), run: () => blockAction("duplicate") },
+      {
+        icon: <ArrowCounterClockwise />,
+        label: t("Höhe zurücksetzen", "Reset height"),
+        disabled: height === DRAW_BLOCK_HEIGHTS.default,
+        run: () => {
+          setHeight(DRAW_BLOCK_HEIGHTS.default);
+          updateAttributes({ height: DRAW_BLOCK_HEIGHTS.default });
+        },
+      },
+      "separator",
+      { icon: <Trash />, label: t("Löschen", "Delete"), danger: true, run: () => blockAction("delete") },
+    ];
+  };
+  const closeMenu = (reason?: BlockMenuClose) => {
+    setMenu(null);
+    if (reason === "escape") moreRef.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (active || !writable) setMenu(null);
+  }, [active, writable]);
+
   // Convert to text: a paragraph below the block.
   const [canRecognize, setCanRecognize] = useState(false);
   useEffect(() => setCanRecognize(recognitionAvailable()), []);
@@ -327,19 +398,12 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
           if (touch && !shielded) setShielded(true);
           return;
         }
-        if ((e.target as Element).closest(".ink-block-resize, .ink-block-start")) return;
-        // Only a pen enters drawing by touching the surface (#322): a finger
-        // swiping across an existing block keeps scrolling the document, and
-        // a mouse click does nothing – both start drawing with "Zeichnen".
-        // The event stops here so the layer below doesn't take it as a stroke;
-        // its default (scrolling, text selection) stays.
-        if (e.pointerType !== "pen") {
-          e.stopPropagation();
-          return;
-        }
-        // A pen switches to pen-only drawing at once (fingers keep scrolling).
-        if (!ink.penOnly) ink.setPenOnly(true);
-        activate(touch);
+        if ((e.target as Element).closest(".ink-block-resize, .ink-block-actions")) return;
+        // Nothing on the surface enters drawing (#322): a pen, a finger or a
+        // mouse on an existing block scrolls the document or does nothing;
+        // "Zeichnen" starts drawing. The event stops here; its default
+        // (scrolling, text selection) stays.
+        e.stopPropagation();
       }}
     >
       {active && writable && (
@@ -367,9 +431,51 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
         </InkToolbar>
       )}
       {!active && writable && loaded && (
-        <button type="button" className="ink-block-start" onClick={() => activate(coarse())}>
-          <PencilSimple size={16} /> {t("Zeichnen", "Draw")}
-        </button>
+        <div className="ink-block-actions">
+          <button type="button" className="ink-block-start" onClick={() => activate(coarse())}>
+            <PencilSimple size={16} /> {t("Zeichnen", "Draw")}
+          </button>
+          <button
+            ref={moreRef}
+            type="button"
+            className="ink-block-more"
+            aria-label={t("Weitere Aktionen für den Zeichenblock", "More actions for the drawing block")}
+            title={t("Weitere Aktionen", "More actions")}
+            aria-haspopup="menu"
+            aria-expanded={!!menu}
+            onClick={(e) => {
+              const anchor = e.currentTarget.getBoundingClientRect();
+              setMenu((open) => (open ? null : anchor));
+            }}
+          >
+            <DotsThree size={18} weight="bold" />
+          </button>
+        </div>
+      )}
+      {menu &&
+        !active &&
+        writable &&
+        createPortal(
+          <BlockMenu
+            anchor={menu}
+            owner={moreRef.current}
+            placement="below"
+            label={t("Zeichenblock", "Drawing block")}
+            className="ink-block-menu"
+            views={{ main: { title: t("Zeichenblock", "Drawing block"), items: menuItems() } }}
+            onClose={closeMenu}
+          />,
+          layerHost(moreRef.current),
+        )}
+      {tip && active && (
+        // Any press on it dismisses it (a pen's too: its taps give no click
+        // outside buttons, pen-hover.ts).
+        <div className="ink-block-tip" role="status" aria-live="polite" onPointerDown={() => setTip(false)}>
+          <span>{t("Tipp: Nach „Fertig“ änderst du die Höhe am unteren Rand.", "Tip: After “Done”, change the height at the bottom edge.")}</span>
+          <button type="button" className="ink-block-tip-close" aria-label={t("Hinweis schließen", "Dismiss")} onClick={() => setTip(false)}>
+            ×
+          </button>
+        </div>
       )}
       {active && writable && shielded && <InkTouchShield block={root} onDone={finish} />}
       {notice && (
@@ -387,14 +493,14 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
             page={id}
             size={size}
             editor={ink}
-            editing={writable}
+            editing={writable && active}
             fingersScroll={!active}
             onConvert={writable && canRecognize ? () => void convert() : undefined}
             aiPageId={writable ? pageId : undefined}
             label={t("Handschrift", "Handwriting")}
           />
         )}
-        {writable && <div ref={dotRef} className="ink-pen-dot" aria-hidden="true" />}
+        {writable && active && <div ref={dotRef} className="ink-pen-dot" aria-hidden="true" />}
       </div>
       {/* Only while not drawing (#324): a palm resting on the block's edge
           must not change its height mid-stroke. */}

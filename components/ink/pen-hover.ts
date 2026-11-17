@@ -44,12 +44,16 @@ export function trackPenHover(root: HTMLElement) {
 // cancelled – which also cancels the click WebKit would send – so the
 // button is clicked on the pen's pointerup instead, and a click WebKit
 // sends anyway is not counted twice. Fields keep their pen (Scribble into
-// a size field is wanted); the canvas cancels its own touches.
-export function penTapsWithoutScribble(root: HTMLElement) {
+// a size field is wanted); the canvas cancels its own touches. `passes`
+// leaves further touches alone: the surface of a drawing block that is not
+// being drawn on, where the pen scrolls the document like a finger (#322).
+export function penTapsWithoutScribble(root: HTMLElement, passes?: (target: Element) => boolean) {
   let pressed: HTMLElement | null = null;
   let cancelled = false;
   const touch = (event: TouchEvent) => {
     if (!event.cancelable || !stylusTouch(event)) return;
+    const target = event.target as Element | null;
+    if (passes && target?.closest && passes(target)) return;
     // Only fields inside `root` count: a drawing block lies in the
     // document's editor, which is contenteditable as a whole.
     const field = (event.target as Element | null)?.closest?.(FIELD);
