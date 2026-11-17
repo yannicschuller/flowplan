@@ -104,6 +104,14 @@ test("catalogues keep the placeholders of their texts (missing translations are 
   }
 });
 
+test("the German reference for translators lists exactly the keys of en.json", async () => {
+  const { readFileSync } = await import("node:fs");
+  const english = Object.keys(JSON.parse(readFileSync("locales/en.json", "utf8")));
+  const reference = JSON.parse(readFileSync("locales/reference/de.json", "utf8")) as Record<string, string>;
+  assert.deepEqual(Object.keys(reference), english, "npm run i18n writes locales/reference/de.json");
+  assert.equal(reference.Close, "Schließen");
+});
+
 test("the English texts carry no German words", async () => {
   const { readFileSync } = await import("node:fs");
   // Lower-case word lists are search keywords in both languages.

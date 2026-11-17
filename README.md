@@ -554,10 +554,11 @@ Flowplan speaks German and English natively; every other language is a JSON cata
 <!-- i18n:start -->
 | Language | Code | Translated | Coverage |
 | --- | --- | ---: | --- |
-| 🇩🇪 Deutsch (in the code) | `de` | 8,921 / 8,921 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇬🇧 English (in the code) | `en` | 8,921 / 8,921 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇫🇷 Français | `fr` | 8,921 / 8,921 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇨🇳 简体中文 | `zh` | 8,620 / 8,921 | ![96 %](https://img.shields.io/badge/96%25-a3c51c?style=flat-square) |
+| 🇩🇪 Deutsch (in the code) | `de` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇬🇧 English (in the code) | `en` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇺🇸 English (US) (in the code) | `en-US` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇫🇷 Français | `fr` | 12,307 / 12,573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
+| 🇨🇳 简体中文 | `zh` | 12,307 / 12,573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
 
 <sub>Generated from `locales/` with `npm run i18n:readme`.</sub>
 <!-- i18n:end -->

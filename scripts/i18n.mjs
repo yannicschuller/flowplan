@@ -13,7 +13,9 @@
 // well. locales/en.json lists all keys (the source for translation tools);
 // every other locales/<code>.json maps them to its language, "" meaning not
 // translated yet (shown in English).
-import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
+// locales/reference/de.json gives the German text of every key, for
+// translators (generated, not a catalogue).
+import { readFileSync, readdirSync, statSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse } from "@babel/parser";
 
@@ -39,9 +41,11 @@ function text(node) {
   return null;
 }
 const keys = new Map(); // key → first place it occurs
-function add(key, file, node) {
+const german = new Map(); // key → the German text next to it (first one found)
+function add(key, file, node, de = null) {
   if (!key || !/\p{L}/u.test(key.replace(/\{\d+\}/g, ""))) return;
   if (!keys.has(key)) keys.set(key, `${relative(root, file)}:${node.loc.start.line}`);
+  if (de && !german.has(key)) german.set(key, de);
 }
 function walk(node, visit) {
   if (!node || typeof node.type !== "string") return;
@@ -71,8 +75,9 @@ for (const file of ["components", "lib", "app"].flatMap((d) => files(join(root, 
         }
         if (inner.type !== "ArrayExpression") return;
         for (const index of marker.split(/\s+/).map(Number)) {
+          // German sits just before the English ("[German, English]").
           const value = text(inner.elements[index]);
-          if (value !== null) add(value, file, inner.elements[index]);
+          if (value !== null) add(value, file, inner.elements[index], index > 0 ? text(inner.elements[index - 1]) : null);
         }
       });
     if (node.type === "CallExpression" && node.arguments.length >= 2) {
@@ -83,19 +88,19 @@ for (const file of ["components", "lib", "app"].flatMap((d) => files(join(root, 
       const curried = factory?.type === "CallExpression" && factory.callee.type === "Identifier" && CURRIED.has(factory.callee.name);
       if (named || curried) {
         const de = text(node.arguments[0]), en = text(node.arguments[1]);
-        if (de !== null && en !== null) add(en, file, node.arguments[1]);
+        if (de !== null && en !== null) add(en, file, node.arguments[1], de);
       }
     }
     // { de: "Frage", en: "Question" }
     if (node.type === "ObjectExpression") {
       const prop = (name) => node.properties.find((p) => p.type === "ObjectProperty" && ((p.key.type === "Identifier" && p.key.name === name) || (p.key.type === "StringLiteral" && p.key.value === name)));
       const de = prop("de"), en = prop("en");
-      if (de && en && text(de.value) !== null && text(en.value) !== null) add(text(en.value), file, en.value);
+      if (de && en && text(de.value) !== null && text(en.value) !== null) add(text(en.value), file, en.value, text(de.value));
     }
     if (!table) return;
     // "German": "English"
     if (node.type === "ObjectProperty" && node.value.type === "StringLiteral" && (node.key.type === "StringLiteral" || node.key.type === "Identifier"))
-      add(node.value.value, file, node.value);
+      add(node.value.value, file, node.value, node.key.type === "StringLiteral" ? node.key.value : null);
     // [/^German (.+)$/, "English $1"]
     if (node.type === "ArrayExpression" && node.elements.length === 2 && node.elements[0]?.type === "RegExpLiteral" && node.elements[1]?.type === "StringLiteral")
       add(node.elements[1].value.replace(/\$(\d)/g, (_, n) => `{${Number(n) - 1}}`), file, node.elements[1]);
@@ -113,6 +118,13 @@ if (added && !/^[a-z]{2}(-[A-Z]{2})?$/.test(added)) {
 const write = (path, data) => writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
 // "Open||status": the English text is the part before "||" (lib/i18n.ts).
 if (!check) write(join(localesDir, "en.json"), Object.fromEntries(sorted.map((k) => [k, k.split("||")[0]])));
+// The German text next to each key, for translators (translate.flowplan.org
+// shows it beside the English source); "" where the code has none, e.g.
+// English-only tables. Not a catalogue: generated, never edited by hand.
+if (!check) {
+  mkdirSync(join(localesDir, "reference"), { recursive: true });
+  write(join(localesDir, "reference", "de.json"), Object.fromEntries(sorted.map((k) => [k, german.get(k) ?? ""])));
+}
 if (added && !existsSync(join(localesDir, `${added}.json`))) write(join(localesDir, `${added}.json`), {});
 
 const catalogs = readdirSync(localesDir).filter((f) => f.endsWith(".json") && f !== "en.json");

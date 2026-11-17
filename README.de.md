@@ -556,10 +556,11 @@ Deutsch und Englisch stehen direkt im Code; jede weitere Sprache ist ein JSON-Ka
 <!-- i18n:start -->
 | Sprache | Code | Übersetzt | Stand |
 | --- | --- | ---: | --- |
-| 🇩🇪 Deutsch (im Code) | `de` | 8.921 / 8.921 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇬🇧 English (im Code) | `en` | 8.921 / 8.921 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇫🇷 Français | `fr` | 8.921 / 8.921 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇨🇳 简体中文 | `zh` | 8.620 / 8.921 | ![96 %](https://img.shields.io/badge/96%25-a3c51c?style=flat-square) |
+| 🇩🇪 Deutsch (im Code) | `de` | 12.573 / 12.573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇬🇧 English (im Code) | `en` | 12.573 / 12.573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇺🇸 English (US) (im Code) | `en-US` | 12.573 / 12.573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇫🇷 Français | `fr` | 12.307 / 12.573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
+| 🇨🇳 简体中文 | `zh` | 12.307 / 12.573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
 
 <sub>Erzeugt mit `npm run i18n:readme` aus `locales/`.</sub>
 <!-- i18n:end -->
