@@ -15,6 +15,7 @@ import {
   ArrowCounterClockwise,
   DownloadSimple,
   Flask,
+  GearSix,
   Graph,
   ListBullets,
   MagicWand,
@@ -25,6 +26,7 @@ import {
   Storefront,
   TreeStructure,
   Users,
+  Warning,
 } from "@phosphor-icons/react";
 import { useLocale } from "../i18n";
 import { PublishDialog, useMarketplace } from "../marketplace";
@@ -39,7 +41,7 @@ import { databasesOf, useDatabases } from "./use-databases";
 import { Palette } from "./palette";
 import { NodePanel } from "./node-panel";
 import { ListView } from "./list-view";
-import { ActivateDialog, AppendDialog, ConnectDialog, PauseDialog, TestDialog } from "./dialogs";
+import { ActivateDialog, AppendDialog, ConnectDialog, PauseDialog, SettingsDialog, TestDialog } from "./dialogs";
 import { ApprovalList, useApprovals } from "./approvals";
 import { DiffList, VersionsView } from "./versions";
 import { graphDiff } from "./model";
@@ -200,6 +202,17 @@ export default function WorkflowView(props: WorkflowViewProps) {
           )}
         </div>
       </header>
+      {manage && state.status === "active" && state.active?.needsUntrustedSetting && (
+        <p className="wf-untrusted-note" role="note">
+          <Warning aria-hidden />
+          <span>
+            {t(
+              "Die aktive Version lässt eine KI-Ausgabe oder Daten von außen bestimmen, wen der Workflow benachrichtigt oder was er ändert. Sie läuft weiter wie bisher. Zum nächsten Aktivieren lege Empfänger und Ziele fest – oder erlaube es in den Einstellungen des Workflows.",
+              "The active version lets an AI output or data from outside decide whom the workflow notifies or what it changes. It keeps running as before. To activate again, set the recipients and targets yourself – or allow it in the workflow’s settings.",
+            )}
+          </span>
+        </p>
+      )}
       <div className="wf-tabs" role="tablist" aria-label={t("Ansicht", "View")}>
         {tabs.map((x) => (
           <button
@@ -342,6 +355,7 @@ function Editor(props: EditorProps) {
   const [testRunId, setTestRunId] = useState<string | null>(null);
   const [showChanges, setShowChanges] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const testRun = useRun(testRunId, onError);
   const narrow = useMedia("(max-width: 1100px)");
   useEffect(() => setPalette(!narrow), [narrow]);
@@ -524,6 +538,16 @@ function Editor(props: EditorProps) {
               <Sparkle /> {t("Mit KI", "With AI")}
             </button>
           )}
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={t("Einstellungen des Workflows", "Workflow settings")}
+            title={t("Einstellungen des Workflows", "Workflow settings")}
+            aria-haspopup="dialog"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <GearSix />
+          </button>
           <button type="button" className="button compact" onClick={() => setTesting("dry")}>
             <Flask /> {t("Probelauf", "Dry run")}
           </button>
@@ -638,6 +662,7 @@ function Editor(props: EditorProps) {
         }}
         onError={onError}
       />
+      <SettingsDialog open={settingsOpen} graph={graph} editable={props.editable} onChange={change} onClose={() => setSettingsOpen(false)} />
       <ConnectDialog graph={graph} nodeId={connect} onClose={() => setConnect(null)} onConnect={(port, to) => connectNodes({ node: connect!, port }, to)} onRemove={(id) => change((g) => ({ ...g, edges: g.edges.filter((e) => e.id !== id) }))} />
       <TestDialog
         open={!!testing}

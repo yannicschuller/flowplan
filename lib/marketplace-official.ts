@@ -160,7 +160,7 @@ async function extraEntries(x: ExtraItem): Promise<{ payload: string; entries: [
       return { payload: "payload/whiteboard.json", entries: [["payload/whiteboard.json", json({ format: BOARD_TEMPLATE_FORMAT, version: 1, name: x.title.de, items })]] };
     }
     case "workflow": {
-      const graph = layoutGraph({ format: GRAPH_FORMAT, version: GRAPH_VERSION, settings: { timeZone: "Europe/Berlin", triggerOnOwnChanges: false, limits: {} }, nodes: x.nodes, edges: x.edges });
+      const graph = layoutGraph({ format: GRAPH_FORMAT, version: GRAPH_VERSION, settings: { timeZone: "Europe/Berlin", triggerOnOwnChanges: false, limits: {}, ...(x.untrustedTargets ? { untrustedTargets: true } : {}) }, nodes: x.nodes, edges: x.edges });
       const gaps = x.gaps.map((g) => ({ id: g.id, kind: g.kind, label: g.label.de, ...(g.optional ? { optional: true } : {}) }));
       const meta = workflowMeta(graph, x.gaps.map((g) => ({ id: g.id, kind: g.kind, label: g.label, ...(g.optional ? { optional: true as const } : {}) })));
       return {

@@ -20,6 +20,7 @@ import { emptyGraph, graphFingerprint, issueMessage, outgoing, parseGraph, type 
 import { draftGraph, graphDoc, graphSummary, writeGraph } from "./draft";
 import { automationToGraph } from "./legacy";
 import { hasErrors, validateGraph } from "./validate";
+import { needsUntrustedSetting } from "./provenance";
 import { runsInline } from "./inline";
 import { cancelOpenRuns, cancelRun, createRun, holdRuns, resumeRuns, type RunRow, type WorkflowRow } from "./engine";
 import { emitWorkflowEvent } from "./events";
@@ -338,6 +339,13 @@ export async function trashWorkflows(pageIds: string[], by: string) {
 
 /* ---------- Reading ---------- */
 
+function activeNeedsSetting(raw: string) {
+  try {
+    return needsUntrustedSetting(parseGraph(JSON.parse(raw)));
+  } catch {
+    return false;
+  }
+}
 export async function workflowState(user: Identity, pageId: string) {
   const page = await requireWorkflow(user, pageId);
   const wf = await workflowRow(page.id);
@@ -356,7 +364,18 @@ export async function workflowState(user: Identity, pageId: string) {
     throttled: wf.throttled,
     canEdit,
     active: version
-      ? { id: version.id, number: version.number, graph: JSON.parse(version.graph), activatedBy: await personValue(version.activated_by, page.workspace_id), activatedAt: version.activated_at, note: version.note }
+      ? {
+          id: version.id,
+          number: version.number,
+          graph: JSON.parse(version.graph),
+          activatedBy: await personValue(version.activated_by, page.workspace_id),
+          activatedAt: version.activated_at,
+          note: version.note,
+          // Activated before outside data choosing recipients or targets
+          // needed the setting (0.9.9): it keeps running, marked; activating
+          // again needs the setting (lib/workflows/provenance.ts).
+          needsUntrustedSetting: activeNeedsSetting(version.graph),
+        }
       : null,
     draft: draft
       ? {
@@ -572,7 +591,10 @@ export async function startTestRun(user: Identity, raw: unknown) {
   if (!allow(`workflow-test:${user.id}`, limits.testRunsPerMinute, 60_000)) throw new HttpError(429, "Zu viele Testläufe. Bitte kurz warten.");
   const graph = await draftOf(page);
   const issues = await checked(user, page, graph);
-  if (hasErrors(issues.filter((i) => !["page_not_readable", "page_not_writable"].includes(i.code)))) return { ok: false, runId: null, issues };
+  // A dry run sends and changes nothing: it may show what outside data
+  // would choose before the setting allows it (lib/workflows/provenance.ts).
+  const tolerated = ["page_not_readable", "page_not_writable", ...(b.mode === "dry" ? ["untrusted_recipients", "untrusted_target"] : [])];
+  if (hasErrors(issues.filter((i) => !tolerated.includes(i.code)))) return { ok: false, runId: null, issues };
   const node = graph.nodes.find((n) => (b.nodeId ? n.id === b.nodeId : isTrigger(n.type)));
   if (!node || !isTrigger(node.type)) throw new HttpError(400, "Kein Auslöser.");
   const spec = nodeSpec(node.type)!;
