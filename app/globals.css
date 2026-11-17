@@ -7076,6 +7076,12 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     font-size: 31px !important;
     margin-bottom: 23px;
   }
+  /* A journal day's title is its date ("Monday, 16 November 2026"): on a
+     phone it fits on one line instead of pushing the trackers down (#334). */
+  .page-content.journal-day-page .page-title {
+    font-size: clamp(20px, 6.2vw, 26px) !important;
+    margin-bottom: 16px;
+  }
   .large-page-icon {
     margin-bottom: 10px;
   }

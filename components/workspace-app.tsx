@@ -5039,7 +5039,7 @@ export default function WorkspaceApp({
               <div className={`page-layout ${comments && !recordFull ? "with-comments" : ""}`}>
                 <article
                   data-revalidating={revalidating ? "true" : undefined}
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${showsFullWidth(data.page.full_width, allPagesWide) ? "full-width" : ""}${recordFull ? " record-full-page" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${showsFullWidth(data.page.full_width, allPagesWide) ? "full-width" : ""}${recordFull ? " record-full-page" : ""}${data.journalDay ? " journal-day-page" : ""} font-${data.page.font}`}
                 >
                   {/* A record as a page of its own (#231): only the record. */}
                   {!recordFull && (<>
