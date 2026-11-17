@@ -22,6 +22,7 @@ import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
 import { holdViewTransitions, transitionView, withoutViewTransition } from "@/lib/view-transition";
 import { Select } from "./select";
+import { SearchTagFilter, useTagSuggest } from "./tag-suggestions";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
 import {
@@ -907,6 +908,16 @@ export default function WorkspaceApp({
     setPaletteSplit(false);
     setQuery("");
   };
+  // The tags the search offers (#328): the chosen space's and the
+  // workspace's, or all with the space's name as a hint (#136).
+  const searchTagChoices = useMemo(
+    () => (searchSpace ? contextOf(boot.taxonomy?.tags ?? [], searchSpace) : (boot.taxonomy?.tags ?? [])),
+    [boot.taxonomy, searchSpace],
+  );
+  const searchTagHint = (tag: { spaceId?: string | null }) =>
+    !searchSpace && tag.spaceId ? boot.spaces.find((sp) => sp.id === tag.spaceId)?.name : undefined;
+  // Typing `#` in the search input suggests tags; not in command mode.
+  const hashTags = useTagSuggest({ value: query, onChange: setQuery, tags: searchTagChoices, disabled: query.startsWith(">"), hint: searchTagHint });
   // `#tag` and `name:value` in the search (lib/page-properties.ts), shown
   // as chips under the input.
   const searchTokens = useMemo(
@@ -5829,18 +5840,24 @@ export default function WorkspaceApp({
             role="combobox"
             aria-label={t("Suchen oder Befehl", "Search or command")}
             aria-expanded="true"
-            aria-controls="palette-list"
+            // While tags are suggested after `#` (#328), they are the list.
+            aria-controls={hashTags.open ? hashTags.listId : "palette-list"}
             aria-autocomplete="list"
-            aria-activedescendant={activeItem ? `palette-${activeItem.id}` : undefined}
+            aria-activedescendant={hashTags.open ? hashTags.activeId : activeItem ? `palette-${activeItem.id}` : undefined}
             placeholder={
               paletteSplit
                 ? t("Seite für die geteilte Ansicht suchen …", "Find a page for the split view …")
                 : t("Suchen … oder > für Befehle", "Search … or > for commands")
             }
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            {...hashTags.fieldProps}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              hashTags.changed(e.target);
+            }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
+              if (hashTags.keyDown(e)) return;
               // The arrows move over the rows while the focus stays here;
               // Tab reaches the filters as before.
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -5854,6 +5871,7 @@ export default function WorkspaceApp({
             }}
           />
           <kbd>esc</kbd>
+          {hashTags.list}
         </div>
         {searchTokens.tokens.length > 0 && (
           <div className="search-tokens" role="group" aria-label={t("Aktive Filter", "Active filters")}>
@@ -5924,26 +5942,16 @@ export default function WorkspaceApp({
               </option>
             ))}
           </Select>
-          {/* Tags (#70): adds #tag to the search; recognised tokens show below. */}
-          {!!boot.taxonomy?.tags.length && (
-            <Select
-              aria-label={t("Nach Tag filtern", "Filter by tag")}
-              value=""
-              onChange={(e) => {
-                const tag = boot.taxonomy?.tags.find((x) => x.id === e.target.value);
-                if (tag) setQuery((q) => `${q.trim()} ${tagToken(tag.name)} `.trimStart());
-              }}
-            >
-              <option value="">{t("Tag …", "Tag …")}</option>
-              {/* With a space chosen: its tags and the workspace's; for all
-                  spaces every tag, a space's with its name as a hint (#136). */}
-              {(searchSpace ? contextOf(boot.taxonomy.tags, searchSpace) : boot.taxonomy.tags).map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  #{tag.name}
-                  {!searchSpace && tag.spaceId ? ` · ${boot.spaces.find((sp) => sp.id === tag.spaceId)?.name ?? ""}` : ""}
-                </option>
-              ))}
-            </Select>
+          {/* Tags (#70): adds #tag to the search; recognised tokens show
+              below. Found by typing (#328); with a space chosen its tags and
+              the workspace's, for all spaces every tag, a space's with its
+              name as a hint (#136). */}
+          {searchTagChoices.length > 0 && (
+            <SearchTagFilter
+              tags={searchTagChoices}
+              hint={searchTagHint}
+              onPick={(tag) => setQuery((q) => `${q.trim()} ${tagToken(tag.name)} `.trimStart())}
+            />
           )}
           {canAsk && query.trim() && !query.startsWith(">") && (
             <button
