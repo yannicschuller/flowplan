@@ -1,6 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
+import { needsConnection } from "./ui";
 import { useState } from "react";
 import { imageAccept, type PageImage } from "@/lib/page-appearance";
 import { compressImage } from "@/lib/image-compress";
@@ -47,7 +48,7 @@ export function IconImagePicker({
           onChange={async (event) => {
             const picked = event.target.files?.[0];
             event.target.value = "";
-            if (!picked) return;
+            if (!picked || needsConnection()) return;
             const file = await compressImage(picked);
             if (file.size > 10 * 1024 * 1024) {
               setError(t("Maximal 10 MB pro Bild.", "At most 10 MB per image."));

@@ -100,7 +100,21 @@ import {
 import { useOfflineRefresh } from "./offline-refresh";
 import { joinRefusalText } from "./join-refusal";
 import { useAppOfflineOffer } from "./app-offline-offer";
-import { appCopyUnreachable } from "@/lib/offline-store";
+import { appCopyUnreachable, offlineStore } from "@/lib/offline-store";
+import { pageUrl } from "@/lib/offline-plan";
+import { needsServer } from "@/lib/offline-actions";
+import {
+  offlineEntryById,
+  offlineEntryCommand,
+  offlineEntryFor,
+  offlineEntryHasText,
+  offlineJournalKey,
+  parseOfflineJournal,
+  withOfflineEntry,
+  withoutOfflineEntry,
+  type OfflineJournalEntry,
+} from "@/lib/journal-offline";
+import { dayTitle as journalDayTitle } from "@/lib/journal-title";
 import SavedTemplates from "./saved-templates";
 import { MarketplaceLink, MarketplaceReceiver } from "./marketplace";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -238,6 +252,9 @@ import {
   setErrorToaster,
   SIGNED_OUT_EVENT,
   SHEET_MEDIA,
+  deviceOffline,
+  needsConnection,
+  OfflineNotice,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import { MovePageDialog } from "./move-page-dialog";
@@ -389,7 +406,9 @@ type PageData = DatabaseData & {
   locked?: { journalId: string; canReset?: boolean };
   // Today's journal day before it exists (lib/journal-days.ts): created by
   // the first change, until then nothing is stored.
-  draft?: { journalId: string; date: string };
+  // `local`: written offline, kept on this device until the day exists
+  // (#333, lib/journal-offline.ts).
+  draft?: { journalId: string; date: string; local?: boolean };
   // A page of an end-to-end encrypted space (components/e2ee.tsx).
   encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
   // Tags and property values (#70, lib/page-properties-server.ts).
@@ -1127,6 +1146,8 @@ export default function WorkspaceApp({
       currentWorkspace.current = result.workspace.id;
       return;
     }
+    // Today's entry written offline exists only here (#333).
+    if (dataRef.current?.draft?.local && dataRef.current.page.id === currentId.current) return;
     if (currentId.current && screenRef.current === "page") {
       const pid = currentId.current;
       // A page shown for the first time (e.g. opened by its link) counts
@@ -1368,6 +1389,8 @@ export default function WorkspaceApp({
         );
       if (isQueueable(b) && !navigator.onLine)
         return offlineQueue.enqueue(b, rows());
+      // New pages, spaces, imports … need the server (#333): a calm note.
+      if (needsServer(b) && deviceOffline()) throw new OfflineNotice();
       // Taken before the first await: callers may leave the page right after.
       const before = { boot: bootRef.current, data: dataRef.current };
       const openBefore = screenRef.current === "page" ? currentId.current : null;
@@ -1479,6 +1502,146 @@ export default function WorkspaceApp({
     },
     [boot.workspace.id, refresh, notify, t],
   );
+  // Today's journal entry without a connection (#333, lib/journal-offline.ts):
+  // a page on this device only, whose text is appended to the day once the
+  // connection is back. The list lives in localStorage (per person).
+  const offlineJournalStore = offlineJournalKey(boot.user.id);
+  const readOfflineJournal = useCallback(() => {
+    try {
+      return parseOfflineJournal(localStorage.getItem(offlineJournalStore));
+    } catch {
+      return [];
+    }
+  }, [offlineJournalStore]);
+  const writeOfflineJournal = useCallback(
+    (list: OfflineJournalEntry[]) => {
+      try {
+        if (list.length) localStorage.setItem(offlineJournalStore, JSON.stringify(list));
+        else localStorage.removeItem(offlineJournalStore);
+      } catch {}
+    },
+    [offlineJournalStore],
+  );
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  // The local page as the editor opens it: no stored state, the text kept
+  // in IndexedDB (under its own id and generation) and in the list.
+  const offlineDayData = useCallback((entry: OfflineJournalEntry): PageData => {
+    const b = bootRef.current;
+    const journal = b.pages.find((p) => p.id === entry.journalId);
+    const page: Page = {
+      id: entry.id,
+      workspace_id: b.workspace.id,
+      space_id: journal?.space_id || "",
+      parent_id: entry.journalId,
+      title: journalDayTitle(entry.date, localeRef.current),
+      icon: "day",
+      cover: "",
+      kind: "document",
+      position: -Number(entry.date.replaceAll("-", "")),
+      deleted_at: null,
+      created_by: b.user.id,
+      updated_at: new Date(entry.at).toISOString(),
+      locked: 0,
+      public_token: null,
+      full_width: journal?.full_width || 0,
+      font: journal?.font || "sans",
+      journal_date: entry.date,
+      synced: 0,
+    };
+    return {
+      page,
+      role: "editor",
+      comments: [],
+      snapshots: [],
+      present: [],
+      backlinks: [],
+      images: [],
+      shareLinks: [],
+      draft: { journalId: entry.journalId, date: entry.date, local: true },
+      state: null,
+      html: entry.html,
+      generation: "offline",
+    } as unknown as PageData;
+  }, []);
+  // The editor's text, kept with every change; new text gets a new key.
+  const keepOfflineText = useCallback(
+    (id: string, text: string) => {
+      const list = readOfflineJournal();
+      const entry = offlineEntryById(list, id);
+      if (!entry || entry.html === text) return;
+      writeOfflineJournal(withOfflineEntry(list, { ...entry, html: text, key: crypto.randomUUID(), at: Date.now() }));
+    },
+    [readOfflineJournal, writeOfflineJournal],
+  );
+  // Once online: the day is created (or found) and gets the text; an open
+  // local page gives way to it. One attempt per entry at a time; a refusal
+  // (not a missing connection) is shown once per visit, the text stays.
+  const offlineFlushes = useRef(new Map<string, Promise<string | null>>());
+  const offlineRefused = useRef(new Set<string>());
+  const flushOfflineDay = useCallback(
+    (id: string) => {
+      const known = offlineFlushes.current.get(id);
+      if (known) return known;
+      // Refused in this visit: the text stays, the next visit asks again.
+      if (offlineRefused.current.has(id)) return Promise.resolve(null);
+      const promise = (async () => {
+        const isOpen = () => currentId.current === id && dataRef.current?.page.id === id;
+        // An open entry: its editor hands on the text at most once a second.
+        if (isOpen()) await new Promise((done) => setTimeout(done, 1200));
+        const open = isOpen();
+        if (open) keepOfflineText(id, html.current);
+        const entry = offlineEntryById(readOfflineJournal(), id);
+        if (!entry) return null;
+        if (!offlineEntryHasText(entry.html)) {
+          // Nothing written: nothing to create (an open one stays for writing).
+          if (!open) writeOfflineJournal(withoutOfflineEntry(readOfflineJournal(), id));
+          return null;
+        }
+        let result: { dayId?: string; trashed?: boolean };
+        try {
+          result = await api<{ dayId?: string; trashed?: boolean }>(
+            "/api/command",
+            keyed({ workspaceId: bootRef.current.workspace.id, ...offlineEntryCommand(entry, localDay()) }, entry.key),
+          );
+        } catch (error) {
+          if (!deviceOffline() && !isTransient(error) && !offlineRefused.current.has(id)) {
+            offlineRefused.current.add(id);
+            reportError(error);
+          }
+          return null;
+        }
+        // Text typed while the request ran stays for the next attempt.
+        const now = offlineEntryById(readOfflineJournal(), id);
+        if (now && now.key === entry.key) writeOfflineJournal(withoutOfflineEntry(readOfflineJournal(), id));
+        try {
+          indexedDB.deleteDatabase(`flowplan:${bootRef.current.user.id}:${id}:page:offline`);
+        } catch {}
+        void refresh().catch(() => {});
+        if (result.dayId && currentId.current === id && screenRef.current === "page") {
+          notify(t("Dein offline geschriebener Text steht jetzt in der Seite des Tages.", "What you wrote offline is now on the day's page."));
+          void openPageRef.current(result.dayId);
+        }
+        return result.dayId || null;
+      })();
+      offlineFlushes.current.set(id, promise);
+      void promise.finally(() => offlineFlushes.current.delete(id));
+      return promise;
+    },
+    [readOfflineJournal, writeOfflineJournal, keepOfflineText, refresh, notify, t],
+  );
+  const flushOfflineDayRef = useRef(flushOfflineDay);
+  flushOfflineDayRef.current = flushOfflineDay;
+  // Every entry written offline, as soon as there is a connection again.
+  useEffect(() => {
+    const flushAll = () => {
+      if (deviceOffline()) return;
+      for (const entry of readOfflineJournal()) void flushOfflineDay(entry.id);
+    };
+    flushAll();
+    window.addEventListener("online", flushAll);
+    return () => window.removeEventListener("online", flushAll);
+  }, [readOfflineJournal, flushOfflineDay]);
   useEffect(() => {
     if (!hasJournal) return;
     let rolled = "";
@@ -1584,6 +1747,27 @@ export default function WorkspaceApp({
       navigationPending.current = true;
       screenRef.current = "page";
       currentId.current = id;
+      // Today's journal entry written offline (#333): it exists only on this
+      // device; online it gives way to the day it creates.
+      const localEntry = offlineEntryById(readOfflineJournal(), id);
+      if (localEntry) {
+        const local = offlineDayData(localEntry);
+        if (!keepNav) setMobile(false);
+        setScreen("page");
+        setPageId(id);
+        setComments(false);
+        setAiSummary(null);
+        setData(local);
+        html.current = local.html || "";
+        setStatus("Gespeichert");
+        setBusy(false);
+        setRevalidating(false);
+        navigationPending.current = false;
+        const hash = pageLocationHash({ pageId: id });
+        if (location.hash !== hash) location.hash = hash;
+        if (!deviceOffline()) void flushOfflineDayRef.current(id);
+        return;
+      }
       // Stale-while-revalidate (lib/swr-cache.ts): a page opened recently
       // shows its kept copy at once while the fresh one loads; the editor's
       // sync and the reload below bring it up to date.
@@ -1679,7 +1863,7 @@ export default function WorkspaceApp({
         }
       }
     },
-    [notifyError],
+    [notifyError, readOfflineJournal, offlineDayData],
   );
   openPageRef.current = openPage;
   // A page in the other frame (the split view, #279): "In geteilter Ansicht
@@ -2438,6 +2622,8 @@ export default function WorkspaceApp({
     // Below this record of the parent database (#231).
     rowId: string | null = null,
   ) {
+    // A new page needs the server (#333): offline a note, no dialog.
+    if (needsConnection()) return;
     setParentRow(rowId);
     if (!boot.spaces.length) {
       setNewSpace(true);
@@ -2468,6 +2654,7 @@ export default function WorkspaceApp({
     parentId: string | null,
     typed: boolean,
   ) {
+    if (needsConnection()) return;
     if (!typed || !newTitle.trim() || newTitle === suggestedTitle) {
       setNewTitle(template.name);
       setSuggestedTitle(template.name);
@@ -3384,7 +3571,9 @@ export default function WorkspaceApp({
                   tabIndex={-1}
                   title={t("Unterseite hinzufügen", "Add sub-page")}
                   aria-label={t(`Unterseite in ${p.title} hinzufügen`, `Add sub-page in ${p.title}`)}
-                  onClick={() => addPage("document", p.id, p.space_id)}
+                  // A journal's "+" offline opens today's entry (#333):
+                  // that works without a connection, a new page does not.
+                  onClick={() => (p.kind === "journal" && deviceOffline() ? void openJournalToday(p.id) : addPage("document", p.id, p.space_id))}
                 >
                   <Plus size={14} />
                 </button>
@@ -3488,22 +3677,49 @@ export default function WorkspaceApp({
   // Today's day of a journal, through the journal's own way of making the
   // day (journal.roll, as the journal page does): opens the day when there is
   // one, else the journal itself (no page yet, read-only, today in the trash).
+  // Offline (#333) the day's stored page when the offline copy has it, else
+  // the entry written on this device (lib/journal-offline.ts).
   async function openJournalToday(journalId: string) {
     const today = localDay();
     const day = activePages.find((p) => p.parent_id === journalId && p.journal_date === today);
-    if (day) return openPage(day.id);
     const journal = activePages.find((p) => p.id === journalId);
-    if (journal && canCreate && !journal.locked) {
+    const writable = !!journal && canCreate && !journal.locked;
+    if (day && (!writable || !deviceOffline() || (await keptOffline(day.id)))) return openPage(day.id);
+    if (writable && deviceOffline()) return openOfflineDay(journalId, today);
+    if (writable) {
       try {
         const result = (await rollJournal(journalId, today)) as { dayId?: string; trashed?: boolean } | null;
         if (result?.dayId && !result.trashed) return openPage(result.dayId);
-      } catch {}
+      } catch (error) {
+        // The connection went while asking.
+        if (deviceOffline() || isTransient(error)) return openOfflineDay(journalId, today);
+      }
     }
     return openPage(journalId);
+  }
+  // Whether the offline copy holds a page (the service worker's or the app's).
+  async function keptOffline(id: string) {
+    try {
+      const store = offlineStore();
+      return !!store && !!(await store.match(pageUrl(id)));
+    } catch {
+      return false;
+    }
+  }
+  // The day's entry on this device: the one begun before, else a new one.
+  function openOfflineDay(journalId: string, date: string) {
+    const list = readOfflineJournal();
+    let entry = offlineEntryFor(list, journalId, date);
+    if (!entry) {
+      entry = { id: crypto.randomUUID(), journalId, date, html: "", key: crypto.randomUUID(), at: Date.now() };
+      writeOfflineJournal(withOfflineEntry(list, entry));
+    }
+    return openPage(entry.id);
   }
   // A past day chosen in the day picker (#288): its page, created without
   // carried tasks when the journal has none for that date yet.
   async function openJournalDate(journalId: string, date: string) {
+    if (deviceOffline()) return openOfflineDay(journalId, date);
     const result = (await act({ action: "journal.roll", workspaceId: boot.workspace.id, pageId: journalId, date: localDay(), day: date })) as { dayId?: string } | null;
     if (result?.dayId) return openPage(result.dayId);
   }
@@ -3548,7 +3764,7 @@ export default function WorkspaceApp({
     ...(boot.user.isAdmin
       ? [{ label: t("Instanz einrichten", "Set up the instance"), keywords: t("admin status ampel mail sso sicherung backup ki https", "admin status ampel mail sso sicherung backup ki https traffic light setup backup ai"), icon: Compass, run: () => { setOnboardingStep("setup"); setOnboarding(true); } }]
       : []),
-    { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
+    { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => !needsConnection() && setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
     {
       label: t("Startseite anpassen", "Customize home page"),
@@ -3753,7 +3969,7 @@ export default function WorkspaceApp({
   // The less used places at the sidebar's bottom: a row of symbols, on
   // phones behind "Mehr" (components/sidebar-tools.tsx).
   const sidebarTools: SidebarTool[] = [
-    { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => setTemplates(true) },
+    { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => !needsConnection() && setTemplates(true) },
     { id: "media", label: t("Medien", "Media"), icon: Images, selected: screen === "media", onSelect: () => go("media") },
     { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
     { id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") },
@@ -4551,7 +4767,9 @@ export default function WorkspaceApp({
           {screen === "page" && data?.draft ? (
             <span className="topbar-note journal-draft-note" role="status">
               <span className="subtle-dot" />
-              {t("Entwurf – wird beim ersten Schreiben angelegt", "Draft – created when you start writing")}
+              {data.draft.local
+                ? t("Offline-Entwurf – wird angelegt, sobald die Verbindung zurück ist", "Offline draft – created once the connection is back")
+                : t("Entwurf – wird beim ersten Schreiben angelegt", "Draft – created when you start writing")}
             </span>
           ) : screen === "page" && data ? (
             <div className="page-top-actions">
@@ -5151,10 +5369,15 @@ export default function WorkspaceApp({
                   </div>
                   {data.draft ? (
                     <p className="journal-draft-hint" role="note">
-                      {t(
-                        "Noch nicht gespeichert: Die Seite für heute wird angelegt, sobald du etwas schreibst, eine Aufgabe abhakst, einen Wert einträgst oder eine Datei hinzufügst.",
-                        "Not saved yet: today's page is created as soon as you write something, tick a task, enter a value or add a file.",
-                      )}
+                      {data.draft.local
+                        ? t(
+                            "Du bist offline: Was du hier schreibst, bleibt auf diesem Gerät und kommt in die Seite des Tages, sobald die Verbindung zurück ist.",
+                            "You're offline: what you write here stays on this device and goes into the day's page as soon as the connection is back.",
+                          )
+                        : t(
+                            "Noch nicht gespeichert: Die Seite für heute wird angelegt, sobald du etwas schreibst, eine Aufgabe abhakst, einen Wert einträgst oder eine Datei hinzufügst.",
+                            "Not saved yet: today's page is created as soon as you write something, tick a task, enter a value or add a file.",
+                          )}
                     </p>
                   ) : (
                     <>
@@ -5232,6 +5455,7 @@ export default function WorkspaceApp({
                       editable={editable}
                       onOpen={(id) => void openPage(id)}
                       onRoll={rollJournal}
+                      onToday={() => void openJournalToday(data.page.id)}
                       revealDays={revealJournalDays === data.page.id}
                       onRevealed={() => setRevealJournalDays(null)}
                       onChanged={refresh}
@@ -5303,7 +5527,20 @@ export default function WorkspaceApp({
                     ) : (
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
-                      draft={data.draft ? { ensure: () => ensureDraftDay(data) } : undefined}
+                      draft={
+                        data.draft?.local
+                          ? {
+                              // The day opens in its place once created; until
+                              // then the editor waits as for a server away.
+                              ensure: async () => {
+                                if (await flushOfflineDay(data.page.id)) return false;
+                                throw new TypeError("Offline draft not created yet");
+                              },
+                            }
+                          : data.draft
+                            ? { ensure: () => ensureDraftDay(data) }
+                            : undefined
+                      }
                       generation={data.generation}
                       pageId={data.page.id}
                       userId={boot.user.id}
@@ -5315,7 +5552,14 @@ export default function WorkspaceApp({
                       editable={editable}
                       onStatus={setStatus}
                       onError={notifyError}
-                      onHtml={setHtml}
+                      onHtml={
+                        data.draft?.local
+                          ? (value: string) => {
+                              setHtml(value);
+                              keepOfflineText(data.page.id, value);
+                            }
+                          : setHtml
+                      }
                       transcription={!!boot.instance?.transcription}
                       source={sourceOpen}
                       sourceNotice={
@@ -6338,6 +6582,7 @@ export default function WorkspaceApp({
           setSuggestedTitle(name);
         }}
         onTemplates={() => {
+          if (needsConnection()) return;
           setTemplatesFor({ spaceId, parent });
           setCreate(false);
           setTemplates(true);
@@ -6362,6 +6607,8 @@ export default function WorkspaceApp({
         onError={notifyError}
         onSubmit={async (e) => {
           e.preventDefault();
+          // Gone offline while the dialog was open (#333): the note in it.
+          if (needsConnection()) return;
           // A failure shows inside this dialog, with "Retry" submitting again.
           const form = e.currentTarget;
           // Encrypted titles: the page starts with the placeholder, then

@@ -10,7 +10,7 @@ import { useState, type ReactNode } from "react";
 import { ArrowRight, DownloadSimple, Storefront, UploadSimple } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "../../i18n";
-import { api, download, downloadBlob } from "../../ui";
+import { api, download, downloadBlob, needsConnection } from "../../ui";
 import { showToast } from "../../toast";
 import { Select } from "../../select";
 import { SpaceExportDialog } from "../../space-export";
@@ -116,6 +116,7 @@ export default function DataSection() {
               inputLabel={t("Export-ZIP importieren", "Import export ZIP")}
               onFiles={async ([file], input) => {
                 input.value = "";
+                if (needsConnection()) return;
                 setZipBusy(true);
                 report("zip", null);
                 try {
@@ -163,6 +164,7 @@ export default function DataSection() {
               inputLabel={t("Jira- oder Trello-Export importieren", "Import Jira or Trello export")}
               onFiles={async ([file], input) => {
                 input.value = "";
+                if (needsConnection()) return;
                 setTrackerBusy(true);
                 report("tracker", null);
                 try {

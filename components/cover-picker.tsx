@@ -4,7 +4,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useId, useState } from "react";
 import { UploadSimple } from "@phosphor-icons/react";
-import { Modal } from "./ui";
+import { Modal, needsConnection } from "./ui";
 import {
   imageAccept,
   imageFileId,
@@ -121,7 +121,7 @@ export function CoverPicker({
             onChange={async (event) => {
               const picked = event.target.files?.[0];
               event.target.value = "";
-              if (!picked) return;
+              if (!picked || needsConnection()) return;
               setFileName(picked.name);
               const file = await compressImage(picked);
               if (file.size > 10 * 1024 * 1024) {

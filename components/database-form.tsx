@@ -3,7 +3,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { Fragment, useState } from "react";
 import { Article, ChartBar, Copy, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
-import { Modal } from "./ui";
+import { Modal, requireConnection } from "./ui";
 import { FormFlow, FormThanks } from "./form-flow";
 import { FormConditionEditor, FormFollowUpSettings, fieldTarget, type ConditionTarget } from "./form-logic-editor";
 import { validRedirect } from "@/lib/form-logic";
@@ -144,6 +144,8 @@ export default function DatabaseForm({
           onSubmit={async (answers) => {
             const files = Object.values(answers).some((v) => Array.isArray(v) && v.some((x) => x instanceof File));
             if (files) throw new Error(t("Dateien lassen sich nur über den Link der Umfrage hochladen.", "Files can only be uploaded through the survey link."));
+            // An answer is checked by the server (#333): offline the note.
+            requireConnection();
             if (!(await act({ action: "form.submit", cells: answers }))) throw new Error(t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."));
           }}
           after={
@@ -200,6 +202,7 @@ export default function DatabaseForm({
           disabled={!editable}
           submitLabel={texts.submitLabel}
           onSubmit={async (values) => {
+            requireConnection();
             if (!(await act({ action: "form.submit", cells: values }))) throw new Error(t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."));
             setSent(values);
           }}

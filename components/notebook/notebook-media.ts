@@ -6,7 +6,7 @@
 // they are), uploaded like every attachment (POST /api/upload: quota, type
 // check, size limit, placeholder), and read back as PNG/JPEG for the PDF
 // export. Calls of the sticker and template library (lib/notebook-library.ts).
-import { api } from "../ui";
+import { api, requireConnection } from "../ui";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import type { InkImageBytes } from "@/lib/ink/pdf-export";
 import type { InkItem } from "@/lib/ink/model";
@@ -59,6 +59,7 @@ export async function preparePicture(file: File): Promise<{ file: File; width: n
 
 export type Uploaded = { id: string; url: string; name: string; mime: string; placeholder?: { w: number; h: number } };
 export async function uploadToPage(pageId: string, file: File): Promise<Uploaded> {
+  requireConnection();
   const form = new FormData();
   form.append("pageId", pageId);
   form.append("file", file);

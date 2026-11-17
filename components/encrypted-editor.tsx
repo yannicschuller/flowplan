@@ -39,7 +39,7 @@ import {
   TextHTwo,
   TextItalic,
 } from "@phosphor-icons/react";
-import { api, download } from "./ui";
+import { api, download, needsConnection } from "./ui";
 import { useT } from "./i18n";
 import * as e2ee from "@/lib/e2ee";
 import { documentMarkdown, type JsonNode } from "@/lib/e2ee-markdown";
@@ -392,6 +392,7 @@ export default function EncryptedEditor({
     const key = spaceKey(spaceId);
     if (!key || !editor) return;
     if (file.size > MAX_FILE_BYTES) return fail(t("Maximal 50 MB pro Datei.", "At most 50 MB per file."));
+    if (needsConnection()) return;
     setUploading(true);
     try {
       const sealed = await e2ee.encryptFile(key, pageId, { name: file.name, mime: file.type, bytes: new Uint8Array(await file.arrayBuffer()) });

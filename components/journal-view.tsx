@@ -135,6 +135,7 @@ export function JournalView({
   editable,
   onOpen,
   onRoll,
+  onToday,
   onChanged,
   onError,
   revealDays,
@@ -152,6 +153,9 @@ export function JournalView({
   onRevealed?: () => void;
   onOpen: (id: string) => void;
   onRoll: (pageId: string, date: string, recreate?: boolean) => Promise<unknown>;
+  // Today's entry when the day could not be asked for (offline, #333): the
+  // stored page or the entry written on this device.
+  onToday?: () => void;
   onChanged: () => Promise<unknown> | void;
   onError: (message: string) => void;
 }) {
@@ -165,17 +169,30 @@ export function JournalView({
   // "Beim ersten Schreiben": today is a draft until somebody writes.
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Today's page could not be asked for (no connection): asked again once
+  // the connection is back; meanwhile "Heute" opens the offline entry.
+  const [unrolled, setUnrolled] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!editable || current || rolled.current === `${pageId}:${today}`)
+    if (!editable || current || rolled.current === `${pageId}:${today}:${attempt}`)
       return;
-    rolled.current = `${pageId}:${today}`;
-    void onRoll(pageId, today).then((result) => {
-      const r = result as { trashed?: boolean; dayId?: string; draft?: boolean } | null;
-      setTrashed(r?.trashed && r.dayId ? r.dayId : null);
-      setDraft(r?.draft && r.dayId ? r.dayId : null);
-    });
-  }, [editable, current, pageId, today, onRoll]);
+    rolled.current = `${pageId}:${today}:${attempt}`;
+    void onRoll(pageId, today).then(
+      (result) => {
+        const r = result as { trashed?: boolean; dayId?: string; draft?: boolean } | null;
+        setUnrolled(false);
+        setTrashed(r?.trashed && r.dayId ? r.dayId : null);
+        setDraft(r?.draft && r.dayId ? r.dayId : null);
+      },
+      () => {
+        setUnrolled(true);
+        const again = () => setAttempt((n) => n + 1);
+        window.addEventListener("online", again, { once: true });
+      },
+    );
+  }, [editable, current, pageId, today, onRoll, attempt]);
   const todayId = current?.id || (!trashed && draft) || null;
+  const offlineToday = !todayId && unrolled && !!onToday;
   const [layout, setLayout] = useState<"list" | "calendar">(() => {
     try {
       return localStorage.getItem("flowplan:journal-layout") === "calendar" ? "calendar" : "list";
@@ -274,9 +291,11 @@ export function JournalView({
       </div>
       <button
         type="button"
-        className={`journal-today${!current && todayId ? " draft" : ""}`}
-        disabled={!todayId}
-        onClick={() => todayId && onOpen(todayId)}
+        className={`journal-today${(!current && todayId) || offlineToday ? " draft" : ""}`}
+        disabled={!todayId && !offlineToday}
+        // Not written yet: the way "Heute" everywhere goes (onToday) – a
+        // draft online, the entry on this device offline.
+        onClick={() => (current ? onOpen(current.id) : onToday ? onToday() : todayId && onOpen(todayId))}
       >
         <span className="journal-today-date" aria-hidden="true">
           <small>{shortMonth.format(utc(today))}</small>
@@ -290,6 +309,8 @@ export function JournalView({
               ? current.excerpt || t("Schreib auf, was ansteht und was passiert ist.", "Write down what is coming up and what happened.")
               : todayId
                 ? t("Noch nichts geschrieben – die Seite entsteht mit deinem ersten Eintrag.", "Nothing written yet – the page is created with your first entry.")
+              : offlineToday
+                ? t("Du bist offline – schreib trotzdem: Die Seite entsteht, sobald die Verbindung zurück ist.", "You're offline – write anyway: the page is created once the connection is back.")
               : trashed
                 ? t("Die Seite für heute liegt im Papierkorb.", "Today's page is in the trash.")
                 : editable
@@ -297,7 +318,7 @@ export function JournalView({
                   : t("Für heute gibt es noch keinen Eintrag.", "There is no entry for today yet.")}
           </span>
         </span>
-        {todayId && (
+        {(todayId || offlineToday) && (
           <span className="journal-today-open">
             {current ? t("Öffnen", "Open") : t("Schreiben", "Write")}{" "}<ArrowRight size={16} />
           </span>

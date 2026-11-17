@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Database, FileText } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
+import { requireConnection } from "./ui";
 
 type Item = { id: string; title: string; kind: "page" | "database"; icon?: string };
 
@@ -35,6 +36,7 @@ export function ImportNotion({
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const post = async (body: Record<string, unknown>) => {
+    requireConnection();
     const response = await fetch("/api/import/notion", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -213,7 +213,7 @@ import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { WorkflowButtonView } from "./workflow-button";
-import { api, apiIfChanged, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
+import { api, apiIfChanged, isTransient, Modal, needsConnection, PageIcon, requireConnection, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
@@ -418,6 +418,9 @@ export default function DocumentEditor({
   // Creates the draft day once (several callers may ask at the same time).
   const ensureCreated = useCallback(async () => {
     if (created.current || !draftRef.current) return true;
+    // The text as it is now (onHtml runs at most once a second): an entry
+    // written offline sends it along (#333).
+    currentHtml.current();
     creating.current ??= draftRef.current.ensure().then(
       (ok) => {
         if (ok) {
@@ -1609,7 +1612,7 @@ export default function DocumentEditor({
   uploadFile.current = (file: File) => upload(file);
   async function importDrawing(file: File) {
     const host = pages.find((p) => p.id === pageId);
-    if (!host) return;
+    if (!host || needsConnection()) return;
     try {
       onStatus("importing");
       const form = new FormData();
@@ -1668,6 +1671,8 @@ export default function DocumentEditor({
         /mxfile|mxGraphModel/.test(await original.slice(0, 1_000_000).text()))
     )
       return importDrawing(original);
+    // Files and pictures need the server (#333): offline a note says so.
+    if (needsConnection()) return;
     // A file in a draft day creates the day first.
     try {
       if (!(await ensureCreated())) return;
@@ -2481,7 +2486,7 @@ export default function DocumentEditor({
   // dropped one, the image keeps its place, width, caption and alignment;
   // markings belonged to the old picture and go.
   async function replaceImage(pos: number, original: File) {
-    if (!editor || !original.type.startsWith("image/")) return;
+    if (!editor || !original.type.startsWith("image/") || needsConnection()) return;
     try {
       const file = await compressImage(original);
       const form = new FormData();
@@ -2530,6 +2535,7 @@ export default function DocumentEditor({
     const current = editor?.state.doc.nodeAt(target.pos);
     if (!editor || current?.type.name !== "image" || current.attrs.src !== target.src)
       throw new Error(t("Das Bild wurde inzwischen geändert. Bitte erneut öffnen.", "The image was changed in the meantime. Please open it again."));
+    requireConnection();
     const form = new FormData();
     form.set("pageId", pageId);
     form.set("file", new File([result.blob], `${(current.attrs.alt || "bild").replace(/\.[a-z0-9]+$/i, "")}-markiert.${result.blob.type === "image/png" ? "png" : "jpg"}`, { type: result.blob.type }));
