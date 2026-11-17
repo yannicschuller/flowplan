@@ -1,9 +1,8 @@
-// Who runs the container (#193): the image starts as the user node (USER
-// 1000:1000, numeric for Kubernetes' runAsNonRoot). Started as root, like the
-// linuxserver.io images, the entrypoint hands the data folder to PUID:PGID
-// (default 1000:1000) and switches to that user with setpriv – the app never
-// runs as root. Any UID/GID from Compose's user: "UID:GID" (or Kubernetes'
-// runAsUser) runs as that user directly. Docker is not available
+// Who runs the container (#193), like the linuxserver.io images: the image
+// starts as root (no USER) and the entrypoint hands the data folder to
+// PUID:PGID (default 1000:1000) and switches to that user with setpriv – the
+// app never runs as root. Any UID/GID from Compose's user: "UID:GID" (or
+// Kubernetes' runAsUser) runs as that user directly. Docker is not available
 // in the tests: the entrypoint runs in a scratch folder with stubs for id,
 // stat, chown, setpriv and node.
 import { test } from "node:test";
@@ -82,10 +81,8 @@ function run(env: Record<string, string>, prepare?: (data: string) => void): Run
   }
 }
 
-test("the image starts as USER 1000:1000, has setpriv (for a start as root with PUID/PGID) and a Next cache any UID can write", () => {
-  assert.match(dockerfile, /^USER 1000:1000$/m);
-  // After everything that needs root to build.
-  assert.ok(dockerfile.lastIndexOf("USER 1000:1000") > dockerfile.lastIndexOf("RUN "));
+test("the image declares no USER (starts as root for PUID/PGID), has setpriv and a Next cache any UID can write", () => {
+  assert.doesNotMatch(dockerfile, /^USER\b/m);
   assert.match(dockerfile, /^ENV FLOWPLAN_DROP_ROOT=1$/m);
   assert.match(dockerfile, /COPY --chmod=644 scripts\/drop-root\.mjs \/app\/drop-root\.mjs/);
   assert.match(dockerfile, /COPY --chmod=644 scripts\/drop-root\.mjs \/app\/scripts\/drop-root\.mjs/);
@@ -96,9 +93,8 @@ test("the image starts as USER 1000:1000, has setpriv (for a start as root with 
   assert.match(entrypoint, /exec setpriv --reuid="\$uid" --regid="\$gid" --clear-groups -- "\$0" "\$@"/);
 });
 
-test("the Helm chart runs as UID 1000 without root, on a read-only root file system", () => {
+test("the Helm chart still runs as UID 1000 without root (runAsUser is needed: the image has no USER)", () => {
   assert.match(helmValues, /runAsNonRoot: true\s*\n\s+runAsUser: 1000\s*\n\s+runAsGroup: 1000/);
-  assert.match(helmValues, /readOnlyRootFilesystem: true/);
 });
 
 test("started as node (user: or runAsUser 1000): no switch, no chown, the server runs as 1000", () => {
@@ -108,7 +104,7 @@ test("started as node (user: or runAsUser 1000): no switch, no chown, the server
   assert.equal(r.stderr, "");
 });
 
-test("started as root (user: \"0:0\") without PUID/PGID: data folder to 1000:1000 if needed, then node via setpriv", () => {
+test("the default start (root) without PUID/PGID: data folder to 1000:1000 if needed, then node via setpriv", () => {
   const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "0:0" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.log.slice(0, 2), [
@@ -129,7 +125,7 @@ test("started as root, data folder already belongs to the target: no chown", () 
   ]);
 });
 
-test("started as root (user: \"0:0\") with PUID/PGID: chown once, then the server as PUID:PGID with HOME in /tmp", () => {
+test("the default start (root) with PUID/PGID: chown once, then the server as PUID:PGID with HOME in /tmp", () => {
   const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "1000:1000", PUID: "1001", PGID: "1002" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.log, [
@@ -150,7 +146,7 @@ test("PGID defaults to PUID", () => {
   ]);
 });
 
-test("started as root (user: \"0:0\"): something root left directly in the data folder is handed over although the folder matches", () => {
+test("the default start (root): something root left directly in the data folder is handed over although the folder matches", () => {
   for (const name of ["restore-pending", "move-incoming"]) {
     const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "1001:1001", FAKE_STAGED_OWNER: "0:0", PUID: "1001" }, (data) => mkdirSync(join(data, name)));
     assert.equal(r.status, 0, r.stderr);
@@ -181,7 +177,8 @@ test("started via user: as another user with PUID/PGID: one hint, then the norma
   const r = run({ FAKE_UID: "1000", FAKE_GID: "1000", PUID: "1001", PGID: "1001" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stderr.trim().split("\n").length, 1);
-  assert.match(r.stderr, /PUID\/PGID are ignored: the container was started as UID 1000, GID 1000 \(the image's user node, user:, --user or runAsUser\)\. PUID\/PGID need a start as root – user: "0:0" \(docker run --user 0\), Flowplan then switches to PUID:PGID – or set user: "1001:1001" instead\./);
+  assert.match(r.stderr, /PUID\/PGID are ignored: the container was started as UID 1000, GID 1000 \(user:, --user or runAsUser\)\. PUID\/PGID need the image's default start: remove user:, or set only user: "1001:1001"\./);
+  assert.doesNotMatch(r.stderr, /0:0/);
   assert.deepEqual(r.log, ["node server.js uid=1000 gid=1000 home=<dir>/home"]);
   // Matching the current user: nothing to say.
   const same = run({ FAKE_UID: "1001", FAKE_GID: "1001", PUID: "1001" });
@@ -204,13 +201,15 @@ test("a data folder the user cannot write: the message names user:, PUID/PGID, c
   assert.deepEqual(r.log, []);
   assert.match(r.stderr, /cannot write to its data folder .* \(running as UID 1001, GID 1001; the folder belongs to 1000:1000\)/);
   assert.match(r.stderr, /user: "1000:1000" in Compose/);
-  assert.match(r.stderr, /PUID and PGID with user: "0:0"/);
+  assert.match(r.stderr, /PUID and PGID without user:/);
+  assert.doesNotMatch(r.stderr, /"0:0"/);
   assert.match(r.stderr, /sudo chown -R 1000:1000/);
   assert.match(r.stderr, /named Docker volume/);
 });
 
 test("the write check's message is in the entrypoint", () => {
-  assert.match(entrypoint, /PUID and PGID with user: \\"0:0\\"/);
+  assert.match(entrypoint, /PUID and PGID without user:/);
+  assert.doesNotMatch(entrypoint, /user: \\?"0:0/);
   assert.match(entrypoint, /docs\.flowplan\.org\/en\/coolify-and-proxy#volume-permissions/);
 });
 
@@ -224,7 +223,7 @@ test("the user switch comes before everything else in the entrypoint", () => {
   for (const later of ["restore-pending/READY", "litestream restore", "exec node server.js", "RENDER_EXTERNAL_URL", ".write-test"]) assert.ok(at(later) > exec, later);
 });
 
-test("started as root (user: \"0:0\") with PUID=0 or PGID=0: refused, nothing runs, nothing changes owner", () => {
+test("the default start (root) with PUID=0 or PGID=0: refused, nothing runs, nothing changes owner", () => {
   const refused: Record<string, string>[] = [{ PUID: "0" }, { PUID: "1001", PGID: "0" }, { PGID: "0" }];
   for (const env of refused) {
     const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "0:0", ...env });

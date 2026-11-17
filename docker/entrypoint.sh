@@ -5,15 +5,14 @@
 set -eu
 DATA="${FLOWPLAN_DATA_DIR:-/app/data}"
 
-# Who runs Flowplan (#193): the image starts as the user node (USER
-# 1000:1000), or as any user given with Compose's user: "UID:GID", docker
-# run --user or Kubernetes' runAsUser – also one without an entry in
-# /etc/passwd; it runs as that user and changes no owner. Started as root
-# (user: "0:0", --user 0), like the linuxserver.io images: before anything
-# else (restore, move, Litestream, node) the entrypoint gives the data folder
-# to PUID:PGID (default 1000:1000, the user node) if it belongs to someone
-# else, and runs itself again as that user with setpriv: the app never runs
-# as root, PUID/PGID 0 are refused. PGID defaults to PUID.
+# Who runs Flowplan (#193), like the linuxserver.io images: the image starts
+# as root, and before anything else (restore, move, Litestream, node) the
+# entrypoint gives the data folder to PUID:PGID (default 1000:1000, the user
+# node) if it belongs to someone else, and runs itself again as that user
+# with setpriv: the app never runs as root, PUID/PGID 0 are refused. PGID
+# defaults to PUID. Started as another user instead (Compose's user:
+# "UID:GID", docker run --user, Kubernetes' runAsUser), also one without an
+# entry in /etc/passwd, it runs as that user and changes no owner.
 valid_id() {
   case "$1" in
     '' | *[!0-9]*) return 1 ;;
@@ -48,7 +47,7 @@ if [ "$(id -u)" = 0 ]; then
   exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$0" "$@"
 fi
 if [ -n "${PUID:-}${PGID:-}" ] && [ "${PUID:-1000}:${PGID:-${PUID:-1000}}" != "$(id -u):$(id -g)" ]; then
-  echo "PUID/PGID are ignored: the container was started as UID $(id -u), GID $(id -g) (the image's user node, user:, --user or runAsUser). PUID/PGID need a start as root – user: \"0:0\" (docker run --user 0), Flowplan then switches to PUID:PGID – or set user: \"${PUID:-1000}:${PGID:-${PUID:-1000}}\" instead." >&2
+  echo "PUID/PGID are ignored: the container was started as UID $(id -u), GID $(id -g) (user:, --user or runAsUser). PUID/PGID need the image's default start: remove user:, or set only user: \"${PUID:-1000}:${PGID:-${PUID:-1000}}\"." >&2
 fi
 # A user without a home of its own (user: "UID:GID" with no passwd entry
 # gets HOME=/): anything that writes below HOME writes to /tmp.
@@ -78,7 +77,7 @@ if ! { [ -d "$DATA" ] && [ -w "$DATA" ] && touch "$DATA/.write-test" 2>/dev/null
   owner="$(stat -c %u:%g "$DATA" 2>/dev/null || echo "UID:GID")"
   echo "Flowplan cannot write to its data folder $DATA (running as UID $(id -u), GID $(id -g); the folder belongs to $owner)." >&2
   echo "Either run Flowplan as the folder's owner: user: \"$owner\" in Compose (docker run --user $owner)," >&2
-  echo "or let Flowplan take the folder: PUID and PGID with user: \"0:0\" (it hands the folder over and runs as that user, never as root)," >&2
+  echo "or let Flowplan take the folder: PUID and PGID without user: (it then runs as that user, never as root)," >&2
   echo "or give the folder to UID 1000: sudo chown -R 1000:1000 /path/to/flowplan-data, or use a named Docker volume." >&2
   echo "See https://docs.flowplan.org/en/coolify-and-proxy#volume-permissions" >&2
   exit 1
