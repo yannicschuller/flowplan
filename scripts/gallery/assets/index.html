@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>Flowplan UI gallery</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="gallery.css">
+<script src="gallery.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand-row">
+    <a class="brand" href="#" aria-label="Flowplan UI gallery – all screens">
+      <img src="logo.svg" width="28" height="28" alt="">
+      <span class="brand-name">Flowplan</span>
+      <span class="brand-sub">UI gallery</span>
+    </a>
+    <p class="meta" id="meta">Loading …</p>
+    <button type="button" class="icon-button" id="theme" title="Theme: system" aria-label="Theme: system">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 3a7 7 0 0 1 0 14Z" fill="currentColor"/></svg>
+    </button>
+  </div>
+  <div class="tool-row">
+    <nav class="segmented tabs" aria-label="View">
+      <a href="#" id="tabAll" aria-current="page">All screens</a>
+      <a href="#changed" id="tabChanged">Changed <span class="count" id="changedCount"></span></a>
+    </nav>
+    <input type="search" id="q" placeholder="Search scenes  /" aria-label="Search scenes" autocomplete="off" spellcheck="false">
+    <div class="segmented" role="group" aria-label="Device" id="device">
+      <button type="button" data-v="all">All</button><button type="button" data-v="desktop">Desktop</button><button type="button" data-v="phone">Phone</button>
+    </div>
+    <div class="segmented" role="group" aria-label="Theme" id="scheme">
+      <button type="button" data-v="all">All</button><button type="button" data-v="light">Light</button><button type="button" data-v="dark">Dark</button>
+    </div>
+    <button type="button" class="chip" id="failedOnly" aria-pressed="false" hidden>Failed only</button>
+  </div>
+  <div class="chips" id="groups" role="group" aria-label="Groups"></div>
+</header>
+<main id="main" tabindex="-1">
+  <p class="empty">Loading the gallery …</p>
+  <noscript><p class="empty">The gallery needs JavaScript to list its screenshots.</p></noscript>
+</main>
+<div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-labelledby="lbTitle" hidden>
+  <div class="lb-bar">
+    <div class="lb-text"><strong id="lbTitle"></strong><small id="lbSub"></small></div>
+    <div class="segmented lb-compare" id="lbCompare" role="group" aria-label="Compare" hidden>
+      <button type="button" data-m="slider">Slider</button><button type="button" data-m="before">Before</button><button type="button" data-m="after">After</button>
+    </div>
+    <button type="button" class="icon-button" id="lbSize" title="Actual size (Space)" aria-label="Actual size">1:1</button>
+    <button type="button" class="icon-button" id="lbPrev" title="Previous (←)" aria-label="Previous">←</button>
+    <button type="button" class="icon-button" id="lbNext" title="Next (→)" aria-label="Next">→</button>
+    <button type="button" class="icon-button" id="lbClose" title="Close (Esc)" aria-label="Close">✕</button>
+  </div>
+  <p class="lb-error" id="lbErr" hidden></p>
+  <div class="lb-stage" id="lbStage">
+    <div class="lb-frame" id="lbFrame">
+      <img id="lbBefore" class="lb-before" alt="" hidden>
+      <img id="lbImg" alt="">
+    </div>
+  </div>
+  <input type="range" class="lb-slider" id="lbSlider" min="0" max="100" value="50" aria-label="Before / after" hidden>
+</div>
+</body>
+</html>

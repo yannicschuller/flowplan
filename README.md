@@ -530,6 +530,7 @@ Development mode also offers **Open local workspace**, a shared local example ac
 | `npm run check:standalone` | Runs the standalone build like the container and checks health, persistence and restore |
 | `npm run quality` | Accessibility and performance budgets on the production build: sign-in and a seeded workspace at 1280 and 390 px – no serious axe findings, nothing focusable inside `aria-hidden`, no horizontal scrolling, JavaScript (gzip) and LCP within budget |
 | `npm run test:visual` | Screenshots of key screens against the baselines in `tests/visual/__screenshots__` (`npm run test:visual:update` writes new ones); not part of `npm test` |
+| `npm run gallery` | The UI gallery: every page, dialog, menu and popover as screenshots on one page (desktop and phone, light and dark). Rebuilt every night from main at [gallery.flowplan.org](https://gallery.flowplan.org), with what changed since the night before; see [CONTRIBUTING.md](CONTRIBUTING.md#ui-gallery) |
 
 Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`) or PostgreSQL (`pg`), TipTap/ProseMirror with Yjs, Zod and Playwright. The documentation lives in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), the website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), the desktop apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); this repository contains the app, the Helm chart (`deploy/helm`) and the n8n node (`integrations/n8n`).
 

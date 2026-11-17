@@ -6,6 +6,8 @@
 //   npm run gallery -- --only dialogs       scenes whose id, title or group contains "dialogs"
 //   npm run gallery -- --phone --dark       one variant
 //   npm run gallery -- --url http://127.0.0.1:3000   a running (dev) server instead
+//   npm run gallery -- --webp --compare https://gallery.flowplan.org --cname gallery.flowplan.org
+//                                           the nightly site (.github/workflows/gallery.yml)
 //
 // See CONTRIBUTING.md ("UI gallery") for all flags.
 import { request, type Browser, type BrowserContext, type Page } from "@playwright/test";
@@ -20,7 +22,9 @@ import { FIXED_TIME } from "../../tests/visual/shared";
 import { SCENES } from "./scenes";
 import { commandFor, seedGallery } from "./seed";
 import { writeReport, type Shot } from "./report";
-import type { Device, Ids, Scene, SceneContext, Theme, Variant } from "./types";
+import { compareWithPrevious, processShots, writeSiteFiles } from "./site";
+import type { Manifest } from "./compare";
+import { GROUPS, type Device, type Ids, type Scene, type SceneContext, type Theme, type Variant } from "./types";
 
 const root = process.cwd();
 
@@ -36,10 +40,13 @@ type Options = {
   list: boolean;
   serve: boolean;
   session?: string;
+  webp: boolean;
+  compare?: string;
+  cname?: string;
 };
 
 function parseArgs(argv: string[]): Options {
-  const o: Options = { only: [], devices: [], themes: [], concurrency: 4, out: "gallery-out", build: false, open: false, list: false, serve: false };
+  const o: Options = { only: [], devices: [], themes: [], concurrency: 4, out: "gallery-out", build: false, open: false, list: false, serve: false, webp: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const value = () => {
@@ -58,6 +65,9 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--list") o.list = true;
     else if (a === "--serve") o.serve = true;
     else if (a === "--session") o.session = value();
+    else if (a === "--webp") o.webp = true;
+    else if (a === "--compare") o.compare = value();
+    else if (a === "--cname") o.cname = value();
     else if (a === "--help" || a === "-h") {
       console.log(HELP);
       process.exit(0);
@@ -82,7 +92,11 @@ const HELP = `npm run gallery -- [options]
   --open              open the gallery in the browser when done
   --list              list the scenes and exit
   --serve             only start the server and seed it, write <out>/session.json and wait (Ctrl-C ends it)
-  --session <file>    reuse such a session: no server start, no seeding – quick runs while writing a scene`;
+  --session <file>    reuse such a session: no server start, no seeding – quick runs while writing a scene
+  --webp              full screenshots as WebP instead of PNG (the published site; thumbnails are always WebP)
+  --compare <src>     compare with a previous run: its site (https://gallery.flowplan.org) or output directory;
+                      the "Changed" view lists what differs
+  --cname <domain>    write CNAME and a robots.txt that keeps search engines out (GitHub Pages)`;
 
 export const VARIANTS: Variant[] = [
   { id: "desktop-light", device: "desktop", theme: "light" },
@@ -163,7 +177,7 @@ async function main() {
   const out = resolve(root, options.out);
   const shotsDir = join(out, "shots");
   if (!options.serve) {
-    rmSync(shotsDir, { recursive: true, force: true });
+    for (const dir of ["shots", "thumbs", "before"]) rmSync(join(out, dir), { recursive: true, force: true });
     mkdirSync(shotsDir, { recursive: true });
   }
   const session: Session | null = options.session ? JSON.parse(readFileSync(options.session, "utf8")) : null;
@@ -311,19 +325,30 @@ async function main() {
 
     const order = new Map(jobs.map((j, i) => [`${j.scene.id}--${j.variant.id}`, i]));
     shots.sort((a, b) => order.get(`${a.scene}--${a.variant}`)! - order.get(`${b.scene}--${b.variant}`)!);
+    console.log(options.webp ? "Thumbnails and WebP images …" : "Thumbnails …");
+    const entries = await processShots(out, shots, { webp: options.webp });
+    const changes = await compareWithPrevious(out, entries, options.compare);
+    if (changes.note) console.log(changes.note);
     const seconds = Math.round((Date.now() - started) / 1000);
-    const commit = git(["rev-parse", "--short", "HEAD"]);
-    const dirty = git(["status", "--porcelain"]) ? "+changes" : "";
-    const index = writeReport(out, {
-      shots,
-      variants: variants.map((v) => v.id),
+    const commit = git(["rev-parse", "HEAD"]);
+    const dirty = git(["status", "--porcelain", "--untracked-files=no"]) ? "+changes" : "";
+    const manifest: Manifest = {
+      format: 1,
       generated: new Date().toISOString(),
       commit: commit ? `${commit}${dirty}` : "unknown",
+      commitShort: commit ? `${commit.slice(0, 8)}${dirty}` : "unknown",
       branch: git(["rev-parse", "--abbrev-ref", "HEAD"]),
+      version: JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version,
       seconds,
-      server: options.url ? `running server ${options.url}` : session ? `session ${origin}` : "production build",
-    });
-    writeFileSync(join(out, "results.json"), JSON.stringify({ seconds, shots }, null, 2));
+      server: options.url ? "running server" : session ? "session" : "production build",
+      variants: variants.map((v) => v.id),
+      groups: GROUPS,
+      shots: entries,
+      changes,
+    };
+    const index = writeReport(out, manifest);
+    if (options.cname) writeSiteFiles(out, options.cname);
+    rmSync(join(out, "results.json"), { force: true });
     const failed = shots.filter((s) => s.error);
     console.log(`\n${shots.length} screenshots of ${scenes.length} scenes in ${seconds}s, ${failed.length} failed.`);
     console.log(`Gallery: ${index}`);
