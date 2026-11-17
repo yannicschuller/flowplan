@@ -1401,6 +1401,11 @@ export function DocumentBlockControls({
       if (selectingRef.current || !target || !editor.view.dom.contains(target)) return;
       // Fields inside a block (a caption, a code editor) keep their own ⌘A.
       if (target.closest("input, textarea, select") || target.closest("[contenteditable]") !== editor.view.dom) return;
+      // A click just before may not have reached the editor's selection yet
+      // (Chromium sends its selectionchange up to a frame later): without
+      // this, ⌘A right after a click chose the text of the block the caret
+      // was in before.
+      (editor.view as unknown as { domObserver?: { flush?: () => void } }).domObserver?.flush?.();
       const { selection } = editor.state;
       const { $from, $to } = selection;
       event.preventDefault();
