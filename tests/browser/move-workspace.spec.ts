@@ -22,9 +22,21 @@ test("a page moves into another workspace from the page menu", async ({ page }, 
   await page.getByRole("button", { name: "Seitenaktionen" }).click();
   await page.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Seite verschieben" });
+  // Until the target workspace's spaces are there, "Verschieben" waits: it
+  // used to send the page into its old space while the app followed it into
+  // the new workspace (and back again), with the dialog left open.
+  let release = () => {};
+  const held = new Promise<void>((done) => (release = done));
+  await page.route(`**/api/bootstrap?workspace=${target.id}`, async (route) => {
+    await held;
+    await route.fallback();
+  });
   await dialog.getByLabel("Arbeitsbereich").selectOption({ label: `Ziel ${tag}` });
   await expect(dialog).toContainText("wechseln den Arbeitsbereich");
-  await dialog.getByRole("button", { name: "Verschieben", exact: true }).click();
+  const confirm = dialog.getByRole("button", { name: "Verschieben", exact: true });
+  await expect(confirm).toBeDisabled();
+  release();
+  await confirm.click();
   await expect(dialog).toHaveCount(0);
   // The app follows the page into the target workspace.
   await expect(page.locator(".page-title")).toHaveValue(`Umzug ${tag}`);
