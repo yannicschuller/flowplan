@@ -400,7 +400,12 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     await page.getByRole("button", { name: "Tabelle", exact: true }).click();
     const tableRow = page.locator(`tr[data-row-id="${f.meeting.id}"]`);
     await expect(tableRow.locator(".date-cell").first()).toContainText("01:30"); // Browser timezone is UTC.
-    await tableRow.locator("td").nth(2).click();
+    // On the phone the table opens scrolled where the calendar was: the row
+    // sits under the stuck header and the sticky title column, which then
+    // take the click (CI, mobile). Centre the cell first.
+    const startCell = tableRow.locator("td").nth(2);
+    await startCell.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
+    await startCell.click();
     await expect(tableRow.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
     const input = tableRow.getByLabel("Beginn: Uhrzeit", { exact: true });
     await expect(input).toHaveAttribute("type", "time");
