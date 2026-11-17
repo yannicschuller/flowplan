@@ -37,7 +37,7 @@ import { signValue, validSignature } from "./secret-box";
 import { mailAppUrl, mailConfig, mailEscape, mailLayout, queueMail } from "./mail";
 import { userLocale } from "./user-locale";
 import { translate } from "./i18n";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import {
   EMERGENCY_ACCESS_DAYS,
@@ -793,15 +793,15 @@ export async function processEmergency(now = Date.now()) {
 const runtime = globalThis as unknown as { flowplanEmergencyTimer?: ReturnType<typeof setInterval> };
 export function startEmergencyWorker(onChanged: () => void = () => {}) {
   if (runtime.flowplanEmergencyTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("emergency-access", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       if (await processEmergency()) onChanged();
     } catch (error) {
       console.error("Notfallzugriff: Prüfung fehlgeschlagen", error);
     }
-  };
+  });
   runtime.flowplanEmergencyTimer = setInterval(tick, 5 * 60_000);
   runtime.flowplanEmergencyTimer.unref();
   setTimeout(tick, 20_000).unref();

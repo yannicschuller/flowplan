@@ -30,6 +30,7 @@ import { notionCsvColumns, notionPropertyTypes, type NotionType, type RelationIt
 import { importReport } from "./importers/types";
 import { writeImportReport } from "./importers/report";
 import { ct } from "./content-locale";
+import { publishUpload } from "./storage";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
@@ -417,6 +418,7 @@ export async function importZip(
         mkdirSync(dir, { recursive: true });
         writeFileSync(resolve(dir, fid), data);
         onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
+        await publishUpload(fid);
         await run(
           "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
           fid,

@@ -33,6 +33,7 @@ import type { Field, Identity, Page, Space } from "./types";
 import { applyPortableMeta } from "./page-properties-server";
 import { isTagField } from "./page-properties";
 import { filterAsync, mapAsync } from "./each-async";
+import { localUpload, publishUpload } from "./storage";
 
 // Values the database computes (or that only make sense inside it) do not
 // become text.
@@ -189,8 +190,9 @@ async function copyFiles(user: Identity, fileIds: string[], database: Page, page
   for (const fid of fileIds) {
     if (hidden.has(fid)) continue;
     const file = await one<{ name: string; mime: string; size: number }>("SELECT name,mime,size FROM files WHERE id=? AND page_id=? AND deleted_at IS NULL", fid, database.id);
-    const from = resolve(dir, fid);
-    if (!file || !existsSync(from)) continue;
+    // Through the storage layer: the source may live only in the bucket.
+    const from = file ? await localUpload(fid) : null;
+    if (!file || !from || !existsSync(from)) continue;
     const fresh = id(),
       destination = resolve(dir, fresh);
     mkdirSync(dir, { recursive: true });
@@ -200,6 +202,7 @@ async function copyFiles(user: Identity, fileIds: string[], database: Page, page
         unlinkSync(destination);
       } catch {}
     });
+    await publishUpload(fresh);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, pageId, file.name, file.mime, file.size, user.id);
     copies.set(fid, fresh);
   }

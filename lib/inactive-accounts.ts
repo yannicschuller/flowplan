@@ -22,7 +22,7 @@ import { fireBeforeDeletion } from "./dead-man-switch";
 import { userLocale } from "./user-locale";
 import { db } from "./db-driver";
 import { localeTag, type Locale } from "./i18n";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export async function disableInactiveAccounts(now = Date.now()) {
@@ -214,15 +214,15 @@ const runtime = globalThis as unknown as {
 };
 export function startInactiveWorker() {
   if (runtime.flowplanInactiveTimer) return;
-  runtime.flowplanInactiveTimer = setInterval(async () => {
+  runtime.flowplanInactiveTimer = setInterval(() => leaderDuty("inactive-accounts", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       await disableInactiveAccounts();
       await deleteInactiveAccounts();
     } catch (error) {
       console.error("Prüfung inaktiver Konten fehlgeschlagen", error);
     }
-  }, 6 * 3600_000);
+  }), 6 * 3600_000);
   runtime.flowplanInactiveTimer.unref?.();
 }

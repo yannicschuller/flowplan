@@ -77,7 +77,7 @@ async function start(dataDir) {
 }
 const stop = (child) =>
   new Promise((resolve) => {
-    child.once("exit", resolve);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
     child.kill("SIGTERM");
   });
 
@@ -258,7 +258,14 @@ try {
     console.log(server.log?.slice(-3000));
   }
 
-  await stop(server);
+  // Graceful stop (lib/cluster/runtime.ts): Next.js's exit waits for
+  // Flowplan's shutdown tasks, then the process ends with 143.
+  const stopped = await stop(server);
+  check(
+    "SIGTERM: Flowplan schließt ab, bevor der Prozess endet (Exit 143)",
+    stopped.code === 143 && /Stopping \(SIGTERM\)/.test(server.log || "") && /Stopped after \d+ ms/.test(server.log || ""),
+    `exit ${stopped.code ?? stopped.signal}`,
+  );
   server = await start(data);
   const again = await fetch(`${origin}/api/pages/${created.id}`, { headers });
   check("Daten bleiben nach Neustart erhalten", again.ok);

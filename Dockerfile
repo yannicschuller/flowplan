@@ -105,23 +105,25 @@ COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /ap
 # Any UID/GID (#193): Compose's user: "UID:GID" may run the image as a user
 # without an entry in /etc/passwd. Everything it writes goes to the data
 # folder, /tmp (HOME, see docker/entrypoint.sh) or Next's cache below; the
-# app code stays read-only for it.
+# app code stays read-only for it, and with a read-only root file system
+# (the Helm chart) those four are volumes.
 RUN setpriv --version \
   && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache
-# Helper scripts started with docker exec (as root, see below) continue as
+# Helper scripts started as root (docker exec -u 0, see below) continue as
 # PUID:PGID before they write anything (scripts/drop-root.mjs).
 COPY --chmod=644 scripts/drop-root.mjs /app/drop-root.mjs
 COPY --chmod=644 scripts/drop-root.mjs /app/scripts/drop-root.mjs
-# No USER (#193), like the linuxserver.io images: the container starts as
-# root only so that docker/entrypoint.sh can give the data folder to
-# PUID:PGID (default 1000:1000, the user node); it then switches to that
-# user with setpriv (util-linux, in the base image) before anything else
-# runs – the app never runs as root. user: "UID:GID" (or Kubernetes'
-# runAsUser) starts it as that user directly. docker exec and the
-# HEALTHCHECK below run as root unless -u is given; the healthcheck only
-# fetches /api/health and writes nothing, the helper scripts drop root
-# themselves (FLOWPLAN_DROP_ROOT).
+# The image starts as the user node (uid/gid 1000), numerically, so that
+# Kubernetes' runAsNonRoot can check it without a runAsUser. Started as root
+# instead (Compose's user: "0:0", docker run --user 0), docker/entrypoint.sh
+# gives the data folder to PUID:PGID (default 1000:1000, like the
+# linuxserver.io images, #193) and switches to that user with setpriv
+# (util-linux) before anything else runs – the app never runs as root.
+# user: "UID:GID" (or Kubernetes' runAsUser) starts it as that user
+# directly. docker exec runs as node unless -u is given; started as root,
+# the helper scripts drop root themselves (FLOWPLAN_DROP_ROOT).
 ENV FLOWPLAN_DROP_ROOT=1
+USER 1000:1000
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

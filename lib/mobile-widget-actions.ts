@@ -39,6 +39,7 @@ import {
 import type { Field, Identity, Page } from "./types";
 import { actionSchemas, widgetActions } from "./mobile-widget-schema";
 import { markLiveActivity } from "./live-activity-queue";
+import { publishUpload } from "./storage";
 
 export { actionSchemas, widgetActions, type WidgetAction } from "./mobile-widget-schema";
 const url = (pageId: string, rowId?: string | null) => `/#page=${pageId}${rowId ? `&row=${rowId}` : ""}`;
@@ -176,6 +177,7 @@ async function captureUpload(user: Identity, input: z.infer<(typeof actionSchema
       const path = resolve(dir, fileId);
       writeFileSync(path, content);
       onTransactionRollback(() => unlinkSync(path));
+      await publishUpload(fileId);
       await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fileId, ownerId, name, mime, content.length, user.id);
       await audit(user.id, "file.upload", ownerId, name);
     };
@@ -260,6 +262,7 @@ async function captureShare(user: Identity, input: z.infer<(typeof actionSchemas
         const path = resolve(dir, file.id);
         writeFileSync(path, file.bytes);
         onTransactionRollback(() => unlinkSync(path));
+        await publishUpload(file.id);
         await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.bytes.length, user.id);
         await audit(user.id, "file.upload", ownerId, file.name);
       }

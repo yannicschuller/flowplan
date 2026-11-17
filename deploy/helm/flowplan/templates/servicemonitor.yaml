@@ -1,0 +1,33 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- include "flowplan.check" . }}
+# Prometheus Operator: every pod behind the Service is scraped on its own
+# (/api/metrics with the metrics token). Per-process figures carry the
+# pod's instance_id; the installation's figures come from the leader only,
+# so sums over the pods count them once.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "flowplan.fullname" . }}
+  labels:
+    {{- include "flowplan.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "flowplan.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "flowplan.metricsSecret" . }}
+          key: {{ .Values.metrics.tokenSecret.key }}
+{{- end }}

@@ -58,7 +58,7 @@ import { signValue, validSignature } from "./secret-box";
 import { mailAppUrl, mailConfig, mailEscape, mailLayout, queueMail } from "./mail";
 import { userLocale } from "./user-locale";
 import { translate, type Locale } from "./i18n";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import {
   DEADMAN_DEFAULT_PERIOD,
@@ -657,15 +657,15 @@ export async function fireBeforeDeletion(userId: string, now = Date.now()) {
 const runtime = globalThis as unknown as { flowplanDeadmanTimer?: ReturnType<typeof setInterval> };
 export function startDeadmanWorker(onChanged: () => void = () => {}) {
   if (runtime.flowplanDeadmanTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("dead-man-switch", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       if (await processDeadman()) onChanged();
     } catch (error) {
       console.error("Nachricht bei Inaktivität: Prüfung fehlgeschlagen", error);
     }
-  };
+  });
   runtime.flowplanDeadmanTimer = setInterval(tick, 5 * 60_000);
   runtime.flowplanDeadmanTimer.unref();
   setTimeout(tick, 30_000).unref();

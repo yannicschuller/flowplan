@@ -1392,6 +1392,9 @@ const exact: Record<string, string> = {
   "ZIP- und andere Exporte dürfen höchstens 100 MB groß sein; größer darf nur die AFFiNE-Arbeitsbereichsdatei (.affine) sein.": "ZIP and other exports may be at most 100 MB; only the AFFiNE workspace file (.affine) may be larger.",
   "Die Datei konnte nicht hochgeladen werden.": "The file could not be uploaded.",
   "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.": "The uploaded file is no longer there. Please choose it again.",
+  // Cluster mode: files only count as stored once they are in the bucket (lib/storage.ts, lib/importers/upload.ts).
+  "Die Datei konnte nicht gespeichert werden (Objektspeicher nicht erreichbar). Bitte versuche es gleich noch einmal.": "The file could not be stored (object storage unreachable). Please try again in a moment.",
+  "Die Datei konnte nicht zwischengespeichert werden (Objektspeicher nicht erreichbar). Bitte versuche es gleich noch einmal.": "The file could not be kept for the import (object storage unreachable). Please try again in a moment.",
   // Imports in the background (#163).
   "Es läuft schon ein Import. Bitte warte, bis er fertig ist.": "An import is already running. Please wait until it has finished.",
   // Notion through its API (lib/importers/notion-api.ts).

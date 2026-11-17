@@ -21,7 +21,7 @@ import { rememberTaskTarget } from "./notification-targets";
 import { mayHear } from "./comment-recipients";
 import type { Identity, Page, Row } from "./types";
 import { filterAsync } from "./each-async";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import { validBlockId } from "./block-ids";
 import { TASK_STATUSES, isClosedStatus, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
@@ -581,16 +581,16 @@ export async function startTaskWorker(onFired: () => void) {
   } catch (error) {
     console.error("Aufgaben konnten nicht erfasst werden", error);
   }
-  const tick = async () => {
+  const tick = () => leaderDuty("task-reminders", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       // From 8 o'clock on (server time), so reminders do not come at night.
       if (new Date().getHours() >= 8 && await processDueTasks()) onFired();
     } catch (error) {
       console.error("Aufgaben-Erinnerungen fehlgeschlagen", error);
     }
-  };
+  });
   runtime.flowplanTaskTimer = setInterval(tick, 5 * 60_000);
   runtime.flowplanTaskTimer.unref();
   await tick();

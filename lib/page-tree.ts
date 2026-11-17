@@ -25,6 +25,7 @@ import { copyPageMeta } from "./page-properties-server";
 import { readableTemplateCells } from "./row-documents";
 import type { Identity, Page, Field, Row } from "./types";
 import { flatMapAsync, forEachAsync } from "./each-async";
+import { localUpload, publishUpload } from "./storage";
 // Called inside the command transaction. Permission-check the complete source
 // tree before copying anything; never silently copy a restricted descendant.
 export async function duplicatePageTree(user: Identity, root: Page) {
@@ -196,8 +197,10 @@ export async function duplicatePages(
           dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
         mkdirSync(dir, { recursive: true });
         const destination = resolve(dir, fid);
-        copyFileSync(resolve(dir, f.id), destination);
+        // Through the storage layer: the source may live only in the bucket.
+        copyFileSync((await localUpload(f.id)) ?? resolve(dir, f.id), destination);
         createdFiles.push(destination);
+        await publishUpload(fid);
         await run(
           "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
           fid,

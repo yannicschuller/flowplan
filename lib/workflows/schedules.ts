@@ -5,7 +5,7 @@
 // automation_runs entry: a leader change may run a tick twice, an event
 // still comes once. Retention runs here once a day as well.
 import { all, one, run, transaction } from "../db";
-import { isLeader } from "../cluster/leader";
+import { leaderDuty } from "../cluster/leader";
 import { workersPaused } from "../instance-read-only";
 import { latestSlot } from "../automation-schedule";
 import { databaseSettings } from "../database-settings";
@@ -142,9 +142,9 @@ export async function processWorkflowSchedules(now = Date.now()) {
 const holder = globalThis as { flowplanWorkflowSchedule?: ReturnType<typeof setInterval>; flowplanWorkflowRetentionDay?: string };
 export function startWorkflowSchedules() {
   if (holder.flowplanWorkflowSchedule) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("workflow-schedules", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       await processWorkflowSchedules();
       await flushNotices();
@@ -156,7 +156,7 @@ export function startWorkflowSchedules() {
     } catch (error) {
       console.error("Workflow schedules failed", error);
     }
-  };
+  });
   holder.flowplanWorkflowSchedule = setInterval(tick, 60_000);
   holder.flowplanWorkflowSchedule.unref?.();
   setTimeout(tick, 15_000).unref?.();

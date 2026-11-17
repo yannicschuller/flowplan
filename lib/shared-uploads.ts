@@ -8,6 +8,7 @@ import { recordScope } from "./record-share";
 import { enforceQuota } from "./instance-ops";
 import { takeAnonymousBudget } from "./anonymous-budget";
 import { limitShareRequests } from "./shared-content";
+import { publishUpload } from "./storage";
 
 export const MAX_GUEST_UPLOAD = 10 * 1024 * 1024;
 // Guests may add pictures, PDFs and plain text; nothing that runs in a browser.
@@ -96,6 +97,7 @@ export async function guestUpload(token: string, pageId: string, file: File) {
       } catch {}
     });
     writeFileSync(path, data, { flag: "wx" });
+    await publishUpload(fid);
     const name = sanitizeFileName(file.name, `datei.${allowed[file.type]}`);
     await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,NULL)",

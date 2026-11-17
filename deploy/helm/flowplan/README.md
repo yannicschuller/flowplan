@@ -1,219 +1,264 @@
 # Flowplan Helm chart
 
-Runs [Flowplan](https://flowplan.org) on Kubernetes: one pod with the image
-`ghcr.io/yannicschuller/flowplan`, a PersistentVolumeClaim for `/app/data`
-(SQLite database, uploads, keys), a Service and an optional Ingress.
+Runs [Flowplan](https://flowplan.org) on Kubernetes – from one pod with
+SQLite on a volume to several pods with high availability against
+PostgreSQL, Redis and S3 (cluster mode). Documentation for operators:
+[docs.flowplan.org/kubernetes](https://docs.flowplan.org/en/kubernetes).
 
-By default Flowplan keeps its data in SQLite, so the chart runs **exactly
-one replica** with the update strategy **Recreate**: the old pod stops before
-the new one starts. Updates have a short downtime. To scale out, use
-**cluster mode** (below): several pods against PostgreSQL, Redis and S3.
-For backups and moving between nodes, use the S3 settings (files mirrored,
-database replicated with Litestream) and/or the scheduled backups in the
-administration.
+- **One pod** (default, [`values-small.yaml`](values-small.yaml)): SQLite,
+  uploads and keys on a PersistentVolumeClaim, exactly one replica,
+  strategy `Recreate` (updates have a short downtime). Optionally S3 for the
+  files and a continuous Litestream replica of the database.
+- **Several pods** (`cluster.enabled`, [`values-ha.yaml`](values-ha.yaml)):
+  rolling updates without downtime, a PodDisruptionBudget, pods spread over
+  nodes, a schema Job before every upgrade. PostgreSQL, Redis and S3 are
+  required – the chart creates none of them (managed services or their own
+  charts).
+
+Secrets are **never values** of this chart: passwords, keys and connection
+strings come from Secrets you create, the chart only references them. The
+one exception is the setup token, which the chart can generate (below).
+
+## Architecture
+
+```text
+                    browsers, apps (HTTPS, server-sent events)
+                                   │
+                    ┌──────────────▼──────────────┐
+                    │ Ingress (nginx: no buffering,│
+                    │ 3600 s timeouts, body size)  │
+                    └──────────────┬──────────────┘
+                                   │ Service flowplan:80 → pods :3000
+                                   │ (round robin, no sticky sessions)
+        ┌──────────────────────────┼──────────────────────────┐
+        ▼                          ▼                          ▼
+ ┌─────────────┐            ┌─────────────┐            ┌─────────────┐
+ │ pod 1       │            │ pod 2       │            │ pod 3       │
+ │ (leader)    │            │             │            │             │
+ │ live hub    │◀── Redis ─▶│ live hub    │◀── Redis ─▶│ live hub    │
+ │ file cache  │  pub/sub   │ file cache  │  pub/sub   │ file cache  │
+ └──┬───┬───┬──┘            └──┬───┬───┬──┘            └──┬───┬───┬──┘
+    │   │   └──────────────────┼───┼───┴──────────────────┼───┼───┘
+    │   │      ┌───────────────┘   │                      │   │
+    │   └──────┼───────────────────┼──────────┐           │   │
+    ▼          ▼                   ▼          ▼           ▼   ▼
+ ┌────────────────────┐   ┌────────────────────┐   ┌────────────────────┐
+ │ PostgreSQL         │   │ Redis              │   │ S3 bucket          │
+ │ all data; leader   │   │ live updates,      │   │ all files (sealed  │
+ │ lock + term; queues│   │ presence, rate     │   │ with the key), the │
+ │ (SKIP LOCKED);     │   │ limits, heartbeats │   │ parts of uploads   │
+ │ the source of truth│   │ (no persistence)   │   │ under tmp/         │
+ └────────────────────┘   └────────────────────┘   └────────────────────┘
+```
+
+- **Live editing between pods:** each pod delivers changes to the browsers
+  connected to it (server-sent events) and publishes them through Redis to
+  the others, which deliver them to theirs. PostgreSQL holds the documents;
+  the messages are only signals. A message lost – Redis restarting, a pod
+  stopping – is caught up by the browser's next check (at most 20 s; at
+  once when its stream reconnects). Two people on different pods edit the
+  same document as on one.
+- **Jobs:** exactly one pod leads (an advisory lock in PostgreSQL; a new
+  leader takes over within `FLOWPLAN_LEADER_INTERVAL`, 5 s). Only the leader
+  runs the timed jobs (reminders, automations, search index, retention,
+  digests, backups, syncs …). Each round is fenced: taking the lead raises
+  a term in the database, a round starts only while the term is still its
+  own, and each job holds its own lock while it runs – a round of an old
+  leader that lost its connection is never doubled by the new one. Queues
+  (mail, push, webhooks, chat apps, workflow steps, the file queue) are
+  claimed job by job by every pod (`FOR UPDATE SKIP LOCKED`, leases).
+- **Files:** a request that stores a file answers only once the file is in
+  the bucket; every pod reads through its local cache, fetching from the
+  bucket what it does not have. Uploads in several requests (long
+  transcriptions, meeting and notebook recordings, an import between its
+  preview and the import) keep their parts in the bucket under
+  `<prefix>/tmp/`, so each request may reach another pod.
+- **Stopping a pod:** readiness turns 503 at once, the `preStop` pause lets
+  the load balancer catch up, live streams close (browsers reconnect to
+  another pod), open requests and running jobs finish, the uploads still
+  under way and the due file queue are drained, the workflow leases and the
+  lead go back – all within `terminationGracePeriodSeconds`.
 
 ## Install
 
-The chart lives in the repository (it is not published to a chart repository
-yet):
+The chart lives in the repository (it is not published to a chart
+repository yet). One pod:
 
 ```sh
 git clone https://github.com/yannicschuller/flowplan.git
 cd flowplan
-
-# Secrets in a Secret of their own (keys are environment variables)
 kubectl create namespace flowplan
 kubectl -n flowplan create secret generic flowplan-env \
-  --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
-  --from-literal=OIDC_CLIENT_SECRET=change-me
-
-helm install flowplan deploy/helm/flowplan -n flowplan \
-  --set appUrl=https://flowplan.example.org \
-  --set existingSecret=flowplan-env \
-  --set ingress.enabled=true \
-  --set ingress.className=nginx \
-  --set 'ingress.hosts[0].host=flowplan.example.org' \
-  --set 'ingress.hosts[0].paths[0].path=/' \
-  --set 'ingress.tls[0].secretName=flowplan-tls' \
-  --set 'ingress.tls[0].hosts[0]=flowplan.example.org'
-
+  --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+# Copy values-small.yaml, set your address and host names, then:
+helm install flowplan deploy/helm/flowplan -n flowplan -f my-values.yaml
 helm test flowplan -n flowplan
-
 # The first account (administrator) is created with the setup link:
-echo "https://flowplan.example.org/register?setup=$(kubectl -n flowplan get secret flowplan \
+echo "https://flowplan.example.org/register?setup=$(kubectl -n flowplan get secret flowplan-setup \
   -o jsonpath='{.data.FLOWPLAN_SETUP_TOKEN}' | base64 -d)"
 ```
 
-Or keep the settings in a file (`helm install flowplan deploy/helm/flowplan -f my-values.yaml`):
+Several pods: create the Secrets listed at the top of
+[`values-ha.yaml`](values-ha.yaml) (database and Redis addresses, S3 keys,
+the shared keys, the setup token), adjust the file and install it the same
+way. The pods start once the schema Job has run.
 
-```yaml
-appUrl: https://flowplan.example.org
-existingSecret: flowplan-env
-oidc:
-  issuer: https://id.example.org/realms/company
-  clientId: flowplan
-  adminGroup: flowplan-admins
-smtp:
-  host: smtp.example.org
-  user: flowplan
-  from: "Flowplan <flowplan@example.org>"
-s3:
-  bucket: flowplan
-  endpoint: https://s3.example.org
-env:
-  SESSION_HOURS: "8"
-ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
-    # Imports and archives may be up to 100 MB.
-    nginx.ingress.kubernetes.io/proxy-body-size: 110m
-  hosts:
-    - host: flowplan.example.org
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: flowplan-tls
-      hosts:
-        - flowplan.example.org
-persistence:
-  size: 20Gi
-```
+`appUrl` is required: the address exactly as typed in the browser. Without
+it the chart uses the first ingress host (https when TLS is configured) and
+fails otherwise. With single sign-on, register `<appUrl>/api/auth/callback`
+as redirect URI at the identity provider.
 
-`appUrl` is required: the address exactly as typed in the browser. Without it
-the chart uses the first ingress host (https when TLS is configured) and
-fails otherwise. With single sign-on, register
-`<appUrl>/api/auth/callback` as redirect URI at the identity provider.
+## Values
 
-## Cluster mode (several pods)
-
-With `cluster.enabled=true` the chart runs `cluster.replicas` pods (rolling
-updates, a PodDisruptionBudget, pods spread over nodes) against
-**PostgreSQL**, **Redis** and **S3 object storage** – all three required,
-as are keys every pod shares (`cluster.keys`); a pod refuses to start
-without one, and the chart refuses to render. The
-chart creates none of them: use managed services or their own charts, and
-pass the connection strings as references to a Secret you create (the
-chart never holds them):
-
-```sh
-kubectl -n flowplan create secret generic flowplan-cluster \
-  --from-literal=DATABASE_URL='postgres://flowplan:…@postgres:5432/flowplan' \
-  --from-literal=REDIS_URL='redis://:…@redis-master:6379/0'
-kubectl -n flowplan create secret generic flowplan-env \
-  --from-literal=S3_ACCESS_KEY_ID=… --from-literal=S3_SECRET_ACCESS_KEY=…
-# The keys every pod shares (push keys: npx web-push generate-vapid-keys).
-kubectl -n flowplan create secret generic flowplan-keys \
-  --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
-  --from-literal=WEB_PUSH_PUBLIC_KEY=… --from-literal=WEB_PUSH_PRIVATE_KEY=…
-
-helm install flowplan deploy/helm/flowplan -n flowplan \
-  --set appUrl=https://flowplan.example.org \
-  --set existingSecret=flowplan-env \
-  --set cluster.enabled=true \
-  --set cluster.replicas=3 \
-  --set cluster.database.existingSecret=flowplan-cluster \
-  --set cluster.redis.existingSecret=flowplan-cluster \
-  --set cluster.keys.existingSecret=flowplan-keys \
-  --set s3.bucket=flowplan --set s3.endpoint=https://s3.example.org
-```
-
-- **Database role:** let the role in `DATABASE_URL` own the database (it
-  creates tables, functions and triggers, and installs pg_trgm) but **not
-  be a superuser** – a superuser can run programs on the database host,
-  and so could a flaw in the app. Many Postgres charts and images make
-  their configured user a superuser; create a separate role instead, e.g.
-  as the administrator:
-  `CREATE ROLE flowplan LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '…';`
-  `CREATE DATABASE flowplan OWNER flowplan;` and in that database
-  `CREATE SCHEMA flowplan_ext AUTHORIZATION flowplan; CREATE EXTENSION pg_trgm SCHEMA flowplan_ext;`
-  (pgvector likewise, where the server has it).
-- **Schema:** a Job (`pre-install`/`pre-upgrade` hook) runs
-  `node /app/scripts/db-schema.mjs` before the pods of a new version start – it
-  adds what the version needs and never drops anything. Without it
-  (`cluster.migration.enabled=false`) the pods apply it at their first
-  start, one after the other.
-- **Probes:** liveness on `/api/health/live`, readiness on
-  `/api/health/ready` (database, Redis, bucket; 503 while a pod stops, after
-  which it waits `cluster.preStopSeconds` before Next.js closes).
-- **Shared keys:** without one encryption key and one web push key pair
-  for all pods, each would generate its own in its `/app/data`: secrets
-  sealed on one pod (two-factor, stored API keys, unlocked share links)
-  would not open on another, and push would fail. Keep a copy of the
-  encryption key apart from the backups.
-- **No volume:** `/app/data` is a per-pod cache (`emptyDir`,
-  `cluster.cacheSizeLimit`); files live in the bucket, backups are
-  PostgreSQL's (no Litestream).
-- **Connections:** each pod opens up to `cluster.poolSize` connections plus
-  two of its own (leader election, notifications); keep
-  `replicas × (poolSize + 2)` below the server's `max_connections`.
-- **Ingress:** live editing keeps server-sent event streams open; with
-  ingress-nginx set `nginx.ingress.kubernetes.io/proxy-buffering: "off"`
-  and `nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"`. No sticky
-  sessions are needed.
-- Administration → Monitoring → System lists the pods, the leader, the
-  pool of each pod and the shared queues.
-
-## Settings
+### General
 
 | Value | Default | Meaning |
 | --- | --- | --- |
 | `image.repository` | `ghcr.io/yannicschuller/flowplan` | Image |
-| `image.tag` | chart `appVersion` | Flowplan version (`0.4.2`, `0.4`, `latest`, `beta`) |
+| `image.tag` | chart `appVersion` | Flowplan version (`0.9.9`, `0.9`, `latest`, `beta`) |
+| `image.pullPolicy` | `IfNotPresent` | |
+| `imagePullSecrets` | `[]` | |
+| `nameOverride`, `fullnameOverride` | – | Names of the objects |
 | `appUrl` | – | Public address (`APP_URL`) |
 | `localLogin` | `true` | E-mail + password and passkeys (`FLOWPLAN_LOCAL_LOGIN`) |
-| `oidc.*` | – | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES`, `OIDC_GROUPS_CLAIM`, `OIDC_ADMIN_GROUP`, `OIDC_ALLOWED_GROUP` |
-| `smtp.*` | – | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` |
-| `s3.*` | – | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_PREFIX`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
-| `encryptionKey` | – | `FLOWPLAN_ENCRYPTION_KEY` |
-| `setupToken` | generated | `FLOWPLAN_SETUP_TOKEN`: the first account only via `<appUrl>/register?setup=<token>`. Empty: a random token, kept across upgrades (with `localLogin`) |
-| `existingSecret` | – | Secret whose keys are environment variables; wins over the values above |
+| `setupToken.existingSecret`, `.key` | –, `FLOWPLAN_SETUP_TOKEN` | Your Secret with the setup token (recommended with Argo CD, Flux and other tools that render without access to the cluster) |
+| `setupToken.generate` | `true` | Without `existingSecret`: the chart makes `<fullname>-setup` with a random token once, keeps it on upgrades (lookup) and on uninstall |
+| `oidc.issuer`, `.clientId`, `.scopes`, `.groupsClaim`, `.adminGroup`, `.allowedGroup` | –, `flowplan`, `openid profile email groups`, `groups`, `flowplan-admins`, – | Single sign-on; the client secret as `OIDC_CLIENT_SECRET` in `existingSecret` |
+| `smtp.host`, `.port`, `.user`, `.from` | –, `587`, –, – | E-mail; the password as `SMTP_PASSWORD` in `existingSecret` |
+| `s3.bucket`, `.endpoint`, `.region`, `.prefix` | –, AWS, `us-east-1`, `flowplan` | Object storage |
+| `s3.existingSecret`, `.accessKeyIdKey`, `.secretAccessKeyKey` | –, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | The S3 keys (or put them into `existingSecret`) |
+| `existingSecret` | – | A Secret whose keys become environment variables (`OIDC_CLIENT_SECRET`, `SMTP_PASSWORD`, `FLOWPLAN_ENCRYPTION_KEY`, `FLOWPLAN_METRICS_TOKEN`, …); wins over the plain settings |
 | `env` | `{}` | Further settings from [.env.example](../../../.env.example) as `NAME: value` |
 | `extraEnv`, `extraEnvFrom` | `[]` | Environment entries in Kubernetes form |
+
+### One pod
+
+| Value | Default | Meaning |
+| --- | --- | --- |
 | `persistence.enabled` | `true` | PVC for `/app/data` (kept on `helm uninstall`) |
 | `persistence.existingClaim` | – | Use an existing PVC |
-| `persistence.storageClass` | cluster default | `-` for none |
-| `persistence.size` | `10Gi` | Size of the volume |
-| `service.type`, `service.port` | `ClusterIP`, `80` | Service |
-| `ingress.*` | disabled | Ingress (`networking.k8s.io/v1`) |
-| `resources` | 100m / 256Mi, limit 1Gi | Requests and limits |
-| `podSecurityContext`, `securityContext` | uid/gid 1000, no privileges | The user `node` of the image; keep `runAsUser` set (the image declares no `USER`) |
-| `startupProbe`, `livenessProbe`, `readinessProbe` | on | HTTP checks on `/api/health` |
-| `cluster.enabled` | `false` | Cluster mode (above) instead of one pod with SQLite |
-| `cluster.replicas` | `2` | Pods in cluster mode |
-| `cluster.database.existingSecret`, `.key` | –, `DATABASE_URL` | Secret holding the PostgreSQL URL (required in cluster mode) |
-| `cluster.redis.existingSecret`, `.key` | –, `REDIS_URL` | Secret holding the Redis URL (required in cluster mode) |
-| `cluster.keys.existingSecret` | – | Secret holding `FLOWPLAN_ENCRYPTION_KEY`, `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` (required in cluster mode; key names: `cluster.keys.encryptionKey`, `.webPushPublicKey`, `.webPushPrivateKey`) |
-| `cluster.poolSize` | `10` | PostgreSQL connections per pod (`FLOWPLAN_PG_POOL`) |
-| `cluster.migration.enabled` | `true` | Schema Job before install/upgrade |
-| `cluster.podDisruptionBudget.minAvailable` | `1` | PodDisruptionBudget (with 2+ replicas) |
-| `cluster.preStopSeconds` | `5` | Pause before a pod stops (load balancer catches up) |
+| `persistence.storageClass` | cluster default | `-` for none; a block or local volume (no NFS) |
+| `persistence.accessModes` | `[ReadWriteOnce]` | |
+| `persistence.size` | `10Gi` | |
+| `persistence.annotations` | `{}` | |
 
-Secret values given directly (`oidc.clientSecret`, `smtp.password`,
-`s3.accessKeyId`, `s3.secretAccessKey`, `encryptionKey`) end up in a Secret
-created by the chart. Prefer `existingSecret`, so they stay out of values
-files and the Helm release history.
+### Cluster mode
 
-## Notes
+| Value | Default | Meaning |
+| --- | --- | --- |
+| `cluster.enabled` | `false` | Several pods against PostgreSQL, Redis and S3 |
+| `cluster.replicas` | `2` | Pods (one per ~25 people active at the same time, plus a spare) |
+| `cluster.database.existingSecret`, `.key` | –, `DATABASE_URL` | Secret with the PostgreSQL address (required) |
+| `cluster.database.schema` | – | PostgreSQL schema other than `public` (`FLOWPLAN_PG_SCHEMA`) |
+| `cluster.database.sessionUrl.existingSecret`, `.key` | –, `DATABASE_SESSION_URL` | Behind PgBouncer in transaction mode: an address with sessions of their own (LISTEN, the leader lock, the schema step, pg_dump) |
+| `cluster.redis.existingSecret`, `.key` | –, `REDIS_URL` | Secret with the Redis address (required) |
+| `cluster.keys.existingSecret` | – | Secret with `FLOWPLAN_ENCRYPTION_KEY`, `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` (required; key names: `cluster.keys.encryptionKey`, `.webPushPublicKey`, `.webPushPrivateKey`) |
+| `cluster.poolSize` | `10` | PostgreSQL connections per pod (`FLOWPLAN_PG_POOL`); keep `replicas × (poolSize + 3)` below `max_connections` |
+| `cluster.readyRequire` | `database,objectStorage` | Which shared services decide readiness (`FLOWPLAN_READY_REQUIRE`); with `redis` in it, a Redis outage takes every pod out of the rotation |
+| `cluster.preStopSeconds` | `5` | Pause before a pod stops (the load balancer catches up) |
+| `cluster.cacheSizeLimit` | `5Gi` | The per-pod cache (`emptyDir`); imports are staged there too |
+| `cluster.cacheMaxMb` | 70 % of `cacheSizeLimit` | Above this, the least used files leave the cache (`FLOWPLAN_CACHE_MAX_MB`) |
+| `cluster.migration.enabled` | `true` | Schema Job (`pre-install`, `pre-upgrade`) |
+| `cluster.migration.backoffLimit`, `.activeDeadlineSeconds`, `.resources` | `3`, `900`, 100m/256Mi | |
+| `cluster.podDisruptionBudget.enabled`, `.minAvailable` | `true`, `1` | With 2+ replicas |
+| `cluster.spreadOverNodes` | `true` | Topology spread over nodes (preferred) |
 
-- **Storage:** use a block or local volume (`ReadWriteOnce`). SQLite on
-  network file systems such as NFS can corrupt the database.
-- **Reverse proxy:** Flowplan trusts one proxy in front by default
-  (`FLOWPLAN_TRUSTED_PROXIES=1`, for the client address in rate limits). Set
-  it in `env` when there are more (e.g. a load balancer in front of the
-  ingress controller).
-- **Updates:** `helm upgrade` with a new `image.tag` (or a newer chart).
-  The pod is replaced; the database is migrated on start.
-- **Metrics:** set `FLOWPLAN_METRICS_TOKEN` (at least 16 characters, best in
-  `existingSecret`) and scrape `/api/metrics` with that bearer token. The
-  same token unlocks the details of `/api/health`; the probes only need its
-  status code.
+### Network, security, resources
+
+| Value | Default | Meaning |
+| --- | --- | --- |
+| `service.type`, `.port`, `.annotations` | `ClusterIP`, `80`, `{}` | |
+| `ingress.enabled` | `false` | Ingress (`networking.k8s.io/v1`) |
+| `ingress.className` | – | e.g. `nginx` |
+| `ingress.nginxDefaults` | `true` | ingress-nginx annotations: `proxy-buffering: "off"`, `proxy-request-buffering: "off"`, `proxy-read-timeout`/`proxy-send-timeout: "3600"`, `proxy-body-size` |
+| `ingress.bodySize` | `110m` | Request body limit (uploads; raise for large imports, e.g. `2g`) |
+| `ingress.annotations` | `{}` | Further annotations; win over the defaults |
+| `ingress.hosts`, `ingress.tls` | `flowplan.example.org`, `[]` | |
+| `serviceAccount.create`, `.name`, `.annotations`, `.automount` | `true`, –, `{}`, `false` | Flowplan does not use the Kubernetes API |
+| `podAnnotations`, `podLabels` | `{}` | |
+| `podSecurityContext` | uid/gid 1000, non-root, `RuntimeDefault` seccomp | The image's user `node` (`USER 1000:1000`) |
+| `securityContext` | no privilege escalation, no capabilities, read-only root | |
+| `scratch.tmpSizeLimit`, `.nextCacheSizeLimit`, `.homeSizeLimit` | `2Gi`, `512Mi`, `64Mi` | `emptyDir`s for `/tmp`, `/app/.next/cache` and `/home/node` (the read-only root's writable places) |
+| `resources` | requests 1 CPU / 2Gi, limit 4Gi memory | From the sizing guide; no CPU limit (throttling slows live editing) |
+| `startupProbe`, `livenessProbe`, `readinessProbe` | on | One pod: `/api/health`. Cluster: `/api/health/live` (startup, liveness) and `/api/health/ready` (readiness: opening steps and schema done, database, `readyRequire`) |
+| `terminationGracePeriodSeconds` | `30` | The graceful stop; Flowplan uses this less `preStopSeconds` and 5 s (`FLOWPLAN_SHUTDOWN_SECONDS`) |
+| `nodeSelector`, `tolerations`, `affinity` | – | |
+
+### Monitoring and network policy
+
+| Value | Default | Meaning |
+| --- | --- | --- |
+| `metrics.tokenSecret.name`, `.key` | `existingSecret`, `FLOWPLAN_METRICS_TOKEN` | The Secret with the metrics token (at least 16 characters) |
+| `metrics.serviceMonitor.enabled` | `false` | A `ServiceMonitor` (Prometheus Operator) for every pod |
+| `metrics.serviceMonitor.interval`, `.scrapeTimeout`, `.labels` | `30s`, `10s`, `{}` | e.g. `release: prometheus` for the operator's selector |
+| `networkPolicy.enabled` | `false` | Incoming traffic only on the HTTP port, from `ingressFrom` |
+| `networkPolicy.ingressFrom` | the namespace `ingress-nginx` | NetworkPolicyPeers (add Prometheus' namespace with the ServiceMonitor) |
+| `networkPolicy.restrictEgress`, `.egress` | `false`, `[]` | Outgoing traffic only to DNS and these rules (PostgreSQL, Redis, S3, SMTP, the OIDC provider …) |
+
+The values are checked by [`values.schema.json`](values.schema.json): a
+misspelled key or a secret value (`oidc.clientSecret`, `smtp.password`,
+`s3.secretAccessKey`, `encryptionKey` of chart 0.2) is refused with the
+key's name.
+
+## Metrics
+
+Every pod is scraped on its own. Its process figures (memory, CPU,
+connections of its pool, open live streams, uploads in flight, security
+events counted in memory, uptime, version) carry `instance_id` (the pod
+name); the installation's figures read from the database (pages, files,
+queues, workspaces …) only the leader reports, so `sum()` over the pods
+counts them once. `flowplan_metrics_shared` (1 on the leader) and
+`flowplan_leader` tell which pod that is.
+
+## Other ingress controllers
+
+`ingress.nginxDefaults` only concerns ingress-nginx; others ignore the
+annotations. What they need instead:
+
+- **Traefik:** does not buffer by default. Raise the entry point's
+  `respondingTimeouts.readTimeout`/`writeTimeout` (static configuration)
+  above an hour or to `0`, and the body limit with a `buffering`
+  middleware only if you use one.
+- **HAProxy Ingress:** `timeout-server` and `timeout-tunnel` of `3600s`
+  (annotations `haproxy.org/timeout-server`, `haproxy.org/timeout-tunnel`).
+- **Cloud load balancers:** GKE – a `BackendConfig` with `timeoutSec: 3600`;
+  AWS ALB – `alb.ingress.kubernetes.io/load-balancer-attributes:
+  idle_timeout.timeout_seconds=3600`; Azure Application Gateway –
+  `appgw.ingress.kubernetes.io/request-timeout: "3600"`.
+
+Without long timeouts the live streams are cut and reconnect every few
+seconds – editing still works, with more requests.
+
+## Not provided
+
+On purpose, the chart does **not** include: PostgreSQL, Redis or MinIO
+subcharts or operators (CloudNativePG, Zalando …), a HorizontalPodAutoscaler
+(scale with `cluster.replicas`; sessions are short requests and long
+streams, CPU is a poor signal), or separate worker pods (every pod serves
+requests and claims queue jobs; the leader runs the timed ones).
+
+## Upgrading from chart 0.2
+
+- Secret values are no longer accepted: move `oidc.clientSecret`,
+  `smtp.password`, `s3.accessKeyId`, `s3.secretAccessKey` and
+  `encryptionKey` into `existingSecret` (or `s3.existingSecret`). The
+  Secret named like the release is no longer made; `setupToken` is an
+  object now (`setupToken.existingSecret`), and an existing generated token
+  is carried over into `<fullname>-setup`.
+- The root file system is read-only (`/tmp`, `/app/.next/cache` and
+  `/home/node` are `emptyDir`s); the image needs Flowplan 0.9.9 or newer.
+- Resources follow the sizing guide (1 CPU, 2 GiB requested) – set
+  `resources` for smaller clusters.
+- The schema Job no longer switches off the pods' own schema check
+  (`FLOWPLAN_PG_SCHEMA_AUTO`); it stays as a safety net under the same lock.
+- `cluster.readyRequire` defaults to `database,objectStorage`.
 
 ## Develop
 
 ```sh
-helm lint deploy/helm/flowplan --set appUrl=https://flowplan.example.org
-helm template flowplan deploy/helm/flowplan --set appUrl=https://flowplan.example.org
+helm lint --strict deploy/helm/flowplan -f deploy/helm/flowplan/values-small.yaml
+helm lint --strict deploy/helm/flowplan -f deploy/helm/flowplan/values-ha.yaml
+helm template flowplan deploy/helm/flowplan -f deploy/helm/flowplan/values-ha.yaml | kubeconform -strict -summary
 ```
+
+CI does the same with pinned versions (`.github/workflows/helm.yml`).

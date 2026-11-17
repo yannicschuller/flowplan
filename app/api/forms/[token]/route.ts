@@ -20,6 +20,7 @@ import { createTicket, mailTicketLink } from "@/lib/service-desk";
 import { surveyClosed } from "@/lib/survey";
 import { readTextLimited } from "@/lib/request-body";
 import { mapAsync } from "../../../../lib/each-async";
+import { publishUpload } from "@/lib/storage";
 
 async function handlePOST(
   req: Request,
@@ -135,6 +136,7 @@ async function handlePOST(
           const data = stripLocation(raw, mime);
           writeFileSync(path, data);
           onTransactionRollback(() => unlinkSync(path));
+          await publishUpload(fid);
           await run(
             "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
             fid,

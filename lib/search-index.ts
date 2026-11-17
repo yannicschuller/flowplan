@@ -21,8 +21,8 @@ import { taggedRecords } from "./tag-fields";
 import { isClassicQuery, parseQuery, type ItemType } from "./collection-query";
 import { evaluateQuery } from "./collections";
 import { isShortTerm } from "./ai/chunks";
-import { isLeader } from "./cluster/leader";
 import { inArea, shiftArea } from "./server-metrics";
+import { leaderDuty } from "./cluster/leader";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -739,7 +739,7 @@ export async function refreshSearchIndex() {
 export function startSearchWorker() {
   if (runtime.flowplanSearchTimer) return;
   // Cluster mode: the leader only (lib/cluster/leader.ts).
-  const tick = () => void (isLeader() && drainSearchIndex());
+  const tick = () => void leaderDuty("search-index", () => drainSearchIndex());
   runtime.flowplanSearchTimer = setInterval(tick, 5000);
   runtime.flowplanSearchTimer.unref();
   tick();

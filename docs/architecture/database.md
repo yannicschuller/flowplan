@@ -1483,18 +1483,11 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
 
 ### What is left (open risks)
 
-- **Files written on one instance** are uploaded by that instance (NOTIFY,
-  then the queue). Until then (normally well under a second) other
-  instances wait up to 5 s in `ensureLocal`; paths that read the uploads
-  folder directly (exports, archives, some importers, publication copies)
-  do not fetch from the bucket yet and can miss a file another instance
-  wrote. A write-through upload (or reading through `ensureLocal`
-  everywhere) closes this. If an instance dies before uploading, its files
-  are lost (the queue gives up after its retries).
-- **Leader duties during a handover:** a round already running on an old
-  leader that lost its connection can overlap with the new leader's first
-  round. The duties are idempotent or claim their rows, but none is
-  checked against that.
+- ~~Files written on one instance~~ – closed in §14b: written through to
+  the bucket before the request answers, every reader through the storage
+  layer.
+- ~~Leader duties during a handover~~ – closed in §14b: fenced rounds (term
+  and per-duty lock).
 - **Process-local state that is still per instance:** the setup restore
   and instance move progress (`lib/setup-restore.ts`, `lib/instance-move.ts`),
   their staged files in the local data folder (an `emptyDir` in Kubernetes:
@@ -1529,10 +1522,71 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
   per instance, and readiness turns 503 on every instance at once – the
   balancer has nothing left. `FLOWPLAN_READY_REQUIRE=database` (or
   `database,objectStorage`) keeps instances ready without Redis; the
-  default requires all three, as decided. Redis Sentinel/Cluster are not
+  app's default requires all three, the Helm chart's (§14b) leaves Redis
+  out. Redis Sentinel/Cluster are not
   supported by the small client (one endpoint; a managed Redis with a
   stable address works).
 - `scripts/check-promises.mjs` is still a tool, not a CI gate.
+
+## 14b. Kubernetes: one pod to several with HA (Nov 2026)
+
+What the Helm chart (`deploy/helm/flowplan`, its README) and the app need
+for several pods that can come and go at any time:
+
+- **Files: the bucket is the truth (cluster mode).** `publishUpload()`
+  (lib/storage.ts) puts the object into the bucket – sealed, three tries –
+  before the request that stored the file answers; a failure is a 503 and
+  rolls the transaction back. Every writer calls it after writing the file
+  (`writeUpload`/`copyUpload` for new code), the queue's job then only
+  finds the object sealed with the current key and drops itself. Every
+  reader goes through `localUpload`/`readUpload`/`uploadSource`
+  (`ensureLocal` underneath; `tests/cluster-storage.test.ts` fails on a
+  direct read of the uploads folder); whole-instance copies (instance
+  backup, SFTP mirror, move) list the files table and fetch what is
+  missing. The cache is pruned above `FLOWPLAN_CACHE_MAX_MB` (least
+  recently used first; the chart sets 70 % of the `emptyDir` limit). A
+  stopping instance awaits its uploads under way and drains the due queue.
+  The single container is unchanged (local folder first, queue in the
+  background).
+- **Uploads in several requests** (lib/staging.ts): transcription chunks,
+  meeting pieces with their live and transcript state, notebook recordings
+  (chunks named by offset; a retry from inside a chunk cuts it there) and
+  an import between preview and import (parts of 16 MB) keep their parts
+  in the data folder of a single container and under `<prefix>/tmp/<area>/`
+  in the bucket in cluster mode, sealed, removed by each area's sweep after
+  its time limit (a bucket lifecycle rule on `tmp/` is the safety net). No
+  sticky sessions. Background jobs: a job running on another pod is marked
+  alive every 30 s and counts as interrupted only when that stops.
+- **Fenced leader rounds** (lib/cluster/leader.ts, `leaderDuty(name, fn)`):
+  taking the lock raises `flowplan_meta.leader_term`; a round starts only
+  while the database's term is the instance's own and with the duty's own
+  advisory lock on a second session connection (`flowplan-duties`), so a
+  round of a leader that lost its session connection blocks the next
+  leader's round of the same duty until it ends. Every timed worker runs
+  through it. Test: tests/cluster.test.ts fencing.
+- **Graceful shutdown** (lib/cluster/runtime.ts): Next.js 16 keeps its own
+  SIGTERM handler (closes the server, awaits after() callbacks, then
+  `process.exit(143)`); Flowplan's handler runs beside it (readiness 503,
+  no new rounds, streams closed) and holds that exit until its tasks are
+  done – running rounds and workflow steps, uploads and the file queue, the
+  workflow leases, the lead and the heartbeat, the bus and the sessions –
+  bounded by `FLOWPLAN_SHUTDOWN_SECONDS` (the chart: grace period − preStop
+  − 5 s). `NEXT_MANUAL_SIG_HANDLE` was not taken: Next.js's drain (server
+  close and after() callbacks) is not reachable from the app then. Test:
+  tests/cluster-runtime.test.ts with a stand-in for Next.js's handler;
+  `npm run check:standalone` with the real server.
+- **Readiness** waits for the opening steps: schema, staged restore, storage
+  queue, data steps (a failed one is named and tried again once a minute),
+  and a database schema at least this version's.
+- **Metrics:** per-pod process figures with `instance_id`; the
+  installation's figures from the database only on the leader.
+- **Image:** `USER 1000:1000`; the entrypoint keeps working started as root
+  (PUID/PGID, `user: 0:0`) and as 1000. The chart runs it on a read-only
+  root (`emptyDir`s for /tmp, /app/.next/cache, /home/node).
+
+Not tested here: a real Kubernetes cluster (no container runtime in the
+development environment) – the chart is linted, rendered with both examples
+and validated with kubeconform in CI (.github/workflows/helm.yml).
 
 ## 15. Sizing (load test of cluster mode)
 

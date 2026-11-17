@@ -1,6 +1,5 @@
-import { ensureLocal } from "./storage";
+import { localUpload, uploadPath } from "./storage";
 import { open } from "node:fs/promises";
-import { resolve } from "node:path";
 import { Readable } from "node:stream";
 import { HttpError } from "./auth";
 
@@ -9,13 +8,10 @@ export async function fileResponse(
   file: { id: string; name: string; mime: string },
 ) {
   let handle;
-  // A new container may not have the file yet; the bucket has it.
-  await ensureLocal(file.id);
+  // A new container (or another instance) may not have the file yet; the
+  // bucket has it.
   try {
-    handle = await open(
-      resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", file.id),
-      "r",
-    );
+    handle = await open((await localUpload(file.id)) ?? uploadPath(file.id), "r");
   } catch {
     throw new HttpError(404, "Datei fehlt.");
   }

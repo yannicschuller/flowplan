@@ -9,16 +9,18 @@
 //   DATABASE_URL=postgres://… node scripts/db-schema.mjs          (from the repository)
 //   DATABASE_URL=postgres://… node /app/scripts/db-schema.mjs     (in the image)
 //
-// FLOWPLAN_PG_SCHEMA picks the schema (namespace; default public).
+// FLOWPLAN_PG_SCHEMA picks the schema (namespace; default public). Behind
+// PgBouncer in transaction mode the session commands (search_path) need a
+// session of their own: DATABASE_SESSION_URL is used when set.
 // First: started as root (docker exec, the cluster compose's schema
 // service), continue as PUID:PGID (#193).
 import "./drop-root.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import pg from "pg";
 
-const url = process.env.DATABASE_URL?.trim();
+const url = process.env.DATABASE_SESSION_URL?.trim() || process.env.DATABASE_URL?.trim();
 if (!/^postgres(ql)?:\/\//i.test(url || "")) {
-  console.error("DATABASE_URL=postgres://… is needed.");
+  console.error("DATABASE_URL=postgres://… (or DATABASE_SESSION_URL) is needed.");
   process.exit(2);
 }
 const schemaName = process.env.FLOWPLAN_PG_SCHEMA?.trim() || "public";

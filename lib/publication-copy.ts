@@ -15,6 +15,7 @@ import { createPage } from "./seed";
 import { imageFileId } from "./page-appearance";
 import { fileIdOf } from "./file-cells";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
+import { localUpload, publishUpload } from "./storage";
 
 // Visitors may copy a publication into their own workspace. Only what the
 // publication shows is copied: published pages, public properties, published
@@ -65,9 +66,13 @@ export async function copyPublication(user: Identity, input: unknown) {
     const target = pageIds.get(file.page_id);
     if (!target) return "";
     const nid = id();
+    // Through the storage layer: the source may live only in the bucket.
+    const source = await localUpload(fid);
+    if (!source) throw new HttpError(404, "Datei fehlt.");
     mkdirSync(dir, { recursive: true });
-    copyFileSync(resolve(dir, fid), resolve(dir, nid));
+    copyFileSync(source, resolve(dir, nid));
     onTransactionRollback(() => unlinkSync(resolve(dir, nid)));
+    await publishUpload(nid);
     const meta = (await one<{ name: string; mime: string; size: number }>(
       "SELECT name,mime,size FROM files WHERE id=?",
       fid,

@@ -9,7 +9,7 @@ import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { Temporal } from "./date-values";
 import type { Identity, Page } from "./types";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => {
@@ -118,15 +118,15 @@ export async function processPageReviews(now = Date.now()) {
 const runtime = globalThis as typeof globalThis & { flowplanReviewTimer?: ReturnType<typeof setInterval> };
 export function startReviewWorker(onSent: () => void) {
   if (runtime.flowplanReviewTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("page-reviews", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       if (await processPageReviews()) onSent();
     } catch (error) {
       console.error("Page reviews failed", error);
     }
-  };
+  });
   runtime.flowplanReviewTimer = setInterval(tick, 60 * 60_000);
   runtime.flowplanReviewTimer.unref();
   setTimeout(tick, 30_000).unref();

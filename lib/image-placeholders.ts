@@ -11,8 +11,6 @@
 // plaintext. Who may see a placeholder follows the file itself (the same
 // rules as GET /api/files/<id>); everything else is left out of the answer,
 // indistinguishable from a file that does not exist.
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { all, one, run } from "./db";
 import { avatarFor } from "./avatars";
 import { decodeImageInSlices } from "./image-decode";
@@ -20,7 +18,7 @@ import { isEncryptedPage } from "./e2ee-server";
 import { requireUnlocked } from "./journal-extras";
 import { requirePage } from "./permissions";
 import { hiddenFileIds } from "./row-files";
-import { ensureLocal, storageConfig } from "./storage";
+import { readUpload, storageConfig } from "./storage";
 import { rgbaToThumbHash, thumbHashToBase64 } from "./thumbhash";
 import type { Identity, Page } from "./types";
 
@@ -111,8 +109,8 @@ async function backfillFile(fileId: string) {
   if (!file || file.thumbhash !== null) return;
   if (!(await eligible(file)) || file.size > MAX_BYTES) return await storePlaceholder(file.id, null);
   // Not here: gone for good, unless the bucket may still have it (asked again later).
-  if (!(await ensureLocal(file.id))) return storageConfig() ? undefined : (await storePlaceholder(file.id, null));
-  const data = await readFile(resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", file.id));
+  const data = await readUpload(file.id);
+  if (!data) return storageConfig() ? undefined : (await storePlaceholder(file.id, null));
   await storePlaceholder(file.id, await computePlaceholder(data));
 }
 

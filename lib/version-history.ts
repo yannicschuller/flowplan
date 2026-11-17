@@ -17,7 +17,7 @@ import {
 } from "./text-diff";
 import { cellText } from "./cell-text";
 import type { Field, Identity } from "./types";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 // Text blocks of stored document HTML, one entry per paragraph-like element.
@@ -238,9 +238,9 @@ const runtime = globalThis as typeof globalThis & {
 };
 export async function startRetentionWorker() {
   if (runtime.flowplanRetentionTimer) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("retention", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     try {
       await pruneSnapshots();
       // Pages, spaces, records and templates after the trash period (#123).
@@ -252,7 +252,7 @@ export async function startRetentionWorker() {
     } catch (error) {
       console.error("Snapshot retention failed", error);
     }
-  };
+  });
   runtime.flowplanRetentionTimer = setInterval(tick, 6 * 3600 * 1000);
   runtime.flowplanRetentionTimer.unref();
   await tick();

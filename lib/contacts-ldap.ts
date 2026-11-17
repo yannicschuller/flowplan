@@ -57,8 +57,9 @@ import {
 } from "./ldap";
 import { CONTACT_FIELDS, MISSING_TAGS, ensureOptions, requireContactsDatabase, syncBirthdaySeries, type ContactKey } from "./contacts";
 import type { Field, Identity } from "./types";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { publishUpload } from "./storage";
 
 export const DEFAULT_PERSON_FILTER = "(&(|(objectClass=inetOrgPerson)(objectClass=user)(objectClass=contact))(!(objectClass=computer)))";
 const OU_FILTER = "(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=organization)(objectClass=domain))";
@@ -713,6 +714,7 @@ export async function storeContactPhoto(page: { id: string; workspace_id: string
       unlinkSync(resolve(dir, fid));
     } catch {}
   });
+  await publishUpload(fid);
   await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
@@ -743,17 +745,17 @@ export async function syncAllContactSources(now = Date.now()) {
 const runtime = globalThis as unknown as { flowplanContactsLdapTimer?: ReturnType<typeof setInterval> };
 export function startContactsSyncWorker() {
   if (runtime.flowplanContactsLdapTimer || !process.env.LDAP_URL?.trim()) return;
-  const tick = () => void syncAllContactSources().catch((error) => console.error("LDAP contacts sync failed", error instanceof Error ? error.message : error));
+  const sync = () => syncAllContactSources().catch((error) => console.error("LDAP contacts sync failed", error instanceof Error ? error.message : error));
   // Checked every 15 minutes; each run waits for the configured interval.
   let last = 0;
-  const due = async () => {
+  const due = () => leaderDuty("contacts-ldap", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || (await workersPaused())) return;
+    if (await workersPaused()) return;
     const minutes = (await contactsLdapSettings()).intervalMinutes;
     if (Date.now() - last < minutes * 60_000 - 30_000) return;
     last = Date.now();
-    tick();
-  };
+    await sync();
+  });
   setTimeout(due, 90_000).unref?.();
   runtime.flowplanContactsLdapTimer = setInterval(due, 15 * 60_000);
   runtime.flowplanContactsLdapTimer.unref?.();

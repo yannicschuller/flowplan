@@ -18,6 +18,8 @@ import { ZipFile } from "yazl";
 import { SCHEMA_VERSION, id, run, sql } from "./db";
 import { HttpError } from "./auth";
 import { ForeignObjectsError, dumpSummary } from "./pg-backup";
+import { localUploadNames } from "./storage";
+import { clusterMode } from "./cluster/config";
 
 // Whole-instance backups for admins: a consistent SQLite copy, all uploads
 // and a manifest, streamed as ZIP. Restores are validated and applied on
@@ -34,9 +36,12 @@ export async function instanceBackupStream() {
   const copy = resolve(tmp, `instance-${id()}.sqlite`);
   await snapshotDatabase(copy);
   const uploads = resolve(dir, "uploads");
-  const files = existsSync(uploads)
-    ? readdirSync(uploads).filter((n) => /^[A-Za-z0-9_-]{1,100}$/.test(n))
-    : [];
+  // Cluster mode: the folder is only a cache – every file, fetched first.
+  const files = clusterMode()
+    ? await localUploadNames()
+    : existsSync(uploads)
+      ? readdirSync(uploads).filter((n) => /^[A-Za-z0-9_-]{1,100}$/.test(n))
+      : [];
   const zip = new ZipFile();
   zip.addBuffer(
     Buffer.from(

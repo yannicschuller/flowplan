@@ -96,6 +96,7 @@ import { cleanHtml, htmlState } from "./document-server";
 import type { Identity, Page, Field, Space } from "./types";
 import { MANIFEST_LIMIT, MANIFEST_TOO_LARGE, MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
+import { publishUpload, uploadSource } from "./storage";
 
 export const ARCHIVE_LIMIT = 100 * 1024 * 1024;
 // Workspace archives stream files from and to disk, so they may be large.
@@ -707,11 +708,7 @@ async function snapshotFor(user: Identity, wid: string) {
         "SELECT id,page_id,name,mime,size FROM files WHERE page_id=?",
         p.id,
       )).filter((f) => !hiddenFiles.has(f.id)), async (f) => {
-        const path = resolve(
-          process.env.FLOWPLAN_DATA_DIR || "./data",
-          "uploads",
-          f.id,
-        );
+        const path = (await uploadSource(f.id));
         let size: number;
         try {
           size = statSync(path).size;
@@ -1342,6 +1339,7 @@ async function importEntries(
         if (Buffer.isBuffer(entry)) writeFileSync(path, entry, { flag: "wx" });
         else copyFileSync(entry.path, path, fsConstants.COPYFILE_EXCL);
         written.push(path);
+        await publishUpload(fileMap.get(f.id)!);
       }
       // Imported spaces go to the end of the workspace in the archive's
       // order (lib/space-order.ts; the insert trigger places each last).

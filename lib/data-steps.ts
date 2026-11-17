@@ -60,9 +60,14 @@ async function aiDetailFromTotals() {
 // Runs the steps not done yet (`only`: just these). Several instances on
 // one PostgreSQL database take turns (advisory lock) and skip what another
 // has done meanwhile.
+// Steps that failed in this process (readiness, lib/cluster/health.ts: an
+// instance with one is not ready and tries it again now and then).
+const failedSteps = globalThis as unknown as { flowplanFailedDataSteps?: Map<string, string> };
+export const failedDataSteps = () => (failedSteps.flowplanFailedDataSteps ??= new Map());
 export async function runDataSteps(only?: string[]) {
   for (const step of dataSteps()) {
     if (only && !only.includes(step.name)) continue;
+    failedDataSteps().delete(step.name);
     if (await one("SELECT 1 FROM data_migrations WHERE name=?", step.name)) continue;
     try {
       await transaction(async () => {
@@ -75,6 +80,7 @@ export async function runDataSteps(only?: string[]) {
       });
     } catch (error) {
       console.error(`Datenschritt ${step.name} fehlgeschlagen`, error);
+      failedDataSteps().set(step.name, String((error as Error)?.message || error).slice(0, 200));
     }
   }
 }

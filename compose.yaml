@@ -25,13 +25,13 @@ services:
     volumes:
       - flowplan-data:/app/data
     # A host folder instead of the volume (e.g. ./data:/app/data) works with
-    # any owner: set PUID and PGID under environment (or in .env), as with
-    # the linuxserver.io images – Flowplan gives the folder to that user and
-    # runs as it (default 1000:1000; the app itself never runs as root):
-    #   PUID: "1001"
-    #   PGID: "1001"
-    # Or run it as the folder's owner from the start (no PUID/PGID then):
+    # any owner: run it as the folder's owner from the start
     #   user: "1001:1001"     # or "${UID}:${GID}" with UID and GID in .env
+    # or, as with the linuxserver.io images, let Flowplan take the folder:
+    # started as root it gives the folder to PUID:PGID and runs as that user
+    # (default 1000:1000; the app itself never runs as root):
+    #   user: "0:0"
+    #   environment: PUID: "1001", PGID: "1001"
     restart: unless-stopped
     healthcheck:
       test:

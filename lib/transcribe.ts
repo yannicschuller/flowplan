@@ -23,8 +23,7 @@
 // workspace's meeting glossary) go along as `prompt`: names and acronyms
 // the recogniser should spell right. WHISPER_VAD=on asks faster-whisper
 // servers (speaches) to skip silence first (`vad_filter=true`).
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { staging } from "./staging";
 import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -261,59 +260,81 @@ export async function transcribe(audio: Blob, name = "sprachnotiz.webm", options
 
 // ---- Long recordings in chunks ----
 
-type Upload = { userId: string; pageId: string; parts: Map<number, number>; bytes: number; at: number };
-const runtime = globalThis as typeof globalThis & { flowplanTranscribeUploads?: Map<string, Upload> };
-const uploads = () => (runtime.flowplanTranscribeUploads ??= new Map());
-const uploadDir = (id: string) => resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "tmp", "transcribe", id);
+// The chunks wait in lib/staging.ts (the data folder, or the bucket in
+// cluster mode, so each chunk may reach another instance): one folder per
+// upload with "meta" (who, for which page) and the chunks by index.
+type UploadMeta = { userId: string; pageId: string; at: number };
+const parts = () => staging("transcribe");
 const UPLOAD_TTL = 3 * 60 * 60_000;
+const UPLOAD_ID = /^[A-Za-z0-9_-]{1,100}$/;
+const runtime = globalThis as typeof globalThis & { flowplanTranscribeSweep?: number };
 
-// Unfinished uploads are removed after three hours.
+async function readUploadMeta(uploadId: string): Promise<UploadMeta | null> {
+  try {
+    const meta = JSON.parse(String((await parts().get(`${uploadId}/meta`)) ?? ""));
+    return meta && typeof meta.userId === "string" && typeof meta.pageId === "string" ? meta : null;
+  } catch {
+    return null;
+  }
+}
+// The chunks that arrived, by index, with their sizes.
+async function uploadedParts(uploadId: string) {
+  const list = new Map<number, number>();
+  for (const o of await parts().list(uploadId)) if (/^\d+$/.test(o.name)) list.set(Number(o.name), o.size);
+  return list;
+}
+
+// Unfinished uploads are removed after three hours (looked at no more
+// than once a minute).
 async function sweep(now = Date.now()) {
-  for (const [id, upload] of uploads())
-    if (now - upload.at > UPLOAD_TTL) {
-      uploads().delete(id);
-      await rm(uploadDir(id), { recursive: true, force: true }).catch(() => {});
-    }
+  if (runtime.flowplanTranscribeSweep && now - runtime.flowplanTranscribeSweep < 60_000) return;
+  runtime.flowplanTranscribeSweep = now;
+  for (const folder of await parts().folders("").catch(() => []))
+    if (now - folder.at > UPLOAD_TTL) await parts().remove(folder.name);
 }
 
 // One chunk of a recording, in order of `index` (0, 1, …). The upload id
 // is chosen by the browser and belongs to the person who sent the first chunk.
 export async function storeTranscribeChunk(user: Identity, input: { uploadId: string; pageId: string; index: number }, bytes: Uint8Array) {
   await sweep();
-  if (!Number.isInteger(input.index) || input.index < 0 || input.index > 999) throw new HttpError(400, "Ungültige Eingabe.");
+  if (!Number.isInteger(input.index) || input.index < 0 || input.index > 999 || !UPLOAD_ID.test(input.uploadId)) throw new HttpError(400, "Ungültige Eingabe.");
   if (!bytes.length || bytes.length > TRANSCRIBE_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
-  let upload = uploads().get(input.uploadId);
-  if (!upload) {
-    if ([...uploads().values()].filter((u) => u.userId === user.id).length >= 3)
-      throw new HttpError(429, "Zu viele Aufnahmen gleichzeitig. Bitte später erneut versuchen.");
-    upload = { userId: user.id, pageId: input.pageId, parts: new Map(), bytes: 0, at: Date.now() };
-    uploads().set(input.uploadId, upload);
+  let meta = await readUploadMeta(input.uploadId);
+  if (!meta) {
+    let mine = 0;
+    for (const folder of await parts().folders("")) if ((await readUploadMeta(folder.name))?.userId === user.id) mine++;
+    if (mine >= 3) throw new HttpError(429, "Zu viele Aufnahmen gleichzeitig. Bitte später erneut versuchen.");
+    meta = { userId: user.id, pageId: input.pageId, at: Date.now() };
+    await parts().put(`${input.uploadId}/meta`, Buffer.from(JSON.stringify(meta)));
   }
-  if (upload.userId !== user.id || upload.pageId !== input.pageId) throw new HttpError(403, "Keine Berechtigung.");
-  const total = upload.bytes - (upload.parts.get(input.index) || 0) + bytes.length;
+  if (meta.userId !== user.id || meta.pageId !== input.pageId) throw new HttpError(403, "Keine Berechtigung.");
+  const have = await uploadedParts(input.uploadId);
+  const bytesBefore = [...have.values()].reduce((sum, n) => sum + n, 0);
+  const total = bytesBefore - (have.get(input.index) || 0) + bytes.length;
   if (total > transcribeMaxBytes()) throw new HttpError(413, "Die Aufnahme ist zu lang.");
-  await mkdir(uploadDir(input.uploadId), { recursive: true });
-  await writeFile(resolve(uploadDir(input.uploadId), String(input.index)), bytes);
-  upload.parts.set(input.index, bytes.length);
-  upload.bytes = total;
-  upload.at = Date.now();
-  return { ok: true, received: upload.parts.size, bytes: upload.bytes };
+  await parts().put(`${input.uploadId}/${input.index}`, bytes);
+  have.set(input.index, bytes.length);
+  return { ok: true, received: have.size, bytes: total };
 }
 
 // Puts the chunks together and transcribes the whole recording; the chunks
 // are removed in any case.
 export async function finishTranscribeUpload(user: Identity, input: { uploadId: string; pageId: string; parts: number; name: string; type: string }) {
-  const upload = uploads().get(input.uploadId);
-  if (!upload || upload.userId !== user.id || upload.pageId !== input.pageId) throw new HttpError(404, "Aufnahme nicht gefunden.");
+  const meta = UPLOAD_ID.test(input.uploadId) ? await readUploadMeta(input.uploadId) : null;
+  if (!meta || meta.userId !== user.id || meta.pageId !== input.pageId) throw new HttpError(404, "Aufnahme nicht gefunden.");
   try {
-    if (input.parts < 1 || input.parts !== upload.parts.size || ![...Array(input.parts).keys()].every((i) => upload.parts.has(i)))
+    const have = await uploadedParts(input.uploadId);
+    if (input.parts < 1 || input.parts !== have.size || ![...Array(input.parts).keys()].every((i) => have.has(i)))
       throw new HttpError(400, "Die Aufnahme ist unvollständig.");
     const chunks: Uint8Array[] = [];
-    for (let i = 0; i < input.parts; i++) chunks.push(new Uint8Array(await readFile(resolve(uploadDir(input.uploadId), String(i)))));
+    for (let i = 0; i < input.parts; i++) {
+      const chunk = await parts().get(`${input.uploadId}/${i}`);
+      if (!chunk) throw new HttpError(400, "Die Aufnahme ist unvollständig.");
+      chunks.push(new Uint8Array(chunk));
+    }
     const audio = new Blob(chunks as BlobPart[], { type: input.type });
     return await transcribe(audio, input.name);
   } finally {
-    uploads().delete(input.uploadId);
-    await rm(uploadDir(input.uploadId), { recursive: true, force: true }).catch(() => {});
+    await parts().remove(input.uploadId);
   }
 }

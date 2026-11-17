@@ -1,0 +1,278 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Flowplan Helm chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": { "type": "string", "description": "Name of a Secret you created." },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "quantity": { "type": ["string", "integer"], "pattern": "^[0-9]+(\\.[0-9]+)?([EPTGMK]i?|[mkMGTPE])?$" },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "periodSeconds": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "failureThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } }
+  },
+  "properties": {
+    "global": { "type": "object", "description": "Set by a parent chart; not used." },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": { "type": "array", "items": { "type": "object" } },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "appUrl": { "type": "string", "pattern": "^(https?://[^/]+)?$", "description": "Public address without a trailing slash." },
+    "localLogin": { "type": "boolean" },
+    "setupToken": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "FLOWPLAN_SETUP_TOKEN: a reference to your Secret, or generated once by the chart. Never a value.",
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "key": { "type": "string", "minLength": 1 },
+        "generate": { "type": "boolean" }
+      }
+    },
+    "oidc": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The client secret goes into existingSecret as OIDC_CLIENT_SECRET.",
+      "properties": {
+        "issuer": { "type": "string" },
+        "clientId": { "type": "string" },
+        "scopes": { "type": "string" },
+        "groupsClaim": { "type": "string" },
+        "adminGroup": { "type": "string" },
+        "allowedGroup": { "type": "string" }
+      }
+    },
+    "smtp": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The password goes into existingSecret as SMTP_PASSWORD.",
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "user": { "type": "string" },
+        "from": { "type": "string" }
+      }
+    },
+    "s3": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The access keys come from s3.existingSecret (or existingSecret).",
+      "properties": {
+        "bucket": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "region": { "type": "string" },
+        "prefix": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "accessKeyIdKey": { "type": "string", "minLength": 1 },
+        "secretAccessKeyKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "key": { "type": "string", "minLength": 1 },
+            "schema": { "type": "string", "pattern": "^([a-z_][a-z0-9_]{0,62})?$" },
+            "sessionUrl": { "$ref": "#/definitions/secretRef" }
+          }
+        },
+        "redis": { "$ref": "#/definitions/secretRef" },
+        "keys": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "encryptionKey": { "type": "string", "minLength": 1 },
+            "webPushPublicKey": { "type": "string", "minLength": 1 },
+            "webPushPrivateKey": { "type": "string", "minLength": 1 }
+          }
+        },
+        "poolSize": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "readyRequire": { "type": "string", "pattern": "^(database|redis|objectStorage)(,(database|redis|objectStorage))*$" },
+        "preStopSeconds": { "type": "integer", "minimum": 0, "maximum": 300 },
+        "cacheSizeLimit": { "type": "string", "pattern": "^[0-9]+(Gi|Mi)$" },
+        "cacheMaxMb": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
+        "migration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "backoffLimit": { "type": "integer", "minimum": 0 },
+            "activeDeadlineSeconds": { "type": "integer", "minimum": 30 },
+            "resources": { "type": "object" }
+          }
+        },
+        "podDisruptionBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "minAvailable": { "type": ["integer", "string"] }
+          }
+        },
+        "spreadOverNodes": { "type": "boolean" }
+      }
+    },
+    "existingSecret": { "type": "string", "description": "A Secret whose keys become environment variables (OIDC_CLIENT_SECRET, SMTP_PASSWORD, FLOWPLAN_ENCRYPTION_KEY, …)." },
+    "env": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+    "extraEnv": { "type": "array", "items": { "type": "object", "required": ["name"] } },
+    "extraEnvFrom": { "type": "array", "items": { "type": "object" } },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingClaim": { "type": "string" },
+        "storageClass": { "type": "string" },
+        "accessModes": { "type": "array", "items": { "enum": ["ReadWriteOnce", "ReadWriteOncePod", "ReadWriteMany", "ReadOnlyMany"] } },
+        "size": { "$ref": "#/definitions/quantity" },
+        "annotations": { "$ref": "#/definitions/stringMap" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "annotations": { "$ref": "#/definitions/stringMap" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "nginxDefaults": { "type": "boolean" },
+        "bodySize": { "type": "string", "pattern": "^[0-9]+[kmgKMG]?$" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["host"],
+            "properties": {
+              "host": { "type": "string" },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["path"],
+                  "properties": {
+                    "path": { "type": "string" },
+                    "pathType": { "enum": ["Prefix", "Exact", "ImplementationSpecific"] }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "secretName": { "type": "string" },
+              "hosts": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "automount": { "type": "boolean" }
+      }
+    },
+    "podAnnotations": { "$ref": "#/definitions/stringMap" },
+    "podLabels": { "$ref": "#/definitions/stringMap" },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+    "scratch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tmpSizeLimit": { "$ref": "#/definitions/quantity" },
+        "nextCacheSizeLimit": { "$ref": "#/definitions/quantity" },
+        "homeSizeLimit": { "$ref": "#/definitions/quantity" }
+      }
+    },
+    "resources": { "type": "object" },
+    "startupProbe": { "$ref": "#/definitions/probe" },
+    "livenessProbe": { "$ref": "#/definitions/probe" },
+    "readinessProbe": { "$ref": "#/definitions/probe" },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 15 },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tokenSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "key": { "type": "string", "minLength": 1 }
+          }
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": "string" },
+            "scrapeTimeout": { "type": "string" },
+            "labels": { "$ref": "#/definitions/stringMap" }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "ingressFrom": { "type": "array", "items": { "type": "object" } },
+        "restrictEgress": { "type": "boolean" },
+        "egress": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "nodeSelector": { "$ref": "#/definitions/stringMap" },
+    "tolerations": { "type": "array", "items": { "type": "object" } },
+    "affinity": { "type": "object" }
+  }
+}

@@ -31,7 +31,7 @@ import { sweepPendingDomains } from "./custom-domains";
 import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
 import { openWebhookUrl } from "./sealed-values";
 import { mapAsync } from "./each-async";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 
 const DAY = 86_400_000;
 
@@ -479,25 +479,26 @@ export function startOpsWorker() {
   if (runtime.flowplanOpsTimer) return;
   const tick = async () => {
     const now = Date.now();
-    try {
-      // Every instance writes its own counters; the sweeps and the alerts
-      // are the leader's (cluster mode, lib/cluster/leader.ts).
-      await flushOpsEvents();
-      if (!isLeader()) return;
-      // Idempotency keys live 24 hours (lib/idempotency.ts).
-      await sweepIdempotencyKeys(now);
-      // Custom domains left unverified for a week (lib/custom-domains.ts).
-      await sweepPendingDomains(now);
-      if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
-        await sweepOpsEvents(now);
-        // Security events after their retention (lib/security-events.ts).
-        await sweepSecurityEvents(now);
-        runtime.flowplanOpsSwept = now;
+    // Every instance writes its own counters; the sweeps and the alerts
+    // are the leader's (cluster mode, lib/cluster/leader.ts).
+    await flushOpsEvents().catch((error) => console.error("Operations sweep failed", error));
+    await leaderDuty("ops-sweeps", async () => {
+      try {
+        // Idempotency keys live 24 hours (lib/idempotency.ts).
+        await sweepIdempotencyKeys(now);
+        // Custom domains left unverified for a week (lib/custom-domains.ts).
+        await sweepPendingDomains(now);
+        if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
+          await sweepOpsEvents(now);
+          // Security events after their retention (lib/security-events.ts).
+          await sweepSecurityEvents(now);
+          runtime.flowplanOpsSwept = now;
+        }
+      } catch (error) {
+        console.error("Operations sweep failed", error);
       }
-    } catch (error) {
-      console.error("Operations sweep failed", error);
-    }
-    void checkHealthAlerts(now).catch((error) => console.error("Health alerts failed", error));
+      await checkHealthAlerts(now).catch((error) => console.error("Health alerts failed", error));
+    });
   };
   setTimeout(tick, 120_000).unref?.();
   runtime.flowplanOpsTimer = setInterval(tick, 10 * 60_000);

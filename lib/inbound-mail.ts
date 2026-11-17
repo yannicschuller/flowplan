@@ -38,8 +38,9 @@ import { ImapClient, type ImapOptions } from "./imap";
 import type { Field, Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 import { mailVerdict, sendgridVerdict, type MailVerdict } from "./mail-auth";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { publishUpload } from "./storage";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
 export const INBOUND_FILE_BYTES = 10 * 1024 * 1024;
@@ -626,6 +627,7 @@ async function storeMail(address: AddressRow, mail: InboundMail, from: string, m
       path = resolve(dir, fid);
     writeFileSync(path, a.data);
     onTransactionRollback(() => unlinkSync(path));
+    await publishUpload(fid);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, owner, a.filename, a.mime, a.data.length, null);
     return { ...a, url: `/api/files/${fid}` };
   });
@@ -722,6 +724,7 @@ async function workflowMail(address: AddressRow, mail: InboundMail, from: string
       path = resolve(dir, fid);
     writeFileSync(path, a.data);
     onTransactionRollback(() => unlinkSync(path));
+    await publishUpload(fid);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, target.id, a.filename, a.mime, a.data.length, null);
     return { name: a.filename, size: a.data.length, mime: a.mime, file: fid, url: `/api/files/${fid}` };
   });
@@ -862,9 +865,10 @@ export async function pollInboundMailbox(options = imapOptionsFromEnv(), now: ()
 const runtime = globalThis as unknown as { flowplanInboundTimer?: ReturnType<typeof setInterval>; flowplanInboundBusy?: boolean };
 export function startInboundMailWorker() {
   if (runtime.flowplanInboundTimer || !imapOptionsFromEnv()) return;
-  const tick = async () => {
+  const tick = () => leaderDuty("inbound-mail", round);
+  const round = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanInboundBusy || !isLeader()) return;
+    if (runtime.flowplanInboundBusy) return;
     runtime.flowplanInboundBusy = true;
     try {
       await pollInboundMailbox();

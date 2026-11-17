@@ -41,7 +41,7 @@ import { ct } from "./content-locale";
 import { validZone } from "./date-values";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { flatMapAsync } from "./each-async";
-import { isLeader } from "./cluster/leader";
+import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
 export const calendarProviders = ["google", "microsoft"] as const;
@@ -1153,8 +1153,8 @@ export function startCalendarSyncWorker() {
   if (runtime.flowplanCalendarTimer) return;
   runtime.flowplanCalendarTimer = setInterval(() => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader() || !calendarProviders.some(providerConfigured)) return;
-    void syncDueCalendars().catch((error) => console.error("Calendar sync worker", error));
+    if (!calendarProviders.some(providerConfigured)) return;
+    void leaderDuty("calendar-sync", () => syncDueCalendars()).catch((error) => console.error("Calendar sync worker", error));
   }, 60_000);
   runtime.flowplanCalendarTimer.unref?.();
 }

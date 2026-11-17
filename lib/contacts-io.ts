@@ -32,6 +32,7 @@ import { storeContactPhoto } from "./contacts-ldap";
 import { MAX_VCARD_BYTES, parseVCards, serializeVCards, type VCardContact } from "./vcard";
 import type { Field, Identity, Page, Row } from "./types";
 import { mapAsync } from "./each-async";
+import { uploadSource } from "./storage";
 
 const MAX_PHOTO = 256 * 1024;
 const fieldsOf = async (pageId: string) => JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
@@ -42,7 +43,7 @@ export async function rowPhoto(pageId: string, icon: string | null | undefined):
   if (!fid) return null;
   const file = await one<{ mime: string; size: number }>("SELECT mime,size FROM files WHERE id=? AND page_id=?", fid, pageId);
   if (!file || !["image/jpeg", "image/png"].includes(file.mime) || file.size > MAX_PHOTO) return null;
-  const path = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", fid);
+  const path = (await uploadSource(fid));
   try {
     if (!existsSync(path) || statSync(path).size > MAX_PHOTO) return null;
     return { mime: file.mime, base64: readFileSync(path).toString("base64") };

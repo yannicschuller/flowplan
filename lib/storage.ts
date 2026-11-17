@@ -10,8 +10,19 @@
 // (lib/encryption.ts); the local copy stays plain. storage_sealed records
 // with which key each object went up, so the Admin page can count what is
 // still plain and "Encrypt existing objects" uploads just those again.
+//
+// Cluster mode (FLOWPLAN_CLUSTER=1): the bucket is the truth and the local
+// folder only a cache. Code that stores a file calls publishUpload() after
+// writing it; that returns once the object is in the bucket, so a request
+// that stored a file answers only when every other instance can read it
+// (the queue then finds the object sealed with the current key and only
+// drops its job). Code that reads a file asks localUpload()/readUpload(),
+// which fetch it from the bucket when this instance does not have it. The
+// cache is kept below FLOWPLAN_CACHE_MAX_MB (oldest unused files first). On
+// shutdown the uploads under way and the due queue are drained.
 import { AwsClient } from "aws4fetch";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { copyFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { all, one, run, sql } from "./db";
@@ -19,6 +30,7 @@ import { currentKeyId, isEncrypted, seal, unseal } from "./encryption";
 import { DELETED_UPLOADS, deletedName } from "./deleted-uploads";
 import { clusterMode } from "./cluster/config";
 import { channelName, listen } from "./cluster/pg-session";
+import { onShutdownTask, SHUTDOWN_PHASE } from "./cluster/runtime";
 
 export type StorageConfig = {
   endpoint: string;
@@ -43,10 +55,17 @@ export function storageConfig(): StorageConfig | null {
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",
   };
 }
-const uploadsDir = () =>
+export const uploadsDir = () =>
   resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
 const localPath = (key: string) => resolve(uploadsDir(), key);
-const validKey = (key: string) => /^[A-Za-z0-9_-]{1,100}$/.test(key);
+export const validKey = (key: string) => /^[A-Za-z0-9_-]{1,100}$/.test(key);
+// Where a file of the uploads folder is (or is written to). Reading it
+// there directly misses a file this instance does not have yet in cluster
+// mode: read with localUpload()/readUpload() instead.
+export function uploadPath(key: string) {
+  if (!validKey(key)) throw new Error(`Ungültiger Dateischlüssel: ${key.slice(0, 40)}`);
+  return localPath(key);
+}
 // Path-style URLs work with MinIO, Garage and AWS alike.
 function objectUrl(config: StorageConfig, key: string, folder = "uploads") {
   const path = [config.prefix, folder, key].filter(Boolean).join("/");
@@ -93,6 +112,7 @@ const state = globalThis as unknown as {
     draining: boolean;
     again: boolean;
     timer?: ReturnType<typeof setInterval>;
+    prune?: ReturnType<typeof setInterval>;
     unlisten?: () => void;
   };
 };
@@ -164,8 +184,14 @@ export async function setupStorage(d?: DatabaseSync) {
       .catch((error) => console.error("Dateispeicher: LISTEN fehlgeschlagen, nur die Abfrage alle 15 s", (error as Error).message));
   setImmediate(kickStorage);
   // In cluster mode the local folder is a cache of the bucket: files come
-  // when a request needs them (ensureLocal), not all at every start.
+  // when a request needs them (ensureLocal), not all at every start, and
+  // the least used go again when it grows past FLOWPLAN_CACHE_MAX_MB.
   if (!clusterMode()) setImmediate(() => void hydrate());
+  else {
+    current.prune = setInterval(() => void pruneUploadCache().catch((error) => console.error("Dateispeicher: Zwischenspeicher nicht bereinigt", error)), 5 * 60_000);
+    current.prune.unref?.();
+  }
+  onShutdownTask("storage", SHUTDOWN_PHASE.files, (deadline) => flushStorage(deadline));
 }
 
 // The queue's trigger on PostgreSQL (with a bucket configured): at the
@@ -197,6 +223,7 @@ export async function ensureStorageTriggers() {
 export function stopStorage() {
   const s = state.flowplanStorage;
   if (s?.timer) clearInterval(s.timer);
+  if (s?.prune) clearInterval(s.prune);
   s?.unlisten?.();
   state.flowplanStorage = undefined;
 }
@@ -250,6 +277,10 @@ async function drain() {
         try {
           if (!validKey(job.key)) return await finish();
           if (job.op === "put") {
+            // Cluster mode: stored through publishUpload(), so in the bucket
+            // already with the current key – nothing left to do.
+            if (clusterMode() && (await one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", job.key))?.key_id === currentKeyId())
+              return await finish();
             const path = localPath(job.key);
             // Removed again before it was uploaded.
             if (!existsSync(path)) {
@@ -341,6 +372,192 @@ export async function ensureLocal(key: string) {
     return false;
   }
 }
+// ---- Reading and writing through the storage layer ----
+
+// The local path of a stored file, fetched from the bucket first when this
+// instance does not have it (cluster mode, a new container); null when it
+// exists nowhere. Every reader of the uploads folder goes through this (or
+// readUpload), never through the path alone.
+export async function localUpload(key: string): Promise<string | null> {
+  if (!validKey(key)) return null;
+  if (!(await ensureLocal(key))) return null;
+  const path = localPath(key);
+  if (clusterMode()) touchCached(key, path);
+  return path;
+}
+// The names of the stored files to read for a whole-instance copy (instance
+// backup, SFTP mirror, instance move): the uploads folder as it is – in
+// cluster mode, where it is only a cache, every file of the files table,
+// fetched into it first (the cache must hold them all for that while).
+export async function localUploadNames(): Promise<string[]> {
+  if (!clusterMode() || !storageConfig()) {
+    try {
+      return readdirSync(uploadsDir()).filter(validKey);
+    } catch {
+      return [];
+    }
+  }
+  const names: string[] = [];
+  for (const { id } of await all<{ id: string }>("SELECT id FROM files ORDER BY id"))
+    if (await localUpload(String(id))) names.push(String(id));
+  return names;
+}
+// The same as a path to read from in any case: fetched first when needed,
+// otherwise the (missing) path, so the caller's own "file missing" check
+// stays as it was.
+export async function uploadSource(key: string): Promise<string> {
+  return (await localUpload(key)) ?? resolve(uploadsDir(), key);
+}
+export async function readUpload(key: string): Promise<Buffer | null> {
+  const path = await localUpload(key);
+  if (!path) return null;
+  try {
+    return readFileSync(path);
+  } catch {
+    return null;
+  }
+}
+
+const inflight = globalThis as unknown as { flowplanUploadsInFlight?: Set<Promise<unknown>>; flowplanCacheTouched?: Map<string, number> };
+const uploadsInFlight = () => (inflight.flowplanUploadsInFlight ??= new Set());
+export const uploadsInFlightCount = () => uploadsInFlight().size;
+
+// After a file was written to uploadPath(key): in cluster mode the object
+// goes into the bucket before this returns (a few tries); a failure throws
+// an HttpError 503, so the caller's transaction is rolled back (its
+// rollback handler removes the local copy) and the request fails instead of
+// answering with a file the other instances cannot read. Outside cluster
+// mode nothing happens here: the queue uploads in the background as before.
+export async function publishUpload(key: string): Promise<void> {
+  const config = storageConfig();
+  if (!clusterMode() || !config) return;
+  const path = uploadPath(key);
+  const job = (async () => {
+    const keyId = currentKeyId();
+    const body = new Uint8Array(seal(readFileSync(path)));
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 250 * 4 ** (attempt - 1)));
+      try {
+        const response = await aws(config).fetch(objectUrl(config, key), { method: "PUT", body });
+        if (response.ok) {
+          await run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", key, keyId);
+          return;
+        }
+        lastError = new Error(`PUT ${response.status}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  })();
+  uploadsInFlight().add(job);
+  try {
+    await job;
+  } catch (error) {
+    console.error(`Dateispeicher: ${key} nicht in den Bucket geschrieben`, (error as Error)?.message || error);
+    // HttpError is loaded here: lib/auth.ts imports the database, which imports this module.
+    const { HttpError } = await import("./auth");
+    throw new HttpError(503, "Die Datei konnte nicht gespeichert werden (Objektspeicher nicht erreichbar). Bitte versuche es gleich noch einmal.");
+  } finally {
+    uploadsInFlight().delete(job);
+  }
+}
+// Writes a stored file and publishes it (see publishUpload).
+export async function writeUpload(key: string, data: Uint8Array) {
+  const path = uploadPath(key);
+  mkdirSync(uploadsDir(), { recursive: true });
+  writeFileSync(path, data);
+  await publishUpload(key);
+}
+// A copy of a stored file under a new key (copies of pages, records,
+// templates); false when the source exists nowhere.
+export async function copyUpload(from: string, to: string): Promise<boolean> {
+  const source = await localUpload(from);
+  if (!source) return false;
+  mkdirSync(uploadsDir(), { recursive: true });
+  await copyFile(source, uploadPath(to));
+  await publishUpload(to);
+  return true;
+}
+
+// Cluster mode: the cache's use, for the pruning below (mtime as "last
+// used", written at most every ten minutes per file).
+function touchCached(key: string, path: string, now = Date.now()) {
+  const touched = (inflight.flowplanCacheTouched ??= new Map());
+  if (now - (touched.get(key) ?? 0) < 10 * 60_000) return;
+  touched.set(key, now);
+  if (touched.size > 50_000) touched.clear();
+  try {
+    utimesSync(path, now / 1000, now / 1000);
+  } catch {}
+}
+// FLOWPLAN_CACHE_MAX_MB: the cache's size limit (cluster mode; the Helm
+// chart sets it below the emptyDir's sizeLimit). 0 or unset: no limit.
+export const cacheLimitBytes = (env: Record<string, string | undefined> = process.env) => Math.max(0, Number(env.FLOWPLAN_CACHE_MAX_MB) || 0) * 1024 * 1024;
+// Removes the least recently used files of the cache until it is below 80 %
+// of the limit. Files used in the last 30 minutes and files the queue still
+// has to upload stay. Returns what was removed.
+export async function pruneUploadCache(now = Date.now(), limit = cacheLimitBytes()) {
+  if (!clusterMode() || !storageConfig() || !limit) return { removed: 0, bytes: 0 };
+  let names: string[] = [];
+  try {
+    names = readdirSync(uploadsDir()).filter(validKey);
+  } catch {
+    return { removed: 0, bytes: 0 };
+  }
+  const files: { key: string; size: number; at: number }[] = [];
+  let total = 0;
+  for (const key of names)
+    try {
+      const info = statSync(localPath(key));
+      if (!info.isFile()) continue;
+      total += info.size;
+      files.push({ key, size: info.size, at: info.mtimeMs });
+    } catch {}
+  if (total <= limit) return { removed: 0, bytes: 0 };
+  const pending = new Set((await all<{ key: string }>("SELECT key FROM storage_queue WHERE op='put'")).map((r) => r.key));
+  let removed = 0,
+    bytes = 0;
+  for (const file of files.sort((a, b) => a.at - b.at)) {
+    if (total <= limit * 0.8) break;
+    if (now - file.at < 30 * 60_000 || pending.has(file.key)) continue;
+    rmSync(localPath(file.key), { force: true });
+    total -= file.size;
+    bytes += file.size;
+    removed++;
+  }
+  if (removed) console.log(`Dateispeicher: ${removed} Dateien (${Math.round(bytes / 1048576)} MB) aus dem Zwischenspeicher entfernt`);
+  return { removed, bytes };
+}
+
+// Shutdown (lib/cluster/runtime.ts): the uploads under way finish, then the
+// due jobs of the queue this instance can do (its files) are drained – at
+// most until the deadline. What is left, another instance takes over.
+export async function flushStorage(deadline: number) {
+  const wait = async (promise: Promise<unknown>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([promise.catch(() => {}), new Promise((r) => (timer = setTimeout(r, Math.max(0, deadline - Date.now()))))]);
+    clearTimeout(timer);
+  };
+  await wait(Promise.allSettled([...uploadsInFlight()]));
+  const s = state.flowplanStorage;
+  if (!s || !storageConfig() || Date.now() >= deadline) return;
+  if (s.timer) clearInterval(s.timer);
+  // A drain under way first, then one more pass over what is due now.
+  for (let i = 0; i < 3 && Date.now() < deadline; i++) {
+    while (s.draining && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    const due = await one<{ n: number }>("SELECT COUNT(*) AS n FROM storage_queue WHERE next_at<=?", Date.now()).catch(() => null);
+    if (!due || !Number(due.n)) return;
+    s.draining = true;
+    await wait(
+      drain()
+        .catch((error) => console.error("Dateispeicher: Abgleich beim Beenden fehlgeschlagen", error))
+        .finally(() => (s.draining = false)),
+    );
+  }
+}
+
 // After a start without local files, all known files come back in the
 // background; requests fetch what they need right away.
 async function hydrate() {

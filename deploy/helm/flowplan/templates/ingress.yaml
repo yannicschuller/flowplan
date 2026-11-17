@@ -1,13 +1,25 @@
 {{- if .Values.ingress.enabled }}
 {{- $fullName := include "flowplan.fullname" . }}
 {{- $port := .Values.service.port }}
+{{- $annotations := dict }}
+{{- if .Values.ingress.nginxDefaults }}
+{{- /* Live editing: server-sent event streams stay open for long (a
+keep-alive every 15 s) and must not be buffered; uploads up to bodySize
+pass through without being buffered to disk first. */}}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/proxy-buffering" "off" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/proxy-request-buffering" "off" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/proxy-read-timeout" "3600" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/proxy-send-timeout" "3600" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/proxy-body-size" (toString .Values.ingress.bodySize) }}
+{{- end }}
+{{- $annotations = mergeOverwrite $annotations (.Values.ingress.annotations | default dict) }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $fullName }}
   labels:
     {{- include "flowplan.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}

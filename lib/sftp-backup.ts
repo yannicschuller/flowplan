@@ -37,6 +37,8 @@ import {
   type SftpLogin,
   type SftpSession,
 } from "./sftp";
+import { localUploadNames } from "./storage";
+import { clusterMode } from "./cluster/config";
 
 const SETTING = "sftpBackup";
 const LAST = "sftpBackup";
@@ -232,7 +234,8 @@ export async function trustSftpHostKey(actor: string, fingerprint: unknown) {
 // missing here (an uploads folder not mounted, a lost volume).
 async function mirrorUploads(session: SftpSession, folder: string, now: number, oldest: number | null) {
   const local = resolve(dataDir(), "uploads");
-  const mine = existsSync(local) ? readdirSync(local).filter((n) => UPLOAD.test(n)) : [];
+  // Cluster mode: the folder is only a cache – every file, fetched first.
+  const mine = clusterMode() ? await localUploadNames() : existsSync(local) ? readdirSync(local).filter((n) => UPLOAD.test(n)) : [];
   const listed = new Set((await all<{ id: string }>("SELECT id FROM files")).map((r) => String(r.id)));
   if (!mine.length && listed.size)
     return { files: 0, removed: 0, purged: 0, error: "Dateien nicht gespiegelt: Der Ordner uploads fehlt oder ist leer, obwohl die Datenbank Dateien verzeichnet." };
