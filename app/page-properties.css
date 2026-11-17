@@ -799,6 +799,59 @@ button.page-tag:focus-visible,
   background: color-mix(in srgb, currentColor 15%, transparent);
 }
 
+/* ---- Search: finding a tag by typing (#328, components/tag-suggestions.tsx) ---- */
+/* The tag filter looks like the select next to it (.search-filters). */
+.search-tag-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.search-filters .search-tag-filter > input {
+  width: 128px;
+  padding-right: 30px;
+  font-size: 12px;
+}
+.search-tag-filter-caret {
+  position: absolute;
+  right: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.tag-suggest-list {
+  max-width: min(360px, calc(100vw - 24px));
+}
+.tag-suggest-list .fp-select-option {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.tag-suggest-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tag-suggest-hint {
+  margin-left: auto;
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tag-suggest-empty {
+  margin: 0;
+  padding: 7px 10px;
+  color: var(--muted);
+}
+/* Phones: 16px like every field in a dialog, so iOS does not zoom in. */
+@media (max-width: 767px) {
+  .search-filters .search-tag-filter > input {
+    font-size: 16px;
+    width: 150px;
+  }
+}
+
 /* ---- Database properties with the workspace's tags as options (#79) ---- */
 /* Cells and board columns: the chip in the tag's colour (the defaults have
    no weight, so page-tag-<colour> sets the colour). */
