@@ -237,6 +237,9 @@ test("search with tag filter, element links, lists and links in notes", async ({
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(link).toContain(`#page=${board.id}&item=ziel`);
   await page.goto("/#home");
+  // The start page first (the board has gone): a link arriving while the
+  // view still changes over would reach the board that is about to go.
+  await expect(page.getByLabel("Whiteboard", { exact: true })).toHaveCount(0);
   await page.goto(link);
   await expect(page.getByLabel("Whiteboard", { exact: true }).locator('[data-item="ziel"]')).toHaveClass(/selected/);
   await expect(page).toHaveURL(new RegExp(`#page=${board.id}$`));
