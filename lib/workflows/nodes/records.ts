@@ -20,6 +20,7 @@ import type { Field, Filter, Identity, Page, Row } from "../../types";
 import type { WorkflowCondition, WorkflowConditionGroup } from "../catalog";
 import { hasPlaceholders, isEmpty, renderCompare, renderValue } from "../placeholders";
 import { coerceToField, compareNumberText } from "../values";
+import { dateOnly } from "../../date-values";
 import { databaseFields, recordValue, refId } from "./data";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
 
@@ -66,7 +67,10 @@ async function cellsFor(values: Record<string, unknown>, fields: Field[], ctx: N
       ctx.warn(`Die Eigenschaft ${fieldId} gibt es nicht mehr.`);
       continue;
     }
-    out[field.id] = cellValue(raw, field, ctx, createdBy);
+    const value = cellValue(raw, field, ctx, createdBy);
+    // A date property without time takes the day only ("Jetzt" is today,
+    // in the run's time zone, #327).
+    out[field.id] = field.type === "date" && field.noTime ? dateOnly(value, ctx.scope.timeZone) : value;
   }
   return out;
 }

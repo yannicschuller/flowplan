@@ -306,6 +306,7 @@ Field = TypedDict("Field", {
     "rollupMax": float,
     "format": str,
     "timeFormat": Literal["12", "24"],
+    "noTime": bool,
     "decimals": int,
     "parent": bool,
     "parentField": str,
@@ -1536,11 +1537,12 @@ CommandWhiteboardToRecordsResult = TypedDict("CommandWhiteboardToRecordsResult",
     "records": Required[list[dict[str, Any]]],
 }, total=False)
 
-# Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added.
+# Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added. A date with a time for a date property without time (`noTime: true`) keeps only its day, counted in `timeZone` (IANA, default UTC).
 CommandRowsImport = TypedDict("CommandRowsImport", {
     "action": Required[Literal["rows.import"]],
     "pageId": Required[str],
     "rows": Required[list[dict[str, Any]]],
+    "timeZone": str,
 }, total=False)
 
 CommandRowsImportResult = TypedDict("CommandRowsImportResult", {

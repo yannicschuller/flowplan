@@ -6,7 +6,7 @@
 // (a matrix has one per row). Client-safe: the same checks run in the
 // browser and on the server.
 import { z } from "zod";
-import { validDateValue } from "./date-values";
+import { newTimeRefused, validDateValue } from "./date-values";
 import type { Field, FieldType } from "./types";
 import { translate, type Locale } from "./i18n";
 import { conditionSchema, evaluateLogic, logicPages, type LogicItem } from "./form-logic";
@@ -239,6 +239,8 @@ export function validateSurvey(survey: Survey, fields: Field[], values: Record<s
       else if (q.type === "phone" && !PHONE.test(text)) bad("Bitte eine gültige Telefonnummer.", "Please enter a valid phone number.");
       else if (q.type === "url" && !/^https?:\/\/\S+$/i.test(text)) bad("Bitte eine Adresse mit https://.", "Please enter an address starting with https://.");
       else if (q.type === "date" && !validDateValue(text)) bad("Bitte ein gültiges Datum.", "Please enter a valid date.");
+      // A property without time (#327) takes the date only.
+      else if (q.type === "date" && newTimeRefused(field, text, undefined)) bad("Bitte nur ein Datum angeben, ohne Uhrzeit.", "Please enter only a date, without a time.");
       else if (q.type === "time" && !TIME.test(text)) bad("Bitte eine Uhrzeit wie 14:30.", "Please enter a time like 14:30.");
       else cells[q.field] = text;
     }

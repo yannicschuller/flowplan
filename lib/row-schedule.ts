@@ -14,6 +14,7 @@ import {
   type DependencyType,
 } from "./database-timeline";
 import { calendarChangeSchema, calendarPatch } from "./database-calendar";
+import { assertNoNewTimes } from "./database-operations";
 import type { Field, Identity, View } from "./types";
 import { rowChanged } from "./automations";
 const changeSchema = z.discriminatedUnion("operation", [
@@ -87,6 +88,8 @@ export async function scheduleRow(
   } catch (error) {
     throw new HttpError(400, (error as Error).message);
   }
+  // A date property without time gets no new time here either (#327).
+  assertNoNewTimes(db.fields, patch, cells);
   const nextCells = JSON.stringify({ ...cells, ...patch });
   if (nextCells.length > 200000) throw new HttpError(413, "Datensatz zu groß.");
   // "Nachfolger mitverschieben": what waits for the record moves along by

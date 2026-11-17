@@ -66,6 +66,8 @@ export const field = z.object({
   rollupMax: z.number().positive().finite().max(1e15).optional(),
   format: z.string().max(40).optional(),
   timeFormat: z.enum(["24", "12"]).optional(),
+  // Date properties without a time of day (#327).
+  noTime: z.boolean().optional(),
   decimals: z.number().int().min(0).max(10).optional(),
   parent: z.boolean().optional(),
   parentField: z.string().max(500).optional(),

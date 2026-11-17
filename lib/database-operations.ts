@@ -7,7 +7,7 @@ import {
 } from "./file-cells";
 import { maintainRowOrders } from "./row-order-server";
 import { trashRow } from "./row-trash";
-import { validDateValue } from "./date-values";
+import { dateOnly, isTimed, newTimeRefused, NO_TIME_MESSAGE, validDateValue } from "./date-values";
 import { z } from "zod";
 import { all, one, run, id, nowText } from "./db";
 import { requirePage } from "./permissions";
@@ -84,7 +84,9 @@ export function addImportedOptions(fields: Field[], rows: Record<string, unknown
 // Imported records (rows.import): numbers, checkboxes and dates must fit
 // their property as in validateCellPatch; empty values may be null. Options
 // missing from a select property are added first (addImportedOptions).
-export function validateImportedCells(fields: Field[], cells: Record<string, unknown>) {
+// Dates with a time for a property without time keep only their day (in
+// `zone`, the importing person's time zone).
+export function validateImportedCells(fields: Field[], cells: Record<string, unknown>, zone?: string) {
   for (const f of fields) {
     const value = cells[f.id];
     if (value === undefined) continue;
@@ -107,7 +109,18 @@ export function validateImportedCells(fields: Field[], cells: Record<string, unk
       const shown = typeof value === "string" ? value : JSON.stringify(value);
       throw new HttpError(400, `„${String(shown).slice(0, 80)}“ passt nicht in die Eigenschaft „${f.name}“.`);
     }
+    // A date property without time (#327) takes the day of an imported
+    // date with a time.
+    if (f.type === "date" && f.noTime && isTimed(value)) cells[f.id] = dateOnly(value, zone);
   }
+}
+// Date properties without time (#327): a write that would add a time to
+// one of them is refused; `before` are the stored cells (a value that
+// already has a time may keep it).
+export function assertNoNewTimes(fields: Field[], cells: Record<string, unknown>, before: Record<string, unknown> = {}) {
+  for (const f of fields)
+    if (f.id in cells && newTimeRefused(f, cells[f.id], before[f.id]))
+      throw new HttpError(400, NO_TIME_MESSAGE);
 }
 // `before`: the record's cells as stored, when it exists – links to
 // records hidden from this person that it already has may stay.
@@ -208,6 +221,10 @@ export async function validateCellPatch(
         throw new HttpError(400, "Mitglied fehlt.");
       if (f.type === "date" && text && !validDateValue(text))
         throw new HttpError(400, "Ungültiges Datum.");
+      // A date property without time (#327): no new time; a stored value
+      // with a time may keep, move or lose it.
+      if (newTimeRefused(f, text, before?.[key]))
+        throw new HttpError(400, NO_TIME_MESSAGE);
       result[key] = text;
     }
   }

@@ -4299,7 +4299,7 @@ export default function DatabaseView({
               csvContext(),
             ),
           );
-          const done = (await act({ action: "rows.import", rows: imported })) as
+          const done = (await act({ action: "rows.import", rows: imported, timeZone: browserZone() })) as
             | { newOptions?: { name: string; options: string[] }[] }
             | null;
           e.target.value = "";
@@ -5393,6 +5393,39 @@ export default function DatabaseView({
                   ))}
                 </Select>
               </label>
+              {/* #327: off, the date fields offer no time; values that
+                  have one keep it (and can lose it). */}
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={!fieldDraft.noTime}
+                  disabled={!editable || !allowFieldChanges}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      noTime: e.target.checked ? undefined : true,
+                    }))
+                  }
+                />
+                {t("Mit Uhrzeit", "With time")}
+              </label>
+              {fieldDraft.noTime && (() => {
+                const timed = data.rows.filter((r) => isTimed(r.cells[fieldDraft.id])).length;
+                return (
+                  <p className="muted">
+                    {t(
+                      "Neue Werte haben nur ein Datum. Vorhandene Uhrzeiten bleiben erhalten und lassen sich entfernen.",
+                      "New values have a date only. Existing times are kept and can be removed.",
+                    )}
+                    {timed > 0 && " "}
+                    {timed === 1
+                      ? t("1 Eintrag hat noch eine Uhrzeit.", "1 record still has a time.")
+                      : timed > 1
+                        ? t(`${timed} Einträge haben noch eine Uhrzeit.`, `${timed} records still have a time.`)
+                        : null}
+                  </p>
+                );
+              })()}
             </>
           )}
           {fieldDraft.type === "formula" && (

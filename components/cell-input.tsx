@@ -142,6 +142,7 @@ export function CellInput({
         disabled={disabled}
         onChange={onChange}
         commit={commit}
+        allowTime={!f.noTime}
       />
     );
   if (f.type === "number" && f.rollupDisplay === "rating") {

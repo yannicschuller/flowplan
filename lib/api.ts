@@ -223,7 +223,9 @@ import {
   validateCellPatch,
   validateImportedCells,
   addImportedOptions,
+  assertNoNewTimes,
 } from "./database-operations";
+import { cleanNoTime, withoutNewTimes } from "./date-values";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
 import { protectionChanges } from "./share-access";
@@ -2450,6 +2452,8 @@ async function runCommand(
         if (fields.length > 80)
           throw new HttpError(400, "Zu viele Eigenschaften.");
         await validateFieldAccess(user, await write(), fields, d.fields);
+        // "Mit Uhrzeit" off is stored as `noTime: true` on date properties only (#327).
+        cleanNoTime(fields);
         // AI properties: references, output types, who automatic updates run as.
         const aiChanges = await prepareAiFields(user, await write(), fields, d.fields);
         if (
@@ -2624,13 +2628,21 @@ async function runCommand(
             : selectedTemplate;
         const given = z.record(z.string(), z.unknown()).parse(b.cells || {});
         await assertFieldsWritable(user, await write(), (await database(pid())).fields, Object.keys(given));
+        // A date property without time takes no time (#327).
+        assertNoNewTimes((await database(pid())).fields, given);
         // Tag-backed properties: tag names, new ones only where allowed (#79).
         Object.assign(given, await tagCells(user, await write(), (await database(pid())).fields, given, true));
         // Contacts: the display name from the names (lib/contacts.ts).
         // A template fills only properties this person may change, like
         // row.template.apply (lib/field-access.ts).
+        // A template's date with a time keeps only its day for a property
+        // without time (#327).
         const fromTemplate = template
-          ? stripCells(JSON.parse(template.cells) as Record<string, unknown>, await unwritableFieldIds(user, await write(), (await database(pid())).fields))
+          ? withoutNewTimes(
+              (await database(pid())).fields,
+              stripCells(JSON.parse(template.cells) as Record<string, unknown>, await unwritableFieldIds(user, await write(), (await database(pid())).fields)),
+              typeof b.timeZone === "string" ? b.timeZone : undefined,
+            )
           : {};
         const cells = await contactCellsFor(pid(), (await database(pid())).fields, {}, {
           ...fromTemplate,
@@ -2783,7 +2795,7 @@ async function runCommand(
         // different letter case takes the option's spelling).
         const options = addImportedOptions((await database(pid())).fields, imported);
         const importFields = options.fields;
-        for (const cells of imported) validateImportedCells(importFields, cells);
+        for (const cells of imported) validateImportedCells(importFields, cells, typeof b.timeZone === "string" ? b.timeZone : undefined);
         if (options.added.length) {
           await autoDatabaseSnapshot(user, await write());
           await run(

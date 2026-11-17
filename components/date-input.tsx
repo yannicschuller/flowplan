@@ -23,11 +23,15 @@ export default function DateInput({
   onChange,
   commit = "blur",
   timeZone,
+  allowTime = true,
 }: {
   name: string;
   value: unknown;
   disabled?: boolean;
   timeZone?: string;
+  // false: a date property without time ("Mit Uhrzeit" off, #327). A value
+  // that has a time keeps it and can lose it; "+ Uhrzeit" is not offered.
+  allowTime?: boolean;
   onChange: (value: string) => void | Promise<unknown>;
   commit?: "blur" | "change";
 }) {
@@ -194,34 +198,39 @@ export default function DateInput({
               {t("Datum entfernen", "Remove date")}
             </button>
           )}
-          <button
-            type="button"
-            className={`date-clear date-time-toggle${timed ? "" : " date-time-add"}`}
-            aria-label={
-              timed
-                ? t(`Uhrzeit entfernen: ${name}`, `Remove time: ${name}`)
-                : t(`Uhrzeit hinzufügen: ${name}`, `Add time: ${name}`)
-            }
-            title={
-              timed
-                ? t("Nur das Datum behalten", "Keep only the date")
-                : t("Eine Uhrzeit zum Datum hinzufügen", "Add a time to the date")
-            }
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              toggleTime();
-            }}
-          >
-            {timed ? (
-              t("Uhrzeit entfernen", "Remove time")
-            ) : (
-              <>
-                <Plus size={11} weight="bold" aria-hidden="true" />
-                {t("Uhrzeit", "Time")}
-              </>
-            )}
-          </button>
+          {/* Without time (#327) only while the stored value has one: the
+              button stays in place after "Uhrzeit entfernen" (keeping the
+              focus, and undoing it until saved). */}
+          {(allowTime || timed || isTimed(value)) && (
+            <button
+              type="button"
+              className={`date-clear date-time-toggle${timed ? "" : " date-time-add"}`}
+              aria-label={
+                timed
+                  ? t(`Uhrzeit entfernen: ${name}`, `Remove time: ${name}`)
+                  : t(`Uhrzeit hinzufügen: ${name}`, `Add time: ${name}`)
+              }
+              title={
+                timed
+                  ? t("Nur das Datum behalten", "Keep only the date")
+                  : t("Eine Uhrzeit zum Datum hinzufügen", "Add a time to the date")
+              }
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleTime();
+              }}
+            >
+              {timed ? (
+                t("Uhrzeit entfernen", "Remove time")
+              ) : (
+                <>
+                  <Plus size={11} weight="bold" aria-hidden="true" />
+                  {t("Uhrzeit", "Time")}
+                </>
+              )}
+            </button>
+          )}
         </span>
       )}
       {timed && <small>{t("Zeitzone:", "Time zone:")}{" "}{zone}</small>}

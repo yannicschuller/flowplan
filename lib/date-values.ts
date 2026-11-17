@@ -179,3 +179,50 @@ export function dateToSave(next: string, current: unknown): string | null {
   if (emptyDate(next) && emptyDate(current)) return null;
   return next === current ? null : next;
 }
+
+// ---- Date properties without a time of day ("Mit Uhrzeit" off, #327) ----
+
+// The refusal when a time would be added to such a property (German, as
+// the server answers; lib/i18n-errors.ts has the English).
+export const NO_TIME_MESSAGE = "Diese Eigenschaft hat keine Uhrzeit. Bitte nur ein Datum angeben.";
+// Whether `value` would add a new time to a date property without time:
+// a value that already had a time (`before`) may keep one (it can be
+// moved or removed); an all-day or empty one gets none.
+export function newTimeRefused(
+  field: { type: string; noTime?: boolean } | undefined,
+  value: unknown,
+  before: unknown,
+) {
+  return !!field && field.type === "date" && !!field.noTime && isTimed(value) && !isTimed(before);
+}
+// The day of a value, for writes that take the date only (imports,
+// automations, quick capture): "2026-05-04T09:30Z" → "2026-05-04" in `zone`.
+// Other values pass unchanged.
+export function dateOnly(value: unknown, zone = "UTC"): unknown {
+  if (!isTimed(value) || !validDateValue(value)) return value;
+  try {
+    return localValue(value, validZone(zone) ? zone : "UTC").slice(0, 10);
+  } catch {
+    return value.slice(0, 10);
+  }
+}
+// The cells with a time taken off for date properties without time.
+export function withoutNewTimes<T extends Record<string, unknown>>(
+  fields: { id: string; type: string; noTime?: boolean }[],
+  cells: T,
+  zone?: string,
+  before: Record<string, unknown> = {},
+): T {
+  let next: T | null = null;
+  for (const f of fields)
+    if (f.id in cells && newTimeRefused(f, cells[f.id], before[f.id])) {
+      next ??= { ...cells };
+      (next as Record<string, unknown>)[f.id] = dateOnly(cells[f.id], zone);
+    }
+  return next || cells;
+}
+// The setting is stored only where it means something: `noTime: true` on a
+// date property (unset is the default, with time).
+export function cleanNoTime(fields: { type: string; noTime?: boolean }[]) {
+  for (const f of fields) if (f.type !== "date" || !f.noTime) delete f.noTime;
+}
