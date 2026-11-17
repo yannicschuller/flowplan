@@ -12,6 +12,7 @@ import {
 import { tr } from "@/lib/locale-tag";
 import { noticeBuild } from "@/lib/stale-copy";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
+import { appCopyUnreachable } from "@/lib/offline-store";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
 import { ViewShapeBody, type ViewShape } from "./skeleton";
@@ -312,8 +313,16 @@ function activeDialog() {
   const focus = document.activeElement;
   return !focus || focus === document.body || el.contains(focus) ? sink : null;
 }
-export type ErrorOptions = { retry?: () => void; toast?: boolean };
+// `background`: a request the reader did not ask for (a revalidation, a
+// refresh): when it failed only because the device is offline, the offline
+// icon in the top bar already says so – no toast on top of it (#332). Any
+// other failure, and every failure while online, is still shown.
+export type ErrorOptions = { retry?: () => void; toast?: boolean; background?: boolean };
+// Offline as the top bar shows it (components/workspace-app.tsx `online`).
+export const deviceOffline = () =>
+  (typeof navigator !== "undefined" && navigator.onLine === false) || appCopyUnreachable();
 export function showError(kind: ErrorKind, detail?: string, options: ErrorOptions = {}) {
+  if (options.background && kind === "offline" && deviceOffline()) return;
   const view = errorView(kind, detail, options.retry);
   const dialog = options.toast ? null : activeDialog();
   if (dialog) dialog.show(view);

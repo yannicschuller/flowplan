@@ -1581,9 +1581,13 @@ export default function WorkspaceApp({
       // Stale-while-revalidate (lib/swr-cache.ts): a page opened recently
       // shows its kept copy at once while the fresh one loads; the editor's
       // sync and the reload below bring it up to date.
+      // Whether the kept copy is showing: then the request below only
+      // brings it up to date.
+      let keptShown = false;
       const showKept = (kept: PageData | undefined) => {
         if (!kept || kept.page.workspace_id !== currentWorkspace.current) return false;
         if (version !== navigationVersion.current || currentId.current !== id) return false;
+        keptShown = true;
         setData(kept);
         html.current = kept.html || "";
         setStatus("Gespeichert");
@@ -1652,8 +1656,15 @@ export default function WorkspaceApp({
           appCache().delete(pageKey(id));
           if (version === navigationVersion.current && currentId.current === id) setData(null);
         }
+        // The kept copy stays open offline (#332): that the fresh one could
+        // not be fetched without a network is what the offline icon says –
+        // no "Keine Verbindung" toast over the page one goes on editing.
+        // Without a kept copy, or online, the failure is shown with Retry.
         if (version === navigationVersion.current)
-          notifyError(e, () => void openPageRef.current(id, target));
+          reportError(e, {
+            retry: () => void openPageRef.current(id, target),
+            background: keptShown && currentId.current === id,
+          });
       } finally {
         if (version === navigationVersion.current) {
           navigationPending.current = false;
@@ -4528,8 +4539,9 @@ export default function WorkspaceApp({
             <div className="page-top-actions">
               {/* Saving and offline states cross-fade instead of switching hard.
                   On phones the cloud shows only when there is something to
-                  report – offline, changes on their way, an error – not while all is
-                  saved (nor while a page that just opened checks in). */}
+                  report – changes on their way, an error – not while all is
+                  saved (nor while a page that just opened checks in). Offline
+                  the icon before it is the one indicator (#332). */}
               <SaveStatusBadge store={saveStatus} online={online} />
               <PresenceAvatars users={data.present.filter((u) => u.id !== boot.user.id).slice(0, 3)} />
               {/* A record as a page (#231) has its own actions above it;

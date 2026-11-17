@@ -673,8 +673,9 @@ label.hit-check {
    sidebar button, the title and ⋯. Follow, favourite, share and reading
    mode are at the top of the ⋯ menu; comments show only when there are
    open ones (with their count, else "Kommentare" in the menu); the saving
-   cloud only when there is something to report – while all is saved it
-   stays for screen readers alone. Wider screens keep the full bar. ===== */
+   cloud only when there is something to report – while all is saved, and
+   offline (the offline icon says it, #332), it stays for screen readers
+   alone. Wider screens keep the full bar. ===== */
 .page-menu-quick,
 .comments-count {
   display: none;

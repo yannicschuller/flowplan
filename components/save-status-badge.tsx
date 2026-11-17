@@ -9,7 +9,7 @@
 // a word reached the second window up to 1 s late). Now the state lives in
 // a store of its own and only this badge follows it.
 import { useState, useSyncExternalStore } from "react";
-import { CloudCheck, WifiSlash } from "@phosphor-icons/react";
+import { CloudCheck } from "@phosphor-icons/react";
 import { saveStatusOf } from "@/lib/save-status";
 import { useStatusLabel } from "./i18n";
 import { CrossFade } from "./motion";
@@ -45,15 +45,17 @@ export function useSaveStatusStore(initial: string) {
 export function SaveStatusBadge({ store, online }: { store: SaveStatusStore; online: boolean }) {
   const status = useSyncExternalStore(store.subscribe, store.get, store.get);
   const statusLabel = useStatusLabel();
+  // Offline, the top bar's offline icon (components/offline-status.tsx) is
+  // the one indicator (#332): the badge keeps its words ("Offline
+  // gespeichert") without an icon of its own, and on phones, where only
+  // the icon would show, it steps back like a quiet state.
+  const quiet = !online || ["saved", "changes-saved", "loading", "syncing"].includes(saveStatusOf(status) || "");
   return (
-    <CrossFade
-      className={`save-status${online && ["saved", "changes-saved", "loading", "syncing"].includes(saveStatusOf(status) || "") ? " save-status-quiet" : ""}`}
-      value={`${online}:${statusLabel(status)}`}
-    >
+    <CrossFade className={`save-status${quiet ? " save-status-quiet" : ""}`} value={`${online}:${statusLabel(status)}`}>
       {/* The icon after the text, so it stays put while the text
           changes its width. */}
       <span>{statusLabel(status)}</span>
-      {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
+      {online && <CloudCheck size={15} />}
     </CrossFade>
   );
 }
