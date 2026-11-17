@@ -31,9 +31,11 @@
 // Transcription is not part of this (the maintainer chose none); the hook
 // for it is `transcript` (JSON, null until something fills it) and
 // `saveRecordingTranscript` below.
-import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync } from "node:fs";
-import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, truncate, unlink, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream, mkdirSync, renameSync } from "node:fs";
+import { mkdir, open, rename, rm, stat, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
+import { staging } from "./staging";
+import { publishUpload } from "./storage";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 import { all, audit, id, nowText, one, onTransactionRollback, run, transaction } from "./db";
@@ -65,10 +67,13 @@ const RECORDING_ID = z.uuid();
 const MB = 1024 * 1024;
 
 const dataDir = () => process.env.FLOWPLAN_DATA_DIR || "./data";
-const stagingRoot = () => resolve(dataDir(), "tmp", "notebook-audio");
-const stagingDir = (recId: string) => resolve(stagingRoot(), recId);
-const stagingData = (recId: string) => resolve(stagingDir(recId), "audio");
-const stagingMeta = (recId: string) => resolve(stagingDir(recId), "meta.json");
+// The upload waits in lib/staging.ts (the data folder, or the bucket in
+// cluster mode, where every chunk may reach another instance): per
+// recording "meta.json" and the chunks, each named by its offset.
+const staged = () => staging("notebook-audio");
+const chunkName = (offset: number) => `c${String(offset).padStart(12, "0")}`;
+// Where a finished upload is put together before it becomes a file.
+const assembledPath = (recId: string) => resolve(dataDir(), "tmp", "notebook-audio-assembled", recId);
 type StagingMeta = { userId: string; pageId: string; mime: string; at: number };
 
 // ---- Pages and rights ----
@@ -163,47 +168,42 @@ async function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 async function readMeta(recId: string): Promise<StagingMeta | null> {
   try {
-    const meta = JSON.parse(await readFile(stagingMeta(recId), "utf8"));
+    const meta = JSON.parse(String((await staged().get(`${recId}/meta.json`)) ?? ""));
     return meta && typeof meta.userId === "string" && typeof meta.pageId === "string" && typeof meta.mime === "string" ? meta : null;
   } catch {
     return null;
   }
 }
-const stagedBytes = async (recId: string) => {
-  try {
-    return (await stat(stagingData(recId))).size;
-  } catch {
-    return 0;
+// The chunks in order of their offsets: they continue each other.
+async function stagedChunks(recId: string) {
+  return (await staged().list(recId))
+    .filter((o) => /^c\d{12}$/.test(o.name))
+    .map((o) => ({ name: o.name, offset: Number(o.name.slice(1)), size: o.size }))
+    .sort((a, b) => a.offset - b.offset);
+}
+// The bytes the server has, from the start without a gap.
+async function stagedSize(recId: string, chunks?: { offset: number; size: number }[]) {
+  let size = 0;
+  for (const c of chunks ?? (await stagedChunks(recId))) {
+    if (c.offset !== size) break;
+    size += c.size;
   }
-};
+  return size;
+}
+const stagedBytes = (recId: string) => stagedSize(recId);
 // Removes uploads nobody finished within a week (at most every ten minutes).
 export async function sweepRecordingUploads(now = Date.now(), force = false) {
   if (!force && runtime.flowplanRecordingSweep && now - runtime.flowplanRecordingSweep < 10 * 60_000) return;
   runtime.flowplanRecordingSweep = now;
-  let names: string[] = [];
-  try {
-    names = await readdir(stagingRoot());
-  } catch {
-    return;
-  }
-  for (const name of names) {
-    const meta = await readMeta(name);
-    let at = meta?.at ?? 0;
-    try {
-      at = Math.max(at, (await stat(stagingDir(name))).mtimeMs);
-    } catch {}
-    if (now - at > STAGING_TTL_MS) await rm(stagingDir(name), { recursive: true, force: true }).catch(() => {});
+  for (const folder of await staged().folders("").catch(() => [])) {
+    const meta = await readMeta(folder.name);
+    const at = Math.max(meta?.at ?? 0, folder.at);
+    if (now - at > STAGING_TTL_MS) await staged().remove(folder.name);
   }
 }
 async function stagedByUser(userId: string) {
-  let names: string[] = [];
-  try {
-    names = await readdir(stagingRoot());
-  } catch {
-    return 0;
-  }
   let n = 0;
-  for (const name of names) if ((await readMeta(name))?.userId === userId) n++;
+  for (const folder of await staged().folders("").catch(() => [])) if ((await readMeta(folder.name))?.userId === userId) n++;
   return n;
 }
 function ownStaging(meta: StagingMeta | null, user: Identity, pageId: string) {
@@ -240,19 +240,27 @@ export async function storeRecordingChunk(user: Identity, pageId: string, input:
       if (!mime) throw new HttpError(415, "Dieses Audioformat wird nicht unterstützt.");
       if ((await stagedByUser(user.id)) >= MAX_STAGED_PER_USER) throw new HttpError(429, "Zu viele Aufnahmen gleichzeitig. Bitte später erneut versuchen.");
       meta = { userId: user.id, pageId: page.id, mime, at: Date.now() };
-      await mkdir(stagingDir(rid), { recursive: true });
-      await writeFile(stagingMeta(rid), JSON.stringify(meta));
+      await staged().put(`${rid}/meta.json`, Buffer.from(JSON.stringify(meta)));
     }
-    const size = await stagedBytes(rid);
+    const chunks = await stagedChunks(rid);
+    const size = await stagedSize(rid, chunks);
     if (offset > size) throw new HttpError(409, "Die Aufnahme ist unvollständig.");
     const total = offset + bytes.length;
     if (total <= size) return { size };
     if (total > RECORDING_MAX_BYTES) throw new HttpError(413, "Die Aufnahme ist zu lang.");
     const room = await recordingRoom(user, page);
     if (room !== null && total > room) throw new HttpError(413, "Der Speicher reicht für diese Aufnahme nicht.");
-    if (offset < size) await truncate(stagingData(rid), offset);
-    await appendFile(stagingData(rid), bytes);
-    await writeFile(stagingMeta(rid), JSON.stringify({ ...meta, at: Date.now() }));
+    // A retry from inside what is there: what lies behind `offset` goes
+    // (a chunk across it is cut there), then this chunk continues.
+    for (const c of chunks) {
+      if (c.offset >= offset) await staged().removeObject(`${rid}/${c.name}`);
+      else if (c.offset + c.size > offset) {
+        const kept = await staged().get(`${rid}/${c.name}`);
+        if (kept) await staged().put(`${rid}/${c.name}`, kept.subarray(0, offset - c.offset));
+      }
+    }
+    await staged().put(`${rid}/${chunkName(offset)}`, bytes);
+    await staged().put(`${rid}/meta.json`, Buffer.from(JSON.stringify({ ...meta, at: Date.now() })));
     return { size: total };
   });
 }
@@ -263,7 +271,7 @@ export async function discardRecordingUpload(user: Identity, pageId: string, rec
   const rid = RECORDING_ID.parse(recId);
   await serial(rid, async () => {
     if (!ownStaging(await readMeta(rid), user, page.id)) return;
-    await rm(stagingDir(rid), { recursive: true, force: true });
+    await staged().remove(rid);
   });
   return { ok: true };
 }
@@ -282,6 +290,28 @@ export function checkRecording(durationMs: number, size: number) {
   if (size > RECORDING_MAX_BYTES || size > (durationMs / 1000) * RECORDING_MAX_BYTES_PER_SECOND + MB) throw new HttpError(413, "Die Aufnahme ist zu lang.");
 }
 
+// The chunks as one local file (the staging keeps them until the
+// recording is stored, so a refusal leaves the upload as it was).
+async function assemble(recId: string, size: number) {
+  const path = assembledPath(recId);
+  await mkdir(resolve(path, ".."), { recursive: true });
+  const out = createWriteStream(path);
+  try {
+    let at = 0;
+    for (const c of await stagedChunks(recId)) {
+      if (c.offset !== at || at >= size) break;
+      const data = await staged().get(`${recId}/${c.name}`);
+      if (!data) throw new HttpError(409, "Die Aufnahme ist unvollständig.");
+      const piece = data.subarray(0, Math.min(data.length, size - at));
+      if (!out.write(piece)) await new Promise((r) => out.once("drain", r));
+      at += piece.length;
+    }
+  } finally {
+    await new Promise<void>((done, fail) => out.end((error?: Error | null) => (error ? fail(error) : done())));
+  }
+  return path;
+}
+
 export async function finishRecording(user: Identity, pageId: string, input: unknown) {
   const page = await notebookPage(user, pageId, true);
   const b = finishSchema.parse(input);
@@ -291,71 +321,72 @@ export async function finishRecording(user: Identity, pageId: string, input: unk
     if (existing) return { recording: existing };
     const meta = ownStaging(await readMeta(b.recId), user, page.id);
     if (!meta) throw new HttpError(404, "Aufnahme nicht gefunden.");
-    const source = stagingData(b.recId);
     const size = await stagedBytes(b.recId);
     const durationMs = Math.round(Math.min(b.durationMs, RECORDING_MAX_MS));
     checkRecording(b.durationMs, size);
-    const handle = await open(source, "r");
-    const head = Buffer.alloc(Math.min(size, 64 * 1024));
+    const source = await assemble(b.recId, size);
     try {
-      await handle.read(head, 0, head.length, 0);
+      const handle = await open(source, "r");
+      const head = Buffer.alloc(Math.min(size, 64 * 1024));
+      try {
+        await handle.read(head, 0, head.length, 0);
+      } finally {
+        await handle.close();
+      }
+      const mime = recordingMime(meta.mime, head);
+      if (!mime) throw new HttpError(415, "Dieses Audioformat wird nicht unterstützt.");
+      const name = cleanRecordingName(b.name, "Aufnahme");
+      const fileName = sanitizeFileName(`${name}.${recordingExt(mime)}`, `aufnahme.${recordingExt(mime)}`);
+      const fid = id();
+      const dir = resolve(dataDir(), "uploads");
+      mkdirSync(dir, { recursive: true });
+      const final = resolve(dir, fid),
+        part = `${final}.part`;
+      // WebM from MediaRecorder has no duration: written into a copy of its
+      // start; other files move over as they are.
+      const patch = mime === "audio/webm" ? webmDurationPatch(head, durationMs) : null;
+      if (patch) {
+        const out = createWriteStream(part);
+        out.write(patch.head);
+        await pipeline(createReadStream(source, { start: patch.skip }), out);
+      } else await rename(source, part);
+      const stored = (await stat(part)).size;
+      try {
+        await transaction(async () => {
+          await enforceQuota(page.workspace_id, stored);
+          await enforceUserStorage(user, stored);
+          // Synchronous: a SQLite transaction awaits only the database.
+          renameSync(part, final);
+          onTransactionRollback(() => {
+            try {
+              renameSync(final, part);
+            } catch {}
+          });
+          // Cluster mode: into the bucket before the answer (lib/storage.ts).
+          await publishUpload(fid);
+          await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page.id, fileName, mime, stored, user.id);
+          await run(
+            "INSERT INTO notebook_recordings(page_id,id,file_id,name,duration_ms,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+            page.id,
+            b.recId,
+            fid,
+            name,
+            durationMs,
+            user.id,
+            Date.now(),
+          );
+          await run("UPDATE notebooks SET updated_at=? WHERE page_id=?", Date.now(), page.id);
+          await audit(user.id, "notebook.recording.add", page.id, name);
+        }, user);
+      } finally {
+        // Refused (quota): the staged upload stays, so it can be finished
+        // once there is room.
+        await unlink(part).catch(() => {});
+      }
     } finally {
-      await handle.close();
+      await rm(source, { force: true }).catch(() => {});
     }
-    const mime = recordingMime(meta.mime, head);
-    if (!mime) throw new HttpError(415, "Dieses Audioformat wird nicht unterstützt.");
-    const name = cleanRecordingName(b.name, "Aufnahme");
-    const fileName = sanitizeFileName(`${name}.${recordingExt(mime)}`, `aufnahme.${recordingExt(mime)}`);
-    const fid = id();
-    const dir = resolve(dataDir(), "uploads");
-    mkdirSync(dir, { recursive: true });
-    const final = resolve(dir, fid),
-      part = `${final}.part`;
-    // WebM from MediaRecorder has no duration: written into a copy of its
-    // start; other files move over as they are.
-    const patch = mime === "audio/webm" ? webmDurationPatch(head, durationMs) : null;
-    let moved = false;
-    if (patch) {
-      const out = createWriteStream(part);
-      out.write(patch.head);
-      await pipeline(createReadStream(source, { start: patch.skip }), out);
-    } else {
-      await rename(source, part);
-      moved = true;
-    }
-    const stored = (await stat(part)).size;
-    try {
-      await transaction(async () => {
-        await enforceQuota(page.workspace_id, stored);
-        await enforceUserStorage(user, stored);
-        // Synchronous: a SQLite transaction awaits only the database.
-        renameSync(part, final);
-        onTransactionRollback(() => {
-          try {
-            renameSync(final, part);
-          } catch {}
-        });
-        await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page.id, fileName, mime, stored, user.id);
-        await run(
-          "INSERT INTO notebook_recordings(page_id,id,file_id,name,duration_ms,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-          page.id,
-          b.recId,
-          fid,
-          name,
-          durationMs,
-          user.id,
-          Date.now(),
-        );
-        await run("UPDATE notebooks SET updated_at=? WHERE page_id=?", Date.now(), page.id);
-        await audit(user.id, "notebook.recording.add", page.id, name);
-      }, user);
-    } catch (e) {
-      // Refused (quota): the upload stays, so it can be finished once there is room.
-      if (moved && existsSync(part) && !existsSync(source)) await rename(part, source).catch(() => {});
-      else await unlink(part).catch(() => {});
-      throw e;
-    }
-    await rm(stagingDir(b.recId), { recursive: true, force: true }).catch(() => {});
+    await staged().remove(b.recId);
     return { recording: (await recordingOf(page.id, b.recId))! };
   });
 }

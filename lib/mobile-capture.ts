@@ -39,6 +39,7 @@ import { sanitizeFileName, stripLocation, verifiedMime } from "./upload-safety";
 import { enforceUserStorage, maxUploadMbFor } from "./user-limits";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync } from "./each-async";
+import { publishUpload } from "./storage";
 
 export const MAX_CAPTURE_FILES = 10;
 export const MAX_SPOTLIGHT_PAGES = 500;
@@ -185,6 +186,7 @@ export async function storeCaptureFiles(user: Identity, prepared: Prepared[], ow
     const path = resolve(dir, file.id);
     writeFileSync(path, file.content);
     onTransactionRollback(() => unlinkSync(path));
+    await publishUpload(file.id);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.content.length, user.id);
     await audit(user.id, "file.upload", ownerId, file.name);
     // The scan's text, recognised on the phone: the search finds it at

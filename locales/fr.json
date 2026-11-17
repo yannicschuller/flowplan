@@ -10339,6 +10339,8 @@
   "The file contains nothing that can be imported.": "Le fichier ne contient rien qui puisse être importé.",
   "The file contains too many elements.": "Le fichier contient trop d’éléments.",
   "The file content does not match the file type.": "Le contenu du fichier ne correspond pas au type de fichier.",
+  "The file could not be kept for the import (object storage unreachable). Please try again in a moment.": "Le fichier n’a pas pu être conservé pour l’importation (stockage objet injoignable). Réessayez dans un instant.",
+  "The file could not be stored (object storage unreachable). Please try again in a moment.": "Le fichier n’a pas pu être enregistré (stockage objet injoignable). Réessayez dans un instant.",
   "The file could not be uploaded.": "Le fichier n’a pas pu être téléversé.",
   "The file does not belong to this database.": "Le fichier n’appartient pas à cette base de données.",
   "The file has changed at the source.": "Le fichier a changé sur la source.",

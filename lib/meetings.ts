@@ -41,8 +41,9 @@
 // hear the audio) and a journal that is unlocked. Transcription and the AI
 // follow their own switches; API tokens need "KI und Transkription"
 // (lib/ai/token-access.ts).
-import { mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { renameSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { staging } from "./staging";
 import { resolve } from "node:path";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
@@ -108,6 +109,7 @@ import {
   type Person,
 } from "./meeting-core";
 import type { Field, Identity, Page } from "./types";
+import { publishUpload, readUpload } from "./storage";
 
 // ---- Workspace settings ----
 
@@ -448,7 +450,7 @@ export async function startMeetingSession(user: Identity, input: unknown, kind: 
     if (row.status === "transcribing" || row.status === "summarizing") throw new HttpError(409, "Die Besprechung wird gerade verarbeitet.");
     // Sessions that never finished (closed tab) are given up.
     const sessions = sessionsOf(row).filter((s) => s.state !== "recording");
-    for (const s of sessionsOf(row)) if (s.state === "recording") await rm(stagingDir(row.id, s.n), { recursive: true, force: true }).catch(() => {});
+    for (const s of sessionsOf(row)) if (s.state === "recording") await staged().remove(stagingDir(row.id, s.n));
     const offsetMs = sessions.reduce((sum, s) => sum + (s.state === "failed" && !s.durationMs ? 0 : s.durationMs), 0);
     if (offsetMs >= MEETING_MAX_SECONDS * 1000) throw new HttpError(413, "Die Besprechung hat die Höchstlänge erreicht.");
     const n = sessions.reduce((max, s) => Math.max(max, s.n), 0) + 1;
@@ -468,31 +470,26 @@ export async function startMeetingSession(user: Identity, input: unknown, kind: 
 }
 
 const dataDir = () => process.env.FLOWPLAN_DATA_DIR || "./data";
-const stagingRoot = () => resolve(dataDir(), "tmp", "meetings");
-const stagingDir = (meetingId: string, session: number) => resolve(stagingRoot(), meetingId, String(session));
-const trackDir = (meetingId: string, session: number, track: MeetingTrack) => resolve(stagingDir(meetingId, session), track);
+// The pieces wait in lib/staging.ts (the data folder, or the bucket in
+// cluster mode, where each piece may reach another instance):
+// <meeting>/<session>/<track>/<index>, next to them the live and transcript
+// state of each track.
+const staged = () => staging("meetings");
+const stagingDir = (meetingId: string, session: number) => `${meetingId}/${session}`;
+const trackDir = (meetingId: string, session: number, track: MeetingTrack) => `${stagingDir(meetingId, session)}/${track}`;
+const readStaged = async (path: string) => (await staged().get(path))?.toString("utf8") ?? "";
 export const MEETING_CHUNK_BYTES = 5 * 1024 * 1024;
 const MAX_PARTS = 1000;
 
 async function stagedParts(meetingId: string, session: number, track: MeetingTrack) {
-  try {
-    return (await readdir(trackDir(meetingId, session, track)))
-      .filter((name) => /^\d+$/.test(name))
-      .map(Number)
-      .sort((a, b) => a - b);
-  } catch {
-    return [];
-  }
+  return (await staged().list(trackDir(meetingId, session, track)))
+    .map((o) => o.name)
+    .filter((name) => /^\d+$/.test(name))
+    .map(Number)
+    .sort((a, b) => a - b);
 }
 async function stagedBytes(meetingId: string) {
-  let total = 0;
-  const walk = async (dir: string) => {
-    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => []))
-      if (entry.isDirectory()) await walk(resolve(dir, entry.name));
-      else total += (await stat(resolve(dir, entry.name)).catch(() => ({ size: 0 }))).size;
-  };
-  await walk(resolve(stagingRoot(), meetingId));
-  return total;
+  return (await staged().walk(meetingId)).reduce((sum, o) => sum + o.size, 0);
 }
 function ownSession(row: MeetingRow, user: Identity, n: number) {
   const session = sessionsOf(row).find((s) => s.n === n);
@@ -510,13 +507,12 @@ export async function storeMeetingChunk(user: Identity, meetingId: string, input
   if (session.state !== "recording" || !session.tracks.includes(track)) throw new HttpError(409, "Diese Aufnahme ist bereits abgeschlossen.");
   if (!Number.isInteger(input.index) || input.index < 0 || input.index >= MAX_PARTS) throw new HttpError(400, "Ungültige Eingabe.");
   if (!bytes.length || bytes.length > MEETING_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
-  const staged = await stagedBytes(row.id);
-  if (staged + bytes.length > transcribeMaxBytes() * session.tracks.length) throw new HttpError(413, "Die Aufnahme ist zu lang.");
+  const stagedNow = await stagedBytes(row.id);
+  if (stagedNow + bytes.length > transcribeMaxBytes() * session.tracks.length) throw new HttpError(413, "Die Aufnahme ist zu lang.");
   // The audio may stay (retention): it has to fit the storage.
   const room = await recordingRoom(user, page);
-  if (room !== null && staged + bytes.length > room) throw new HttpError(413, "Der Speicherplatz reicht für diese Aufnahme nicht aus.");
-  await mkdir(trackDir(row.id, session.n, track), { recursive: true });
-  await writeFile(resolve(trackDir(row.id, session.n, track), String(input.index)), bytes);
+  if (room !== null && stagedNow + bytes.length > room) throw new HttpError(413, "Der Speicherplatz reicht für diese Aufnahme nicht aus.");
+  await staged().put(`${trackDir(row.id, session.n, track)}/${input.index}`, bytes);
   if (session.live && session.mime === "audio/webm" && liveEnabled()) scheduleLive(row.id, session.n, track, whisperPrompt((await meetingSettings(row.workspace_id)).glossary));
   return { ok: true, received: (await stagedParts(row.id, session.n, track)).length };
 }
@@ -662,13 +658,17 @@ async function trackAudio(row: MeetingRow, session: MeetingSession, track: Meeti
   if (session.source === "kept") {
     const kept = audioOf(row).find((a) => a.session === session.n && a.track === track);
     if (!kept) throw new HttpError(409, "Für diese Besprechung ist kein Audio mehr gespeichert.");
-    const data = await readFile(resolve(dataDir(), "uploads", kept.fileId)).catch(() => {
-      throw new HttpError(409, "Für diese Besprechung ist kein Audio mehr gespeichert.");
-    });
+    // Through the storage layer: the file may live only in the bucket.
+    const data = await readUpload(kept.fileId);
+    if (!data) throw new HttpError(409, "Für diese Besprechung ist kein Audio mehr gespeichert.");
     return new Blob([new Uint8Array(data)], { type: kept.mime });
   }
   const parts: Uint8Array[] = [];
-  for (let i = 0; i < (session.parts[track] || 0); i++) parts.push(new Uint8Array(await readFile(resolve(trackDir(row.id, session.n, track), String(i)))));
+  for (let i = 0; i < (session.parts[track] || 0); i++) {
+    const piece = await staged().get(`${trackDir(row.id, session.n, track)}/${i}`);
+    if (!piece) throw new HttpError(409, "Die Aufnahme ist unvollständig.");
+    parts.push(new Uint8Array(piece));
+  }
   return new Blob(parts as BlobPart[], { type: session.mime });
 }
 const extension = (mime: string) => ({ "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/aac": "aac", "audio/ogg": "ogg" })[mime] || "webm";
@@ -691,8 +691,8 @@ type LiveState = {
   failed?: string;
 };
 export const liveEnabled = () => !/^(0|off|false|no)$/i.test(process.env.MEETING_LIVE_TRANSCRIPTION?.trim() || "");
-const liveFile = (meetingId: string, n: number, track: MeetingTrack) => resolve(stagingDir(meetingId, n), `${track}.live.json`);
-const transcriptFile = (meetingId: string, n: number, track: MeetingTrack) => resolve(stagingDir(meetingId, n), `${track}.transcript.json`);
+const liveFile = (meetingId: string, n: number, track: MeetingTrack) => `${stagingDir(meetingId, n)}/${track}.live.json`;
+const transcriptFile = (meetingId: string, n: number, track: MeetingTrack) => `${stagingDir(meetingId, n)}/${track}.transcript.json`;
 const liveRuntime = globalThis as typeof globalThis & { flowplanMeetingLive?: Map<string, { job: Promise<void>; again: boolean }> };
 const liveJobs = () => (liveRuntime.flowplanMeetingLive ??= new Map());
 
@@ -724,7 +724,7 @@ export async function meetingLiveJob(meetingId: string) {
 // Throws only when `final` (the caller then transcribes the whole track).
 async function liveStep(meetingId: string, n: number, track: MeetingTrack, final: boolean, prompt: string): Promise<LiveState> {
   const file = liveFile(meetingId, n, track);
-  const state = parse<LiveState | null>(await readFile(file, "utf8").catch(() => ""), null) ?? {
+  const state = parse<LiveState | null>(await readStaged(file).catch(() => ""), null) ?? {
     header: 0,
     tick: 0.001,
     scanned: 0,
@@ -735,8 +735,7 @@ async function liveStep(meetingId: string, n: number, track: MeetingTrack, final
     errors: 0,
   };
   const save = async () => {
-    await mkdir(stagingDir(meetingId, n), { recursive: true });
-    await writeFile(file, JSON.stringify(state));
+    await staged().put(file, Buffer.from(JSON.stringify(state)));
   };
   if (state.failed) {
     if (final) throw new Error(state.failed);
@@ -749,7 +748,11 @@ async function liveStep(meetingId: string, n: number, track: MeetingTrack, final
     if (final && last < 0) throw new Error("no pieces");
     return state;
   }
-  const piece = async (i: number) => new Uint8Array(await readFile(resolve(trackDir(meetingId, n, track), String(i))));
+  const piece = async (i: number) => {
+    const data = await staged().get(`${trackDir(meetingId, n, track)}/${i}`);
+    if (!data) throw new Error(`piece ${i} is missing`);
+    return new Uint8Array(data);
+  };
   const first = await piece(0);
   if (!state.header) {
     const head = webmHeader(first);
@@ -809,7 +812,7 @@ type TrackResult = { segments: TranscriptSegment[]; duration?: number };
 // One track's transcript: kept from an earlier attempt, from the live
 // windows (their last one now), or the whole track.
 async function trackTranscript(row: MeetingRow, session: MeetingSession, track: MeetingTrack, prompt: string): Promise<TrackResult> {
-  const cached = parse<TrackResult | null>(await readFile(transcriptFile(row.id, session.n, track), "utf8").catch(() => ""), null);
+  const cached = parse<TrackResult | null>(await readStaged(transcriptFile(row.id, session.n, track)).catch(() => ""), null);
   if (cached && Array.isArray(cached.segments)) return cached;
   let result: TrackResult | null = null;
   if (session.live && !session.source && session.mime === "audio/webm" && liveEnabled()) {
@@ -832,8 +835,7 @@ async function trackTranscript(row: MeetingRow, session: MeetingSession, track: 
       ...(transcript.duration !== undefined ? { duration: transcript.duration } : {}),
     };
   }
-  await mkdir(stagingDir(row.id, session.n), { recursive: true });
-  await writeFile(transcriptFile(row.id, session.n, track), JSON.stringify(result));
+  await staged().put(transcriptFile(row.id, session.n, track), Buffer.from(JSON.stringify(result)));
   return result;
 }
 
@@ -925,7 +927,7 @@ async function processMeeting(actor: Identity, meetingId: string, language: Meet
     let heardSeconds = 0;
     try {
       if (session.kind === "text") {
-        segments = textSegments(await readFile(resolve(trackDir(row.id, session.n, "mixed"), "0"), "utf8"), session.n);
+        segments = textSegments(await readStaged(`${trackDir(row.id, session.n, "mixed")}/0`), session.n);
       } else {
         const results: Partial<Record<MeetingTrack, TranscriptSegment[]>> = {};
         // One track after the other; a finished one is kept when the next fails.
@@ -1006,6 +1008,8 @@ async function keepOrDropAudio(actor: Identity, row: MeetingRow, session: Meetin
               renameSync(final, part);
             } catch {}
           });
+          // Cluster mode: into the bucket before it counts (lib/storage.ts).
+          await publishUpload(fid);
           const name = sanitizeFileName(`${ct("Besprechung", "Meeting")}-${session.n}-${track}.${extension(session.mime)}`, `besprechung.${extension(session.mime)}`);
           await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page.id, name, session.mime, audio.length, actor.id);
         }, actor);
@@ -1024,9 +1028,9 @@ async function keepOrDropAudio(actor: Identity, row: MeetingRow, session: Meetin
       await run("UPDATE meetings SET audio=?,audio_until=?,updated_at=? WHERE id=?", JSON.stringify(audio), until, Date.now(), row.id);
     });
   } finally {
-    await rm(stagingDir(row.id, session.n), { recursive: true, force: true }).catch(() => {});
+    await staged().remove(stagingDir(row.id, session.n));
     // The meeting's folder once no session is staged any more.
-    await rmdir(resolve(stagingRoot(), row.id)).catch(() => {});
+    if (!(await staged().walk(row.id).catch(() => [1])).length) await staged().remove(row.id);
   }
 }
 
@@ -1162,7 +1166,7 @@ export async function retranscribeMeeting(user: Identity, meetingId: string, inp
     await audit(user.id, "meeting.retranscribe", page.id, row.id);
   }, user);
   // Nothing from an earlier attempt counts.
-  for (const n of numbers) for (const track of TRACKS) await rm(transcriptFile(row.id, n, track), { force: true }).catch(() => {});
+  for (const n of numbers) for (const track of TRACKS) await staged().removeObject(transcriptFile(row.id, n, track));
   launchProcessing(user, row.id, meetingLanguage(b.language || languageOfLocale()));
   return { ...(await meetingStatus(user, row.id)), edited, keepsEdited: !b.force, started: true };
 }
@@ -1271,12 +1275,8 @@ export async function sweepMeetingAudio(now = Date.now()) {
     });
   }
   // Staged pieces older than a week (the browser keeps its own copy).
-  for (const entry of await readdir(stagingRoot(), { withFileTypes: true }).catch(() => [])) {
-    if (!entry.isDirectory()) continue;
-    const dir = resolve(stagingRoot(), entry.name);
-    const info = await stat(dir).catch(() => null);
-    if (info && now - info.mtimeMs > 7 * 86_400_000 && !running().has(entry.name)) await rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
+  for (const folder of await staged().folders("").catch(() => []))
+    if (now - folder.at > 7 * 86_400_000 && !running().has(folder.name)) await staged().remove(folder.name);
   return due.length;
 }
 // Removes the kept audio of a meeting now (the block's settings).
@@ -1409,13 +1409,11 @@ export async function createMeetingFromUpload(user: Identity, input: MeetingUplo
   const parts: Partial<Record<MeetingTrack, number>> = {};
   if (tracks.length)
     for (const t of tracks) {
-      await mkdir(trackDir(meetingId, started.session, t), { recursive: true });
-      await writeFile(resolve(trackDir(meetingId, started.session, t), "0"), input.audio![t]!.data);
+      await staged().put(`${trackDir(meetingId, started.session, t)}/0`, input.audio![t]!.data);
       parts[t] = 1;
     }
   else {
-    await mkdir(trackDir(meetingId, started.session, "mixed"), { recursive: true });
-    await writeFile(resolve(trackDir(meetingId, started.session, "mixed"), "0"), text.slice(0, 400_000));
+    await staged().put(`${trackDir(meetingId, started.session, "mixed")}/0`, Buffer.from(text.slice(0, 400_000)));
     parts.mixed = 1;
   }
   const durationMs = tracks.length ? Math.max(...tracks.map((t) => input.audio![t]!.durationMs || 0)) : 0;

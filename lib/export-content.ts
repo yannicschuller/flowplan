@@ -32,6 +32,7 @@ import { inkPicture, notebookExportHtml, type InkPicture } from "./ink-export";
 import { markdownToHtml } from "./markdown-import";
 import type { Identity, Page, Row, Field, Space } from "./types";
 import { filterAsync, mapAsync } from "./each-async";
+import { uploadSource } from "./storage";
 
 export type ExportSelection = {
   pageId?: string;
@@ -212,7 +213,7 @@ async function collect(user: Identity, options: ExportSelection): Promise<Collec
     if (!info) return null;
     if (files.has(info.id)) return files.get(info.id)!;
     files.set(info.id, null);
-    const source = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", info.id);
+    const source = (await uploadSource(info.id));
     let size: number;
     try {
       const stat = statSync(source);

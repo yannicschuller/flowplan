@@ -27,6 +27,7 @@ import { computedTypes } from "./markdown-export";
 import { exportTitle, importDate } from "./zip-import";
 import type { Field, Identity, Page } from "./types";
 import { forEachAsync, mapAsync } from "./each-async";
+import { publishUpload } from "./storage";
 
 export const MAX_MARKDOWN_RECORDS = 5000;
 const mimeTypes: Record<string, string> = {
@@ -300,6 +301,7 @@ export async function importMarkdownRecords(
       mkdirSync(dir, { recursive: true });
       writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
+      await publishUpload(fid);
       await run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,

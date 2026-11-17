@@ -56,6 +56,7 @@ import type { Identity, Page, Row, Field, Space } from "./types";
 import { linkedBlockIds } from "./block-links";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
+import { uploadSource } from "./storage";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
   // in a folder of its own, named like the scheduled export
@@ -339,11 +340,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
               return `${appUrl().replace(/\/$/, "")}/api/files/${file.id}`;
             const path = `${prefixOfPath(from)}assets/${file.id}-${exportName(file.name)}`;
             if (!entries.has(path)) {
-              const source = resolve(
-                process.env.FLOWPLAN_DATA_DIR || "./data",
-                "uploads",
-                file.id,
-              );
+              const source = (await uploadSource(file.id));
               let size: number;
               try {
                 const stat = statSync(source);
@@ -716,7 +713,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
               async (file) => {
                 if (!files.has(file)) return null;
                 try {
-                  return readFileSync(resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", file));
+                  return readFileSync((await uploadSource(file)));
                 } catch {
                   return null;
                 }

@@ -36,6 +36,7 @@ import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anc
 import type { Field, Identity, Page, Space } from "../types";
 import { filterAsync, forEachAsync } from "../each-async";
 import { sourceName, writeImportReport, type ReportSummary } from "./report";
+import { publishUpload } from "../storage";
 
 export type ImportMode = "pages" | "database";
 export type ImportPreview = {
@@ -312,6 +313,7 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       mkdirSync(dir, { recursive: true });
       writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
+      await publishUpload(fid);
       await run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,

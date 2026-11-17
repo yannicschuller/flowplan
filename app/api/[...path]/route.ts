@@ -1751,7 +1751,8 @@ async function handlePOST(
           upload.discardImportUpload(user.id, earlier);
           return NextResponse.json({ ok: true });
         }
-        if (earlier) file = { name, path: upload.importUploadPath(user.id, earlier) };
+        // Cluster mode: the preview may have run on another instance.
+        if (earlier) file = { name, path: await upload.importUploadFile(user.id, earlier) };
         else {
           // Rights before a large body is read.
           const { requireSpace } = await import("@/lib/importers/write");

@@ -10,6 +10,7 @@ import { audit, onTransactionRollback, run, transaction } from "./db";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
 import type { Identity, Page } from "./types";
+import { publishUpload } from "./storage";
 
 export async function storeUpload(
   user: Identity,
@@ -29,6 +30,8 @@ export async function storeUpload(
         unlinkSync(path);
       } catch {}
     });
+    // Cluster mode: into the bucket before the answer (lib/storage.ts).
+    await publishUpload(file.id);
     await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       file.id,

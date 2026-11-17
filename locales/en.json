@@ -10339,6 +10339,8 @@
   "The file contains nothing that can be imported.": "The file contains nothing that can be imported.",
   "The file contains too many elements.": "The file contains too many elements.",
   "The file content does not match the file type.": "The file content does not match the file type.",
+  "The file could not be kept for the import (object storage unreachable). Please try again in a moment.": "The file could not be kept for the import (object storage unreachable). Please try again in a moment.",
+  "The file could not be stored (object storage unreachable). Please try again in a moment.": "The file could not be stored (object storage unreachable). Please try again in a moment.",
   "The file could not be uploaded.": "The file could not be uploaded.",
   "The file does not belong to this database.": "The file does not belong to this database.",
   "The file has changed at the source.": "The file has changed at the source.",

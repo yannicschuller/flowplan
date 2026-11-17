@@ -10,7 +10,8 @@
 //   folder per upload, named after the person, and kept after a preview so
 //   the import does not upload it again. It is deleted after the import, on
 //   "discard", and at the latest six hours later (swept on every upload).
-import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { staging, stagingInBucket } from "../staging";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -70,6 +71,7 @@ export function sweepImportUploads(now = Date.now()) {
 // Streams the request body to disk, refusing more than maxBytes.
 export async function saveImportUpload(userId: string, body: ReadableStream<Uint8Array>, maxBytes: number, tooLarge: () => HttpError) {
   sweepImportUploads();
+  void sweepStagedImports().catch(() => {});
   const id = randomUUID();
   const dir = folderOf(userId, id);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -92,7 +94,40 @@ export async function saveImportUpload(userId: string, body: ReadableStream<Uint
     rmSync(dir, { recursive: true, force: true });
     throw new HttpError(400, "Datei fehlt.");
   }
+  // Cluster mode: the import after the preview may reach another instance –
+  // the file also goes into the bucket's staging, in parts (lib/staging.ts).
+  if (stagingInBucket())
+    try {
+      await stageInBucket(`${owner(userId)}-${id}`, path);
+    } catch (error) {
+      rmSync(dir, { recursive: true, force: true });
+      await staging("imports").remove(`${owner(userId)}-${id}`);
+      console.error("Import: Datei nicht im Bucket abgelegt", (error as Error)?.message || error);
+      throw new HttpError(503, "Die Datei konnte nicht zwischengespeichert werden (Objektspeicher nicht erreichbar). Bitte versuche es gleich noch einmal.");
+    }
   return { id, path, size };
+}
+
+// Parts of 16 MB: each is sealed (encrypted) on its own.
+const PART_BYTES = 16 * MB;
+async function stageInBucket(folder: string, path: string) {
+  const parts = staging("imports");
+  let index = 0;
+  let pending: Buffer[] = [];
+  let pendingBytes = 0;
+  const flush = async () => {
+    if (!pendingBytes) return;
+    await parts.put(`${folder}/${String(index++).padStart(6, "0")}`, Buffer.concat(pending));
+    pending = [];
+    pendingBytes = 0;
+  };
+  for await (const chunk of createReadStream(path, { highWaterMark: MB })) {
+    pending.push(chunk as Buffer);
+    pendingBytes += (chunk as Buffer).length;
+    if (pendingBytes >= PART_BYTES) await flush();
+  }
+  await flush();
+  await parts.put(`${folder}/done`, Buffer.from(String(index)));
 }
 
 // An earlier upload of this person (after its preview).
@@ -102,7 +137,46 @@ export function importUploadPath(userId: string, uploadId: string) {
   if (!existsSync(path)) throw new HttpError(410, "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.");
   return path;
 }
+// The same, fetched from the bucket's staging first when the preview ran
+// on another instance (cluster mode).
+export async function importUploadFile(userId: string, uploadId: string) {
+  if (!UPLOAD_ID.test(uploadId)) throw new HttpError(400, "Ungültige Eingabe.");
+  const path = resolve(folderOf(userId, uploadId), "upload");
+  if (existsSync(path) || !stagingInBucket()) return importUploadPath(userId, uploadId);
+  const parts = staging("imports");
+  const folder = `${owner(userId)}-${uploadId}`;
+  const count = Number(String((await parts.get(`${folder}/done`)) ?? ""));
+  if (!Number.isInteger(count) || count < 1) throw new HttpError(410, "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.");
+  mkdirSync(folderOf(userId, uploadId), { recursive: true, mode: 0o700 });
+  const partial = `${path}.part`;
+  const out = createWriteStream(partial, { mode: 0o600 });
+  try {
+    for (let i = 0; i < count; i++) {
+      const data = await parts.get(`${folder}/${String(i).padStart(6, "0")}`);
+      if (!data) throw new HttpError(410, "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.");
+      if (!out.write(data)) await new Promise((r) => out.once("drain", r));
+    }
+    await new Promise<void>((done, fail) => out.end((error?: Error | null) => (error ? fail(error) : done())));
+  } catch (error) {
+    out.destroy();
+    rmSync(folderOf(userId, uploadId), { recursive: true, force: true });
+    throw error;
+  }
+  renameSync(partial, path);
+  return path;
+}
 export function discardImportUpload(userId: string, uploadId: string) {
-  if (UPLOAD_ID.test(uploadId)) rmSync(folderOf(userId, uploadId), { recursive: true, force: true });
+  if (!UPLOAD_ID.test(uploadId)) return;
+  rmSync(folderOf(userId, uploadId), { recursive: true, force: true });
+  if (stagingInBucket()) void staging("imports").remove(`${owner(userId)}-${uploadId}`).catch(() => {});
+}
+// Cluster mode: the bucket's staged imports older than six hours (looked
+// at with every upload, at most every ten minutes per instance).
+const swept = globalThis as unknown as { flowplanImportSweep?: number };
+export async function sweepStagedImports(now = Date.now()) {
+  if (!stagingInBucket() || now - (swept.flowplanImportSweep ?? 0) < 10 * 60_000) return;
+  swept.flowplanImportSweep = now;
+  for (const folder of await staging("imports").folders("").catch(() => []))
+    if (now - folder.at > KEEP_MS) await staging("imports").remove(folder.name);
 }
 export const importLimitBytes = (limitMb: number) => limitMb * MB;

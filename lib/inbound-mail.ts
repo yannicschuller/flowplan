@@ -40,6 +40,7 @@ import { mapAsync } from "./each-async";
 import { mailVerdict, sendgridVerdict, type MailVerdict } from "./mail-auth";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { publishUpload } from "./storage";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
 export const INBOUND_FILE_BYTES = 10 * 1024 * 1024;
@@ -626,6 +627,7 @@ async function storeMail(address: AddressRow, mail: InboundMail, from: string, m
       path = resolve(dir, fid);
     writeFileSync(path, a.data);
     onTransactionRollback(() => unlinkSync(path));
+    await publishUpload(fid);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, owner, a.filename, a.mime, a.data.length, null);
     return { ...a, url: `/api/files/${fid}` };
   });
@@ -722,6 +724,7 @@ async function workflowMail(address: AddressRow, mail: InboundMail, from: string
       path = resolve(dir, fid);
     writeFileSync(path, a.data);
     onTransactionRollback(() => unlinkSync(path));
+    await publishUpload(fid);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, target.id, a.filename, a.mime, a.data.length, null);
     return { name: a.filename, size: a.data.length, mime: a.mime, file: fid, url: `/api/files/${fid}` };
   });

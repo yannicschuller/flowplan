@@ -20,6 +20,7 @@ import {
   type ImportedBoard,
 } from "./whiteboard-import";
 import type { Identity, Space } from "./types";
+import { publishUpload } from "./storage";
 
 // Excalidraw and draw.io files onto whiteboards: parsed by
 // lib/whiteboard-import.ts, embedded pictures stored as files of the page
@@ -59,6 +60,7 @@ export async function storeBoardImages(
     const fid = id();
     writeFileSync(resolve(dir, fid), data);
     onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
+    await publishUpload(fid);
     await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       fid,

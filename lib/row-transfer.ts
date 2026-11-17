@@ -28,6 +28,7 @@ import { cellText } from "./cell-text";
 import type { Field, Identity, Page, Row } from "./types";
 import { filterAsync, mapAsync } from "./each-async";
 import { colorOptions, hasOwnOptions, optionColor } from "./option-colors";
+import { localUpload, publishUpload } from "./storage";
 
 const input = z.object({
   rowIds: z.array(z.uuid()).min(1).max(500),
@@ -122,11 +123,13 @@ async function copyFile(fileId: string, source: Page, hidden: Set<string>, targe
     fileId,
     source.id,
   );
-  const from = resolve(dataDir(), fileId);
-  if (!file || !existsSync(from)) return fileId;
+  // Through the storage layer: the source may live only in the bucket.
+  const from = file ? await localUpload(fileId) : null;
+  if (!file || !from || !existsSync(from)) return fileId;
   const fresh = id();
   mkdirSync(dataDir(), { recursive: true });
   copyFileSync(from, resolve(dataDir(), fresh));
+  await publishUpload(fresh);
   await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, target.id, file.name, file.mime, file.size, userId);
   return fresh;
 }

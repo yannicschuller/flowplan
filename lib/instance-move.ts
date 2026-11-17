@@ -35,7 +35,7 @@ import { encryptionKeys, currentKeyId } from "./encryption";
 import { openSecret, sealSecret } from "./secret-box";
 import { secretKeyIds, secretsKeySource } from "./ai/secrets";
 import { mailConfig, smtpOptions, smtpTlsHint } from "./mail";
-import { bucketFetch, storageConfig } from "./storage";
+import { bucketFetch, storageConfig, localUploadNames } from "./storage";
 import { confirmsWithPassword } from "./account-deletion";
 import { passwordLogin } from "./local-auth";
 import { verifyLdapPassword } from "./ldap-auth";
@@ -60,6 +60,7 @@ import {
   type MoveSource,
   type MoveSummary,
 } from "./instance-move-pull";
+import { clusterMode } from "./cluster/config";
 
 export const MOVE_TOKEN_HOURS = 24;
 const dataDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -269,7 +270,8 @@ export async function moveManifest(): Promise<MoveManifest> {
   const dir = dataDir(),
     uploads = resolve(dir, "uploads");
   const snapshot = await createSnapshot();
-  const names = existsSync(uploads) ? readdirSync(uploads).filter((n) => UPLOAD_NAME.test(n)) : [];
+  // Cluster mode: the folder is only a cache – every file, fetched first.
+  const names = clusterMode() ? await localUploadNames() : existsSync(uploads) ? readdirSync(uploads).filter((n) => UPLOAD_NAME.test(n)) : [];
   return {
     format: MOVE_FORMAT,
     createdAt: new Date().toISOString(),

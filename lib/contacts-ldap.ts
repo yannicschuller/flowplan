@@ -59,6 +59,7 @@ import { CONTACT_FIELDS, MISSING_TAGS, ensureOptions, requireContactsDatabase, s
 import type { Field, Identity } from "./types";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { publishUpload } from "./storage";
 
 export const DEFAULT_PERSON_FILTER = "(&(|(objectClass=inetOrgPerson)(objectClass=user)(objectClass=contact))(!(objectClass=computer)))";
 const OU_FILTER = "(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=organization)(objectClass=domain))";
@@ -713,6 +714,7 @@ export async function storeContactPhoto(page: { id: string; workspace_id: string
       unlinkSync(resolve(dir, fid));
     } catch {}
   });
+  await publishUpload(fid);
   await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,

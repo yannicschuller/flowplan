@@ -8,6 +8,7 @@ import { hiddenFileIds } from "./row-files";
 import { cleanHtml } from "./document-server";
 import { HttpError } from "./auth";
 import type { Identity, Field } from "./types";
+import { publishUpload, uploadSource } from "./storage";
 
 type Payload = {
   appearance?: { cover: string; coverPosition: number };
@@ -84,7 +85,7 @@ export async function captureTemplateFiles(
     let bytes: Buffer;
     try {
       bytes = readFileSync(
-        resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", fid),
+        (await uploadSource(fid)),
       );
     } catch {
       throw new HttpError(409, `Anhang „${file.name}“ fehlt auf dem Server.`);
@@ -134,6 +135,7 @@ export async function instantiateTemplateFiles(
       } catch {}
     });
     writeFileSync(path, file.data, { flag: "wx" });
+    await publishUpload(fid);
     await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       fid,

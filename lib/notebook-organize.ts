@@ -53,6 +53,7 @@ import {
   type NotebookBackground,
 } from "./notebook";
 import type { Identity, Page } from "./types";
+import { localUpload, publishUpload } from "./storage";
 
 export const ORGANIZE_ACTIONS = new Set([
   "notebook.sheet.meta",
@@ -327,8 +328,11 @@ async function copyFilesTo(target: Page, fileIds: string[], user: Identity) {
     );
     if (!file) continue;
     const copy = id();
+    // Through the storage layer: the source may live only in the bucket.
+    const source = await localUpload(file.id);
+    if (!source) continue;
     try {
-      copyFileSync(resolve(dir, file.id), resolve(dir, copy));
+      copyFileSync(source, resolve(dir, copy));
     } catch {
       continue;
     }
@@ -338,6 +342,7 @@ async function copyFilesTo(target: Page, fileIds: string[], user: Identity) {
           unlinkSync(resolve(dir, copy));
         } catch {}
       });
+    await publishUpload(copy);
     await run("INSERT INTO files(id,page_id,name,mime,size,created_by,width,height) VALUES(?,?,?,?,?,?,?,?)", copy, target.id, file.name, file.mime, file.size, user.id, file.width, file.height);
     map.set(fid, copy);
   }
