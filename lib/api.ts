@@ -1,4 +1,5 @@
 import { withReadMemo } from "./read-memo";
+import { noteRequestAction } from "./request-context";
 import { noteCommand } from "./metrics";
 import { shiftArea } from "./server-metrics";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
@@ -832,6 +833,8 @@ export async function command(
   const action = typeof (input as { action?: unknown })?.action === "string" ? (input as { action: string }).action : "";
   const started = performance.now();
   const area = LIVE_ACTIONS.has(action) ? shiftArea("api", "live") : null;
+  // The command a failing request ran, for the error details (lib/request-context.ts).
+  if (action) noteRequestAction(action);
   let failed = false;
   try {
     // Permission lookups are remembered until the next write (lib/read-memo.ts).

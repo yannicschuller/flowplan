@@ -1,5 +1,6 @@
 // A drawing block on a shared or published page as a picture, read-only
 // (lib/ink-export.ts): ?page=P&block=B&height=H&paper=X → { svg, text }.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withShareRequest } from "@/lib/share-access";
@@ -23,7 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Nicht verfügbar." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

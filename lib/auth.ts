@@ -8,6 +8,7 @@ import { needsTwoFactorSetup } from "./two-factor-policy";
 import { recordOpsEvent } from "./ops-events";
 import { blockedRequest, securityEvent } from "./security-events";
 import { noteActive } from "./metrics";
+import { noteRequestCaller } from "./request-context";
 import { readOnlyRefusal } from "./instance-read-only";
 import { rememberPolicy, rememberedEnd, sessionTerms } from "./session-policy";
 import { proxySessionEnds } from "./proxy-auth-config";
@@ -112,6 +113,12 @@ export async function identityFromToken(token: string, requestHeaders?: Headers)
   };
 }
 export async function currentUser() {
+  const user = await currentIdentity();
+  // The caller's role only, for the error details (lib/request-context.ts).
+  noteRequestCaller(user);
+  return user;
+}
+async function currentIdentity() {
   const requestHeaders = await headers();
   // Blocked addresses (Administration → Sicherheit) are signed out.
   if (await blockedRequest(requestHeaders)) return null;
@@ -128,8 +135,9 @@ export async function currentUser() {
 export async function identityFromRequest(req: Request): Promise<Identity | null> {
   if (await blockedRequest(req.headers)) return null;
   const authorization = req.headers.get("authorization");
-  if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
-  return sessionIdentityFromRequest(req);
+  const user = authorization?.startsWith("Bearer ") ? await identityFromApiToken(authorization) : await sessionIdentityFromRequest(req);
+  noteRequestCaller(user);
+  return user;
 }
 // Only the session cookie of a request (never an API token).
 export async function sessionIdentityFromRequest(req: Request): Promise<Identity | null> {

@@ -6,6 +6,7 @@
 // the current synchronous work (transactions here never span an await).
 import { run } from "./db";
 import { afterTransaction } from "./db-driver/context";
+import { captureWorkerError } from "./error-details";
 
 export const opsEventKinds = ["login_failure", "rate_limited", "anonymous_refused", "login_success"] as const;
 export type OpsEventKind = (typeof opsEventKinds)[number];
@@ -32,6 +33,8 @@ export async function noteWorkerRun(name: string, error?: unknown, at = Date.now
   const written = (state.flowplanOpsWorkers ??= new Map());
   if (error === undefined && at - (written.get(name) ?? -Infinity) < 60_000) return;
   written.set(name, error === undefined ? at : -Infinity);
+  // A failure also goes to the error details of the monitoring (lib/error-details.ts).
+  if (error !== undefined) captureWorkerError(name, error);
   try {
     if (error === undefined)
       await run(

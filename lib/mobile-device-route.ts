@@ -5,6 +5,7 @@
 // request that is not a GET is refused with 423 while the instance is frozen
 // or has moved, unless readOnlyRefusal lets the path through (reads that are
 // sent with a body, such as the widget data refresh).
+import { serverError } from "./request-context";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { HttpError, refuseWhileReadOnly } from "./auth";
@@ -17,7 +18,7 @@ import type { Identity } from "./types";
 const headers = { "Cache-Control": "no-store" };
 
 export function deviceFailure(e: unknown, locale: Locale) {
-  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
+  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : serverError(e);
   if (status === 500) console.error(e);
   const message = status === 500 ? "Fehler" : e instanceof ZodError || e instanceof SyntaxError ? "Ungültige Anfrage." : (e as Error).message;
   return NextResponse.json({ error: localizedMessage(message, locale) }, { status, headers });

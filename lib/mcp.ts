@@ -15,6 +15,7 @@ import { trashDays } from "./trash";
 import { TASK_STATUSES } from "./task-status";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { all, one } from "./db";
+import { captureHandledError } from "./error-details";
 import { HttpError, appUrl } from "./auth";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { command, database, rows } from "./api";
@@ -1261,7 +1262,11 @@ async function callTool(user: Identity, name: unknown, args: unknown): Promise<T
     if (value instanceof Parts) return { content: value.texts.map((text) => ({ type: "text" as const, text: clip(text) })) };
     return { content: [{ type: "text", text: typeof value === "string" ? clip(value) : json(value) }] };
   } catch (e) {
-    if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) console.error("MCP tool failed", e);
+    if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) {
+      console.error("MCP tool failed", e);
+      // An error result, not a 5xx: kept in the error details all the same.
+      captureHandledError(e, `mcp.${tool.name}`);
+    }
     return { isError: true, content: [{ type: "text", text: message(e) }] };
   }
 }
@@ -1400,6 +1405,7 @@ export async function handleMcpMessage(user: Identity, input: unknown) {
     if (e instanceof z.ZodError || e instanceof HttpError)
       return respond({ error: { code: -32602, message: message(e) } });
     console.error("MCP request failed", e);
+    captureHandledError(e, `mcp.${msg.method.replace(/\//g, ".")}`);
     return respond({ error: { code: -32603, message: "Internal error." } });
   }
 }

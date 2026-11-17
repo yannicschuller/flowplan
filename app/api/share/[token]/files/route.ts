@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { requireBodySize } from "@/lib/upload-safety";
 import { z } from "zod";
@@ -29,7 +30,7 @@ export async function POST(
     });
   } catch (e) {
     const status =
-      e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : 500;
+      e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : serverError(e);
     return NextResponse.json(
       {
         error:

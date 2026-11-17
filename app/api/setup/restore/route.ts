@@ -7,6 +7,7 @@
 //                            disk; key in X-Flowplan-Backup-Key, file name in
 //                            X-Flowplan-File-Name)
 //   POST application/json { action: "probe-sftp" | "s3" | "sftp", … }
+import { serverError } from "@/lib/request-context";
 import { createWriteStream, rmSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -36,7 +37,7 @@ const failure = (e: unknown) => {
   if (!(e instanceof HttpError)) console.error("Wiederherstellung beim Einrichten:", (e as Error)?.message);
   return Response.json(
     { error: e instanceof HttpError ? e.message : "Wiederherstellung fehlgeschlagen.", ...(e instanceof KeyRequired ? { needsKey: true } : {}) },
-    { status: e instanceof HttpError ? e.status : 500, headers },
+    { status: e instanceof HttpError ? e.status : serverError(e), headers },
   );
 };
 

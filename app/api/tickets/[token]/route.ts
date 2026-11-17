@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
@@ -22,7 +23,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ token: s
     const invalid = e instanceof z.ZodError || e instanceof SyntaxError;
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : invalid ? "Bitte Eingaben prüfen." : "Nachricht konnte nicht gesendet werden." },
-      { status: e instanceof HttpError ? e.status : invalid ? 400 : 500 },
+      { status: e instanceof HttpError ? e.status : invalid ? 400 : serverError(e) },
     );
   }
 }

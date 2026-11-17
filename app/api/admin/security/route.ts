@@ -3,6 +3,7 @@
 // (`?incident=<id>`), the export (`?export=csv|json`)
 // and the actions (POST). Administrators in the browser only; API tokens
 // never.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
@@ -16,7 +17,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 function failure(e: unknown) {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe.", details: e.issues.map((i) => i.message) }, { status: 400 });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : 500 });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : serverError(e) });
 }
 const admin = async () => requireOpsAdmin(await requireUser());
 

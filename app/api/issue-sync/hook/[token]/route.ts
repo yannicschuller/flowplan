@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { after, NextResponse } from "next/server";
 import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { receiveIssueWebhook, syncIssues } from "@/lib/issue-sync";
@@ -26,7 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Webhook konnte nicht verarbeitet werden." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

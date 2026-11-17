@@ -169,6 +169,142 @@
   margin: 0;
 }
 
+/* ---------- Errors in detail: one row per kind, opened in place ---------- */
+.mon .mon-card#errors {
+  margin-bottom: 14px;
+}
+.mon [data-pickable] {
+  cursor: pointer;
+}
+.mon-errors-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.mon-errors-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--border));
+  border-radius: 999px;
+  background: var(--blue-light);
+  color: var(--text);
+}
+.mon-errors {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mon-errgroup {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+}
+.mon-errgroup details {
+  min-width: 0;
+}
+.mon-errgroup:first-child {
+  border-top: 0;
+}
+.mon-errgroup summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 2px;
+  cursor: pointer;
+  list-style: none;
+}
+.mon-errgroup summary::-webkit-details-marker {
+  display: none;
+}
+.mon-errgroup summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.mon-error-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.mon-error-where {
+  overflow: hidden;
+  font: 12px/1.4 var(--font-mono);
+  color: var(--secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-error-what {
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-error-what strong {
+  font-weight: 600;
+  color: #b23b37;
+}
+[data-theme="dark"] .mon-error-what strong {
+  color: #f19a96;
+}
+.mon-error-main small {
+  font-size: 12px;
+}
+.mon-error-count {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  width: 92px;
+}
+.mon-error-count strong {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mon-error-trend {
+  display: block;
+  width: 92px;
+}
+.mon-error-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 2px 14px;
+}
+.mon-error-body .mon-subhead {
+  margin: 6px 0 0;
+}
+.mon-error-stack {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-soft, color-mix(in srgb, var(--text) 4%, var(--bg)));
+  font: 12px/1.55 var(--font-mono);
+  white-space: pre;
+  user-select: text;
+}
+.mon-error-hint {
+  margin: 0;
+  font-size: 12px;
+}
+.mon-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mon-error-body code {
+  font: 12px var(--font-mono);
+  user-select: all;
+}
+
 /* ---------- Queues: one line per queue with a status dot ---------- */
 .mon-queues {
   display: grid;
@@ -241,6 +377,19 @@
   }
 }
 @container main (max-width: 640px) {
+  .mon-errgroup summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mon-error-what {
+    white-space: normal;
+  }
+  .mon-error-count {
+    grid-auto-flow: column;
+    justify-content: start;
+    align-items: center;
+    width: auto;
+    gap: 10px;
+  }
   .mon-health ul {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

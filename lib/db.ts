@@ -1560,6 +1560,7 @@ function migrate(d: DatabaseSync) {
   if (!(d.prepare("PRAGMA table_info(spaces)").all() as { name: string }[]).some((c) => c.name === "library"))
     d.exec("ALTER TABLE spaces ADD COLUMN library INTEGER NOT NULL DEFAULT 0");
   migrateServerMetrics(d);
+  migrateErrorDetails(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1594,6 +1595,17 @@ function migrateServerMetrics(d: DatabaseSync) {
       d.exec(`ALTER TABLE ${table} ADD COLUMN client_errors INTEGER NOT NULL DEFAULT 0`);
   d.exec(`CREATE TABLE IF NOT EXISTS metrics_ai_usage(day TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',workspace_id TEXT NOT NULL DEFAULT '',user_id TEXT NOT NULL DEFAULT '',feature TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,timeouts INTEGER NOT NULL DEFAULT 0,ms_total INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',PRIMARY KEY(day,model,source,workspace_id,user_id,feature));
     CREATE INDEX IF NOT EXISTS metrics_ai_usage_user ON metrics_ai_usage(user_id);`);
+}
+// Error details of the monitoring (lib/error-details.ts): one row per kind
+// of 5xx (fingerprint: route, command, error name, top stack frame) with
+// the scrubbed message, the frames, the database's code, count, first and
+// last time, counts per 5 minutes and per hour (JSON) and the last 20
+// occurrences (time, request id, status, instance, version, role – JSON).
+// No address, body or person. Kept 14 days, at most 500 rows. A new table
+// only – an older version leaves it alone – so the schema number stays.
+function migrateErrorDetails(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS error_groups(fingerprint TEXT PRIMARY KEY,kind TEXT NOT NULL DEFAULT 'request',route TEXT NOT NULL,action TEXT NOT NULL DEFAULT '',name TEXT NOT NULL,message TEXT NOT NULL DEFAULT '',status INTEGER NOT NULL DEFAULT 500,frames TEXT NOT NULL DEFAULT '[]',db_code TEXT NOT NULL DEFAULT '',count INTEGER NOT NULL DEFAULT 0,first_seen INTEGER NOT NULL,last_seen INTEGER NOT NULL,slots TEXT NOT NULL DEFAULT '{}',occurrences TEXT NOT NULL DEFAULT '[]');
+    CREATE INDEX IF NOT EXISTS error_groups_last ON error_groups(last_seen);`);
 }
 // Schema 102 – a workspace's look (#196): workspaces.theme (JSON, NULL =
 // Flowplan's own: accent, background tint, typefaces; lib/workspace-theme.ts),

@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { z } from "zod";
@@ -188,7 +189,7 @@ async function handlePOST(
             ? e.status
             : e instanceof z.ZodError || e instanceof SyntaxError
               ? 400
-              : 500,
+              : serverError(e),
       },
     );
   }
@@ -215,7 +216,7 @@ function draftHandler(kind: "get" | "put" | "delete") {
         input = e instanceof z.ZodError || e instanceof SyntaxError;
       return NextResponse.json(
         { error: known ? e.message : input ? "Bitte Eingaben prüfen." : "Entwurf konnte nicht gespeichert werden." },
-        { status: known ? e.status : input ? 400 : 500 },
+        { status: known ? e.status : input ? 400 : serverError(e) },
       );
     }
   };

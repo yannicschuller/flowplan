@@ -1,6 +1,7 @@
 // A face uploaded for the look of the workspace a publication or share link
 // belongs to (#196, lib/workspace-fonts.ts): only that workspace's faces,
 // with the link's end date and password like everything served through it.
+import { serverError } from "@/lib/request-context";
 import { publicTree } from "@/lib/publication";
 import { recordScope } from "@/lib/record-share";
 import { HttpError } from "@/lib/auth";
@@ -20,7 +21,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   } catch (e) {
     return Response.json(
       { error: e instanceof HttpError ? e.message : "Schrift nicht verfügbar." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

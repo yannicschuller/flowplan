@@ -1,6 +1,7 @@
 // Workshop facilitation on a whiteboard (lib/whiteboard-facilitation.ts):
 // private mode, planning poker and "Alle zu mir holen". Browser sessions
 // only – API tokens are refused; changes also need the origin check.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, sessionIdentityFromRequest } from "@/lib/auth";
@@ -27,7 +28,7 @@ function error(e: unknown) {
   if (!(e instanceof HttpError)) console.error(e);
   return NextResponse.json(
     { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 }
 

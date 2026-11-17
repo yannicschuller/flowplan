@@ -1,6 +1,7 @@
 // Administration → Users → User provisioning (SCIM/LDAP): the SCIM base
 // address, its tokens and last requests, and the LDAP status with a
 // connection test and a sync on demand. Administrators only.
+import { serverError } from "@/lib/request-context";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/permissions";
 import { createScimToken, revokeScimToken, scimOverview, ScimError } from "@/lib/scim";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 const failure = (e: unknown) => {
   if (!(e instanceof HttpError) && !(e instanceof ScimError)) console.error(e);
-  const status = e instanceof HttpError || e instanceof ScimError ? e.status : 500;
+  const status = e instanceof HttpError || e instanceof ScimError ? e.status : serverError(e);
   return Response.json({ error: e instanceof HttpError ? e.message : e instanceof ScimError ? e.message : "Aktion fehlgeschlagen." }, { status });
 };
 async function admin() {

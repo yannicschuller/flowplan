@@ -10,6 +10,7 @@
 // entered, only a status for end-to-end encrypted spaces –, limited to the
 // workspace the start page belongs to. Actions go through the mobile widget
 // actions and so through the web app's commands.
+import { serverError } from "./request-context";
 import { z } from "zod";
 import { Fragment } from "@tiptap/pm/model";
 import { Temporal } from "@js-temporal/polyfill";
@@ -351,7 +352,7 @@ export async function homeData(user: Identity, input: unknown, now = Date.now())
         const config = widgetConfigs[w.kind].parse(w.config);
         return { id: w.id, kind: w.kind, ok: true as const, data: await (builders[w.kind] as Builder<typeof w.kind>)(ctx, scope, config as never) };
       } catch (error) {
-        const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : 500;
+        const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : serverError(error);
         if (status === 500) console.error("Home widget", w.kind, error);
         return {
           id: w.id,

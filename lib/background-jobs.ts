@@ -17,6 +17,7 @@ import { all, one, run } from "./db";
 import type { Identity } from "./types";
 import { enterArea, shiftArea } from "./server-metrics";
 import { clusterMode } from "./cluster/config";
+import { captureJobError } from "./error-details";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
 export type JobKind = (typeof jobKinds)[number];
@@ -140,6 +141,8 @@ export async function launchJob<T>(
       await finishJob(jobId).catch(() => {});
     } catch (error) {
       outcome.error = error;
+      // After its request: only the error details of the monitoring see it.
+      captureJobError(kind, error);
       await finishJob(jobId, error).catch(() => {});
     } finally {
       area();

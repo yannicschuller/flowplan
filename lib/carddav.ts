@@ -13,6 +13,7 @@
 //
 // Served from proxy.ts, because route handlers do not accept PROPFIND and
 // REPORT. Writing (PUT, DELETE) answers 403: changes are made in Flowplan.
+import { serverError } from "./request-context";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { id, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -251,7 +252,7 @@ export async function handleCardDav(request: Request): Promise<Response> {
     if (["PUT", "DELETE", "PROPPATCH", "MOVE", "COPY"].includes(request.method)) return new Response("Nur lesen", { status: 403, headers: { DAV: DAV_HEADER } });
     return new Response(null, { status: 405, headers: { Allow: allow } });
   } catch (e) {
-    const status = e instanceof HttpError ? e.status : 500;
+    const status = e instanceof HttpError ? e.status : serverError(e);
     if (status === 500) console.error("CardDAV", e);
     return new Response(e instanceof HttpError ? e.message : "Fehler", { status });
   }

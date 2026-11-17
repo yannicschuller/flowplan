@@ -7,6 +7,7 @@
 //
 // Served from proxy.ts, because route handlers do not accept the WebDAV
 // methods PROPFIND and REPORT.
+import { serverError } from "./request-context";
 import { assertFieldsWritable } from "./field-access";
 import { createHash, randomBytes } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
@@ -433,7 +434,7 @@ export async function handleCalDav(request: Request): Promise<Response> {
     }
     return new Response(null, { status: 405, headers: { Allow: "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT" } });
   } catch (e) {
-    const status = e instanceof HttpError ? e.status : 500;
+    const status = e instanceof HttpError ? e.status : serverError(e);
     if (status === 500) console.error("CalDAV", e);
     return new Response(e instanceof HttpError ? e.message : "Fehler", { status });
   }

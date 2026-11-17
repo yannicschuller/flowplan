@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { requireUser, checkOrigin, HttpError } from "@/lib/auth";
 import { PRINT_SNAPSHOT_MAX_BYTES, storePrintSnapshot } from "@/lib/print-snapshots";
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     if (!(e instanceof HttpError)) console.error(e);
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Anfrage konnte nicht verarbeitet werden." },
-      { status: e instanceof HttpError ? e.status : 500, headers },
+      { status: e instanceof HttpError ? e.status : serverError(e), headers },
     );
   }
 }

@@ -4,6 +4,7 @@
 //           unfreeze, redirect
 //   target: start { url, token, confirm }, resume, preflight, final,
 //           apply, cancel
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/permissions";
@@ -31,7 +32,7 @@ const headers = { "Cache-Control": "private, no-store" };
 const failure = (e: unknown) => {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe." }, { status: 400, headers });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500, headers });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : serverError(e), headers });
 };
 
 export async function GET() {

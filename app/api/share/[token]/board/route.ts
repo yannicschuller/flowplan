@@ -3,6 +3,7 @@
 //   GET ?pageId=P&client=C (text/event-stream)  the others' pointers; a revoked link ends the stream
 //   POST {action:"sync", pageId, generation, update?}   merge and pull, like whiteboard.sync
 //   POST {action:"cursor", pageId, clientId, point}     the guest's pointer
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
@@ -15,7 +16,7 @@ const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-r
 type Context = { params: Promise<{ token: string }> };
 
 function failure(e: unknown) {
-  const status = e instanceof HttpError ? e.status : e instanceof z.ZodError || e instanceof SyntaxError ? 400 : 500;
+  const status = e instanceof HttpError ? e.status : e instanceof z.ZodError || e instanceof SyntaxError ? 400 : serverError(e);
   if (status === 500) console.error(e);
   return NextResponse.json({ error: e instanceof HttpError ? e.message : "Anfrage konnte nicht verarbeitet werden." }, { status, headers });
 }

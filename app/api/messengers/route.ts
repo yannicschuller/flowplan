@@ -4,6 +4,7 @@
 // changes, removes, switches on again, sends a test message, changes the
 // person's choices or makes a Telegram connection link. Signed-in people in
 // the browser only; API tokens never (they are about credentials).
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
@@ -24,7 +25,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 function failure(e: unknown) {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe." }, { status: 400, ...noStore });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : 500, ...noStore });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : serverError(e), ...noStore });
 }
 
 async function browserUser() {

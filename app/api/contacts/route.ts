@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -25,7 +26,7 @@ const headers = { "Cache-Control": "no-store" };
 const uuid = z.uuid();
 
 function failure(e: unknown) {
-  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
+  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : serverError(e);
   if (status === 500) console.error(e);
   return NextResponse.json(
     { error: status === 500 ? "Aktion fehlgeschlagen." : e instanceof ZodError || e instanceof SyntaxError ? "Ungültige Anfrage." : (e as Error).message },

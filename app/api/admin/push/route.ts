@@ -4,6 +4,7 @@
 // relay and /.well-known/flowplan-push again at once. Administrators in the
 // browser only; API tokens never. Rate limited per person; the answer
 // carries addresses, codes and key ids – never a token, key or secret.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
@@ -17,7 +18,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 function failure(e: unknown) {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe." }, { status: 400 });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : 500 });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : serverError(e) });
 }
 
 export const GET = withRequestLocale(async () => {

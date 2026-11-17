@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { createWriteStream, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -27,7 +28,7 @@ function error(e: unknown) {
     },
     {
       status:
-        e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : 500,
+        e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : serverError(e),
     },
   );
 }

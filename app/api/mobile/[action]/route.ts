@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { ZodError } from "zod";
@@ -31,7 +32,7 @@ export const dynamic = "force-dynamic";
 // GET  /api/mobile/admin-summary  likewise, for the administrators' widgets
 //                              (lib/mobile-admin.ts): 403 for everyone else
 function failure(e: unknown) {
-  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
+  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : serverError(e);
   return NextResponse.json(
     { error: status === 500 ? "Fehler" : e instanceof ZodError ? "Ungültige Anfrage." : (e as Error).message },
     { status, headers: { "Cache-Control": "no-store" } },

@@ -6,6 +6,7 @@
 //   GET ?surface=S&version=N         the ink of one version
 //   PUT or POST ?surface=S {base, doc, recognized?}  saves (merged with saves in between)
 //   PUT or POST ?surface=S {version, recognized}     text recognised on the device for that version
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, checkOrigin, requireUser } from "@/lib/auth";
@@ -24,7 +25,7 @@ function failure(e: unknown) {
   if (!(e instanceof HttpError)) console.error(e);
   return NextResponse.json(
     { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 }
 const surfaceOf = (url: URL) => z.string().regex(/^[\w-]{1,40}$/).parse(url.searchParams.get("surface"));

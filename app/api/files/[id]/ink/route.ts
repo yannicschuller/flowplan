@@ -5,6 +5,7 @@
 //   PUT or POST {base, doc, recognized?}  saves; `base` is the version the ink was opened at
 //   PUT or POST {version, recognized}     text recognised on the device for that
 //                                         version (page → text), lib/ink/recognition.ts
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, checkOrigin, requireUser } from "@/lib/auth";
@@ -23,7 +24,7 @@ function failure(e: unknown) {
   if (!(e instanceof HttpError)) console.error(e);
   return NextResponse.json(
     { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-    { status: e instanceof HttpError ? e.status : 500 },
+    { status: e instanceof HttpError ? e.status : serverError(e) },
   );
 }
 

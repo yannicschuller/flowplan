@@ -1,4 +1,5 @@
 // The ink on a shared or published PDF, read-only (lib/ink-store.ts).
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { publicFileInk } from "@/lib/ink-store";
@@ -16,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Datei nicht verfügbar." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

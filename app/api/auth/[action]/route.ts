@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { withRequestLocale } from "@/lib/content-locale";
 import { DEMO_MAX_MS, demoSessionExpiry, endDemo, startDemo } from "@/lib/demo";
@@ -774,7 +775,7 @@ async function handlePOST(
     if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) console.error(e);
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : e instanceof z.ZodError ? "Ungültige Eingabe." : "Anmeldung fehlgeschlagen. Bitte erneut versuchen." },
-      { status: e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : 500 },
+      { status: e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : serverError(e) },
     );
   }
 }

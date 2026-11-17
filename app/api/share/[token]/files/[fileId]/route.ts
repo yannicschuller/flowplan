@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { publicFile } from "@/lib/publication";
 import { fileResponse } from "@/lib/file-response";
 import { HttpError } from "@/lib/auth";
@@ -13,7 +14,7 @@ export async function GET(
   } catch (e) {
     return Response.json(
       { error: e instanceof HttpError ? e.message : "Datei nicht verfügbar." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

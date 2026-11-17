@@ -1,3 +1,4 @@
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { activeUser, checkOrigin, HttpError } from "@/lib/auth";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store" };
 
 function failure(e: unknown) {
-  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
+  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : serverError(e);
   if (status === 500) console.error(e);
   return NextResponse.json(
     { error: status === 500 ? "Fehler" : e instanceof ZodError || e instanceof SyntaxError ? "Ungültige Anfrage." : (e as Error).message },

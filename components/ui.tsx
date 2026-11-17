@@ -626,6 +626,12 @@ export async function api<T = Record<string, unknown>>(
   }
   return await readAnswer<T>(r, url, body);
 }
+// A 5xx names its request id (X-Request-Id, lib/request-context.ts), so a
+// person can quote it to the administrator ("Fehler-ID: …").
+function withRequestId(message: string, r: Response, data: { requestId?: unknown } | null) {
+  const id = r.headers.get("X-Request-Id") || (typeof data?.requestId === "string" ? data.requestId : "");
+  return /^[A-Za-z0-9]{4,32}$/.test(id) ? `${message} ${tr(`Fehler-ID: ${id}`, `Error ID: ${id}`)}` : message;
+}
 async function readAnswer<T>(r: Response, url: string, body: unknown): Promise<T> {
   // The server may run a newer build than this page (#182, lib/stale-copy.ts).
   noticeBuild(r.headers);
@@ -646,7 +652,7 @@ async function readAnswer<T>(r: Response, url: string, body: unknown): Promise<T
       r.status === 401 && !url.includes("/api/auth/")
         ? signedOutMessage()
         : r.status >= 500 && !transient
-          ? tr("Auf dem Server ist etwas schiefgelaufen. Bitte erneut versuchen.", "Something went wrong on the server. Try again.")
+          ? withRequestId(tr("Auf dem Server ist etwas schiefgelaufen. Bitte erneut versuchen.", "Something went wrong on the server. Try again."), r, data)
           : serverMessage(data?.error || "Anfrage fehlgeschlagen"),
       r.status,
       transient,

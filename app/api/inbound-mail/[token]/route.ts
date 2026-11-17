@@ -4,6 +4,7 @@
 // The secret token in the path authenticates; an optional signing key adds
 // an HMAC check. Answers 2xx for stored, duplicate and rejected mail, so
 // providers do not retry; 429/413 ask them to try again later.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
@@ -54,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) console.error(e);
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Die E-Mail konnte nicht verarbeitet werden." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 }

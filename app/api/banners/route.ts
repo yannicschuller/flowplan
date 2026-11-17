@@ -1,6 +1,7 @@
 // Banners people click away once (lib/instance-banners.ts): the ones for the
 // signed-in person, and closing one (`{ action: "dismiss", id, clicked }`;
 // clicked: its link was followed). Not with API tokens.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { bannersFor, dismissBanner } from "@/lib/instance-banners";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 function failure(e: unknown) {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe." }, { status: 400 });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500 });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : serverError(e) });
 }
 
 export async function GET() {

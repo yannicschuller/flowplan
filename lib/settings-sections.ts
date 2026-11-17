@@ -737,6 +737,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Zustand der Dienste", en: "Health of the services" }, anchor: "health" },
       { title: { de: "Anfragen & Fehler", en: "Requests & errors" }, anchor: "traffic" },
+      { title: { de: "Fehler im Detail", en: "Errors in detail" }, keywords: { de: "fehler-id stack 500 ausnahme", en: "error id request id stack 500 exception" }, anchor: "errors" },
       { title: { de: "Aktive Personen", en: "Active people" }, anchor: "people" },
       { title: { de: "Anmeldungen", en: "Sign-ins" }, anchor: "signins" },
       { title: { de: "Abgewiesene Anfragen", en: "Refused requests" }, anchor: "refused" },

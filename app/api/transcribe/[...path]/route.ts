@@ -3,6 +3,7 @@
 // bytes as body), then POST /api/transcribe/finish puts them together and
 // sends the whole recording to the transcription service (lib/transcribe.ts).
 // Short recordings still go in one request to POST /api/transcribe.
+import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -59,7 +60,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     if (!(e instanceof HttpError)) console.error(e);
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { status: e instanceof HttpError ? e.status : serverError(e) },
     );
   }
 });

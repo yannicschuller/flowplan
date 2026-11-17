@@ -1,12 +1,15 @@
 // Administration → Überwachung (lib/admin-monitoring.ts): the dashboard,
 // polled while the page is open. `?view=live` answers only the live strip
 // of the landing page (numbers and the charts of its carousel), `?view=ai`
-// the AI statistics (`&days=7|30|90`, per person too); `?range=1h|24h|7d`
-// picks the request chart's span. POST switches the usage statistics on or
-// off (`metrics.save`), deletes them (`metrics.clear`), checks the AI
+// the AI statistics (`&days=7|30|90`, per person too), `?view=errors` the
+// error details (lib/error-details.ts, with `range` for the counts and
+// trend); `?range=1h|24h|7d` picks the request chart's span. POST switches the usage statistics on or
+// off (`metrics.save`), deletes them (`metrics.clear`) or the error
+// details (`errors.clear`, answers the empty list), checks the AI
 // provider again (`ai.ping`) or changes the recommendations
 // (`recommendation.hide|snooze|restore`, `recommendations.settings`).
 // Administrators in the browser only; API tokens never.
+import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/db";
@@ -18,6 +21,7 @@ import { applyRecommendationAction, recommendationAction, recommendations } from
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
 import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
+import { clearErrorDetails, errorDetails } from "@/lib/error-details";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -25,7 +29,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 function failure(e: unknown) {
   if (e instanceof z.ZodError) return Response.json({ error: "Ungültige Eingabe.", details: e.issues.map((i) => i.message) }, { status: 400 });
   if (!(e instanceof HttpError)) console.error(e);
-  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : 500 });
+  return Response.json({ error: e instanceof HttpError ? e.message : "Aktion fehlgeschlagen." }, { status: e instanceof HttpError ? e.status : serverError(e) });
 }
 const admin = async () => requireOpsAdmin(await requireUser());
 const rangeOf = (raw: string | null): RequestRange => (REQUEST_RANGES.includes(raw as RequestRange) ? (raw as RequestRange) : "24h");
@@ -36,6 +40,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     const url = new URL(req.url);
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(await monitoringLive(Date.now(), range), noStore);
+    if (url.searchParams.get("view") === "errors") return Response.json(await errorDetails(Date.now(), range), noStore);
     // Administration → KI → Statistik: per model, workspace and person.
     if (url.searchParams.get("view") === "ai") {
       const days = [7, 30, 90].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 30;
@@ -52,6 +57,7 @@ const postSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("metrics.save"), enabled: z.boolean() }),
   z.object({ action: z.literal("metrics.clear") }),
   z.object({ action: z.literal("ai.ping") }),
+  z.object({ action: z.literal("errors.clear") }),
 ]);
 
 export const POST = withRequestLocale(async (req: Request) => {
@@ -75,6 +81,10 @@ export const POST = withRequestLocale(async (req: Request) => {
     } else if (body.action === "metrics.clear") {
       await clearMetrics();
       await audit(user.id, "admin.metrics.clear", "instance", "");
+    } else if (body.action === "errors.clear") {
+      await clearErrorDetails();
+      await audit(user.id, "admin.errors.clear", "instance", "");
+      return Response.json(await errorDetails(), noStore);
     } else resetAiPing();
     return Response.json(await monitoringLive(), noStore);
   } catch (e) {
