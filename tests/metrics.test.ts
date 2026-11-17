@@ -274,7 +274,10 @@ test("the dashboard: administrators in the browser only, all parts present", asy
 
 test("events: worker errors, failed sign-in spikes and the start", async () => {
   const now = Date.now();
-  for (let i = 0; i < 12; i++) await run("INSERT INTO ops_events(kind,at) VALUES('login_failure',?)", now - HOUR - i * 1000);
+  // Spikes are counted per clock hour: the twelve failures lie in the middle
+  // of the previous hour, so a run just after the full hour cannot split them.
+  const middle = Math.floor((now - HOUR) / HOUR) * HOUR + HOUR / 2;
+  for (let i = 0; i < 12; i++) await run("INSERT INTO ops_events(kind,at) VALUES('login_failure',?)", middle - i * 1000);
   const events = await monitoringEvents(now);
   assert.ok(events.some((e) => e.kind === "login_spike" && (e.count || 0) >= 12));
   assert.deepEqual(
