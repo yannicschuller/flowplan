@@ -46,6 +46,7 @@ import { cellPlain, nameLookup, recordTitle, sourceText } from "./sources";
 import { DATABASE_CONTEXT_LIMITS, databaseContext, databaseNotes } from "./database-context";
 import type { DatabaseNote } from "./database-note";
 import { filterAsync, mapAsync } from "../each-async";
+import { fence } from "./prompts";
 
 export const ACTION_LIMITS = {
   actions: 12,
@@ -252,7 +253,7 @@ export async function proposeActions(user: Identity, raw: ProposeInput, signal?:
   const prompt = [
     `Heute ist ${today}.`,
     `Katalog (JSON):\n${JSON.stringify(catalog)}`,
-    input.context ? `Kontext:\n<kontext>\n${input.context}\n</kontext>` : "",
+    input.context ? `Kontext:\n${fence("kontext", input.context)}` : "",
     data.length ? `Einträge aus Datenbanken (Daten):\n${data.map((d) => d.block).join("\n\n")}` : "",
     `Anweisung: ${instruction}`,
   ]
