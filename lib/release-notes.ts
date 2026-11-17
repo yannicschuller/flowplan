@@ -58,14 +58,14 @@ export function loadReleaseNotes(dir = RELEASE_NOTES_DIR): ReleaseNotes[] {
   if (known) return known;
   let names: string[] = [];
   try {
-    names = readdirSync(dir).filter((name) => name.endsWith(".json"));
+    names = readdirSync(/*turbopackIgnore: true*/ dir).filter((name) => name.endsWith(".json"));
   } catch {}
   const list: ReleaseNotes[] = [];
   for (const name of names) {
     const version = name.slice(0, -".json".length);
     if (!isVersion(version)) continue;
     try {
-      const parsed = releaseNotesFileSchema.parse(JSON.parse(readFileSync(join(dir, name), "utf8")));
+      const parsed = releaseNotesFileSchema.parse(JSON.parse(readFileSync(join(/*turbopackIgnore: true*/ dir, name), "utf8")));
       const notes: ReleaseNotes = { version, ...(parsed.date ? { date: parsed.date } : {}) };
       for (const s of RELEASE_NOTE_SECTIONS) if (parsed[s]?.length) notes[s] = parsed[s] as ReleaseNoteItem[];
       list.push(notes);

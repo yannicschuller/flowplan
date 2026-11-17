@@ -499,7 +499,7 @@ function readSqlite(input: Buffer | string): Sqlite {
       writeFileSync(path, input, { mode: 0o600 });
     }
     const lazy = typeof input === "string";
-    const limits = affineLimitsFor(lazy ? statSync(path).size : input.length);
+    const limits = affineLimitsFor(lazy ? statSync(/*turbopackIgnore: true*/ path).size : input.length);
     try {
       db = new DatabaseSync(path, { readOnly: true });
       db.exec("PRAGMA query_only=1; PRAGMA trusted_schema=0;");

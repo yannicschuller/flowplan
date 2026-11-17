@@ -23,7 +23,7 @@ import { encryptionEnabled, seal } from "./encryption";
 import type { Identity, Page, User } from "./types";
 import { filterAsync, mapAsync } from "./each-async";
 
-const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
+const dataDir = () => resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data");
 type Config = { userId: string; pageIds: string[] };
 export type ExportRun = { pageId: string; name: string; at: number; bytes: number; error: string | null };
 

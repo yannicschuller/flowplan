@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { all, databaseBytes, one, tableSizes } from "./db";
 import { storageConfig, storageStatus } from "./storage";
 
-const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
+const dataDir = () => resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data");
 function fileSize(path: string) {
   try {
     return statSync(path).size;

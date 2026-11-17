@@ -72,8 +72,8 @@ function candidates(tool: Tool) {
     ...(process.env.PATH || "").split(delimiter).filter(Boolean),
   ];
   for (const base of ["/usr/lib/postgresql", "/usr/local/pgsql"])
-    if (existsSync(base))
-      for (const v of readdirSync(base).filter((n) => /^\d+$/.test(n)).sort((a, b) => Number(b) - Number(a))) dirs.push(join(base, v, "bin"));
+    if (existsSync(/*turbopackIgnore: true*/ base))
+      for (const v of readdirSync(/*turbopackIgnore: true*/ base).filter((n) => /^\d+$/.test(n)).sort((a, b) => Number(b) - Number(a))) dirs.push(join(base, v, "bin"));
   return [...new Set(dirs.map((d) => resolve(d, tool)))].filter((p) => existsSync(p));
 }
 const found = new Map<string, { path: string; version: number } | null>();

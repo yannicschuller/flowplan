@@ -46,6 +46,9 @@ const config: NextConfig = {
     ? { distDir: process.env.FLOWPLAN_DIST_DIR }
     : {}),
   turbopack: { root: process.cwd() },
+  // next/image is not used: no image optimisation on the server, so sharp
+  // (and its native builds for glibc and musl, @img/*) stays out.
+  images: { unoptimized: true },
   // CalDAV collections end in "/"; proxy.ts redirects pages itself.
   skipTrailingSlashRedirect: true,
   // ssh2 (SFTP backups, lib/sftp.ts) loads its optional native helpers at
@@ -63,8 +66,12 @@ const config: NextConfig = {
       "./node_modules/pdfjs-dist/legacy/build/*.mjs",
       // OCR: worker script, WebAssembly core and bundled language data.
       "./node_modules/tesseract.js/src/**/*",
-      "./node_modules/tesseract.js-core/*.js",
-      "./node_modules/tesseract.js-core/*.wasm",
+      // Only the LSTM cores (lib/ocr.ts asks for OEM 1) as .js and .wasm;
+      // the *.wasm.js copies are the browser's.
+      "./node_modules/tesseract.js-core/index.js",
+      "./node_modules/tesseract.js-core/tesseract-core-lstm.{js,wasm}",
+      "./node_modules/tesseract.js-core/tesseract-core-simd-lstm.{js,wasm}",
+      "./node_modules/tesseract.js-core/tesseract-core-relaxedsimd-lstm.{js,wasm}",
       "./node_modules/@tesseract.js-data/deu/**/*",
       "./node_modules/@tesseract.js-data/eng/**/*",
       "./node_modules/@tesseract.js-data/fra/**/*",
@@ -85,6 +92,34 @@ const config: NextConfig = {
       "./node_modules/@typst-wasm/fonts/dist/files/DejaVuSansMono*.ttf",
       // The curated release notes for "Neu in Flowplan" (#223, lib/release-notes.ts).
       "./release-notes/*.json",
+    ],
+  },
+  // What the tracing finds but the server never loads: sharp (see
+  // `images`; "next-server" is Next.js's own server), the tesseract cores
+  // without LSTM and the browser's copies, pdf.js's modern build and its
+  // viewer (the server uses legacy/build), and the sources and the data
+  // folder of the checkout (file access with a runtime path makes the
+  // tracing take whole folders; the server runs the compiled chunks and its
+  // own FLOWPLAN_DATA_DIR).
+  outputFileTracingExcludes: {
+    "next-server": ["**/node_modules/sharp/**/*", "**/node_modules/@img/**/*"],
+    "/*": [
+      "./lib/**/*.{ts,tsx}",
+      "./components/**/*",
+      "./app/**/*.{ts,tsx}",
+      "./tests/**/*",
+      "./docs/**/*",
+      "./data/**/*",
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/**/*",
+      "./node_modules/tesseract.js-core/tesseract-core.{js,wasm}",
+      "./node_modules/tesseract.js-core/tesseract-core-simd.{js,wasm}",
+      "./node_modules/tesseract.js-core/tesseract-core-relaxedsimd.{js,wasm}",
+      "./node_modules/tesseract.js-core/*.wasm.js",
+      "./node_modules/pdfjs-dist/build/**/*",
+      "./node_modules/pdfjs-dist/web/**/*",
+      "./node_modules/pdfjs-dist/legacy/web/**/*",
+      "./node_modules/pdfjs-dist/**/*.map",
     ],
   },
   // The documentation is its own site (github.com/yannicschuller/flowplan-docs).

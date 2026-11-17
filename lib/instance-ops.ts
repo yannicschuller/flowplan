@@ -97,7 +97,7 @@ function fileSize(path: string) {
 // shared=false (the metrics of a cluster pod that does not lead): only what
 // belongs to this process, no counts from the database.
 export async function instanceMetrics(options: { shared?: boolean } = {}) {
-  const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
+  const dir = resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data");
   const shared = options.shared ?? true;
   const count = async (sql: string, ...args: (string | number)[]) =>
     shared ? Number((await one<{ n: number }>(sql, ...args))?.n || 0) : 0;

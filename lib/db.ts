@@ -1819,7 +1819,7 @@ async function cleanDeletedFiles() {
         continue;
       try {
         unlinkSync(
-          resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", fileId),
+          resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", fileId),
         );
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
@@ -2136,7 +2136,7 @@ export async function databaseBytes(): Promise<number> {
   let bytes = 0;
   for (const name of ["flowplan.sqlite", "flowplan.sqlite-wal"])
     try {
-      bytes += statSync(resolve(dir, name)).size;
+      bytes += statSync(resolve(/*turbopackIgnore: true*/ dir, name)).size;
     } catch {}
   return bytes;
 }

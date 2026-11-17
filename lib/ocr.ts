@@ -31,7 +31,7 @@ const runtime = globalThis as typeof globalThis & {
   flowplanOcr?: Promise<Worker>;
 };
 function languageDir(languages: Language[]) {
-  const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "ocr");
+  const dir = resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data", "ocr");
   mkdirSync(dir, { recursive: true });
   // Bundlers rewrite require.resolve, so the packages are found through the
   // app's node_modules (the same layout in development and standalone).

@@ -49,9 +49,9 @@ export function listPublicAssets(publicDir: string): OfflineAsset[] {
     ["fonts", /\.woff2$/],
     ["icons", /\.(png|svg|webp|ico)$/],
   ] as const) {
-    if (!existsSync(join(publicDir, dir))) continue;
-    for (const name of readdirSync(join(publicDir, dir)).sort())
-      if (keep.test(name)) add(join(publicDir, dir, name), `/${dir}/${encodeURI(name)}`);
+    if (!existsSync(join(/*turbopackIgnore: true*/ publicDir, dir))) continue;
+    for (const name of readdirSync(join(/*turbopackIgnore: true*/ publicDir, dir)).sort())
+      if (keep.test(name)) add(join(/*turbopackIgnore: true*/ publicDir, dir, name), `/${dir}/${encodeURI(name)}`);
   }
   return result;
 }
