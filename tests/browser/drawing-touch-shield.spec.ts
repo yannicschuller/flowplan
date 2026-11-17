@@ -88,10 +88,19 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   const surface = block.locator(".ink-block-surface");
   const box = (await surface.boundingBox())!;
 
-  // A pen inside enters drawing mode, draws, and puts the shield up.
+  // #322: the pen on the existing block draws nothing and does not enter
+  // drawing – only "Zeichnen" does; then the pen draws, and the shield is up.
   const cdp = await page.context().newCDPSession(page);
   await pen(cdp, line({ x: box.x + 60, y: box.y + 60 }, { x: box.x + 300, y: box.y + 110 }));
+  await page.waitForTimeout(200);
+  await expect(block).not.toHaveClass(/is-active/);
+  await expect(strokes(block)).toHaveCount(0);
+  await expect(page.locator(".ink-shield")).toHaveCount(0);
+  await block.getByRole("button", { name: "Zeichnen" }).tap();
   await expect(block).toHaveClass(/is-active/);
+  // Opened with "Zeichnen", an existing block shows no height tip (#324).
+  await expect(block.locator(".ink-block-tip")).toHaveCount(0);
+  await pen(cdp, line({ x: box.x + 60, y: box.y + 60 }, { x: box.x + 300, y: box.y + 110 }));
   await expect(strokes(block)).toHaveCount(1);
   const shield = page.locator(".ink-shield");
   await expect(shield).toBeAttached();
@@ -151,9 +160,12 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   await expect(block).not.toHaveClass(/is-active/);
   await scroller.evaluate((el) => (el.scrollTop = 0));
 
-  // Again with the pen (no hint the second time). The block's Done is on
-  // screen, so the shield has none of its own; scrolled away, the shield's
-  // Done pill is the way out and ends it.
+  // Again with the pen – a pen tap on "Zeichnen" (no hint the second time).
+  // The block's Done is on screen, so the shield has none of its own;
+  // scrolled away, the shield's Done pill is the way out and ends it.
+  const start = (await block.getByRole("button", { name: "Zeichnen" }).boundingBox())!;
+  await pen(cdp, [{ x: start.x + start.width / 2, y: start.y + start.height / 2 }]);
+  await expect(block).toHaveClass(/is-active/);
   await pen(cdp, line({ x: box.x + 400, y: box.y + 140 }, { x: box.x + 560, y: box.y + 170 }));
   await expect(shield).toBeAttached();
   await expect(shield.locator(".ink-shield-hint")).toHaveCount(0);
@@ -167,7 +179,7 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   await scroller.evaluate((el) => (el.scrollTop = 0));
 
   // And once more; Escape ends it.
-  await pen(cdp, line({ x: box.x + 400, y: box.y + 60 }, { x: box.x + 560, y: box.y + 90 }));
+  await block.getByRole("button", { name: "Zeichnen" }).tap();
   await expect(shield).toBeAttached();
   await page.keyboard.press("Escape");
   await expect(shield).toHaveCount(0);
@@ -274,10 +286,22 @@ test("a new drawing block starts drawing without a caret in the text; afterwards
   const { PALM_MS } = await import("../../lib/stylus");
   await page.waitForTimeout(PALM_MS);
   expect(await touchCancelled(page, "direct")).toBe(false);
+  // Neither is the Pencil's (#322): on a block that is not being drawn on,
+  // it scrolls like a finger – and draws nothing, enters nothing.
+  expect(await touchCancelled(page, "stylus")).toBe(false);
+  expect(await pointer(page, ".ink-block .ink-block-surface", "pointerdown", { pointerType: "pen", buttons: 1, dx: 80, dy: 80 })).toBe(false);
+  await pointer(page, ".ink-block .ink-block-surface", "pointerup", { pointerType: "pen", dx: 80, dy: 80 });
+  await pen(cdp, line({ x: box.x + 80, y: box.y + 160 }, { x: box.x + 320, y: box.y + 200 }));
+  await page.waitForTimeout(200);
+  await expect(block).not.toHaveClass(/is-active/);
+  await expect(strokes(block)).toHaveCount(1);
+  await expect(shield).toHaveCount(0);
 
   // Escape ends drawing too, with the caret in the text below the block.
+  await block.getByRole("button", { name: "Zeichnen" }).tap();
   await pen(cdp, line({ x: box.x + 80, y: box.y + 160 }, { x: box.x + 320, y: box.y + 200 }));
   await expect(block).toHaveClass(/is-active/);
+  await expect(strokes(block)).toHaveCount(2);
   await expect.poll(() => textState(page)).toMatchObject({ editable: false, caretInText: false });
   await page.keyboard.press("Escape");
   await expect(block).not.toHaveClass(/is-active/);
@@ -293,7 +317,7 @@ test("a new drawing block starts drawing without a caret in the text; afterwards
   ).toBe(true);
 
   // Deleting the block while drawing: shield gone, the text takes taps and keys.
-  await pen(cdp, line({ x: box.x + 400, y: box.y + 60 }, { x: box.x + 560, y: box.y + 90 }));
+  await block.getByRole("button", { name: "Zeichnen" }).tap();
   await expect(shield).toBeAttached();
   // (As a collaborator's change or undo would: not through the block's own UI.)
   await page.evaluate(() => {
@@ -465,4 +489,218 @@ test("mouse users are not shielded: a click outside leaves drawing and does its 
   await page.locator(".topbar .breadcrumb-workspace").click();
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#home");
   await context.close();
+});
+
+// The order of the document's blocks: "ink" for a drawing block, the text
+// of the others (empty paragraphs left out).
+const blockOrder = (page: Page) =>
+  page.evaluate(() => {
+    type Doc = { forEach: (f: (n: { type: { name: string }; textContent: string }) => void) => void };
+    const { state } = (document.querySelector(".ProseMirror") as unknown as { editor: { state: { doc: Doc } } }).editor;
+    const out: string[] = [];
+    state.doc.forEach((n) => out.push(n.type.name === "drawBlock" ? "ink" : n.textContent));
+    return out.filter(Boolean);
+  });
+
+// A document "Oben", a drawing block with one stroke, "Unten".
+async function sandwich(page: Page, press: "tap" | "click") {
+  const id = await setup(page);
+  await page.goto(`/#page=${id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
+  await editor[press]();
+  await page.keyboard.type("Oben");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/zeichnen");
+  await expect(page.getByRole("option", { name: /Zeichnen/ }).first()).toBeVisible();
+  await page.keyboard.press("Enter");
+  const block = page.locator(".ink-block").first();
+  await expect(block).toHaveClass(/is-active/, { timeout: 30_000 });
+  const cdp = await page.context().newCDPSession(page);
+  const box = (await block.locator(".ink-block-surface").boundingBox())!;
+  await pen(cdp, line({ x: box.x + 30, y: box.y + box.height - 60 }, { x: box.x + Math.min(300, box.width - 30), y: box.y + box.height - 40 }));
+  await expect(strokes(block)).toHaveCount(1);
+  // Saved (on a phone the toolbar has no room for its save state).
+  const blockId = await page.locator("[data-ink-block]").first().getAttribute("data-ink-block");
+  await expect
+    .poll(async () => Number(((await (await page.request.get(`/api/pages/${id}/ink`)).json()) as { versions: Record<string, number> }).versions[blockId!] || 0), { timeout: 15_000 })
+    .toBeGreaterThanOrEqual(1);
+  await page.keyboard.press("Escape");
+  await expect(block).not.toHaveClass(/is-active/);
+  await page.keyboard.type("Unten");
+  await expect.poll(() => blockOrder(page)).toEqual(["Oben", "ink", "Unten"]);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  return { id, block };
+}
+
+// #322: on an iPad the block handle is out of reach once the block takes
+// touches; the block's own "…" menu beside "Zeichnen" deletes, duplicates
+// and moves it – with a mouse, on a phone (a bottom sheet) and on a tablet.
+const menuDevices = [
+  { project: "desktop", name: "mouse", press: "click", options: { viewport: { width: 1440, height: 1000 }, isMobile: false, hasTouch: false } },
+  { project: "mobile", name: "phone", press: "tap", options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+  { project: "mobile", name: "tablet", press: "tap", options: { viewport: { width: 820, height: 1180 }, isMobile: true, hasTouch: true } },
+] as const;
+for (const device of menuDevices)
+  test(`the drawing block's … menu moves, duplicates, resets the height and deletes it (${device.name})`, async ({ browser }, info) => {
+    test.skip(info.project.name !== device.project, "One device per run.");
+    test.setTimeout(180_000);
+    const context = await browser.newContext({ ...device.options, locale: "de-DE", storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: "flowplan-offline-offer", value: "never" }] }] } });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const { id } = await sandwich(page, device.press);
+    const more = page.getByRole("button", { name: "Weitere Aktionen für den Zeichenblock" });
+    await expect(more).toBeVisible();
+    if (device.press === "tap") {
+      // A finger's target: at least 40 px.
+      const size = (await more.boundingBox())!;
+      expect(Math.min(size.width, size.height)).toBeGreaterThanOrEqual(40);
+    }
+    const item = (name: string) => page.getByRole("menuitem", { name, exact: true });
+    const choose = async (name: string, of = more) => {
+      await of[device.press]();
+      await expect(item(name)).toBeVisible();
+      await item(name)[device.press]();
+      await expect(item(name)).toHaveCount(0);
+    };
+
+    // Moves: down past "Unten", then the way back.
+    await choose("Nach unten");
+    await expect.poll(() => blockOrder(page)).toEqual(["Oben", "Unten", "ink"]);
+    await more[device.press]();
+    await expect(item("Höhe zurücksetzen")).toBeDisabled();
+    await item("Nach oben")[device.press]();
+    await expect.poll(() => blockOrder(page)).toEqual(["Oben", "ink", "Unten"]);
+    await expect(page.locator(".ink-block")).not.toHaveClass(/is-active/);
+
+    // The height back to the default once it was changed.
+    const handle = page.getByRole("separator", { name: "Höhe der Zeichnung" });
+    await handle.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(handle).toHaveAttribute("aria-valuenow", "340");
+    await choose("Höhe zurücksetzen");
+    await expect(handle).toHaveAttribute("aria-valuenow", "300");
+
+    // Duplicate: a second block with an id of its own, starting with the ink.
+    const nodes = page.locator("[data-ink-block]");
+    const firstId = await nodes.first().getAttribute("data-ink-block");
+    await choose("Duplizieren");
+    await expect.poll(() => blockOrder(page)).toEqual(["Oben", "ink", "ink", "Unten"]);
+    await expect(nodes).toHaveCount(2);
+    const ids = await nodes.evaluateAll((els) => els.map((el) => el.getAttribute("data-ink-block")));
+    expect(ids[0]).toBe(firstId);
+    expect(ids[1]).not.toBe(firstId);
+    const copy = page.locator(".ink-block").nth(1);
+    await expect(strokes(copy)).toHaveCount(1, { timeout: 15_000 });
+    // Delete the copy through its own menu.
+    await choose("Löschen", more.nth(1));
+    await expect.poll(() => blockOrder(page)).toEqual(["Oben", "ink", "Unten"]);
+    await expect(nodes).toHaveCount(1);
+    await expect(nodes).toHaveAttribute("data-ink-block", firstId!);
+
+    if (device.name === "mouse") {
+      // From the keyboard: Enter opens the menu on its first entry, Enter
+      // runs it, and the focus stays on the moved block's "…".
+      await more.focus();
+      await page.keyboard.press("Enter");
+      await expect(item("Nach oben")).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => blockOrder(page)).toEqual(["ink", "Oben", "Unten"]);
+      await expect(more).toBeFocused();
+      // At the top "Nach oben" is off; Escape closes the menu and gives the
+      // focus back to "…".
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("menu")).toBeVisible();
+      await expect(item("Nach oben")).toBeDisabled();
+      await expect(item("Nach unten")).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(more).toBeFocused();
+      await expect(page.locator(".ink-block")).not.toHaveClass(/is-active/);
+      await choose("Nach unten");
+      await expect.poll(() => blockOrder(page)).toEqual(["Oben", "ink", "Unten"]);
+
+      // A locked page: no "…" (and no "Zeichnen").
+      const lock = (locked: boolean) => page.request.post("/api/command", { headers: { origin }, data: { action: "page.update", pageId: id, patch: { locked } } });
+      expect((await lock(true)).ok()).toBe(true);
+      await page.reload();
+      await expect(nodes).toHaveCount(1, { timeout: 30_000 });
+      await page.waitForTimeout(1500);
+      await expect(more).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Zeichnen" })).toHaveCount(0);
+      expect((await lock(false)).ok()).toBe(true);
+      await page.reload();
+      await expect(more).toBeVisible({ timeout: 30_000 });
+    }
+
+    // Delete: the block goes, the text stays; undo brings it back.
+    await choose("Löschen");
+    await expect(page.locator(".ink-block")).toHaveCount(0);
+    await expect.poll(() => blockOrder(page)).toEqual(["Oben", "Unten"]);
+    if (device.name === "mouse") {
+      await page.getByLabel("Dokumentinhalt", { exact: true }).locator("p", { hasText: "Unten" }).click();
+      await page.keyboard.press("ControlOrMeta+z");
+      await expect.poll(() => blockOrder(page)).toEqual(["Oben", "ink", "Unten"]);
+      await expect(strokes(page.locator(".ink-block"))).toHaveCount(1, { timeout: 15_000 });
+    }
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+// #324: the first new drawing block on a device says, for a few seconds and
+// at its top (the drawing hand covers the bottom), where its height is
+// changed after Done. Not again with the next new block; a tap dismisses it.
+test("the first new drawing block shows the height tip at its top, once", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "The tablet is set up by this file; one run is enough.");
+  test.setTimeout(180_000);
+  const id = await setup(page);
+  await page.goto(`/#page=${id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
+  await editor.tap();
+  const insert = async () => {
+    await page.keyboard.type("/zeichnen");
+    await expect(page.getByRole("option", { name: /Zeichnen/ }).first()).toBeVisible();
+    await page.keyboard.press("Enter");
+    const block = page.locator(".ink-block.is-active");
+    await expect(block).toHaveCount(1, { timeout: 30_000 });
+    return block;
+  };
+  const block = await insert();
+  const tip = block.locator(".ink-block-tip");
+  await expect(tip).toHaveText(/Tipp: Nach „Fertig“ änderst du die Höhe am unteren Rand\./);
+  await expect(tip).toHaveAttribute("role", "status");
+  await expect(tip).toHaveAttribute("aria-live", "polite");
+  // At the top of the block, clear of its lower half.
+  const at = (await tip.boundingBox())!;
+  const surface = (await block.locator(".ink-block-surface").boundingBox())!;
+  expect(at.y - surface.y).toBeLessThan(20);
+  expect(at.y + at.height).toBeLessThan(surface.y + surface.height / 2);
+  // A few seconds, then gone by itself.
+  await page.waitForTimeout(2500);
+  await expect(tip).toBeVisible();
+  await expect(tip).toHaveCount(0, { timeout: 6000 });
+  await expect(block).toHaveClass(/is-active/);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".ink-block.is-active")).toHaveCount(0);
+
+  // The second new block: no tip.
+  await insert();
+  await page.waitForTimeout(800);
+  await expect(page.locator(".ink-block-tip")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".ink-block.is-active")).toHaveCount(0);
+
+  // On a device that has not seen it yet, a tap dismisses it at once
+  // (the block keeps drawing, the tap draws nothing).
+  const { HEIGHT_TIP_KEY } = await import("../../lib/draw-block-actions");
+  await page.evaluate((key) => localStorage.removeItem(key), HEIGHT_TIP_KEY);
+  const third = await insert();
+  const again = third.locator(".ink-block-tip");
+  await expect(again).toBeVisible();
+  await again.locator("span").tap();
+  await expect(again).toHaveCount(0);
+  await expect(third).toHaveClass(/is-active/);
+  await expect(strokes(third)).toHaveCount(0);
 });

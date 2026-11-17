@@ -33791,13 +33791,21 @@ label.ws-search input {
   border-radius: 10px;
   box-shadow: 0 8px 24px #0000001f;
 }
-.ink-block-start {
+/* "Zeichnen" and the block's "…" menu (#322), top right. */
+.ink-block-actions {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 2;
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+.ink-block-start,
+.ink-block-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
   height: 32px;
   padding: 0 10px;
@@ -33807,8 +33815,80 @@ label.ws-search input {
   box-shadow: 0 1px 3px #0002;
   font-size: 13px;
 }
-.ink-block-start:hover {
+.ink-block-more {
+  width: 32px;
+  padding: 0;
+}
+/* Fingers and the pen: targets of at least 40 px. */
+@media (pointer: coarse) {
+  .ink-block-start,
+  .ink-block-more {
+    height: 40px;
+  }
+  .ink-block-more {
+    width: 40px;
+  }
+}
+.ink-block-start:hover,
+.ink-block-more:hover,
+.ink-block-more[aria-expanded="true"] {
   color: var(--text);
+}
+.ink-block-more:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.ink-block-more.is-pen-hover {
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--blue-light), 0 1px 3px #0002;
+}
+/* The first new block's hint on its height (#324): at the top, where the
+   hand drawing does not cover it; gone after a few seconds or a tap. */
+.ink-block-tip {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--secondary);
+  box-shadow: 0 2px 8px #0000001a;
+  font-size: 13px;
+  line-height: 1.35;
+  transform: translateX(-50%);
+  cursor: default;
+}
+.ink-block-tip-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--secondary);
+  font-size: 16px;
+}
+.ink-block-tip-close:hover {
+  color: var(--text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ink-block-tip {
+    animation: ink-block-tip-in 200ms ease-out;
+  }
+}
+@keyframes ink-block-tip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .ink-block-resize {
   display: block;
