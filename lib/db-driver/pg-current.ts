@@ -6,7 +6,7 @@
 // scripts/db-schema.mjs alone; the Helm chart's migration Job runs it before
 // the pods but leaves this check on as a safety net (nothing to do then).
 // Readiness waits for it (lib/cluster/health.ts).
-import schemaJson from "./postgres-schema.json";
+import { pgSchemaJson } from "./pg-schema-file";
 import { ensureSchemaVersion } from "./pg-ddl.mjs";
 import { postgresSchema } from "./context";
 import type { Db } from "./types";
@@ -20,7 +20,7 @@ export async function ensureCurrentPostgresSchema(db: Db) {
     await db.run("SET LOCAL statement_timeout=0");
     await db.run("SET LOCAL lock_timeout=0");
     await db.one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", `flowplan:schema:${schema}`);
-    return await ensureSchemaVersion(db, schemaJson);
+    return await ensureSchemaVersion(db, pgSchemaJson());
   });
   if (result.applied) console.log(`PostgreSQL: schema ${result.from || "(new)"} → ${result.to}`);
   return result;

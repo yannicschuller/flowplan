@@ -25,7 +25,7 @@ import pg from "pg";
 import { postgresSchema, postgresSessionUrl } from "./db-driver/context";
 import { ensurePostgresSchema, foreignKeySql, quoteIdent } from "./db-driver/pg-ddl.mjs";
 import type { PgSchema } from "./db-driver/pg-schema";
-import schemaJson from "./db-driver/postgres-schema.json";
+import { pgSchemaJson } from "./db-driver/pg-schema-file";
 import { VECTOR_FUNCTIONS, VECTOR_TABLE, VECTOR_TRIGGER } from "./ai/vector-store";
 
 // The first bytes of a custom-format archive.
@@ -372,7 +372,7 @@ export async function dumpSummary(path: string, options: { strict?: boolean } = 
 
 // ---- Restore ----
 
-const SCHEMA = () => schemaJson as unknown as PgSchema;
+const SCHEMA = () => pgSchemaJson();
 // The version table ensurePostgresSchema makes besides the translated ones.
 const META_TABLE: PgSchema["tables"][number] = {
   name: "flowplan_meta",

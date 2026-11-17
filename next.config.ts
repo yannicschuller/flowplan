@@ -59,7 +59,24 @@ const config: NextConfig = {
   // handlers, server components, server rendering) evaluated its own copy –
   // "Yjs was already imported" in the log, and a Y.Doc of one copy fails the
   // constructor checks of another (#194). External, Node.js loads it once.
-  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js", "ssh2", "pg", "yjs"],
+  // Large packages that many route handlers share: bundled, each server
+  // chunk that reached them held its own copy (pdf-lib 250 KB in 86 chunks,
+  // happy-dom 1 MB in 28, the emoji data 900 KB in 86 …) – the build, the
+  // image and every process's memory paid for each. External, Node.js
+  // loads them once from node_modules (and like yjs they exist only once).
+  serverExternalPackages: [
+    "node:sqlite",
+    "pdfjs-dist",
+    "tesseract.js",
+    "ssh2",
+    "pg",
+    "yjs",
+    "pdf-lib",
+    "happy-dom",
+    "@simplewebauthn/server",
+    "isomorphic-git",
+    "emojibase-data",
+  ],
   // The PDF text worker loads pdf.js and its worker module at runtime.
   outputFileTracingIncludes: {
     "/*": [
@@ -90,6 +107,8 @@ const config: NextConfig = {
       "./node_modules/@typst-wasm/fonts/dist/files/LibertinusSerif-*.otf",
       "./node_modules/@typst-wasm/fonts/dist/files/NewCMMath-Regular.otf",
       "./node_modules/@typst-wasm/fonts/dist/files/DejaVuSansMono*.ttf",
+      // The PostgreSQL schema, read from its file (lib/db-driver/pg-schema-file.ts).
+      "./lib/db-driver/postgres-schema.json",
       // The curated release notes for "Neu in Flowplan" (#223, lib/release-notes.ts).
       "./release-notes/*.json",
     ],

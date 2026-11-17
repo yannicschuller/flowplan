@@ -11,8 +11,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { all, run, sql, transaction, untimed } from "./db";
 import { db } from "./db-driver";
-import schemaJson from "./db-driver/postgres-schema.json";
-import type { PgSchema } from "./db-driver/pg-schema";
+import { pgSchemaJson } from "./db-driver/pg-schema-file";
 import { quoteIdent } from "./db-driver/pg-ddl.mjs";
 
 // Rows per round trip (documents can be large: a few hundred at a time).
@@ -22,7 +21,7 @@ export async function snapshotDatabase(path: string) {
     await run(`VACUUM INTO '${path.replaceAll("'", "''")}'`); // sqlite-only
     return;
   }
-  const schema = schemaJson as unknown as PgSchema;
+  const schema = pgSchemaJson();
   const file = new DatabaseSync(path);
   try {
     file.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF;"); // sqlite-only: the file
