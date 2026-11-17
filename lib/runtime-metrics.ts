@@ -64,13 +64,16 @@ export function noteStatement(start: number) {
 }
 
 // Prometheus lines; empty while the measurement is off.
-export function runtimeMetricLines(walBytes: number) {
+// `own`: labels every line gets (the pod in cluster mode).
+export function runtimeMetricLines(walBytes: number, own: Record<string, string> = {}) {
   const s = holder.flowplanRuntimeMetrics;
   if (!s) return [];
   const lines: string[] = [];
+  const mine = Object.entries(own).map(([k, v]) => `${k}="${v.replace(/["\\\n]/g, "")}"`).join(",");
+  const withOwn = (labels: string) => (!mine ? labels : labels ? `{${mine},${labels.slice(1)}` : `{${mine}}`);
   const add = (name: string, help: string, type: "gauge" | "counter", values: [string, number][]) => {
     lines.push(`# HELP flowplan_${name} ${help}`, `# TYPE flowplan_${name} ${type}`);
-    for (const [labels, value] of values) lines.push(`flowplan_${name}${labels} ${Number.isFinite(value) ? value : 0}`);
+    for (const [labels, value] of values) lines.push(`flowplan_${name}${withOwn(labels)} ${Number.isFinite(value) ? value : 0}`);
   };
   const h = s.histogram;
   // The histogram's values include its 10 ms sampling interval.

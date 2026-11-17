@@ -1,8 +1,10 @@
 // The running instance on Kubernetes (lib/cluster/runtime.ts, health.ts,
 // leader.ts, lib/instance-ops.ts): the graceful shutdown holds Next.js's
 // process.exit until Flowplan's tasks are done (within the budget),
-// readiness waits for the opening steps and names their failures, jobs
-// started on one pod are not "interrupted" on another. Runs on SQLite and PostgreSQL.
+// readiness waits for the opening steps and names their failures, the
+// metrics of a cluster pod carry its id and leave the installation's
+// figures to the leader, jobs started on one pod are not "interrupted" on
+// another. Runs on SQLite and PostgreSQL.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,6 +17,7 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-cluster-run
 const { run, one, id } = await import("../lib/db");
 const { readiness } = await import("../lib/cluster/health");
 const { failedDataSteps, dataSteps } = await import("../lib/data-steps");
+const { prometheusMetrics } = await import("../lib/instance-ops");
 const { leaderDuty } = await import("../lib/cluster/leader");
 const { shutdownBudgetMs } = await import("../lib/cluster/runtime");
 const jobs = await import("../lib/background-jobs");
@@ -115,6 +118,31 @@ test("readiness waits for the opening steps and names a failed data step, which 
     } finally {
       await run("UPDATE flowplan_meta SET value=? WHERE key='sqlite_schema'", meta!.value);
     }
+  }
+});
+
+test("metrics of a cluster pod: per-process figures with its instance_id, the installation's only from the leader", async () => {
+  const single = await prometheusMetrics();
+  assert.match(single, /^flowplan_uptime_seconds \d+$/m);
+  assert.match(single, /^flowplan_pages \d+$/m);
+  const families = (text: string) => [...text.matchAll(/^# HELP (\S+)/gm)].map((m) => m[1]);
+  assert.equal(new Set(families(single)).size, families(single).length, "every family once (Prometheus refuses repeats)");
+  process.env.FLOWPLAN_CLUSTER = "1";
+  process.env.FLOWPLAN_INSTANCE_ID = "flowplan-7d9-abc";
+  try {
+    const pod = await prometheusMetrics();
+    assert.match(pod, /^flowplan_uptime_seconds\{instance_id="flowplan-7d9-abc"\} \d+$/m);
+    assert.match(pod, /^flowplan_metrics_shared\{instance_id="flowplan-7d9-abc"\} 0$/m);
+    assert.match(pod, /^flowplan_process_resident_memory_bytes\{instance_id="flowplan-7d9-abc"\} \d+$/m);
+    assert.match(pod, /^flowplan_build_info\{instance_id="flowplan-7d9-abc",version="[^"]*",commit="[^"]*",node="v\d/m);
+    // Not the leader (no election here): no counts from the database, so
+    // a sum over the pods counts them once.
+    assert.doesNotMatch(pod, /^flowplan_pages /m);
+    assert.doesNotMatch(pod, /^flowplan_workspace_bytes/m);
+    assert.equal(new Set(families(pod)).size, families(pod).length);
+  } finally {
+    delete process.env.FLOWPLAN_CLUSTER;
+    delete process.env.FLOWPLAN_INSTANCE_ID;
   }
 });
 
