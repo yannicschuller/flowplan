@@ -21,7 +21,7 @@ const outputPaths = (fields: OutputField[], prefix = ""): string[] =>
 const id = (what: string) => z.uuid().describe(what);
 // `openWorld`: the tool reaches beyond Flowplan (the AI provider, e-mail,
 // chat, HTTP) – MCP's openWorldHint.
-export type WorkflowTool = { name: string; title: string; description: string; input: z.ZodObject; write: boolean; openWorld?: boolean; run: (user: Identity, args: never) => unknown };
+export type WorkflowTool = { name: string; title: string; description: string; input: z.ZodObject; write: boolean; openWorld?: boolean; thirdParty?: boolean; run: (user: Identity, args: never) => unknown };
 
 const GRAPH_HELP =
   'Graph JSON (format "flowplan.workflow", version 1): {"nodes":[{"id":"n_abc123","type":"trigger.manual","label":"Start","config":{}}],"edges":[{"id":"e_1","from":{"node":"n_abc123","port":"out"},"to":{"node":"n_def456","port":"in"}}]}. Node ids n_ + 6–12 of [a-z0-9], unique labels without . | { } [ ]; types and config keys from get_workflow_catalog; placeholders {{<node id>.<output>}}.';
@@ -41,6 +41,7 @@ export const workflowTools: WorkflowTool[] = [
     description: "Status, the active version's graph and – for editors – the draft with its check (errors and warnings per node).",
     input: z.object({ pageId: id("Page ID of the workflow") }),
     write: false,
+    thirdParty: true,
     run: (async (user: Identity, a: { pageId: string }) => {
       const s = await workflowState(user, a.pageId);
       // The Yjs state is for the editor, not for a client.
@@ -138,6 +139,7 @@ export const workflowTools: WorkflowTool[] = [
     description: "A run with its steps (status, attempts, errors). Inputs and outputs only when the run ran as you.",
     input: z.object({ runId: id("Run ID") }),
     write: false,
+    thirdParty: true,
     run: (async (user: Identity, a: { runId: string }) => await runDetail(user, a.runId)) as WorkflowTool["run"],
   },
 ];
