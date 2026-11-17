@@ -6,7 +6,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { PencilSimple } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { api } from "./ui";
 import { shareBoardUrl, shareNotebookUrl, type ShareGuest } from "./share-guest";

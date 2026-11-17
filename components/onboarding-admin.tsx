@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { ArrowSquareOut } from "@phosphor-icons/react";
 import { adminSetupStatus, type Light, type SetupFacts, type SetupItem } from "@/lib/admin-setup-status";
 import { settingsHash } from "@/lib/settings-sections";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 
 export function AdminSetup({ onOpenSection }: { onOpenSection: (hash: string) => void }) {

@@ -4,7 +4,7 @@
 // "Anmeldung & Sicherheit" card.
 import { useCallback, useEffect, useState } from "react";
 import { Desktop, DeviceMobile, Globe } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { StatusBadge } from "./settings-ui";

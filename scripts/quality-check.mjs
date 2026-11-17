@@ -51,11 +51,17 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // of a database now load when opened; the workspace no longer pulls in
 // TipTap, ProseMirror and Yjs for small helpers (link icon store, link
 // rules, block lookup, due labels). The budgets are about 3 % above.
+// 2026-11-17, the emoji data loading with the picker and the English of the
+// server messages on first use: sign-in 244.9 KB, a database and the start
+// page 924.4 KB, the settings 940.6 KB (a section 1008.8 KB), the
+// administration 948.1 KB (monitoring 970.4, push 956.8), a workflow
+// 1153.2 KB; a document about 1706 KB with KaTeX and mathjs still in it.
+// The budgets move down to about 3 % above (the workflow's stays).
 const PAGES = [
-  { path: "/login", jsKb: 290 },
-  { path: "/register", jsKb: 290 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1990 },
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 990 },
+  { path: "/login", jsKb: 255 },
+  { path: "/register", jsKb: 255 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1760 },
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 955 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
@@ -67,16 +73,16 @@ const PAGES = [
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
-  { path: "/#home", name: "home", signedIn: true, jsKb: 990, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 1005, ready: ".settings-tile" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1075, ready: ".settings-detail .setting-group" },
-  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1010, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  { path: "/#home", name: "home", signedIn: true, jsKb: 955, ready: ".home-grid" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 970, ready: ".settings-tile" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1040, ready: ".settings-detail .setting-group" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 980, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1030, ready: ".mon-health" },
+  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1000, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1020, ready: "#relay" },
+  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 990, ready: "#relay" },
 ];
-const BUDGET = { jsKb: 290, lcpMs: 2500 };
+const BUDGET = { jsKb: 255, lcpMs: 2500 };
 const LOCALE = "de-DE";
 // --------------------------------------------------------------------------
 

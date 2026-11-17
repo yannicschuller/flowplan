@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowsClockwise, Copy, EnvelopeSimple, Plus, Trash } from "@phosphor-icons/react";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import type { Page } from "@/lib/types";
 import { useT } from "./i18n";
 import { api } from "./ui";

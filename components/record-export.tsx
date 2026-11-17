@@ -6,7 +6,7 @@ import { safeCollisionPadding } from "./safe-area";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer, SquaresFour } from "@phosphor-icons/react";
 import { useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
 import { useT } from "./i18n";

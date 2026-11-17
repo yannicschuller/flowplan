@@ -14,7 +14,7 @@ import { printDocument } from "../print-page";
 import { saveFile, exportFileName } from "./board-export";
 import type { BoardApi } from "./board-context";
 import type { Point, WhiteboardItem } from "@/lib/whiteboard-model";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import {
   RACK_HEADER,
   RACK_MAX_U,

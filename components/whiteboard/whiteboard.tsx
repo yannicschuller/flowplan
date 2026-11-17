@@ -1,6 +1,6 @@
 "use client";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "../i18n";
 import {

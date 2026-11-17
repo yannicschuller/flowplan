@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, SpinnerGap } from "@phosphor-icons/react";
 import { BrandMark } from "./brand-mark";
 import { useT } from "./i18n";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 
 // Starts a throwaway demo account right away and opens it; the button is
 // there if starting fails.

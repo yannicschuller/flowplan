@@ -16,7 +16,7 @@ import type * as Y from "yjs";
 import { ArrowSquareOut, Database, FileText, Info, Sparkle, Stop, TreeStructure, UsersFour, Warning } from "@phosphor-icons/react";
 import { textLocale } from "@/lib/i18n";
 import { aiPageReadable, aiUsable } from "@/lib/ai/client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import {
   freeSpot,
   generatedSchema,

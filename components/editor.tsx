@@ -5,7 +5,7 @@ import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutline } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { reveal } from "@/lib/motion";
 import { nativeScan, nativeScanAvailable } from "@/lib/native-app";
 import { useLocale, useT } from "./i18n";

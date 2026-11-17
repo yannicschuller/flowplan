@@ -5,7 +5,7 @@
 // redirect) and the draft hook used by forms and surveys.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Check } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import FormQuestions from "./form-questions";
 import { formItems, formLogicItems, validateFormValues, type FormConfig, type FormItem } from "@/lib/form-settings";

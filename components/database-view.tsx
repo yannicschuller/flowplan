@@ -4,7 +4,7 @@ import { rowChanges } from "@/lib/row-queue";
 import { patchBase } from "@/lib/row-patch";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";

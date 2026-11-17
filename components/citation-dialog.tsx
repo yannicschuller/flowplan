@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
 import { Modal, api } from "./ui";
 import { useT } from "./i18n";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { inlineCitation, normalizeDoi, referenceText, type CslItem } from "@/lib/citations";
 
 export function CitationDialog({

@@ -3,7 +3,7 @@
 // passkeys of an account with e-mail and password, as rows of the settings
 // cards (components/settings-ui.tsx). The authenticator app is in
 // components/two-factor.tsx; SSO accounts are managed by their provider.
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, Plus, Trash } from "@phosphor-icons/react";

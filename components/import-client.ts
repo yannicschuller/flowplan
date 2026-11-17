@@ -3,7 +3,7 @@
 // components/onboarding-import.tsx): sending a file with upload progress and
 // waiting for a background import (#163). The work itself is the server's
 // (lib/importers, lib/zip-import.ts).
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 
 // POST /api/import/source with the file as the raw body (#76).
 export function sendImport(query: URLSearchParams, body: File | null, onProgress: (share: number) => void) {

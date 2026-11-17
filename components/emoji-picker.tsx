@@ -1,8 +1,8 @@
 "use client";
 import { useLocale, useT } from "./i18n";
 import { Select } from "./select";
-import { useMemo, useState } from "react";
-import { emojiGroups, searchEmojis } from "@/lib/emoji-data";
+import { useEffect, useMemo, useState } from "react";
+import { emojiGroups, loadEmojiEntries, searchEmojis, type EmojiEntry } from "@/lib/emoji-data";
 import { PageIcon } from "./ui";
 export default function EmojiPicker({
   selected,
@@ -33,10 +33,21 @@ export default function EmojiPicker({
     [group, setGroup] = useState("all"),
     [tone, setTone] = useState("all"),
     [limit, setLimit] = useState(200),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    // Loaded when the picker opens, in the interface language.
+    [entries, setEntries] = useState<EmojiEntry[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadEmojiEntries(locale)
+      .then((list) => alive && setEntries(list))
+      .catch(() => alive && setEntries([]));
+    return () => {
+      alive = false;
+    };
+  }, [locale]);
   const found = useMemo(
-    () => searchEmojis(query, group, tone),
-    [query, group, tone],
+    () => (entries ? searchEmojis(entries, query, group, tone) : []),
+    [entries, query, group, tone],
   );
   async function select(icon: string) {
     setBusy(true);
@@ -106,7 +117,7 @@ export default function EmojiPicker({
         </label>
       </div>
       <p className="muted" role="status">
-        {found.length} {t("Emojis gefunden", "emojis found")}
+        {entries ? `${found.length} ${t("Emojis gefunden", "emojis found")}` : t("Emojis werden geladen …", "Loading emojis …")}
       </p>
       <div className="emoji-grid" aria-label={t("Emoji-Auswahl", "Emoji picker")}>
         {found.slice(0, limit).map((e) => (

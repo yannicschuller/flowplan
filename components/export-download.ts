@@ -1,7 +1,7 @@
 "use client";
 // The document exports (app/api/export/*): a Word file or e-book to
 // download, the combined print view handed to the print dialog.
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { tr } from "@/lib/locale-tag";
 import { downloadBlob } from "./ui";

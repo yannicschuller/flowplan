@@ -8,7 +8,7 @@
 // the administration) and Papierkorb & Aufbewahrung.
 import { useState, type ReactNode } from "react";
 import { ArrowRight, DownloadSimple, Storefront, UploadSimple } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "../../i18n";
 import { api, download, downloadBlob } from "../../ui";
 import { showToast } from "../../toast";

@@ -13,7 +13,7 @@ import { Select } from "./select";
 import { EmptyState, SaveBar, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSaveState } from "./settings-ui";
 import { AdminStatus, FixLink, type StatusItem } from "./settings/admin/parts";
 import { textLocale } from "@/lib/i18n";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import {
   AI_DEFAULTS,
   AI_FEATURES,

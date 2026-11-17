@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 // The password of a protected share link (lib/share-access.ts). The right
 // one sets a cookie for this link; the page then loads with its content.
 import { useState, type FormEvent } from "react";

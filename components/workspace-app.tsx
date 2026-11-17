@@ -12,7 +12,7 @@ import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
 import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
 import { currentOS } from "@/lib/device-os";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useT, writeLocaleCookie } from "./i18n";
 import { OfflineStatus } from "./offline-status";

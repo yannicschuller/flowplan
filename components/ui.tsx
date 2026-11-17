@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf } from "@/lib/idempotency-key";
 import {
   classifyError,

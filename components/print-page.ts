@@ -1,6 +1,6 @@
 "use client";
 import { tr } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { applyPrintOptions, printOptionsCss, type PrintOptions } from "@/lib/print-options";
 // Printing (and "Save as PDF"): the page content alone, as a lean copy –
 // Safari lays out the whole app before showing its print dialog, which takes

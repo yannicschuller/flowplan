@@ -23,7 +23,7 @@
 // diarization. A level meter (onLevel, every 100 ms per source) and a
 // warning when one source stays silent for 30 s while the other has sound
 // (onSilentSource) are there for the block to show.
-import { serverMessage } from "./i18n-errors";
+import { serverMessage } from "./server-message";
 import { MEETING_CHUNK_SECONDS, SilenceWatch, browserCaptureSupport, rmsLevel, type BrowserCapture, type MeetingTrack } from "./meeting-core";
 
 type Bridge = {

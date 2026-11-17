@@ -4,7 +4,7 @@
 // the administrator switched it on and the person owns the space; the
 // access token is never sent back, only whether one is stored.
 import { useEffect, useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";

@@ -10,7 +10,7 @@
 import { WorkflowButton } from "@/lib/workflow-button-node";
 import { onEditableChange } from "./editor-editable";
 import { tr } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 
 type StartInfo = { pageId: string; title: string | null; status: string; nodeId: string | null; inputs: { name: string; type: string; required: boolean }[]; may: boolean; canEdit: boolean };
 type MountOptions = {

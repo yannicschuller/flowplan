@@ -1,6 +1,6 @@
 // Browser side of the AI core: is a feature usable, may the AI read this
 // page, and streaming an answer from POST /api/ai/run (see lib/ai/index.ts).
-import { serverMessage } from "../i18n-errors";
+import { serverMessage } from "../server-message";
 import { AI_REASON_TEXT, type AiFeature, type AiReason, type AiStatus } from "./features";
 import type { DatabaseNote } from "./database-note";
 import type { ResolvedTitle } from "./title-links";

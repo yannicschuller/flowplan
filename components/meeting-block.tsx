@@ -52,7 +52,7 @@ import {
   BellRinging,
 } from "@phosphor-icons/react";
 import { useLocale, useT } from "./i18n";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useEditorEditable } from "./editor-editable";
 import { Meeting, MeetingCite, MeetingTranscript } from "@/lib/meeting-schema";
 import { BROWSER_CAPTURE_HINT, MEETING_LANGUAGES, MEETING_PRESETS, MEETING_PRESET_LABELS, citeAria, citeLabel, meetingSegmentIndex, type CitedSegment, type MeetingLanguage, type MeetingPreset, type MeetingTrack } from "@/lib/meeting-core";

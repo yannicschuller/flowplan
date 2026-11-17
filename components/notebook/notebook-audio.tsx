@@ -50,7 +50,7 @@ import {
   type Playback,
   type RecordingFormat,
 } from "@/lib/ink/audio-sync";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 
 type Info = { recordings: NotebookRecording[]; canEdit: boolean; room: number | null; chunkBytes: number };

@@ -3,7 +3,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import {
   browserZone,
   dateInZone,

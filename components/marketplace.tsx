@@ -21,7 +21,7 @@ import { useLocale, useT } from "./i18n";
 import { Modal } from "./ui";
 import { Select } from "./select";
 import { showToast } from "./toast";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { templateCategoryLabels, templateCategoryIds } from "@/lib/template-categories";
 import {
   MAX_PACKAGE_BYTES,

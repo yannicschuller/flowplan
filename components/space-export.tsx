@@ -4,7 +4,7 @@
 // the person may read. From the space's row in the sidebar and from
 // Settings → Data.
 import { useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
 import { useT } from "./i18n";

@@ -5,7 +5,7 @@
 import { MetricBlock } from "@/lib/metric-node";
 import { onEditableChange } from "./editor-editable";
 import { tr } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 
 export type MetricConfig = {
   source?: string;
