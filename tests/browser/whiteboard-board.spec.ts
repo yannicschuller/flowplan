@@ -271,6 +271,38 @@ test("search with tag filter, element links, lists and links in notes", async ({
   expect(errors).toEqual([]);
 });
 
+test("the board never scrolls inside its frame; a double click edits the note under it", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop pointer gestures");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { board } = await setup(page, `Rahmenfest ${Date.now()}`, [note("b", 300, 0, "Team-Event")]);
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  await expect(wb.locator(".wb-toolbar")).toBeVisible();
+  // An overlay past the board's edges – like the style bar of an element the
+  // camera flies away from – and a scroll to the note (scrollIntoView, as a
+  // focus or Playwright's retried click does). With `overflow: hidden` the
+  // board scrolled inside its frame and snapped back on the next layout
+  // change: between the two clicks of a double click, whose second click
+  // then landed on the empty board and made a new note.
+  const scroll = await wb.evaluate((el) => {
+    const overlay = document.createElement("div");
+    overlay.className = "wb-test-overlay";
+    overlay.style.cssText = "position:absolute;left:3000px;top:2000px;width:10px;height:10px";
+    el.appendChild(overlay);
+    el.querySelector('[data-item="b"]')!.scrollIntoView({ block: "start", inline: "start" });
+    const moved = [el.scrollLeft, el.scrollTop];
+    overlay.remove();
+    return moved;
+  });
+  expect(scroll).toEqual([0, 0]);
+  await wb.locator('[data-item="b"]').dblclick();
+  await expect(wb.locator("textarea.wb-editor")).toHaveValue("Team-Event");
+  await page.keyboard.press("Escape");
+  await expect(wb.locator(".wb-sticky")).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
 test("embeds load only on click; template gallery and own templates; export dialog", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
