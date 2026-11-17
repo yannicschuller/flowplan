@@ -1,0 +1,113 @@
+# The UI gallery (npm run gallery, scripts/gallery) as a website:
+# https://gallery.flowplan.org, rebuilt every night from main and on demand
+# (Actions → UI gallery → Run workflow). Every page, dialog, menu and
+# popover of the app – desktop and phone, light and dark – with seeded
+# example content only, plus a "Changed" view against the previous night's
+# site (its manifest.json and images, fetched from gallery.flowplan.org).
+# A run from another branch builds the site as the artifact "github-pages"
+# but does not publish it. See CONTRIBUTING.md ("UI gallery").
+name: UI gallery
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Nightly on the default branch (main), off the full hour and after the
+    # browser specs (02:23).
+    - cron: "47 3 * * *"
+
+permissions:
+  contents: read
+
+# One run at a time; a deployment in progress is never cancelled.
+concurrency:
+  group: gallery
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  build:
+    # The nightly run only in this repository, not in forks.
+    if: github.event_name != 'schedule' || github.repository == 'yannicschuller/flowplan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      # Also installs sharp (with Next.js) for the WebP images.
+      - run: npm ci
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        if: runner.environment == 'github-hosted'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      # As in browser.yml: the browser from Playwright's CDN, its Ubuntu
+      # packages (fonts) best-effort; the own runner uses its installed
+      # Chromium (/opt/pw-browsers/chromium, found by scripts/chromium.mjs).
+      - name: Install Chromium
+        if: runner.environment == 'github-hosted'
+        run: |
+          npx playwright install chromium
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null
+          timeout 300 npx playwright install-deps chromium || echo "::warning::Chromium's Ubuntu packages could not be installed (Ubuntu mirrors unreachable?); using what the runner image has"
+      # Turbopack's build cache, shared with the visual tests' build
+      # (visual.yml, the same production build).
+      - uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      # The ordinary production build (CI checks the types). The gallery
+      # signs up the first account of an empty data directory itself, so
+      # it needs no demo sign-in and no e2e switch.
+      - run: npm run build
+        env:
+          FLOWPLAN_SKIP_TYPECHECK: "1"
+      # WebP images, the comparison with last night's site, CNAME and a
+      # robots.txt. Failed scenes do not fail the run: they show as red
+      # cards on the site.
+      - name: Gallery
+        run: npm run gallery -- --out "$RUNNER_TEMP/site" --webp --compare https://gallery.flowplan.org --cname gallery.flowplan.org
+      - name: Summary
+        run: |
+          node -e '
+            const m = require(process.argv[1]);
+            const c = m.changes;
+            const failed = m.shots.filter((s) => s.error).length;
+            console.log(`### UI gallery\n\n${new Set(m.shots.map((s) => s.scene)).size} scenes, ${m.shots.length} screenshots, ${failed} failed, ${m.seconds} s.`);
+            console.log(c.previous ? `\nCompared with ${c.previous.commitShort}: ${c.changed.length} changed, ${c.added.length} new, ${c.removed.length} removed.` : `\n${c.note || "No comparison."}`);
+          ' "$RUNNER_TEMP/site/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          size=$(du -sm "$RUNNER_TEMP/site" | cut -f1)
+          echo "Site: ${size} MB" | tee -a "$GITHUB_STEP_SUMMARY"
+          # GitHub Pages publishes at most 1 GB.
+          if [ "$size" -gt 900 ]; then echo "::error::The site has ${size} MB, too close to GitHub Pages' 1 GB"; exit 1; fi
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+
+  deploy:
+    needs: build
+    # Only main is published.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
