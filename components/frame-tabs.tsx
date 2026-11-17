@@ -125,10 +125,20 @@ export function useFrameTabs({
   // known yet (the screen size is measured after the first render).
   const splitAtOpen = useRef(typeof location === "undefined" ? null : new URLSearchParams(location.search).get("split"));
 
+  // The save that waits for its 200 ms: written at once when the page goes
+  // (a reload or closing right after a change keeps the change).
+  const pendingSave = useRef<(() => void) | null>(null);
+  const flushSave = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const save = pendingSave.current;
+    pendingSave.current = null;
+    save?.();
+  }, []);
   const persist = useCallback((next: Layout, local: boolean) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const key = storeKey(userId, owner.current || workspaceId);
-    saveTimer.current = setTimeout(() => {
+    pendingSave.current = () => {
       const value = JSON.stringify(serialize(next));
       try {
         sessionStorage.setItem(key, value);
@@ -137,8 +147,9 @@ export function useFrameTabs({
         try {
           localStorage.setItem(key, value);
         } catch {}
-    }, 200);
-  }, [userId, workspaceId]);
+    };
+    saveTimer.current = setTimeout(flushSave, 200);
+  }, [userId, workspaceId, flushSave]);
 
   // The frame worked in, as far as it is shown (the right one only when wide).
   const frameNow = (l: Layout) => (l.focused === 1 && l.frames[1] && wideRef.current ? 1 : 0);
@@ -419,12 +430,13 @@ export function useFrameTabs({
     return () => setStepSource(null);
   }, [enabled, commit]);
 
-  useEffect(
-    () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    window.addEventListener("pagehide", flushSave);
+    return () => {
+      window.removeEventListener("pagehide", flushSave);
+      flushSave();
+    };
+  }, [flushSave]);
 
   // The tab being dragged and where it would land (set only on a change:
   // every render here renders the workspace).
