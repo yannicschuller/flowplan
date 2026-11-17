@@ -170,6 +170,21 @@ function loopValues(graph: WorkflowGraph, nodeId: string, iteration: string, val
   const state = values[loop] as { items?: unknown[] } | undefined;
   return { $item: state?.items?.[index] ?? null, $index: index };
 }
+// The moment $today stands for in a run: when the run started – or, after
+// a wait or an approval, when it went on. Every step of a run that passes
+// midnight (a slow AI answer, retries) then means the same day: a night
+// run that reads "today" and appends to "today" never splits across two
+// journal days.
+async function dayAnchor(info: RunInfo) {
+  const started = (await one<{ created_at: number }>("SELECT created_at FROM workflow_runs WHERE id=?", info.id))?.created_at;
+  let at = typeof started === "number" && Number.isFinite(started) ? started : Date.now();
+  const waits = info.graph.nodes.filter((n) => n.type === "logic.wait" || n.type === "logic.approval").map((n) => n.id);
+  if (waits.length) {
+    const resumed = (await one<{ at: number | null }>(`SELECT MAX(finished_at) at FROM workflow_steps WHERE run_id=? AND status='succeeded' AND node_id IN (${waits.map(() => "?").join(",")})`, info.id, ...waits))?.at;
+    if (typeof resumed === "number" && resumed > at) at = resumed;
+  }
+  return Math.min(at, Date.now());
+}
 async function scopeFor(info: RunInfo, values: Record<string, unknown>, warnings: string[]): Promise<RenderScope> {
   const tz = info.graph.settings.timeZone || "UTC";
   const locale = (info.graph.settings.locale as Locale | undefined) || (info.runner ? await userLocale(info.runner.id) : "de");
@@ -180,7 +195,7 @@ async function scopeFor(info: RunInfo, values: Record<string, unknown>, warnings
       $run: { id: info.id, url: `${recordUrl(info.page.id)}&run=${info.id}`, mode: info.mode },
       $workflow: { id: info.page.id, title: info.page.title, url: recordUrl(info.page.id) },
       $runner: info.runner ? await personValue(info.runner.id, info.workspaceId) : null,
-      ...builtins(tz),
+      ...builtins(tz, await dayAnchor(info)),
     },
     timeZone: tz,
     locale,
