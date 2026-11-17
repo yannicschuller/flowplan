@@ -559,10 +559,12 @@ Deutsch und Englisch stehen direkt im Code; jede weitere Sprache ist ein JSON-Ka
 | 🇩🇪 Deutsch (im Code) | `de` | 12.573 / 12.573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
 | 🇬🇧 English (im Code) | `en` | 12.573 / 12.573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
 | 🇺🇸 English (US) (im Code) | `en-US` | 12.573 / 12.573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇫🇷 Français | `fr` | 12.307 / 12.573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
-| 🇨🇳 简体中文 | `zh` | 12.307 / 12.573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
+| 🇫🇷 Français | `fr` | 12.307 / 12.573 | [![Français](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=fr)](https://translate.flowplan.org/c/flowplan-web/fr) |
+| 🇨🇳 简体中文 | `zh` | 12.307 / 12.573 | [![简体中文](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=zh)](https://translate.flowplan.org/c/flowplan-web/zh) |
 
-<sub>Erzeugt mit `npm run i18n:readme` aus `locales/`.</sub>
+Hilf beim Übersetzen auf [translate.flowplan.org](https://translate.flowplan.org) – mit deinem GitHub-Konto, jede Änderung kommt als Pull Request.
+
+<sub>Erzeugt mit `npm run i18n:readme` aus `locales/`; die Badges zeigen den aktuellen Stand auf translate.flowplan.org.</sub>
 <!-- i18n:end -->
 
 ### Mitwirkende

@@ -26,6 +26,7 @@ const languages = [...block.matchAll(/^\s*"?([a-z]{2}(?:-[A-Z]{2})?)"?: \{ name:
 for (const code of coverage.keys())
   if (!languages.some((l) => l.code === code)) languages.push({ code, name: code, flag: "🏳️", draft: true });
 
+const TRANSLATE = "https://translate.flowplan.org";
 const number = (n, locale) => n.toLocaleString(locale === "de" ? "de-DE" : "en-GB");
 const bar = (pct) => `![${pct} %](https://img.shields.io/badge/${pct}%25-${pct === 100 ? "2ea44f" : pct >= 90 ? "a3c51c" : pct >= 50 ? "dfb317" : "e05d44"}?style=flat-square)`;
 
@@ -40,9 +41,19 @@ function table(locale) {
     const done = sourceLang ? total : coverage.get(l.code) ?? 0;
     const pct = Math.floor((done / total) * 100);
     const note = sourceLang ? (de ? " (im Code)" : " (in the code)") : l.draft ? (de ? " (noch nicht in der App)" : " (not in the app yet)") : "";
-    lines.push(`| ${l.flag} ${l.name}${note} | \`${l.code}\` | ${number(done, locale)} / ${number(total, locale)} | ${bar(pct)} |`);
+    // Translations: the live badge of translate.flowplan.org, linked to the
+    // list of that language there; the originals are always complete.
+    const badge = sourceLang ? bar(pct) : `[![${l.name}](${TRANSLATE}/api/badge?component=flowplan-web&lang=${l.code})](${TRANSLATE}/c/flowplan-web/${l.code})`;
+    lines.push(`| ${l.flag} ${l.name}${note} | \`${l.code}\` | ${number(done, locale)} / ${number(total, locale)} | ${badge} |`);
   }
-  lines.push("", de ? "<sub>Erzeugt mit `npm run i18n:readme` aus `locales/`.</sub>" : "<sub>Generated from `locales/` with `npm run i18n:readme`.</sub>");
+  lines.push(
+    "",
+    de
+      ? `Hilf beim Übersetzen auf [translate.flowplan.org](${TRANSLATE}) – mit deinem GitHub-Konto, jede Änderung kommt als Pull Request.`
+      : `Help translate on [translate.flowplan.org](${TRANSLATE}) – sign in with GitHub; every change arrives as a pull request.`,
+    "",
+    de ? "<sub>Erzeugt mit `npm run i18n:readme` aus `locales/`; die Badges zeigen den aktuellen Stand auf translate.flowplan.org.</sub>" : "<sub>Generated from `locales/` with `npm run i18n:readme`; the badges show the current state on translate.flowplan.org.</sub>",
+  );
   return lines.join("\n");
 }
 

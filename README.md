@@ -557,10 +557,12 @@ Flowplan speaks German and English natively; every other language is a JSON cata
 | 🇩🇪 Deutsch (in the code) | `de` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
 | 🇬🇧 English (in the code) | `en` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
 | 🇺🇸 English (US) (in the code) | `en-US` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇫🇷 Français | `fr` | 12,307 / 12,573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
-| 🇨🇳 简体中文 | `zh` | 12,307 / 12,573 | ![97 %](https://img.shields.io/badge/97%25-a3c51c?style=flat-square) |
+| 🇫🇷 Français | `fr` | 12,307 / 12,573 | [![Français](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=fr)](https://translate.flowplan.org/c/flowplan-web/fr) |
+| 🇨🇳 简体中文 | `zh` | 12,307 / 12,573 | [![简体中文](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=zh)](https://translate.flowplan.org/c/flowplan-web/zh) |
 
-<sub>Generated from `locales/` with `npm run i18n:readme`.</sub>
+Help translate on [translate.flowplan.org](https://translate.flowplan.org) – sign in with GitHub; every change arrives as a pull request.
+
+<sub>Generated from `locales/` with `npm run i18n:readme`; the badges show the current state on translate.flowplan.org.</sub>
 <!-- i18n:end -->
 
 ### Contributors
