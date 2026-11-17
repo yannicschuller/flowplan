@@ -397,7 +397,13 @@ export function DocumentBlockControls({
           if (!editor.isDestroyed) measure();
         });
       if (tr.docChanged) {
-        if (dragging.current) {
+        // Only a change that moves positions ends a drag: attributes alone
+        // (the ids a block just moved gets a moment later, lib/block-ids-
+        // plugin.ts) leave every block where it was – the next block
+        // dragged right after a drop was let go with "document changed".
+        let moved = false;
+        for (const map of tr.mapping.maps) map.forEach(() => (moved = true));
+        if (dragging.current && moved) {
           dragging.current = null;
           setPointerActive(false);
           setDrop(null);
