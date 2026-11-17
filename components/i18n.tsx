@@ -3,7 +3,7 @@
 // Switching stores the choice in a cookie for a year and reloads, so server
 // and client render the same language.
 import { safeCollisionPadding } from "./safe-area";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, LOCALE_COOKIE, isLocale, translate, type Locale } from "@/lib/i18n";
@@ -20,11 +20,16 @@ export function useLocale() {
 }
 // t("Anmelden", "Sign in"); t(label) alone translates a label from the
 // German tables in lib (operators, rollups, formats …).
+// The same function for as long as the language stays: effects that list
+// `t` as a dependency must not run again on every render (the sign-in
+// methods reloaded themselves in a loop – about 200,000 requests a day while
+// the account settings were open).
 export function useT() {
   const locale = useContext(LocaleContext);
-  const pick = translate(locale);
-  return (de: string, en?: string) =>
-    en === undefined ? translateLabel(de, locale) : pick(de, en);
+  return useMemo(() => {
+    const pick = translate(locale);
+    return (de: string, en?: string) => (en === undefined ? translateLabel(de, locale) : pick(de, en));
+  }, [locale]);
 }
 // Stores the language for this address. Copies of the cookie for parent
 // domains (flowplan.org shares one with the website and the docs) are
