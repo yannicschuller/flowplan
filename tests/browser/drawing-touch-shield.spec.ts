@@ -448,9 +448,14 @@ test("mouse users are not shielded: a click outside leaves drawing and does its 
   await page.waitForTimeout(200);
   await expect(block).not.toHaveClass(/is-active/);
   await expect(strokes(block)).toHaveCount(drawn);
+  // The height handle is there while not drawing, and gone while drawing
+  // (#324: a resting palm must not resize the block).
+  const handle = block.getByRole("separator", { name: "Höhe der Zeichnung" });
+  await expect(handle).toBeVisible();
   await block.getByRole("button", { name: "Zeichnen" }).click();
   await expect(block).toHaveClass(/is-active/);
   await expect(page.getByRole("toolbar", { name: "Zeichenwerkzeuge" })).toBeVisible();
+  await expect(handle).toHaveCount(0);
   await expect(page.locator(".ink-shield")).toHaveCount(0);
   await page.locator(".topbar .breadcrumb-workspace").click();
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#home");
