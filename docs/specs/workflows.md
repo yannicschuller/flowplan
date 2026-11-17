@@ -633,7 +633,7 @@ Benachrichtigungen. Kein Direktschreiben an `rows`/`documents` vorbei.
 | `action.page.tag` | Seite, hinzufügen/entfernen, Tags | `page` | nein |
 | `action.page.move` | Seite, neue Elternseite, Position (Anfang/Ende) | `page` | nein |
 | `action.task.create` (#208) | Ziel: eine Seite (ID/Platzhalter) oder die eigene Aufgabenseite der ausführenden Person (`lib/personal-tasks.ts`, beim ersten Mal angelegt); Text (Platzhalter), Person (eine; nur wer die Zielseite öffnen kann – die eigene Seite nur für die ausführende Person selbst), Fälligkeit (Datum/Platzhalter), Überschrift (darunter anhängen, fehlt sie: am Ende angelegt). Gesperrte Seiten, Journale mit PIN und verschlüsselte Bereiche werden abgelehnt; ein Probelauf ändert nichts und legt keine Seite an | `page`, `task` (`text`, `due`, `assignee`) | nein |
-| `action.journal.append` (#250) | Journal (ID); Tag: heute / gestern (in der Zeitzone des Workflows) / Datum (Datum oder Platzhalter darauf, keine künftigen Tage); Inhalt: Markdown mit Platzhaltern – die Platzhalter werden vor dem Parsen herausgenommen und ihre Werte danach als Textknoten eingesetzt (Seiten-Werte als Seitenlinks, Adressen nur nach festem Schema), ein Wert wird nie zu Markup (7.4); Stelle: Ende des Tages oder Ende des Abschnitts unter einer Überschrift (ohne sie: Ende; `lib/journal-place.ts`, dieselbe Platzierung wie übernommene Aufgaben, #247). Fehlt der Tag, wird er angelegt (`ensureJournalDay` in `lib/journal.ts`): der neueste Tag wie beim Öffnen (Vorlage, übernommene Aufgaben nach der Einstellung des Journals, auch bei „beim ersten Schreiben“), ein Tag vor einem späteren nur mit der Vorlage. Als ausführende Person: sie muss das Journal bearbeiten dürfen; Journale mit PIN, gesperrte Seiten und verschlüsselte Bereiche abgelehnt; ein Tag im Papierkorb bleibt dort | `day`, `date`, `journal`, `created`, `completed` (wie bei `trigger.journal.day`, nach dem Anhängen) | nein |
+| `action.journal.append` (#250) | Journal (ID); Tag: heute / gestern (in der Zeitzone des Workflows, wie `$today`: der Tag, an dem der Lauf begann – nach Warten oder Freigabe: an dem er weiterlief –, sodass ein Lauf über Mitternacht in einem Tag bleibt) / Datum (Datum oder Platzhalter darauf, keine künftigen Tage); Inhalt: Markdown mit Platzhaltern – die Platzhalter werden vor dem Parsen herausgenommen und ihre Werte danach als Textknoten eingesetzt (Seiten-Werte als Seitenlinks, Adressen nur nach festem Schema), ein Wert wird nie zu Markup (7.4); Stelle: Ende des Tages oder Ende des Abschnitts unter einer Überschrift (ohne sie: Ende; `lib/journal-place.ts`, dieselbe Platzierung wie übernommene Aufgaben, #247). Fehlt der Tag, wird er angelegt (`ensureJournalDay` in `lib/journal.ts`): der neueste Tag wie beim Öffnen (Vorlage, übernommene Aufgaben nach der Einstellung des Journals, auch bei „beim ersten Schreiben“), ein Tag vor einem späteren nur mit der Vorlage. Andere Tage entfernt, verschiebt oder benennt der Schritt nie um: der Vortag bleibt auch dann, wenn er nur übernommene Aufgaben hatte (sie ziehen wie gewohnt weiter). Als ausführende Person: sie muss das Journal bearbeiten dürfen; Journale mit PIN, gesperrte Seiten und verschlüsselte Bereiche abgelehnt; ein Tag im Papierkorb bleibt dort | `day`, `date`, `journal`, `created`, `completed` (wie bei `trigger.journal.day`, nach dem Anhängen) | nein |
 | `action.journal.read` (#273) | Journal (ID); Tag wie bei `action.journal.append` (heute / gestern / Datum). Liest nur: der Text des Tages (`day.text`) und seine Liste „An diesem Tag erledigt“ (`lib/ai/journal-completed.ts`) – für die ausführende Person, nur was auch die KI lesen darf –, zusammen als `content` (Text, dann `## An diesem Tag erledigt` mit `- [x] Titel (Seite oder Datenbank)`), damit ein KI-Schritt ohne Journal-Auslöser (manuell, Zeitplan) den Tag kennt. Ein noch nicht angelegter Tag: `found` false, leerer Text, die Liste des Datums trotzdem. Die ausführende Person muss das Journal lesen dürfen; Journale mit PIN (auch entsperrt) und verschlüsselte Bereiche abgelehnt; der KI-Schritt prüft Tag bzw. Journal als Quelle erneut (`aiMayRead`) | `content`, `completed`, `day`, `date`, `journal`, `found` | nein |
 
 `action.page.append` ist der Kern des Issues. Er schreibt über den
@@ -757,6 +757,10 @@ arg         := "\"" (zeichen | "\\\"" | "\\\\")* "\"" | zahl | pfad
   aktuellen Knoten liegen. Ist ein solcher Knoten im konkreten Lauf nicht
   gelaufen (anderer Zweig), ist der Wert leer und der Schritt bekommt eine
   Warnung. `$item`/`$index` nur im Körper von „Für jedes“.
+- `$today` ist der Tag in der Zeitzone des Workflows, an dem der Lauf
+  begann (nach einem Warten oder einer Freigabe: an dem er weiterlief) –
+  in allen Schritten derselbe, auch wenn ein Schritt erst nach Mitternacht
+  dran ist. `$now` ist immer der aktuelle Zeitpunkt.
 
 ### 7.2 Filter v1
 
@@ -1088,7 +1092,10 @@ Benachrichtigungen bleiben, die Freigabeansicht sagt „nicht mehr nötig“.
 ### 8.12 Zeitzonen
 
 - Jeder Workflow hat `settings.timeZone` (Standard: Zeitzone des Browsers
-  der anlegenden Person, wie `browserZone()` in `components/database-automations.tsx`).
+  der anlegenden Person, wie `browserZone()` in `components/database-automations.tsx`;
+  `page.create` mit `timeZone` für `kind: "workflow"`, ohne gültige Zone UTC).
+  Ändern lässt sie sich in den Einstellungen des Workflows; ein Zeitplan
+  zeigt seine Zone („täglich · 23:55 (UTC)“), wenn sie nicht die eigene ist.
 - Gilt für: Zeitpläne (Standard, je Auslöser überschreibbar wie heute),
   Datums-Auslöser mit Uhrzeit, `$today`/`$now`-Darstellung, Filter `date`,
   Warten bis Uhrzeit, Datumsvergleiche in Bedingungen (wie

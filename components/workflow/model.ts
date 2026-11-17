@@ -201,6 +201,7 @@ export function displayContext(graph: WorkflowGraph, locale: Locale, ws: Workspa
   return {
     locale,
     labels,
+    timeZone: graph.settings?.timeZone || "UTC",
     keyName: (root, keys, key) => {
       if (keys[keys.length - 1] === "fields") return fieldsOf(root).find((f) => f.id === key)?.name.replace(/[.|{}[\]]/g, "") || key;
       return key;
@@ -253,8 +254,12 @@ export function nodeSummary(node: WorkflowNode, ws: Workspace, ctx: DisplayConte
     case "trigger.comment.created":
     case "trigger.mention":
       return scope(c.scope);
-    case "trigger.schedule":
-      return `${c.freq === "weekly" ? t("wöchentlich", "weekly") : c.freq === "monthly" ? t("monatlich", "monthly") : t("täglich", "daily")} · ${String(c.time || "09:00")}`;
+    case "trigger.schedule": {
+      // The zone when it is not the viewer's: "täglich · 23:55 (UTC)" is 00:55 in Berlin.
+      const zone = (typeof c.timeZone === "string" && c.timeZone) || ctx.timeZone || "UTC";
+      const own = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      return `${c.freq === "weekly" ? t("wöchentlich", "weekly") : c.freq === "monthly" ? t("monatlich", "monthly") : t("täglich", "daily")} · ${String(c.time || "09:00")}${zone !== own ? ` (${zone})` : ""}`;
+    }
     case "trigger.manual":
       return t("über „Ausführen“", "with “Run”");
     case "action.record.update": {

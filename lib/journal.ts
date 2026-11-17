@@ -263,7 +263,10 @@ export async function rollJournal(
   now = new Date().toISOString().slice(0, 10),
   // Today's page is in the trash and a fresh one is wanted.
   recreate = false,
-  options: { write?: boolean } = {},
+  // `keep`: the day before stays even when nobody wrote in it (the
+  // workflow step "An Journaltag anhängen", ensureJournalDay) – only a
+  // person opening the journal tidies an empty day away.
+  options: { write?: boolean; keep?: boolean } = {},
 ): Promise<{
   // Today's page – or, while it is a draft, the draft's id (it opens like
   // a page, GET /api/pages/<id>).
@@ -303,7 +306,7 @@ export async function rollJournal(
   const { previous, before, carried, daily, doc } = await dayStart(journal, today);
   if (previous && before) {
     const { ydoc, doc: previousDoc } = before;
-    if (await untouched(previous, previousDoc)) await removeDay(previous);
+    if (!options.keep && (await untouched(previous, previousDoc))) await removeDay(previous);
     else if (carried.length) {
       await storeDocument(
         previous.id,
@@ -364,7 +367,10 @@ async function storeNewDay(user: Identity, journal: Page, today: string, doc: PM
 // before, placed by the journal's setting, and the template; "create on
 // first write" counts as written). A day before an existing later one gets
 // the template only: open tasks have moved past it already. A day in the
-// trash stays there; days after `today` are not made.
+// trash stays there; days after `today` are not made. It never removes,
+// moves or renames another day: the day before keeps its page even when it
+// only held carried tasks (they move on as usual) – a workflow running
+// just after midnight must not make yesterday disappear.
 export async function ensureJournalDay(user: Identity, journal: Page, date: string, today: string): Promise<{ dayId: string; created: boolean }> {
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
   journalDate.parse(date);
@@ -374,7 +380,7 @@ export async function ensureJournalDay(user: Identity, journal: Page, date: stri
   if (date > today) throw new HttpError(400, "Ein künftiger Tag lässt sich noch nicht anlegen.");
   const later = await one("SELECT 1 FROM pages WHERE parent_id=? AND journal_date>? AND deleted_at IS NULL LIMIT 1", journal.id, date);
   if (!later) {
-    const rolled = await rollJournal(user, journal, date, date, false, { write: true });
+    const rolled = await rollJournal(user, journal, date, date, false, { write: true, keep: true });
     return { dayId: rolled.dayId, created: rolled.changed };
   }
   const { dayId } = await storeNewDay(user, journal, date, dayDocument([], await templateNodes(journal.id, schema())));

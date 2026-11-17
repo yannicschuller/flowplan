@@ -137,14 +137,16 @@ const scopeOf = (values: Record<string, unknown>, timeZone: string, locale: Rend
   timeZone,
   locale,
 });
-const zonedToday = (timeZone: string) => {
+const zonedToday = (timeZone: string, at: number) => {
   try {
-    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(at));
   } catch {
-    return new Date().toISOString().slice(0, 10);
+    return new Date(at).toISOString().slice(0, 10);
   }
 };
-export const builtins = (timeZone: string) => ({ $today: zonedToday(timeZone), $now: new Date().toISOString() });
+// $today: the day of `at` (a run's start, lib/workflows/engine.ts) in the
+// time zone; $now is always the current moment.
+export const builtins = (timeZone: string, at = Date.now()) => ({ $today: zonedToday(timeZone, at), $now: new Date().toISOString() });
 
 // The database rules of a record's database for one event, through the
 // engine: each rule a graph, all of them writing into one batch (the old

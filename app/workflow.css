@@ -1780,3 +1780,7 @@ p.wf-warning.small {
     grid-template-columns: 1fr;
   }
 }
+.wf-setting-zone {
+  margin-top: 4px;
+  font-size: 13px;
+}
