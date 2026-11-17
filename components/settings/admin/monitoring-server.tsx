@@ -33,9 +33,11 @@ export const areaName = (area: Area, t: T) =>
 // A bar without a style attribute (strict CSP): an SVG rect of the share.
 function Bar({ share }: { share: number }) {
   return (
-    <svg className="mon-share" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden>
-      <rect width="100" height="6" rx="3" className="mon-share-track" />
-      <rect width={Math.max(1.5, Math.min(100, share * 100))} height="6" rx="3" className="mon-share-fill" />
+    // Real pixels with percentage widths: a viewBox stretched with
+    // preserveAspectRatio="none" stretched the rounded ends into points.
+    <svg className="mon-share" width="100%" height="6" aria-hidden>
+      <rect width="100%" height="6" rx="3" className="mon-share-track" />
+      <rect width={`${Math.max(1.5, Math.min(100, share * 100))}%`} height="6" rx="3" className="mon-share-fill" />
     </svg>
   );
 }
