@@ -132,6 +132,7 @@ export function LineChart({
   height = 200,
   area = true,
   maxY,
+  right,
 }: {
   title: string;
   description: string;
@@ -145,6 +146,9 @@ export function LineChart({
   height?: number;
   area?: boolean;
   maxY?: number;
+  // Series on a second scale (lines, labelled on the right): e.g. CPU and
+  // memory in % over the number of people.
+  right?: { series: Series[]; format: (n: number) => string; max?: number };
 }) {
   const [box, width] = useWidth<HTMLDivElement>();
   const id = useId();
@@ -152,12 +156,18 @@ export function LineChart({
   const max = Math.max(maxY ?? 0, ...series.flatMap((s) => s.values.filter((v): v is number => typeof v === "number")));
   const ticks = niceTicks(max);
   const top = ticks[ticks.length - 1];
-  const inner = { w: Math.max(10, width - MARGIN.left - MARGIN.right), h: height - MARGIN.top - MARGIN.bottom };
+  const rightMax = right ? Math.max(right.max ?? 0, ...right.series.flatMap((s) => s.values.filter((v): v is number => typeof v === "number"))) : 0;
+  const rightTop = right ? (right.max !== undefined && rightMax <= right.max ? right.max : niceTicks(rightMax)[niceTicks(rightMax).length - 1]) : 1;
+  const marginRight = right ? 44 : MARGIN.right;
+  const inner = { w: Math.max(10, width - MARGIN.left - marginRight), h: height - MARGIN.top - MARGIN.bottom };
   const px = (i: number) => MARGIN.left + (x.length <= 1 ? inner.w : (i / (x.length - 1)) * inner.w);
   const py = (v: number) => MARGIN.top + (1 - v / (top || 1)) * inner.h;
+  const pyRight = (v: number) => MARGIN.top + (1 - v / (rightTop || 1)) * inner.h;
+  const all = useMemo(() => [...series.map((s) => ({ s, y: py, right: false })), ...(right?.series || []).map((s) => ({ s, y: pyRight, right: true }))], [series, right, width, height, top, rightTop]); // eslint-disable-line react-hooks/exhaustive-deps
+  const formatOf = (k: number) => (all[k]?.right && right ? right.format : formatY);
   const paths = useMemo(
     () =>
-      series.map((s) => {
+      all.map(({ s, y: py }) => {
         const parts: { line: string; area: string; dot: { x: number; y: number } | null }[] = [];
         let line = "",
           first = -1,
@@ -182,8 +192,13 @@ export function LineChart({
         return parts;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [series, width, height, top],
+    [all],
   );
+  const colorOf = (k: number) => SERIES[all[k].s.color ?? k];
+  const valueText = (k: number, index: number) => {
+    const v = all[k].s.values[index];
+    return typeof v === "number" ? formatOf(k)(v) : "–";
+  };
   // About one x label per 90 px.
   const labelEvery = Math.max(1, Math.ceil(x.length / Math.max(2, Math.floor(inner.w / 90))));
   const xLabels = x.map((at, i) => ({ at, i })).filter(({ i }) => i % labelEvery === 0 && px(i) < MARGIN.left + inner.w - 30);
@@ -217,6 +232,12 @@ export function LineChart({
                 <text x={MARGIN.left - 6} y={py(tick)} dy="0.32em" textAnchor="end" className="vz-axis">
                   {formatY(tick)}
                 </text>
+                {right && (
+                  // The right scale at the same grid lines.
+                  <text x={MARGIN.left + inner.w + 6} y={py(tick)} dy="0.32em" textAnchor="start" className="vz-axis">
+                    {right.format((tick / (top || 1)) * rightTop)}
+                  </text>
+                )}
               </g>
             ))}
             {xLabels.map(({ at, i: index }) => (
@@ -227,17 +248,17 @@ export function LineChart({
             {paths.map((parts, s) =>
               parts.map((part, k) => (
                 <g key={`${s}-${k}`}>
-                  {area && <path d={part.area} fill={SERIES[series[s].color ?? s]} className="vz-area" />}
-                  <path d={part.line} fill="none" stroke={SERIES[series[s].color ?? s]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                  {part.dot && <circle cx={part.dot.x} cy={part.dot.y} r={3} fill={SERIES[series[s].color ?? s]} />}
+                  {area && !all[s].right && <path d={part.area} fill={colorOf(s)} className="vz-area" />}
+                  <path d={part.line} fill="none" stroke={colorOf(s)} strokeWidth={all[s].right ? 1.75 : 2} strokeLinejoin="round" strokeLinecap="round" />
+                  {part.dot && <circle cx={part.dot.x} cy={part.dot.y} r={3} fill={colorOf(s)} />}
                 </g>
               )),
             )}
             {i !== null && (
               <g>
                 <line x1={px(i)} x2={px(i)} y1={MARGIN.top} y2={MARGIN.top + inner.h} className="vz-cursor" />
-                {series.map((s, k) =>
-                  typeof s.values[i] === "number" ? <circle key={s.key} cx={px(i)} cy={py(s.values[i] as number)} r={4} fill={SERIES[s.color ?? k]} className="vz-dot" /> : null,
+                {all.map(({ s, y }, k) =>
+                  typeof s.values[i] === "number" ? <circle key={s.key} cx={px(i)} cy={y(s.values[i] as number)} r={4} fill={colorOf(k)} className="vz-dot" /> : null,
                 )}
               </g>
             )}
@@ -246,11 +267,11 @@ export function LineChart({
         {i !== null && width > 0 && (
           <Tooltip x={px(i)} width={width}>
             <strong>{(formatTip || formatX)(x[i])}</strong>
-            {series.map((s, k) => (
+            {all.map(({ s }, k) => (
               <span key={s.key} className="vz-tip-row">
-                <i style={{ background: SERIES[s.color ?? k] }} />
+                <i style={{ background: colorOf(k) }} />
                 {s.label}
-                <b>{typeof s.values[i] === "number" ? formatY(s.values[i] as number) : "–"}</b>
+                <b>{valueText(k, i)}</b>
               </span>
             ))}
           </Tooltip>
@@ -258,7 +279,7 @@ export function LineChart({
       </div>
       {cursor.announce && (
         <p className="sr-only" aria-live="polite">
-          {i !== null ? `${(formatTip || formatX)(x[i])}: ${series.map((s) => `${s.label} ${typeof s.values[i] === "number" ? formatY(s.values[i] as number) : "–"}`).join(", ")}` : ""}
+          {i !== null ? `${(formatTip || formatX)(x[i])}: ${all.map(({ s }, k) => `${s.label} ${valueText(k, i)}`).join(", ")}` : ""}
         </p>
       )}
     </div>

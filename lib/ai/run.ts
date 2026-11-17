@@ -8,7 +8,10 @@ import type { Identity } from "../types";
 import { requireAiRead } from "./access";
 import { AI_REASON_TEXT, type AiFeature } from "./features";
 import { streamChat, type ChatMessage, type TokenUsage } from "./providers";
-import { estimateTokens, noteAiUsage } from "../metrics";
+import { estimateTokens, noteAiCall } from "../metrics";
+import { shiftArea } from "../server-metrics";
+import { one } from "../db";
+import { AI_MESSAGES } from "./transport";
 import { redactSecrets } from "./redact";
 import { resolveAi } from "./resolve";
 
@@ -66,6 +69,14 @@ const inputSchema = z.object({
 
 const running = new Map<string, number>();
 
+// A failed provider call as the statistics count it: a timeout (no answer
+// in time: 504/408 or the transport's timeout) or another error.
+export function aiFailureKind(error: unknown): "error" | "timeout" {
+  const status = (error as { status?: number })?.status;
+  const message = String((error as Error)?.message || "");
+  return status === 504 || status === 408 || message === AI_MESSAGES.timeout || (error as Error)?.name === "TimeoutError" ? "timeout" : "error";
+}
+
 // Throws the reason when the feature is not available for this person.
 export async function requireAi(user: Identity, feature: AiFeature, options: AiRunOptions = {}) {
   const resolved = await resolveAi(user, feature, { workspaceId: options.workspaceId });
@@ -89,18 +100,35 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   // the provider, else estimated from the characters.
   const usage: TokenUsage = {};
   let written = 0;
+  // In detail (Administration → KI → Statistik): model, provider,
+  // workspace and person, errors, timeouts and the time to the answer's end.
+  const started = Date.now();
+  let failure: "error" | "timeout" | null = null;
+  // The CPU of the request counts as AI while the answer streams.
+  const area = shiftArea("api", "ai");
   try {
     for await (const piece of streamChat(resolved.config, { ...input, signal: options.signal, usage })) {
       written += piece.length;
       yield piece;
     }
+  } catch (error) {
+    // A request the person cancelled is no failure of the provider.
+    if (!options.signal?.aborted) failure = aiFailureKind(error);
+    throw error;
   } finally {
-    // Only answered requests (a provider that was not reached used nothing).
-    if (written || usage.input !== undefined || usage.output !== undefined) {
-      const tokensIn = usage.input ?? estimateTokens(size),
-        tokensOut = usage.output ?? estimateTokens(written);
-      noteAiUsage(feature, tokensIn, tokensOut);
-      options.onUsage?.(tokensIn, tokensOut);
+    area();
+    // Tokens only for answered requests (a provider that was not reached used nothing).
+    const answered = !!written || usage.input !== undefined || usage.output !== undefined;
+    const tokensIn = usage.input ?? estimateTokens(size),
+      tokensOut = usage.output ?? estimateTokens(written);
+    if (answered) options.onUsage?.(tokensIn, tokensOut);
+    if (answered || failure) {
+      let workspaceId = options.workspaceId || null;
+      if (!workspaceId && options.pageId)
+        try {
+          workspaceId = (await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", options.pageId))?.workspace_id || null;
+        } catch {}
+      noteAiCall({ feature, tokensIn, tokensOut, answered, failure, ms: Date.now() - started, model: resolved.config.model, source: resolved.source, workspaceId, userId: user.id });
     }
     const left = (running.get(user.id) || 1) - 1;
     if (left > 0) running.set(user.id, left);

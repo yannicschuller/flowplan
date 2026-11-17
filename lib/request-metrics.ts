@@ -7,9 +7,15 @@
 // Left out: build files, fonts and icons (cached by the browser, they would
 // only add noise), the health check and the Prometheus endpoint (polled by
 // machines). Event streams count as a request, not with their duration.
+//
+// Each counted request is also a span of the CPU per area
+// (lib/server-metrics.ts): "pages" or "api", "live" for cursor and presence
+// requests – except event streams (Accept: text/event-stream), which wait
+// most of their life and are only counted as open streams.
 import diagnosticsChannel from "node:diagnostics_channel";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { noteRequest } from "./metrics";
+import { COMMAND_ROUTE, noteRequest, routeKey } from "./metrics";
+import { enterArea, noteStream, type CpuArea } from "./server-metrics";
 import { clientAddress } from "./client-address";
 import { noteRefusal } from "./security-detect";
 import { securityEvent } from "./security-events";
@@ -19,30 +25,69 @@ const SKIP = /^\/(?:_next\/(?:static|image|webpack-hmr)|__nextjs|fonts\/|icons\/
 export function countedPath(url: string | undefined) {
   return !SKIP.test(url || "/");
 }
+// The CPU area of a request by its address (the command handler moves
+// live-sync and AI work on, lib/api.ts and lib/ai/run.ts).
+export function requestArea(url: string | undefined): CpuArea {
+  const path = (url || "/").split("?")[0];
+  if (!path.startsWith("/api/")) return "pages";
+  if (/\/(?:cursors|presence)(?:\/|$)/.test(path)) return "live";
+  return "api";
+}
 
 const holder = globalThis as unknown as { flowplanRequestMetrics?: boolean };
 type Message = { request: IncomingMessage; response: ServerResponse };
+type Started = { at: number; route: string | null; done?: () => void; stream?: boolean };
 
 export function startRequestMetrics() {
   if (holder.flowplanRequestMetrics) return;
   holder.flowplanRequestMetrics = true;
-  const started = new WeakMap<object, number>();
+  const started = new WeakMap<object, Started>();
   diagnosticsChannel.subscribe("http.server.request.start", (message) => {
     const { request, response } = message as Message;
-    if (countedPath(request?.url)) started.set(response, performance.now());
-  });
-  diagnosticsChannel.subscribe("http.server.response.finish", async (message) => {
-    const { response } = message as Message;
-    await noteProbe(response);
-    const start = started.get(response);
-    if (start === undefined) return;
-    started.delete(response);
+    if (!countedPath(request?.url)) return;
     try {
-      const type = String(response.getHeader("content-type") || "");
-      noteRequest(response.statusCode, type.startsWith("text/event-stream") ? null : performance.now() - start);
+      const stream = String(request.headers?.accept || "").includes("text/event-stream");
+      if (stream) noteStream(1);
+      const route = routeKey(request.method, request.url);
+      started.set(response, {
+        at: performance.now(),
+        // /api/command is listed per action (noteCommand in lib/api.ts).
+        route: route === COMMAND_ROUTE ? null : route,
+        done: stream ? undefined : enterArea(requestArea(request.url)),
+        stream,
+      });
     } catch {
       // Counting never disturbs a request.
     }
+  });
+  const finish = (response: ServerResponse) => {
+    const entry = started.get(response);
+    if (!entry) return null;
+    started.delete(response);
+    entry.done?.();
+    if (entry.stream) noteStream(-1);
+    return entry;
+  };
+  diagnosticsChannel.subscribe("http.server.response.finish", async (message) => {
+    const { response } = message as Message;
+    const entry = finish(response);
+    await noteProbe(response);
+    if (!entry) return;
+    try {
+      const type = String(response.getHeader("content-type") || "");
+      noteRequest(response.statusCode, type.startsWith("text/event-stream") ? null : performance.now() - entry.at, Date.now(), entry.route);
+    } catch {
+      // Counting never disturbs a request.
+    }
+  });
+  // A connection that closes before its response ends (an event stream the
+  // browser left) never finishes: its span and stream end here.
+  diagnosticsChannel.subscribe("http.server.request.start", (message) => {
+    const { response } = message as Message;
+    if (!started.has(response)) return;
+    response.once("close", () => {
+      if (!response.writableFinished) finish(response);
+    });
   });
 }
 

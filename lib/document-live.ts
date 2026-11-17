@@ -142,6 +142,16 @@ function presenceHere(pageId: string, rowId: string | null | undefined, from?: s
     }
 }
 
+// What this hub holds (the server metrics, lib/server-metrics.ts): the
+// documents someone has open live and the connections to them (members'
+// editors and guests on share links).
+export function liveHubCounts() {
+  let connections = 0;
+  for (const set of documents.values()) connections += set.size;
+  for (const set of prefixes.values()) connections += set.size;
+  return { documents: documents.size, connections };
+}
+
 export function watchDocument(key: string, clientId: string, send: (event: string) => void) {
   let listeners = documents.get(key);
   if (!listeners) {

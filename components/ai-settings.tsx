@@ -45,7 +45,63 @@ type InstanceAi = {
   device?: boolean;
   // API tokens with the "KI und Transkription" permission (on unless switched off).
   tokens?: boolean;
+  // Prices per million tokens for the estimated costs (lib/ai/settings.ts).
+  prices?: AiPriceRow[];
+  currency?: AiCurrency;
 };
+type AiPriceRow = { model: string; input: number; output: number };
+type AiCurrency = "EUR" | "USD" | "CHF" | "GBP";
+const CURRENCIES: AiCurrency[] = ["EUR", "USD", "CHF", "GBP"];
+
+// Administration → KI → Preise: per model the price per million input and
+// output tokens, as the provider bills them – only for the estimated costs
+// of the statistics; no price list is fetched. Without a price the
+// statistics show tokens only.
+function PriceRows({ prices, currency, model, onChange }: { prices: AiPriceRow[]; currency: AiCurrency; model?: string; onChange: (prices: AiPriceRow[], currency: AiCurrency) => void }) {
+  const t = useT();
+  const set = (i: number, patch: Partial<AiPriceRow>) => onChange(prices.map((p, k) => (k === i ? { ...p, ...patch } : p)), currency);
+  const price = (raw: string) => {
+    const n = Number(raw.replace(",", "."));
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 100_000) : 0;
+  };
+  return (
+    <>
+      <SettingRow id="ai-currency" label={t("Währung", "Currency")}>
+        <Select id="ai-currency" value={currency} onChange={(e) => onChange(prices, e.target.value as AiCurrency)}>
+          {CURRENCIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </SettingRow>
+      {prices.map((p, i) => (
+        <div className="ai-price-row" key={i} role="group" aria-label={t(`Preis ${i + 1}`, `Price ${i + 1}`)}>
+          <label>
+            <span>{t("Modell", "Model")}</span>
+            <input type="text" value={p.model} maxLength={120} onChange={(e) => set(i, { model: e.target.value })} />
+          </label>
+          <label>
+            <span>{t(`Eingabe je 1 Mio. Tokens (${currency})`, `Input per 1M tokens (${currency})`)}</span>
+            <input type="text" inputMode="decimal" defaultValue={p.input ? String(p.input) : ""} onChange={(e) => set(i, { input: price(e.target.value) })} />
+          </label>
+          <label>
+            <span>{t(`Ausgabe je 1 Mio. Tokens (${currency})`, `Output per 1M tokens (${currency})`)}</span>
+            <input type="text" inputMode="decimal" defaultValue={p.output ? String(p.output) : ""} onChange={(e) => set(i, { output: price(e.target.value) })} />
+          </label>
+          <button type="button" className="button compact" onClick={() => onChange(prices.filter((_, k) => k !== i), currency)}>
+            {t("Entfernen", "Remove")}
+          </button>
+        </div>
+      ))}
+      <div className="ai-price-add">
+        <button type="button" className="button compact" disabled={prices.length >= 50} onClick={() => onChange([...prices, { model: prices.some((p) => p.model === model) ? "" : model || "", input: 0, output: 0 }], currency)}>
+          {t("Preis für ein Modell hinzufügen", "Add a price for a model")}
+        </button>
+      </div>
+    </>
+  );
+}
 type AdminView = {
   settings: InstanceAi;
   key: KeyInfo;
@@ -518,7 +574,9 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         e.preventDefault();
         setBusy(true);
         try {
-          await api("/api/command", { action: "admin.ai", settings: draft, ...keyChange });
+          // Rows without a model name are left out.
+          const settings = { ...draft, prices: (draft.prices || []).filter((p) => p.model.trim()) };
+          await api("/api/command", { action: "admin.ai", settings, ...keyChange });
           await load();
           onChange?.();
         } catch (err) {
@@ -695,6 +753,16 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
             </span>
           </SettingRow>
         )}
+      </SettingGroup>
+      <SettingGroup
+        id="ai-prices"
+        title={t("Preise für die Kostenschätzung", "Prices for the cost estimate")}
+        description={t(
+          "Trag für jedes Modell ein, was dein Anbieter je eine Million Tokens berechnet. Die KI-Statistik schätzt damit die Kosten; ohne Preis zeigt sie nur Tokens. Flowplan lädt keine Preisliste.",
+          "Enter for each model what your provider charges per million tokens. The AI statistics estimate the costs with it; without a price they show tokens only. Flowplan fetches no price list.",
+        )}
+      >
+        <PriceRows prices={draft.prices || []} currency={draft.currency || "EUR"} model={provider?.model} onChange={(prices, currency) => set({ prices, currency })} />
       </SettingGroup>
       <p className="muted ai-secrets-note">
         {view.secretsKey === "file"

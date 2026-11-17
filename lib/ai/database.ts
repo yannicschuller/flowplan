@@ -26,6 +26,7 @@ import { instanceAiSettings } from "./settings";
 import { resolveAi } from "./resolve";
 import { redactSecrets } from "./redact";
 import { noteWorkerRun } from "../ops-events";
+import { enterArea } from "../server-metrics";
 import {
   AI_FILL_TYPES,
   aiCellMeta,
@@ -438,6 +439,8 @@ export function startAiWorker() {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
     if (runtime.flowplanAiBusy || !isLeader() || (await workersPaused())) return;
     runtime.flowplanAiBusy = true;
+    // CPU per area (lib/server-metrics.ts).
+    const area = enterArea("ai");
     try {
       await processAutoDirty();
       await processAiCellJobs();
@@ -448,6 +451,7 @@ export function startAiWorker() {
       await noteWorkerRun("ai", redactSecrets(String((error as Error)?.message || error)));
       console.error("KI-Hintergrundarbeit fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error)));
     } finally {
+      area();
       runtime.flowplanAiBusy = false;
     }
   };

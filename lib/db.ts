@@ -1553,11 +1553,41 @@ function migrate(d: DatabaseSync) {
   // number stays.
   d.exec(`CREATE TABLE IF NOT EXISTS invite_links(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,token_sealed TEXT,role TEXT NOT NULL CHECK(role IN ('editor','viewer')),guest INTEGER NOT NULL DEFAULT 0,max_uses INTEGER,uses INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL,created_by TEXT REFERENCES users(id),created_at INTEGER NOT NULL,revoked_at INTEGER);
     CREATE INDEX IF NOT EXISTS invite_links_workspace ON invite_links(workspace_id,expires_at);`);
+  migrateServerMetrics(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Server metrics and detailed AI statistics (lib/server-metrics.ts,
+// lib/metrics.ts, Administration → Überwachung → Server and → KI):
+// - metrics_server: one row per minute (and instance in cluster mode,
+//   '' otherwise) with the process's CPU time and memory, the limits of its
+//   container (cgroup) or host, the parts of the memory (V8 heap, external
+//   buffers), live documents and connections, the volume of the data and
+//   the CPU time per area (JSON, µs). Kept 7 days.
+// - metrics_routes: per hour and API route (a pattern, ids replaced; no
+//   path a person typed) requests, 5xx, total time and the latency
+//   histogram. Kept 7 days.
+// - metrics_minute/metrics_hour.client_errors: answers 400–499.
+// - metrics_ai_usage: AI requests per day, model, provider (instance or the
+//   person's own), workspace, person and feature, with errors, timeouts and
+//   response times – counts only, never a prompt or an answer. Kept 90
+//   days (metrics_ai keeps the totals per feature longer). Existing
+//   metrics_ai rows are copied once with an unknown model (lib/data-steps.ts
+//   AI_DETAIL_STEP, both databases), so the detailed view starts with what
+//   was counted before.
+// New tables and columns with defaults only – an older version leaves them
+// alone – so the schema number stays.
+function migrateServerMetrics(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS metrics_server(at INTEGER NOT NULL,instance TEXT NOT NULL DEFAULT '',wall_ms INTEGER NOT NULL,cpu_us INTEGER NOT NULL,cpu_limit INTEGER NOT NULL,cpu_limited INTEGER NOT NULL DEFAULT 0,rss INTEGER NOT NULL,mem_limit INTEGER NOT NULL,mem_limited INTEGER NOT NULL DEFAULT 0,cgroup_mem INTEGER,heap_used INTEGER NOT NULL DEFAULT 0,heap_total INTEGER NOT NULL DEFAULT 0,external_mem INTEGER NOT NULL DEFAULT 0,array_buffers INTEGER NOT NULL DEFAULT 0,documents INTEGER NOT NULL DEFAULT 0,connections INTEGER NOT NULL DEFAULT 0,streams INTEGER NOT NULL DEFAULT 0,elu INTEGER NOT NULL DEFAULT 0,disk_total INTEGER,disk_free INTEGER,database_bytes INTEGER,upload_bytes INTEGER,active INTEGER,areas TEXT NOT NULL DEFAULT '{}',PRIMARY KEY(at,instance));
+    CREATE TABLE IF NOT EXISTS metrics_routes(at INTEGER NOT NULL,route TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,ms_total INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',PRIMARY KEY(at,route));`);
+  for (const table of ["metrics_minute", "metrics_hour"])
+    if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "client_errors"))
+      d.exec(`ALTER TABLE ${table} ADD COLUMN client_errors INTEGER NOT NULL DEFAULT 0`);
+  d.exec(`CREATE TABLE IF NOT EXISTS metrics_ai_usage(day TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',workspace_id TEXT NOT NULL DEFAULT '',user_id TEXT NOT NULL DEFAULT '',feature TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,timeouts INTEGER NOT NULL DEFAULT 0,ms_total INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',PRIMARY KEY(day,model,source,workspace_id,user_id,feature));
+    CREATE INDEX IF NOT EXISTS metrics_ai_usage_user ON metrics_ai_usage(user_id);`);
 }
 // Schema 102 – a workspace's look (#196): workspaces.theme (JSON, NULL =
 // Flowplan's own: accent, background tint, typefaces; lib/workspace-theme.ts),
@@ -2081,6 +2111,21 @@ export async function tableSizes(): Promise<{ table: string; bytes: number }[]> 
   } catch {
     // dbstat missing: no breakdown.
     return [];
+  }
+}
+// The most memory SQLite's page cache of this connection may take (its
+// cache_size: negative = KiB, positive = pages) – node:sqlite does not say
+// how much of it is in use. Null on PostgreSQL (the cache lives in the
+// database server, not in this process).
+export async function sqliteCacheBytes(): Promise<number | null> {
+  if (isPostgres()) return null;
+  try {
+    const size = Number((await one<{ cache_size: number }>("PRAGMA cache_size"))?.cache_size); // sqlite-only
+    if (!Number.isFinite(size)) return null;
+    if (size < 0) return -size * 1024;
+    return size * Number((await one<{ page_size: number }>("PRAGMA page_size"))?.page_size || 4096); // sqlite-only
+  } catch {
+    return null;
   }
 }
 // The size of the database (SQLite: the file and its write-ahead log;

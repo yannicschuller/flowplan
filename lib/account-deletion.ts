@@ -14,6 +14,7 @@ import { keepSpaceTemplates, purgePages, purgeWorkspace } from "./workspace-life
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 import { stopRunning } from "./time-tracking";
+import { forgetAiPerson } from "./metrics";
 
 type Plan = {
   name: string;
@@ -311,6 +312,8 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   // The inactivity message (#282) and the use per workspace behind it.
   await run("DELETE FROM deadman_switches WHERE user_id=?", userId);
   await run("DELETE FROM workspace_activity WHERE user_id=?", userId);
+  // AI counts per person (lib/metrics.ts): added to the rows without one.
+  await forgetAiPerson(userId);
   await run("DELETE FROM members WHERE user_id=?", userId);
   await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   // Who made records done (schema 96): nobody any more.

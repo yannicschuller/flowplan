@@ -10,7 +10,7 @@
 // (HttpError) with a German message that never contains the key.
 import { AI_DEFAULTS, type AiProviderKind } from "./features";
 import { redactSecrets } from "./redact";
-import { estimateTokens, noteAiUsage } from "../metrics";
+import { estimateTokens, noteAiCall } from "../metrics";
 import { AI_MESSAGES, AiError, aiFetch, lines, sseEvents, type AiResponse } from "./transport";
 
 export type AiConfig = {
@@ -310,7 +310,7 @@ export async function embed(config: AiConfig, texts: string[], signal?: AbortSig
   }
   if (!Array.isArray(vectors) || vectors.length !== input.length || !vectors.every((v) => Array.isArray(v) && v.every((n) => typeof n === "number")))
     throw new AiError(502, AI_MESSAGES.garbled);
-  noteAiUsage("embeddings", estimateTokens(input.reduce((sum, t) => sum + t.length, 0)), 0);
+  noteAiCall({ feature: "embeddings", tokensIn: estimateTokens(input.reduce((sum, t) => sum + t.length, 0)), tokensOut: 0, answered: true, model, source: config.trusted ? "instance" : "user" });
   return vectors as number[][];
 }
 
