@@ -52,8 +52,9 @@ export type NodeRun = {
   // waited (a wait's target, an approval) – set when it is taken up again.
   stepId?: string;
   resume?: unknown;
-  // Test runs: how a dry run treats approvals (§10.3).
-  options?: { approval?: "approved" | "rejected" };
+  // Test runs: how a dry run treats approvals (§10.3); `offline`: a dry
+  // run that sends nothing anywhere (MCP, lib/workflows/mcp-tools.ts).
+  options?: { approval?: "approved" | "rejected"; offline?: boolean };
 };
 export type NodeResult =
   | { port: string; output: unknown }
@@ -64,5 +65,7 @@ export type NodeResult =
   | { loop: unknown[]; warning?: string };
 export type NodeImpl = (ctx: NodeRun) => Promise<NodeResult>;
 export const dryRun = (ctx: NodeRun) => ctx.run.mode === "dry";
+// A dry run that must not reach outside Flowplan at all (see options).
+export const offlineRun = (ctx: NodeRun) => dryRun(ctx) && !!ctx.options?.offline;
 // A waiting step nobody takes up by time (a For-each, an approval without a deadline).
 export const FAR = 8_000_000_000_000_000;

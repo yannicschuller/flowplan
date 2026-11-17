@@ -60,6 +60,8 @@ type Tool = {
   ai?: boolean;
   // Replaces or removes content (still restorable): a hint for the client to confirm.
   destructive?: boolean;
+  // Reaches beyond Flowplan (AI provider, e-mail, chat, HTTP): openWorldHint.
+  openWorld?: boolean;
   run: (user: Identity, args: never) => unknown;
 };
 
@@ -1124,6 +1126,8 @@ const tools: Tool[] = [
     }),
     write: true,
     ai: true,
+    // Audio and transcript go to the transcription and AI providers.
+    openWorld: true,
     run: createMeetingNote as Tool["run"],
   },
   {
@@ -1241,7 +1245,7 @@ async function dispatch(user: Identity, method: string, params: Record<string, u
             title: t.title,
             description: t.description,
             inputSchema: (({ $schema: _, ...schema }) => schema)(z.toJSONSchema(t.input, { io: "input" })),
-            annotations: { title: t.title, readOnlyHint: !t.write, destructiveHint: !!t.destructive, openWorldHint: false },
+            annotations: { title: t.title, readOnlyHint: !t.write, destructiveHint: !!t.destructive, openWorldHint: !!t.openWorld },
           })),
       };
     case "tools/call":

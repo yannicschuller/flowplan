@@ -194,6 +194,47 @@ test("http: JSON bodies typed, headers without CR/LF, retries keep the Idempoten
   assert.equal((await outputOf(dry.runId, h.id)).wouldRequest.method, "POST");
 });
 
+test("MCP: test_workflow is an offline dry run – no GET “also in dry runs”, no e-mail, no real test run", async () => {
+  const { identityFromApiToken } = await import("../lib/api-tokens");
+  const { handleMcpMessage } = await import("../lib/mcp");
+  const { token } = (await act({ action: "token.create", name: "MCP", scope: "write" })) as { token: string };
+  const client = (await identityFromApiToken(`Bearer ${token}`))!;
+  let n = 0;
+  const call = async (name: string, args: Record<string, unknown>) =>
+    (await handleMcpMessage(client, { jsonrpc: "2.0", id: ++n, method: "tools/call", params: { name, arguments: args } })) as unknown as { result: { content: { text: string }[]; isError?: boolean } };
+  const { pageId, t, h } = await httpWorkflow("MCP dry", { url: `${api.base}/exfil?d={{$trigger.inputs.id}}`, runInDry: true });
+  const mail = node("notify.email", { to: ["someone@outside.example"], subject: "S", message: "M" }, "Mail");
+  await act({ action: "workflow.draft", pageId, graph: chain(t, h, mail) });
+  const calls = api.seen.length;
+  const mails = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM mail_queue"))!.n);
+  // In Flowplan a GET marked "also in dry runs" is sent in a dry run …
+  const local = await act({ action: "workflow.test", pageId, mode: "dry", data: { kind: "sample" } });
+  await drainWorkflows();
+  assert.equal(api.seen.length, calls + 1);
+  assert.ok((await outputOf(local.runId, h.id)).status);
+  // … over MCP never; a real test run is refused.
+  const refused = await call("test_workflow", { pageId, mode: "test" });
+  assert.equal(refused.result.isError, true);
+  const tested = await call("test_workflow", { pageId });
+  assert.equal(tested.result.isError, undefined, tested.result.content[0].text);
+  const runId = JSON.parse(tested.result.content[0].text).runId as string;
+  await drainWorkflows();
+  assert.equal((await one<{ mode: string; status: string }>("SELECT mode,status FROM workflow_runs WHERE id=?", runId))!.mode, "dry");
+  assert.equal(api.seen.length, calls + 1, "nothing sent over MCP");
+  assert.equal((await outputOf(runId, h.id)).wouldRequest.method, "GET");
+  assert.deepEqual((await outputOf(runId, mail.id)).wouldSend, ["someone@outside.example"]);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM mail_queue"))!.n), mails);
+  // The command itself: offline only as a dry run.
+  await assert.rejects(act({ action: "workflow.test", pageId, mode: "test", offline: true }), /Probelauf/);
+  // The hints: testing and starting reach beyond Flowplan.
+  const listed = (await handleMcpMessage(client, { jsonrpc: "2.0", id: ++n, method: "tools/list" })) as unknown as { result: { tools: { name: string; annotations: { openWorldHint: boolean; readOnlyHint: boolean } }[] } };
+  const hint = (name: string) => listed.result.tools.find((x) => x.name === name)!.annotations;
+  assert.equal(hint("test_workflow").openWorldHint, true);
+  assert.equal(hint("run_workflow").openWorldHint, true);
+  assert.equal(hint("read_page").openWorldHint, false);
+  assert.doesNotMatch(JSON.stringify(listed.result.tools.find((x) => x.name === "save_workflow_draft")), /never runs/);
+});
+
 test("http: a server trickling an endless answer cannot hold the step past its time limit", async () => {
   const trickle = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });

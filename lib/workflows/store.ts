@@ -558,11 +558,15 @@ const testInput = z.object({
     .default({ kind: "sample" }),
   // Dry runs: approvals assumed as approved (default) or rejected (§10.3).
   assume: z.enum(["approved", "rejected"]).default("approved"),
+  // A dry run that reaches nothing outside Flowplan, not even a GET marked
+  // "also in dry runs" (the MCP server's tests, lib/workflows/mcp-tools.ts).
+  offline: z.boolean().default(false),
 });
 // workflow.test: a test run (real effects, as the tester) or a dry run of
 // the draft. Test runs run as the person testing, never as the runner (§9.2).
 export async function startTestRun(user: Identity, raw: unknown) {
   const b = testInput.parse(raw);
+  if (b.offline && b.mode !== "dry") throw new HttpError(400, "Offline nur als Probelauf.");
   const page = await requireWorkflow(user, b.pageId, true);
   const limits = await workflowLimits();
   if (!allow(`workflow-test:${user.id}`, limits.testRunsPerMinute, 60_000)) throw new HttpError(429, "Zu viele Testläufe. Bitte kurz warten.");
@@ -610,7 +614,7 @@ export async function startTestRun(user: Identity, raw: unknown) {
     mode: b.mode,
     runnerId: user.id,
     testGraph: graph,
-    testOptions: { approval: b.assume },
+    testOptions: { approval: b.assume, ...(b.offline ? { offline: true } : {}) },
   });
   wakeAfterCommit();
   return { ok: true, runId, issues };

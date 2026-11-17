@@ -16,7 +16,7 @@ import { openWorkflowCredential } from "../../sealed-values";
 import { fixedHost } from "../catalog";
 import { workflowLimits } from "../limits";
 import { headerSafe, parseTemplate, renderTemplate, renderText } from "../placeholders";
-import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
+import { dryRun, offlineRun, StepError, type NodeImpl, type NodeRun } from "./types";
 
 const MAX_BYTES = 1_000_000;
 const MAX_REDIRECTS = 3;
@@ -140,8 +140,9 @@ export const httpRequest: NodeImpl = async (ctx) => {
     }
   }
   const shown = `${url.origin}${url.pathname}`;
-  // Dry runs: GET only, and only when the node says so (§10.3).
-  if (dryRun(ctx) && (c.method !== "GET" || !c.runInDry)) return { port: "out", output: { wouldRequest: { method: c.method, url: shown } } };
+  // Dry runs: GET only, and only when the node says so (§10.3) – never in
+  // an offline dry run (MCP).
+  if (dryRun(ctx) && (c.method !== "GET" || !c.runInDry || offlineRun(ctx))) return { port: "out", output: { wouldRequest: { method: c.method, url: shown } } };
   const credential = await credentialOf(ctx, c.credential);
   if (credential && credential.host !== host) throw new StepError(`Diese Zugangsdaten gelten nur für ${credential.host}.`, "permission");
   // Load on others (§9.10): 60 a minute per workflow, 120 per host on the instance.

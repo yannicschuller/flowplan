@@ -5,6 +5,10 @@
 // 6 as decided: a person's decision about rights, not an AI client's). Read
 // tokens get the reading tools only. Everything goes through the same
 // functions and commands as the interface, as the person of the token.
+// Tests over MCP are dry runs only, and offline: no e-mail, chat message,
+// HTTP request (not even a GET marked "also in dry runs") or other effect
+// outside Flowplan – a client that read injected text must not be able to
+// send anything by "testing" a draft it wrote itself.
 import { z } from "zod";
 import { command } from "../api";
 import type { Identity } from "../types";
@@ -15,7 +19,9 @@ import { listRuns, listWorkflows, runDetail, workflowState } from "./store";
 const outputPaths = (fields: OutputField[], prefix = ""): string[] =>
   fields.flatMap((f) => [`${prefix}${f.key}`, ...(f.children && prefix.split(".").length < 3 ? outputPaths(f.children, `${prefix}${f.key}.`) : [])]);
 const id = (what: string) => z.uuid().describe(what);
-export type WorkflowTool = { name: string; title: string; description: string; input: z.ZodObject; write: boolean; run: (user: Identity, args: never) => unknown };
+// `openWorld`: the tool reaches beyond Flowplan (the AI provider, e-mail,
+// chat, HTTP) – MCP's openWorldHint.
+export type WorkflowTool = { name: string; title: string; description: string; input: z.ZodObject; write: boolean; openWorld?: boolean; run: (user: Identity, args: never) => unknown };
 
 const GRAPH_HELP =
   'Graph JSON (format "flowplan.workflow", version 1): {"nodes":[{"id":"n_abc123","type":"trigger.manual","label":"Start","config":{}}],"edges":[{"id":"e_1","from":{"node":"n_abc123","port":"out"},"to":{"node":"n_def456","port":"in"}}]}. Node ids n_ + 6–12 of [a-z0-9], unique labels without . | { } [ ]; types and config keys from get_workflow_catalog; placeholders {{<node id>.<output>}}.';
@@ -56,7 +62,7 @@ export const workflowTools: WorkflowTool[] = [
   {
     name: "save_workflow_draft",
     title: "Save a workflow draft",
-    description: `Replaces the draft of a workflow (pageId) or creates a new workflow page with it (workspaceId, spaceId, title, optional parentId). Answers the check. A draft never runs: a person activates it in Flowplan. ${GRAPH_HELP}`,
+    description: `Replaces the draft of a workflow (pageId) or creates a new workflow page with it (workspaceId, spaceId, title, optional parentId). Answers the check. Saving never activates it: until a person activates it in Flowplan the draft only runs in tests (test_workflow: dry runs). ${GRAPH_HELP}`,
     input: z.object({
       pageId: id("Workflow page to change").optional(),
       workspaceId: id("Workspace ID (new workflow)").optional(),
@@ -73,17 +79,17 @@ export const workflowTools: WorkflowTool[] = [
         pageId = ((await command(user, { action: "page.create", workspaceId: a.workspaceId, spaceId: a.spaceId, parentId: a.parentId, kind: "workflow", title: a.title })) as { id: string }).id;
       }
       const saved = (await command(user, { action: "workflow.draft", pageId, graph: a.graph })) as { issues: unknown[] };
-      return { pageId, issues: saved.issues, note: "Saved as draft. A person activates it in Flowplan." };
+      return { pageId, issues: saved.issues, note: "Saved as draft. It runs for real only once a person activates it in Flowplan." };
     }) as WorkflowTool["run"],
   },
   {
     name: "test_workflow",
     title: "Test a workflow draft",
     description:
-      "Runs the draft once: mode \"dry\" (default) only reports what each node would do; \"test\" really acts as you. Data of the trigger: sample (default), the last real event, a record, a page or custom output. Read the result with get_workflow_run.",
+      "Runs the draft once as a dry run: every node only reports what it would do – nothing is changed, no e-mail, chat message or HTTP request is sent (AI nodes do ask the instance's AI provider). Test runs that really act exist only in Flowplan itself. Data of the trigger: sample (default), the last real event, a record, a page or custom output. Read the result with get_workflow_run.",
     input: z.object({
       pageId: id("Page ID of the workflow"),
-      mode: z.enum(["dry", "test"]).optional(),
+      mode: z.literal("dry").optional().describe("Only \"dry\": over MCP a test never acts"),
       nodeId: z.string().max(40).optional().describe("Trigger node (default: the first)"),
       data: z
         .union([
@@ -96,18 +102,21 @@ export const workflowTools: WorkflowTool[] = [
         .optional(),
     }),
     write: true,
-    run: (async (user: Identity, a: Record<string, unknown>) => await command(user, { ...a, action: "workflow.test", mode: a.mode || "dry" })) as WorkflowTool["run"],
+    // Its AI nodes ask the AI provider.
+    openWorld: true,
+    run: (async (user: Identity, a: Record<string, unknown>) => await command(user, { ...a, action: "workflow.test", mode: "dry", offline: true })) as WorkflowTool["run"],
   },
   {
     name: "run_workflow",
     title: "Start a workflow",
-    description: "Starts an active workflow that has a manual trigger, with its inputs (by name). Runs as the workflow's runner; you are recorded as the one who started it.",
+    description: "Starts an active workflow that has a manual trigger, with its inputs (by name). It really runs, as a person activated it – e-mails, chat messages and HTTP requests included – as the workflow's runner; you are recorded as the one who started it.",
     input: z.object({
       pageId: id("Page ID of the workflow"),
       nodeId: z.string().max(40).optional(),
       inputs: z.record(z.string().max(60), z.unknown()).optional(),
     }),
     write: true,
+    openWorld: true,
     run: (async (user: Identity, a: Record<string, unknown>) => await command(user, { ...a, action: "workflow.run", mode: "live", source: "api" })) as WorkflowTool["run"],
   },
   {
