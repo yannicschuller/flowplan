@@ -13,6 +13,9 @@ const metrics = await import("../lib/metrics");
 const server = await import("../lib/server-metrics");
 const { aiStatistics, costOf } = await import("../lib/ai-statistics");
 const { runDataSteps, AI_DETAIL_STEP } = await import("../lib/data-steps");
+const { database } = await import("../lib/db-driver");
+// npm run test:db runs this file on PostgreSQL too (DATABASE_URL).
+const postgres = () => database().backend === "postgres";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000;
@@ -138,7 +141,9 @@ test("a server sample is written per minute; the series reads shares of the limi
   assert.equal(days.reduce((n, d) => n + d.minutes, 0), 2);
   const current = await server.serverNow(now);
   assert.ok(current.memory.heapUsed > 0 && current.memory.rss >= current.memory.heapUsed);
-  assert.equal(typeof current.memory.sqliteCache, "number");
+  // SQLite's page cache has no counterpart on PostgreSQL.
+  if (postgres()) assert.equal(current.memory.sqliteCache, null);
+  else assert.equal(typeof current.memory.sqliteCache, "number");
 });
 
 test("AI calls in detail: per model, workspace and person with errors, timeouts, times and costs", async () => {
@@ -186,7 +191,7 @@ test("recommendations: gathered and cached, hidden while they apply, snoozed 30 
   assert.ok(first.items.some((r) => r.id === "mail"));
   assert.ok(first.items.every((r) => r.docs[0].startsWith("https://docs.flowplan.org/")));
   const input = await data.recommendationInput(now);
-  assert.equal(input.database.backend, "sqlite");
+  assert.equal(input.database.backend, postgres() ? "postgres" : "sqlite");
   await data.applyRecommendationAction({ action: "recommendation.hide", id: "mail" }, now);
   const hidden = await data.recommendations(now + 1000);
   assert.equal(hidden.items.some((r) => r.id === "mail"), false);
