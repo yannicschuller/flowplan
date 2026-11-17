@@ -392,8 +392,12 @@ test("published subpages expose referenced media to visitors and revoke access i
   const url = `${origin}/api/share/${token}/files/${file.id}`;
   const head = await visitor.request.head(url);
   expect(head.status()).toBe(200);
-  expect(head.headers()["content-length"]).toBe(String(picture.length));
+  // No Content-Length to check: since 16.4.5 Next.js drops it (with
+  // Content-Encoding and Transfer-Encoding) from every route handler's
+  // response (server/send-response.js, FORBIDDEN_HEADERS).
+  expect(head.headers()["accept-ranges"]).toBe("bytes");
   expect((await head.body()).length).toBe(0);
+  expect((await (await visitor.request.get(url)).body()).equals(picture)).toBe(true);
   expect(
     (
       await visitor.request.get(
