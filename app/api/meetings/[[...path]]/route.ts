@@ -41,6 +41,7 @@ import {
   MEETING_COPY,
   readMeetingSettings,
   regenerateSummary,
+  confirmMeetingAssignees,
   retranscribeMeeting,
   retryMeeting,
   saveMeetingSettings,
@@ -178,6 +179,8 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     if (path.length === 2 && action === "retry") return NextResponse.json(await retryMeeting(user, meetingId, (await json(req)).language), noStore);
     if (path.length === 2 && action === "retranscribe") return NextResponse.json(await retranscribeMeeting(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "summarize") return NextResponse.json(await regenerateSummary(user, meetingId, await json(req)), noStore);
+    // "Zuständige benachrichtigen": tasks of the AI summary told only now.
+    if (path.length === 2 && action === "assignees") return NextResponse.json(await confirmMeetingAssignees(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "ask") return await askMeeting(user, meetingId, await json(req, 200_000), req.signal);
     // The block's calendar event: its reminder (lib/meeting-reminders.ts).
     if (path.length === 2 && action === "event") return NextResponse.json(await linkMeetingEvent(user, meetingId, await json(req)), noStore);

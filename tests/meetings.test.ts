@@ -29,6 +29,7 @@ const { meetingHtml } = await import("../lib/meeting-schema");
 const { startOllamaMock } = await import("./helpers/ai-mock");
 const { resolveAi } = await import("../lib/ai/resolve");
 const { webmClusters, webmHeader } = await import("../lib/webm");
+import * as Y from "yjs";
 import type { Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
@@ -408,13 +409,68 @@ test("two tracks: transcript with Ada and Andere, echo removed, summary with tas
   // The prompt saw numbered segments and the agenda section.
   const prompt = mock.chats.find((c) => c.system.includes("You write the notes"))!;
   assert.match(prompt.prompt, /S2 \[00:10\] Andere: Ben, kannst du/);
-  // Ben's task appears in his "Meine Aufgaben", with a notification.
+  // Ben's task appears in his "Meine Aufgaben" – told only once a person
+  // confirms (the AI chose him from what was said).
   const tasks = await myTasks(ben, wid);
   assert.ok(tasks.some((t) => t.pageId === pageId && t.text.startsWith("Angebot an den Kunden schicken") && t.due === "2026-11-13"));
-  assert.ok(await one("SELECT 1 FROM notifications WHERE user_id=? AND page_id=?", ben.id, pageId));
+  assert.equal(await one("SELECT 1 FROM notifications WHERE user_id=? AND page_id=?", ben.id, pageId), undefined);
+  assert.deepEqual(status.pendingAssignees, [{ id: ben.id, name: "Ben" }]);
   // Audio is deleted after the transcript by default.
   assert.equal(status.audio.length, 0);
   assert.equal(existsSync(resolve(process.env.FLOWPLAN_DATA_DIR!, "tmp", "meetings", meetingId)), false);
+});
+
+test("tasks of the AI summary tell their people only once a person confirms; tokens cannot confirm", async () => {
+  const { pageId, meetingId } = await pageWithMeeting("Bestätigen");
+  await record(ada, pageId, meetingId, ["me", "others"]);
+  const told = () => all("SELECT body FROM notifications WHERE user_id=? AND page_id=?", ben.id, pageId);
+  assert.deepEqual(await told(), []);
+  const stored = await one<{ assigned_at: number | null }>("SELECT assigned_at FROM doc_tasks WHERE page_id=? AND assignee=?", pageId, ben.id);
+  assert.equal(stored?.assigned_at ?? null, null);
+  // Readers see the offer, only writers act on it; an API token never.
+  assert.equal((await meetings.meetingStatus(vic, meetingId)).pendingAssignees.length, 1);
+  await assert.rejects(meetings.confirmMeetingAssignees(vic, meetingId, { notify: true }), (e: { status?: number }) => e.status === 403);
+  const token = await tokenFor(ada, "write", true);
+  await assert.rejects(meetings.confirmMeetingAssignees(token, meetingId, { notify: true }), /nur eine Person/);
+  await assert.rejects(meetings.confirmMeetingAssignees(ada, meetingId, {}), /./);
+  // A save of the page in the editor (document.sync) does not tell him either.
+  const stored2 = (await one<{ state: Uint8Array; generation: string }>("SELECT state,generation FROM documents WHERE page_id=?", pageId))!;
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, stored2.state);
+  const added = new Y.XmlElement("paragraph");
+  added.insert(0, [new Y.XmlText("Nachtrag")]);
+  ydoc.getXmlFragment("default").push([added]);
+  await command(ada, { action: "document.sync", pageId, generation: stored2.generation, update: Buffer.from(Y.encodeStateAsUpdate(ydoc)).toString("base64") });
+  ydoc.destroy();
+  assert.match(await docHtml(pageId), /Nachtrag/);
+  assert.deepEqual(await told(), []);
+  const result = await meetings.confirmMeetingAssignees(ada, meetingId, { notify: true });
+  assert.equal(result.told, 1);
+  assert.deepEqual(result.pendingAssignees, []);
+  const bodies = (await told()) as { body: string }[];
+  assert.equal(bodies.length, 1);
+  assert.match(bodies[0].body, /^Ada hat dir eine Aufgabe in „Bestätigen“ gegeben: Angebot an den Kunden schicken/);
+  // "Neu" in his My tasks from now on.
+  assert.ok(Number((await one<{ assigned_at: number }>("SELECT assigned_at FROM doc_tasks WHERE page_id=? AND assignee=?", pageId, ben.id))?.assigned_at) > 0);
+  // Once only.
+  assert.equal((await meetings.confirmMeetingAssignees(ada, meetingId, { notify: true })).told, 0);
+  assert.equal(((await told()) as unknown[]).length, 1);
+  // The same task in a new summary: he was told already, nothing is pending.
+  await meetings.regenerateSummary(ada, meetingId, {});
+  assert.deepEqual((await meetings.meetingStatus(ada, meetingId)).pendingAssignees, []);
+});
+
+test("“Don't notify”: the summary's people are not told and the offer goes", async () => {
+  const { pageId, meetingId } = await pageWithMeeting("Nicht melden");
+  await record(ada, pageId, meetingId, ["me", "others"]);
+  assert.equal((await meetings.meetingStatus(ada, meetingId)).pendingAssignees.length, 1);
+  const result = await meetings.confirmMeetingAssignees(ben, meetingId, { notify: false });
+  assert.equal(result.told, 0);
+  assert.deepEqual(result.pendingAssignees, []);
+  assert.equal(await one("SELECT 1 FROM notifications WHERE user_id=? AND page_id=?", ben.id, pageId), undefined);
+  // Confirming later finds nothing pending.
+  assert.equal((await meetings.confirmMeetingAssignees(ada, meetingId, { notify: true })).told, 0);
+  assert.equal(await one("SELECT 1 FROM notifications WHERE user_id=? AND page_id=?", ben.id, pageId), undefined);
 });
 
 test("continue later appends to the same transcript after the earlier session", async () => {

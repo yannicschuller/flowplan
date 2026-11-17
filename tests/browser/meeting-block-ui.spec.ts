@@ -296,6 +296,35 @@ test("transcribe again asks first whether corrected passages stay", async ({ pag
   expect(bodies[1].force).toBeUndefined();
 });
 
+test("the summary's tasks notify their people only after “Zuständige benachrichtigen”", async ({ page }) => {
+  const pendingAssignees = [
+    { id: "u-ben", name: "Ben" },
+    { id: "u-cleo", name: "Cleo" },
+  ];
+  const bodies: Record<string, unknown>[] = [];
+  const { block } = await openMeeting(page, { status: { pendingAssignees } });
+  await page.route("**/api/meetings/*/assignees", async (r) => {
+    bodies.push(r.request().postDataJSON());
+    await r.fulfill({ json: { id: "m", status: "done", error: null, durationMs: 2481000, sessions: [], audio: [], audioUntil: null, summarizedAt: Date.now(), pendingAssignees: [], consentRequired: false, transcription: true, told: 2 } });
+  });
+  const offer = block.locator(".meeting-assignees");
+  await expect(offer).toContainText("Die KI-Zusammenfassung hat Aufgaben an Ben und Cleo vergeben. Benachrichtigt wird erst, wenn du es bestätigst.");
+  // Inside the block, also on a phone.
+  const area = (await block.boundingBox())!;
+  for (const box of [await offer.boundingBox(), await offer.getByRole("button", { name: "Nicht benachrichtigen" }).boundingBox()]) {
+    expect(box!.x).toBeGreaterThanOrEqual(area.x - 1);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(area.x + area.width + 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // Only on the summary tab.
+  await block.getByRole("tab", { name: "Transkript" }).click();
+  await expect(offer).toHaveCount(0);
+  await block.getByRole("tab", { name: "Zusammenfassung" }).click();
+  await offer.getByRole("button", { name: "Zuständige benachrichtigen" }).click();
+  await expect(offer).toHaveCount(0);
+  expect(bodies).toEqual([{ notify: true }]);
+});
+
 test("phones: the settings menu is a bottom sheet", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Phones only.");
   const { block } = await openMeeting(page);

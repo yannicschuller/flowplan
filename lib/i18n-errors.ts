@@ -5,6 +5,8 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Telling the people the AI meeting summary gave a task to (lib/meetings.ts).
+  "Das kann nur eine Person in Flowplan bestätigen.": "Only a person in Flowplan can confirm this.",
   // Inactivity message per workspace (#282, lib/dead-man-switch.ts).
   "Die Nachricht bei Inaktivität ist auf dieser Instanz ausgeschaltet.": "The inactivity message is switched off on this instance.",
   "Für die Nachricht bei Inaktivität muss der E-Mail-Versand eingerichtet sein.": "The inactivity message needs e-mail delivery to be set up.",

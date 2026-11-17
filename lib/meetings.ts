@@ -57,7 +57,8 @@ import { requireUnlocked } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { htmlJson, htmlState, jsonHtml } from "./document-server";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
-import { syncDocTasks } from "./doc-tasks";
+import { extractTasks, syncDocTasks } from "./doc-tasks";
+import { TASK_TEXT_MAX } from "./task-text-max";
 import { mayHear } from "./comment-recipients";
 import { recordPageEdit } from "./page-activity";
 import { TranscribeError, transcribe, transcribeMaxBytes, transcriptionEnabled, whisperPrompt, type TranscriptSegment } from "./transcribe";
@@ -197,6 +198,7 @@ type MeetingRow = {
   created_at: number;
   updated_at: number;
   summarized_at: number | null;
+  assignees_pending?: string | null;
 };
 const parse = <T>(text: string | null | undefined, fallback: T): T => {
   try {
@@ -355,6 +357,7 @@ export async function meetingStatusOrNew(user: Identity, meetingId: string) {
     audio: [],
     audioUntil: null,
     summarizedAt: null,
+    pendingAssignees: [],
     consentAt: null,
     consentRequired: false,
     transcription: transcriptionEnabled(),
@@ -377,6 +380,9 @@ export async function meetingStatus(user: Identity, meetingId: string, options: 
     audio: audioOf(row).map((a) => ({ session: a.session, track: a.track, url: `/api/files/${a.fileId}`, mime: a.mime })),
     audioUntil: row.audio_until,
     summarizedAt: row.summarized_at,
+    // Who the summary gave a task to and is not told yet: the block offers
+    // "Zuständige benachrichtigen" (confirmMeetingAssignees).
+    pendingAssignees: await pendingAssignees(row),
     consentAt: row.consent_at,
     consentRequired: settings.consentRequired,
     transcription: transcriptionEnabled(),
@@ -627,7 +633,9 @@ async function saveSession(meetingId: string, n: number, change: (s: MeetingSess
 
 // Changes one part of the block in the stored document (as an edit of
 // `actor`), then the tasks are collected and open editors get the change.
-async function editPart(actor: Identity, row: MeetingRow, partName: string, change: (meeting: PMNode, part: PMNode) => PMNode[] | null) {
+// `notify` false: tasks it gives to people are stored (My tasks) without
+// telling them (the AI summary, until a person confirms).
+async function editPart(actor: Identity, row: MeetingRow, partName: string, change: (meeting: PMNode, part: PMNode) => PMNode[] | null, notify = true) {
   const page = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
   let publish = () => {};
   let missing = false;
@@ -648,7 +656,7 @@ async function editPart(actor: Identity, row: MeetingRow, partName: string, chan
     });
     if (changed) {
       publish = changed.publish;
-      await syncDocTasks(actor, page, row.row_id, changed.ydoc);
+      await syncDocTasks(actor, page, row.row_id, changed.ydoc, notify);
       await recordPageEdit(actor, row.page_id);
     }
   }, actor);
@@ -1062,6 +1070,7 @@ async function writeSummary(actor: Identity, row: MeetingRow, options: { languag
   const labels = MEETING_TEXT[language];
   const say = async (text: string) => {
     await editPart(actor, row, "meetingSummary", () => [rewriteSchema().nodeFromJSON({ type: "paragraph", content: [{ type: "text", text }] })]);
+    await run("UPDATE meetings SET assignees_pending=NULL WHERE id=?", row.id);
     return { note: text };
   };
   if (!segments.length) return await say(labels.noSpeech);
@@ -1095,9 +1104,92 @@ async function writeSummary(actor: Identity, row: MeetingRow, options: { languag
     { workspaceId: page.workspace_id, pageId: page.id, rowId: row.row_id },
   );
   const { nodes } = summaryNodes(summary, used, { language, members: await readers(page, row.row_id) });
-  await editPart(actor, row, "meetingSummary", () => nodes.map((json) => rewriteSchema().nodeFromJSON(json)));
-  await run("UPDATE meetings SET summarized_at=? WHERE id=?", Date.now(), row.id);
+  // What the model wrote (and the transcript it read) chooses who gets a
+  // task: they are not told until a person confirms (confirmMeetingAssignees).
+  await editPart(actor, row, "meetingSummary", () => nodes.map((json) => rewriteSchema().nodeFromJSON(json)), false);
+  const pending = await untoldAssignees(actor, row, summaryTasks(nodes));
+  await run("UPDATE meetings SET summarized_at=?,assignees_pending=? WHERE id=?", Date.now(), pending.length ? JSON.stringify(pending) : null, row.id);
   return { note: null };
+}
+
+// ---- Telling the people the summary gave a task to ----
+
+type SummaryTask = ReturnType<typeof extractTasks>[number];
+const summaryTasks = (content: unknown[]) => extractTasks({ type: "doc", content: content as never });
+// The open tasks of the summary per person (not the one acting), whose
+// task nobody has told them about yet (doc_tasks.assigned_at unset – a
+// task they were told about already keeps its time).
+async function untoldAssignees(actor: Identity, row: MeetingRow, tasks: SummaryTask[]) {
+  const out: string[] = [];
+  for (const task of tasks) {
+    if (task.checked) continue;
+    for (const uid of task.assignees) {
+      if (uid === actor.id || out.includes(uid)) continue;
+      const stored = await one<{ assigned_at: number | null }>(
+        "SELECT assigned_at FROM doc_tasks WHERE page_id=? AND row_id=? AND assignee=? AND text=?",
+        row.page_id,
+        row.row_id || "",
+        uid,
+        task.text.slice(0, TASK_TEXT_MAX),
+      );
+      if (stored && (stored.assigned_at === null || stored.assigned_at === undefined)) out.push(uid);
+    }
+  }
+  return out;
+}
+const pendingIds = (row: MeetingRow) => parse<unknown[]>(row.assignees_pending, []).filter((v): v is string => typeof v === "string");
+async function pendingAssignees(row: MeetingRow) {
+  const ids = pendingIds(row);
+  if (!ids.length) return [];
+  const people = await all<{ id: string; name: string }>(`SELECT id,name FROM users WHERE id IN (${ids.map(() => "?").join(",")})`, ...ids);
+  return ids.flatMap((uid) => people.filter((p) => p.id === uid).map((p) => ({ id: p.id, name: p.name })));
+}
+
+const assigneesInput = z.object({ notify: z.boolean() });
+// "Zuständige benachrichtigen" below the summary: a person (never an API
+// token or an agent acting on what it read) tells the people the summary
+// gave a task to – those whose task is still open in the summary as it is
+// now, who may still read the page and were not told since. `notify`
+// false: nobody is told, the offer goes away.
+export async function confirmMeetingAssignees(user: Identity, meetingId: string, input: unknown) {
+  if (user.apiScope) throw new HttpError(403, "Das kann nur eine Person in Flowplan bestätigen.");
+  const b = assigneesInput.parse(input ?? {});
+  const { row, page } = await meetingFor(user, meetingId, true);
+  let told = 0;
+  await transaction(async () => {
+    await lockFor(`meeting:${row.id}`);
+    const current = (await meetingRow(row.id))!;
+    const pending = new Set(pendingIds(current));
+    await run("UPDATE meetings SET assignees_pending=NULL WHERE id=?", row.id);
+    if (!b.notify || !pending.size) return;
+    const found = findMeeting(await readDocument(row.page_id, row.row_id), row.id);
+    const part = found && partOf(found.node, "meetingSummary");
+    if (!part) return;
+    const tasks = summaryTasks(part.node.content.toJSON() || []);
+    const untold = new Set(await untoldAssignees(user, current, tasks));
+    const now = Date.now();
+    for (const uid of pending) {
+      if (!untold.has(uid) || !(await mayHear(uid, page, row.row_id))) continue;
+      const theirs = tasks.filter((t) => !t.checked && t.assignees.includes(uid));
+      for (const task of theirs)
+        await run(
+          "UPDATE doc_tasks SET assigned_at=? WHERE page_id=? AND row_id=? AND assignee=? AND text=? AND assigned_at IS NULL",
+          now,
+          row.page_id,
+          row.row_id || "",
+          uid,
+          task.text.slice(0, TASK_TEXT_MAX),
+        );
+      const title = page.title || "Ohne Titel";
+      const body =
+        theirs.length === 1
+          ? `${user.name} hat dir eine Aufgabe in „${title}“ gegeben: ${theirs[0].text.slice(0, 120)}`
+          : `${user.name} hat dir ${theirs.length} Aufgaben in „${title}“ gegeben: ${theirs.map((t) => t.text.slice(0, 60)).join("; ").slice(0, 240)}`;
+      await run("INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')", newId(), uid, body, page.id, row.row_id);
+      told++;
+    }
+  }, user);
+  return { ...(await meetingStatus(user, row.id)), told };
 }
 
 const regenerateInput = z.object({

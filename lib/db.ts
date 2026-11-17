@@ -1435,6 +1435,13 @@ function migrate(d: DatabaseSync) {
   // see. An older version ignores the column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(meetings)").all() as { name: string }[]).some((c) => c.name === "error_detail"))
     d.exec("ALTER TABLE meetings ADD COLUMN error_detail TEXT");
+  // The people the AI summary gave a task to and nobody has told yet
+  // (lib/meetings.ts confirmMeetingAssignees): JSON ids, NULL = none. Tasks
+  // from the summary notify only once a person confirms. An older version
+  // ignores the column (and notifies at once, as before), so the schema
+  // number stays.
+  if (!(d.prepare("PRAGMA table_info(meetings)").all() as { name: string }[]).some((c) => c.name === "assignees_pending"))
+    d.exec("ALTER TABLE meetings ADD COLUMN assignees_pending TEXT");
   // The "Marketplace-Prüfung" permission of an API token (lib/api-tokens.ts,
   // lib/marketplace-check.ts): 1 = the token may run the import check of
   // marketplace packages. An older version ignores the column (its tokens
