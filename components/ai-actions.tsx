@@ -10,7 +10,7 @@ import { useT } from "./i18n";
 import { Modal, api } from "./ui";
 import { AiProviderFooter } from "./ai-context";
 import { proposeAiActions, runAiActions, type ActionPreview, type ActionResult } from "@/lib/ai/client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { pageLocationHash } from "@/lib/page-location";
 import type { DatabaseNote } from "@/lib/ai/database-note";
 import { DatabaseNotes } from "./ai-database-notes";

@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 // Two-factor sign-in with an authenticator app (lib/two-factor.ts):
 // Settings → Konto & Sicherheit (as a setting row), and the screen an instance shows when
 // it requires a second factor that the account does not have yet.

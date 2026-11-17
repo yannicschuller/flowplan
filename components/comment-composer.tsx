@@ -1,7 +1,7 @@
 "use client";
 import { LinkTargetIcon } from "./page-link-icons-store";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useEditor, EditorContent } from "@tiptap/react";

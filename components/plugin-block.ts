@@ -9,7 +9,7 @@
 import { PluginBlock } from "@/lib/plugin-node";
 import { onEditableChange } from "./editor-editable";
 import { tr, PAGE_LOCALE } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import {
   PROTOCOL,
   blockText,

@@ -5,7 +5,7 @@
 // Each of these is confirmed once more (lib/step-up.ts) in a small dialog:
 // the password, a code from the authenticator app or a passkey, whatever the
 // account has; without any of them a sign-in within the last ten minutes.
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, IdentificationCard, Key, LinkSimple, Plus, SpinnerGap, Trash } from "@phosphor-icons/react";

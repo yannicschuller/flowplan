@@ -16,8 +16,8 @@ import { db } from "./db-driver";
 import { dumpDatabase, requireTool, restoreDump } from "./pg-backup";
 import { snapshotDatabase } from "./db-snapshot";
 import { applyPendingRestore } from "./instance-restore-apply";
-import schemaJson from "./db-driver/postgres-schema.json";
-import { ensurePostgresSchema, type PgSchema } from "./db-driver/pg-schema";
+import { pgSchemaJson } from "./db-driver/pg-schema-file";
+import { ensurePostgresSchema } from "./db-driver/pg-schema";
 import { foreignKeySql, quoteIdent } from "./db-driver/pg-ddl.mjs";
 
 type Param = string | number | null | Uint8Array;
@@ -75,12 +75,12 @@ export async function restorePgDump(path: string, previous: string) {
   await afterDumpRestore();
 }
 async function afterDumpRestore() {
-  await ensurePostgresSchema(db, schemaJson as unknown as PgSchema);
+  await ensurePostgresSchema(db, pgSchemaJson());
   await run("DELETE FROM search_state");
 }
 
 export async function loadSqliteFile(path: string) {
-  const schema = schemaJson as unknown as PgSchema;
+  const schema = pgSchemaJson();
   const file = new DatabaseSync(path);
   try {
     migrateFile(file);

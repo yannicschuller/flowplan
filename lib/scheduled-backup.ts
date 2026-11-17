@@ -25,7 +25,7 @@ import { firstAccount } from "./local-auth";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 
-const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
+const dataDir = () => resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data");
 const DAY_MS = 86400_000;
 const HOUR_MS = 3600_000;
 // Plain and encrypted copies count alike when old ones are removed, SQLite

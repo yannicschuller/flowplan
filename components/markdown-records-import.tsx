@@ -2,7 +2,7 @@
 // Markdown files (one, several or a ZIP) as records of this database: first
 // a preview of what the frontmatter maps to, then the import.
 import { useEffect, useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
 

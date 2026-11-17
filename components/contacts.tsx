@@ -22,7 +22,7 @@ import {
   UploadSimple,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { exportName } from "@/lib/export-name";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { qrModules, qrPath } from "@/lib/qr";

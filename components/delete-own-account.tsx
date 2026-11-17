@@ -3,7 +3,7 @@
 // happens first (workspaces deleted, workspaces handed over), then asks for
 // the password – or, for SSO accounts, the e-mail address.
 import { useState, type FormEvent } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { api, Modal } from "./ui";
 import { Select } from "./select";

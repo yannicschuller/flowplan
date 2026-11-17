@@ -30,7 +30,7 @@ import { Sparkline } from "../sparkline";
 import { BarChart, ChartTable } from "../charts";
 import { formatNumber } from "@/lib/field-format";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { notificationUrl, parsePageLocation, type PageLocation } from "@/lib/page-location";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { dueLabel, dueState } from "@/lib/task-due";

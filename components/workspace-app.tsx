@@ -12,7 +12,7 @@ import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
 import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
 import { currentOS } from "@/lib/device-os";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useT, writeLocaleCookie } from "./i18n";
 import { OfflineStatus } from "./offline-status";
@@ -222,6 +222,7 @@ import {
   Avatar,
   setAvatarDirectory,
   api,
+  apiIfChanged,
   ApiError,
   isTransient,
   PageSkeleton,
@@ -1041,7 +1042,8 @@ export default function WorkspaceApp({
     const count = ++refreshCount.current;
     let result: Bootstrap;
     try {
-      result = await api<Bootstrap>(
+      // Unchanged (304): the same object, setBoot changes nothing.
+      result = await apiIfChanged<Bootstrap>(
         `/api/bootstrap?workspace=${currentWorkspace.current}`,
       );
     } catch (error) {
@@ -1084,11 +1086,9 @@ export default function WorkspaceApp({
       // A page shown for the first time (e.g. opened by its link) counts
       // as a visit; later reloads of the same page do not.
       const first = dataRef.current?.page.id !== pid;
-      const p = await api<PageData>(
-        `/api/pages/${pid}`,
-        undefined,
-        first ? { "X-Flowplan-Visit": "1" } : {},
-      );
+      const p = first
+        ? await api<PageData>(`/api/pages/${pid}`, undefined, { "X-Flowplan-Visit": "1" })
+        : await apiIfChanged<PageData>(`/api/pages/${pid}`);
       if (
         pid === currentId.current &&
         version === navigationVersion.current &&
@@ -1380,11 +1380,14 @@ export default function WorkspaceApp({
     } catch {}
     if (standalone) tick("app");
   }, [checklistOpen, appTicked, tick]);
-  // Journals get a page for the new day: when the app opens, comes back to
-  // the foreground and at local midnight.
-  const hasJournal = boot.pages.some(
-    (page) => page.kind === "journal" && !page.deleted_at,
-  );
+  // Journals get a page for the new day while one of their pages is open:
+  // when it opens, comes back to the foreground and at local midnight (the
+  // journal page rolls its own journal as well). Other pages do not ask.
+  const openedPage = screen === "page" && pageId ? boot.pages.find((page) => page.id === pageId) : undefined;
+  const hasJournal =
+    !!openedPage &&
+    (openedPage.kind === "journal" || !!openedPage.journal_date) &&
+    boot.pages.some((page) => page.kind === "journal" && !page.deleted_at);
   const rollJournal = useCallback(
     async (pageId: string | null, date: string, recreate = false) => {
       const result = await api<{ changed?: boolean }>("/api/command", {
@@ -5206,7 +5209,8 @@ export default function WorkspaceApp({
                   )}
                   </ViewBoundary>
                   {!data.draft && !recordFull && (<>
-                  {discoveryPanels && (
+                  {/* While a record of this database is open its own panels show; the page's wait until it closes (no requests for what the dialog covers). */}
+                  {discoveryPanels && !recordView && !(data.page.kind === "database" && typeof location !== "undefined" && parsePageLocation(location.hash)?.rowId) && (
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && !data.encrypted && (

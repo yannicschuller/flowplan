@@ -6,7 +6,7 @@
 // of the whole instance, and the restore at the end.
 import { useState } from "react";
 import { DownloadSimple, UploadSimple } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "../../i18n";
 import { api } from "../../ui";

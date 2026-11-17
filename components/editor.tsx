@@ -5,7 +5,7 @@ import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutline } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { reveal } from "@/lib/motion";
 import { nativeScan, nativeScanAvailable } from "@/lib/native-app";
 import { useLocale, useT } from "./i18n";
@@ -108,6 +108,8 @@ import { useToolbarLayout } from "@/lib/toolbar-layout-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
+import { setLiveState, THREADS_EVENT, threadsKey } from "@/lib/live-state";
+import { sameAsServer } from "@/lib/yjs-compare";
 import { RemoteSelection } from "@/lib/remote-selection";
 import {
   commentMarkedNodeView,
@@ -211,7 +213,7 @@ import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { WorkflowButtonView } from "./workflow-button";
-import { api, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
+import { api, apiIfChanged, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
@@ -460,6 +462,26 @@ export default function DocumentEditor({
   // column is too narrow for both (components/document-outline.tsx).
   const outline = useOutline();
   const [, setTick] = useState(0);
+  // The toolbar and menus follow the selection and the stored marks: at
+  // most once per frame, however many transactions a keystroke brings
+  // (input, input rules, the save's answer, decorations).
+  const tickFrame = useRef(0);
+  const tickSoon = useRef(() => {});
+  tickSoon.current = () => {
+    if (tickFrame.current) return;
+    tickFrame.current = requestAnimationFrame(() => {
+      tickFrame.current = 0;
+      setTick((t) => t + 1);
+    });
+  };
+  useEffect(() => () => cancelAnimationFrame(tickFrame.current), []);
+  // The document as HTML (for the save, the page's export and print): the
+  // whole document serialised, so not on every keystroke – when saving, and
+  // otherwise at most once a second.
+  const htmlStale = useRef(false),
+    htmlTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const currentHtml = useRef(() => lastHtml.current);
+  useEffect(() => () => clearTimeout(htmlTimer.current), []);
   const [references, setReferences] = useState(false),
     [referenceQuery, setReferenceQuery] = useState(""),
     // The highlighted hit of the mention dialog by its key; null is the first.
@@ -1152,8 +1174,20 @@ export default function DocumentEditor({
         if (slashState.current?.mode === "inline") setSlash(null);
       },
       onUpdate: ({ editor, transaction }) => {
-        lastHtml.current = editor.getHTML();
-        onHtml(lastHtml.current);
+        htmlStale.current = true;
+        currentHtml.current = () => {
+          if (htmlStale.current && !editor.isDestroyed) {
+            htmlStale.current = false;
+            lastHtml.current = editor.getHTML();
+            onHtml(lastHtml.current);
+          }
+          return lastHtml.current;
+        };
+        if (!htmlTimer.current)
+          htmlTimer.current = setTimeout(() => {
+            htmlTimer.current = undefined;
+            currentHtml.current();
+          }, 1000);
         if (
           ready.current &&
           editable &&
@@ -1165,14 +1199,14 @@ export default function DocumentEditor({
         slashFollow.current(editor);
       },
       onSelectionUpdate: ({ editor }) => {
-        setTick((t) => t + 1);
+        tickSoon.current();
         slashFollow.current(editor);
       },
       // Toggling a format without a selection only changes the marks for the
       // next character; the toolbar has to show that right away.
       onTransaction: ({ transaction }) => {
         if (!transaction.docChanged && !transaction.selectionSet)
-          setTick((t) => t + 1);
+          tickSoon.current();
       },
     },
     [doc],
@@ -1316,7 +1350,7 @@ export default function DocumentEditor({
             update: bytesTo64(update),
             vector: bytesTo64(Y.encodeStateVector(doc)),
             client: liveId,
-            html: lastHtml.current,
+            html: currentHtml.current(),
           });
           pending.current.splice(0, sent);
           if (all) sendAll.current = false;
@@ -1328,9 +1362,13 @@ export default function DocumentEditor({
         // check (new document version, missed updates) runs less often.
         if (live.current && Date.now() - lastPoll.current < 20_000) return;
         lastPoll.current = Date.now();
-        const result = await api<{ state: string | null; generation: string }>(
+        // With the ETag of the last answer: unchanged (304) is the same
+        // object, and its state was applied already.
+        const result = await apiIfChanged<{ state: string | null; generation: string }>(
           rowId ? `/api/pages/${pageId}/rows/${rowId}` : `/api/pages/${pageId}`,
         );
+        if (result === lastChecked.current) return;
+        lastChecked.current = result;
         // A restored or guest-edited document has a new CRDT identity. The parent
         // remounts this editor with that generation; merging it into this one duplicates content.
         if (result.generation !== generation) {
@@ -1360,6 +1398,8 @@ export default function DocumentEditor({
   }, [doc, editor, editable, pageId, rowId, generation, liveId, applyRemote, onStatus, onError, ensureCreated]);
   // Changes go out shortly after typing instead of on the next interval.
   const saveSoon = useRef(() => {});
+  // The last answer of the full check (apiIfChanged).
+  const lastChecked = useRef<unknown>(null);
   saveSoon.current = () => {
     if (saveTimer.current) return;
     saveTimer.current = setTimeout(() => {
@@ -1385,10 +1425,12 @@ export default function DocumentEditor({
       if (message.type === "revoked") {
         // Access ended: no reconnect; the next check reports it.
         live.current = false;
+        setLiveState(key, false);
         source.close();
         lastPoll.current = 0;
       } else if (message.type === "ready") {
         live.current = true;
+        setLiveState(key, true);
         // Anything missed while the channel was down comes with a full check.
         lastPoll.current = 0;
         void sync();
@@ -1399,12 +1441,17 @@ export default function DocumentEditor({
         void sync();
       } else if (message.type === "presence")
         window.dispatchEvent(new CustomEvent("flowplan:presence", { detail: key }));
+      // The comment threads changed (components/inline-comments.tsx).
+      else if (message.type === "threads")
+        window.dispatchEvent(new CustomEvent(THREADS_EVENT, { detail: threadsKey(pageId, rowId) }));
     };
     source.onerror = () => {
       live.current = false;
+      setLiveState(key, false);
     };
     return () => {
       live.current = false;
+      setLiveState(key, false);
       source.close();
     };
   }, [doc, pageId, rowId, generation, liveId, sync, applyRemote, liveOn]);
@@ -1468,9 +1515,13 @@ export default function DocumentEditor({
       )
         editor.commands.setContent(initial.current.html);
       lastHtml.current = editor.getHTML();
+      htmlStale.current = false;
       onHtml(lastHtml.current);
       ready.current = true;
-      dirty.current = editable;
+      // Only what this device has beyond the server's state needs a save
+      // right away (changes kept in IndexedDB, content set from the HTML):
+      // opening an unchanged document asks nothing.
+      dirty.current = editable && !sameAsServer(doc, initial.current.state);
       onStatus(navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline");
     });
     const update = (change: Uint8Array, origin: unknown) => {

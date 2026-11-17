@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 

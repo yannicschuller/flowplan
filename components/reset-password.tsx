@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 // The page behind a reset link: set a new password, then sign in.
 import { useState, type FormEvent } from "react";
 import { BrandMark } from "./brand-mark";

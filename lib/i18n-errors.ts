@@ -5,6 +5,9 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // The PDF worker thread (lib/pdf-text.ts).
+  "Der PDF-Worker wurde beendet.": "The PDF worker was stopped.",
+  "Zeitüberschreitung beim Lesen der PDF-Datei.": "Reading the PDF file timed out.",
   // Telling the people the AI meeting summary gave a task to (lib/meetings.ts).
   "Das kann nur eine Person in Flowplan bestätigen.": "Only a person in Flowplan can confirm this.",
   // Inactivity message per workspace (#282, lib/dead-man-switch.ts).

@@ -5,7 +5,7 @@
 // instance-wide Git export (EXPORT_GIT_*) is deprecated.
 import { useEffect, useMemo, useState } from "react";
 import { FileText, MagnifyingGlass } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { api } from "./ui";

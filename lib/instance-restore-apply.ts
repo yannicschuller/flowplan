@@ -45,7 +45,7 @@ export function applyPendingRestore(dir: string, options: { dumps?: boolean } = 
   // A move brings the instance's own keys: the old ones are kept as well.
   for (const name of MOVE_EXTRAS)
     if (move && existsSync(resolve(pending, name))) {
-      if (existsSync(resolve(dir, name))) renameSync(resolve(dir, name), resolve(previous, name));
+      if (existsSync(resolve(/*turbopackIgnore: true*/ dir, name))) renameSync(resolve(/*turbopackIgnore: true*/ dir, name), resolve(/*turbopackIgnore: true*/ previous, name));
       renameSync(resolve(pending, name), resolve(dir, name));
     }
   if (dump) renameSync(resolve(pending, "flowplan.dump"), resolve(dir, "flowplan.dump"));

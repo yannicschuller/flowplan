@@ -4,7 +4,7 @@ import { rowChanges } from "@/lib/row-queue";
 import { patchBase } from "@/lib/row-patch";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";
@@ -259,6 +259,7 @@ import {
   reminderTarget,
   type DateReminder,
 } from "@/lib/date-reminder-options";
+import { recordPart } from "@/lib/record-context-client";
 export type DatabaseData = {
   images?: PageImage[];
   relationPairs?: RelationPair[];
@@ -6761,7 +6762,7 @@ function RelationBacklinks({
   const [links, setLinks] = useState<Backlink[] | null>(null);
   useEffect(() => {
     let active = true;
-    api<Backlink[]>(`/api/pages/${pageId}/rows/${rowId}/backlinks`)
+    recordPart(pageId, rowId, "backlinks", () => api<Backlink[]>(`/api/pages/${pageId}/rows/${rowId}/backlinks`))
       .then((result) => active && setLinks(result))
       .catch(() => active && setLinks([]));
     return () => {

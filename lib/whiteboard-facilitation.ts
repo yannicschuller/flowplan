@@ -19,7 +19,7 @@ import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { signalBoard } from "./whiteboard-presence";
-import { whiteboardItems, whiteboardSnapshotItems, whiteboardSummary } from "./whiteboard";
+import { boardChanged, whiteboardItems, whiteboardSnapshotItems, whiteboardSummary } from "./whiteboard";
 import { PRIVATE_LIMITS, privateItemCount, updateClients } from "./whiteboard-private-mode";
 import {
   deckSchema,
@@ -209,6 +209,7 @@ async function applyToBoard(page: Page, user: Identity, updates: Uint8Array[]) {
         user.id,
       );
     await run("UPDATE whiteboards SET state=?,updated_at=? WHERE page_id=?", Y.encodeStateAsUpdate(doc), nowText(), page.id);
+    boardChanged(page.id);
     await run("UPDATE documents SET html=?,updated_at=? WHERE page_id=?", whiteboardSummary(items), nowText(), page.id);
     await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   } finally {

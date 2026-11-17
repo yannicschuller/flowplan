@@ -27,8 +27,7 @@
 import { all, inTransaction, one, run, sql } from "./db";
 import { db } from "./db-driver";
 import { createTableSql, columnDdl, quoteIdent } from "./db-driver/pg-ddl.mjs";
-import schemaJson from "./db-driver/postgres-schema.json";
-import type { PgSchema } from "./db-driver/pg-schema";
+import { pgSchemaJson } from "./db-driver/pg-schema-file";
 import { extensionSchema } from "./pg-extensions";
 
 type Param = string | number | null;
@@ -68,7 +67,7 @@ const state = (runtime.flowplanSearchStore ??= { trigram: false, changed: 0, sta
 // Returns whether the trigram indexes are there.
 export async function ensureSearchStore(): Promise<boolean> {
   if (sql.name === "sqlite") return false;
-  const table = (schemaJson as unknown as PgSchema).tables.find((t) => t.name === "search_index")!;
+  const table = (pgSchemaJson()).tables.find((t) => t.name === "search_index")!;
   await db.tx(
     async () => {
       await db.exec(createTableSql(table));

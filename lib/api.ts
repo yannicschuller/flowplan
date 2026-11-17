@@ -3042,9 +3042,14 @@ async function runCommand(
       case "thread.reanchor":
       case "thread.edit":
       case "thread.deleteMessage":
-      case "thread.react":
+      case "thread.react": {
         result = await inlineCommentCommand(user, b);
+        // The open editors of the page or record fetch the threads (after the commit).
+        const threadPage = String(b.pageId),
+          threadRow = typeof b.rowId === "string" ? b.rowId : null;
+        afterCommit.push(() => threadsChanged(threadPage, threadRow));
         break;
+      }
       case "comment.react": {
         const p = await requirePage(user, pid());
         // Comments behind a journal PIN not entered stay as they are.
@@ -4193,7 +4198,7 @@ import { createApiToken, revokeApiToken } from "./api-tokens";
 import { deleteWebhook, emitWebhook, mentionWebhook } from "./webhooks";
 import { addSsoMapping, deleteSsoMapping } from "./sso-mappings";
 import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
-import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
+import { documentChanged, documentKey, publishDocumentUpdate, threadsChanged } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { setRowRepeat } from "./repeat-records";

@@ -1,6 +1,6 @@
 "use client";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "../i18n";
 import {
@@ -463,6 +463,13 @@ export default function Whiteboard({
     dirty = useRef(false),
     lastVector = useRef<Uint8Array | null>(null),
     inflight = useRef(false),
+    // The board's live channel (the cursors' event stream) is open: changes
+    // of the others arrive as a "changed" signal, the board asks the server
+    // only then (and after own changes), not every second.
+    boardLive = useRef(false),
+    signaled = useRef(false),
+    lastExchange = useRef(0),
+    syncClient = useRef(""),
     cursor = useRef<(Point & { laser?: boolean; view?: Presence["view"] }) | null | undefined>(undefined),
     lastPointer = useRef<Point | null>(null);
   const viewRef = useRef(view);
@@ -564,6 +571,9 @@ export default function Whiteboard({
     const update = send
       ? sharedUpdate(doc, lastVector.current)
       : null;
+    signaled.current = false;
+    lastExchange.current = Date.now();
+    syncClient.current ||= crypto.randomUUID();
     if (send) {
       dirty.current = false;
       setStatus("Speichern …");
@@ -577,6 +587,9 @@ export default function Whiteboard({
         pageId,
         generation,
         ...(update ? { update: to64(update) } : {}),
+        // Only what this board lacks comes back.
+        vector: to64(vector),
+        client: syncClient.current,
       });
       Y.applyUpdate(doc, from64(result.state), "remote");
       if (send) lastVector.current = vector;
@@ -593,8 +606,17 @@ export default function Whiteboard({
       inflight.current = false;
     }
   }, [doc, editable, generation, onError, onReload, pageId, guest]);
+  // Own changes go out within the tick, others' after their signal; without
+  // the live channel every tick asks, with it a full check every 20 s.
+  const syncNow = useRef(() => {});
+  syncNow.current = () => {
+    if (inflight.current) signaled.current = true;
+    else void sync();
+  };
   useEffect(() => {
-    const timer = setInterval(() => void sync(), 900);
+    const timer = setInterval(() => {
+      if (dirty.current || signaled.current || !boardLive.current || Date.now() - lastExchange.current > 20_000) void sync();
+    }, 900);
     const leave = () => {
       if (!editable || !dirty.current) return;
       const body = JSON.stringify({
@@ -698,9 +720,19 @@ export default function Whiteboard({
       if (!guest) startPolling();
     } else {
       source = new EventSource(guest ? `${shareBoardUrl(guest)}?pageId=${pageId}&client=${guest.clientId}` : `/api/whiteboards/${pageId}/cursors`);
+      source.onopen = () => {
+        // Anything missed while the channel was down: one exchange now.
+        boardLive.current = true;
+        syncNow.current();
+      };
       source.onmessage = (event) => {
         failures = 0;
+        boardLive.current = true;
         const data = JSON.parse(event.data);
+        if (data.type === "changed") {
+          if (data.from !== syncClient.current) syncNow.current();
+          return;
+        }
         if (data.type === "snapshot") {
           others.clear();
           data.cursors.forEach(take);
@@ -710,6 +742,7 @@ export default function Whiteboard({
         publish();
       };
       source.onerror = () => {
+        boardLive.current = false;
         if (++failures >= 3) {
           source?.close();
           if (!guest) startPolling();
@@ -717,6 +750,7 @@ export default function Whiteboard({
       };
     }
     return () => {
+      boardLive.current = false;
       source?.close();
       if (poll) clearInterval(poll);
       if (sendTimer.current) clearTimeout(sendTimer.current);

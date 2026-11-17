@@ -6,7 +6,7 @@
 // FLOWPLAN_SETUP_TOKEN is set) goes along with every request.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckCircle, CloudArrowDown, ShieldCheck, SpinnerGap, UploadSimple } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { RestoreProgress, RestoreResult } from "@/lib/setup-restore";
 import { useT } from "./i18n";

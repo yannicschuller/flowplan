@@ -29,11 +29,12 @@ import {
   sameCommentQuote,
   type CommentBinding,
 } from "./comment-positions";
-import { emojiEntries } from "./emoji-data";
+import english from "emojibase-data/en/data.json";
 import { emojiPresentation } from "./emoji-presentation";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
-const emojis = new Set(emojiEntries.map((e) => e.emoji));
+// The emojis a reaction may be (the picker's, with every skin tone).
+const emojis = new Set((english as { emoji: string; skins?: { emoji: string }[] }[]).flatMap((e) => [e.emoji, ...(e.skins || []).map((s) => s.emoji)]));
 const bodySchema = z.string().trim().min(1).max(5000);
 const versionSchema = z.number().int().positive();
 type StoredThread = Omit<InlineThread, "anchor" | "messages" | "canResolve"> & {

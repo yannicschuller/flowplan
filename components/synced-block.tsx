@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 // A synced block inside a document: the content of its synced page, edited
 // right here with its own live editor. Changes show up on every page that
 // shows the block.

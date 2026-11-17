@@ -22,14 +22,19 @@ export const isPdfName = (name: string) => /\.pdf$/i.test(name.trim());
 
 let library: Promise<typeof import("pdfjs-dist")> | null = null;
 function pdfjs() {
-  library ??= import("pdfjs-dist/legacy/build/pdf.mjs").then((lib) => {
-    lib.GlobalWorkerOptions.workerPort = new Worker(
-      new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url),
-      { type: "module" },
-    );
-    return lib as unknown as typeof import("pdfjs-dist");
-  });
-  return library;
+  // Only in the browser. The server's build drops this branch
+  // (`typeof window` is known there): it would otherwise resolve pdf.js and
+  // its worker against the server's external pdfjs-dist ("can't be
+  // external"), for a render that never loads them.
+  if (typeof window !== "undefined")
+    library ??= import("pdfjs-dist/legacy/build/pdf.mjs").then((lib) => {
+      lib.GlobalWorkerOptions.workerPort = new Worker(
+        new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url),
+        { type: "module" },
+      );
+      return lib as unknown as typeof import("pdfjs-dist");
+    });
+  return library ?? Promise.reject(new Error("pdf.js runs in the browser only."));
 }
 // One loaded document per file, shared by previews and the viewer.
 const documents = new Map<string, Promise<PdfDocument>>();

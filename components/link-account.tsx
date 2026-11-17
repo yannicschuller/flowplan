@@ -5,7 +5,7 @@
 // if the authenticator app is on) or its passkey – and is then signed in
 // with both connected. "Create a separate account instead" only where the
 // instance allows new SSO accounts.
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, LinkSimple, SpinnerGap } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";

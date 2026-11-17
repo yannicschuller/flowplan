@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarBlank, CalendarCheck } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { EmptyState, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
 import { useT } from "./i18n";
 import { api } from "./ui";

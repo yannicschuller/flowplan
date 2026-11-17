@@ -3,7 +3,7 @@
 // still plain, and what leaves the server unencrypted regardless
 // (Litestream replica, Git push).
 import { useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { api } from "./ui";
 import { SaveState, SettingGroup, SettingRow, StatusBadge, useSaveState } from "./settings-ui";

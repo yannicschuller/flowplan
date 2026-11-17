@@ -9,6 +9,7 @@ import { CommentQuote } from "./comment-quote";
 import { pageLocationHash } from "@/lib/page-location";
 import type { Comment } from "@/lib/types";
 import type { InlineThread } from "@/lib/inline-comment-types";
+import { liveOpenFor, THREADS_EVENT, threadsKey } from "@/lib/live-state";
 
 type Item =
   | { kind: "page"; at: string; comment: Comment }
@@ -46,9 +47,24 @@ export function CommentHub({
   }, [pageId, textComments]);
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 5000);
-    return () => clearInterval(timer);
-  }, [load]);
+    // Like the inline threads: by the live channel's signal, else every 5 s.
+    let last = Date.now();
+    const timer = setInterval(() => {
+      if (liveOpenFor(pageId) && Date.now() - last < 60_000) return;
+      last = Date.now();
+      void load();
+    }, 5000);
+    const signal = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== threadsKey(pageId)) return;
+      last = Date.now();
+      void load();
+    };
+    window.addEventListener(THREADS_EVENT, signal);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(THREADS_EVENT, signal);
+    };
+  }, [load, pageId]);
   const items: Item[] = [
     ...comments
       .filter((c) => !c.row_id)

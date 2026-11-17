@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { useState } from "react";
 import { api } from "./ui";

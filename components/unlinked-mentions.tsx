@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
 import { CaretDown, CaretRight, LinkSimple } from "@phosphor-icons/react";
 import { api, PageIcon } from "./ui";
+import { recordPart } from "@/lib/record-context-client";
 
 type Mention = { id: string; rowId?: string; pageTitle?: string; title: string; icon: string; snippet: string; alias?: string };
 
@@ -27,19 +28,21 @@ export function UnlinkedMentions({
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
-  const load = useCallback(async () => {
-    try {
-      setMentions(
-        (await api<{ mentions: Mention[] }>(
-          rowId ? `/api/pages/${pageId}/rows/${rowId}/unlinked` : `/api/pages/${pageId}/unlinked`,
-        )).mentions,
-      );
-    } catch {
-      setMentions([]);
-    }
-  }, [pageId, rowId]);
+  const load = useCallback(
+    async (first = false) => {
+      const own = () =>
+        api<{ mentions: Mention[] }>(rowId ? `/api/pages/${pageId}/rows/${rowId}/unlinked` : `/api/pages/${pageId}/unlinked`);
+      try {
+        // A record's first load comes with the record view's other parts.
+        setMentions((await (first && rowId ? recordPart(pageId, rowId, "unlinked", own) : own())).mentions);
+      } catch {
+        setMentions([]);
+      }
+    },
+    [pageId, rowId],
+  );
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
   if (!mentions.length) return null;
   return (

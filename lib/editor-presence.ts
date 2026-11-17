@@ -125,9 +125,12 @@ export async function editorPresence(
   return {
     // Whether the others should hear about it: a new, moved or removed
     // cursor (a heartbeat with the same position is no news).
+    // A cursor back after its lease ran out (a heartbeat while alone) is
+    // news as well: a newcomer did not see it.
     changed:
       textChanged ||
-      (data.sequence > (previous?.sequence ?? -1) && (previous?.cursor ?? null) !== cursor),
+      (data.sequence > (previous?.sequence ?? -1) &&
+        ((previous?.cursor ?? null) !== cursor || (!!cursor && !!previous && previous.seen <= now - CURSOR_LEASE_MS))),
     key: documentKey(page.id, data.rowId, data.generation),
     clientId: data.clientId,
     peers: [

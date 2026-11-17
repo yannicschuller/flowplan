@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
 import { storedZip } from "@/lib/stored-zip";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { sendImport as send, waitForJob } from "./import-client";
 import { Select } from "./select";

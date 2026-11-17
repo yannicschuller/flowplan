@@ -4,7 +4,7 @@
 // sync.ts). Personal: everyone maps their own calendar.
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import type { Field, View } from "@/lib/types";
 import { providerName, syncedAt, type CalendarSyncStatus } from "./calendar-connections";
 import { useT } from "./i18n";

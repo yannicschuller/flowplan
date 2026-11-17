@@ -40,7 +40,7 @@ const state = (): State =>
 // test), at most `parallel` running runs per workflow.
 export async function claimSteps(limit: number, now = Date.now()): Promise<StepRow[]> {
   if (limit < 1) return [];
-  const parallel = (await workflowLimits()).parallelRuns;
+  const parallel = (await workflowLimits({ cached: true })).parallelRuns;
   const token = randomUUID();
   const lock = sql.name === "postgres" ? " FOR UPDATE OF s SKIP LOCKED" : "";
   const rows = await all<StepRow>(
@@ -91,6 +91,26 @@ export async function releaseLeases() {
   return (await run("UPDATE workflow_steps SET status='queued',lease_token=NULL,lease_until=0,claimed_by=NULL WHERE status='running' AND claimed_by=?", instanceId())).changes;
 }
 
+// Whether anything is due: an undispatched event or a queued or waiting
+// step. One indexed lookup each – an instance without workflows asks
+// nothing more.
+export async function workDue(now = Date.now()) {
+  const row = await one<{ n: number }>(
+    "SELECT (SELECT COUNT(*) FROM (SELECT 1 FROM workflow_events WHERE dispatched_at IS NULL AND due_at<=? AND lease_until<=? LIMIT 1) e) + (SELECT COUNT(*) FROM (SELECT 1 FROM workflow_steps WHERE status IN ('queued','waiting') AND due_at<=? LIMIT 1) s) n",
+    now,
+    now,
+    now,
+  );
+  return Number(row?.n || 0) > 0;
+}
+// The next round of the queue in a macrotask of its own: on SQLite every
+// statement settles at once, so rounds that keep finding work (a backlog,
+// steps that complete at once and queue their successors) would otherwise
+// run in one chain of microtasks and never give the event loop back.
+const yieldLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+// Rounds of one pump before it hands over to the next wake.
+const MAX_ROUNDS = 100;
+
 async function pump() {
   const s = state();
   if (s.stopping) return;
@@ -99,14 +119,20 @@ async function pump() {
     return;
   }
   s.pumping = true;
+  s.again = false;
+  let rounds = 0;
   try {
     // Not while the instance moves (lib/instance-read-only.ts): the steps
     // stay queued for the new instance.
     if (await workersPaused()) return;
-    do {
+    // Nothing due: only the timer on what comes later.
+    if (await workDue())
+      do {
       s.again = false;
+      if (rounds++) await yieldLoop();
+      if (s.stopping) break;
       await dispatchEvents();
-      const workers = (await workflowLimits()).workers;
+      const workers = (await workflowLimits({ cached: true })).workers;
       const free = workers - s.active;
       if (free <= 0) break;
       const steps = await claimSteps(free);
@@ -122,11 +148,17 @@ async function pump() {
         s.running.add(p);
       }
       if (steps.length === free) s.again = true;
-    } while (s.again && !s.stopping);
+    } while (s.again && !s.stopping && rounds < MAX_ROUNDS);
   } catch (error) {
     console.error("Workflow queue", error);
   } finally {
     s.pumping = false;
+  }
+  // Still work after MAX_ROUNDS (or woken meanwhile): a new pump later.
+  if (s.again && !s.stopping) {
+    s.again = false;
+    setTimeout(() => void pump(), 0).unref?.();
+    return;
   }
   await armTimer();
 }

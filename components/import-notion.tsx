@@ -8,7 +8,7 @@
 // cleared then; the server keeps it only while the job runs.
 import { useState } from "react";
 import { Database, FileText } from "@phosphor-icons/react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 
 type Item = { id: string; title: string; kind: "page" | "database"; icon?: string };

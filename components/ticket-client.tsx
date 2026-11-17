@@ -1,7 +1,7 @@
 "use client";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useState } from "react";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import type { customerTicket } from "@/lib/service-desk";
 

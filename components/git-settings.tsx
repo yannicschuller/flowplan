@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ChatCircleText, Copy, GitBranch } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { ISSUE_PROVIDER_NAMES, type IssueProvider as Provider } from "./issue-provider";
 import { Select } from "./select";

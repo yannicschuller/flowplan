@@ -3,7 +3,7 @@
 // administrator (instance setting `workflowLimits`) take precedence; a
 // workflow may set lower values for itself, never higher ones.
 import { z } from "zod";
-import { all } from "../db";
+import { all, writeGeneration } from "../db";
 
 const LIMITS = {
   runsPerMinute: { env: "FLOWPLAN_WORKFLOW_RUNS_PER_MINUTE", fallback: 60, min: 1, max: 1000 },
@@ -72,12 +72,23 @@ export async function storedWorkflowLimits(): Promise<StoredWorkflowLimits> {
     return {};
   }
 }
-// The limits in force: stored values over the environment's.
-export async function workflowLimits(): Promise<WorkflowLimits> {
+// The limits in force: stored values over the environment's. `cached`: the
+// queue's hot path (lib/workflows/queue.ts) takes the value of the last
+// CACHE_MS as long as nothing was written through this process (a write
+// moves writeGeneration(); another instance's change shows after CACHE_MS).
+// Reading the environment and the setting on every round of the queue cost
+// more than the round itself.
+const CACHE_MS = 2_000;
+const cache = globalThis as { flowplanWorkflowLimits?: { at: number; generation: number; value: WorkflowLimits } };
+export async function workflowLimits(options: { cached?: boolean } = {}): Promise<WorkflowLimits> {
+  const hit = cache.flowplanWorkflowLimits;
+  if (options.cached && hit && hit.generation === writeGeneration() && performance.now() - hit.at < CACHE_MS) return hit.value;
+  const generation = writeGeneration();
   const base = envLimits();
   const stored = await storedWorkflowLimits();
   const out = { ...base } as Record<string, unknown>;
   for (const [k, v] of Object.entries(stored)) if (v !== null && v !== undefined) out[k] = v;
+  cache.flowplanWorkflowLimits = { at: performance.now(), generation, value: out as WorkflowLimits };
   return out as WorkflowLimits;
 }
 // A workflow's own lower value, never a higher one.

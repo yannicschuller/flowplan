@@ -1,5 +1,5 @@
 "use client";
-import { serverMessage } from "@/lib/i18n-errors";
+import { serverMessage } from "@/lib/server-message";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf } from "@/lib/idempotency-key";
 import {
   classifyError,
@@ -580,6 +580,28 @@ async function stillProcessing(r: Response) {
     return false;
   }
 }
+// Answers kept for conditional requests (apiIfChanged): the last few URLs.
+const tagged = new Map<string, { tag: string; data: unknown }>();
+// A GET the app repeats (the 10 s refresh): with the ETag of the last
+// answer; an unchanged one (304) returns the very same object, so state
+// set from it does not change and nothing renders again.
+export async function apiIfChanged<T = Record<string, unknown>>(url: string, headers: Record<string, string> = {}): Promise<T> {
+  const known = tagged.get(url);
+  if (heldBySession(url)) throw new ApiError(signedOutMessage(), 401);
+  const r = await fetch(url, { cache: "no-store", headers: { ...headers, ...(known ? { "If-None-Match": known.tag } : {}) } });
+  if (r.status === 304 && known) {
+    noticeBuild(r.headers);
+    return known.data as T;
+  }
+  const data = await readAnswer<T>(r, url, undefined);
+  const tag = r.headers.get("ETag");
+  tagged.delete(url);
+  if (tag) {
+    tagged.set(url, { tag, data });
+    for (const key of tagged.keys()) if (tagged.size > 6) tagged.delete(key);
+  }
+  return data;
+}
 export async function api<T = Record<string, unknown>>(
   url: string,
   body?: unknown,
@@ -602,6 +624,9 @@ export async function api<T = Record<string, unknown>>(
     await new Promise((done) => setTimeout(done, wait * 1000));
     r = await fetch(url, init);
   }
+  return await readAnswer<T>(r, url, body);
+}
+async function readAnswer<T>(r: Response, url: string, body: unknown): Promise<T> {
   // The server may run a newer build than this page (#182, lib/stale-copy.ts).
   noticeBuild(r.headers);
   let data;

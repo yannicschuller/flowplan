@@ -26,7 +26,7 @@ import { clusterMode } from "./cluster/config";
 // the next start (see instance-restore-apply.ts).
 export const INSTANCE_FORMAT = "flowplan-instance-1";
 export const INSTANCE_ARCHIVE_LIMIT = 50 * 1024 * 1024 * 1024;
-const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
+const dataDir = () => resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data");
 const UPLOAD = /^uploads\/[A-Za-z0-9_-]{1,100}$/;
 
 export async function instanceBackupStream() {

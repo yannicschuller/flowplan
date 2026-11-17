@@ -1,5 +1,6 @@
 import katex from "katex";
-export const MAX_MATH_LENGTH = 10000;
+import { MAX_MATH_LENGTH } from "./math-render-lazy";
+export { MAX_MATH_LENGTH };
 const options = {
   trust: false,
   maxExpand: 1000,
