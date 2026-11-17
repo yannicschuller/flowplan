@@ -1,101 +1,110 @@
+// pdf.js for the file texts (lib/file-text.ts) in a worker thread
+// (lib/workers/pdf-worker.mjs): parsing a long PDF (2.7 s for 150 pages),
+// decoding a scan's images and compressing them as PNG held the event loop
+// – every request of the server waited. One worker per process (cluster
+// instances and the single container alike), started on first use and
+// ended after a minute without work; a job that runs over its time ends
+// the worker with it. Should no worker start (a missing file in an
+// unusual build), the work runs here as before.
+import { Worker } from "node:worker_threads";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
 export const MAX_PDF_TEXT = 100000;
-const MAX_PAGES = 200;
+const IDLE_MS = 60_000;
+const JOB_MS = 120_000;
 
-// Extracts the visible text layer of a PDF (no OCR). XFA forms, font
-// loading and system fonts stay off; the result is capped for the index.
-export async function pdfText(data: Uint8Array) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const task = pdfjs.getDocument({
-    data: new Uint8Array(data),
-    disableFontFace: true,
-    useSystemFonts: false,
-    stopAtErrors: false,
-    enableXfa: false,
-    verbosity: 0,
-  });
+type Job = { id: number; kind: "text" | "scan"; data: Uint8Array; maxPages?: number };
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
+type Pool = { worker: Worker | null; pending: Map<number, Pending>; next: number; idle: ReturnType<typeof setTimeout> | null; broken: boolean };
+const holder = globalThis as { flowplanPdfPool?: Pool };
+const pool = (): Pool => (holder.flowplanPdfPool ??= { worker: null, pending: new Map(), next: 1, idle: null, broken: false });
+
+// The worker scripts are plain JavaScript next to the sources (copied into
+// the standalone build by next.config.ts), found from the working directory.
+export const workerDir = () => join(/*turbopackIgnore: true*/ process.cwd(), "lib", "workers");
+
+function failAll(p: Pool, error: Error) {
+  for (const job of p.pending.values()) {
+    clearTimeout(job.timer);
+    job.reject(error);
+  }
+  p.pending.clear();
+}
+function stop(p: Pool) {
+  const worker = p.worker;
+  p.worker = null;
+  if (p.idle) clearTimeout(p.idle);
+  p.idle = null;
+  void worker?.terminate().catch(() => {});
+}
+function started(p: Pool): Worker | null {
+  if (p.worker) return p.worker;
+  const script = join(workerDir(), "pdf-worker.mjs");
+  if (p.broken || !existsSync(script)) return null;
   try {
-    const doc = await task.promise;
-    const parts: string[] = [];
-    let length = 0;
-    for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGES); n++) {
-      const page = await doc.getPage(n);
-      const content = await page.getTextContent();
-      const text = content.items
-        .map((item) =>
-          "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "",
-        )
-        .join("")
-        .replace(/[ \t]+/g, " ")
-        .trim();
-      page.cleanup();
-      if (text) {
-        parts.push(text);
-        length += text.length;
+    const worker = new Worker(script);
+    worker.unref();
+    worker.on("message", (message: { id: number; value?: unknown; error?: string }) => {
+      const job = p.pending.get(message.id);
+      if (!job) return;
+      p.pending.delete(message.id);
+      clearTimeout(job.timer);
+      if (message.error !== undefined) job.reject(new Error(message.error));
+      else job.resolve(message.value);
+      if (!p.pending.size) {
+        if (p.idle) clearTimeout(p.idle);
+        p.idle = setTimeout(() => stop(p), IDLE_MS);
+        p.idle.unref?.();
       }
-      if (length >= MAX_PDF_TEXT) break;
-    }
-    return parts.join("\n").slice(0, MAX_PDF_TEXT);
-  } finally {
-    await task.destroy();
+    });
+    worker.on("error", (error) => {
+      if (p.worker === worker) p.worker = null;
+      failAll(p, error instanceof Error ? error : new Error(String(error)));
+    });
+    worker.on("exit", () => {
+      if (p.worker === worker) p.worker = null;
+      failAll(p, new Error("Der PDF-Worker wurde beendet."));
+    });
+    p.worker = worker;
+    return worker;
+  } catch {
+    p.broken = true;
+    return null;
   }
 }
+async function inWorker<T>(job: Omit<Job, "id">, here: () => Promise<T>): Promise<T> {
+  const p = pool();
+  const worker = started(p);
+  if (!worker) return await here();
+  if (p.idle) clearTimeout(p.idle);
+  p.idle = null;
+  const id = p.next++;
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      // Over its time: the worker goes with it (and its other jobs fail, as a timeout would).
+      p.pending.delete(id);
+      reject(new Error("Zeitüberschreitung beim Lesen der PDF-Datei."));
+      stop(p);
+      failAll(p, new Error("Zeitüberschreitung beim Lesen der PDF-Datei."));
+    }, JOB_MS);
+    timer.unref?.();
+    p.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
+    worker.postMessage({ ...job, id });
+  });
+}
+type Core = { pdfText: (data: Uint8Array) => Promise<string>; pdfScanImages: (data: Uint8Array, maxPages?: number) => Promise<Buffer[]> };
+const core = async () => (await import(/*turbopackIgnore: true*/ pathToFileURL(join(workerDir(), "pdf-core.mjs")).href)) as Core;
 
+// The visible text layer of a PDF (no OCR), capped for the index.
+export async function pdfText(data: Uint8Array): Promise<string> {
+  return await inWorker({ kind: "text", data }, async () => (await core()).pdfText(data));
+}
 // Images of PDF pages without a text layer (scans), as PNG for OCR.
-export async function pdfScanImages(data: Uint8Array, maxPages = 20) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const { encodePng } = await import("./ocr");
-  const task = pdfjs.getDocument({
-    data: new Uint8Array(data),
-    disableFontFace: true,
-    useSystemFonts: false,
-    stopAtErrors: false,
-    enableXfa: false,
-    isOffscreenCanvasSupported: false,
-    verbosity: 0,
-  });
-  const images: Buffer[] = [];
-  try {
-    const doc = await task.promise;
-    for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
-      const page = await doc.getPage(n);
-      const text = await page.getTextContent();
-      if (text.items.some((item) => "str" in item && item.str.trim())) continue;
-      const ops = await page.getOperatorList();
-      for (let i = 0; i < ops.fnArray.length; i++) {
-        if (ops.fnArray[i] !== pdfjs.OPS.paintImageXObject) continue;
-        const id = ops.argsArray[i][0] as string;
-        const image = await new Promise<{
-          width: number;
-          height: number;
-          kind: number;
-          data?: Uint8ClampedArray;
-        } | null>((done) => {
-          try {
-            page.objs.get(id, done);
-          } catch {
-            done(null);
-          }
-        });
-        if (!image?.data || image.width < 50 || image.height < 20) continue;
-        let pixels: Uint8Array | Uint8ClampedArray = image.data;
-        // 1 bit per pixel greyscale, rows padded to whole bytes.
-        if (image.kind === 1) {
-          const grey = new Uint8Array(image.width * image.height);
-          const row = Math.ceil(image.width / 8);
-          for (let y = 0; y < image.height; y++)
-            for (let x = 0; x < image.width; x++)
-              grey[y * image.width + x] =
-                image.data[y * row + (x >> 3)] & (128 >> (x & 7)) ? 255 : 0;
-          pixels = grey;
-        }
-        try {
-          images.push(encodePng(image.width, image.height, pixels));
-        } catch {}
-      }
-      page.cleanup();
-    }
-    return images;
-  } finally {
-    await task.destroy();
-  }
+export async function pdfScanImages(data: Uint8Array, maxPages = 20): Promise<Buffer[]> {
+  const images = await inWorker<Uint8Array[]>({ kind: "scan", data, maxPages }, async () => (await core()).pdfScanImages(data, maxPages));
+  return images.map((image) => (Buffer.isBuffer(image) ? image : Buffer.from(image.buffer, image.byteOffset, image.byteLength)));
 }
+// Tests: how many jobs wait and whether a worker runs.
+export const pdfPoolState = () => ({ running: !!pool().worker, pending: pool().pending.size });

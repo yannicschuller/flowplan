@@ -81,6 +81,8 @@ const config: NextConfig = {
   outputFileTracingIncludes: {
     "/*": [
       "./node_modules/pdfjs-dist/legacy/build/*.mjs",
+      // Its worker thread (lib/pdf-text.ts), plain JavaScript run as it is.
+      "./lib/workers/*.mjs",
       // OCR: worker script, WebAssembly core and bundled language data.
       "./node_modules/tesseract.js/src/**/*",
       // Only the LSTM cores (lib/ocr.ts asks for OEM 1) as .js and .wasm;
