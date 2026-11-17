@@ -7082,11 +7082,11 @@ export default function WorkspaceApp({
             ...(meta ? { meta } : {}),
           });
           if (!r) return false;
-          // Follow the page into the other workspace.
-          if (workspaceId !== boot.workspace.id && moved) {
-            await switchWorkspace(workspaceId);
-            await openPage(moved);
-          }
+          // Follow the page into the other workspace. The move is done, so
+          // the dialog closes now; switching and loading the page show their
+          // own progress (and report their own errors) behind it.
+          if (workspaceId !== boot.workspace.id && moved)
+            void switchWorkspace(workspaceId).then(() => openPage(moved));
           return true;
         }}
       />

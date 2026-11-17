@@ -91,6 +91,8 @@ export function MovePageDialog({
     (p) => p.space_id === spaceId && !p.deleted_at && !excluded.has(p.id) && !p.journal_date,
   );
   const targetName = place?.spaces.find((s) => s.id === spaceId)?.name ?? "";
+  // A space of the chosen workspace (its spaces may still be loading).
+  const spaceReady = !!place?.spaces.some((s) => s.id === spaceId && !s.deleted_at);
   const parentDatabase = parents.find((p) => p.id === parentId && p.kind === "database");
   useEffect(() => {
     setRecords(null);
@@ -142,7 +144,22 @@ export function MovePageDialog({
         {writable.length > 1 && (
           <label>
             {t("Arbeitsbereich", "Workspace")}
-            <Select value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)}>
+            <Select
+              value={workspaceId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setWorkspaceId(id);
+                // The space and parent belong to the workspace: another
+                // workspace's come with its spaces (the effect above); until
+                // then nothing is chosen, so "Verschieben" cannot send the
+                // page into its old space while the app follows it into the
+                // new workspace.
+                const back = id === currentWorkspace;
+                setSpaceId(back ? page?.space_id || "" : "");
+                setParentId(back ? page?.parent_id || "" : "");
+                setRowId(back ? page?.parent_row_id || "" : "");
+              }}
+            >
               {writable.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name}
@@ -213,7 +230,7 @@ export function MovePageDialog({
           </button>
           <button
             className="button primary"
-            disabled={busy || !spaceId || !page}
+            disabled={busy || !spaceReady || !page}
             onClick={async () => {
               if (!page) return;
               // Into another space: first what the destination lacks (#136).
