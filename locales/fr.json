@@ -30,7 +30,7 @@
   " ({0} years)": " ({0} ans)",
   " (1 of {0} conflicts)": " (1 conflit sur {0})",
   " (active)": " (actif)",
-  " (container limit)": "",
+  " (container limit)": "(limite de conteneurs)",
   " (machine)": "",
   " (with {0} condition{1})": " (avec {0} condition{1})",
   " {0} changes could not be applied.": " {0} modifications n’ont pas pu être appliquées.",
