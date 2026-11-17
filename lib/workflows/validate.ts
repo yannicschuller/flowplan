@@ -15,7 +15,7 @@ import { hasPlaceholders } from "./placeholders";
 import { databaseFields } from "./nodes/data";
 import { behindJournalPin } from "./runner";
 import { AI_TYPES, fixedHost } from "./catalog";
-import { untrustedOrigin, untrustedTargetIssues } from "./provenance";
+import { dynamicMailEntry, untrustedOrigin, untrustedTargetIssues } from "./provenance";
 import { workflowLimits } from "./limits";
 import { resolveAi } from "../ai/resolve";
 import { workflowChatHooks } from "../webhooks";
@@ -192,6 +192,9 @@ async function waveTwoChecks(graph: WorkflowGraph, ctx: { workspaceId: string; r
     }
     if (n.type === "notify.email" && !limits.externalMail && ((c.to as string[]) || []).some((t) => typeof t === "string" && t.includes("@")))
       issues.push({ level: "warning", code: "external_mail_off", nodeId: n.id });
+    // Addresses from placeholders reach members only, unless the instance allows more.
+    if (n.type === "notify.email" && limits.externalMail && !limits.externalMailDynamic && ((c.to as unknown[]) || []).some(dynamicMailEntry))
+      issues.push({ level: "warning", code: "external_mail_dynamic_off", nodeId: n.id });
     if (n.type === "trigger.webhook" && c.mode === "token") issues.push({ level: "warning", code: "token_webhook", nodeId: n.id });
     if (n.type === "trigger.mail.received") {
       const address = await one<{ page_id: string; workspace_id: string }>("SELECT page_id,workspace_id FROM inbound_addresses WHERE id=?", String(c.address || ""));

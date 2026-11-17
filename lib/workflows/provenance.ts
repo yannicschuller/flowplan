@@ -158,6 +158,14 @@ export function untrustedTargetIssues(graph: WorkflowGraph): GraphIssue[] {
   }
   return issues;
 }
+// An e-mail recipient entry whose address is not written in the node: a
+// placeholder or a property of the triggering record (the instance switch
+// `externalMailDynamic`, lib/workflows/limits.ts, ./nodes/notify.ts).
+export const dynamicMailEntry = (entry: unknown) => typeof entry === "string" && (entry.includes("{{") || entry.startsWith("field:"));
+// Whether a graph mails addresses that are not written in it.
+export const mailsDynamically = (graph: { nodes: { type: string; disabled?: boolean; config: Record<string, unknown> }[] }) =>
+  graph.nodes.some((n) => n.type === "notify.email" && !n.disabled && ((n.config.to as unknown[]) || []).some(dynamicMailEntry));
+
 // Whether a graph lets outside data choose recipients or targets – the
 // active version of a workflow activated before the check knew it keeps
 // running, marked with this (lib/workflows/store.ts workflowState).

@@ -59,6 +59,8 @@ const other = await server(() => ({}));
 let flaky = 0;
 const api = await server((req): { status?: number; headers?: Record<string, string>; body?: string } => {
   if (req.url?.startsWith("/redirect")) return { status: 302, headers: { location: `http://localhost:${other.port}/landed` }, body: "" };
+  if (req.url?.startsWith("/r307")) return { status: 307, headers: { location: `http://localhost:${other.port}/landed307` }, body: "" };
+  if (req.url?.startsWith("/same307")) return { status: 307, headers: { location: "/kept" }, body: "" };
   if (req.url?.startsWith("/flaky")) return flaky++ === 0 ? { status: 503, headers: { "retry-after": "1" }, body: "busy" } : {};
   if (req.url?.startsWith("/missing")) return { status: 404, body: "nope" };
   if (req.url?.startsWith("/cookie")) return { headers: { "set-cookie": "s=1", "x-request-id": "r1" } };
@@ -511,8 +513,28 @@ test("inbound e-mail: an unsigned HTTP delivery's verdict is not trusted; “ver
 test("notify.email: members and addresses, escaped HTML, at most N a day, outside addresses behind the switch", async () => {
   const t = node("trigger.manual", { inputs: [{ name: "to", type: "text", required: false }] }, "Start");
   const send = node("notify.email", { to: [editor.id, `{{${t.id}.inputs.to}}`], subject: "Hallo\r\nBcc: x@evil.example", message: "<b>fett</b>\n\nzweiter Absatz" }, "Mail");
-  const { pageId } = await workflow("Mail out", chain(t, send));
-  await act({ action: "admin.workflowLimits", limits: { mailsPerDay: 3 } }, admin);
+  const { pageId, issues } = await workflow("Mail out", chain(t, send));
+  // The address comes from a placeholder: outside only with the instance's second switch.
+  assert.ok(issues.some((i) => i.code === "external_mail_dynamic_off" && i.level === "warning"));
+  const td = node("trigger.manual", { inputs: [{ name: "to", type: "text", required: false }] }, "Start");
+  const { pageId: dynamicId } = await workflow("Mail dynamisch", chain(td, node("notify.email", { to: [`{{${td.id}.inputs.to}}`], subject: "Dynamisch", message: "m" }, "Mail")));
+  await manual(dynamicId, { to: "kunde@outside.example" });
+  await drainWorkflows();
+  assert.equal((await lastRun(dynamicId)).error_kind, "permission");
+  assert.match((await lastRun(dynamicId)).error || "", /aus Platzhaltern oder Eigenschaften/);
+  // To a member it goes, and an outside address written in the node too.
+  await manual(dynamicId, { to: "viewer@test.invalid" });
+  await drainWorkflows();
+  assert.equal((await lastRun(dynamicId)).status, "succeeded");
+  const fixed = node("notify.email", { to: ["fest@outside.example"], subject: "Fest", message: "m" }, "Fest");
+  const t2 = node("trigger.manual", {}, "Start");
+  const { pageId: fixedId, issues: fixedIssues } = await workflow("Mail fest", chain(t2, fixed));
+  assert.ok(!fixedIssues.some((i) => i.code === "external_mail_dynamic_off"));
+  await manual(fixedId);
+  await drainWorkflows();
+  assert.equal((await lastRun(fixedId)).status, "succeeded");
+  assert.ok(await one("SELECT 1 FROM mail_queue WHERE recipient='fest@outside.example'"));
+  await act({ action: "admin.workflowLimits", limits: { mailsPerDay: 3, externalMailDynamic: true } }, admin);
   try {
     await manual(pageId, { to: "kunde@outside.example" });
     await drainWorkflows();
@@ -539,8 +561,97 @@ test("notify.email: members and addresses, escaped HTML, at most N a day, outsid
     await drainWorkflows();
     assert.equal((await lastRun(pageId)).status, "succeeded", "members' addresses are not outside");
   } finally {
-    await act({ action: "admin.workflowLimits", limits: { externalMail: null } }, admin);
+    await act({ action: "admin.workflowLimits", limits: { externalMail: null, externalMailDynamic: null } }, admin);
   }
+});
+
+test("update to 0.9.9: an instance whose active workflows mail addresses from placeholders keeps that, and the administration says which", async () => {
+  const { runDataSteps, WORKFLOW_DYNAMIC_MAIL_STEP } = await import("../lib/data-steps");
+  const { adminWorkflows } = await import("../lib/workflows/commands");
+  const rerun = async () => {
+    await run("DELETE FROM data_migrations WHERE name=?", WORKFLOW_DYNAMIC_MAIL_STEP);
+    await runDataSteps([WORKFLOW_DYNAMIC_MAIL_STEP]);
+  };
+  await act({ action: "admin.workflowLimits", limits: { externalMailDynamic: null } }, admin);
+  // Only the earlier tests' workflows that mail from placeholders count (the "Mail out" above).
+  const t = node("trigger.manual", { inputs: [{ name: "to", type: "text", required: false }] }, "Start");
+  const { pageId } = await workflow("Mail aus Formular", chain(t, node("notify.email", { to: [`{{${t.id}.inputs.to}}`], subject: "s", message: "m" }, "Mail")));
+  await rerun();
+  const answer = await adminWorkflows(admin);
+  assert.equal(answer.limits.externalMailDynamic, true);
+  assert.equal((answer.stored as Record<string, unknown>).externalMailDynamic, true);
+  assert.ok(answer.mailMigration!.workflows.some((w) => w.pageId === pageId));
+  // The administrator decides: the note goes, the decision stays.
+  await act({ action: "admin.workflowLimits", limits: { externalMailDynamic: false } }, admin);
+  assert.equal((await adminWorkflows(admin)).mailMigration, null);
+  await rerun();
+  assert.equal((await adminWorkflows(admin)).limits.externalMailDynamic, false, "a decision is never overwritten");
+  // The environment decides too.
+  await act({ action: "admin.workflowLimits", limits: { externalMailDynamic: null } }, admin);
+  process.env.FLOWPLAN_WORKFLOW_EXTERNAL_MAIL_DYNAMIC = "off";
+  try {
+    await rerun();
+    assert.equal((await adminWorkflows(admin)).limits.externalMailDynamic, false);
+    assert.equal((await adminWorkflows(admin)).mailMigration, null);
+  } finally {
+    delete process.env.FLOWPLAN_WORKFLOW_EXTERNAL_MAIL_DYNAMIC;
+  }
+  // Paused workflows count, drafts and fixed addresses do not.
+  await act({ action: "workflow.pause", pageId });
+  await rerun();
+  assert.equal((await adminWorkflows(admin)).limits.externalMailDynamic, true);
+  await act({ action: "admin.workflowLimits", limits: { externalMailDynamic: null } }, admin);
+});
+
+test("http: redirects – 307/308 keep the body only on the node's own origin; its headers never go to another host", async () => {
+  const { redirectHop } = await import("../lib/safe-fetch");
+  const a = new URL("https://api.example.com/x"),
+    same = new URL("https://api.example.com/y"),
+    elsewhere = new URL("https://evil.example/z");
+  assert.deepEqual(redirectHop(307, a, same, "POST", "{}"), { method: "POST", body: "{}", sameOrigin: true });
+  assert.deepEqual(redirectHop(308, a, elsewhere, "PUT", "{}"), { method: "PUT", body: "", sameOrigin: false });
+  assert.deepEqual(redirectHop(303, a, same, "POST", "{}"), { method: "GET", body: "", sameOrigin: true });
+  assert.deepEqual(redirectHop(302, a, elsewhere, "POST", "{}"), { method: "GET", body: "", sameOrigin: false });
+  assert.deepEqual(redirectHop(301, a, elsewhere, "GET", ""), { method: "GET", body: "", sameOrigin: false });
+  // Another scheme or port is another origin.
+  assert.equal(redirectHop(307, a, new URL("https://api.example.com:8443/y"), "POST", "{}").body, "");
+  // End to end: a POST with a body and an own header, redirected with 307.
+  const body = `{"secret": "{{$trigger.inputs.id}}"}`;
+  const { pageId, t, h } = await httpWorkflow("HTTP 307", { method: "POST", url: `${api.base}/r307`, bodyKind: "json", body, headers: [{ name: "X-Api-Key", value: "k-123" }] });
+  await act({ action: "workflow.draft", pageId, graph: chain(t, { ...h, config: { ...h.config, url: `${api.base}/r307` } }) });
+  await activate(pageId);
+  const before = other.seen.length;
+  await manual(pageId, { id: "s3cr3t" });
+  await drainWorkflows();
+  const landed = other.seen.slice(before).find((s) => s.url === "/landed307")!;
+  assert.ok(landed, "followed");
+  assert.equal(landed.method, "POST");
+  assert.equal(landed.body, "");
+  assert.equal(landed.headers["x-api-key"], undefined);
+  // On its own origin the body and the header stay.
+  await act({ action: "workflow.draft", pageId, graph: chain(t, { ...h, config: { ...h.config, url: `${api.base}/same307` } }) });
+  await activate(pageId);
+  const mark = api.seen.length;
+  await manual(pageId, { id: "s3cr3t" });
+  await drainWorkflows();
+  const kept = api.seen.slice(mark).find((s) => s.url === "/kept")!;
+  assert.deepEqual(JSON.parse(kept.body), { secret: "s3cr3t" });
+  assert.equal(kept.headers["x-api-key"], "k-123");
+});
+
+test("http: only hosts written in the version's HTTP nodes – a value filled in later adds none", async () => {
+  const { pinnedHosts } = await import("../lib/workflows/nodes/http");
+  const graph = { nodes: [{ type: "http.request", config: { url: "https://API.example.com:443/a/{{x}}" } }, { type: "http.request", config: { url: "https://{{host}}/b" } }, { type: "notify.email", config: {} }] } as never;
+  assert.deepEqual([...pinnedHosts(graph)], ["api.example.com"]);
+  // A placeholder right after the host is no fixed host: the check refuses it before it runs.
+  const t = node("trigger.manual", { inputs: [{ name: "id", type: "text", required: false }] }, "Start");
+  const h = node("http.request", { method: "GET", url: `${api.base}{{${t.id}.inputs.id}}/x` }, "Anfrage");
+  const { issues } = await workflow("HTTP host", chain(t, h), owner, false);
+  assert.ok(issues.some((i) => i.code === "http_host" && i.level === "error"));
+  // At run time the host must be one of the version's: a graph that names another is refused.
+  const { httpRequest } = await import("../lib/workflows/nodes/http");
+  const ctx = { config: { method: "GET", url: "https://api.example.com/x", query: [], headers: [], bodyKind: "none", body: "", credential: "", timeoutSeconds: 5, failOnStatus: true, runInDry: false }, scope: { values: {} }, graph: { nodes: [{ type: "http.request", config: { url: "https://other.example/x" } }] }, run: { id: "r", pageId: "p", workspaceId: wid, mode: "live", depth: 0 }, node: { id: "n" }, iteration: "" };
+  await assert.rejects(httpRequest(ctx as never), /steht in keinem HTTP-Knoten/);
 });
 
 test("notify.chat: only webhooks an owner released for workflows; delivered as workflow.message", async () => {

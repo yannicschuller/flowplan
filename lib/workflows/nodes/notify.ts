@@ -121,16 +121,22 @@ export const hasRecipients = (to: unknown) => Array.isArray(to) && to.some((v) =
 
 const ADDRESS = /^[^\s@<>",;:()[\]\\]+@[^\s@<>",;:()[\]\\]+\.[^\s@<>",;:()[\]\\]+$/;
 const day = () => new Date().toISOString().slice(0, 10);
+
 // Recipients of an e-mail: people (their address, only members) and
 // addresses (also from placeholders: a person value, a text with "@").
+// `external`: addresses no member has; `dynamic`: those of them that came
+// from a placeholder or a property, not written in the node.
 export async function mailRecipients(ctx: NodeRun, to: string[]) {
   const trigger = ctx.scope.values[ctx.run.triggerNodeId] as { record?: { fields?: Record<string, unknown>; createdBy?: { id: string } } } | undefined;
   const people = new Set<string>();
   const addresses = new Set<string>();
-  const take = (v: unknown) => {
+  const literal = new Set<string>();
+  const take = (v: unknown, written = false) => {
     for (const x of Array.isArray(v) ? v : [v]) {
-      if (typeof x === "string" && x.includes("@")) addresses.add(x.trim().toLowerCase());
-      else if (x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string") people.add((x as { id: string }).id);
+      if (typeof x === "string" && x.includes("@")) {
+        addresses.add(x.trim().toLowerCase());
+        if (written) literal.add(x.trim().toLowerCase());
+      } else if (x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string") people.add((x as { id: string }).id);
       else if (typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x.trim())) people.add(x.trim());
     }
   };
@@ -140,7 +146,7 @@ export async function mailRecipients(ctx: NodeRun, to: string[]) {
     else if (entry === "@creator") trigger?.record?.createdBy?.id && people.add(trigger.record.createdBy.id);
     else if (entry.startsWith("field:")) take(trigger?.record?.fields?.[entry.slice(6)]);
     else if (entry.includes("{{")) take(renderValue(entry, ctx.scope));
-    else take(entry.trim());
+    else take(entry.trim(), true);
   }
   const members = new Map<string, string>();
   for (const uid of people) {
@@ -153,16 +159,20 @@ export async function mailRecipients(ctx: NodeRun, to: string[]) {
   const external: string[] = [];
   for (const a of list)
     if (!members.has(a) && !(await one("SELECT 1 FROM users u JOIN members m ON m.user_id=u.id AND m.workspace_id=? WHERE lower(u.email)=?", ctx.run.workspaceId, a))) external.push(a);
-  return { list, external };
+  return { list, external, dynamic: external.filter((a) => !literal.has(a)) };
 }
+export const DYNAMIC_MAIL_OFF = "E-Mails an Adressen außerhalb der Mitglieder, die aus Platzhaltern oder Eigenschaften kommen, sind auf dieser Instanz abgeschaltet – nur im Knoten eingetragene Adressen.";
 
 export const notifyEmail: NodeImpl = async (ctx) => {
   const c = ctx.config as { to: string[]; subject: string; message: string };
   const limits = await workflowLimits();
-  const { list, external } = await mailRecipients(ctx, c.to || []);
+  const { list, external, dynamic } = await mailRecipients(ctx, c.to || []);
   if (!list.length) throw new StepError("Keine Empfänger.", "validation");
   if (list.length > MAX_RECIPIENTS) throw new StepError(`Höchstens ${MAX_RECIPIENTS} Empfänger je Schritt.`, "limit");
   if (external.length && !limits.externalMail) throw new StepError("E-Mails an Adressen außerhalb der Mitglieder sind auf dieser Instanz abgeschaltet.", "permission");
+  // An outside address from a placeholder (a form answer, a sender, an AI
+  // answer) only when the instance allows it (lib/workflows/limits.ts).
+  if (dynamic.length && !limits.externalMailDynamic) throw new StepError(DYNAMIC_MAIL_OFF, "permission");
   const subject = headerSafe(renderText(c.subject || "", ctx.scope)).trim().slice(0, 200) || ctx.workflowPage?.title || "Workflow";
   const text = renderText(c.message || "", ctx.scope).slice(0, 20_000);
   if (dryRun(ctx)) return { port: "out", output: { wouldSend: list, subject } };

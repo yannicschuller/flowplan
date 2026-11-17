@@ -29,6 +29,7 @@ export const GRANT_KINDS_STEP = "grant-kinds-100";
 export const SYNCED_JOURNAL_STEP = "synced-journal-parent";
 export const SEARCH_VISITS_STEP = "search-visits-243";
 export const SETTINGS_LEVEL_STEP = "settings-level-294";
+export const WORKFLOW_DYNAMIC_MAIL_STEP = "workflow-dynamic-mail-099";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -43,6 +44,7 @@ export const dataSteps = (): DataStep[] => [
   { name: SYNCED_JOURNAL_STEP, run: syncedBlocksIntoJournals },
   { name: SEARCH_VISITS_STEP, run: searchVisitsFromPageVisits },
   { name: SETTINGS_LEVEL_STEP, run: settingsLevelForExistingAccounts },
+  { name: WORKFLOW_DYNAMIC_MAIL_STEP, run: keepDynamicMailForExistingWorkflows },
 ];
 
 // Runs the steps not done yet (`only`: just these). Several instances on
@@ -330,4 +332,43 @@ async function searchVisitsFromPageVisits() {
 // account yet when this runs.
 async function settingsLevelForExistingAccounts() {
   await run("UPDATE users SET settings_level='expert' WHERE settings_level IS NULL");
+}
+
+// 0.9.9 – e-mail from workflows to outside addresses that come from a
+// placeholder or a property (not written in the node) needs the switch
+// `externalMailDynamic`, off by default (lib/workflows/limits.ts). An
+// instance whose activated workflows already send such mail keeps it: the
+// switch is stored as on, and the administration says why and which
+// workflows (instance setting `workflowMailMigration`). Unless the
+// environment or an administrator decided already; new instances have no
+// workflows and keep the default.
+async function keepDynamicMailForExistingWorkflows() {
+  if ((process.env.FLOWPLAN_WORKFLOW_EXTERNAL_MAIL_DYNAMIC || "").trim()) return;
+  if (!(await tableColumns("workflow_versions")).length) return;
+  const { storedWorkflowLimits } = await import("./workflows/limits");
+  const { mailsDynamically } = await import("./workflows/provenance");
+  const stored = await storedWorkflowLimits();
+  const decided = (stored as Record<string, unknown>).externalMailDynamic;
+  if (decided !== undefined && decided !== null) return;
+  const versions = await all<{ page_id: string; graph: string }>(
+    "SELECT w.page_id,v.graph FROM workflows w JOIN workflow_versions v ON v.id=w.active_version_id JOIN pages p ON p.id=w.page_id WHERE w.status<>'draft' AND p.deleted_at IS NULL ORDER BY w.page_id",
+  );
+  const workflows = versions
+    .filter((v) => {
+      try {
+        return mailsDynamically(JSON.parse(v.graph));
+      } catch {
+        return false;
+      }
+    })
+    .map((v) => v.page_id);
+  if (!workflows.length) return;
+  await run(
+    "INSERT INTO instance_settings(key,value) VALUES('workflowLimits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    JSON.stringify({ ...stored, externalMailDynamic: true }),
+  );
+  await run(
+    "INSERT INTO instance_settings(key,value) VALUES('workflowMailMigration',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    JSON.stringify({ at: Date.now(), workflows: workflows.slice(0, 200) }),
+  );
 }

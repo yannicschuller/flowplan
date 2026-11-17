@@ -10,7 +10,7 @@
 import { one } from "../../db";
 import { appUrl } from "../../auth";
 import { allow } from "../../action-limits";
-import { safeSend } from "../../safe-fetch";
+import { redirectHop, safeSend } from "../../safe-fetch";
 import { redactSecrets } from "../../ai/redact";
 import { openWorkflowCredential } from "../../sealed-values";
 import { fixedHost } from "../catalog";
@@ -84,6 +84,20 @@ export function renderUrl(template: string, ctx: Pick<NodeRun, "scope">, allowHt
   if (url.host.toLowerCase() !== fixed || url.username || url.password) throw new StepError("Die Adresse muss beim festen Host bleiben.", "validation");
   return url;
 }
+// The hosts written as fixed text in the HTTP nodes of a graph, as a URL
+// reads them (default ports left out).
+export function pinnedHosts(graph: NodeRun["graph"], protocol = "https:"): Set<string> {
+  const out = new Set<string>();
+  for (const n of graph.nodes) {
+    if (n.type !== "http.request") continue;
+    const host = fixedHost(String((n.config as { url?: unknown }).url || ""));
+    if (!host) continue;
+    try {
+      out.add(new URL(`${protocol}//${host}/`).host.toLowerCase());
+    } catch {}
+  }
+  return out;
+}
 // A JSON body (§7.4): a whole placeholder becomes a JSON value, one inside
 // a string a JSON-escaped string.
 export function renderJsonBody(template: string, ctx: Pick<NodeRun, "scope">): string {
@@ -117,6 +131,10 @@ export const httpRequest: NodeImpl = async (ctx) => {
   if (!limits.http) throw new StepError("HTTP-Anfragen sind auf dieser Instanz abgeschaltet.", "permission");
   const url = renderUrl(c.url, ctx, limits.httpAllowPrivate);
   const host = url.host.toLowerCase();
+  // The hosts a workflow may call are the ones written in its HTTP nodes,
+  // fixed with the version when it was activated (a test: the draft it
+  // runs) – no value filled in later can add one.
+  if (!pinnedHosts(ctx.graph, url.protocol).has(host)) throw new StepError(`Der Host ${url.hostname} steht in keinem HTTP-Knoten dieser Version.`, "permission");
   if (limits.httpHosts.length && !limits.httpHosts.includes(url.hostname.toLowerCase()) && !limits.httpHosts.includes(host))
     throw new StepError(`Der Host ${url.hostname} ist auf dieser Instanz nicht erlaubt.`, "permission");
   for (const q of c.query || []) if (q.name.trim()) url.searchParams.append(q.name.trim(), renderText(q.value || "", ctx.scope));
@@ -160,7 +178,9 @@ export const httpRequest: NodeImpl = async (ctx) => {
   let answer: { status: number; body: string; headers: Record<string, string> } | null = null;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const target = new URL(current.href);
-    const sent: Record<string, string> = { ...base, ...headers };
+    // The node's own headers only to the address it names (a redirect
+    // elsewhere goes without them, like the body).
+    const sent: Record<string, string> = target.origin === url.origin ? { ...base, ...headers } : { ...base };
     if (method === "GET" || !payload) delete sent["content-type"];
     // The credential only to its own host (a redirect elsewhere goes without it).
     withCredential(target, sent, credential);
@@ -184,10 +204,11 @@ export const httpRequest: NodeImpl = async (ctx) => {
       if (next.username || next.password) throw new StepError("Ungültige Weiterleitung.", "external");
       if (limits.httpHosts.length && !limits.httpHosts.includes(next.hostname.toLowerCase()) && !limits.httpHosts.includes(next.host.toLowerCase()))
         throw new StepError(`Weiterleitung auf ${next.hostname}, der auf dieser Instanz nicht erlaubt ist.`, "permission");
-      if (answer.status === 303 || ((answer.status === 301 || answer.status === 302) && method !== "GET")) {
-        method = "GET";
-        payload = "";
-      }
+      // 303 (and 301/302 after a POST …) become a GET; 307/308 keep the
+      // method, but the body goes to the node's own origin only.
+      const after = redirectHop(answer.status, url, next, method, payload);
+      method = after.method as typeof method;
+      payload = after.body;
       current = next;
       continue;
     }

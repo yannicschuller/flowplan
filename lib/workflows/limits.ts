@@ -27,6 +27,11 @@ const SWITCHES = {
   http: { env: "FLOWPLAN_WORKFLOW_HTTP", fallback: true },
   httpAllowPrivate: { env: "FLOWPLAN_WORKFLOW_HTTP_ALLOW_PRIVATE", fallback: false },
   externalMail: { env: "FLOWPLAN_WORKFLOW_EXTERNAL_MAIL", fallback: true },
+  // E-mail to outside addresses that come from a placeholder or a property
+  // (a form answer, an e-mail's sender, an AI answer), not written in the
+  // node: off unless allowed. Instances whose workflows used it before keep
+  // it (lib/data-steps.ts, WORKFLOW_DYNAMIC_MAIL_STEP).
+  externalMailDynamic: { env: "FLOWPLAN_WORKFLOW_EXTERNAL_MAIL_DYNAMIC", fallback: false },
 } as const;
 export type WorkflowLimitName = keyof typeof LIMITS;
 export type WorkflowSwitchName = keyof typeof SWITCHES;

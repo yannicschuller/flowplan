@@ -2,7 +2,7 @@
 // GET /api/workflows… (app/api/[...path]/route.ts) – the API contract is in
 // docs/specs/workflows.md §11.1 ("Vertrag Welle 1").
 import { z } from "zod";
-import { audit, run } from "../db";
+import { all, audit, one, run } from "../db";
 import { HttpError } from "../auth";
 import { requireAdmin, requireMember } from "../permissions";
 import type { Identity } from "../types";
@@ -100,6 +100,8 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
       const merged = { ...(await storedWorkflowLimits()), ...next };
       await run("INSERT INTO instance_settings(key,value) VALUES('workflowLimits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(merged));
       await audit(user.id, "admin.workflowLimits", "", JSON.stringify(next).slice(0, 500));
+      // Decided by an administrator: the update's notice has done its job.
+      if ("externalMailDynamic" in next) await run("DELETE FROM instance_settings WHERE key='workflowMailMigration'");
       return await adminWorkflows(user);
     }
   }
@@ -107,10 +109,23 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
 }
 
 // GET /api/admin/workflows: the limits in force, what is stored, the
-// environment's defaults, and the monitoring counters.
+// environment's defaults, the monitoring counters – and, after the update
+// to 0.9.9, the workflows for which e-mail to addresses from placeholders
+// stayed allowed (lib/data-steps.ts WORKFLOW_DYNAMIC_MAIL_STEP).
 export async function adminWorkflows(user: Identity) {
   requireAdmin(user);
-  return { limits: await workflowLimits(), stored: await storedWorkflowLimits(), defaults: envLimits(), monitoring: await workflowMonitoring() };
+  return { limits: await workflowLimits(), stored: await storedWorkflowLimits(), defaults: envLimits(), monitoring: await workflowMonitoring(), mailMigration: await mailMigration() };
+}
+async function mailMigration() {
+  const raw = (await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='workflowMailMigration'"))?.value;
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as { at: number; workflows: string[] };
+    const pages = await all<{ id: string; title: string }>(`SELECT id,title FROM pages WHERE id IN (${value.workflows.map(() => "?").join(",") || "''"}) AND deleted_at IS NULL ORDER BY title`, ...value.workflows);
+    return { at: value.at, workflows: pages.map((p) => ({ pageId: p.id, title: p.title })) };
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/workflows…: path after "workflows" (or "workflow-runs").
