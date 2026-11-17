@@ -62,6 +62,7 @@ import { pageShares } from "@/lib/page-share";
 import { documentLog, encryptedArchive, identityOf, isEncryptedPage, requirePlaintext, requirePlaintextSpace, spaceKeys } from "@/lib/e2ee-server";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
 import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space-git-export";
+import { spaceLibrary } from "@/lib/library-server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
@@ -891,6 +892,9 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // A space as a library (#329): books, chapters and pages one may see.
+    if (path.length === 3 && path[0] === "spaces" && path[2] === "library")
+      return NextResponse.json(await spaceLibrary(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
     // Git export of a space: only its owner sees the settings (no token).
     if (path.length === 3 && path[0] === "spaces" && path[2] === "git-export")
       return NextResponse.json(await spaceGitStatus(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });

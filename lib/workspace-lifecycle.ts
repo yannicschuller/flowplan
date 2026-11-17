@@ -344,7 +344,7 @@ export async function duplicateSpace(user: Identity, input: Record<string, unkno
   );
   const target = id();
   await run(
-    "INSERT INTO spaces(id,workspace_id,name,icon,icon_color,visibility,owner_id) VALUES(?,?,?,?,?,?,?)",
+    "INSERT INTO spaces(id,workspace_id,name,icon,icon_color,visibility,owner_id,library) VALUES(?,?,?,?,?,?,?,?)",
     target,
     space.workspace_id,
     name,
@@ -352,6 +352,7 @@ export async function duplicateSpace(user: Identity, input: Record<string, unkno
     space.icon_color || "none",
     visibility,
     user.id,
+    space.library ? 1 : 0,
   );
   // Right after the original in the sidebar.
   await placeAfter(target, space.id);

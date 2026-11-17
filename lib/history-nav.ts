@@ -7,8 +7,8 @@
 // What is a step: every place with an address of its own – a page (a
 // database, a journal day, a whiteboard), a record opened from a database
 // (it has its link, #page=…&row=…), a screen (start page, inbox, my tasks,
-// tags, a collection, graph, media, trash) and a section of the settings or
-// the administration. Not a step: dialogs, menus, the search, hover cards,
+// tags, a collection, a library or a book of it, graph, media, trash) and a
+// section of the settings or the administration. Not a step: dialogs, menus, the search, hover cards,
 // the split view (?split= is replaced) and what only passes through the
 // address (#search, #new, block links – replaced at once). Closing a record
 // or a comment thread opened from its page goes back to that entry
@@ -48,6 +48,8 @@ export function stepOf(fragment: string): string | null {
   if (SCREENS.includes(hash)) return hash;
   const [base, id, ...rest] = hash.split("/");
   if ((base === "tags" || base === "collection") && id && UUID.test(id) && !rest.length) return `${base}/${id.toLowerCase()}`;
+  // A library and a book's table of contents (#329, lib/library.ts).
+  if (base === "library" && id && UUID.test(id) && rest.length <= 1 && rest.every((r) => UUID.test(r))) return [base, id, ...rest].join("/").toLowerCase();
   return null;
 }
 

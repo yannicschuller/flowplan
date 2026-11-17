@@ -60,6 +60,8 @@ import { PageReview, openPageReview } from "./page-review";
 import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
 import { CollectionView } from "./collection-view";
+import { BookNav, BookNext } from "./book-nav";
+import { libraryHash, parseLibraryHash } from "@/lib/library";
 import { CollectionsNav } from "./collections-nav";
 import type { CollectionDraft } from "./collection-editor";
 import type { CollectionInfo } from "@/lib/collections";
@@ -290,7 +292,7 @@ import { templateCategories } from "@/lib/template-categories";
 import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
-import { CalendarX, Compass, LockKey, Storefront } from "@phosphor-icons/react";
+import { Books, CalendarX, Compass, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { WorkspaceFavicon } from "./workspace-favicon";
@@ -332,6 +334,8 @@ const DocumentEditor = dynamic(() => loadView(() => import("./editor")), {
 // The collection editor with its filter builder (#86): loaded when opened.
 const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
+// A space as a library (#329): loaded when a library opens.
+const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
 // Notebooks bring the ink engine: loaded with the first notebook.
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 // Workflows bring the canvas (xyflow): loaded with the first workflow page.
@@ -453,7 +457,10 @@ type Screen =
   // Pages by tag (#70, components/tag-view.tsx): #tags, #tags/<id>.
   | "tags"
   // A collection's results (#86, components/collection-view.tsx): #collection/<id>.
-  | "collection";
+  | "collection"
+  // A space as a library (#329, components/library-view.tsx):
+  // #library/<space>, a book's contents #library/<space>/<book>.
+  | "library";
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -893,6 +900,8 @@ export default function WorkspaceApp({
   // Collections (#86): the one shown and the editor's draft.
   const [collectionId, setCollectionId] = useState<string | null>(null),
     [collectionDraft, setCollectionDraft] = useState<CollectionDraft | null>(null);
+  // The library shown (#329): its space and the book opened, if any.
+  const [libraryPlace, setLibraryPlace] = useState<{ spaceId: string; bookId: string | null } | null>(null);
   // The element that opened the quick search gets the focus back when it
   // closes (the search button, a tree item or the editor).
   const searchOpener = useRef<HTMLElement | null>(null),
@@ -1704,6 +1713,18 @@ export default function WorkspaceApp({
             },
           });
         }
+      } else if (parseLibraryHash(fragment)) {
+        setLibraryPlace(parseLibraryHash(fragment));
+        if (screenRef.current !== "library") {
+          screenRef.current = "library";
+          transitionView(
+            () => {
+              setScreen("library");
+              if (!keepNav) setMobile(false);
+            },
+            { kind: "page" },
+          );
+        } else if (!keepNav) setMobile(false);
       } else if (
         ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags"].includes(
           fragment,
@@ -2053,6 +2074,13 @@ export default function WorkspaceApp({
       };
     }
     const [base, id] = hash.split("/");
+    const library = parseLibraryHash(hash);
+    if (library) {
+      const space = boot.spaces.find((sp) => sp.id === library.spaceId);
+      const book = library.bookId ? titledPages.find((p) => p.id === library.bookId) : undefined;
+      const name = book ? book.title || t("Ohne Titel", "Untitled") : space?.name;
+      return { title: name || kept?.title || t("Bibliothek", "Library"), detail: book ? space?.name : undefined, icon: <Books size={16} />, remember: name ? { title: name } : undefined };
+    }
     if (base === "collection") {
       const name = boot.collections?.find((c) => c.id === id)?.name;
       return { title: name || kept?.title || t("Sammlung", "Collection"), icon: <FolderSimple size={16} />, remember: name ? { title: name } : undefined };
@@ -2099,7 +2127,14 @@ export default function WorkspaceApp({
   // scrolls on its own.
   const mainScroll = useRef<HTMLDivElement>(null);
   // A page still loading is no place yet (null).
-  const shownPlace = screen === "page" ? (data ? `page:${data.page.id}` : null) : `${screen}:${collectionId ?? ""}`;
+  const shownPlace =
+    screen === "page"
+      ? data
+        ? `page:${data.page.id}`
+        : null
+      : screen === "library"
+        ? `library:${libraryPlace?.spaceId}:${libraryPlace?.bookId ?? ""}`
+        : `${screen}:${collectionId ?? ""}`;
   usePaneScroll(mainScroll, shownPlace, tabs.on ? tabs.entryKey : undefined);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
@@ -2109,6 +2144,10 @@ export default function WorkspaceApp({
   const [recordView, setRecordView] = useState<{ rowId: string; title: string; icon: string; full: boolean } | null>(null);
   const recordFull = screen === "page" && data?.page.kind === "database" && !!recordView?.full;
   const e2eeState = useE2ee();
+  // The library shown (#329) and the library the open page belongs to (its
+  // book navigation): only spaces switched to "Als Bibliothek anzeigen".
+  const librarySpace = screen === "library" && libraryPlace ? boot.spaces.find((sp) => sp.id === libraryPlace.spaceId && !sp.deleted_at) : undefined;
+  const pageLibrary = screen === "page" && data && !data.journalDay ? boot.spaces.find((sp) => sp.id === data.page.space_id && sp.library) : undefined;
   const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at), [titledPages]),
     // The tree's levels in one pass: sub pages per parent, top-level pages
     // per space ("space:<id>") – no search through all pages per row.
@@ -2181,7 +2220,9 @@ export default function WorkspaceApp({
   // folded (p:<id> unfolds one), spaces and groups open (s:<id>, g:<name>
   // fold them), journal folders follow lib/journal-nav.ts (jo:/jc:).
   const folds = useSidebarFolds(boot.workspace.id, boot.sidebar);
-  const foldSpace = (id: string, fold: boolean) => folds.change({ [`s:${id}`]: fold });
+  // A library (#329) starts folded: its tree opens by hand (so:<space>).
+  const foldSpace = (id: string, fold: boolean) =>
+    folds.change(boot.spaces.find((sp) => sp.id === id)?.library ? { [`so:${id}`]: !fold } : { [`s:${id}`]: fold });
   const journalFolders = useMemo(() => journalFolds(folds.keys), [folds.keys]);
   // The way to the open page unfolds, for this visit only (not stored):
   // nothing else folds. Folding one of those pages by hand closes it.
@@ -2324,7 +2365,8 @@ export default function WorkspaceApp({
   // Opening a page unfolds its space.
   const openSpaceId = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.space_id : undefined;
   useEffect(() => {
-    if (openSpaceId) foldSpace(openSpaceId, false);
+    // Not a library (#329): its book navigation leads on, the tree stays folded.
+    if (openSpaceId && !boot.spaces.find((sp) => sp.id === openSpaceId)?.library) foldSpace(openSpaceId, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openSpaceId]);
   // The space one is in (#317) – where the template gallery looks and a page
@@ -4047,7 +4089,10 @@ export default function WorkspaceApp({
             )
             .map((space, spaceIndex, shownSpaces) => {
               // While filtering every space with a match stays open.
-              const spaceClosed = !filterMatches && folds.has(`s:${space.id}`),
+              // A library (#329) starts folded, with "Bibliothek öffnen" below its name.
+              const library = !!space.library,
+                folded = library ? !folds.has(`so:${space.id}`) : folds.has(`s:${space.id}`),
+                spaceClosed = !filterMatches && folded,
                 spaceOrder = boot.spaces.map((s) => s.id),
                 reorderable = canReorderSpaces && !filterMatches;
               return (
@@ -4095,7 +4140,7 @@ export default function WorkspaceApp({
                   aria-expanded={!spaceClosed}
                   aria-controls={`space-tree-${space.id}`}
                   title={spaceClosed ? t(`${space.name} aufklappen`, `Expand ${space.name}`) : t(`${space.name} zuklappen`, `Collapse ${space.name}`)}
-                  onClick={() => foldSpace(space.id, !folds.has(`s:${space.id}`))}
+                  onClick={() => foldSpace(space.id, !folded)}
                 >
                   <CaretRight size={10} className="space-caret" aria-hidden="true" />
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
@@ -4203,6 +4248,17 @@ export default function WorkspaceApp({
                   )}
                 </span>
               </div>
+              {library && !filterMatches && (
+                <a
+                  className={`favorite-nav library-nav${screen === "library" && libraryPlace?.spaceId === space.id ? " selected" : ""}`}
+                  href={`#${libraryHash(space.id)}`}
+                  aria-current={screen === "library" && libraryPlace?.spaceId === space.id && !libraryPlace.bookId ? "page" : undefined}
+                  onClick={() => setMobile(false)}
+                >
+                  <Books size={16} aria-hidden />
+                  <span>{t("Bibliothek öffnen", "Open library")}</span>
+                </a>
+              )}
               {/* Folding keeps the tree mounted only while open. */}
               <Collapse open={!spaceClosed} className="space-tree">
                 {!spaceClosed ? (
@@ -4408,6 +4464,18 @@ export default function WorkspaceApp({
                 )}
                 room={phone ? 2 : 4}
               />
+            ) : screen === "library" && librarySpace ? (
+              <span className="library-crumbs">
+                {libraryPlace?.bookId ? (
+                  <>
+                    <a href={`#${libraryHash(librarySpace.id)}`}>{librarySpace.name}</a>
+                    <span className="breadcrumb-divider">/</span>
+                    <span>{titledPages.find((p) => p.id === libraryPlace.bookId)?.title || t("Buch", "Book")}</span>
+                  </>
+                ) : (
+                  <span>{librarySpace.name}</span>
+                )}
+              </span>
             ) : (
               <span>
                 {
@@ -4418,6 +4486,7 @@ export default function WorkspaceApp({
                     tasks: t("Meine Aufgaben", "My tasks"),
                     tags: t("Tags", "Tags"),
                     collection: boot.collections?.find((c) => c.id === collectionId)?.name ?? t("Sammlung", "Collection"),
+                    library: t("Bibliothek", "Library"),
                     graph: t("Graph", "Graph"),
                     media: t("Medien", "Media"),
                     settings: t("Einstellungen", "Settings"),
@@ -4960,6 +5029,8 @@ export default function WorkspaceApp({
                       )}
                     </CoverFrame>
                   )}
+                  {/* A page of a library (#329): its book and the next page to read. */}
+                  {pageLibrary && <BookNav space={pageLibrary} pages={activePages} pageId={data.page.id} />}
                   {data.journalDay && !data.locked && (
                     // A day page: previous and next entry, today, a month picker (#49).
                     <JournalDayNav
@@ -5219,6 +5290,7 @@ export default function WorkspaceApp({
                     </>
                   )}
                   </ViewBoundary>
+                  {pageLibrary && !data.draft && !recordFull && <BookNext space={pageLibrary} pages={activePages} pageId={data.page.id} />}
                   {!data.draft && !recordFull && (<>
                   {/* While a record of this database is open its own panels show; the page's wait until it closes (no requests for what the dialog covers). */}
                   {discoveryPanels && !recordView && !(data.page.kind === "database" && typeof location !== "undefined" && parsePageLocation(location.hash)?.rowId) && (
@@ -5375,6 +5447,21 @@ export default function WorkspaceApp({
               onOpenTrash={() => go("trash")}
             />
           )}
+          {screen === "library" &&
+            (librarySpace ? (
+              <LibraryView
+                space={librarySpace}
+                pages={activePages}
+                bookId={libraryPlace?.bookId ?? null}
+                workspaceId={boot.workspace.id}
+                visits={boot.recentVisits || []}
+                clock={clock}
+                canEdit={canCreate}
+                onCreate={(parentId) => addPage("document", parentId, librarySpace.id)}
+              />
+            ) : (
+              <div className="loading-content">{t("Bibliothek nicht verfügbar.", "Library not available.")}</div>
+            ))}
           {screen === "collection" && collectionId && (
             <CollectionView
               boot={boot}

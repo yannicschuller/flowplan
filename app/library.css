@@ -1,0 +1,519 @@
+/* A space as a library (#329): the sidebar entry, the books
+   (components/library-view.tsx) and the book navigation on a page
+   (components/book-nav.tsx). Colours come from the theme's tokens, so
+   light and dark follow. */
+
+/* ---- Sidebar ---- */
+.favorite-nav.library-nav {
+  margin-top: 0;
+  color: var(--secondary);
+}
+.favorite-nav.library-nav svg {
+  flex: none;
+  color: var(--muted);
+}
+.favorite-nav.library-nav.selected svg {
+  color: var(--blue);
+}
+
+/* ---- Overview and book page ---- */
+.library-crumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.library-crumbs > * {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.library-crumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+.library-crumbs a:hover {
+  text-decoration: underline;
+}
+.library-title {
+  margin-bottom: 20px;
+}
+.library-title-icon {
+  display: inline-flex;
+  margin-bottom: 12px;
+  font-size: 30px;
+}
+.library-title-icon svg {
+  width: 32px;
+  height: 32px;
+}
+.library-title h1 {
+  overflow-wrap: anywhere;
+}
+.library-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin: 0 0 18px;
+  color: var(--secondary);
+  font-size: 13px;
+  text-decoration: none;
+}
+.library-back:hover {
+  color: var(--text);
+}
+.library-read {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.library-read .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  text-decoration: none;
+}
+.library-read .button,
+.library-toolbar .button {
+  width: auto;
+}
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 22px;
+}
+.library-toolbar .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.library-search {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 260px;
+  margin: 0;
+  font-weight: 400;
+  align-items: center;
+  gap: 8px;
+  max-width: 460px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.library-search:focus-within {
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.library-search input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  box-shadow: none;
+}
+
+/* The books: cards in a grid. */
+.library-books {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.library-book {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+}
+.library-book:hover {
+  border-color: var(--focus-border);
+  box-shadow: var(--shadow);
+}
+.library-book:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.library-book-cover {
+  position: relative;
+  height: 72px;
+  overflow: hidden;
+  background: var(--hover);
+}
+.library-book-cover.plain {
+  background: linear-gradient(135deg, var(--blue-light), var(--hover));
+}
+.library-book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.library-book-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -24px 0 0 14px;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 24px;
+}
+.library-book-title {
+  margin: 10px 14px 4px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.library-book-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: auto 14px 14px;
+  padding-top: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* A book's table of contents. */
+.library-contents-heading {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.library-contents {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.library-chapter + .library-chapter {
+  border-top: 1px solid var(--border);
+}
+.library-chapter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 4px 10px 4px 6px;
+}
+.library-fold {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+.library-fold svg {
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.library-fold svg.open {
+  transform: rotate(90deg);
+}
+.library-chapter-number {
+  flex: none;
+  min-width: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.library-chapter-link,
+.library-pages a,
+.library-results a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.library-chapter-link {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.library-chapter-link > span,
+.library-pages a > span {
+  overflow-wrap: anywhere;
+}
+.library-chapter-link:hover > span,
+.library-pages a:hover > span,
+.library-results a:hover .library-result-title {
+  text-decoration: underline;
+}
+.library-chapter-link:focus-visible,
+.library-pages a:focus-visible,
+.library-results a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.library-count {
+  flex: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.library-add {
+  flex: none;
+  opacity: 0.6;
+}
+.library-chapter-row:hover .library-add,
+.library-add:focus-visible {
+  opacity: 1;
+}
+.library-pages {
+  margin: -4px 0 0;
+  padding: 0 14px 10px 64px;
+  list-style: none;
+}
+.library-pages li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 14px;
+}
+.library-pages a {
+  color: var(--secondary);
+}
+.library-empty {
+  padding: 40px 20px;
+}
+
+/* Search in the library. */
+.library-results ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.library-results li {
+  padding: 10px 12px;
+  border-radius: 9px;
+}
+.library-results li:hover {
+  background: var(--hover);
+}
+.library-result-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.library-result-page {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.library-result-snippet {
+  margin: 4px 0 0 24px;
+  color: var(--secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.library-result-snippet mark {
+  background: var(--mark-bg);
+  color: var(--mark-fg);
+}
+
+/* ---- Reading a page of a library ---- */
+.book-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.book-nav-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.book-nav-path li {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.book-nav-path li + li::before {
+  content: "›";
+  margin: 0 6px;
+  color: var(--muted);
+}
+.book-nav-path a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 26ch;
+  overflow: hidden;
+  color: var(--secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.book-nav-path a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.book-nav-library {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.book-nav-steps {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.book-nav-position {
+  margin-right: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.book-nav-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--secondary);
+}
+a.book-nav-step:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+span.book-nav-step {
+  opacity: 0.35;
+}
+.book-nav a:focus-visible,
+.book-next a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.book-next {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 36px 0 8px;
+}
+.book-next-link {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+.book-next-link:hover {
+  border-color: var(--focus-border);
+  background: var(--hover);
+}
+.book-next-link.next {
+  grid-column: 2;
+  align-items: flex-end;
+  text-align: right;
+}
+.book-next-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.book-next-title {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 767px) {
+  .library-books {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .library-book-cover {
+    height: 52px;
+  }
+  .library-book-title {
+    margin: 8px 10px 2px;
+    font-size: 14px;
+  }
+  .library-book-icon {
+    margin-left: 10px;
+  }
+  .library-book-meta {
+    margin: auto 10px 10px;
+  }
+  .library-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .library-pages {
+    padding-left: 44px;
+  }
+  .library-chapter-number {
+    display: none;
+  }
+  .book-nav-position {
+    display: none;
+  }
+  .book-nav-path a {
+    max-width: 16ch;
+  }
+  .book-next {
+    grid-template-columns: 1fr;
+  }
+  .book-next-link.next {
+    grid-column: 1;
+  }
+}
+@media (max-width: 767px) {
+  /* Phones: the library as its symbol only, the book and chapter in full. */
+  .book-nav-library {
+    display: none;
+  }
+}

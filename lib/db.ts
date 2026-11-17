@@ -1553,6 +1553,12 @@ function migrate(d: DatabaseSync) {
   // number stays.
   d.exec(`CREATE TABLE IF NOT EXISTS invite_links(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,token_sealed TEXT,role TEXT NOT NULL CHECK(role IN ('editor','viewer')),guest INTEGER NOT NULL DEFAULT 0,max_uses INTEGER,uses INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL,created_by TEXT REFERENCES users(id),created_at INTEGER NOT NULL,revoked_at INTEGER);
     CREATE INDEX IF NOT EXISTS invite_links_workspace ON invite_links(workspace_id,expires_at);`);
+  // "Als Bibliothek anzeigen" per space (#329, lib/library.ts): 1 shows the
+  // space as a library of books instead of its whole tree in the sidebar.
+  // An older version ignores the column (the space shows as before), so
+  // the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(spaces)").all() as { name: string }[]).some((c) => c.name === "library"))
+    d.exec("ALTER TABLE spaces ADD COLUMN library INTEGER NOT NULL DEFAULT 0");
   migrateServerMetrics(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)

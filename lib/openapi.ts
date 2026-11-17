@@ -326,6 +326,22 @@ export const commandActions: ActionDoc[] = [
     result: idResult,
   },
   {
+    action: "space.update",
+    summary: "Change a space's name, visibility, look or library view",
+    description: "Space owners and workspace owners. Fields left out keep their value, except `name` and `private`, which are always set. `library`: show the space as a library – books (top-level pages), chapters and pages – with a single “Open library” entry in the sidebar instead of the whole page tree.",
+    input: z.object({
+      action: z.literal("space.update"),
+      spaceId: uuid,
+      name: str,
+      private: z.boolean().optional().describe("Only visible to people with access"),
+      icon: z.string().max(150_000).optional(),
+      iconColor: z.string().max(40).optional(),
+      library: z.boolean().optional().describe("Show as library"),
+      version: z.number().int().optional().describe("The space's version you saw; 409 when it changed meanwhile"),
+    }),
+    result: okResult,
+  },
+  {
     action: "space.reorder",
     summary: "Change the order of the spaces in a workspace",
     description:
@@ -1295,12 +1311,44 @@ const schemas: Record<string, Json> = {
       name: { type: "string" },
       icon: { type: "string" },
       icon_color: { type: "string" },
+      library: { type: "integer", enum: [0, 1], description: "1: shown as a library (books, chapters, pages) instead of its whole page tree in the sidebar" },
       visibility: { type: "string", enum: ["team", "private"] },
       owner_id: { type: "string", format: "uuid" },
       deleted_at: { type: ["string", "null"] },
     },
     required: ["id", "workspace_id", "name", "icon", "visibility", "owner_id"],
   },
+  Library: (() => {
+    const entry = {
+      id: { type: "string", format: "uuid" },
+      title: { type: "string" },
+      icon: { type: "string" },
+      kind: { type: "string" },
+      updatedAt: { type: "string" },
+    };
+    const page = { type: "object", properties: { ...entry, below: { type: "integer", description: "Pages below this one" } }, required: ["id", "title", "icon", "kind", "below"] };
+    return {
+      type: "object",
+      properties: {
+        space: { type: "object", properties: { id: { type: "string", format: "uuid" }, name: { type: "string" }, library: { type: "boolean" } }, required: ["id", "name", "library"] },
+        books: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              ...entry,
+              cover: { type: "string" },
+              pages: { type: "integer", description: "Pages of the book, its own page included" },
+              updatedAt: { type: ["string", "null"], description: "Latest change of a page of the book (UTC)" },
+              chapters: { type: "array", items: { type: "object", properties: { ...page.properties, pages: { type: "array", items: page } }, required: [...page.required, "pages"] } },
+            },
+            required: ["id", "title", "icon", "kind", "pages", "chapters"],
+          },
+        },
+      },
+      required: ["space", "books"],
+    };
+  })(),
   Page: {
     type: "object",
     properties: {
@@ -1739,6 +1787,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Workspace
   { path: "/api/bootstrap", method: "get", op: { id: "bootstrap", tag: "Workspace", summary: "Workspaces, spaces, pages and members", description: "Without `workspace` the first workspace. Start here to find IDs.", params: [q("workspace", "Workspace ID (default: the first)", { type: "string", format: "uuid" })], ok: { schema: ref("Bootstrap"), description: "The workspace" }, errors: [401, 404] } },
   { path: "/api/search", method: "get", op: { id: "search", tag: "Workspace", summary: "Full-text search", description: `Pages, records, comments and file contents of a workspace. In \`q\`, \`#tag\` (or \`#"two words"\`) keeps pages with that tag, \`-#tag\` leaves them out, and \`name:value\` compares a page property (text contains; select and multiselect equal an option; numbers and dates also \`>\`, \`<\`, \`>=\`, \`<=\`, \`a..b\`; checkboxes yes/no; people by name or \`me\`; \`name:*\` set, \`name:-\` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also \`OR\` (or \`|\`), \`AND\` (implicit), \`NOT\` or \`-\` before any term or group, parentheses (NOT binds tightest, then AND, then OR), \`created_by:\`/\`creator:\` and \`updated_by:\`/\`editor:\` (a name or \`me\`), \`created:\` and \`updated:\` (\`2026-03\`, \`>2026-01-01\`, \`a..b\`, \`-7d\`, \`-2w\`, \`-3m\`, \`-1y\`, \`today\`, \`yesterday\`, \`this-week\`, \`last-week\`, \`this-month\`, \`last-month\`, \`this-year\`, \`last-year\`), \`type:document|database|whiteboard|record\`, \`in:\"Space name\"\` and \`title:\`; such queries list the matching pages and records (without snippets) by last change. ${noStore}`, params: [workspace, q("q", "Search words", { type: "string" }, true), q("kind", "Only this kind", { type: "string", enum: ["all", "document", "database", "whiteboard", "row", "comment", "file"], default: "all" }), q("space", "Only in this space", { type: "string", format: "uuid" }), q("days", "0: leave out journal days (they are ranked after other pages otherwise)", { type: "string", enum: ["0", "1"] }), q("tz", "IANA time zone for relative dates such as created:today (default UTC)"), q("sort", "`relevance`: the best match – text relevance (exact and prefix title matches first) plus your own visits, recent edits and favourites; `edited`/`created`: newest first", { type: "string", enum: ["relevance", "edited", "created"], default: "relevance" })], ok: { schema: { type: "array", items: ref("SearchResult") }, description: "Matches" }, errors: [400, 401, 403] } },
+  { path: "/api/spaces/{spaceId}/library", method: "get", op: { id: "spaceLibrary", tag: "Workspace", summary: "A space as a library", description: `The space's top-level pages as books, their sub-pages as chapters and the chapters' sub-pages as pages, in the order of the page tree – only pages you may read (journals behind a PIN not entered, encrypted spaces and journal days left out). \`pages\` counts a book's pages including the book's own page, \`below\` the pages under a chapter or page, \`updatedAt\` of a book is the latest change in it. \`space.library\` says whether the space is shown as a library (“Show as library” in the space's settings; \`library\` of \`space.update\`); the answer is the same either way. ${noStore}`, params: [p("spaceId", "Space ID")], ok: { schema: ref("Library"), description: "Books with chapters and pages" }, errors: [401, 403, 404] } },
   { path: "/api/search/recent", method: "get", op: { id: "searchRecent", tag: "Workspace", summary: "Your recently visited pages and records", description: `The pages and records you opened last in the workspace, newest first – what the quick search shows with nothing typed. Only your own visits (never other people's), only what you may still read; visits through API tokens are not recorded. ${noStore}`, params: [workspace, q("kind", "Only this kind", { type: "string", enum: ["all", "document", "database", "whiteboard", "row"], default: "all" }), q("space", "Only in this space", { type: "string", format: "uuid" }), q("limit", "At most this many (1–50)", { type: "integer", default: 20 })], ok: { schema: { type: "array", items: ref("RecentVisit") }, description: "Visited pages and records" }, errors: [400, 401, 403] } },
   { path: "/api/notifications", method: "get", op: { id: "notifications", tag: "Workspace", summary: "My newest notifications", description: "What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command.", params: [q("since", "Server time (ISO 8601 or milliseconds)")], ok: { schema: { type: "object", properties: { now: { type: "string", format: "date-time" }, unread: { type: "integer", minimum: 0 }, notifications: { type: "array", items: { type: "object", properties: { id: { type: "string" }, kind: { type: ["string", "null"] }, text: { type: "string" }, detail: { type: "string" }, url: { type: "string", description: "Path on this instance, e.g. `/#page=…`" }, createdAt: { type: "string", format: "date-time" }, read: { type: "boolean" }, push: { type: "boolean" } }, required: ["id", "kind", "text", "detail", "url", "createdAt", "read", "push"] } } }, required: ["now", "unread", "notifications"] }, description: "Notifications" }, errors: [400, 401] } },
   { path: "/api/tasks", method: "get", op: { id: "tasks", tag: "Workspace", summary: "My tasks", description: "Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task) and whether you may add tasks here.", params: [workspace, q("done", "`1` for completed tasks", { type: "string", enum: ["0", "1"] })], ok: { schema: { type: "object", properties: { tasks: { type: "array", items: ref("Task") }, others: { type: "array", items: ref("Task") }, personal: { type: "object", properties: { pageId: { type: ["string", "null"], format: "uuid" }, canAdd: { type: "boolean" } } } }, required: ["tasks", "others"] }, description: "Tasks" }, errors: [400, 401, 403] } },

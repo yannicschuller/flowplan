@@ -28,6 +28,7 @@ import { markdownToHtml } from "./markdown-import";
 import { cleanHtml, htmlState, htmlJson } from "./document-server";
 import { rewriteSchema } from "./document-rewrite";
 import { searchWorkspace, MARK_START, MARK_END } from "./search-index";
+import { spaceLibrary } from "./library-server";
 import { listCollections, runCollection } from "./collections";
 import { extractTasks, myTasks, taskKey } from "./doc-tasks";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
@@ -117,6 +118,8 @@ async function workspaces(user: Identity) {
           id: s.id,
           name: s.name,
           visibility: s.visibility,
+          // Shown as a library of books (#329): get_library lists them.
+          library: !!s.library,
           role: await spaceRole(user, s) || "viewer",
         })),
     };
@@ -913,6 +916,16 @@ const tools: Tool[] = [
     write: false,
     thirdParty: true,
     run: listPages as Tool["run"],
+  },
+  {
+    name: "get_library",
+    title: "Books of a space",
+    description:
+      "A space as a library: its top-level pages as books (with the number of pages and the latest change), their sub-pages as chapters and the chapters' sub-pages, in the order of the page tree – only pages you can read. Works for every space; list_workspaces says which spaces are shown as a library (library: true).",
+    input: z.object({ spaceId: id("Space ID from list_workspaces") }),
+    write: false,
+    thirdParty: true,
+    run: (async (user: Identity, args: { spaceId: string }) => await spaceLibrary(user, args.spaceId)) as Tool["run"],
   },
   {
     name: "search",

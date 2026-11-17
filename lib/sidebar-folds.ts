@@ -4,6 +4,8 @@
 //
 //   p:<page>            a page unfolded in the tree (pages start folded)
 //   s:<space>           a space folded
+//   so:<space>          a library space's page tree unfolded (#329; a
+//                       library starts folded, lib/library.ts)
 //   g:favorites         the favourites folded
 //   g:collections       the collections folded
 //   jo:<journal>:<y|m>  a year or month folder of a journal opened by hand
@@ -11,13 +13,14 @@
 export const SIDEBAR_STATE_LIMIT = 3000;
 export const SIDEBAR_CHANGES_LIMIT = 2000;
 const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const KEY = new RegExp(`^(?:p:${uuid}|s:${uuid}|g:(?:favorites|collections)|j[oc]:${uuid}:\\d{4}(?:-\\d{2})?)$`, "i");
+const KEY = new RegExp(`^(?:p:${uuid}|so?:${uuid}|g:(?:favorites|collections)|j[oc]:${uuid}:\\d{4}(?:-\\d{2})?)$`, "i");
 export const isSidebarKey = (key: unknown): key is string => typeof key === "string" && KEY.test(key);
 
 // The page or space a key belongs to (null for groups).
 function owner(key: string): { page?: string; space?: string } {
   if (key.startsWith("p:")) return { page: key.slice(2) };
   if (key.startsWith("s:")) return { space: key.slice(2) };
+  if (key.startsWith("so:")) return { space: key.slice(3) };
   if (key.startsWith("jo:") || key.startsWith("jc:")) return { page: key.slice(3, 39) };
   return {};
 }
