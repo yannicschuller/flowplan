@@ -54,6 +54,13 @@ export function noteTransaction(start: number) {
   s.txSeconds += seconds;
   if (seconds > s.txMax) s.txMax = seconds;
 }
+// The longest write transaction since the last scrape and the mean one
+// (the recommendations, lib/recommendations-data.ts); null while off.
+export function transactionTimes(): { maxSeconds: number; meanSeconds: number } | null {
+  const s = holder.flowplanRuntimeMetrics;
+  if (!s || !s.txCount) return null;
+  return { maxSeconds: s.txMax, meanSeconds: s.txSeconds / s.txCount };
+}
 export function noteStatement(start: number) {
   const s = holder.flowplanRuntimeMetrics;
   if (!s) return;

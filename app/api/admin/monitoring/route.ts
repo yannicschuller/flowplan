@@ -3,9 +3,10 @@
 // of the landing page (numbers and the charts of its carousel), `?view=ai`
 // the AI statistics (`&days=7|30|90`, per person too); `?range=1h|24h|7d`
 // picks the request chart's span. POST switches the usage statistics on or
-// off (`metrics.save`), deletes them (`metrics.clear`) or checks the AI
-// provider again (`ai.ping`). Administrators in the browser only; API
-// tokens never.
+// off (`metrics.save`), deletes them (`metrics.clear`), checks the AI
+// provider again (`ai.ping`) or changes the recommendations
+// (`recommendation.hide|snooze|restore`, `recommendations.settings`).
+// Administrators in the browser only; API tokens never.
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/db";
@@ -13,6 +14,7 @@ import { withRequestLocale } from "@/lib/content-locale";
 import { requireOpsAdmin } from "@/lib/admin-ops";
 import { monitoringLive, monitoringOverview } from "@/lib/admin-monitoring";
 import { aiStatistics } from "@/lib/ai-statistics";
+import { applyRecommendationAction, recommendationAction, recommendations } from "@/lib/recommendations-data";
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
 import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
@@ -56,7 +58,16 @@ export const POST = withRequestLocale(async (req: Request) => {
   try {
     await checkOrigin(req);
     const user = await admin();
-    const body = postSchema.parse(await req.json().catch(() => ({})));
+    const raw = await req.json().catch(() => ({}));
+    // Recommendations: hide, remind in 30 days, bring back, thresholds and
+    // rules switched off (lib/recommendations-data.ts).
+    if (typeof raw?.action === "string" && raw.action.startsWith("recommendation")) {
+      const input = recommendationAction.parse(raw);
+      await applyRecommendationAction(input);
+      if (input.action === "recommendations.settings") await audit(user.id, "admin.recommendations", "instance", JSON.stringify({ off: input.off?.length ?? null }));
+      return Response.json(await recommendations(), noStore);
+    }
+    const body = postSchema.parse(raw);
     if (body.action === "metrics.save") {
       if ((await metricsSetting()).locked) throw new HttpError(409, "Die Statistik ist mit FLOWPLAN_METRICS=off ausgeschaltet.");
       await saveMetricsSetting(body.enabled);

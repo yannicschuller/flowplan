@@ -15509,6 +15509,102 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   font-size: 12px;
   word-break: break-all;
 }
+/* Monitoring → Empfehlungen (monitoring-advice.tsx). */
+.mon-advice {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mon-advice > li {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--chart-1);
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+.mon-advice > li.warn {
+  border-left-color: var(--chart-4);
+}
+.mon-advice p {
+  margin: 0;
+}
+.mon-advice a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.mon-advice-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+.mon-advice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.mon-advice-quiet,
+.mon-advice-settings {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.mon-advice-quiet summary,
+.mon-advice-settings summary {
+  cursor: pointer;
+  color: var(--secondary);
+}
+.mon-advice-quiet ul,
+.mon-advice-rules {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mon-advice-quiet li,
+.mon-advice-rules li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.mon-advice-settings fieldset {
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+}
+.mon-advice-settings legend {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.mon-advice-rules {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 24px;
+}
+.mon-advice-thresholds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 18px;
+}
+.mon-advice-thresholds label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.mon-advice-thresholds input {
+  width: 100%;
+  min-width: 0;
+}
 /* Administration → KI → Preise (components/ai-settings.tsx). */
 .ai-price-row {
   display: grid;

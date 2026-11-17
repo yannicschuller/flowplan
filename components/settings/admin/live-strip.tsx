@@ -13,11 +13,16 @@ import { ChartCarousel, stripSlides } from "./strip-charts";
 import { useLive } from "./use-live";
 import { uptime } from "./monitoring-format";
 
-export type StripItem = { id: string; title: string; badge?: string };
+export type StripItem = { id: string; title: string; badge?: string; href?: string };
 
-export function LiveStrip({ problems, notices, version, uptimeSeconds, loaded }: { problems: StripItem[]; notices: StripItem[]; version?: string; uptimeSeconds?: number; loaded: boolean }) {
+export function LiveStrip({ problems, notices: tileNotices, version, uptimeSeconds, loaded }: { problems: StripItem[]; notices: StripItem[]; version?: string; uptimeSeconds?: number; loaded: boolean }) {
   const t = useT();
   const live = useLive<MonitoringLive>("/api/admin/monitoring?view=live&range=24h");
+  // Recommendations from the measurements count as notices (lib/recommendations.ts).
+  const notices: StripItem[] = [
+    ...tileNotices,
+    ...(live.data?.recommendations ?? []).map((r) => ({ id: `rec-${r.id}`, title: t(r.title[0], r.title[1]), href: settingsHash({ area: "admin", section: "monitoring", anchor: "recommendations" }) })),
+  ];
   const tone = problems.length ? "error" : notices.length ? "warn" : "ok";
   const Icon = tone === "error" ? XCircle : tone === "warn" ? WarningCircle : CheckCircle;
   const headline = !loaded
@@ -44,7 +49,7 @@ export function LiveStrip({ problems, notices, version, uptimeSeconds, loaded }:
               <ul className="live-strip-items">
                 {items.slice(0, 4).map((item) => (
                   <li key={item.id}>
-                    <a href={settingsHash({ area: "admin", section: item.id })}>{item.badge ? `${item.title}: ${item.badge}` : item.title}</a>
+                    <a href={item.href ?? settingsHash({ area: "admin", section: item.id })}>{item.badge ? `${item.title}: ${item.badge}` : item.title}</a>
                   </li>
                 ))}
               </ul>

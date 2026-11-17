@@ -44,6 +44,7 @@ import {
 import { pushSummary } from "./push-status";
 import { cpuByArea, serverNow, serverSeries } from "./server-metrics";
 import { aiDaily } from "./ai-statistics";
+import { recommendations } from "./recommendations-data";
 import type { UpdateStatus } from "./update-check";
 import type { Identity } from "./types";
 import { systemOverview } from "./cluster/system";
@@ -164,6 +165,9 @@ export async function monitoringLive(now = Date.now(), range: RequestRange = "24
     // tokens (when AI is set up) and the slowest routes (with the statistics).
     server: await serverSeries("24h", now),
     ai: ai ? await aiDaily(now, 14) : null,
+    // What the measurements suggest (lib/recommendations.ts; cached 15 min):
+    // notices of the strip's state block.
+    recommendations: (await recommendations(now).catch(() => null))?.items ?? [],
     slowRoutes: setting.enabled
       ? (await routeStats(now, 24, 30))
           .filter((r) => r.p95 !== null && r.requests >= 3)
@@ -394,6 +398,7 @@ export async function monitoringOverview(now = Date.now(), range: RequestRange =
     // instances and leader (lib/cluster/system.ts).
     system: await systemOverview(now),
     server: await monitoringServer(now, range),
+    advice: await recommendations(now),
   };
 }
 export type MonitoringOverview = Awaited<ReturnType<typeof monitoringOverview>>;

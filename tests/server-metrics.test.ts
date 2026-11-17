@@ -178,6 +178,34 @@ test("AI calls in detail: per model, workspace and person with errors, timeouts,
   assert.equal(costOf([{ model: "models/gemini-pro", input: 1, output: 1 }], "gemini-pro", 1e6, 0), 1);
 });
 
+test("recommendations: gathered and cached, hidden while they apply, snoozed 30 days, rules switched off", async () => {
+  const data = await import("../lib/recommendations-data");
+  const now = Date.now();
+  // No SMTP in the test instance: the mail tip applies.
+  const first = await data.recommendations(now, true);
+  assert.ok(first.items.some((r) => r.id === "mail"));
+  assert.ok(first.items.every((r) => r.docs[0].startsWith("https://docs.flowplan.org/")));
+  const input = await data.recommendationInput(now);
+  assert.equal(input.database.backend, "sqlite");
+  await data.applyRecommendationAction({ action: "recommendation.hide", id: "mail" }, now);
+  const hidden = await data.recommendations(now + 1000);
+  assert.equal(hidden.items.some((r) => r.id === "mail"), false);
+  assert.deepEqual(hidden.quiet.map((q) => q.id), ["mail"]);
+  // Cached: evaluated again only after 15 minutes.
+  assert.equal(hidden.at, first.at);
+  await data.applyRecommendationAction({ action: "recommendation.restore", id: "mail" }, now);
+  await data.applyRecommendationAction({ action: "recommendation.snooze", id: "mail" }, now);
+  assert.equal((await data.recommendations(now + 29 * 86_400_000, true)).items.some((r) => r.id === "mail"), false);
+  assert.ok((await data.recommendations(now + 31 * 86_400_000, true)).items.some((r) => r.id === "mail"));
+  // Switched off, with a threshold changed (clamped) – stored per instance.
+  await data.applyRecommendationAction({ action: "recommendations.settings", off: ["mail"], thresholds: { cpuHigh: 0.9, highDays: 99 } }, now);
+  const state = await data.recommendationState();
+  assert.deepEqual(state.off, ["mail"]);
+  assert.equal(state.thresholds.cpuHigh, 0.9);
+  assert.equal(state.thresholds.highDays, 7);
+  assert.equal((await data.recommendations(now)).items.some((r) => r.id === "mail"), false);
+});
+
 test("the AI totals counted before are copied once into the details", async () => {
   await metrics.clearMetrics();
   await run("INSERT INTO metrics_ai(day,feature,requests,tokens_in,tokens_out) VALUES('2026-01-02','ask',4,40,4)");
