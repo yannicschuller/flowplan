@@ -4,6 +4,7 @@
 // the property's name and the value. Client-safe.
 import type { Field } from "../types";
 import { isEmpty, valueText } from "./placeholders";
+import { dateOnly } from "../date-values";
 
 export class ValueError extends Error {
   kind = "validation" as const;
@@ -74,7 +75,10 @@ export function coerceToField(value: unknown, field: Field, locale: "de" | "en" 
       if (DATE.test(s)) return s;
       if (DATETIME.test(s)) {
         const ms = Date.parse(s);
-        return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 16) + "Z" : fail(field, value);
+        if (!Number.isFinite(ms)) return fail(field, value);
+        const at = new Date(ms).toISOString().slice(0, 16) + "Z";
+        // A property without time takes the day in the run's zone (#327).
+        return field.noTime ? dateOnly(at, timeZone) : at;
       }
       return fail(field, value);
     }

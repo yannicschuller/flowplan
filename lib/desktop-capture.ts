@@ -72,7 +72,7 @@ export async function captureProperties(user: Identity, page: Page): Promise<Cap
     name: f.name,
     type: f.type,
     ...(f.options ? { options: f.options.slice(0, 200) } : {}),
-    ...(f.type === "date" ? { due: f.id === due?.id } : {}),
+    ...(f.type === "date" ? { due: f.id === due?.id, ...(f.noTime ? { noTime: true } : {}) } : {}),
   }));
 }
 async function members(workspaceId: string): Promise<CaptureMember[]> {

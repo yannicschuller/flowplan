@@ -280,7 +280,8 @@ export function tokens(raw: string, context: ParseContext): CaptureToken[] {
 // `due` marks the database's due date property (lib/database-settings-schema.ts
 // dueField()): true on it, false on the other date properties; without it
 // the due date is guessed by name.
-export type CaptureProperty = { id: string; name: string; type: string; options?: string[]; due?: boolean };
+// `noTime`: a date property without time (#327) – a typed time is dropped.
+export type CaptureProperty = { id: string; name: string; type: string; options?: string[]; due?: boolean; noTime?: boolean };
 export type CaptureMember = { id: string; name: string; email: string };
 export type CaptureChip = CaptureToken & {
   // The property it fills; null when the target has none for it (the text
@@ -363,8 +364,8 @@ export function mapTokens(list: CaptureToken[], properties: CaptureProperty[], m
     let chip: CaptureChip = { ...token, field: null, cell: null, label: token.raw };
     if (token.kind === "date") {
       const value = token.value as { date: string; time?: string };
-      const cell = value.time ? `${value.date}T${value.time}` : value.date;
       const f = dueProperty(properties);
+      const cell = value.time && !f?.noTime ? `${value.date}T${value.time}` : value.date;
       if (f && !used.has(f.id)) chip = { ...chip, field: { id: f.id, name: f.name }, cell };
       // A page or the journal: the due date of the task.
       else if (!properties.length && options.task) chip = { ...chip, field: { id: "task", name: "" }, cell: value.date };

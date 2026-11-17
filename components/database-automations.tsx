@@ -626,7 +626,8 @@ function ValueInput({
     return (
       <Select aria-label={label} value={String(v || "@today")} onChange={(e) => onChange(e.target.value)}>
         <option value="@today">{t("Heute", "Today")}</option>
-        <option value="@now">{t("Jetzt (mit Uhrzeit)", "Now (with time)")}</option>
+        {/* A property without time (#327) takes today for "Jetzt". */}
+        {(!field.noTime || v === "@now") && <option value="@now">{t("Jetzt (mit Uhrzeit)", "Now (with time)")}</option>}
         <option value="@clear">{t("Leeren", "Clear")}</option>
       </Select>
     );

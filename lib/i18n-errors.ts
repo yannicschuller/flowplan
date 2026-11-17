@@ -662,6 +662,8 @@ const exact: Record<string, string> = {
   "Relationsziel fehlt.": "Relation target missing.",
   "Verknüpfter Eintrag fehlt.": "Linked record missing.",
   "Ungültiges Datum.": "Invalid date.",
+  // Date properties without time (#327, lib/date-values.ts NO_TIME_MESSAGE).
+  "Diese Eigenschaft hat keine Uhrzeit. Bitte nur ein Datum angeben.": "This property has no time. Please enter only a date.",
   "Änderung zu groß.": "Change too large.",
   "Datenbank ist gesperrt.": "Database is locked.",
   "Keine Datenbank.": "Not a database.",

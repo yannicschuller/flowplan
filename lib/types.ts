@@ -148,6 +148,10 @@ export type Field = {
   rollupMax?: number;
   format?: string;
   timeFormat?: "24" | "12";
+  // "date": without a time of day ("Mit Uhrzeit" off, #327). Values that
+  // already have a time keep it; no new time can be added (lib/date-values.ts
+  // newTimeRefused). Unset: dates may have a time.
+  noTime?: boolean;
   decimals?: number;
   // "id": the ticket prefix, e.g. WEB for WEB-123.
   prefix?: string;

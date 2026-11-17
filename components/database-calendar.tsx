@@ -786,7 +786,9 @@ export default function DatabaseCalendar({
                                 aria-label={t(`Termin am ${day.date} um ${text} UTC${label.offset} anlegen`, `Create event on ${day.date} at ${text} UTC${label.offset}`)}
                                 disabled={!canEdit || busy}
                                 onClick={() =>
-                                  onCreate({
+                                  // A start property without time (#327):
+                                  // a record on that day.
+                                  onCreate(start.noTime ? { [start.id]: day.date } : {
                                     [start.id]: at.toString(),
                                     ...(end
                                       ? {
@@ -1057,6 +1059,7 @@ export default function DatabaseCalendar({
                 timeZone={draft.zone}
                 commit="change"
                 disabled={busy || !canEdit}
+                allowTime={!start?.noTime}
                 onChange={(start) => setDraft({ ...draft, start })}
               />
             </label>
@@ -1069,6 +1072,7 @@ export default function DatabaseCalendar({
                   timeZone={draft.zone}
                   commit="change"
                   disabled={busy || !canEdit}
+                  allowTime={!end.noTime}
                   onChange={(end) => setDraft({ ...draft, end })}
                 />
               </label>

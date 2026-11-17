@@ -1,7 +1,7 @@
 import { aliasList } from "./aliases";
 import { numberCell } from "./field-format";
 import { z } from "zod";
-import { validDateValue } from "./date-values";
+import { newTimeRefused, validDateValue } from "./date-values";
 import type { Field } from "./types";
 import { isQuestion, surveyLogic, surveySchema, validateSurvey } from "./survey";
 import { conditionSchema, evaluateLogic, validRedirect, type Condition, type LogicItem } from "./form-logic";
@@ -273,6 +273,11 @@ export function validateFormValues(
           z.url({ protocol: /^https?$/ }).parse(text);
         if (f.type === "date" && text) {
           if (!validDateValue(text)) throw new Error();
+          // "Mit Uhrzeit" off (#327): the form asks for the date only.
+          if (newTimeRefused(f, text, undefined)) {
+            errors[f.id] = `${f.name}: Bitte nur ein Datum angeben, ohne Uhrzeit.`;
+            continue;
+          }
         }
         cells[f.id] = text;
       }

@@ -268,6 +268,8 @@ const fieldInfo = (f: Field, _: number, fields: Field[]) => ({
   ...(f.optionColors && Object.keys(f.optionColors).length ? { optionColors: f.optionColors } : {}),
   // The workspace's tags are the options; a new name creates a tag (#79).
   ...(f.tagOptions ? { tagOptions: true } : {}),
+  // A date without time (#327): only YYYY-MM-DD; a time is refused.
+  ...(f.type === "date" && f.noTime ? { noTime: true } : {}),
   ...(f.relationPage ? { relationDatabaseId: f.relationPage } : {}),
 });
 // Properties keyed by name, as an AI reads them; people by name.
@@ -813,7 +815,8 @@ async function createPage(
   return { id, kind, url: pageLink(id) };
 }
 // Properties by name or id; people by e-mail or name, lists from one value.
-async function cellPatch(user: Identity, page: Page, fields: Field[], input: Record<string, unknown>) {
+// `before`: the record's cells when it exists (a date with a time may keep it, #327).
+async function cellPatch(user: Identity, page: Page, fields: Field[], input: Record<string, unknown>, before?: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
   const people = await members(page.workspace_id);
   for (const [key, raw] of Object.entries(input)) {
@@ -835,7 +838,7 @@ async function cellPatch(user: Identity, page: Page, fields: Field[], input: Rec
       value = Number(value);
     patch[f.id] = value;
   }
-  return await validateCellPatch(user, page, fields, patch);
+  return await validateCellPatch(user, page, fields, patch, before);
 }
 async function createRecord(
   user: Identity,
@@ -867,7 +870,8 @@ async function updateRecord(
   const { page, row } = await requireRow(user, args.databaseId, args.recordId, true);
   await requireUnlocked(user, page);
   if (args.properties !== undefined) {
-    const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties);
+    const before = typeof row.cells === "string" ? (JSON.parse(row.cells) as Record<string, unknown>) : (row.cells as Record<string, unknown>);
+    const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties, before);
     await command(user, {
       action: "row.update",
       pageId: page.id,
