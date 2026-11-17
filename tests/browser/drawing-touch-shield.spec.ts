@@ -267,7 +267,12 @@ test("a new drawing block starts drawing without a caret in the text; afterwards
   await expect.poll(() => textState(page)).toEqual({ inEditor: true, editable: true, caretInText: true, editorEditable: "true", inputmode: 0, readonly: false });
   await page.keyboard.type(" weiter");
   await expect(first).toHaveText(/Oben weiter/);
-  // A finger on the canvas of the inactive block is not cancelled (it scrolls).
+  // A finger on the canvas of the inactive block is not cancelled (it scrolls)
+  // – once the pen is away: until PALM_MS after its last stroke a finger
+  // counts as the palm holding it (lib/stylus.ts), and against the
+  // production build the steps since the stroke take less than that.
+  const { PALM_MS } = await import("../../lib/stylus");
+  await page.waitForTimeout(PALM_MS);
   expect(await touchCancelled(page, "direct")).toBe(false);
 
   // Escape ends drawing too, with the caret in the text below the block.

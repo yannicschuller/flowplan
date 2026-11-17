@@ -232,12 +232,19 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       surface.removeEventListener("pointerleave", hide);
     };
   }, [writable, loaded]);
+  // The listeners stay registered while drawing, with the latest `finish`
+  // from a ref: `finish` changes with every save of the ink, and a listener
+  // replaced while the browser is dispatching the event (another listener's
+  // state update re-renders the block in between) neither hears it nor does
+  // the new one – an Escape right after a stroke was lost.
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
   useEffect(() => {
     if (!active) return;
     const outside = (event: PointerEvent) => {
       const target = event.target as Element | null;
       if (root.current?.contains(target) || target?.closest?.(".ink-menu, .modal, .ink-shield")) return;
-      finish();
+      finishRef.current();
     };
     // Escape ends drawing once nothing inside wants it (a selection, a menu).
     const escape = (event: KeyboardEvent) => {
@@ -245,7 +252,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       if (event.key !== "Escape" || event.defaultPrevented || target?.closest?.(".ink-menu, .modal")) return;
       if (document.querySelector(".modal")) return;
       event.preventDefault();
-      finish(true);
+      finishRef.current(true);
     };
     document.addEventListener("pointerdown", outside, true);
     window.addEventListener("keydown", escape);
@@ -253,7 +260,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
       document.removeEventListener("pointerdown", outside, true);
       window.removeEventListener("keydown", escape);
     };
-  }, [active, finish]);
+  }, [active]);
 
   // Height: drag the handle (or arrow keys on it).
   const scale = useRef(1);

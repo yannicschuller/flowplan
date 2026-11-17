@@ -22,7 +22,8 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const { boot, command, board } = await setup(page, `Board-Extras ${Date.now()}`);
-  const db = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Aufgaben ${Date.now()}`, kind: "database", starterTemplate: "tasks" });
+  const dbTitle = `Aufgaben ${Date.now()}`;
+  await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: dbTitle, kind: "database", starterTemplate: "tasks" });
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
   const canvas = wb.locator(".wb-canvas");
@@ -110,8 +111,10 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   // A database record as a live card.
   await boardInsert(wb, "Seite verknüpfen");
   const cards = page.getByRole("dialog", { name: "Seite verknüpfen" });
-  await cards.getByLabel("Seiten suchen").fill("Aufgaben");
-  await cards.getByRole("button", { name: new RegExp(`Eintrag aus „${db.title ?? "Aufgaben"}`) }).first().click();
+  // This spec's own database by its full title: other specs on the same
+  // server leave databases called "Aufgaben …" too, some without records.
+  await cards.getByLabel("Seiten suchen").fill(dbTitle);
+  await cards.getByRole("button", { name: new RegExp(`^Eintrag aus „${dbTitle}“`) }).click();
   await cards.locator(".wb-card-list button").nth(1).click();
   await expect(wb.locator(".wb-row-card strong")).not.toHaveText(/nicht verfügbar/, { timeout: 12_000 });
   await expect(wb.getByText("Gespeichert", { exact: true })).toBeVisible({ timeout: 10_000 });

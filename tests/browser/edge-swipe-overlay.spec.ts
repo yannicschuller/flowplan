@@ -102,6 +102,15 @@ async function openPage(page: Page, pageId: string) {
   await expect(page.locator(".page-content, .ProseMirror").first()).toBeVisible({ timeout: 15000 });
 }
 
+// The app is listening for the swipe: the workspace's swipe handler
+// (components/drawer-swipe.ts) tells the app which way the edge goes as it
+// starts. The production build's page has loaded – and shows the start page
+// rendered on the server – before the workspace has hydrated; a swipe
+// before that goes nowhere.
+async function swipeReady(page: Page, mode = "drawer") {
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __edge: string[] }).__edge.at(-1))).toBe(mode);
+}
+
 // Where the page is, and how much history it has – the swipe changes neither.
 const place = (page: Page) => page.evaluate(() => ({ hash: location.hash, length: history.length }));
 
@@ -113,7 +122,7 @@ test.describe("iPhone (app)", () => {
     const { pageId } = await setUp(page, true);
     await openPage(page, pageId);
     // The app is told to leave the edge to the sidebar (the default).
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __edge: string[] }).__edge.at(-1))).toBe("drawer");
+    await swipeReady(page);
     const before = await place(page);
 
     await swipe(page, 3, 300);
@@ -142,6 +151,7 @@ test.describe("iPhone (app)", () => {
     test.skip(info.project.name !== "mobile", "Touch emulation runs in the mobile project.");
     await setUp(page, true);
     await page.goto("/#home");
+    await swipeReady(page);
     await swipe(page, 3, 300);
     await expectOverlay(page, true);
     const handle = sidebar(page).locator(".sidebar-resize");
@@ -155,6 +165,7 @@ test.describe("iPhone (app)", () => {
     expect(await page.evaluate(() => localStorage.getItem("flowplan-sidebar-width"))).toBeNull();
 
     await page.reload();
+    await swipeReady(page);
     await swipe(page, 3, 300);
     await expectOverlay(page, true);
     expect(await sidebarWidth(page)).toBe(260);

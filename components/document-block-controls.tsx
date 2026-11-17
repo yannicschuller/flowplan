@@ -397,7 +397,13 @@ export function DocumentBlockControls({
           if (!editor.isDestroyed) measure();
         });
       if (tr.docChanged) {
-        if (dragging.current) {
+        // Only a change that moves positions ends a drag: attributes alone
+        // (the ids a block just moved gets a moment later, lib/block-ids-
+        // plugin.ts) leave every block where it was – the next block
+        // dragged right after a drop was let go with "document changed".
+        let moved = false;
+        for (const map of tr.mapping.maps) map.forEach(() => (moved = true));
+        if (dragging.current && moved) {
           dragging.current = null;
           setPointerActive(false);
           setDrop(null);
@@ -1401,6 +1407,11 @@ export function DocumentBlockControls({
       if (selectingRef.current || !target || !editor.view.dom.contains(target)) return;
       // Fields inside a block (a caption, a code editor) keep their own ⌘A.
       if (target.closest("input, textarea, select") || target.closest("[contenteditable]") !== editor.view.dom) return;
+      // A click just before may not have reached the editor's selection yet
+      // (Chromium sends its selectionchange up to a frame later): without
+      // this, ⌘A right after a click chose the text of the block the caret
+      // was in before.
+      (editor.view as unknown as { domObserver?: { flush?: () => void } }).domObserver?.flush?.();
       const { selection } = editor.state;
       const { $from, $to } = selection;
       event.preventDefault();
