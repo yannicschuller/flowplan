@@ -423,11 +423,31 @@ async function tasks(user: Identity, args: { workspaceId?: string; includeDone?:
 
 // ---- Writing (always through command()) ----
 
+// Images in Markdown written through MCP: only files uploaded to this
+// instance (/api/files/…, also as a full address of its own origin, as
+// read_page writes them). Any other image address is left out – its alt
+// text stays – like in AI answers (lib/ai/insert.ts aiAnswerHref): a client
+// steered by injected text could otherwise put an image into a page whose
+// address carries data out the moment someone opens it. Links stay.
+export function ownImageSrc(href: string): string | null {
+  try {
+    const base = new URL(appUrl());
+    const url = new URL(href.trim(), base);
+    if (url.origin !== base.origin || url.username || url.password) return null;
+    if (!/^\/api\/files\/[0-9a-f-]{36}$/i.test(url.pathname)) return null;
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return null;
+  }
+}
+export const mcpMarkdownHref = (href: string, kind: "link" | "image") => (kind === "image" ? ownImageSrc(href) : href);
+export const mcpMarkdownToHtml = (markdown: string) => markdownToHtml(markdown, mcpMarkdownHref);
+
 // Markdown appended to a stored document as one change, sent like an edit
 // from the editor ("document.sync"), so versions, mentions, tasks, the
 // activity and webhooks behave the same.
 export async function appendToPage(user: Identity, args: { pageId: string; markdown: string }) {
-  return await appendHtmlToPage(user, { pageId: args.pageId, html: markdownToHtml(args.markdown) });
+  return await appendHtmlToPage(user, { pageId: args.pageId, html: mcpMarkdownToHtml(args.markdown) });
 }
 // The Yjs change that appends HTML to a stored document or replaces its
 // content, as the editor would send it.
@@ -467,7 +487,7 @@ async function writeRecordDocument(
 ) {
   const { row } = await requireRow(user, args.databaseId, args.recordId, true);
   const stored = await ensureRowDocument(row);
-  const update = documentUpdate(stored.state, stored.html, markdownToHtml(args.markdown), args.mode || "replace");
+  const update = documentUpdate(stored.state, stored.html, mcpMarkdownToHtml(args.markdown), args.mode || "replace");
   await command(user, {
     action: "row.document.sync",
     pageId: args.databaseId,
@@ -565,7 +585,7 @@ async function updatePage(
   if (args.revision !== undefined && args.revision !== revisionOf(page, stored)) throw staleRevision();
   const mode = args.markdown === undefined ? undefined : args.section !== undefined ? "section" : args.mode || "replace";
   if (args.markdown !== undefined) {
-    const html = markdownToHtml(args.markdown);
+    const html = mcpMarkdownToHtml(args.markdown);
     const update =
       args.section !== undefined
         ? documentRewrite(stored.state, stored.html, (doc) => replaceSection(doc, htmlNode(html), args.section!, args.occurrence))
