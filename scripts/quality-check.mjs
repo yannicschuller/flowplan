@@ -57,10 +57,12 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // administration 948.1 KB (monitoring 970.4, push 956.8), a workflow
 // 1153.2 KB; a document about 1706 KB with KaTeX and mathjs still in it.
 // The budgets move down to about 3 % above (the workflow's stays).
+// Then KaTeX and mathjs loading with the first formula or calculation: a
+// document 1447.4 KB, its budget 1490 KB.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1760 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1490 },
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 955 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);

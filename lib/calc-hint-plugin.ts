@@ -37,6 +37,14 @@ function lineBeforeCursor(state: EditorState) {
   return /=\s?$/.test(text) && !/=\s?=\s?$/.test(text) ? text : null;
 }
 
+// A calculation being written: a number and an arithmetic sign before the
+// cursor in the same line (or a formula there).
+export function startsCalculation(state: EditorState) {
+  const $pos = state.selection.$from;
+  if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) return false;
+  const text = $pos.parent.textBetween(Math.max(0, $pos.parentOffset - 40), $pos.parentOffset, undefined, "\ufffc");
+  return /\d\s*[-+−*/×·÷:^]/.test(text) || lineWithFormulas(state).formulas.length > 0;
+}
 // The line up to the cursor with formulas in it ("12/23" as a fraction)
 // kept apart, so they can be calculated with: text plus the LaTeX of each
 // formula at its place (\u0000 index \u0000).
@@ -125,9 +133,7 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
             return false;
           },
         },
-        view: (view) => {
-          // Loaded in the background, so the first hint is quick.
-          if (view.editable) setTimeout(() => void loadSolver().catch(() => {}), 3000);
+        view: () => {
           return {
             update(view: EditorView, previous: EditorState) {
               if (
@@ -137,7 +143,13 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
               )
                 return;
               const line = lineBeforeCursor(view.state);
-              if (!line) return;
+              // mathjs (180 KB) loads once a calculation is being written – a
+              // number and an operator before the cursor – not with every
+              // document, so the hint at the "=" is still quick.
+              if (!line) {
+                if (!solver && view.state.selection.empty && startsCalculation(view.state)) void loadSolver().catch(() => {});
+                return;
+              }
               const written = lineWithFormulas(view.state);
               const pos = view.state.selection.from;
               const id = ++request;

@@ -5,7 +5,7 @@ import type { MathAction } from "@/lib/math-solve";
 import { tr } from "@/lib/locale-tag";
 import type { Editor, Node } from "@tiptap/core";
 import { MathBlock, MathInline } from "@/lib/document-schema";
-import { mathError, renderMath, MAX_MATH_LENGTH } from "@/lib/math-render";
+import { loadMath, mathLoaded, renderMathInto, MAX_MATH_LENGTH } from "@/lib/math-render-lazy";
 import { Modal } from "./ui";
 import { beginUndoStep, nodeTargetPosition, openedNode } from "@/lib/node-target";
 export type MathTarget = {
@@ -31,7 +31,7 @@ export function mathNodeViews(onEdit: (target: MathTarget) => void) {
               `${editor.isEditable ? tr("Formel bearbeiten: ", "Edit formula: ") : tr("Formel: ", "Formula: ")}${current.attrs.expression}`,
             );
             dom.tabIndex = editor.isEditable ? 0 : -1;
-            dom.innerHTML = renderMath(current.attrs.expression, inline);
+            renderMathInto(dom, current.attrs.expression, inline);
           };
           const edit = (event: Event) => {
             if (!editor.isEditable) return;
@@ -101,6 +101,11 @@ export function MathEditorDialog({
   const t = useT();
   const locale = useLocale();
   const [expression, setExpression] = useState(target.expression);
+  // KaTeX for the check and the preview (lib/math-render-lazy.ts).
+  const [math, setMath] = useState(mathLoaded);
+  useEffect(() => {
+    if (!math) void loadMath().then(setMath).catch(() => {});
+  }, [math]);
   // The formula as it was when the dialog opened (lib/node-target.ts).
   const [opened] = useState(() => (editor ? openedNode(editor.state, target) : null));
   const input = useRef<HTMLTextAreaElement>(null);
@@ -134,7 +139,7 @@ export function MathEditorDialog({
   }
   const [conflict, setConflict] = useState("");
   const inline = target.type === "mathInline";
-  const error = mathError(expression, inline);
+  const error = math ? math.mathError(expression, inline) : null;
   function apply(remove = false) {
     if (!editor?.isEditable) {
       setConflict(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
@@ -216,7 +221,7 @@ export function MathEditorDialog({
         <div
           className="math-preview"
           aria-label={t("Formelvorschau", "Formula preview")}
-          dangerouslySetInnerHTML={{ __html: renderMath(expression, inline) }}
+          {...(math ? { dangerouslySetInnerHTML: { __html: math.renderMath(expression, inline) } } : { children: expression })}
         />
         {calc.length > 0 && (
           <div className="math-calc" role="group" aria-label={t("Rechnen", "Calculate")}>

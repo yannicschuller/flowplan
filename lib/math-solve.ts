@@ -1142,9 +1142,7 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
 // inserted with ("= 11/12" → "11/12", "⇒ x = 4" → "x = 4"); "Ergebnis
 // kopieren" copies this – the Unicode a person sees (², √, −), which pastes
 // as plain text into any other app, not the LaTeX form.
-export function mathActionResult(action: Pick<MathAction, "text">) {
-  return action.text.replace(/^[=⇒]\s*/, "");
-}
+export { mathActionResult } from "./math-action";
 
 // What can be done with a written expression, best first. Empty when it is
 // not a calculation.
