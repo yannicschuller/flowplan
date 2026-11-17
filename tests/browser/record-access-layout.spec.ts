@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 
 test("record pages get their own permissions and layout options", async ({
   page,
@@ -42,7 +45,14 @@ test("record pages get their own permissions and layout options", async ({
     pageId: p.id,
     cells: { title: `Akte ${tag}`, intern: "Nur intern" },
   });
-  const other = boot.members.find((m: { id: string }) => m.id !== boot.user.id);
+  // Another member to grant the record to, of the spec's own: the demo
+  // workspace has none unless an earlier spec on the same server left one
+  // behind (with TEST_SERVERS every worker has a server of its own).
+  const store = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR || join(process.cwd(), "data"), "flowplan.sqlite"));
+  store.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+  const other = { id: randomUUID(), name: `Kollegin ${tag}` };
+  store.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(other.id, `record-access-test:${other.id}`, other.name, `${other.id}@example.test`, Date.now());
+  store.prepare("INSERT INTO members VALUES(?,?,?)").run(boot.workspace.id, other.id, "editor");
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
 
@@ -130,4 +140,6 @@ test("record pages get their own permissions and layout options", async ({
   });
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
+  store.prepare("DELETE FROM members WHERE workspace_id=? AND user_id=?").run(boot.workspace.id, other.id);
+  store.close();
 });
