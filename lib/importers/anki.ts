@@ -431,7 +431,7 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
   const asBasic = [...pkg.notes].filter((n) => mappings.get(n.mid)?.kind === "occlusion" && mappings.get(n.mid)?.type !== "occlusion").length;
   if (asBasic) warnings.push(`${asBasic} Bildverdeckungs-Notizen werden als Vorder-/Rückseite mit dem Bild übernommen (ohne Masken).`);
   if (noMasks) warnings.push(`${noMasks} von ${occlusionNotes} Bildverdeckungs-Notizen haben keine lesbaren Masken oder kein Bild und ergeben keine Karte.`);
-  if (skippedShapes) warnings.push(`${skippedShapes} Formen der Bildverdeckung (Text oder unbekannt) werden nicht übernommen.`);
+  if (skippedShapes) warnings.push(`${skippedShapes} Formen der Bildverdeckung (unbekannte Art) werden nicht übernommen.`);
   if (pkg.reviewsSkipped) warnings.push(`Das Anki-Paket hat mehr als ${ANKI_LIMITS.reviews} Wiederholungen; der Lernstand kann nicht übernommen werden.`);
   const suspended = pkg.cards.filter((c) => c.queue === -1).length;
   const noteCount = new Map<string, number>();

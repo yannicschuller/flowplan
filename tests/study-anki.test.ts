@@ -237,7 +237,7 @@ test("image occlusion: masks, groups, pixels, the learning state and the export"
       {
         id: 31,
         mid: OCCLUSION.id,
-        // c1 one rectangle, c2 an ellipse and a polygon (one card), a text shape left out.
+        // c1 one rectangle, c2 an ellipse and a polygon (one card), a text shape (shown on the picture, #343).
         fields: [
           "{{c1::image-occlusion:rect:left=.1:top=.2:width=.2:height=.1:oi=1}}<br>{{c2::image-occlusion:ellipse:left=.5:top=.5:rx=.1:ry=.05:oi=1}}<br>{{c2::image-occlusion:polygon:points=.6,.1 .9,.1 .75,.4:oi=1}}<br>{{c3::image-occlusion:text:text=Hinweis:left=.1:top=.1}}",
           '<img src="herz.png">',
@@ -266,7 +266,7 @@ test("image occlusion: masks, groups, pixels, the learning state and the export"
   const bytes = await ankiPackage(fixture);
   const preview = await importFromSource(owner, wid, space, { name: "Anatomie.apkg", bytes }, { dryRun: true });
   assert.ok(preview.warnings.some((w) => /^1 von 3 Bildverdeckungs-Notizen haben keine lesbaren Masken/.test(w)));
-  assert.ok(preview.warnings.some((w) => /^1 Formen der Bildverdeckung/.test(w)), "the text shape");
+  assert.ok(!preview.warnings.some((w) => /Formen der Bildverdeckung/.test(w)), "the text shape is no longer skipped");
   const result = await importFromSource(owner, wid, space, { name: "Anatomie.apkg", bytes }, { anki: JSON.stringify({ state: true }), zone });
   assert.equal((result as { reviews?: number }).reviews, 3);
   const pageId = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Anatomie' ORDER BY created_at DESC", wid))!.id;
@@ -276,6 +276,7 @@ test("image occlusion: masks, groups, pixels, the learning state and the export"
   const [first] = occludedImages(rows[0].html);
   assert.equal(first.occlusion.mode, "hide-all");
   assert.deepEqual(occlusionTargets(first.occlusion).map((t) => t.masks.length), [1, 2]);
+  assert.deepEqual(first.occlusion.texts?.map((x) => [x.text, x.x, x.y]), [["Hinweis", 0.1, 0.1]], "the text shape is on the picture, not a card");
   assert.deepEqual(occludedImages(rows[1].html)[0].occlusion.masks.map((m) => [m.x, m.y, m.w, m.h]), [[0.1, 0.1, 0.2, 0.2]]);
   assert.deepEqual(occludedImages(rows[2].html), []);
   const queue = (await studyQueue(owner, { pageId, zone, limit: 50 })) as { total: number };
@@ -301,6 +302,7 @@ test("image occlusion: masks, groups, pixels, the learning state and the export"
   assert.deepEqual(nt.fields, ["Occlusion", "Image", "Header", "Back Extra", "Comments"]);
   const note = pkg.notes.find((n) => n.fields[2] === "Das Herz")!;
   assert.match(note.fields[0], /^\{\{c1::image-occlusion:rect:left=\.1:top=\.2:width=\.2:height=\.1:oi=1\}\}<br>\{\{c2::image-occlusion:ellipse:/);
+  assert.match(note.fields[0], /\{\{c0::image-occlusion:text:left=\.1:top=\.1:text=Hinweis:scale=1:fs=[.0-9]+\}\}$/, "the text as Anki's text shape");
   assert.match(note.fields[1], /^<img src="herz\.png"/);
   assert.deepEqual(pkg.cards.map((c) => c.ord).sort(), [0, 0, 1]);
   assert.ok(pkg.media.has("herz.png"));
