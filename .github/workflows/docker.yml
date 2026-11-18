@@ -10,8 +10,10 @@
 # (release.yml calls this workflow with the version, or a pushed tag v1.2.3)
 # or by hand: Actions → Docker image → Run workflow builds :beta from the
 # chosen branch, or rebuilds a release when a version is given. Pushes and
-# pull requests build no image; CI (ci.yml) tests them. Every new :beta image is
-# rolled out on Coolify (COOLIFY_WEBHOOK, COOLIFY_TOKEN; see README).
+# pull requests build no image; CI (ci.yml) tests them. Two Coolify
+# resources follow the images (see README): the beta instance gets every new
+# :beta (COOLIFY_BETA_WEBHOOK), the production instance every release, i.e.
+# every new :latest (COOLIFY_WEBHOOK). Both use COOLIFY_TOKEN.
 name: Docker image
 
 on:
@@ -246,9 +248,13 @@ jobs:
   # a version, and a release newer than the last beta. Coolify's API must
   # accept GitHub's runners (Settings → Advanced → API access: allowed IPs);
   # the token still guards it.
+  # Rolls out on Coolify: the beta instance whenever :beta moved (every beta
+  # build, and a release newer than the current :beta), the production
+  # instance (:latest) with every release. Without a resource's webhook the
+  # step says so and does nothing.
   deploy:
     needs: image
-    if: needs.image.outputs.deploy == 'true'
+    if: needs.image.outputs.deploy == 'true' || needs.image.outputs.release != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The Coolify secrets live in the environment "production", which only
@@ -258,17 +264,28 @@ jobs:
     steps:
       - name: Deploy on Coolify
         env:
-          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          BETA_WEBHOOK: ${{ secrets.COOLIFY_BETA_WEBHOOK }}
+          LATEST_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          BETA: ${{ needs.image.outputs.deploy }}
+          RELEASE: ${{ needs.image.outputs.release }}
         run: |
-          if [ -z "$COOLIFY_WEBHOOK" ] || [ -z "$COOLIFY_TOKEN" ]; then echo "No Coolify secrets: nothing to deploy."; exit 0; fi
-          # Coolify's answer explains a refusal (e.g. a missing permission).
-          status=$(curl -sS --retry 3 --max-time 60 -o "$RUNNER_TEMP/coolify.json" -w '%{http_code}' -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK")
-          echo "Coolify answered $status: $(head -c 500 "$RUNNER_TEMP/coolify.json")"
-          if [ "$status" -ge 300 ]; then
-            echo "::error::Coolify did not deploy ($status). 401/403: the API token needs the “deploy” permission and the team of the resource; check Settings → Advanced → API access and its allowed IPs."
-            exit 1
-          fi
+          deploy() {
+            name="$1" webhook="$2"
+            if [ -z "$webhook" ] || [ -z "$COOLIFY_TOKEN" ]; then echo "No Coolify webhook or token for the $name instance: nothing to deploy."; return 0; fi
+            # Coolify's answer explains a refusal (e.g. a missing permission).
+            status=$(curl -sS --retry 3 --max-time 60 -o "$RUNNER_TEMP/coolify.json" -w '%{http_code}' -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" "$webhook")
+            echo "Coolify ($name) answered $status: $(head -c 500 "$RUNNER_TEMP/coolify.json")"
+            if [ "$status" -ge 300 ]; then
+              echo "::error::Coolify did not deploy the $name instance ($status). 401/403: the API token needs the “deploy” permission and the team of the resource; check Settings → Advanced → API access and its allowed IPs."
+              return 1
+            fi
+            echo "Rolled out the $name instance on Coolify." >> "$GITHUB_STEP_SUMMARY"
+          }
+          failed=0
+          if [ "$BETA" = true ]; then deploy beta "$BETA_WEBHOOK" || failed=1; fi
+          if [ -n "$RELEASE" ]; then deploy production "$LATEST_WEBHOOK" || failed=1; fi
+          exit $failed
 
   # Known vulnerabilities in the published image (operating system packages
   # and npm dependencies), with Trivy. Reports only – a finding never blocks

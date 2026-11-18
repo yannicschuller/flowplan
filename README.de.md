@@ -130,7 +130,7 @@ ghcr.io/yannicschuller/flowplan:1.2.3      # ein festes Release (auch :1.2 und :
 ghcr.io/yannicschuller/flowplan:beta       # der neueste manuelle Build, nicht für den Betrieb
 ```
 
-Images entstehen nur bei einem Release oder von Hand: **Actions → Docker image → Run workflow** baut `:beta` aus dem gewählten Branch (mit einer Version baut es stattdessen dieses Release neu). Jedes `:beta`-Image lässt sich automatisch auf Coolify ausrollen: die Repository-Secrets `COOLIFY_WEBHOOK` (Deploy-Webhook der Ressource) und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht) setzen und die Coolify-Ressource das `:beta`-Image nutzen lassen. Siehe [Coolify und Reverse Proxys](https://docs.flowplan.org/de/coolify-and-proxy).
+Images entstehen nur bei einem Release oder von Hand: **Actions → Docker image → Run workflow** baut `:beta` aus dem gewählten Branch (mit einer Version baut es stattdessen dieses Release neu). Zwei Coolify-Ressourcen können den Images automatisch folgen, über die Secrets der Umgebung `production` und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht): eine Beta-Instanz mit dem `:beta`-Image (`COOLIFY_BETA_WEBHOOK`, ihr Deploy-Webhook) wird bei jedem neuen `:beta` ausgerollt, eine Produktiv-Instanz mit `:latest` (`COOLIFY_WEBHOOK`) bei jedem Release. Ein Release, das neuer als das aktuelle `:beta` ist, wird auch `:beta` und rollt beide aus. Siehe [Coolify und Reverse Proxys](https://docs.flowplan.org/de/coolify-and-proxy).
 
 </details>
 
