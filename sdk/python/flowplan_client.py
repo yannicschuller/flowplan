@@ -2101,8 +2101,10 @@ StudyQueueQuery = TypedDict("StudyQueueQuery", {
 }, total=False)
 
 StudyExportQuery = TypedDict("StudyExportQuery", {
-    "state": Literal["1"],  # 1: add your learning state
+    "format": Literal["csv", "apkg"],  # apkg: an Anki package instead of CSV
+    "state": Literal["1"],  # 1: add your learning state (CSV)
     "zone": str,  # IANA time zone for the due dates
+    "view": str,  # View ID (its filters)
 }, total=False)
 
 StudyDueQuery = TypedDict("StudyDueQuery", {
@@ -2340,7 +2342,9 @@ ImportSourceForm = TypedDict("ImportSourceForm", {
     "workspaceId": Required[str],
     "spaceId": Required[str],
     "file": Required[FormFile],
-    "source": Literal["auto", "affine", "confluence", "evernote", "gdocs", "goodnotes", "obsidian", "word"],
+    "source": Literal["auto", "affine", "anki", "confluence", "evernote", "gdocs", "goodnotes", "obsidian", "word"],
+    "anki": str,
+    "zone": str,
     "mode": Literal["pages", "database"],
     "dryRun": Literal["0", "1"],
     "background": Literal["0", "1"],
@@ -2750,7 +2754,7 @@ class FlowplanClient:
         return self._json("GET", "/api/pages/" + _p(page_id) + "/study", query=dict(query) if query else None, headers=headers)
 
     def study_export(self, page_id: str, query: Optional["StudyExportQuery"] = None, headers: Optional[dict[str, str]] = None) -> bytes:
-        """A deck's cards as CSV — One line per card you may study: front, back, hint, extra, tags, type and card (`sub`); document sides as Markdown, clozes as {{c1::…}}. With `state=1` your own learning state too (state, due, stability, difficulty, reviews, lapses) – never anyone else's. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study/export)"""
+        """A deck's cards as CSV or Anki package — One line per card you may study: front, back, hint, extra, tags, type and card (`sub`); document sides as Markdown, clozes as {{c1::…}}. With `state=1` your own learning state too (state, due, stability, difficulty, reviews, lapses) – never anyone else's. With `format=apkg` an Anki package instead (the legacy collection.anki2 every Anki version imports): one note per record (Basic, Basic and reversed, type in the answer, Cloze; multiple choice as Basic with the options on the front), tags, the select "Deck" as sub-decks, pictures and sounds of the database as media; cards as new, without learning state. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study/export)"""
         return self._bytes("GET", "/api/pages/" + _p(page_id) + "/study/export", query=dict(query) if query else None, headers=headers)
 
     def study_due(self, query: "StudyDueQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
@@ -3010,7 +3014,7 @@ class FlowplanClient:
         return self._json("POST", "/api/import/zip", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-        """Import from AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, GoodNotes PDF export (or any PDF; several in a ZIP, folders become parent pages): each PDF becomes a notebook whose sheets have the PDF pages as background (at most 500 pages per PDF), Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`), OneNote files (`.one`, `.onetoc2`, `.onepkg`) and GoodNotes files (`.goodnotes`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document; export from GoodNotes as PDF); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. `background=1` answers at once with 202 and `job` (an id) and runs the preview or import afterwards, so a large file does not outlast a reverse proxy's timeout; `GET /api/import/source/job?id=<job>` then reports it. Only one such import per person runs at a time (409). (POST /api/import/source)"""
+        """Import from AFFiNE, Anki, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Anki deck or collection (`.apkg`, `.colpkg`, legacy and Anki ≥ 2.1.50 format): one flashcard database per top-level deck with sub-decks in the select "Deck", media as uploads; the preview's `anki` lists decks and note types with the suggested mapping, which `anki` (JSON: `{notetypes: {<id>: {type: "basic"|"typed"|"cloze", reverse, roles: ["front"|"back"|"hint"|"extra"|"skip", …]}}, state}`) changes; `state: true` replays Anki's review log through FSRS as the importing person's own learning state (`zone`: their IANA time zone),Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, GoodNotes PDF export (or any PDF; several in a ZIP, folders become parent pages): each PDF becomes a notebook whose sheets have the PDF pages as background (at most 500 pages per PDF), Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`), OneNote files (`.one`, `.onetoc2`, `.onepkg`) and GoodNotes files (`.goodnotes`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document; export from GoodNotes as PDF); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. `background=1` answers at once with 202 and `job` (an id) and runs the preview or import afterwards, so a large file does not outlast a reverse proxy's timeout; `GET /api/import/source/job?id=<job>` then reports it. Only one such import per person runs at a time (409). (POST /api/import/source)"""
         return self._json("POST", "/api/import/source", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def import_book_stack(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
