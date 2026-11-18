@@ -84,8 +84,12 @@ test("a rectangle from the margin chooses blocks; keys act on all of them", asyn
   await expect(page.locator(".document-block-marked")).toHaveCount(0);
 
   // Esc in a block chooses it; ↓ moves the choice, ⇧↓ extends it.
-  await p("Alpha").click();
-
+  // The page may still settle after the delete; click until the caret is in Alpha.
+  await expect(async () => {
+    await p("Alpha").click();
+    const caret = await page.evaluate(() => window.getSelection()?.anchorNode?.textContent ?? "");
+    expect(caret).toBe("Alpha");
+  }).toPass({ timeout: 10_000 });
   await page.keyboard.press("Escape");
   await expect.poll(() => marked(page)).toEqual(["Alpha"]);
   await page.keyboard.press("ArrowDown");
