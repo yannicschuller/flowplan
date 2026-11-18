@@ -268,6 +268,9 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
     const outside = (event: PointerEvent) => {
       const target = event.target as Element | null;
       if (root.current?.contains(target) || target?.closest?.(".ink-menu, .modal, .ink-shield")) return;
+      // The block flung out of sight: the shield lets touches through to
+      // scroll back to it (#322), and drawing goes on until Done.
+      if (event.pointerType !== "mouse" && document.querySelector(".ink-shield.is-away")) return;
       finishRef.current();
     };
     // Escape ends drawing once nothing inside wants it (a selection, a menu).
