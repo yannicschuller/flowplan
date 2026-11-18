@@ -1,4 +1,5 @@
 // Imports from other tools: AFFiNE (workspace file .affine or snapshot ZIP),
+// Anki (.apkg/.colpkg as flashcard databases, lib/importers/anki.ts),
 // Confluence (space export), Evernote (.enex), Google Docs (Takeout with
 // .html or .docx), GoodNotes (PDF exports, several in a ZIP, as notebooks –
 // lib/importers/goodnotes.ts), Microsoft Word (.docx, several in a ZIP) and
@@ -22,6 +23,7 @@ import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
 import { isPdf, isPdfArchive, parseGoodNotesUpload, refuseGoodNotes } from "./goodnotes";
 import { isObsidianVault, parseObsidian } from "./obsidian";
+import { isAnkiPackage } from "./anki-read";
 import { isWordArchive, parseWord, refuseLegacyOffice } from "./word";
 import { previewImport, requireSpace, writeImport, type ImportMode, type ImportPreview, type ImportResult } from "./write";
 import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
@@ -50,6 +52,7 @@ export function detectSource(name: string, bytes: Buffer, entries?: Map<string, 
   const names = [...entries.keys()];
   if (names.length && names.every((n) => /\.enex$/i.test(n))) return "evernote";
   if (names.includes("word/document.xml")) return "word";
+  if (isAnkiPackage(entries)) return "anki";
   if (isSnapshotZip(entries)) return "affine";
   if (isConfluence(entries)) return "confluence";
   if (isObsidianVault(entries)) return "obsidian";
@@ -128,6 +131,9 @@ export async function parseImport(name: string, input: Buffer | { path: string }
     case "goodnotes":
       // A PDF, or a ZIP of PDFs: one notebook each.
       return parseGoodNotesUpload(name, bytes, entries, title);
+    case "anki":
+      // Anki packages have their own path (importFromSource → lib/importers/anki.ts).
+      throw new HttpError(400, "Anki-Pakete bitte als .apkg- oder .colpkg-Datei importieren.");
     case "notion":
       // Notion comes through its API (lib/importers/notion-api.ts); its
       // export ZIP through the Markdown/Notion ZIP import (lib/zip-import.ts).
@@ -153,6 +159,10 @@ type ImportOptions = {
   // AFFiNE (#167): documents with exactly one document linking to them go
   // below it; on unless false (pages only – a database has no page tree).
   nestLinked?: boolean;
+  // Anki (lib/importers/anki.ts): the mapping as JSON (lib/anki-mapping.ts)
+  // and the time zone of the person for the learning state.
+  anki?: unknown;
+  zone?: string;
 };
 // The upload: its bytes, or (large files) its path on disk.
 type ImportFile = { name: string; bytes: Buffer } | { name: string; path: string };
@@ -168,6 +178,11 @@ export async function importFromSource(
 ): Promise<ImportPreview | ImportResult> {
   // Rights first: reading a large archive costs time.
   await requireSpace(user, workspaceId, spaceId);
+  // Anki packages: flashcard databases with a mapping of their own.
+  if (options.source === "anki" || ((!options.source || options.source === "auto") && /\.(apkg|colpkg)$/i.test(file.name))) {
+    const { importAnki } = await import("./anki");
+    return await importAnki(user, workspaceId, spaceId, file, { dryRun: options.dryRun, anki: options.anki, zone: options.zone });
+  }
   const tree = await parseImport(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source, {
     nestLinked: options.nestLinked !== false && options.mode !== "database",
   });

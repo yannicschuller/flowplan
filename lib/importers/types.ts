@@ -10,7 +10,8 @@ import type { FrontmatterValue } from "../frontmatter";
 // "notion": Notion's API (lib/importers/notion-api.ts) – not a file; its
 // export ZIP goes through lib/zip-import.ts. "bookstack": BookStack's API
 // (lib/importers/bookstack-api.ts), not a file either.
-export type ImportSource = "affine" | "bookstack" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "notion" | "obsidian" | "word";
+// "anki": an Anki package (lib/importers/anki.ts), flashcard databases.
+export type ImportSource = "affine" | "anki" | "bookstack" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "notion" | "obsidian" | "word";
 
 // The import report (lib/importers/report.ts): what an import did not carry
 // over or only approximated, each entry with the imported page it concerns
@@ -68,7 +69,12 @@ export type ImportDatabase = {
   // carries a document of the import (AFFiNE: a database row turned into a
   // doc, #82) has that document's key: links to it lead to the record. Its
   // icon is an emoji, as a page's.
-  rows: { cells: Record<string, unknown>; html: string; created?: string; updated?: string; key?: string; icon?: string }[];
+  // `id`: the record's id chosen by the importer (Anki: to replay the
+  // learning state onto it afterwards).
+  rows: { cells: Record<string, unknown>; html: string; created?: string; updated?: string; key?: string; icon?: string; id?: string }[];
+  // Stored settings of the database (lib/database-settings-schema.ts), e.g.
+  // the card mapping `study` of a flashcard deck (Anki).
+  settings?: Record<string, unknown>;
 };
 
 export type ImportPage = {
@@ -153,6 +159,9 @@ export type ImportTree = {
   // Set when the source has more pages than one import may bring: the
   // preview counts them, nothing is converted (AFFiNE, #82).
   tooMany?: boolean;
+  // Records one database of the import may have (default MAX_IMPORT_ROWS;
+  // Anki decks are larger).
+  maxRows?: number;
 };
 
 export const MAX_IMPORT_ROWS = 5000;

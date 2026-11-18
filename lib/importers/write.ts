@@ -293,7 +293,7 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       // Records that carry a document of the import (#82): their ids now, so
       // links to the document lead to them.
       for (const { page } of ordered)
-        for (const record of page.kind === "database" ? page.database?.rows.slice(0, MAX_IMPORT_ROWS) || [] : [])
+        for (const record of page.kind === "database" ? page.database?.rows.slice(0, tree.maxRows ?? MAX_IMPORT_ROWS) || [] : [])
           if (record.key && !pageIds.has(record.key) && !records.has(record.key)) records.set(record.key, { pageId: pageIds.get(page.key)!, rowId: id() });
       // Icons of documents, folders and collections (journal days keep theirs).
       for (const { page } of ordered) {
@@ -477,9 +477,12 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
           const relations = fields.filter((f) => f.type === "relation");
           colorOptions(fields);
           await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
-          await forEachAsync(rowsOf.slice(0, MAX_IMPORT_ROWS), async (record, i) => {
+          // Settings (a deck's card mapping) before the records: the card
+          // index sees them as they come (lib/db.ts study triggers).
+          if (page.database.settings) await run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(page.database.settings), pid);
+          await forEachAsync(rowsOf.slice(0, tree.maxRows ?? MAX_IMPORT_ROWS), async (record, i) => {
             const own = record.key ? records.get(record.key) : undefined;
-            const rid = own?.pageId === pid ? own.rowId : id();
+            const rid = record.id || (own?.pageId === pid ? own.rowId : id());
             const html = record.html ? resolveHtml(record.html) : "";
             // Relation cells name records of the import by their placeholder.
             const cells = relations.length ? { ...record.cells } : record.cells;

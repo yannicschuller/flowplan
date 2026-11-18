@@ -15,6 +15,20 @@ const exact: Record<string, string> = {
   "Nur Wertungen der letzten 24 Stunden lassen sich rückgängig machen.": "Only ratings of the last 24 hours can be undone.",
   "Nur die letzte Wertung einer Karte lässt sich rückgängig machen.": "Only the last rating of a card can be undone.",
   "Vorder- und Rückseite brauchen verschiedene Inhalte.": "Front and back need different content.",
+  // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).
+  "Die Anki-Sammlung ist zu groß.": "The Anki collection is too large.",
+  "Die Anki-Datei ist beschädigt.": "The Anki file is damaged.",
+  "Dieses Anki-Paket ist im neuen Format (Anki 2.1.50 und neuer) und braucht eine neuere Node-Version des Servers. Exportiere den Stapel in Anki mit „Ältere Anki-Versionen unterstützen“ und importiere ihn erneut.":
+    "This Anki package is in the new format (Anki 2.1.50 and later) and needs a newer Node version on the server. Export the deck in Anki with “Support older Anki versions” and import it again.",
+  "Anki-Pakete dürfen höchstens 100 MB groß sein.": "Anki packages may be at most 100 MB.",
+  "Die Datei ist kein Anki-Paket (.apkg oder .colpkg).": "The file is no Anki package (.apkg or .colpkg).",
+  "Die Anki-Sammlung kann nicht gelesen werden.": "The Anki collection cannot be read.",
+  "Die Datei ist keine Anki-Sammlung.": "The file is no Anki collection.",
+  "Das neue Anki-Format kann dieser Server nicht entpacken; gelesen wurde die mitgelieferte ältere Sammlung.": "This server cannot unpack the new Anki format; the older collection that came along was read instead.",
+  "Die Medienliste des Anki-Pakets ist nicht lesbar; Bilder und Töne fehlen.": "The media list of the Anki package cannot be read; images and sounds are missing.",
+  "Ungültige Zuordnung.": "Invalid mapping.",
+  "Im Anki-Paket wurden keine Notizen gefunden.": "No notes were found in the Anki package.",
+  "Anki-Pakete bitte als .apkg- oder .colpkg-Datei importieren.": "Please import Anki packages as an .apkg or .colpkg file.",
   // The PDF worker thread (lib/pdf-text.ts).
   "Der PDF-Worker wurde beendet.": "The PDF worker was stopped.",
   "Zeitüberschreitung beim Lesen der PDF-Datei.": "Reading the PDF file timed out.",
@@ -1521,6 +1535,17 @@ const exact: Record<string, string> = {
 };
 const patterns: [RegExp, string][] = [
   [/^„(.+)“ lässt sich nicht als Kartenseite verwenden\.$/, "“$1” cannot be used as a side of a card."],
+  // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).
+  [/^(\d+) sehr lange Felder wurden nach (\d+) Zeichen gekürzt\.$/, "$1 very long fields were cut after $2 characters."],
+  [/^(\d+) Notizen ohne bekannten Notiztyp werden nicht übernommen\.$/, "$1 notes without a known note type are not imported."],
+  [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(an\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (on)."],
+  [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(aus\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (off)."],
+  [/^„(.+)“: (\d+) Tags – übernommen werden die ersten 1000\.$/, "“$1”: $2 tags – the first 1000 are imported."],
+  [/^(\d+) Mediendateien fehlen im Anki-Paket\.$/, "$1 media files are missing in the Anki package."],
+  [/^(\d+) Mediendateien sind zu groß oder zu viele und werden nicht übernommen\.$/, "$1 media files are too large or too many and are not imported."],
+  [/^(\d+) Bildverdeckungs-Notizen werden als Vorder-\/Rückseite mit dem Bild übernommen; die Masken folgen mit der Bildverdeckung in Flowplan\.$/, "$1 image occlusion notes are imported as front/back with the image; the masks follow with image occlusion in Flowplan."],
+  [/^Das Anki-Paket hat mehr als (\d+) Wiederholungen; der Lernstand kann nicht übernommen werden\.$/, "The Anki package has more than $1 reviews; the learning state cannot be taken over."],
+  [/^Das Anki-Paket hat (\d+) Notizen; erlaubt sind höchstens (\d+) je Import\.$/, "The Anki package has $1 notes; at most $2 are allowed per import."],
   [/^Mehr als (\d+) Seiten: weitere Seiten werden nicht übernommen \(FLOWPLAN_IMPORT_MAX_DOCS\)\.$/, "More than $1 pages: further pages are not imported (FLOWPLAN_IMPORT_MAX_DOCS)."],
   // The import check of marketplace packages (lib/marketplace-check.ts).
   [/^Die Vorlage braucht Flowplan (\S+) – diese Instanz hat (\S+)\.$/, "The template needs Flowplan $1 – this instance has $2."],

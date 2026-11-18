@@ -175,7 +175,7 @@ import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
 import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
 import { ssoGroupReports } from "@/lib/sso-group-report";
-import { studyExport, studyQueue } from "@/lib/study";
+import { studyAnkiExport, studyExport, studyQueue } from "@/lib/study";
 import { studyDue, studyStats } from "@/lib/study-stats";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -524,8 +524,19 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
-    // A deck's cards as CSV, with the person's own learning state on request.
+    // A deck's cards as CSV, with the person's own learning state on
+    // request – or (format=apkg) as an Anki package, without it.
     if (path.length === 4 && path[0] === "pages" && path[2] === "study" && path[3] === "export") {
+      if (url.searchParams.get("format") === "apkg") {
+        const out = await studyAnkiExport(user, { pageId: path[1], zone: url.searchParams.get("zone") || undefined, viewId: url.searchParams.get("view") || undefined });
+        return new Response(new Uint8Array(out.bytes), {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(out.name)}`,
+            "Cache-Control": "no-store",
+          },
+        });
+      }
       const out = await studyExport(user, {
         pageId: path[1],
         state: url.searchParams.get("state") === "1",
@@ -1860,12 +1871,16 @@ async function handlePOST(
           z.uuid().parse(fields.get("spaceId")),
           file,
           {
-            source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "goodnotes", "obsidian", "word"]).catch("auto").parse(fields.get("source") || "auto"),
+            source: z.enum(["auto", "affine", "anki", "confluence", "evernote", "gdocs", "goodnotes", "obsidian", "word"]).catch("auto").parse(fields.get("source") || "auto"),
             mode: fields.get("mode") === "database" ? "database" : "pages",
             dryRun,
             // AFFiNE (#167): "0" keeps documents linked from one other
             // document at the top.
             nestLinked: fields.get("nestLinked") !== "0",
+            // Anki (lib/importers/anki.ts): the mapping of the wizard and the
+            // person's time zone for the learning state.
+            anki: fields.get("anki") || undefined,
+            zone: typeof fields.get("zone") === "string" ? (fields.get("zone") as string) : undefined,
           },
         ).then(async (result) => {
           // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).

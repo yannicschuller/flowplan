@@ -12,7 +12,7 @@
 // - The state of a card is the fold of its log (lib/fsrs replay): undo
 //   marks a rating undone and replays the rest.
 // - Study data is private: only `user_id = the person` is ever read.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { all, one, run, sql } from "./db";
 import { HttpError } from "./auth";
@@ -31,7 +31,8 @@ import { MAX_CHOICES, deriveCards, foldChoice, sideIsEmpty, sidePlain, studyFiel
 import { clozeHtml } from "./study-cloze";
 import { STUDY_DEFAULTS, STUDY_FIELD_TYPES, studyPrefsInput, studySettingsSchema, type StudySettings } from "./study-schema";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
-import { toPlain } from "./inline-markdown";
+import { inlineToHtml, toPlain } from "./inline-markdown";
+import { readUpload } from "./storage";
 import { CSV_FORMULA } from "./cell-text";
 import { ct } from "./content-locale";
 import { exportName } from "./export-name";
@@ -484,6 +485,71 @@ async function storeState(user: Identity, page: Page, rowId: string, sub: string
     Date.now(),
   );
 }
+// A learning state brought from elsewhere (the Anki import, §8.1): each
+// card's reviews replayed through FSRS with the deck's parameters and
+// logged as the person's (source "import"), for the person importing only.
+// Cards that are not (or no longer) cards of the deck are skipped; Anki's
+// own FSRS memory, when it has one, replaces stability and difficulty of
+// the result. A suspended card stays suspended. Returns the reviews logged.
+export type ImportedHistory = {
+  rowId: string;
+  sub: string;
+  reviews: { at: number; rating: StudyRating }[];
+  suspended?: boolean;
+  memory?: { stability: number; difficulty: number };
+};
+export async function importStudyHistory(user: Identity, pageId: string, cards: ImportedHistory[], zoneName: string) {
+  const page = await requirePage(user, pageId);
+  const settings = (await databaseSettings(pageId)).study;
+  if (!settings) return 0;
+  await drainStudyCards(pageId);
+  const existing = new Set((await all<{ row_id: string; sub: string }>("SELECT row_id,sub FROM study_cards WHERE page_id=?", pageId)).map((c) => `${c.row_id}\u0000${c.sub}`));
+  const clock = await zoneFor(user, zoneName);
+  const mine = await effective(user, pageId, settings, studyDay(Date.now(), clock.zone, clock.dayStart));
+  const now = Date.now();
+  let logged = 0;
+  for (const card of cards) {
+    if (!existing.has(`${card.rowId}\u0000${card.sub}`)) continue;
+    let memory: Memory | null = null;
+    const reviews = card.reviews.filter((r) => r.at <= now + 5 * 60_000).sort((a, b) => a.at - b.at);
+    for (const review of reviews) {
+      const reviewId = randomUUID();
+      const reviewedAt = Math.max(review.at, memory?.lastReview ?? 0);
+      const next = schedule(memory, review.rating, reviewedAt, mine.params, clock, reviewId);
+      await run(
+        `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        reviewId,
+        user.id,
+        page.workspace_id,
+        pageId,
+        card.rowId,
+        card.sub,
+        review.rating,
+        memory ? memory.state : 0,
+        reviewedAt,
+        studyDay(reviewedAt, clock.zone, clock.dayStart),
+        clock.zone,
+        next.elapsedDays,
+        next.scheduledDays,
+        null,
+        next.memory.stability,
+        next.memory.difficulty,
+        next.memory.due,
+        "import",
+        now,
+      );
+      memory = next.memory;
+      logged++;
+    }
+    if (!memory) continue;
+    if (card.memory && memory.state === 2) memory = { ...memory, stability: card.memory.stability, difficulty: card.memory.difficulty };
+    await storeState(user, page, card.rowId, card.sub, memory);
+    if (card.suspended) await run("UPDATE card_states SET suspended=1 WHERE user_id=? AND row_id=? AND sub=?", user.id, card.rowId, card.sub);
+  }
+  return logged;
+}
+
 // The card must be one the person may study now.
 async function requireCard(user: Identity, deck: Deck, settings: StudySettings, rowId: string, sub: string) {
   await drainStudyCards(deck.page.id);
@@ -703,6 +769,105 @@ export async function studyExport(user: Identity, raw: unknown) {
     name: `${exportName(deck.page.title || ct("Lernkarten", "Flashcards")).slice(0, 80)}.csv`,
     csv: "﻿" + [header, ...lines].map((l) => l.map(cell).join(",")).join("\r\n") + "\r\n",
     cards: lines.length,
+  };
+}
+
+// ---- Anki export (§8.2) ----
+
+// Media of an .apkg at most (the ZIP stays below 100 MB).
+export const ANKI_EXPORT_MEDIA_BYTES = 80 * 1024 * 1024;
+// The cards the person may study (with the view's filters, suspended ones
+// too) as Anki notes, one per record: the sides as written – text as HTML,
+// documents with their images and sounds as media, clozes as {{cN::…}},
+// formulas as \(…\) – tags, and the select "Deck" (as the Anki import
+// creates it) as the sub-deck. Only files of this database go along. No
+// learning state (it stays in Flowplan).
+export async function studyAnkiExport(user: Identity, raw: unknown) {
+  const input = exportInput.parse(raw);
+  const deck = await deckOf(user, input.pageId);
+  const settings = requireDeck(deck);
+  await drainStudyCards(deck.page.id);
+  const { cards } = await studyable(user, deck, settings, input.viewId, true);
+  const { ankiFieldHtml, buildAnkiPackage } = await import("./study-anki-export");
+  const allowed = new Set(cards.map((c) => `${c.rowId}\u0000${c.sub}`));
+  const position = new Map<string, number>();
+  for (const c of cards) position.set(c.rowId, Math.min(position.get(c.rowId) ?? Infinity, c.position));
+  const rowIds = [...position.keys()].sort((a, b) => position.get(a)! - position.get(b)! || (a < b ? -1 : 1));
+  const deckField = deck.fields.find((f) => f.type === "select" && /^deck$/i.test(f.name.trim()));
+  const files = new Map<string, string>();
+  const fileName = (fileId: string) => {
+    const key = fileId.toLowerCase();
+    if (!files.has(key)) files.set(key, "");
+    return key;
+  };
+  const html = (side: CardSide | undefined) =>
+    !side ? "" : "html" in side ? ankiFieldHtml(side.html, fileName) : side.formatted ? inlineToHtml(side.text) : escaped(side.text).replace(/\n/g, "<br>");
+  type Note = import("./study-anki-export").AnkiExportNote;
+  const notes: Note[] = [];
+  for (let i = 0; i < rowIds.length; i += 500) {
+    const part = rowIds.slice(i, i + 500);
+    const stored = await rowsOf(deck.page.id, part);
+    const derived = await cardsOfRows(settings, deck.fields, stored);
+    const cellsOf = new Map(stored.map((r) => [r.id, JSON.parse(r.cells || "{}") as Record<string, unknown>]));
+    for (const rowId of part) {
+      const list = (derived.get(rowId) || []).filter((c) => allowed.has(`${rowId}\u0000${c.sub}`));
+      if (!list.length) continue;
+      const first = list.find((c) => c.sub === "") || list[0];
+      const subdeckValue = deckField ? cellsOf.get(rowId)?.[deckField.id] : undefined;
+      const subdeck = typeof subdeckValue === "string" && subdeckValue.trim() ? subdeckValue.trim().slice(0, 200) : undefined;
+      const tags = first.tags || [];
+      const hint = html(first.hint),
+        extra = html(first.extra);
+      if (first.kind === "cloze") {
+        const text = first.cloze?.on === "back" ? first.back : first.front;
+        const other = first.cloze?.on === "back" ? first.front : first.back;
+        notes.push({ kind: "cloze", fields: [html(text), html(other), hint, extra], ords: list.map((c) => (c.cloze?.n ?? 1) - 1), tags, subdeck });
+        continue;
+      }
+      let front = html(first.front);
+      if (first.kind === "choice") {
+        const options = [sidePlain(first.back), ...(first.choices || [])].sort((a, b) => a.localeCompare(b));
+        front += `<ul>${options.map((o) => `<li>${escaped(o)}</li>`).join("")}</ul>`;
+      }
+      const kind = first.kind === "typed" ? "typed" : first.kind === "basic" && list.some((c) => c.sub === "r") ? "reversed" : "basic";
+      notes.push({ kind, fields: [front, html(first.back), hint, extra], ords: kind === "reversed" ? list.map((c) => (c.sub === "r" ? 1 : 0)) : [0], tags, subdeck });
+    }
+  }
+  // The media: files of this database the sides show.
+  const media: { name: string; data: Buffer }[] = [];
+  const names = new Map<string, string>();
+  const taken = new Set<string>();
+  let bytes = 0,
+    skipped = 0;
+  const ids = [...files.keys()];
+  for (let i = 0; i < ids.length; i += 500) {
+    const part = ids.slice(i, i + 500);
+    for (const f of await all<{ id: string; name: string; size: number }>(`SELECT id,name,size FROM files WHERE page_id=? AND id IN (${part.map(() => "?").join(",")})`, deck.page.id, ...part)) {
+      if (bytes + Number(f.size) > ANKI_EXPORT_MEDIA_BYTES) {
+        skipped++;
+        continue;
+      }
+      const data = await readUpload(f.id);
+      if (!data) continue;
+      let name = (f.name || "datei").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").slice(0, 120) || "datei";
+      if (taken.has(name.toLowerCase())) name = `${f.id.slice(0, 8)}-${name}`;
+      taken.add(name.toLowerCase());
+      names.set(f.id.toLowerCase(), name);
+      bytes += data.length;
+      media.push({ name, data });
+    }
+  }
+  // File references become the media names; others are dropped.
+  const withMedia = (field: string) =>
+    field
+      .replace(/\[sound:([0-9a-f-]{36})\]/gi, (_, fid: string) => (names.has(fid.toLowerCase()) ? `[sound:${names.get(fid.toLowerCase())}]` : ""))
+      .replace(/<img src="([0-9a-f-]{36})"[^>]*>/gi, (_, fid: string) => (names.has(fid.toLowerCase()) ? `<img src="${escaped(names.get(fid.toLowerCase())!)}">` : ""));
+  for (const note of notes) note.fields = note.fields.map(withMedia) as Note["fields"];
+  return {
+    name: `${exportName(deck.page.title || ct("Lernkarten", "Flashcards")).slice(0, 80)}.apkg`,
+    bytes: await buildAnkiPackage(deck.page.title || ct("Lernkarten", "Flashcards"), notes, media),
+    notes: notes.length,
+    skippedMedia: skipped,
   };
 }
 
