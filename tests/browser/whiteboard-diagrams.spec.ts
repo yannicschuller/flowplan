@@ -37,6 +37,12 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
   await expect(wb.locator(".wb-canvas")).toBeVisible();
+  // Empty board right of the diagram (a tall selection's style bar sits at
+  // the board's top).
+  const emptySpot = async () => {
+    const box = (await wb.locator(".wb-canvas").boundingBox())!;
+    return { x: box.width - 40, y: box.height / 2 };
+  };
 
   // Shape library: search in German, insert with Enter, then by click.
   await boardInsert(wb, "Formenbibliothek");
@@ -102,7 +108,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await expect.poll(async () => Math.round((await pos("flow:decision")).x)).toBe(Math.round(before.x));
 
   // Copy as Mermaid.
-  await wb.locator(".wb-canvas").click({ position: { x: 500, y: 40 } });
+  await wb.locator(".wb-canvas").click({ position: await emptySpot() });
   await boardView(wb, "Als Mermaid kopieren");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("flowchart");
   const copied = await page.evaluate(() => navigator.clipboard.readText());
@@ -117,7 +123,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await wb.locator('[data-lib="flow:process"]').click();
   await wb.getByRole("combobox", { name: "Bei Klick" }).selectOption({ label: "Bei Klick → zurück" });
   await expect(wb.locator(".wb-link-badges circle")).toHaveCount(2);
-  await wb.locator(".wb-canvas").click({ position: { x: 500, y: 40 } });
+  await wb.locator(".wb-canvas").click({ position: await emptySpot() });
   await boardView(wb, "Prototyp abspielen");
   const player = page.getByRole("dialog", { name: "Prototyp" });
   await expect(player).toBeVisible();

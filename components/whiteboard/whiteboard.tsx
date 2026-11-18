@@ -168,8 +168,10 @@ import { sharedUpdate } from "@/lib/whiteboard-private-mode";
 // Rack planning: racks, devices, ports and cables (#90).
 import { applyRackLayout, cableTypeFor, deviceOf, isCable, portAt, rackOf, remapRack, snapDevice, RACK_HEADER, RACK_U, RACK_FOOTER, RACK_MAX_U } from "@/lib/whiteboard-rack";
 import { DeviceCard, useDeviceCard } from "./rack-card";
+import { fitBarMenu } from "./item-tools";
 import { RACK_DRAG_TYPE, RackInspector, RackStyleControls, RackWorld, dropRackItem, rackItemClass, rackKey, setRackFocus } from "./rack-panels";
 import { shortcutLetter } from "@/lib/keymap";
+import { placeStyleBar, type ScreenRect } from "@/lib/whiteboard-style-bar";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -920,6 +922,53 @@ export default function Whiteboard({
     // The canvas is a new element after entering or leaving full screen.
   }, [zoomAt, fullscreen]);
 
+  // The style bar's size and the board's, for placeStyleBar: after each
+  // render (the bar's buttons follow the selection) and when either one
+  // changes size by itself (a menu of its buttons, the window, full
+  // screen). The bar's width does not depend on where it is (width:
+  // max-content in app/globals.css), so placing it never resizes it. Pans
+  // and zooms render without a new size and so without a second render;
+  // while dragging there is no bar.
+  const styleBar = useRef<HTMLDivElement | null>(null),
+    styleBarObserver = useRef<ResizeObserver | null>(null);
+  const [barSize, setBarSize] = useState<{ w: number; h: number; boardW: number; boardH: number; fieldH: number } | null>(null);
+  const measureBar = useCallback(() => {
+    const bar = styleBar.current,
+      el = container.current;
+    if (!bar || !el) return;
+    // The text field can be taller than its element (textareas have a
+    // minimum height in app/globals.css: room for more lines while typing).
+    const field = el.querySelector<HTMLElement>("textarea.wb-editor");
+    // Down to the view bar at the bottom (undo, zoom, actions): the bar
+    // does not cover it.
+    const viewBar = el.querySelector<HTMLElement>(":scope > .wb-zoom");
+    const next = {
+      w: bar.offsetWidth,
+      h: bar.offsetHeight,
+      boardW: el.clientWidth,
+      boardH: viewBar ? Math.min(el.clientHeight, viewBar.offsetTop) : el.clientHeight,
+      fieldH: field?.offsetHeight ?? 0,
+    };
+    setBarSize((s) =>
+      s && s.w === next.w && s.h === next.h && s.boardW === next.boardW && s.boardH === next.boardH && s.fieldH === next.fieldH
+        ? s
+        : next,
+    );
+  }, []);
+  useLayoutEffect(measureBar);
+  const styleBarRef = useCallback(
+    (bar: HTMLDivElement | null) => {
+      styleBarObserver.current?.disconnect();
+      styleBarObserver.current = null;
+      styleBar.current = bar;
+      if (!bar || typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(measureBar);
+      observer.observe(bar);
+      if (container.current) observer.observe(container.current);
+      styleBarObserver.current = observer;
+    },
+    [measureBar],
+  );
   // Which layout fits the board: measured before painting, so phones never
   // see the desktop tool column first.
   useLayoutEffect(() => {
@@ -2703,6 +2752,19 @@ export default function Whiteboard({
       requestAnimationFrame(() => container.current?.focus({ preventScroll: true }));
     },
   };
+  // Where the text field of an item in editing lies on the board (world).
+  function editorBox(it: WhiteboardItem): { x: number; y: number; w: number; h: number } {
+    if (it.type === "connector") {
+      const { a, b } = connectorGeometry(it, byId);
+      return { x: (a.x + b.x) / 2 - 80, y: (a.y + b.y) / 2 - 14, w: 160, h: 28 };
+    }
+    if (it.type === "frame") return { x: it.x, y: it.y - 28, w: it.w, h: 26 };
+    return it;
+  }
+  const screenRect = (box: { x: number; y: number; w: number; h: number }, pad = 0): ScreenRect => {
+    const s = toScreen(box);
+    return { left: s.x - pad, top: s.y - pad, right: s.x + box.w * view.zoom + pad, bottom: s.y + box.h * view.zoom + pad };
+  };
   const stylePanel =
     editable &&
     selected.length > 0 &&
@@ -2710,7 +2772,27 @@ export default function Whiteboard({
     !gesture.current &&
     selectionBox &&
     (() => {
-      const s = toScreen({ x: selectionBox.x, y: selectionBox.y - 30 });
+      // What the bar must not cover: the selection with its outline and
+      // handles – the rotate handle above a single item, a frame's title –
+      // and the text field while one is edited.
+      const field = editingItem ? screenRect(editorBox(editingItem), 2) : null;
+      if (field && barSize) field.bottom = Math.max(field.bottom, field.top + 4 + barSize.fieldH);
+      const avoid = screenRect(selectionBox, 6);
+      const rotateHandle =
+        single && !single.locked && !editing && !["connector", "pen", "comment", "frame", "rack", "device"].includes(single.type);
+      avoid.top -= Math.max(rotateHandle ? 30 : 0, selected.some((i) => i.type === "frame") ? 28 * view.zoom : 0);
+      if (field)
+        Object.assign(avoid, {
+          left: Math.min(avoid.left, field.left),
+          top: Math.min(avoid.top, field.top),
+          right: Math.max(avoid.right, field.right),
+          bottom: Math.max(avoid.bottom, field.bottom),
+        });
+      // Measured after the first render (styleBarRef); until then where a
+      // one-row bar would go.
+      const place = barSize
+        ? placeStyleBar({ w: barSize.w, h: barSize.h }, { w: barSize.boardW, h: barSize.boardH }, avoid, field)
+        : { left: Math.max(8, avoid.left), top: Math.max(8, avoid.top - 44) };
       const types = new Set(selected.map((i) => i.type));
       const first = selected[0];
       const cablesOnly = selected.every(isCable);
@@ -2723,7 +2805,8 @@ export default function Whiteboard({
           className="wb-style-bar"
           role="toolbar"
           aria-label={t("Element gestalten", "Style element")}
-          style={{ left: Math.max(8, s.x), top: Math.max(8, s.y - 44) }}
+          ref={styleBarRef}
+          style={{ left: place.left, top: place.top }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           {/* Phones: one row that scrolls sideways (app/globals.css); the
@@ -2904,7 +2987,7 @@ export default function Whiteboard({
                   <Rows size={16} /> {t("Anordnen", "Arrange")}
                 </button>
                 {arrangeOpen && (
-                  <span className="wb-arrange-menu" role="menu">
+                  <span ref={fitBarMenu} className="wb-arrange-menu" role="menu">
                     <small>{t("Ausrichten", "Align")}</small>
                     <span className="wb-arrange-row">
                       <button role="menuitem" title={t("Links", "Left")} aria-label={t("Links ausrichten", "Align left")} onClick={() => arrange("left")}><AlignLeft size={16} /></button>
@@ -3027,18 +3110,7 @@ export default function Whiteboard({
     editingItem &&
     (() => {
       const it = editingItem;
-      let box: { x: number; y: number; w: number; h: number };
-      if (it.type === "connector") {
-        const { a, b } = connectorGeometry(it, byId);
-        box = {
-          x: (a.x + b.x) / 2 - 80,
-          y: (a.y + b.y) / 2 - 14,
-          w: 160,
-          h: 28,
-        };
-      } else if (it.type === "frame")
-        box = { x: it.x, y: it.y - 28, w: it.w, h: 26 };
-      else box = it;
+      const box = editorBox(it);
       const s = toScreen(box);
       return (
         <textarea
