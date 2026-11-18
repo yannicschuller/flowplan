@@ -75,7 +75,7 @@ test("a database is set up as a deck and studied with keys or swipes, with limit
   const focus = page.getByRole("dialog", { name: /^Lernen: / });
   await expect(focus).toBeVisible();
   await expect(focus.getByRole("region", { name: "Karte 1 von 2" })).toContainText("hola");
-  await expect(focus.locator(".study-count-chip.new")).toHaveText("neu 2");
+  await expect(focus.locator(".study-focus-count.new b")).toHaveText("2");
   if (mobile) await focus.locator(".study-card").click();
   else await page.keyboard.press("Space");
   await expect(focus.locator(".study-back")).toContainText("hallo");
@@ -84,12 +84,12 @@ test("a database is set up as a deck and studied with keys or swipes, with limit
   if (mobile) await swipe(page, 0, -300);
   else await page.keyboard.press("4");
   await expect(focus.getByRole("region", { name: /^Karte 2 von/ })).toContainText("perro");
-  await expect(focus.locator(".study-count-chip.new")).toHaveText("neu 1");
+  await expect(focus.locator(".study-focus-count.new b")).toHaveText("1");
   // Undo: the first card again, unrated; the new count back to two.
   if (mobile) await focus.getByRole("button", { name: "Letzte Wertung rückgängig" }).click();
   else await page.keyboard.press("z");
   await expect(focus.locator(".study-front")).toContainText("hola");
-  await expect(focus.locator(".study-count-chip.new")).toHaveText("neu 2");
+  await expect(focus.locator(".study-focus-count.new b")).toHaveText("2");
   await expect(focus.locator(".study-back")).toHaveCount(0);
   for (const expected of ["hola", "perro"]) {
     await expect(focus.locator(".study-front")).toContainText(expected);
@@ -103,7 +103,11 @@ test("a database is set up as a deck and studied with keys or swipes, with limit
     }
   }
   await expect(focus.getByRole("heading", { name: "Geschafft für heute" })).toBeVisible();
-  await expect(focus).toContainText("2 Karten in");
+  // Cards, not ratings: two cards; the ratings by button below.
+  const cardsTile = focus.locator(".study-summary-tile").first();
+  await expect(cardsTile.locator("strong")).toHaveText("2");
+  await expect(cardsTile).toContainText("Karten · 2 neu");
+  await expect(focus.locator(".study-spread-legend .rating-4")).toHaveText(/^2\s*Leicht$/);
   await page.screenshot({ path: `test-results/study-summary-${info.project.name}.png` });
   // Study more today: one more new card (the third record).
   await focus.getByRole("button", { name: /^Heute mehr lernen/ }).click();

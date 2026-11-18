@@ -146,8 +146,17 @@ export function ChoiceOptions({
           >
             <kbd>{CHOICE_KEYS[position]}</kbd>
             <span>{options[index]}</span>
-            {answered && index === correct && <span className="sr-only">{t(" – richtig", " – correct")}</span>}
-            {answered && index === picked && index !== correct && <span className="sr-only">{t(" – deine Wahl, falsch", " – your choice, wrong")}</span>}
+            {/* Right and wrong not by colour alone: a mark and its word. */}
+            {answered && index === correct && (
+              <span className="study-choice-mark">
+                <Check aria-hidden weight="bold" /> {t("richtig", "correct")}
+              </span>
+            )}
+            {answered && index === picked && index !== correct && (
+              <span className="study-choice-mark">
+                <Cross aria-hidden weight="bold" /> {t("deine Wahl, falsch", "your choice, wrong")}
+              </span>
+            )}
           </button>
         );
       })}

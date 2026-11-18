@@ -492,6 +492,8 @@ export async function studyQueue(user: Identity, raw: unknown) {
     // Tomorrow's reviews (the summary's "Morgen fällig").
     tomorrow: cards.filter((c) => c.memory && c.memory.due >= today.end && c.memory.due < today.end + 86_400_000).length,
     cards: batch.length ? await contentOf(deck, settings, batch, cards, today.day) : [],
+    // A session's batch with nothing left: the summary shows the streak.
+    ...(input.limit !== 0 && !batch.length ? { streak: await (await import("./study-stats")).studyStreak(user, deck.page.workspace_id, today.day) } : {}),
   };
 }
 

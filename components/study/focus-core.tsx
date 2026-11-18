@@ -28,7 +28,7 @@
 //   next one and offers "Früher zeigen" (the queue with `ahead`).
 // - `next`: the deck after this one (#study, "Alle fälligen lernen").
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowCounterClockwise, Hourglass, Lightbulb, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Fire, Hourglass, Lightbulb, X } from "@phosphor-icons/react";
 import { useLocale, useT } from "../i18n";
 import { localeTag } from "@/lib/i18n";
 import { CHOICE_KEYS, ChoiceOptions, Side, TypedVerdict, choiceOrder, type StudySide } from "./card-parts";
@@ -36,6 +36,7 @@ import { OcclusionImage } from "./occlusion-image";
 import type { OcclusionCard } from "@/lib/study-content";
 import { compareTyped, type TypedResult } from "@/lib/study-compare";
 import { intervalOf, preview, type FsrsParams, type Memory, type StudyRating } from "@/lib/fsrs";
+import { intervalText, minutesText } from "@/lib/study-interval";
 import type { TypedCompare } from "@/lib/study-schema";
 
 export type { StudySide } from "./card-parts";
@@ -83,6 +84,8 @@ export type StudyOverview =
       states: { new: number; learning: number; review: number };
       tomorrow: number;
       cards: StudyCard[];
+      // With no card left: the workspace's streak (the summary's tile).
+      streak?: number;
     });
 export type Ready = Extract<StudyOverview, { configured: true }>;
 
@@ -97,31 +100,23 @@ const EDGE = 24;
 const MAX_DURATION = 60_000;
 const UNDO_DEPTH = 20;
 
-// The interval on a button: short ("4 T") and long ("in 4 Tagen").
-function useIntervalText() {
-  const t = useT();
+// The interval on a button: short ("10 Tage") and long ("in 10 Tagen"),
+// lib/study-interval.ts.
+function useNumberFormat() {
   const format = new Intl.NumberFormat(localeTag(useLocale()), { maximumFractionDigits: 1 });
-  return (memory: Memory, now: number, clock: { zone: string; dayStart: number }) => {
-    const { unit, value } = intervalOf(memory, now, clock);
-    const n = format.format(value);
-    switch (unit) {
-      case "now":
-        return { short: t("< 1 Min", "< 1 min"), long: t("in weniger als einer Minute", "in less than a minute") };
-      case "minutes":
-        return { short: t(`${n} Min`, `${n} min`), long: t(`in ${n} Minuten`, `in ${n} minutes`) };
-      case "hours":
-        return { short: t(`${n} Std`, `${n} h`), long: t(`in ${n} Stunden`, `in ${n} hours`) };
-      case "days":
-        return value === 1 ? { short: t("1 T", "1 d"), long: t("morgen", "tomorrow") } : { short: t(`${n} T`, `${n} d`), long: t(`in ${n} Tagen`, `in ${n} days`) };
-      case "months":
-        return { short: t(`${n} Mon.`, `${n} mo`), long: t(`in ${n} Monaten`, `in ${n} months`) };
-      default:
-        return { short: t(`${n} J`, `${n} y`), long: t(`in ${n} Jahren`, `in ${n} years`) };
-    }
-  };
+  return (n: number) => format.format(n);
 }
 
 const sidePlain = (side: StudySide) => ("html" in side ? new DOMParser().parseFromString(side.html, "text/html").body.textContent || "" : side.text);
+const sameText = (a: string, b: string) => a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
+// A typed or multiple choice card: the back says nothing beyond the
+// expected answer shown already (the comparison, the marked option).
+const backRepeats = (card: StudyCard) => {
+  const expected = card.typed?.answer ?? (card.choice ? card.choice.options[card.choice.correct] : undefined);
+  return expected !== undefined && sameText(sidePlain(card.back), expected);
+};
+// The kind of a card in the counts: new, in the learning phase, due.
+const kindOf = (card: StudyCard): keyof Counts => (!card.memory ? "new" : card.memory.state === 2 ? "review" : "learning");
 
 type Shown = {
   card: StudyCard;
@@ -137,6 +132,8 @@ type Shown = {
 };
 // `offline`: the rating waits on the device (undone there).
 export type FocusDone = { reviewId: string; card: StudyCard; rating: StudyRating; wasNew: boolean; durationMs: number; offline?: boolean };
+// The session's ratings for its summary (not capped like the undo history).
+type Rated = { key: string; rating: StudyRating; wasNew: boolean };
 // Where a session's cards come from and its ratings go. `load`: the next
 // batch (`ahead`: learning cards due later today too); `rate` and `undo`
 // answer with the deck's new counts (or null to keep them); `more`:
@@ -170,12 +167,19 @@ export function FocusSession({
   const backendRef = useRef(backend);
   backendRef.current = backend;
   const t = useT();
-  const intervalText = useIntervalText();
+  const locale = useLocale();
+  const format = useNumberFormat();
+  const intervalOfMemory = (memory: Memory, now: number, clock: { zone: string; dayStart: number }) => {
+    const { unit, value } = intervalOf(memory, now, clock);
+    return intervalText(unit, value, format, t);
+  };
   const [deck, setDeck] = useState<Ready | null>(null),
     [queue, setQueue] = useState<StudyCard[]>([]),
     [shown, setShown] = useState<Shown | null>(null),
     [phase, setPhase] = useState<"loading" | "card" | "wait" | "done">("loading"),
     [history, setHistory] = useState<FocusDone[]>([]),
+    [rated, setRated] = useState<Rated[]>([]),
+    [legend, setLegend] = useState(false),
     [error, setError] = useState(""),
     [announce, setAnnounce] = useState(""),
     [swipe, setSwipe] = useState<StudyRating | null>(null),
@@ -304,6 +308,7 @@ export function FocusSession({
           setDeck((d) => (d ? { ...d, ...next, cards: d.cards } : d));
         }
         setHistory((h) => [...h, { reviewId: shown.reviewId, card: shown.card, rating, wasNew: !shown.card.memory, durationMs, offline }].slice(-UNDO_DEPTH));
+        setRated((r) => [...r, { key: `${shown.card.rowId}:${shown.card.sub}`, rating, wasNew: !shown.card.memory }]);
         setPosition((p) => p + 1);
         setError("");
         if (queue.length) {
@@ -329,6 +334,7 @@ export function FocusSession({
         setDeck((d) => (d ? { ...d, ...next, cards: d.cards } : d));
       }
       setHistory((h) => h.slice(0, -1));
+      setRated((r) => r.slice(0, -1));
       setPosition((p) => Math.max(1, p - 1));
       // The card again, unrated; the one shown waits behind it.
       if (shown && phase === "card") setQueue((q) => [shown.card, ...q.filter((c) => !(c.rowId === shown.card.rowId && c.sub === shown.card.sub))]);
@@ -447,10 +453,30 @@ export function FocusSession({
     if (rating && shown?.revealed) void rate(rating);
   };
   const left = deck ? deck.counts.new + deck.counts.learning + deck.counts.review : 0;
-  const reviewed = history.length;
+  const reviewed = rated.length;
   const labels: Record<StudyRating, string> = { 1: t("Nochmal", "Again"), 2: t("Schwer", "Hard"), 3: t("Gut", "Good"), 4: t("Leicht", "Easy") };
   const minutes = Math.max(1, Math.round((Date.now() - started.current) / 60_000));
-  const correct = reviewed ? Math.round((history.filter((h) => h.rating > 1).length / reviewed) * 100) : 0;
+  // The counts: one word for each kind wherever the focus mode names them.
+  const kinds = { new: t("Neu", "New"), learning: t("In der Lernphase", "Learning"), review: t("Fällig", "Due") };
+  const current = phase === "card" && shown ? kindOf(shown.card) : null;
+  const countsLabel = deck
+    ? t(
+        `Noch ${deck.counts.new} neu, ${deck.counts.learning} in der Lernphase, ${deck.counts.review} fällig`,
+        `${deck.counts.new} new, ${deck.counts.learning} learning, ${deck.counts.review} due left`,
+      )
+    : undefined;
+  // "1 / 2": the card shown of the session's cards (ratings, as a card in
+  // its learning phase comes again); at the end all of them.
+  const step = phase === "card" ? position : reviewed;
+  const steps = phase === "card" ? Math.max(position, position - 1 + left) : reviewed + left;
+  // The summary: cards (each once), new ones, the share known and the
+  // ratings by button.
+  const cardsSeen = new Set(rated.map((r) => r.key)).size;
+  const newSeen = new Set(rated.filter((r) => r.wasNew).map((r) => r.key)).size;
+  const known = reviewed ? rated.filter((r) => r.rating >= 3).length / reviewed : 0;
+  const spread = ([1, 2, 3, 4] as const).map((r) => ({ rating: r, n: rated.filter((x) => x.rating === r).length }));
+  const percent = new Intl.NumberFormat(localeTag(locale), { style: "percent", maximumFractionDigits: 0 });
+  const repeats = shown ? backRepeats(shown.card) : false;
   return (
     <div className="study-focus" role="dialog" aria-modal="true" aria-label={t(`Lernen: ${title}`, `Study: ${title}`)} tabIndex={-1} ref={root}>
       <header className="study-focus-bar">
@@ -458,20 +484,41 @@ export function FocusSession({
           <X size={20} />
         </button>
         <span className="study-focus-title">{title}</span>
-        <span className="study-focus-counts" aria-label={deck ? t(`Noch ${deck.counts.new} neu, ${deck.counts.learning} in Lernschritten, ${deck.counts.review} fällig`, `${deck.counts.new} new, ${deck.counts.learning} learning, ${deck.counts.review} due left`) : undefined}>
-          {deck && (
-            <>
-              <span className="study-count-chip new">{t(`neu ${deck.counts.new}`, `new ${deck.counts.new}`)}</span>
-              <span className="study-count-chip learning">{t(`Lernen ${deck.counts.learning}`, `learning ${deck.counts.learning}`)}</span>
-              <span className="study-count-chip review">{t(`fällig ${deck.counts.review}`, `due ${deck.counts.review}`)}</span>
-            </>
-          )}
-        </span>
+        {deck && (
+          // Numbers only on a phone: a tap shows their words (the legend).
+          <button
+            type="button"
+            className={`study-focus-counts${legend ? " legend" : ""}`}
+            onClick={() => setLegend((l) => !l)}
+            aria-label={countsLabel}
+            aria-expanded={legend}
+            title={`${kinds.new} · ${kinds.learning} · ${kinds.review}`}
+          >
+            {(["new", "learning", "review"] as const).map((kind, i) => (
+              <span key={kind} className={`study-focus-count ${kind}${current === kind ? " current" : ""}`}>
+                {i > 0 && (
+                  <span className="study-focus-sep" aria-hidden>
+                    ·
+                  </span>
+                )}
+                <b>{deck.counts[kind]}</b>
+                <span className="study-focus-word">{kinds[kind]}</span>
+              </span>
+            ))}
+          </button>
+        )}
         <button className="icon-button" onClick={() => void undo()} disabled={!history.length} title={t("Letzte Wertung rückgängig (Z)", "Undo last rating (Z)")} aria-label={t("Letzte Wertung rückgängig", "Undo last rating")}>
           <ArrowCounterClockwise size={20} />
         </button>
       </header>
-      <progress className="study-progress" max={Math.max(1, reviewed + left)} value={reviewed} aria-label={t("Fortschritt", "Progress")} />
+      <div className="study-progress-row">
+        <progress className="study-progress" max={Math.max(1, reviewed + left)} value={reviewed} aria-label={t("Fortschritt", "Progress")} />
+        {deck && steps > 0 && (
+          <span className="study-progress-text" aria-hidden>
+            {step} / {steps}
+          </span>
+        )}
+      </div>
       {notice}
       <div className="sr-only" aria-live="polite">
         {announce}
@@ -485,7 +532,7 @@ export function FocusSession({
       {phase === "card" && shown && deck && (
         <main className="study-focus-main">
           <div
-            className={`study-card${shown.revealed ? " revealed" : ""}${swipe ? ` swipe-${swipe}` : ""}`}
+            className={`study-card${shown.revealed ? " revealed" : ""}${swipe ? ` swipe-${swipe} rating-${swipe}` : ""}`}
             ref={cardRef}
             role="region"
             aria-label={t(`Karte ${position} von ${Math.max(position, position - 1 + left)}`, `Card ${position} of ${Math.max(position, position - 1 + left)}`)}
@@ -497,128 +544,150 @@ export function FocusSession({
               resetCard();
             }}
           >
-            {swipe && (
-              <span className={`study-swipe-label rating-${swipe}`} aria-hidden>
-                {labels[swipe]}
-              </span>
-            )}
-            {shown.card.context && (
-              <div className="study-context">
-                <Side side={shown.card.context} pageId={pageId} shareToken={shareToken} />
-              </div>
-            )}
-            {/* A cloze card shows its text once: with gaps, then filled; an
-                image occlusion card its picture, the masks asked opened. */}
-            {shown.card.occlusion ? (
-              <div className="study-side study-front">
-                <OcclusionImage occlusion={shown.card.occlusion} reveal={shown.revealed} />
-              </div>
-            ) : shown.card.kind === "cloze" && shown.revealed ? (
-              <div className="study-side study-front study-back" ref={backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>
-                <Side side={shown.card.back} pageId={pageId} shareToken={shareToken} />
-              </div>
-            ) : (
-              <div className="study-side study-front">
-                <Side side={shown.card.front} pageId={pageId} shareToken={shareToken} />
-              </div>
-            )}
-            {shown.card.typed && (
-              <div className="study-typed">
-                <input
-                  ref={typedRef}
-                  className="study-typed-input"
-                  value={shown.typed}
-                  readOnly={shown.revealed}
-                  aria-label={t("Deine Antwort", "Your answer")}
-                  placeholder={t("Antwort eintippen …", "Type the answer …")}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  enterKeyHint="done"
-                  onChange={(e) => setShown({ ...shown, typed: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!shown.revealed) reveal();
-                      else void rate(shown.suggested ?? 3);
-                    } else if (e.key === "Escape") {
-                      // With text, the first Escape only leaves the field.
-                      e.stopPropagation();
-                      e.preventDefault();
-                      if (shown.typed.trim() && !shown.revealed) root.current?.focus();
-                      else closeRef.current();
-                    }
-                  }}
-                />
-                {shown.revealed && shown.result && <TypedVerdict result={shown.result} typed={shown.typed} />}
-              </div>
-            )}
-            {shown.card.choice && (
-              <ChoiceOptions options={shown.card.choice.options} order={order} correct={shown.card.choice.correct} picked={shown.revealed ? (shown.picked ?? -1) : null} onPick={pick} />
-            )}
-            {shown.card.hint && !shown.revealed && (
-              <div className="study-hint">
-                {shown.hint ? (
-                  <Side side={shown.card.hint} pageId={pageId} shareToken={shareToken} />
-                ) : (
-                  <button className="button compact" onClick={() => setShown({ ...shown, hint: true })}>
-                    <Lightbulb aria-hidden /> {t("Hinweis (H)", "Hint (H)")}
-                  </button>
-                )}
-              </div>
-            )}
-            {shown.revealed && (
-              <div className="study-side study-back" ref={shown.card.kind === "cloze" ? undefined : backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>
-                {shown.card.kind !== "cloze" && !shown.card.occlusion && (
-                  <>
-                    <hr />
-                    <Side side={shown.card.back} pageId={pageId} shareToken={shareToken} />
-                  </>
-                )}
-                {shown.card.occlusion && "text" in shown.card.back && shown.card.back.text && <p className="study-text occlusion-answer">{shown.card.back.text}</p>}
-                {shown.card.note && (
-                  <div className="study-extra">
-                    <Side side={shown.card.note} pageId={pageId} shareToken={shareToken} />
+            {/* The question keeps its place when the answer comes: it sits
+                in the card's middle row, the answer in the row below. */}
+            <div className="study-question">
+              {shown.card.context && (
+                <div className="study-context">
+                  <Side side={shown.card.context} pageId={pageId} shareToken={shareToken} />
+                </div>
+              )}
+              {/* A cloze card shows its text once: with gaps, then filled; an
+                  image occlusion card its picture, the masks asked opened. */}
+              {shown.card.occlusion ? (
+                <div className="study-side study-front">
+                  <OcclusionImage occlusion={shown.card.occlusion} reveal={shown.revealed} />
+                </div>
+              ) : shown.card.kind === "cloze" && shown.revealed ? (
+                <div className="study-side study-front study-back" ref={backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>
+                  <Side side={shown.card.back} pageId={pageId} shareToken={shareToken} />
+                </div>
+              ) : (
+                <div className="study-side study-front">
+                  <Side side={shown.card.front} pageId={pageId} shareToken={shareToken} />
+                </div>
+              )}
+              {shown.card.typed && (
+                <div className="study-typed">
+                  <input
+                    ref={typedRef}
+                    className="study-typed-input"
+                    value={shown.typed}
+                    readOnly={shown.revealed}
+                    aria-label={t("Deine Antwort", "Your answer")}
+                    placeholder={t("Antwort eintippen …", "Type the answer …")}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    enterKeyHint="done"
+                    onChange={(e) => setShown({ ...shown, typed: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!shown.revealed) reveal();
+                        else void rate(shown.suggested ?? 3);
+                      } else if (e.key === "Escape") {
+                        // With text, the first Escape only leaves the field.
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (shown.typed.trim() && !shown.revealed) root.current?.focus();
+                        else closeRef.current();
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {shown.card.choice && (
+                <ChoiceOptions options={shown.card.choice.options} order={order} correct={shown.card.choice.correct} picked={shown.revealed ? (shown.picked ?? -1) : null} onPick={pick} />
+              )}
+            </div>
+            <div className="study-answer-area">
+              {shown.card.hint && !shown.revealed && (
+                <div className="study-hint">
+                  {shown.hint ? (
+                    <Side side={shown.card.hint} pageId={pageId} shareToken={shareToken} />
+                  ) : (
+                    <button className="button compact" onClick={() => setShown({ ...shown, hint: true })}>
+                      <Lightbulb aria-hidden /> {t("Hinweis (H)", "Hint (H)")}
+                    </button>
+                  )}
+                </div>
+              )}
+              {shown.revealed && (
+                <div className="study-answer-in">
+                  {shown.card.typed && shown.result && <TypedVerdict result={shown.result} typed={shown.typed} />}
+                  <div className="study-side study-back" ref={shown.card.kind === "cloze" ? undefined : backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>
+                    {/* A typed or choice card whose back is just the expected
+                        answer: shown once (the comparison, the marked option). */}
+                    {shown.card.kind !== "cloze" && !shown.card.occlusion && !repeats && (
+                      <>
+                        <hr />
+                        <Side side={shown.card.back} pageId={pageId} shareToken={shareToken} />
+                      </>
+                    )}
+                    {shown.card.occlusion && "text" in shown.card.back && shown.card.back.text && <p className="study-text occlusion-answer">{shown.card.back.text}</p>}
+                    {shown.card.note && (
+                      <div className="study-extra">
+                        <Side side={shown.card.note} pageId={pageId} shareToken={shareToken} />
+                      </div>
+                    )}
+                    {shown.card.extra && (
+                      <div className="study-extra">
+                        <Side side={shown.card.extra} pageId={pageId} shareToken={shareToken} />
+                      </div>
+                    )}
                   </div>
-                )}
-                {shown.card.extra && (
-                  <div className="study-extra">
-                    <Side side={shown.card.extra} pageId={pageId} shareToken={shareToken} />
-                  </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
+          {/* While swiping: the rating large in the middle of the screen,
+              outside the moving card so it stays in view. */}
+          {swipe && (
+            <span className={`study-swipe-label rating-${swipe}`} aria-hidden>
+              {labels[swipe]}
+            </span>
+          )}
           <div className="study-answer-bar">
             {!shown.revealed ? (
               <button className="button primary study-reveal" onClick={reveal}>
                 {shown.card.typed ? t("Prüfen", "Check") : t("Antwort zeigen", "Show answer")} <kbd>{shown.card.typed ? "↵" : t("Leertaste", "Space")}</kbd>
               </button>
             ) : (
-              <div className="study-ratings" role="group" aria-label={t("Wie gut wusstest du es?", "How well did you know it?")}>
-                {([1, 2, 3, 4] as const).map((r) => {
-                  const interval = outcomes ? intervalText(outcomes[r].memory, Date.now(), clock) : null;
-                  return (
-                    <button
-                      key={r}
-                      className={`button study-rate rating-${r}${shown.suggested === r ? " suggested" : ""}`}
-                      onClick={() => void rate(r)}
-                      aria-label={
-                        (interval ? t(`${labels[r]}, nächste Wiederholung ${interval.long}`, `${labels[r]}, next review ${interval.long}`) : labels[r]) +
-                        (shown.suggested === r ? t(" (Vorschlag)", " (suggested)") : "")
-                      }
-                      aria-keyshortcuts={String(r)}
-                    >
-                      <span className="study-rate-label">
-                        <kbd>{r}</kbd> {labels[r]}
-                      </span>
-                      {interval && <small aria-hidden>{interval.short}</small>}
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                {/* Touch screens: which way rates what. */}
+                <p className="study-swipe-hint" aria-hidden>
+                  {t("← Nochmal · ↑ Leicht · ↓ Schwer · Gut →", "← Again · ↑ Easy · ↓ Hard · Good →")}
+                </p>
+                <div className="study-ratings" role="group" aria-label={t("Wie gut wusstest du es?", "How well did you know it?")}>
+                  {([1, 2, 3, 4] as const).map((r) => {
+                    const interval = outcomes ? intervalOfMemory(outcomes[r].memory, Date.now(), clock) : null;
+                    return (
+                      <button
+                        key={r}
+                        className={`button study-rate rating-${r}${shown.suggested === r ? " suggested" : ""}`}
+                        onClick={() => void rate(r)}
+                        aria-label={
+                          (interval ? t(`${labels[r]}, nächste Wiederholung ${interval.long}`, `${labels[r]}, next review ${interval.long}`) : labels[r]) +
+                          (shown.suggested === r ? t(" (Vorschlag)", " (suggested)") : "")
+                        }
+                        aria-keyshortcuts={String(r)}
+                      >
+                        <span className="study-rate-label">
+                          <kbd>{r}</kbd> {labels[r]}
+                        </span>
+                        {interval && (
+                          <span className="study-rate-interval" aria-hidden>
+                            {interval.short}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </main>
@@ -629,15 +698,15 @@ export function FocusSession({
           <h2 id="study-wait-title">
             {(() => {
               const minutes = Math.max(1, Math.ceil((deck.nextDue - clockNow) / 60_000));
-              return minutes >= 60
-                ? t(`Nächste Karte um ${new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, `Next card at ${new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`)
-                : t(`Nächste Karte in ${minutes} Min`, `Next card in ${minutes} min`);
+              const at = new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              const wait = minutesText(minutes, format, t);
+              return minutes >= 60 ? t(`Nächste Karte um ${at}`, `Next card at ${at}`) : t(`Nächste Karte in ${wait}`, `Next card in ${wait}`);
             })()}
           </h2>
           <p className="muted">
             {t(
-              "Nur noch Karten in Lernschritten sind übrig – sie kommen wieder, sobald ihr Abstand vorbei ist. Du kannst warten oder sie früher zeigen.",
-              "Only cards in learning steps are left – they come back once their interval has passed. You can wait or show them sooner.",
+              "Nur noch Karten in der Lernphase sind übrig – sie kommen wieder, sobald ihr Abstand vorbei ist. Du kannst warten oder sie früher zeigen.",
+              "Only cards in the learning phase are left – they come back once their interval has passed. You can wait or show them sooner.",
             )}
           </p>
           <div className="study-summary-actions">
@@ -654,16 +723,57 @@ export function FocusSession({
         <main className="study-focus-main study-summary" aria-labelledby="study-summary-title">
           <h2 id="study-summary-title">{deck?.nextDue ? t("Für jetzt geschafft", "Done for now") : t("Geschafft für heute", "Done for today")}</h2>
           {reviewed > 0 && (
-            <p>
-              {t(`${reviewed} Karten in ${minutes} Min`, `${reviewed} cards in ${minutes} min`)} · {t(`${history.filter((h) => h.wasNew).length} neu`, `${history.filter((h) => h.wasNew).length} new`)} ·{" "}
-              {t(`${history.filter((h) => h.rating === 1).length}× „Nochmal“`, `${history.filter((h) => h.rating === 1).length}× “Again”`)} · {t(`Richtig ${correct} %`, `Correct ${correct} %`)}
-            </p>
+            <>
+              <ul className="study-summary-tiles">
+                <li className="study-summary-tile">
+                  <strong>{format(cardsSeen)}</strong>
+                  <span>
+                    {cardsSeen === 1 ? t("Karte", "card") : t("Karten", "cards")}
+                    {newSeen > 0 && t(` · ${newSeen} neu`, ` · ${newSeen} new`)}
+                  </span>
+                </li>
+                <li className="study-summary-tile">
+                  <strong>{minutesText(minutes, format, t)}</strong>
+                  <span>{t("Lernzeit", "Study time")}</span>
+                </li>
+                <li className="study-summary-tile">
+                  <strong>{percent.format(known)}</strong>
+                  <span>{t("gewusst (Gut/Leicht)", "known (Good/Easy)")}</span>
+                </li>
+                {deck?.streak ? (
+                  <li className="study-summary-tile">
+                    <strong>
+                      <Fire aria-hidden weight="fill" className="study-streak-icon" /> {format(deck.streak)}
+                    </strong>
+                    <span>{deck.streak === 1 ? t("Lerntag in Folge", "study day in a row") : t("Lerntage in Folge", "study days in a row")}</span>
+                  </li>
+                ) : null}
+              </ul>
+              {/* The ratings by button: a bar (drawn, so no style attribute)
+                  and the numbers with their words. */}
+              <div className="study-summary-spread">
+                <svg className="study-spread-bar" viewBox={`0 0 ${reviewed} 1`} preserveAspectRatio="none" aria-hidden>
+                  {spread.map((s, i) => {
+                    const x = spread.slice(0, i).reduce((sum, p) => sum + p.n, 0);
+                    return s.n ? <rect key={s.rating} className={`rating-${s.rating}`} x={x} y={0} width={s.n} height={1} /> : null;
+                  })}
+                </svg>
+                <ul className="study-spread-legend" aria-label={t("Wertungen", "Ratings")}>
+                  {spread.map((s) => (
+                    <li key={s.rating} className={`rating-${s.rating}${s.n ? "" : " is-zero"}`}>
+                      <strong>{format(s.n)}</strong>
+                      <span>{labels[s.rating]}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
           )}
           {deck?.nextDue && (
             <p className="muted">
               {t(
-                `Die nächste Karte in Lernschritten ist um ${new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} dran.`,
-                `The next card in learning steps is up at ${new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+                `Die nächste Karte in der Lernphase ist um ${new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} dran.`,
+                `The next card in the learning phase is up at ${new Date(deck.nextDue).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
               )}
             </p>
           )}

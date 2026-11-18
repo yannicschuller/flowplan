@@ -207,7 +207,7 @@ test("an image occlusion card in the focus mode: covered, highlighted, revealed"
   await focus.getByRole("button", { name: /^Gut/ }).click();
   // The record's other cards wait for tomorrow (siblings); this one comes
   // back in its learning step, covered again.
-  await expect(focus.locator(".study-count-chip.learning")).toHaveText("Lernen 1", { timeout: 30_000 });
+  await expect(focus.locator(".study-focus-count.learning b")).toHaveText("1", { timeout: 30_000 });
   await expect(card.locator(".occlusion-mask.open")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
