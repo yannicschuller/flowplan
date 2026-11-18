@@ -838,7 +838,11 @@ export default function DatabaseTimeline({
                 const effective = preview.changed.get(row.id) || row;
                 const range = rowRange(effective, start, end),
                   bar = range && clipRange(range.start, range.end, period),
-                  name = title(row);
+                  name = title(row),
+                  // A bar too short for its title (a day in the month
+                  // scale showed "O…") has it beside it instead: right of
+                  // the bar, or left where the period ends (#346).
+                  outside = bar ? outsideLabel(bar, name, width) : null;
                 const incoming = links.filter((l) => l.to === row.id),
                   shift = Math.max(0, ...incoming.map((l) => l.shift)),
                   loop = cyclic.has(row.id),
@@ -931,7 +935,7 @@ export default function DatabaseTimeline({
                         )}
                       {bar ? (
                         <div
-                          className={`timeline-range${preview.changed.has(row.id) || drag?.row.id === row.id ? " is-dragging" : ""}${critical.has(row.id) ? " critical" : ""}${linking && linking.from !== row.id ? " link-target" : ""}`}
+                          className={`timeline-range${preview.changed.has(row.id) || drag?.row.id === row.id ? " is-dragging" : ""}${critical.has(row.id) ? " critical" : ""}${linking && linking.from !== row.id ? " link-target" : ""}${outside ? ` label-${outside}` : ""}`}
                           style={{ left: bar.left, width: bar.width }}
                           title={`${label(range!.start, { day: "numeric", month: "short", year: "numeric" })} – ${label(range!.end, { day: "numeric", month: "short", year: "numeric" })}`}
                         >
@@ -975,8 +979,16 @@ export default function DatabaseTimeline({
                               }
                             }}
                           >
-                            {name}
+                            {!outside && name}
                           </button>
+                          {outside && (
+                            <span
+                              className="timeline-range-label"
+                              aria-hidden="true"
+                            >
+                              {name}
+                            </span>
+                          )}
                           {canEdit &&
                             end &&
                             bar.width >= 28 &&
@@ -1141,4 +1153,17 @@ export default function DatabaseTimeline({
       )}
     </section>
   );
+}
+// Where a bar's title goes: inside when it fits, else beside the bar where
+// there is room for it (estimated at 11 px text, about 6.3 px a letter).
+function outsideLabel(
+  bar: { left: number; width: number },
+  name: string,
+  lane: number,
+): "right" | "left" | null {
+  const text = Math.min(name.length * 6.3, 220);
+  if (bar.width >= text + 26) return null;
+  if (lane - bar.left - bar.width >= text + 16) return "right";
+  if (bar.left >= text + 16) return "left";
+  return null;
 }

@@ -4,6 +4,7 @@ import { useLocale, useT } from "./i18n";
 import { Select } from "./select";
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -15,8 +16,12 @@ import {
   CaretLeft,
   CaretRight,
   DotsSixVertical,
+  Globe,
+  Plus,
+  SlidersHorizontal,
 } from "@phosphor-icons/react";
 import { Modal } from "./ui";
+import { useMedia } from "./use-media";
 import { dragCursor, usePointerDrag } from "./pointer-drag";
 import { CalendarSubscribe } from "./calendar-subscribe";
 import DateInput from "./date-input";
@@ -111,13 +116,22 @@ export default function DatabaseCalendar({
       start: string;
       end: string;
       zone: string;
-    } | null>(null);
+    } | null>(null),
+    [optionsOpen, setOptionsOpen] = useState(false),
+    [zoneOpen, setZoneOpen] = useState(false);
+  const optionsId = useId(),
+    zoneId = useId();
   const config = local ||
       view.calendar || { mode: "month", timeZone: browserZone() },
     zone = config.timeZone,
     { start, end, invalidEnd } = scheduleFields(fields, view),
     canEdit = editable && !!start && !invalidEnd,
     weekends = config.showWeekends !== false,
+    // Phones: the month is seven narrow columns and the chosen day's
+    // entries are listed below them (#346).
+    phone = useMedia("(max-width: 767px)"),
+    compact = phone && config.mode === "month",
+    foreignZone = zone !== browserZone(),
     firstDay = calendarWeekStart(config, locale),
     days = useMemo(
       () =>
@@ -439,11 +453,15 @@ export default function DatabaseCalendar({
     day: CalendarDay,
   ) {
     if (!canEdit || busy || occurrence(row.id)) return;
-    const chip = event.currentTarget.closest<HTMLElement>(".calendar-chip");
+    const chip = event.currentTarget.closest<HTMLElement>(
+      ".calendar-chip, .calendar-agenda-item",
+    );
     // The row and versions as they were when the drag began.
     const schemaVersion = version;
     startDrag(event, {
-      touch: event.currentTarget.classList.contains("calendar-drag") ? "hold" : "none",
+      touch: event.currentTarget.classList.contains("calendar-drag")
+        ? "hold"
+        : "none",
       preview: chip,
       source: chip,
       onMove: (point) => setTouchTarget(dayAt(point.x, point.y)),
@@ -454,15 +472,25 @@ export default function DatabaseCalendar({
       onCancel: () => setTouchTarget(null),
     });
   }
-  function eventChip(row: Row, day: CalendarDay) {
-    const range = ranges.get(row.id);
+  // An entry in a month cell ("grid"), in a phone's narrow month cell
+  // ("mini": the title alone, opened by a tap) or in the list of the chosen
+  // day below a phone's month ("agenda", with handle and date button).
+  function eventChip(
+    row: Row,
+    day: CalendarDay,
+    variant: "grid" | "mini" | "agenda" = "grid",
+  ) {
+    const range = ranges.get(row.id),
+      tools = variant !== "mini" && canEdit && !occurrence(row.id);
     return (
       <div
-        className={`calendar-chip ${occurrence(row.id) ? "occurrence" : ""}`}
+        className={`${variant === "agenda" ? "calendar-agenda-item" : "calendar-chip"} ${occurrence(row.id) ? "occurrence" : ""}`}
         key={row.id}
       >
         <button
-          className="calendar-event"
+          className={
+            variant === "agenda" ? "calendar-agenda-event" : "calendar-event"
+          }
           title={
             range
               ? `${formatDateValue(range.start, zone)} – ${formatDateValue(range.end, zone)}`
@@ -474,15 +502,24 @@ export default function DatabaseCalendar({
           onKeyDown={(e) => {
             // Alt + ←/→ moves the entry by a day, Alt + ↑/↓ by a week.
             if (!e.altKey || !canEdit || busy || occurrence(row.id)) return;
-            const days = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+            const days = {
+              ArrowLeft: -1,
+              ArrowRight: 1,
+              ArrowUp: -7,
+              ArrowDown: 7,
+            }[e.key];
             if (!days) return;
             e.preventDefault();
-            void apply(row, version, { operation: "move-calendar", days, timeZone: zone });
+            void apply(row, version, {
+              operation: "move-calendar",
+              days,
+              timeZone: zone,
+            });
           }}
           onClick={() => openRow(row.id)}
         >
-          {range?.timed && (
-            <span>
+          {range?.timed && variant !== "mini" && (
+            <span className="calendar-event-time">
               {Temporal.Instant.from(range.start)
                 .toZonedDateTimeISO(zone)
                 .toPlainTime()
@@ -490,13 +527,16 @@ export default function DatabaseCalendar({
             </span>
           )}
           {parseRecurrence(row.recurrence) && (
-            <span aria-label={t("Wiederholung", "Recurrence")} title={t("Wiederkehrender Eintrag", "Recurring record")}>
+            <span
+              aria-label={t("Wiederholung", "Recurrence")}
+              title={t("Wiederkehrender Eintrag", "Recurring record")}
+            >
               ↻{" "}
             </span>
           )}
           {title(row)}
         </button>
-        {canEdit && !occurrence(row.id) && (
+        {tools && (
           <button
             className="calendar-drag"
             aria-label={t(`${title(row)} verschieben`, `Move ${title(row)}`)}
@@ -507,10 +547,13 @@ export default function DatabaseCalendar({
             <DotsSixVertical size={13} />
           </button>
         )}
-        {canEdit && !occurrence(row.id) && (
+        {tools && (
           <button
             className="calendar-edit"
-            aria-label={t(`Termin für ${title(row)} bearbeiten`, `Edit date of ${title(row)}`)}
+            aria-label={t(
+              `Termin für ${title(row)} bearbeiten`,
+              `Edit date of ${title(row)}`,
+            )}
             disabled={busy}
             onClick={() => edit(row)}
           >
@@ -520,6 +563,24 @@ export default function DatabaseCalendar({
       </div>
     );
   }
+  const onDay = (day: CalendarDay) =>
+    rows.filter((row) => {
+      const range = ranges.get(row.id);
+      return range && rangeOnDay(range, day);
+    });
+  // The chosen day of a phone's month is the anchor (or the next day shown
+  // when weekends are hidden).
+  const shownDay = compact
+    ? days.find((d) => d.date === anchor) ||
+      days.find((d) => d.date > anchor) ||
+      days[days.length - 1]
+    : undefined;
+  const dayLabel = (date: string) =>
+    Temporal.PlainDate.from(date).toLocaleString(LOCALE_TAG, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
   function navigate(delta: number) {
     const date = Temporal.PlainDate.from(anchor).add(
       config.mode === "month"
@@ -530,128 +591,173 @@ export default function DatabaseCalendar({
   }
   return (
     <section className="calendar-view" aria-label={t("Kalender", "Calendar")}>
+      {/* One row on every width: ‹ Heute › and the period. The options
+          follow on wide screens; on phones (and narrow panes) they fold
+          behind the sliders button, so the row never wraps (#346). */}
       <div className="calendar-controls">
-        <h3>
-          {Temporal.PlainDate.from(anchor).toLocaleString(LOCALE_TAG, {
-            month: "long",
-            year: "numeric",
-          })}
-        </h3>
-        <Select
-          aria-label={t("Kalender: Ansicht", "Calendar: view")}
-          disabled={busy}
-          value={config.mode}
-          onChange={(e) =>
-            void configure({
-              ...config,
-              mode: e.target.value as CalendarConfig["mode"],
-            })
-          }
+        <div className="calendar-nav">
+          <button
+            className="icon-button"
+            aria-label={t("Vorheriger Zeitraum", "Previous period")}
+            onClick={() => navigate(-1)}
+          >
+            <CaretLeft />
+          </button>
+          <button
+            className="button compact"
+            onClick={() => setAnchor(dateInZone(zone))}
+          >
+            {t("Heute", "Today")}
+          </button>
+          <button
+            className="icon-button"
+            aria-label={t("Nächster Zeitraum", "Next period")}
+            onClick={() => navigate(1)}
+          >
+            <CaretRight />
+          </button>
+          <h3>
+            {Temporal.PlainDate.from(anchor).toLocaleString(LOCALE_TAG, {
+              month: "long",
+              year: "numeric",
+            })}
+          </h3>
+        </div>
+        <button
+          className={`icon-button calendar-options-toggle${optionsOpen ? " active" : ""}`}
+          aria-label={t("Kalenderoptionen", "Calendar options")}
+          title={t("Kalenderoptionen", "Calendar options")}
+          aria-expanded={optionsOpen}
+          aria-controls={optionsId}
+          onClick={() => setOptionsOpen((open) => !open)}
         >
-          <option value="month">{t("Monat", "Month")}</option>
-          <option value="week">{t("Woche", "Week")}</option>
-          <option value="day">{t("Tag", "Day")}</option>
-        </Select>
-        <Select
-          aria-label={t("Kalender: Wochenbeginn", "Calendar: week start")}
-          disabled={busy}
-          value={firstDay}
-          onChange={(e) =>
-            void configure({
-              ...config,
-              weekStart: e.target.value as CalendarConfig["weekStart"],
-            })
-          }
+          <SlidersHorizontal />
+        </button>
+        <div
+          id={optionsId}
+          className={`calendar-options${optionsOpen ? " open" : ""}`}
         >
-          <option value="monday">{t("Woche ab Montag", "Week from Monday")}</option>
-          <option value="sunday">{t("Woche ab Sonntag", "Week from Sunday")}</option>
-        </Select>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            aria-label={t("Kalender: Wochenenden anzeigen", "Calendar: show weekends")}
+          <Select
+            aria-label={t("Kalender: Ansicht", "Calendar: view")}
             disabled={busy}
-            checked={weekends}
+            value={config.mode}
             onChange={(e) =>
-              void configure({ ...config, showWeekends: e.target.checked })
+              void configure({
+                ...config,
+                mode: e.target.value as CalendarConfig["mode"],
+              })
             }
-          />
-          {t("Wochenenden", "Weekends")}
-        </label>
-        <input
-          aria-label={t("Kalender: Datum", "Calendar: date")}
-          type="date"
-          min="0001-01-01"
-          max="9999-12-31"
-          value={anchor}
-          onChange={(e) => {
-            if (
-              /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) &&
-              dateDay(e.target.value) !== null
-            )
-              setAnchor(e.target.value);
-          }}
-        />
-        <button
-          className="button compact"
-          onClick={() => setAnchor(dateInZone(zone))}
-        >
-          {t("Heute", "Today")}
-        </button>
-        <button
-          className="icon-button"
-          aria-label={t("Vorheriger Zeitraum", "Previous period")}
-          onClick={() => navigate(-1)}
-        >
-          <CaretLeft />
-        </button>
-        <button
-          className="icon-button"
-          aria-label={t("Nächster Zeitraum", "Next period")}
-          onClick={() => navigate(1)}
-        >
-          <CaretRight />
-        </button>
-        <CalendarSubscribe pageId={pageId} viewId={view.id} />
-      </div>
-      <form
-        className="calendar-zone"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void configure({ ...config, timeZone: zoneDraft });
-        }}
-      >
-        <label>
-          {t("Zeitzone", "Time zone")}{" "}
-          <input
-            aria-label={t("Kalender: Zeitzone", "Calendar: time zone")}
-            value={zoneDraft}
-            onChange={(e) => setZoneDraft(e.target.value)}
+          >
+            <option value="month">{t("Monat", "Month")}</option>
+            <option value="week">{t("Woche", "Week")}</option>
+            <option value="day">{t("Tag", "Day")}</option>
+          </Select>
+          <Select
+            aria-label={t("Kalender: Wochenbeginn", "Calendar: week start")}
             disabled={busy}
-            list="calendar-timezones"
+            value={firstDay}
+            onChange={(e) =>
+              void configure({
+                ...config,
+                weekStart: e.target.value as CalendarConfig["weekStart"],
+              })
+            }
+          >
+            <option value="monday">
+              {t("Woche ab Montag", "Week from Monday")}
+            </option>
+            <option value="sunday">
+              {t("Woche ab Sonntag", "Week from Sunday")}
+            </option>
+          </Select>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              aria-label={t(
+                "Kalender: Wochenenden anzeigen",
+                "Calendar: show weekends",
+              )}
+              disabled={busy}
+              checked={weekends}
+              onChange={(e) =>
+                void configure({ ...config, showWeekends: e.target.checked })
+              }
+            />
+            {t("Wochenenden", "Weekends")}
+          </label>
+          <input
+            aria-label={t("Kalender: Datum", "Calendar: date")}
+            type="date"
+            min="0001-01-01"
+            max="9999-12-31"
+            value={anchor}
+            onChange={(e) => {
+              if (
+                /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) &&
+                dateDay(e.target.value) !== null
+              )
+                setAnchor(e.target.value);
+            }}
           />
-        </label>
-        <datalist id="calendar-timezones">
-          {[
-            "UTC",
-            "Europe/Berlin",
-            "Europe/London",
-            "America/New_York",
-            "America/Los_Angeles",
-            "Asia/Tokyo",
-            "Australia/Sydney",
-          ].map((z) => (
-            <option key={z} value={z} />
-          ))}
-        </datalist>
-        <button
-          className="button compact"
-          disabled={busy || zoneDraft === zone}
+          {!foreignZone && (
+            <button
+              className={`button compact calendar-zone-toggle${zoneOpen ? " active" : ""}`}
+              aria-expanded={zoneOpen}
+              aria-controls={zoneId}
+              title={t(`Zeitzone: ${zone}`, `Time zone: ${zone}`)}
+              onClick={() => setZoneOpen((open) => !open)}
+            >
+              <Globe size={15} /> {t("Zeitzone", "Time zone")}
+            </button>
+          )}
+          <CalendarSubscribe pageId={pageId} viewId={view.id} />
+        </div>
+      </div>
+      {/* The time zone matters when it is not the device's own: then its
+          row stays; otherwise it opens from "Zeitzone" in the options. */}
+      {(zoneOpen || foreignZone) && (
+        <form
+          id={zoneId}
+          className="calendar-zone"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void configure({ ...config, timeZone: zoneDraft });
+          }}
         >
-          {t("Übernehmen", "Apply")}
-        </button>
-        {!viewEditable && <small>{t("Ansicht nur für dich", "View only for you")}</small>}
-      </form>
+          <label>
+            {t("Zeitzone", "Time zone")}{" "}
+            <input
+              aria-label={t("Kalender: Zeitzone", "Calendar: time zone")}
+              value={zoneDraft}
+              onChange={(e) => setZoneDraft(e.target.value)}
+              disabled={busy}
+              list="calendar-timezones"
+            />
+          </label>
+          <datalist id="calendar-timezones">
+            {[
+              "UTC",
+              "Europe/Berlin",
+              "Europe/London",
+              "America/New_York",
+              "America/Los_Angeles",
+              "Asia/Tokyo",
+              "Australia/Sydney",
+            ].map((z) => (
+              <option key={z} value={z} />
+            ))}
+          </datalist>
+          <button
+            className="button compact"
+            disabled={busy || zoneDraft === zone}
+          >
+            {t("Übernehmen", "Apply")}
+          </button>
+          {!viewEditable && (
+            <small>{t("Ansicht nur für dich", "View only for you")}</small>
+          )}
+        </form>
+      )}
       {error && !draft && (
         <p role="alert" className="error">
           {error}
@@ -659,47 +765,100 @@ export default function DatabaseCalendar({
       )}
       {!start || invalidEnd ? (
         <p className="timeline-notice">
-          {t("In den Ansichtsoptionen gültige, unterschiedliche Datumsfelder für Beginn und Ende auswählen.", "Choose valid, different date fields for start and end in the view options.")}
+          {t(
+            "In den Ansichtsoptionen gültige, unterschiedliche Datumsfelder für Beginn und Ende auswählen.",
+            "Choose valid, different date fields for start and end in the view options.",
+          )}
         </p>
       ) : (
         <>
           {config.mode === "month" ? (
-            <div className="calendar-scroll">
-              <div
-                className="calendar-grid"
-                style={
-                  { "--calendar-weekdays": weekends ? 7 : 5 } as CSSProperties
-                }
-              >
-                {weekdayLabels(config, locale).map((d) => (
-                  <div className="weekday" key={d}>
-                    {d}
-                  </div>
-                ))}
-                {days.map((day) => (
-                  <div
-                    key={day.date}
-                    data-day={day.date}
-                    className={`calendar-day ${day.date.slice(0, 7) !== anchor.slice(0, 7) ? "other-month" : ""} ${touchTarget === day.date ? "touch-target" : ""}`}
-                  >
-                    <button
-                      className={day.date === dateInZone(zone) ? "today" : ""}
-                      onClick={() =>
-                        canEdit && onCreate({ [start.id]: day.date })
+            <>
+              <div className="calendar-scroll">
+                <div
+                  className={`calendar-grid${compact ? " compact" : ""}`}
+                  style={
+                    { "--calendar-weekdays": weekends ? 7 : 5 } as CSSProperties
+                  }
+                >
+                  {weekdayLabels(config, locale).map((d) => (
+                    <div className="weekday" key={d}>
+                      {d}
+                    </div>
+                  ))}
+                  {days.map((day) => (
+                    <div
+                      key={day.date}
+                      data-day={day.date}
+                      className={`calendar-day ${day.date.slice(0, 7) !== anchor.slice(0, 7) ? "other-month" : ""} ${touchTarget === day.date ? "touch-target" : ""}${compact && day.date === shownDay?.date ? " selected" : ""}`}
+                      // A tap beside the entries picks the day on a phone.
+                      onClick={
+                        compact
+                          ? (e) => {
+                              if (e.target === e.currentTarget)
+                                setAnchor(day.date);
+                            }
+                          : undefined
                       }
                     >
-                      {Number(day.date.slice(-2))}
-                    </button>
-                    {rows
-                      .filter((row) => {
-                        const range = ranges.get(row.id);
-                        return range && rangeOnDay(range, day);
-                      })
-                      .map((row) => eventChip(row, day))}
-                  </div>
-                ))}
+                      <button
+                        className={day.date === dateInZone(zone) ? "today" : ""}
+                        aria-pressed={
+                          compact ? day.date === shownDay?.date : undefined
+                        }
+                        onClick={() =>
+                          compact
+                            ? setAnchor(day.date)
+                            : canEdit && onCreate({ [start.id]: day.date })
+                        }
+                      >
+                        {Number(day.date.slice(-2))}
+                      </button>
+                      {onDay(day).map((row) =>
+                        eventChip(row, day, compact ? "mini" : "grid"),
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+              {compact && shownDay && (
+                <section
+                  className="calendar-agenda"
+                  aria-label={t(
+                    `Einträge am ${dayLabel(shownDay.date)}`,
+                    `Records on ${dayLabel(shownDay.date)}`,
+                  )}
+                >
+                  <div className="calendar-agenda-heading">
+                    <h4>{dayLabel(shownDay.date)}</h4>
+                    {canEdit && (
+                      <button
+                        className="button compact"
+                        aria-label={t(
+                          `Neuer Eintrag am ${dayLabel(shownDay.date)}`,
+                          `New record on ${dayLabel(shownDay.date)}`,
+                        )}
+                        onClick={() => onCreate({ [start.id]: shownDay.date })}
+                      >
+                        <Plus size={14} /> {t("Neu", "New")}
+                      </button>
+                    )}
+                  </div>
+                  {onDay(shownDay).length ? (
+                    onDay(shownDay).map((row) =>
+                      eventChip(row, shownDay, "agenda"),
+                    )
+                  ) : (
+                    <p className="muted">
+                      {t(
+                        "Keine Einträge an diesem Tag.",
+                        "No records on this day.",
+                      )}
+                    </p>
+                  )}
+                </section>
+              )}
+            </>
           ) : (
             <>
               <details className="calendar-help">

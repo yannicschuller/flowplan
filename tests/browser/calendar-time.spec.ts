@@ -16,6 +16,15 @@ async function databaseSearch(page: Page) {
   return field;
 }
 test.use({ timezoneId: "UTC" });
+
+// Phones fold the calendar's options behind "Kalenderoptionen" (#346).
+async function calendarOption(scope: Page | Locator, label: string) {
+  await scope.locator(".calendar-nav").first().waitFor();
+  const toggle = scope.getByRole("button", { name: "Kalenderoptionen", exact: true });
+  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
+  return scope.getByLabel(label, { exact: true });
+}
 const pendingAreas = new Map<string, { id: string; name: string }>();
 async function removeArea(
   request: APIRequestContext,
@@ -135,8 +144,7 @@ async function fixture(page: Page, name: string) {
   };
   await page.goto(`/#page=${source.id}`);
   const calendar = page.getByRole("region", { name: "Kalender", exact: true });
-  await calendar
-    .getByLabel("Kalender: Datum", { exact: true })
+  await (await calendarOption(calendar, "Kalender: Datum"))
     .fill("2026-09-23");
   return {
     errors,
@@ -250,8 +258,7 @@ test("timed calendars move and resize with mouse, touch and keyboard and persist
     await expect(grip).toBeEnabled();
     await page.keyboard.press("ArrowUp");
     await expect(body).toContainText("09:00–10:45");
-    await f.calendar
-      .getByLabel("Kalender: Ansicht", { exact: true })
+    await (await calendarOption(f.calendar, "Kalender: Ansicht"))
       .selectOption("week");
     await expect
       .poll(async () => (await f.read()).database.views[0].calendar.mode)
@@ -270,13 +277,11 @@ test("timed calendars move and resize with mouse, touch and keyboard and persist
       });
     await page.reload();
     await expect(
-      f.calendar.getByLabel("Kalender: Ansicht", { exact: true }),
+      (await calendarOption(f.calendar, "Kalender: Ansicht")),
     ).toHaveValue("week");
-    await f.calendar
-      .getByLabel("Kalender: Datum", { exact: true })
+    await (await calendarOption(f.calendar, "Kalender: Datum"))
       .fill("2026-09-24");
-    await f.calendar
-      .getByLabel("Kalender: Ansicht", { exact: true })
+    await (await calendarOption(f.calendar, "Kalender: Ansicht"))
       .selectOption("day");
     await expect(body).toContainText("09:00–10:45");
     await f.calendar
@@ -356,8 +361,7 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
       start: "2026-10-25T01:30:00Z",
       end: "2026-10-25T02:30:00Z",
     });
-    await f.calendar
-      .getByLabel("Kalender: Datum", { exact: true })
+    await (await calendarOption(f.calendar, "Kalender: Datum"))
       .fill("2026-10-25");
     await expect(f.calendar.locator(".calendar-hours-heading")).toContainText(
       "25 Stunden",
@@ -470,8 +474,7 @@ test("calendar conflicts preserve drafts, remote edits cancel gestures and locke
       .getByRole("button", { name: "Abbrechen", exact: true })
       .click();
     await page.reload();
-    await f.calendar
-      .getByLabel("Kalender: Datum", { exact: true })
+    await (await calendarOption(f.calendar, "Kalender: Datum"))
       .fill("2026-09-23");
     const body = f.calendar.locator(
       `[data-row-id="${f.meeting.id}"] .calendar-time-body`,
@@ -509,8 +512,7 @@ test("calendar conflicts preserve drafts, remote edits cancel gestures and locke
     const before = (await f.read()).database;
     await expect(f.calendar.locator(".calendar-edit")).toHaveCount(0);
     await expect(f.calendar.locator(".calendar-time-resize")).toHaveCount(0);
-    await f.calendar
-      .getByLabel("Kalender: Ansicht", { exact: true })
+    await (await calendarOption(f.calendar, "Kalender: Ansicht"))
       .selectOption("week");
     await expect(f.calendar.locator(".calendar-hours-column")).toHaveCount(7);
     expect((await f.read()).database.version).toBe(before.version);

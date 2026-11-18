@@ -47,6 +47,9 @@ test("a US browser gets US English: month-first dates, weeks from Sunday", async
     await page.locator(".database-tabs").getByRole("button", { name: "Calendar", exact: true }).click();
     const weekdays = page.locator(".calendar-grid .weekday");
     await expect(weekdays).toHaveText(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    // Phones fold the options behind "Calendar options" (#346).
+    const options = page.getByRole("button", { name: "Calendar options", exact: true });
+    if (await options.isVisible()) await options.click();
     const start = page.getByLabel("Calendar: week start");
     await expect(start).toHaveValue("sunday");
     // Nothing is stored until someone chooses; a choice in the view wins.

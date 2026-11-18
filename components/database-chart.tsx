@@ -33,7 +33,23 @@ const format = (n: number | null) =>
   n === null
     ? "–"
     : new Intl.NumberFormat(LOCALE_TAG, { maximumFractionDigits: 4 }).format(n);
-const short = (s: string) => (s.length > 22 ? s.slice(0, 20) + "…" : s);
+const short = (s: string, max = 22) =>
+  s.length > max ? s.slice(0, max - 2) + "…" : s;
+// The graphics' widths (#346): at least a fixed width where there is room,
+// as before; in a narrower box (a phone) the box's width, so a few groups
+// fit without scrolling – many still scroll, with narrower slots.
+const COLUMN_MIN = 650,
+  BAR_WIDTH = 720;
+function columnWidth(room: number | undefined, groups: number, step: number) {
+  return room && room < COLUMN_MIN
+    ? Math.max(room, groups * Math.min(step, 60) + 105)
+    : Math.max(COLUMN_MIN, groups * step + 110);
+}
+function barLayout(room: number | undefined) {
+  const width = room && room < BAR_WIDTH ? Math.max(300, room) : BAR_WIDTH,
+    left = width < 560 ? 100 : 165;
+  return { width, left, extent: width - left - 75, label: width < 560 ? 14 : 22 };
+}
 // Optional axis titles; the value axis is vertical except in bar charts.
 function AxisTitles({
   config,
@@ -84,11 +100,14 @@ export function ChartGraphic({
   config,
   onSelect,
   describe,
+  room,
 }: {
   points: ChartPoint[];
   config: ChartConfig;
   onSelect: (key: string) => void;
   describe?: (p: ChartPoint) => string;
+  // The width of the box the chart is shown in, once measured.
+  room?: number;
 }) {
   const t = useT();
   const colors = paletteOf(config);
@@ -193,10 +212,8 @@ export function ChartGraphic({
     );
   }
   if (config.kind === "horizontal") {
-    const width = 720,
-      height = Math.max(150, available.length * 42 + 50),
-      left = 165,
-      extent = 480;
+    const { width, left, extent, label: labelMax } = barLayout(room),
+      height = Math.max(150, available.length * 42 + 50);
     const x = (v: number) => left + scale(v) * extent,
       zero = x(0);
     return (
@@ -233,7 +250,7 @@ export function ChartGraphic({
               fill="transparent"
             />
             <text x={left - 10} y={i * 42 + 36} textAnchor="end">
-              {short(p.label)}
+              {short(p.label, labelMax)}
             </text>
             <rect
               x={Math.min(zero, x(p.value ?? 0))}
@@ -257,7 +274,7 @@ export function ChartGraphic({
       </svg>
     );
   }
-  const width = Math.max(650, available.length * 85 + 110),
+  const width = columnWidth(room, available.length, 85),
     height = 365,
     left = 70,
     plot = 235,
@@ -367,12 +384,14 @@ function SeriesGraphic({
   values,
   config,
   onSelect,
+  room,
 }: {
   points: ChartPoint[];
   series: ChartSeries[];
   values: Map<string, Map<string, SeriesValue>>;
   config: ChartConfig;
   onSelect: (key: string) => void;
+  room?: number;
 }) {
   const t = useT();
   const colors = paletteOf(config);
@@ -433,10 +452,8 @@ function SeriesGraphic({
   };
   if (config.kind === "horizontal") {
     const band = stacked ? 42 : Math.max(42, series.length * 14 + 14);
-    const width = 720,
-      height = Math.max(150, available.length * band + 50),
-      left = 165,
-      extent = 480;
+    const { width, left, extent, label: labelMax } = barLayout(room),
+      height = Math.max(150, available.length * band + 50);
     const x = (v: number) => left + scale(v) * extent,
       zero = x(0);
     return (
@@ -469,7 +486,7 @@ function SeriesGraphic({
           return (
             <g key={p.key}>
               <text x={left - 10} y={top + band / 2 + 4} textAnchor="end">
-                {short(p.label)}
+                {short(p.label, labelMax)}
               </text>
               {segments(p).map(({ s, i, v, from, to }) =>
                 v === null ? null : (
@@ -496,7 +513,7 @@ function SeriesGraphic({
     stacked || config.kind === "line"
       ? 85
       : Math.max(85, series.length * 18 + 20);
-  const width = Math.max(650, available.length * step + 110),
+  const width = columnWidth(room, available.length, step),
     height = 365,
     left = 70,
     plot = 235,
@@ -1058,7 +1075,16 @@ export default function DatabaseChart({
   const [settings, setSettings] = useState(false),
     [selected, setSelected] = useState<string | null>(null),
     [tablePage, setTablePage] = useState(0),
-    [entryPage, setEntryPage] = useState(0);
+    [entryPage, setEntryPage] = useState(0),
+    [room, setRoom] = useState<number>();
+  // The chart's box, measured: a phone's chart fits its width (#346).
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!box || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setRoom(box.clientWidth || undefined));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [box]);
   const config = view.chart || defaultChart(fields),
     invalid = chartConfigError(config, fields),
     colors = paletteOf(config);
@@ -1158,6 +1184,7 @@ export default function DatabaseChart({
             </p>
           )}
           <div
+            ref={setBox}
             className={`chart-scroll ${config.showGrid === false ? "no-grid" : ""}`}
             tabIndex={0}
             role="region"
@@ -1170,9 +1197,10 @@ export default function DatabaseChart({
                 values={values}
                 config={config}
                 onSelect={select}
+                room={room}
               />
             ) : (
-              <ChartGraphic points={points} config={config} onSelect={select} />
+              <ChartGraphic points={points} config={config} onSelect={select} room={room} />
             )}
           </div>
           {withSeries && config.showLegend !== false && (

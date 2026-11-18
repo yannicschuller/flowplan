@@ -16,7 +16,10 @@ const FOCUSABLE =
 // A toolbar chip with a small panel anchored below it (filters, sorting,
 // grouping …). The panel is a dialog: it takes the focus when it opens,
 // Escape closes it and hands the focus back to the chip, a click elsewhere
-// closes it as well. It stays inside the window.
+// closes it as well. It stays inside the window. Children given as a
+// function get `close`, for an action that opens a dialog: the panel goes
+// first and the focus to the chip, so the dialog does not open under the
+// panel and returns the focus to the chip (#346).
 export function ChipPopover({
   icon,
   label,
@@ -36,7 +39,7 @@ export function ChipPopover({
   name?: string;
   active?: boolean;
   panelLabel: string;
-  children: ReactNode;
+  children: ReactNode | ((close: () => void) => ReactNode);
   className?: string;
   panelClassName?: string;
   open?: boolean;
@@ -147,7 +150,12 @@ export function ChipPopover({
             chip.current?.focus();
           }}
         >
-          {children}
+          {typeof children === "function"
+            ? children(() => {
+                setOpen(false);
+                chip.current?.focus({ preventScroll: true });
+              })
+            : children}
         </div>
       )}
     </div>

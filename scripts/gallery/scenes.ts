@@ -85,10 +85,14 @@ async function studied(ctx: SceneContext, db: string) {
   const ids: string[] = [];
   for (const [title, back] of words) ids.push((await ctx.command({ action: "row.create", pageId: db, cells: { title, back } })).id);
   const day = 86_400_000;
+  // One batch (as the app sends ratings made offline), not one command per
+  // rating: scenes running side by side ran into the rating limit (#346).
+  const reviews = [];
   for (let d = 4; d >= 0; d--)
     for (const [i, rowId] of ids.entries())
       if ((i + d) % 3 !== 0)
-        await ctx.command({ action: "study.review", pageId: db, rowId, sub: "", rating: (i + d) % 4 === 0 ? 1 : 3, id: crypto.randomUUID(), zone: "Europe/Berlin", reviewedAt: Date.now() - d * day - i * 1000 });
+        reviews.push({ pageId: db, rowId, sub: "", rating: (i + d) % 4 === 0 ? 1 : 3, id: crypto.randomUUID(), zone: "Europe/Berlin", reviewedAt: Date.now() - d * day - i * 1000 });
+  await ctx.command({ action: "study.reviews", reviews });
 }
 // A published deck (flashcards phase 7): a few cards of every kind of text,
 // a cloze among them; the publication's token.

@@ -20,6 +20,7 @@ import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { useImagePlaceholder } from "./image-placeholder";
 import { showToast } from "./toast";
 import { keepDialogForLayer } from "./layer-host";
+import { usingKeyboard } from "./input-modality";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -252,7 +253,15 @@ export function Modal({
           aria-label={title}
           aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
-          onOpenAutoFocus={onOpenAutoFocus}
+          onOpenAutoFocus={(event) => {
+            onOpenAutoFocus?.(event);
+            if (event.defaultPrevented || usingKeyboard()) return;
+            // Opened by a tap or click: the dialog itself takes the focus
+            // (its name is announced, Tab reaches ✕ next) instead of ✕
+            // with a focus ring (components/input-modality.ts, #346).
+            event.preventDefault();
+            content.current?.focus({ preventScroll: true });
+          }}
           onEscapeKeyDown={(event) => {
             onEscapeKeyDown?.(event);
             // A menu or popover inside the dialog closes first (#232).

@@ -94,17 +94,22 @@ export function DatabaseToolbarChips({
         panelLabel={t("Filter", "Filters")}
         panelClassName="chip-popover-filter"
       >
-        <FilterChipBody
-          view={view}
-          fields={fields}
-          rows={rows}
-          related={related}
-          relatedSchemas={relatedSchemas}
-          members={members}
-          editable={editable}
-          save={saveFilters}
-          onAdvanced={onAdvancedFilters}
-        />
+        {(close) => (
+          <FilterChipBody
+            view={view}
+            fields={fields}
+            rows={rows}
+            related={related}
+            relatedSchemas={relatedSchemas}
+            members={members}
+            editable={editable}
+            save={saveFilters}
+            onAdvanced={() => {
+              close();
+              onAdvancedFilters();
+            }}
+          />
+        )}
       </ChipPopover>
       <ChipPopover
         icon={<SortAscending size={15} />}
@@ -123,14 +128,19 @@ export function DatabaseToolbarChips({
           active={group.active}
           panelLabel={t("Gruppierung", "Grouping")}
         >
-          <GroupChipBody
-            view={view}
-            fields={fields}
-            editable={editable}
-            groupSettings={groupSettings}
-            updateView={updateView}
-            onConfigure={onConfigure}
-          />
+          {(close) => (
+            <GroupChipBody
+              view={view}
+              fields={fields}
+              editable={editable}
+              groupSettings={groupSettings}
+              updateView={updateView}
+              onConfigure={() => {
+                close();
+                onConfigure();
+              }}
+            />
+          )}
         </ChipPopover>
       )}
       {propertiesShown && (
@@ -141,7 +151,18 @@ export function DatabaseToolbarChips({
           active={properties.active}
           panelLabel={t("Sichtbare Eigenschaften", "Visible properties")}
         >
-          <PropertiesChipBody view={view} fields={fields} editable={editable} updateView={updateView} onConfigure={onConfigure} />
+          {(close) => (
+            <PropertiesChipBody
+              view={view}
+              fields={fields}
+              editable={editable}
+              updateView={updateView}
+              onConfigure={() => {
+                close();
+                onConfigure();
+              }}
+            />
+          )}
         </ChipPopover>
       )}
       <SearchChip query={query} onQuery={onQuery} />

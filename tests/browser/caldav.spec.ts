@@ -27,6 +27,10 @@ test("two-way calendar sync over CalDAV", async ({ page }, info) => {
   });
   const row = await command({ action: "row.create", pageId: db.id, cells: { title: "Review", when: new Date().toISOString().slice(0, 10) } });
   await page.goto(`/#page=${db.id}`);
+  // Phones fold the calendar's options behind "Kalenderoptionen" (#346).
+  await page.locator(".calendar-nav").waitFor();
+  const options = page.getByRole("button", { name: "Kalenderoptionen", exact: true });
+  if (await options.isVisible()) await options.click();
   await page.getByRole("button", { name: "Abonnieren" }).click();
   await page.getByRole("button", { name: "Zugang einrichten" }).click();
   const dialog = page.getByRole("dialog");
