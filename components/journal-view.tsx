@@ -40,6 +40,15 @@ export function localDay(date = new Date()) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
+// The user's time zone, sent with journal.roll: which day "An diesem Tag
+// erledigt" covers when the day before is judged empty (lib/journal.ts).
+export function localZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
 const utc = (day: string) => new Date(`${day}T00:00:00Z`);
 export const shiftDay = (day: string, days: number) => {
   const d = utc(day);

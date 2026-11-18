@@ -7,7 +7,8 @@
 // midnight, the append step resolved "today" anew to the next day, created
 // it the way opening the journal does – and that removed the day before as
 // "untouched" (a hard delete, not into the trash), with the summary of the
-// 17th on the 18th. Against a stub model and a mocked clock (Date only).
+// 17th on the 18th. Now tasks done that day keep it, and an empty day goes
+// to the trash. Against a stub model and a mocked clock (Date only).
 import { test, after, mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -102,6 +103,12 @@ async function fire(pageId: string, at: string, answered?: string, answer = (com
   assert.equal(r.status, "succeeded", r.error || "");
   return r;
 }
+// Nothing in "An diesem Tag erledigt" any more: the other tests' ticks too.
+async function forgetCompleted() {
+  await run("DELETE FROM row_status_log");
+  await run("DELETE FROM task_done_log");
+}
+const liveDates = async (jid: string) => (await days(jid)).filter((d) => !d.deleted_at).map((d) => d.journal_date);
 // Every day is still there under its date, with its automatic title, none in the trash.
 async function assertDays(jid: string, expected: string[]) {
   const list = await days(jid);
@@ -191,11 +198,14 @@ test("appending to the newest day never removes the day before, even an untouche
   assert.equal(k18.id, made.dayId);
   assert.match(await html(made.dayId), /Offen A keep/);
   assert.doesNotMatch(await html(d17!), /Offen A keep/);
-  // Opening the journal as a person still tidies an untouched day away (journal.md).
-  const other = await setup("tidy");
+  // Opening the journal as a person still tidies an empty day away – into
+  // the trash (journal.md "Leere Tage verschwinden").
+  const other = await setup("tidy", { ticked: null });
+  await forgetCompleted();
   clock("2026-11-17T23:10:00Z");
   await rollJournal(owner, await journalPage(other.jid), "2026-11-18", "2026-11-17");
-  assert.deepEqual((await days(other.jid)).map((d) => d.journal_date), ["2026-11-16", "2026-11-18"]);
+  assert.deepEqual(await liveDates(other.jid), ["2026-11-16", "2026-11-18"]);
+  assert.ok((await one<Page>("SELECT * FROM pages WHERE id=?", other.d17))?.deleted_at);
 });
 
 test("after a wait, “today” is the day the run went on", async () => {
@@ -256,22 +266,44 @@ test("a workflow made in Berlin runs “täglich · 23:55” at 23:55 Berlin, be
   await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
 });
 
-test("the reporter's night with the old UTC default: an empty day is tidied away by opening the journal, the late run makes it again", async () => {
-  // What happened (and still happens for workflows left on UTC): the run
-  // fires 23:55 UTC = 00:55 Berlin. Opening the journal at 00:10 Berlin
-  // starts the 18th and removes the 17th, which had nothing of its own yet
-  // (journal.md "Leere Tage verschwinden"). The run then finds no 17th and
-  // makes it again, with the template and the summary – it never removes a day.
+test("the reporter's night with the old UTC default: the 17th has tasks done elsewhere, opening the journal keeps it, the late run appends to it", async () => {
+  // What happened: the run fires 23:55 UTC = 00:55 Berlin. Opening the
+  // journal at 00:10 Berlin starts the 18th; the 17th had nothing of its
+  // own, only carried tasks and "An diesem Tag erledigt" – it was removed
+  // for good. Now that list keeps the day.
   const { jid, d17 } = await setup("old");
   const { pageId, append } = await nightly("old", jid);
   clock("2026-11-17T23:10:00Z");
-  await rollJournal(owner, await journalPage(jid), berlinDay(), "2026-11-17");
-  assert.deepEqual((await days(jid)).map((d) => d.journal_date), ["2026-11-16", "2026-11-18"]);
-  assert.equal(await one("SELECT 1 FROM pages WHERE id=?", d17), undefined);
+  await rollJournal(owner, await journalPage(jid), berlinDay(), "2026-11-17", false, { zone: BERLIN });
+  const [, k17, k18] = await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
+  assert.equal(k17.id, d17);
+  assert.doesNotMatch(await html(d17!), /Offen A old/);
+  assert.match(await html(k18.id), /Offen A old/);
   const r = await fire(pageId, "2026-11-17T23:55:00Z");
   const out = await outputOf(r.id, append.id);
-  assert.deepEqual([out.date, out.created], ["2026-11-17", true]);
+  assert.deepEqual([out.date, out.created, out.day.id], ["2026-11-17", false, d17]);
+  await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
+  assert.match(await html(d17!), /Tageszusammenfassung/);
+});
+
+test("nothing done on the 17th: opening the journal moves it to the trash, the late run brings it back from there", async () => {
+  const { jid, d17 } = await setup("empty", { ticked: null });
+  await forgetCompleted();
+  const { pageId, append } = await nightly("empty", jid);
+  clock("2026-11-17T23:10:00Z");
+  await rollJournal(owner, await journalPage(jid), berlinDay(), "2026-11-17", false, { zone: BERLIN });
+  assert.deepEqual(await liveDates(jid), ["2026-11-16", "2026-11-18"]);
+  const trashed = (await one<Page>("SELECT * FROM pages WHERE id=?", d17))!;
+  assert.ok(trashed.deleted_at);
+  assert.equal(trashed.journal_date, "2026-11-17");
+  // In the trash without the tasks that moved on to the 18th.
+  assert.doesNotMatch(await html(d17!), /Offen A empty/);
+  const r = await fire(pageId, "2026-11-17T23:55:00Z", undefined, () => "Heute wurden keine Aufgaben erledigt 🙃");
+  const out = await outputOf(r.id, append.id);
+  assert.deepEqual([out.date, out.created, out.day.id], ["2026-11-17", true, d17]);
   const [, k17, k18] = await assertDays(jid, ["2026-11-16", "2026-11-17", "2026-11-18"]);
-  assert.match(await html(k17.id), /Tageszusammenfassung/);
-  assert.match(await html(k18.id), /Offen A old/);
+  assert.equal(k17.id, d17);
+  assert.match(await html(d17!), /Heute wurden keine Aufgaben erledigt/);
+  assert.match(await html(k18.id), /Offen A empty/);
+  assert.doesNotMatch(await html(d17!), /Offen A empty/);
 });

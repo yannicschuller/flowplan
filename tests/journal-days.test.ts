@@ -149,8 +149,8 @@ test("each day remembers the template it was created from", async () => {
   await act({ action: "journal.settings", pageId: journal, template: "<h3>Abends</h3><p></p>" });
   const second = (await roll(journal, "2026-10-21")).dayId;
   assert.match(String(await dayTemplateHtml(second)), /Abends/);
-  // … so it was removed when the next day came.
-  assert.equal(await one("SELECT 1 FROM pages WHERE id=?", first), undefined);
+  // … so it went to the trash when the next day came.
+  assert.ok(await one("SELECT 1 FROM pages WHERE id=? AND deleted_at IS NOT NULL", first));
   // A day without a template remembers that too.
   await act({ action: "journal.settings", pageId: journal, template: "" });
   const third = (await roll(journal, "2026-10-22")).dayId;

@@ -76,7 +76,8 @@ test("new days start with the template; template tasks are not carried twice", a
 
 test("a day that only holds the template is removed like an empty one", async () => {
   const before = await roll("2026-10-03");
-  assert.equal(await one("SELECT id FROM pages WHERE journal_date='2026-10-02' AND parent_id=?", journalId), undefined);
+  assert.equal(await one("SELECT id FROM pages WHERE journal_date='2026-10-02' AND parent_id=? AND deleted_at IS NULL", journalId), undefined);
+  assert.ok(await one("SELECT id FROM pages WHERE journal_date='2026-10-02' AND parent_id=? AND deleted_at IS NOT NULL", journalId));
   assert.match(await html(before.dayId), /Steuer/);
 });
 

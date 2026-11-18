@@ -71,19 +71,20 @@ export function dayBounds(date: string, zone: string) {
 // `dayId`: databases placed on the day page itself show there already.
 // `mine`: only the reader's records (see above); everything they may see
 // otherwise. `limit`: how many items the list holds (the AI context,
-// lib/ai/journal-completed.ts, filters first and cuts itself).
+// lib/ai/journal-completed.ts, filters first and cuts itself). `window`:
+// other bounds than the day in `zone` (lib/journal.ts: the day in any zone).
 export async function completedOn(
   user: Identity,
   workspaceId: string,
   date: string,
   zone: string,
-  options: { dayId?: string; mine?: boolean; limit?: number } = {},
+  options: { dayId?: string; mine?: boolean; limit?: number; window?: { start: number; end: number } } = {},
 ): Promise<CompletedList> {
   const { dayId } = options;
   const limit = options.limit ?? COMPLETED_LIMIT;
   const mine = !!options.mine;
   if (!validZone(zone)) zone = "UTC";
-  const { start, end } = dayBounds(date, zone);
+  const { start, end } = options.window || dayBounds(date, zone);
   // The latest change of each record, when it is a change to done on this day.
   const entries = await all<{ page_id: string; row_id: string; at: number; user_id: string | null }>(
     `SELECT l.page_id,l.row_id,l.at,l.user_id FROM row_status_log l JOIN pages p ON p.id=l.page_id
