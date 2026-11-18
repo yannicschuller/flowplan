@@ -1805,6 +1805,12 @@ export type CommandPageCreate = {
   };
   /** A built-in starter template key */
   starterTemplate?: string;
+  /** The new page's id, chosen by the client (pages made offline): a UUID nobody uses yet. Sent again by the same person for the same space, the existing page answers and nothing is created twice */
+  pageId?: string;
+  /** With `starterTemplate` of a database: the ids of its example records, one per record */
+  rowIds?: string[];
+  /** Notebooks: the id of the first sheet */
+  sheetId?: string;
 };
 
 export type CommandPageCreateResult = {
@@ -4283,6 +4289,7 @@ export class FlowplanClient {
     pageId: string;
     file: Blob;
     purpose?: "cover" | "e2ee";
+    fileId?: string;
   }, options?: RequestOptions): Promise<FileInfo> {
     return this.json<FileInfo>("POST", `/api/upload`, { form, idempotent: true }, options);
   }

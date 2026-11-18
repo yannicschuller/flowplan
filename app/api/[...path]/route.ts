@@ -69,6 +69,7 @@ import { spaceLibrary } from "@/lib/library-server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
+import { claimFileId } from "@/lib/client-ids";
 import { createTemplate, libraryFile } from "@/lib/notebook-library";
 import { FONT_LIMITS, fontResponse, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
 import {
@@ -2101,7 +2102,13 @@ async function handlePOST(
           400,
           "Bitte PNG, JPEG, GIF, WebP oder AVIF verwenden.",
         );
-      const fid = id();
+      // Uploaded later of a picture or file added offline (#370): the
+      // document refers to it by the id the device chose; sent again, the
+      // stored file answers (lib/client-ids.ts).
+      const claimed = data.get("fileId") !== null ? await claimFileId(user, p.id, data.get("fileId")) : null;
+      if (claimed?.existing)
+        return NextResponse.json({ id: claimed.id, url: `/api/files/${claimed.id}`, name: claimed.existing.name, mime: claimed.existing.mime });
+      const fid = claimed?.id ?? id();
       // The type must match the content; photos lose their location.
       const raw = Buffer.from(await file.arrayBuffer());
       if (encrypted && raw.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
