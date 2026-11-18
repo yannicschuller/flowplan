@@ -102,3 +102,17 @@ test("a failed Markdown export only counts while the export is on (#73)", async 
   await set("markdownExportRuns", [{ pageId: page, name: "y.zip", at: Date.now() + 1, bytes: 10, error: null }]);
   assert.equal((await adminSummary()).export.failed, false);
 });
+
+test("the fullest workspace is never a demo workspace, and one that uses nothing is not named", async () => {
+  // A demo guest's workspace, nearly full (named in the visitor's language).
+  const guest = await account("summary-demo");
+  await run("UPDATE users SET demo_until=? WHERE id=?", Date.now() + 3_600_000, guest.id);
+  const demo = await createWorkspace(guest.id, "演示工作区");
+  await setWorkspaceQuota(demo, 1);
+  const page = id();
+  await run("INSERT INTO pages(id,workspace_id,space_id,title,kind) VALUES(?,?,(SELECT id FROM spaces WHERE workspace_id=? LIMIT 1),'Datei','document')", page, demo, demo);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", id(), page, "b.bin", "application/octet-stream", 1020 * 1024, guest.id);
+  const s = await adminSummary();
+  assert.notEqual(s.workspaces.fullest?.name, "演示工作区");
+  if (s.workspaces.fullest) assert.ok(s.workspaces.fullest.share >= 0.0005);
+});

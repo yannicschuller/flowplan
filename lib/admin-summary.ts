@@ -50,11 +50,19 @@ export async function adminSummary(now = Date.now(), update: UpdateStatus | null
   } catch {}
   const events = await opsEventSummary(now);
   const workers = (await workerStatuses(now)).filter((w) => w.active && w.error && (w.errorAt ?? 0) >= now - DAY);
-  // The fullest workspace with a quota (the tile's meter).
-  const names = new Map((await all<{ id: string; name: string }>("SELECT id,name FROM workspaces")).map((w) => [w.id, w.name]));
+  // The fullest workspace with a quota (the tile's meter). Demo workspaces
+  // (made by a demo guest, named in the visitor's language and deleted
+  // within the hour) don't count, and a workspace that uses nothing of its
+  // quota is no "fullest": the tile then shows no name.
+  const names = new Map(
+    (await all<{ id: string; name: string; demo: number }>(
+      "SELECT w.id,w.name,CASE WHEN u.demo_until IS NOT NULL THEN 1 ELSE 0 END AS demo FROM workspaces w LEFT JOIN users u ON u.id=w.created_by",
+    )).map((w) => [w.id, { name: w.name, demo: !!Number(w.demo) }]),
+  );
   const fullest = usage
-    .filter((w) => w.effectiveQuotaMb > 0)
-    .map((w) => ({ name: names.get(w.id) || "", share: w.bytes / (w.effectiveQuotaMb * 1024 * 1024) }))
+    .filter((w) => w.effectiveQuotaMb > 0 && !names.get(w.id)?.demo)
+    .map((w) => ({ name: names.get(w.id)?.name || "", share: w.bytes / (w.effectiveQuotaMb * 1024 * 1024) }))
+    .filter((w) => w.share >= 0.0005)
     .sort((a, b) => b.share - a.share)[0];
   const live = await liveNumbers(now);
   const tokens = (await aiUsage(now, 14)).days;
