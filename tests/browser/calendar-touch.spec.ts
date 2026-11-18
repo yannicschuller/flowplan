@@ -58,12 +58,24 @@ test("touch devices move whole-day calendar entries with a drag handle", async (
     await expect(handle).toBeHidden();
     return command({ action: "page.delete", pageId: p.id });
   }
-  // The title is readable beside the handle and the date button: on a phone
-  // they get a line of their own below it instead of squeezing it to "Wo…".
-  const event = page.locator(".calendar-day .calendar-event").filter({ hasText: "Workshop" });
+  // A phone's month (#346): all seven days fit the screen, the entry is a
+  // small bar in its day; a tap on the day lists its entries below the
+  // grid, readable, with the handle and the date button beside the title.
+  const scroll = page.locator(".calendar-scroll");
+  expect(await scroll.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  await expect(page.locator(".calendar-grid .weekday")).toHaveCount(7);
+  await expect(handle).toHaveCount(0);
+  await page.locator(`.calendar-day[data-day="${month}-10"] > button`).click();
+  const agenda = page.locator(".calendar-agenda");
+  const event = agenda.locator(".calendar-agenda-event").filter({ hasText: "Workshop" });
+  await expect(event).toBeVisible();
   expect(await event.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
-  for (const control of [handle, page.getByRole("button", { name: "Termin für Workshop bearbeiten" })])
-    expect((await control.boundingBox())!.y).toBeGreaterThan((await event.boundingBox())!.y);
+  for (const control of [handle, page.getByRole("button", { name: "Termin für Workshop bearbeiten" })]) {
+    const box = (await control.boundingBox())!,
+      title = (await event.boundingBox())!;
+    expect(box.x).toBeGreaterThan(title.x + title.width - 1);
+    expect(Math.abs(box.y + box.height / 2 - (title.y + title.height / 2))).toBeLessThan(4);
+  }
   const target = page.locator(`.calendar-day[data-day="${month}-12"]`);
   await target.scrollIntoViewIfNeeded();
   await handle.scrollIntoViewIfNeeded();

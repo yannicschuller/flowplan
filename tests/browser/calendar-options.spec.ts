@@ -1,4 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+
+// Phones fold the calendar's options behind "Kalenderoptionen" (#346).
+async function calendarOption(scope: Page | Locator, label: string) {
+  await scope.locator(".calendar-nav").first().waitFor();
+  const toggle = scope.getByRole("button", { name: "Kalenderoptionen", exact: true });
+  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
+  return scope.getByLabel(label, { exact: true });
+}
 
 test("calendar weeks start on Sunday and hide weekends", async ({
   page,
@@ -48,9 +57,9 @@ test("calendar weeks start on Sunday and hide weekends", async ({
   await page.goto(`/#page=${p.id}`);
   const weekdays = page.locator(".calendar-grid .weekday");
   await expect(weekdays.first()).toHaveText("Mo");
-  await page.getByLabel("Kalender: Wochenbeginn").selectOption("sunday");
+  await (await calendarOption(page, "Kalender: Wochenbeginn")).selectOption("sunday");
   await expect(weekdays.first()).toHaveText("So");
-  await page.getByLabel("Kalender: Wochenenden anzeigen").uncheck();
+  await (await calendarOption(page, "Kalender: Wochenenden anzeigen")).uncheck();
   await expect(weekdays).toHaveText(["Mo", "Di", "Mi", "Do", "Fr"]);
   // Only weekdays remain in the month grid.
   const dates = await page

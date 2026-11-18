@@ -686,6 +686,11 @@ button.sh-value:hover {
 .sh-footer .button {
   gap: 7px;
 }
+/* "Fertig" alone (sharing a record) sits on the right like the primary
+   button of every other dialog (#346). */
+.sh-footer > .button.primary:only-child {
+  margin-left: auto;
+}
 .sh-footer .button svg {
   width: 15px;
   height: 15px;
