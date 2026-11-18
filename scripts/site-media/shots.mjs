@@ -113,6 +113,9 @@ const SHOTS = {
   },
 };
 
+const unknown = only.filter((name) => !SHOTS[name]);
+if (unknown.length) throw new Error(`No such shot: ${unknown.join(", ")}`);
+const failed = [];
 const browser = await launch();
 for (const [name, s] of Object.entries(SHOTS)) {
   if (only.length && !only.includes(name)) continue;
@@ -128,8 +131,15 @@ for (const [name, s] of Object.entries(SHOTS)) {
     console.log(name);
   } catch (e) {
     console.error(name, e.message.split("\n")[0]);
+    failed.push(name);
     await page.screenshot({ path: join(out, `${name}-failed.png`) }).catch(() => {});
   }
   await ctx.close();
 }
 await browser.close();
+// A broken scene fails the run (its screenshot as <name>-failed.png), so
+// the weekly check (.github/workflows/site-media.yml) notices it.
+if (failed.length) {
+  console.error(`${failed.length} shot(s) failed: ${failed.join(", ")}`);
+  process.exitCode = 1;
+}
