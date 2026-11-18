@@ -186,6 +186,11 @@ test("classifying the previous run: first start, clean, crash, likely OOM, kille
   assert.equal(tracker.classifyRun({ heartbeat: beat({ rss: 0.92 * GB, memWorkingSet: null, memCurrent: null }), exit: null, oomKillsNow: null })?.reason, "oom");
   // … or V8's heap close to its own limit (no container limit).
   assert.equal(tracker.classifyRun({ heartbeat: beat({ memLimit: null, heapUsed: 1.9 * GB }), exit: null, oomKillsNow: null })?.reason, "oom");
+  // … or the whole host nearly out of memory (the global OOM killer, which
+  // ended Litestream on a container without a limit of its own).
+  assert.equal(tracker.classifyRun({ heartbeat: beat({ memLimit: null, hostTotal: 4 * GB, hostAvailable: 0.1 * GB }), exit: null, oomKillsNow: null })?.reason, "oom");
+  assert.equal(tracker.classifyRun({ heartbeat: beat({ memLimit: null, hostTotal: 4 * GB, hostAvailable: 1.5 * GB }), exit: null, oomKillsNow: null })?.reason, "killed");
+  assert.deepEqual(tracker.hostMemory((path) => (path === "/proc/meminfo" ? "MemTotal:        3888000 kB\nMemFree:          100000 kB\nMemAvailable:     150000 kB\n" : null)), { total: 3888000 * 1024, available: 150000 * 1024 });
   // … or the cgroup's oom_kill counter went up.
   assert.equal(tracker.classifyRun({ heartbeat: beat({ oomKills: 1 }), exit: null, oomKillsNow: 2 })?.reason, "oom");
   // Nothing: SIGKILL, the host, a failed healthcheck.

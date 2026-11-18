@@ -118,7 +118,23 @@ export type Heartbeat = {
   memCurrent: number | null;
   memWorkingSet: number | null;
   oomKills: number | null;
+  // The host's memory (/proc/meminfo: MemTotal, MemAvailable), for a host
+  // that runs out as a whole – the kernel's global OOM killer then ends a
+  // process of a container without any limit of its own. Optional: older
+  // heartbeats lack it.
+  hostTotal?: number | null;
+  hostAvailable?: number | null;
 };
+// The host is "nearly out of memory" below this share of MemAvailable.
+export const HOST_LOW_SHARE = 0.05;
+export function hostMemory(read: Read = readText): { total: number | null; available: number | null } {
+  const text = read("/proc/meminfo");
+  const kb = (name: string) => {
+    const v = new RegExp(`^${name}:\\s+(\\d+) kB$`, "m").exec(text ?? "")?.[1];
+    return v ? Number(v) * 1024 : null;
+  };
+  return { total: kb("MemTotal"), available: kb("MemAvailable") };
+}
 export type ExitMarker =
   | { kind: "clean"; at: number; run: string; signal: string | null; code: number | null; finished: boolean }
   | { kind: "crash"; at: number; run: string; code: number | null; origin: string | null; error: string | null; stack: string | null };
@@ -157,6 +173,7 @@ const state = () => holder.flowplanRestartTracker;
 export function heartbeat(s: State, now = Date.now(), read: Read = readText): Heartbeat {
   const m = process.memoryUsage();
   const c = containerMemory(read);
+  const host = hostMemory(read);
   return {
     v: 1,
     key: s.key,
@@ -177,6 +194,8 @@ export function heartbeat(s: State, now = Date.now(), read: Read = readText): He
     memCurrent: c.current,
     memWorkingSet: c.workingSet,
     oomKills: c.oomKills,
+    hostTotal: host.total,
+    hostAvailable: host.available,
   };
 }
 function beat(now = Date.now()) {
@@ -287,7 +306,11 @@ export function classifyRun(run: Pick<PreviousRun, "heartbeat" | "exit" | "oomKi
   if (exit?.kind === "crash")
     return { ...base, reason: "crash", error: [exit.error || (exit.code !== null ? `exit code ${exit.code}` : null), exit.stack].filter(Boolean).join("\n") || null, signal: null, code: exit.code };
   const oomKilled = h.oomKills !== null && run.oomKillsNow !== null && run.oomKillsNow > h.oomKills;
-  if (oomKilled || (base.memoryShare !== null && base.memoryShare >= OOM_SHARE)) return { ...base, reason: "oom", error: null, signal: null, code: null };
+  // The whole host nearly out of memory at the last heartbeat: the global
+  // OOM killer, which may end Litestream (the container's main process)
+  // rather than the app.
+  const hostLow = !!h.hostTotal && h.hostAvailable != null && h.hostAvailable / h.hostTotal <= HOST_LOW_SHARE;
+  if (oomKilled || hostLow || (base.memoryShare !== null && base.memoryShare >= OOM_SHARE)) return { ...base, reason: "oom", error: null, signal: null, code: null };
   return { ...base, reason: "killed", error: null, signal: null, code: null };
 }
 
