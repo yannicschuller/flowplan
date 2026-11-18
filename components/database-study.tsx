@@ -53,6 +53,8 @@ export default function DatabaseStudy({
   rows,
   editable,
   act,
+  startSession,
+  onSessionStarted,
 }: {
   page: Page;
   database: Database;
@@ -61,6 +63,9 @@ export default function DatabaseStudy({
   editable: boolean;
   act: (b: Record<string, unknown>) => Promise<unknown>;
   onOpenRow?: (rowId: string) => void;
+  // Opened by a link that starts the session (#340): once the deck is there.
+  startSession?: boolean;
+  onSessionStarted?: () => void;
 }) {
   const t = useT();
   const mapping = database.settings?.study;
@@ -108,6 +113,11 @@ export default function DatabaseStudy({
     window.addEventListener("flowplan:study-changed", changed);
     return () => window.removeEventListener("flowplan:study-changed", changed);
   }, [reload, page.id]);
+  useEffect(() => {
+    if (!startSession || !overview) return;
+    if (overview.configured && overview.total > 0) setSession(true);
+    onSessionStarted?.();
+  }, [startSession, overview, onSessionStarted]);
   // A new study view of a database without a mapping opens the setup.
   useEffect(() => {
     if (!mapping && editable) setSetup(true);

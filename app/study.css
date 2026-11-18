@@ -1430,6 +1430,23 @@ polyline.occlusion-draft {
   margin-top: auto;
   font-size: 0.85rem;
 }
+/* Before the script runs (or without it): the back under <details>. */
+.public-flashcard-reveal {
+  margin-top: auto;
+}
+.public-flashcard-reveal > summary {
+  display: flex;
+  width: fit-content;
+  margin-left: auto;
+  list-style: none;
+  cursor: pointer;
+}
+.public-flashcard-reveal > summary::-webkit-details-marker {
+  display: none;
+}
+.public-flashcard-reveal > .public-flashcard-back {
+  margin-top: 10px;
+}
 .public-flashcard .occlusion-frame img {
   max-height: 260px;
 }

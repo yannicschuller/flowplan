@@ -10,22 +10,29 @@ export type PageLocation = {
   // A record shown as a page of its own in the main area instead of a
   // dialog over its database (#231): "&full=1". Only with a record.
   full?: boolean;
+  // A view of a database ("&view=<id>") and, with a study view, its focus
+  // mode started ("&study=1", #340: "In Flowplan lernen" on a public deck).
+  // Not with a record.
+  viewId?: string;
+  study?: boolean;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parsePageLocation(hash: string): PageLocation | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   if (
-    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block", "full"].includes(key))
+    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block", "full", "view", "study"].includes(key))
   )
     return null;
-  if (["page", "row", "thread", "item", "block", "full"].some((key) => params.getAll(key).length > 1))
+  if (["page", "row", "thread", "item", "block", "full", "view", "study"].some((key) => params.getAll(key).length > 1))
     return null;
   const pageId = params.get("page"),
     rowId = params.get("row"),
     threadId = params.get("thread"),
     itemId = params.get("item"),
     blockId = params.get("block"),
-    full = params.get("full");
+    full = params.get("full"),
+    viewId = params.get("view"),
+    study = params.get("study");
   if (
     !pageId ||
     !uuid.test(pageId) ||
@@ -33,7 +40,9 @@ export function parsePageLocation(hash: string): PageLocation | null {
     (blockId !== null && !/^[\w-]{1,64}$/.test(blockId)) ||
     (rowId !== null && !uuid.test(rowId)) ||
     (threadId !== null && !uuid.test(threadId)) ||
-    (full !== null && (full !== "1" || rowId === null))
+    (full !== null && (full !== "1" || rowId === null)) ||
+    (viewId !== null && (!/^[\w-]{1,64}$/.test(viewId) || rowId !== null)) ||
+    (study !== null && (study !== "1" || viewId === null))
   )
     return null;
   return {
@@ -43,6 +52,8 @@ export function parsePageLocation(hash: string): PageLocation | null {
     ...(itemId ? { itemId } : {}),
     ...(blockId ? { blockId } : {}),
     ...(full ? { full: true } : {}),
+    ...(viewId ? { viewId } : {}),
+    ...(study ? { study: true } : {}),
   };
 }
 export function pageLocationHash(target: PageLocation): string {
@@ -52,6 +63,10 @@ export function pageLocationHash(target: PageLocation): string {
   if (target.itemId) params.set("item", target.itemId);
   if (target.blockId) params.set("block", target.blockId);
   if (target.full && target.rowId) params.set("full", "1");
+  if (target.viewId && !target.rowId) {
+    params.set("view", target.viewId);
+    if (target.study) params.set("study", "1");
+  }
   const hash = `#${params}`;
   return parsePageLocation(hash) ? hash : "#inbox";
 }

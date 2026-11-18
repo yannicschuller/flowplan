@@ -915,7 +915,8 @@ commenter/editor, Passwort, Ablauf) und Veröffentlichungen
   bereits aufgeteilt und bereinigt) als JSON über die vorhandene
   Freigabe-API; Größe begrenzt (z. B. 2 000 Karten, danach seitenweise).
 - Mit Konto angemeldet und Mitglied? Dann bietet der Link „In Flowplan lernen“
-  (eigener Stand) an.
+  (eigener Stand) an: `/#page=<id>&view=<viewId>&study=1` öffnet den Stapel
+  auf dieser Lernen-Ansicht und startet den Fokusmodus (#340).
 - Bilder im öffentlichen Link nur über die vorhandenen autorisierten
   Freigabe-Dateipfade (`lib/shared-uploads.ts`).
 
@@ -2193,8 +2194,9 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   übrigen GETs des Links), kein Zähler, keine Adresse.
 - **Durchblättern**: Server-HTML (eine Client-Komponente, auf dem Server
   gerendert) mit je 100 Karten pro Seite (`?cards=2` …); Klick oder
-  „Umdrehen“ dreht die Karte (React-State, keine Inline-Skripte). Ohne
-  JavaScript sind nur die Vorderseiten sichtbar.
+  „Umdrehen“ dreht die Karte (React-State, keine Inline-Skripte). Bis das
+  Skript läuft (und ohne JavaScript) steht die Rückseite in einem
+  `<details>` unter „Umdrehen“ (#340); danach ersetzt der Knopf es.
 - **Üben**: `components/study/focus-core.tsx` ist jetzt der Fokusmodus
   ohne Server (`FocusSession` mit `backend: load/rate/undo/more`); die App
   nutzt ihn über `StudyFocus` (`./focus.tsx`, Server + Offline-Kopie wie
@@ -2214,9 +2216,15 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   merkt sich `noted`), mit „Fortschritt löschen“; danach steht „Fortschritt
   löschen“ neben „Durchblättern/Üben“, solange etwas gespeichert ist.
 - „In Flowplan lernen“: serverseitig `activeUser()` + `pageRole` – nur für
-  angemeldete Mitglieder mit Leserecht, Link `/#page=<id>` (öffnet den
-  Stapel, startet keine Sitzung). Auf eigenen Domains nicht (dort gibt es
-  keine Sitzung der App).
+  angemeldete Mitglieder mit Leserecht, Link
+  `/#page=<id>&view=<viewId>&study=1` (#340, `lib/page-location.ts`:
+  `view` nur ohne `row`, `study` nur mit `view`). `DatabaseView` wählt die
+  Ansicht, `DatabaseStudy` startet die Sitzung, sobald der Stapel geladen
+  ist und Karten hat; danach steht nur noch `#page=<id>` in der Adresse
+  (ein Neuladen startet nicht erneut). Ohne Leserecht greifen die üblichen
+  Regeln beim Öffnen der Seite; gibt es die Ansicht nicht mehr, öffnet die
+  erste Lernen-Ansicht ohne Sitzung, mit Hinweis. Auf eigenen Domains
+  nicht (dort gibt es keine Sitzung der App).
 - Kopie einer Veröffentlichung übernimmt die Kartenzuordnung, wenn alle
   ihre Eigenschaften mitkommen, plus eine Ansicht „Lernen“; Lernstände nie.
 
@@ -2272,11 +2280,8 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
 
 **Offen**
 
-- „In Flowplan lernen“ öffnet nur den Stapel (kein Deep-Link in die
-  Sitzung oder eine bestimmte Lernen-Ansicht).
 - Kartenvorschau auf der Marketplace-Seite (`payload/study-meta.json`) und
   eine eigene Kategorie „Lernen“ (Vertragsänderung, §8.4) – später.
-- Durchblättern ohne JavaScript zeigt nur Vorderseiten.
 
 ---
 

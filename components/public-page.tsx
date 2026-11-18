@@ -5,6 +5,7 @@ import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
 import { shownPageIcon } from "@/lib/page-link-icons";
+import { pageLocationHash } from "@/lib/page-location";
 import { ReadOnlyDocument } from "./read-only-document";
 import { WhiteboardStatic } from "./whiteboard/render";
 import { PublicNotebook } from "./notebook/public-notebook";
@@ -737,7 +738,8 @@ async function PublicFiles({
 // The study view of a shared deck (lib/shared-study.ts): its cards in parts
 // of 100 to browse, practice in the browser, and for a signed-in member of
 // the workspace "In Flowplan lernen" (not on a custom domain, which has no
-// session of the app).
+// session of the app): the deck in the app on this view with the session
+// started, the person's own learning state (#340).
 const BROWSE_PART = 100;
 async function publicStudySection({
   token,
@@ -760,7 +762,7 @@ async function publicStudySection({
   if (member) {
     const user = await activeUser().catch(() => null);
     const full = user ? await one<Page>("SELECT * FROM pages WHERE id=?", page.id) : null;
-    if (user && full && (await pageRole(user, full).catch(() => null))) memberHref = `/#page=${page.id}`;
+    if (user && full && (await pageRole(user, full).catch(() => null))) memberHref = `/${pageLocationHash({ pageId: page.id, viewId: view.id, study: true })}`;
   }
   return (
     <PublicStudy

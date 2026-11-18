@@ -11951,6 +11951,7 @@
   "This view has no date.": "This view has no date.",
   "This view is no longer available.": "This view is no longer available.",
   "This view is sorted automatically. Moving by hand removes its sorting rules. The current sorting is saved as the starting order.": "This view is sorted automatically. Moving by hand removes its sorting rules. The current sorting is saved as the starting order.",
+  "This view no longer exists – the database is open.": "This view no longer exists – the database is open.",
   "This view studies only cards that match its {0} filters.": "This view studies only cards that match its {0} filters.",
   "This was just changed elsewhere. Reload and try again.": "This was just changed elsewhere. Reload and try again.",
   "This webhook no longer exists": "This webhook no longer exists",
