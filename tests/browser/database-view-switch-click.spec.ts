@@ -60,8 +60,16 @@ for (const motion of ["full", "reduced"] as const)
       // to take hits. The page notes when the cell appeared and when the
       // press arrived.
       await page.evaluate(() => {
-        const w = window as Window & { pressedAt?: number };
-        addEventListener("pointerdown", () => void (w.pressedAt = performance.now()), true);
+        const w = window as Window & { pressedAt?: number; fadingAtPress?: boolean };
+        addEventListener(
+          "pointerdown",
+          () => {
+            w.pressedAt = performance.now();
+            // Whether the cross-fade still runs when the press arrives.
+            w.fadingAtPress = document.getAnimations().some((a) => (a.effect as KeyframeEffect | null)?.pseudoElement?.startsWith("::view-transition"));
+          },
+          true,
+        );
       });
       await press(tab.x + tab.width / 2, tab.y + tab.height / 2);
       const found = await page.waitForFunction(
@@ -76,11 +84,16 @@ for (const motion of ["full", "reduced"] as const)
       );
       const cell = (await found.jsonValue())!;
       await press(cell.x, cell.y);
-      const delay = await page.evaluate((since) => (window as Window & { pressedAt?: number }).pressedAt! - since, cell.at);
-      info.annotations.push({ type: "click delay", description: `${Math.round(delay)} ms after the new table appeared` });
-      // Within the cross-fade (100–200 ms); later the spec would prove nothing.
-      expect(delay).toBeLessThan(50);
+      const pressed = await page.evaluate((since) => {
+        const w = window as Window & { pressedAt?: number; fadingAtPress?: boolean };
+        return { delay: w.pressedAt! - since, fading: !!w.fadingAtPress };
+      }, cell.at);
+      info.annotations.push({ type: "click delay", description: `${Math.round(pressed.delay)} ms after the new table appeared` });
+      // The press must land while the cross-fade still runs – later the spec
+      // would prove nothing. Measured at the press itself rather than with a
+      // fixed number of milliseconds, which a busy machine overshoots.
       expect(cell.fading).toBe(motion === "full");
+      expect(pressed.fading).toBe(motion === "full");
 
       await expect(page.locator(`tr[data-row-id="${row.id}"] > td:nth-child(3) .check-display.checked`)).toBeVisible();
       await expect.poll(done).toBe(true);
