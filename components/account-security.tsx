@@ -5,6 +5,7 @@
 // components/two-factor.tsx; SSO accounts are managed by their provider.
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { desktopPasskeysInBrowser } from "@/lib/native-app";
 import { useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, Plus, Trash } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
@@ -157,10 +158,14 @@ export function PasskeysRow() {
   const t = useT();
   const [passkeys, setPasskeys] = useState<Passkey[] | null>(null);
   const [supported, setSupported] = useState(true);
+  // The desktop app on macOS and Linux: its window has no authenticator, so
+  // "add" would wait forever – passkeys are added in the browser there.
+  const [inBrowser, setInBrowser] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean }>({ text: "" }),
     [busy, setBusy] = useState("");
   useEffect(() => {
     setSupported(browserSupportsWebAuthn());
+    setInBrowser(desktopPasskeysInBrowser());
     post("passkeys")
       .then((r) => setPasskeys(r.passkeys))
       .catch(() => setPasskeys([]));
@@ -204,7 +209,12 @@ export function PasskeysRow() {
         anchor="passkeys"
         label={t("Passkeys", "Passkeys")}
         description={
-          supported
+          inBrowser
+            ? t(
+                "In der Desktop-App legst du Passkeys im Browser an: Navigation → Im Browser öffnen zeigt diese Seite dort, dann „Passkey hinzufügen“. Anmelden per Passkey geht danach auch hier – über den Browser.",
+                "In the desktop app you add passkeys in the browser: Navigation → Open in Browser shows this page there, then “Add a passkey”. Signing in with a passkey then works here too – through the browser.",
+              )
+            : supported
             ? t("Anmelden per Fingerabdruck, Gesicht oder Geräte-PIN – ohne Passwort.", "Sign in with your fingerprint, face or device PIN – no password needed.")
             : typeof window !== "undefined" && !window.isSecureContext
               ? // Plain http (#62): browsers offer passkeys only over HTTPS.
@@ -214,7 +224,7 @@ export function PasskeysRow() {
       >
         <Note text={note.text} error={note.error} />
         {passkeys && <StatusBadge tone={count ? "ok" : "off"}>{count === 1 ? t("1 Passkey", "1 passkey") : count ? t(`${count} Passkeys`, `${count} passkeys`) : t("Keiner", "None")}</StatusBadge>}
-        {supported && (
+        {supported && !inBrowser && (
           <button type="button" className="button" disabled={!!busy} onClick={() => void add()}>
             <Plus size={16} aria-hidden /> {t("Passkey hinzufügen", "Add a passkey")}
           </button>

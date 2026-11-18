@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APP_PROFILES_LINK, appProfilesAction, armDesktopMarketplace, desktopPageLink, desktopPasskeysInWindow, flowplanAppHost, marketplacePublishWay, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
+import { APP_PROFILES_LINK, appProfilesAction, armDesktopMarketplace, desktopPageLink, desktopPasskeysInBrowser, desktopPasskeysInWindow, flowplanAppHost, marketplacePublishWay, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
 import { readFileSync } from "node:fs";
 
 const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.4.0";
@@ -72,6 +72,13 @@ test("passkeys in the desktop app's window only where the app says so – Window
   // Only the desktop app's bridge counts; a browser has none.
   assert.equal(desktopPasskeysInWindow({ passkeys: "window" }, safari), false);
   assert.equal(desktopPasskeysInWindow({ passkeys: "window" }, iphone), false);
+  // Adding a passkey in the settings: in the browser wherever the window has
+  // no authenticator (the app on macOS and Linux, older apps), never in a
+  // browser or the Windows app.
+  assert.equal(desktopPasskeysInBrowser({ passkeys: "browser" }, mac), true);
+  assert.equal(desktopPasskeysInBrowser({}, windows), true);
+  assert.equal(desktopPasskeysInBrowser({ passkeys: "window" }, windows), false);
+  assert.equal(desktopPasskeysInBrowser(undefined, safari), false);
   // The sign-in page: the hand-off link only where passkeys go to the
   // browser, the page's own button in the Windows app, and after a failure
   // there "Im Browser anmelden" – the hand-off after all.

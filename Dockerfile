@@ -83,11 +83,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # a Litestream release ships go-jose ≥ 4.1.6.
 FROM --platform=$BUILDPLATFORM golang:1.26.11-trixie AS litestream
 ARG TARGETOS TARGETARCH
-ENV LITESTREAM_VERSION=0.5.18 GOFLAGS=-modcacherw GOTOOLCHAIN=local
-RUN dir=$(cd /tmp && go mod download -json "github.com/benbjohnson/litestream@v$LITESTREAM_VERSION" | sed -n 's/^\s*"Dir": "\(.*\)",$/\1/p') \
+ENV GOFLAGS=-modcacherw GOTOOLCHAIN=local
+RUN version=0.5.18 \
+  && dir=$(cd /tmp && go mod download -json "github.com/benbjohnson/litestream@v$version" | sed -n 's/^\s*"Dir": "\(.*\)",$/\1/p') \
   && cp -r "$dir" /src && chmod -R u+w /src && cd /src \
   && go get github.com/go-jose/go-jose/v4@v4.1.6 \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w -X main.Version=$LITESTREAM_VERSION" -o /usr/local/bin/litestream ./cmd/litestream \
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w -X main.Version=$version" -o /usr/local/bin/litestream ./cmd/litestream \
   && go version -m /usr/local/bin/litestream | grep -q 'go-jose/go-jose/v4\s*v4.1.6' \
   && rm -rf /root/go /root/.cache /src
 FROM node:26-trixie-slim AS runtime

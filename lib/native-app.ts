@@ -128,6 +128,15 @@ export function desktopPasskeysInWindow(
 ): boolean {
   return /FlowplanDesktop\//.test(agent) && app?.passkeys === "window";
 }
+// The desktop app where its window cannot create or use passkeys (macOS and
+// Linux, and older apps): Electron offers no authenticator there, so
+// navigator.credentials never answers. Adding one goes through the browser.
+export function desktopPasskeysInBrowser(
+  app: { passkeys?: unknown } | undefined = desktopApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  return /FlowplanDesktop\//.test(agent) && !desktopPasskeysInWindow(app, agent);
+}
 // The device key of the app the page runs in, if it has one (checked; the
 // server checks again). Without one – a browser, or an older app – a
 // password sign-in lasts like a browser's.
