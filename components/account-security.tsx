@@ -5,8 +5,9 @@
 // components/two-factor.tsx; SSO accounts are managed by their provider.
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { appPasskeysInBrowser, desktopPasskeysInBrowser, nativeApp } from "@/lib/native-app";
-import { useEffect, useState, type FormEvent } from "react";
+import { appPasskeysInBrowser, desktopApp, desktopPasskeyLink, desktopPasskeysInBrowser, desktopPasskeysInWindow, nativeApp } from "@/lib/native-app";
+import { APP_PASSKEY_WAIT_MS, appAddsPasskey, passkeyName, waitForAppPasskey, waitForDesktopPasskey, type DesktopPasskeyPoll } from "@/lib/app-passkey";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Fingerprint, Plus, Trash } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 import { useT } from "./i18n";
@@ -162,14 +163,26 @@ export function PasskeysRow() {
   // The desktop app on macOS and Linux: its window has no authenticator, so
   // "add" would wait forever – passkeys are added in the browser there.
   const [inBrowser, setInBrowser] = useState(false);
-  // The iPhone/iPad/Android app: the same, through the system browser.
-  const [inApp, setInApp] = useState<"open" | "note" | null>(null);
+  // The iPhone/iPad/Android app: its web view cannot make passkeys either.
+  // "sheet": the app makes one in the system's sign-in sheet
+  // (lib/app-passkey.ts); older apps through the system browser.
+  const [inApp, setInApp] = useState<"sheet" | "open" | "note" | null>(null);
+  // The desktop app that opens the one-time link in the default browser
+  // (lib/app-passkey.ts): on a Mac the passkey goes to the iCloud Keychain.
+  // With Touch ID in the window as well, "Passkey hinzufügen" offers both.
+  const [desktopLink, setDesktopLink] = useState(false),
+    [inWindow, setInWindow] = useState(false),
+    [choosing, setChoosing] = useState(false),
+    [waitingBrowser, setWaitingBrowser] = useState(false);
+  const stopWaiting = useRef(false);
   const [note, setNote] = useState<{ text: string; error?: boolean }>({ text: "" }),
     [busy, setBusy] = useState("");
   useEffect(() => {
     setSupported(browserSupportsWebAuthn());
     setInBrowser(desktopPasskeysInBrowser());
-    setInApp(appPasskeysInBrowser());
+    setDesktopLink(desktopPasskeyLink());
+    setInWindow(desktopPasskeysInWindow());
+    setInApp(appAddsPasskey(nativeApp()) ? "sheet" : appPasskeysInBrowser());
     post("passkeys")
       .then((r) => setPasskeys(r.passkeys))
       .catch(() => setPasskeys([]));
@@ -195,10 +208,50 @@ export function PasskeysRow() {
       } catch {
         throw new Error(t("Passkey wurde nicht angelegt.", "The passkey was not created."));
       }
-      const device = navigator.userAgent.match(/iPhone|iPad|Mac|Android|Windows|Linux/)?.[0] || "";
-      const result = await post("passkey-register", { response, name: device ? `Passkey · ${device}` : "Passkey" });
+      const result = await post("passkey-register", { response, name: passkeyName(navigator.userAgent, navigator.maxTouchPoints) });
       setPasskeys(result.passkeys);
       return t("Passkey angelegt", "Passkey added");
+    });
+  // In the app: a one-time link for the system's sign-in sheet, which the
+  // app opens; its answer comes as the event "flowplan:passkey".
+  const addInApp = () =>
+    run("passkey", async () => {
+      const { url } = await post<{ url: string }>("passkey-app-link");
+      const status = await waitForAppPasskey(window, () => nativeApp()?.addPasskey?.(url), APP_PASSKEY_WAIT_MS);
+      // Whatever the answer, the list shows what is there now.
+      await post("passkeys")
+        .then((r) => setPasskeys(r.passkeys))
+        .catch(() => {});
+      if (status === "added") return t("Passkey angelegt", "Passkey added");
+      if (status === "failed") throw new Error(t("Passkey wurde nicht angelegt.", "The passkey was not created."));
+      return "";
+    });
+  // The desktop app: the link opens in the default browser; this window asks
+  // the instance until the new passkey is there.
+  const addInBrowser = () =>
+    run("passkey", async () => {
+      setChoosing(false);
+      const known = new Set((passkeys ?? []).map((p) => p.id));
+      const { url } = await post<{ url: string }>("passkey-app-link");
+      const opened = await Promise.resolve(desktopApp()?.addPasskeyInBrowser?.(url)).catch(() => false);
+      if (opened !== true) throw new Error(t("Der Browser ließ sich nicht öffnen.", "The browser could not be opened."));
+      const token = new URL(url).searchParams.get("token");
+      stopWaiting.current = false;
+      setWaitingBrowser(true);
+      try {
+        const result = await waitForDesktopPasskey(
+          () =>
+            post<DesktopPasskeyPoll & { passkeys: Passkey[] }>("passkey-app-status", { token }).then((r) => {
+              setPasskeys(r.passkeys);
+              return r;
+            }),
+          known,
+          { cancelled: () => stopWaiting.current },
+        );
+        return result === "added" ? t("Passkey angelegt", "Passkey added") : "";
+      } finally {
+        setWaitingBrowser(false);
+      }
     });
   const remove = (passkey: Passkey) =>
     run(`delete-${passkey.id}`, async () => {
@@ -213,7 +266,17 @@ export function PasskeysRow() {
         anchor="passkeys"
         label={t("Passkeys", "Passkeys")}
         description={
-          inApp
+          desktopLink
+            ? t(
+                "Anmelden per Touch ID, Fingerabdruck oder Geräte-PIN – ohne Passwort. „Passkey hinzufügen“ legt ihn in deinem Browser an: auf dem Mac im iCloud-Schlüsselbund, nutzbar auch in Safari und auf dem iPhone.",
+                "Sign in with Touch ID, your fingerprint or your device PIN – no password needed. “Add a passkey” creates it in your browser: on a Mac in the iCloud Keychain, usable in Safari and on the iPhone too.",
+              )
+            : inApp === "sheet"
+            ? t(
+                "Anmelden per Face ID, Fingerabdruck oder Geräte-PIN – ohne Passwort. Der Passkey wird im Anmeldefenster des Systems angelegt und dort gespeichert (iCloud-Schlüsselbund, Google-Passwortmanager oder dein Passwortmanager).",
+                "Sign in with Face ID, your fingerprint or your device PIN – no password needed. The passkey is created in the system's sign-in window and stored there (iCloud Keychain, Google Password Manager or your password manager).",
+              )
+            : inApp
             ? inApp === "open"
               ? t(
                   "In der App legst du Passkeys im Browser an, wo sie gespeichert werden (iCloud-Schlüsselbund, Google-Passwortmanager oder dein Passwortmanager). Anmelden per Passkey geht danach auch in der App – über den Browser.",
@@ -243,12 +306,61 @@ export function PasskeysRow() {
             <Plus size={16} aria-hidden /> {t("Im Browser hinzufügen", "Add in the browser")}
           </button>
         )}
-        {supported && !inBrowser && !inApp && (
+        {desktopLink && waitingBrowser && (
+          <>
+            <span role="status" className="save-state">
+              {t("Im Browser fortfahren …", "Continue in the browser …")}
+            </span>
+            <button type="button" className="button" onClick={() => {
+                stopWaiting.current = true;
+              }}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+          </>
+        )}
+        {desktopLink && !waitingBrowser && (
+          <button
+            type="button"
+            className="button"
+            disabled={!!busy}
+            aria-expanded={inWindow ? choosing : undefined}
+            aria-controls={inWindow ? "passkey-choice" : undefined}
+            onClick={() => (inWindow ? setChoosing((open) => !open) : void addInBrowser())}
+          >
+            <Plus size={16} aria-hidden /> {t("Passkey hinzufügen", "Add a passkey")}
+          </button>
+        )}
+        {inApp === "sheet" && (
+          <button type="button" className="button" disabled={!!busy} onClick={() => void addInApp()}>
+            <Plus size={16} aria-hidden /> {t("Passkey hinzufügen", "Add a passkey")}
+          </button>
+        )}
+        {supported && !inBrowser && !inApp && !desktopLink && (
           <button type="button" className="button" disabled={!!busy} onClick={() => void add()}>
             <Plus size={16} aria-hidden /> {t("Passkey hinzufügen", "Add a passkey")}
           </button>
         )}
       </SettingRow>
+      {desktopLink && inWindow && choosing && (
+        <div id="passkey-choice" className="setting-row wide account-form" role="group" aria-label={t("Wo soll der Passkey liegen?", "Where should the passkey live?")}>
+          <div className="account-form-actions">
+            <button type="button" className="button primary" disabled={!!busy} onClick={() => void addInBrowser()}>
+              {t("Im Schlüsselbund (iCloud)", "In the Keychain (iCloud)")}
+            </button>
+            <button
+              type="button"
+              className="button"
+              disabled={!!busy}
+              onClick={() => {
+                setChoosing(false);
+                void add();
+              }}
+            >
+              {t("Nur in dieser App (Touch ID)", "Only in this app (Touch ID)")}
+            </button>
+          </div>
+        </div>
+      )}
       {count > 0 && (
         <div className="setting-row wide setting-sublist">
           <ul className="passkey-list" aria-label={t("Deine Passkeys", "Your passkeys")}>

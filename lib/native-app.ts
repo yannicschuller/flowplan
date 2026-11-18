@@ -57,6 +57,11 @@ type FlowplanApp = {
   // sheet, answered with the event "flowplan:sign-in" (lib/app-sign-in.ts;
   // apps newer than 1.0.5, #109).
   signIn?: (via: "sso" | null) => void;
+  // Adding a passkey in the system's sign-in sheet (apps newer than 1.0.17):
+  // the one-time link of /api/auth/passkey-app-link, answered with the
+  // event "flowplan:passkey" ({ status: "added" | "cancelled" | "failed" };
+  // lib/app-passkey.ts).
+  addPasskey?: (url: string) => void;
   // This device's key for this instance (apps newer than 1.0.5): the
   // password form sends it, so the sign-in lasts as long as the app's
   // (lib/app-devices.ts).
@@ -118,6 +123,11 @@ type FlowplanDesktop = {
   // site to the system browser, without an opener.
   marketplaceWindow?: boolean;
   armMarketplaceWindow?: (origin: string) => boolean;
+  // "Passkey hinzufügen" through the default browser (desktop newer than
+  // 1.3.11, macOS): opens the one-time link of /api/auth/passkey-app-link
+  // there (only on the window's own instance); true when it opened. The
+  // window learns the result from passkey-app-status (lib/app-passkey.ts).
+  addPasskeyInBrowser?: (url: string) => Promise<boolean>;
 };
 export function desktopApp(): FlowplanDesktop | undefined {
   if (typeof window === "undefined") return undefined;
@@ -142,12 +152,22 @@ export function desktopPasskeysInBrowser(
 ): boolean {
   return /FlowplanDesktop\//.test(agent) && !desktopPasskeysInWindow(app, agent);
 }
+// The desktop app can open "Passkey hinzufügen" in the default browser
+// (addPasskeyInBrowser): on a Mac the passkey then lands in the iCloud
+// Keychain instead of only this app's Touch ID. Older apps keep their way.
+export function desktopPasskeyLink(
+  app: { addPasskeyInBrowser?: unknown } | undefined = desktopApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  return /FlowplanDesktop\//.test(agent) && typeof app?.addPasskeyInBrowser === "function";
+}
 // The iPhone, iPad and Android app: its web view offers passkeys only for
 // domains built into the app, never for a self-hosted instance, so adding
 // one fails there ("Passkey wurde nicht angelegt"). Signing in already goes
 // through the system browser (lib/desktop-sign-in.ts); adding one does too.
 // "open": the app can open the page in the browser (openInBrowser),
-// "note": an older app – say where to do it; null: not in the app.
+// "note": an older app – say where to do it; null: not in the app. Apps with
+// addPasskey make it in the sign-in sheet instead (lib/app-passkey.ts).
 export function appPasskeysInBrowser(
   app: { platform?: string; openInBrowser?: unknown } | undefined = nativeApp(),
   agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
