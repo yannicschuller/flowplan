@@ -400,18 +400,31 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     await page.getByRole("button", { name: "Tabelle", exact: true }).click();
     const tableRow = page.locator(`tr[data-row-id="${f.meeting.id}"]`);
     await expect(tableRow.locator(".date-cell").first()).toContainText("01:30"); // Browser timezone is UTC.
-    // On the phone the table opens scrolled where the calendar was: the row
-    // sits under the stuck header and the sticky title column, which then
-    // take the click (CI, mobile). Centre the cell first.
+    // On the phone the start cell (180 px) is wider than the room the pinned
+    // title column leaves beside it (at most 60 % of the table, #98): its
+    // middle – where a plain click goes – lies under the title column
+    // whenever the cell is not at the table's right edge, and Playwright's
+    // own retries put it there (centre, start) or under the stuck header
+    // (#287). Its right end is beside the title column once the cell is
+    // scrolled to the right edge, with the row in the middle of the pane so
+    // the header does not stick over it; the click goes there. Right after
+    // switching views the database cross-fades (React <ViewTransition>) and
+    // the new table takes no clicks yet – the poll waits for the point to
+    // be the cell's.
     const startCell = tableRow.locator("td").nth(2);
-    // Scrolled back to the top first: with only a few rows "center" cannot
-    // move the row out from under the stuck header (CI, mobile).
-    await startCell.evaluate((el) => {
-      for (let node: Element | null = el.parentElement; node; node = node.parentElement) if (node.scrollTop) node.scrollTop = 0;
-      window.scrollTo(0, 0);
-      el.scrollIntoView({ block: "nearest", inline: "center" });
-    });
-    await startCell.click();
+    await startCell.evaluate((el) => el.scrollIntoView({ block: "center", inline: "end" }));
+    const cellBox = (await startCell.boundingBox())!;
+    const point = { x: cellBox.width - 12, y: cellBox.height / 2 };
+    await expect
+      .poll(() =>
+        startCell.evaluate((el, at) => {
+          const box = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.left + at.x, box.top + at.y);
+          return !!hit && el.contains(hit);
+        }, point),
+      )
+      .toBe(true);
+    await startCell.click({ position: point });
     await expect(tableRow.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
     const input = tableRow.getByLabel("Beginn: Uhrzeit", { exact: true });
     await expect(input).toHaveAttribute("type", "time");
