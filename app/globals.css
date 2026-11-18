@@ -8540,6 +8540,56 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .form-question :is(select, .fp-select) {
   width: 100%;
 }
+/* Earlier answers under a text question (#374, components/form-suggest-input.tsx). */
+.form-suggest {
+  position: relative;
+}
+.fp-select-list.form-suggest-list {
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-width: none;
+}
+.form-suggest-list[hidden] {
+  display: none;
+}
+.form-suggest-list .fp-select-option {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.form-suggest-design {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin: 10px 0;
+}
+.form-suggest-design > label:not(.checkbox-label) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.form-suggest-design > label {
+  margin: 0;
+}
+.form-suggest-design > label :is(select, .fp-select) {
+  width: auto;
+}
+.form-suggest-design > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.form-suggest-text strong {
+  font-weight: 650;
+}
+@media (pointer: coarse) {
+  .form-suggest-list .fp-select-option {
+    min-height: 44px;
+  }
+}
 .question-description {
   color: var(--secondary);
   font-size: 13px;

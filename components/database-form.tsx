@@ -1,7 +1,8 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { formSuggestSource } from "./form-suggest-input";
 import { Article, ChartBar, Copy, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
 import { Modal, requireConnection } from "./ui";
 import { FormFlow, FormThanks } from "./form-flow";
@@ -16,6 +17,9 @@ import {
   type FormConfig,
   questionStyles,
   type QuestionStyle,
+  formSuggestionsAllowed,
+  suggestible,
+  type SuggestionScope,
 } from "@/lib/form-settings";
 import type { Field, Page, Row } from "@/lib/types";
 import { SurveyBuilder } from "./survey-builder";
@@ -120,6 +124,13 @@ export default function DatabaseForm({
   const updateBlock = (id: string, patch: Partial<FormBlock>) => setDraft({ ...draft, blocks: draft.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
   const removeBlock = (id: string) => setDraft({ ...draft, blocks: draft.blocks.filter((b) => b.id !== id) });
   const survey = config.survey?.enabled ? config.survey : null;
+  // Earlier answers (#374) only in members-only forms that record who
+  // answered; a form never saved is members-only by default.
+  const suggestionsAllowed = formSuggestionsAllowed({ internal: form ? form.internal : 1, anonymous: form?.anonymous ?? 0 });
+  const suggest = useMemo(
+    () => (form?.enabled && suggestionsAllowed && Object.keys(config.suggestions || {}).length ? formSuggestSource(form.token) : undefined),
+    [form?.enabled, form?.token, suggestionsAllowed, config.suggestions],
+  );
   const builderModal = (
     <Modal open={builder} onClose={() => setBuilder(false)} title={t("Umfrage bauen", "Build survey")} wide className="survey-builder-modal">
       {builder && <SurveyBuilder pageTitle={page.title} fields={fields} version={version} form={form} rows={rows} editable={editable} act={act} members={members} />}
@@ -200,6 +211,7 @@ export default function DatabaseForm({
           fields={fields}
           config={config}
           disabled={!editable}
+          suggest={suggest}
           submitLabel={texts.submitLabel}
           onSubmit={async (values) => {
             requireConnection();
@@ -416,6 +428,19 @@ export default function DatabaseForm({
                   </label>
                 )}
               </div>
+              {suggestible(f, draft) && !draft.hiddenFields.includes(f.id) && (
+                <SuggestionDesign
+                  field={f}
+                  scope={draft.suggestions?.[f.id]}
+                  allowed={suggestionsAllowed}
+                  onChange={(scope) => {
+                    const suggestions = { ...(draft.suggestions || {}) };
+                    if (scope) suggestions[f.id] = scope;
+                    else delete suggestions[f.id];
+                    setDraft({ ...draft, suggestions });
+                  }}
+                />
+              )}
               <div className="field-group form-text-label">
                 <span>
                   {t("Hinweis zu", "Hint for")}{" "}{f.name}
@@ -510,6 +535,65 @@ export default function DatabaseForm({
           </button>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+// Earlier answers as suggestions for a text question (#374): off by
+// default; the person's own answers or all they may read. Forms open to
+// anyone with the link (or with anonymous answers) offer none from the
+// server – only the browser's own history of this device.
+function SuggestionDesign({
+  field,
+  scope,
+  allowed,
+  onChange,
+}: {
+  field: Field;
+  scope?: SuggestionScope;
+  allowed: boolean;
+  onChange: (scope: SuggestionScope | undefined) => void;
+}) {
+  const t = useT();
+  const on = allowed && !!scope;
+  return (
+    <div className="form-suggest-design">
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          aria-label={t(`Frühere Antworten für ${field.name} vorschlagen`, `Suggest earlier answers for ${field.name}`)}
+          checked={on}
+          disabled={!allowed}
+          onChange={(e) => onChange(e.target.checked ? scope || "own" : undefined)}
+        />
+        {t("Frühere Antworten vorschlagen", "Suggest earlier answers")}
+      </label>
+      {on && (
+        <label>
+          {t("Vorschläge aus", "Suggestions from")}
+          <Select
+            aria-label={t(`Vorschläge für ${field.name} aus`, `Suggestions for ${field.name} from`)}
+            value={scope}
+            onChange={(e) => onChange(e.target.value as SuggestionScope)}
+          >
+            <option value="own">{t("Nur eigene Antworten", "Own answers")}</option>
+            <option value="all">{t("Alle Antworten", "All answers")}</option>
+          </Select>
+        </label>
+      )}
+      {(on || !allowed) && (
+      <p className="muted small">
+        {allowed
+          ? t(
+              "Ab zwei Buchstaben erscheinen bis zu acht frühere Antworten – nur aus Einträgen, die die antwortende Person sehen darf.",
+              "From two letters on, up to eight earlier answers appear – only from records the person answering may see.",
+            )
+          : t(
+              "Nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten – sonst könnte jede Person mit dem Link fremde Antworten lesen. Der Browser bietet aber an, was auf diesem Gerät schon eingegeben wurde.",
+              "Only in “Members only” forms without anonymous answers – otherwise anyone with the link could read other people's answers. The browser still offers what was typed on this device before.",
+            )}
+      </p>
+      )}
     </div>
   );
 }

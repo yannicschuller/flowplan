@@ -4,6 +4,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useState } from "react";
 import { CellInput } from "./cell-input";
 import { FormText } from "./inline-text";
+import { FormSuggestInput, type SuggestSource } from "./form-suggest-input";
 import {
   FORM_FILE_BYTES,
   FORM_FILES_PER_QUESTION,
@@ -12,6 +13,7 @@ import {
   questionStyle,
   SCALE_MAX,
   SCALE_MIN,
+  suggestionScope,
 } from "@/lib/form-settings";
 import type { Field, Row, User } from "@/lib/types";
 export default function FormQuestions({
@@ -26,7 +28,10 @@ export default function FormQuestions({
   related = {},
   upload,
   only,
+  suggest,
 }: {
+  // Earlier answers for text questions that have them switched on (#374).
+  suggest?: SuggestSource;
   // Just this question (forms with text blocks and pages render one by one).
   only?: string;
   internal?: boolean;
@@ -101,6 +106,15 @@ export default function FormQuestions({
                 </button>
               ))}
             </div>
+          ) : f.type === "text" ? (
+            <FormSuggestInput
+              field={f}
+              value={values[f.id]}
+              disabled={disabled}
+              placeholder={t("Hier eingeben …", "Type here …")}
+              suggest={suggest && suggestionScope(f, config) ? suggest : undefined}
+              onChange={(v) => onChange(f.id, v)}
+            />
           ) : f.type === "files" && !upload ? (
             <FormFiles
               name={f.name}

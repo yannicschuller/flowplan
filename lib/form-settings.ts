@@ -59,6 +59,11 @@ export const formConfigSchema = z.object({
   logic: z.record(z.string(), conditionSchema).default({}),
   blocks: z.array(formBlockSchema).max(100).default([]),
   progress: z.boolean().default(true),
+  // Earlier answers suggested while typing a short text question (#374):
+  // the person's own answers or all answers they may read. Only forms for
+  // signed-in members that record who answered offer them
+  // (lib/form-suggestions.ts); a question without an entry gets none.
+  suggestions: z.record(z.string(), z.enum(["own", "all"])).default({}),
   ...formFollowUpSchema.shape,
   // Survey mode (lib/survey.ts): question types, pages, conditions …
   survey: surveySchema.optional(),
@@ -100,6 +105,18 @@ export function questionStyle(field: Field, config: FormConfig) {
   const style = config.questionStyles?.[field.id];
   return style && questionStyles(field).includes(style) ? style : undefined;
 }
+export type SuggestionScope = "own" | "all";
+// Questions that can suggest earlier answers: one-line text.
+export const suggestible = (field: Field, config: FormConfig) =>
+  field.type === "text" && questionStyle(field, config) !== "long";
+// The scope of a question's suggestions, if they are on and fit it.
+export function suggestionScope(field: Field, config: FormConfig): SuggestionScope | undefined {
+  return suggestible(field, config) ? config.suggestions?.[field.id] : undefined;
+}
+// Server-side suggestions read other answers, so only forms restricted to
+// signed-in members that record who answered offer them.
+export const formSuggestionsAllowed = (form: { internal?: number | boolean | null; anonymous?: number | boolean | null } | null | undefined) =>
+  !!form?.internal && !form?.anonymous;
 const PHONE = /^\+?[0-9 ()/.-]{3,30}$/;
 export type FormConfig = z.infer<typeof formConfigSchema>;
 export const FORM_FILES_PER_QUESTION = 5;

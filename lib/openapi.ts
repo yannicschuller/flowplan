@@ -2165,6 +2165,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/calendar-sync/[...path]/route.ts": "Browser OAuth connection to Google and Microsoft 365 calendars",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
   "app/api/forms/[token]/fonts/[fontId]/route.ts": "Public forms with their own link token",
+  "app/api/forms/[token]/suggestions/route.ts": "Earlier answers while typing in a members-only form; internal to the form page",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
   "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token: registration with push relay token and encryption key, Live Activity relay tokens; the administrators' widget summary only for instance administrators)",
   "app/api/mobile/notifications/route.ts": "Buttons on the mobile apps' push notifications, only with the device token",
