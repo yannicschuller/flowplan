@@ -760,9 +760,9 @@ export function FocusSession({
                 </svg>
                 <ul className="study-spread-legend" aria-label={t("Wertungen", "Ratings")}>
                   {spread.map((s) => (
-                    <li key={s.rating} className={`rating-${s.rating}`}>
-                      <span className="study-spread-dot" aria-hidden />
-                      {labels[s.rating]} {format(s.n)}
+                    <li key={s.rating} className={`rating-${s.rating}${s.n ? "" : " is-zero"}`}>
+                      <strong>{format(s.n)}</strong>
+                      <span>{labels[s.rating]}</span>
                     </li>
                   ))}
                 </ul>

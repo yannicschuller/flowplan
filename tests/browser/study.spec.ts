@@ -107,7 +107,7 @@ test("a database is set up as a deck and studied with keys or swipes, with limit
   const cardsTile = focus.locator(".study-summary-tile").first();
   await expect(cardsTile.locator("strong")).toHaveText("2");
   await expect(cardsTile).toContainText("Karten · 2 neu");
-  await expect(focus.locator(".study-spread-legend")).toContainText("Leicht 2");
+  await expect(focus.locator(".study-spread-legend .rating-4")).toHaveText(/^2\s*Leicht$/);
   await page.screenshot({ path: `test-results/study-summary-${info.project.name}.png` });
   // Study more today: one more new card (the third record).
   await focus.getByRole("button", { name: /^Heute mehr lernen/ }).click();
