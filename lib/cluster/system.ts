@@ -13,6 +13,7 @@ import { liveInstances, type InstanceBeat } from "./instances";
 import { isLeader, leaderError, leaderSince } from "./leader";
 import { storageConfig, storageStatus } from "../storage";
 import { secondInstances, type SecondInstance } from "./single-instance";
+import { waitingContainer, type WaitingContainer } from "./data-dir-lock";
 
 export type SystemOverview = {
   mode: "single" | "cluster";
@@ -33,6 +34,9 @@ export type SystemOverview = {
   // PostgreSQL without cluster mode: instances that run against the same
   // database without the single-instance lock (lib/cluster/single-instance.ts).
   secondInstances: SecondInstance[];
+  // SQLite: a second container on the same data folder waits for its lock
+  // (docker/entrypoint.sh, lib/cluster/data-dir-lock.ts).
+  waitingContainer: WaitingContainer | null;
 };
 
 const count = async (query: string, ...params: number[]) => Number((await one<{ n: number }>(query, ...params))?.n || 0);
@@ -116,5 +120,6 @@ export async function systemOverview(now = Date.now()): Promise<SystemOverview> 
       messengersDue: await count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at IS NULL AND available_at<=?", now),
     },
     secondInstances: await secondInstances(now),
+    waitingContainer: waitingContainer(now),
   };
 }

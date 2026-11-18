@@ -943,9 +943,45 @@ function Workers({ ops }: { ops: OpsOverview | null }) {
 
 // PostgreSQL without cluster mode, and another instance on the same
 // database (lib/cluster/single-instance.ts): stays until only one runs.
+// SQLite: a second container on the same data folder waits for its lock
+// (lib/cluster/data-dir-lock.ts) – shown on both containers.
 function SecondInstanceWarning({ s }: { s: SystemOverview }) {
   const t = useT();
   const docs = useDocs();
+  const waiting = s.waitingContainer;
+  if (waiting) {
+    const host = waiting.host || "?";
+    const since = dateTime(waiting.since);
+    return (
+      <p className="mon-note warn" role="alert">
+        <WarningCircle size={16} aria-hidden />
+        <span>
+          {waiting.self
+            ? t(
+                `Dieser Container (${host}) wartet seit ${since} auf das Datenverzeichnis: Ein anderer Flowplan-Container nutzt dieselbe SQLite-Datenbank.`,
+                `This container (${host}) has been waiting for the data folder since ${since}: another Flowplan container uses the same SQLite database.`,
+              )
+            : t(
+                `Ein zweiter Flowplan-Container (${host}) nutzt seit ${since} dasselbe Datenverzeichnis und wartet darauf, dass dieser Container beendet wird.`,
+                `A second Flowplan container (${host}) has been using the same data folder since ${since} and waits for this container to stop.`,
+              )}{" "}
+          {waiting.litestream
+            ? t(
+                "Die Litestream-Replikation des wartenden Containers startet erst, wenn der andere beendet ist.",
+                "The waiting container's Litestream replication starts only once the other one has stopped.",
+              )
+            : t("Die Warnung endet, sobald nur noch ein Container läuft.", "The warning ends once only one container runs.")}{" "}
+          {t(
+            "Zwei Container auf derselben SQLite-Datenbank dürfen sich nicht überschneiden: Rolle Updates ohne Überlappung aus (erst stoppen, dann starten) und starte nie zwei Container auf demselben Volume.",
+            "Two containers on the same SQLite database must not overlap: roll out updates without overlap (stop first, then start) and never run two containers on the same volume.",
+          )}{" "}
+          <a href={docs("coolify-and-proxy", "sqlite-ohne-ueberlappung-ausrollen", "roll-out-sqlite-without-overlap")} target="_blank" rel="noreferrer">
+            {t("Ohne Überlappung ausrollen", "Roll out without overlap")}
+          </a>
+        </span>
+      </p>
+    );
+  }
   if (!s.secondInstances.length) return null;
   const names = s.secondInstances.map((i) => (i.host && i.host !== i.instance ? `${i.instance} (${i.host})` : i.instance)).join(", ");
   const since = Math.min(...s.secondInstances.map((i) => i.since));

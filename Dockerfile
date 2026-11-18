@@ -110,7 +110,8 @@ WORKDIR /app
 # that every tool starts and that neither Perl nor curl is in the image.
 # Health checks that call `curl` inside the container (Coolify's HTTP check)
 # get docker/healthcheck-curl.mjs.
-# util-linux brings setpriv (the entrypoint's drop to PUID:PGID), installed
+# util-linux brings setpriv (the entrypoint's drop to PUID:PGID) and flock (its
+# lock on the data folder, one container per SQLite database), installed
 # explicitly in case the base image drops it. npm, npx and corepack are only
 # needed to build; the image runs node alone, and their bundled packages
 # (undici, brace-expansion …) would otherwise be scanned as part of the image.
@@ -160,7 +161,7 @@ COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /ap
 # without an entry in /etc/passwd. Everything it writes goes to the data
 # folder, /tmp (HOME, see docker/entrypoint.sh) or Next's cache below; the
 # app code stays read-only for it.
-RUN setpriv --version \
+RUN setpriv --version && flock --version \
   && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache
 # Helper scripts started with docker exec (as root, see below) continue as
 # PUID:PGID before they write anything (scripts/drop-root.mjs).
