@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 // Flashcards phase 2 and 3a (docs/specs/flashcards.md): cards imported from
 // pasted Quizlet text, cloze, typed and multiple choice cards in the focus
-// mode, the screen #study with "Alle fälligen lernen", the start page's
+// mode, the screen #study with "Alle Stapel lernen", the start page's
 // widget "Fällige Karten" and the line "… Karten gelernt" under a journal
 // day.
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -174,10 +174,10 @@ test("#study lists the due decks, the widget counts them, the journal shows what
   const screen = page.locator(".study-screen");
   await expect(screen.getByRole("heading", { name: "Lernen", level: 1 })).toBeVisible();
   const alpha = screen.locator(".study-deck-list li", { hasText: `Alpha ${stamp}` });
-  await expect(alpha.locator(".study-count-chip.new")).toHaveText("neu 2");
+  await expect(alpha.locator(".study-deck-count.new")).toHaveText("2 neu");
   await page.screenshot({ path: `test-results/study-screen-${info.project.name}.png` });
   // Study all due: Alpha first (more due), then on to Beta.
-  await screen.getByRole("button", { name: "Alle fälligen lernen" }).click();
+  await screen.getByRole("button", { name: "Alle Stapel lernen" }).click();
   const focus = page.getByRole("dialog", { name: /^Lernen: / });
   for (let i = 0; i < 2; i++) {
     await focus.getByRole("button", { name: /^Antwort zeigen/ }).click();
@@ -188,7 +188,7 @@ test("#study lists the due decks, the widget counts them, the journal shows what
   await focus.getByRole("button", { name: /^Antwort zeigen/ }).click();
   await focus.getByRole("button", { name: /^Leicht, / }).click();
   await focus.getByRole("button", { name: "Zurück zum Stapel" }).click();
-  await expect(alpha.locator(".study-count-chip.new")).toHaveText("neu 0");
+  await expect(alpha.locator(".study-deck-count.new")).toHaveText("0 neu");
   // The sidebar and the command palette lead here too.
   await page.goto("/#home");
   await page.keyboard.press("ControlOrMeta+k");

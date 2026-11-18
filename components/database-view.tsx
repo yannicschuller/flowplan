@@ -3209,7 +3209,7 @@ export default function DatabaseView({
   return (
     <SprintContext.Provider value={data.database.settings?.sprints || []}>
     <div
-      className="database"
+      className={view.type === "study" ? "database study-view" : "database"}
       ref={boardRef}
       hidden={!!record}
       data-database-page={page.id}

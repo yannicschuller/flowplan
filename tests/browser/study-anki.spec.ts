@@ -53,6 +53,16 @@ test("an Anki package through the wizard, and back out as .apkg", async ({ page 
   await expect(wizard.locator(".study-import-errors")).toContainText("Rückwärtskarte");
   // Image occlusion comes with its masks (phase 6).
   await expect(wizard.locator(".study-anki-notetype").filter({ hasText: "Image Occlusion" }).getByLabel("Kartentyp für Image Occlusion")).toHaveValue("occlusion");
+  // Clozes preview as gaps, not as Anki's syntax; no reverse card for them;
+  // one note is "1 Notiz".
+  const cloze = wizard.locator(".study-anki-notetype").filter({ has: page.getByLabel("Kartentyp für Cloze", { exact: true }) });
+  await expect(cloze.locator(".study-anki-sample")).toContainText("Die […] sind die [Bild] der Zelle.");
+  await expect(cloze.locator(".study-anki-sample")).not.toContainText("{{c1::");
+  await expect(cloze.getByRole("checkbox", { name: "Auch umgekehrt abfragen" })).toHaveCount(0);
+  await expect(cloze.locator("legend")).toContainText("1 Notiz)");
+  const occlusion = wizard.locator(".study-anki-notetype").filter({ hasText: "Image Occlusion" });
+  await expect(occlusion).toContainText("Maske 1");
+  await expect(occlusion).not.toContainText("image-occlusion:");
   await shot(page, "anki-wizard", info.project.name);
   await wizard.getByRole("checkbox", { name: /Meinen Lernstand übernehmen/ }).check();
   await wizard.getByRole("button", { name: "8 Notizen in 2 Stapel importieren" }).click();

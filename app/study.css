@@ -569,7 +569,19 @@
   margin: 8px 0;
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
   gap: 4px 18px;
+}
+/* The checkboxes sit in rows of the box, without the form's label gap. */
+.study-typed-settings .checkbox-label {
+  margin: 0;
+}
+/* Typed syntax in a hint ("---"): never broken across lines. */
+.study-code {
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.92em;
 }
 .study-typed-settings legend {
   padding: 0 4px;
@@ -926,8 +938,16 @@
 .study-state strong {
   font-variant-numeric: tabular-nums;
 }
-.study-stats-note {
+.study-stats-note,
+.study-stats-caption {
   font-size: 12px;
+}
+.study-stats-caption {
+  margin: 6px 0 0;
+}
+/* Retention with too few reviews: a quiet dash, the hint below says why. */
+.study-stat strong.study-stat-none {
+  color: var(--secondary);
 }
 
 /* ---- #study ---- */
@@ -966,6 +986,18 @@
 .study-screen-total {
   margin: 0 0 12px;
   font-size: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+.study-today .study-screen-total h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.study-screen-total .study-deck-counts {
+  font-size: 13px;
 }
 .study-deck-list {
   list-style: none;
@@ -1011,9 +1043,30 @@
 }
 .study-deck-counts {
   display: flex;
-  gap: 5px;
+  flex-wrap: wrap;
+  gap: 2px 12px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  color: var(--secondary);
+}
+.study-deck-count {
+  white-space: nowrap;
+}
+.study-deck-count b {
+  font-weight: 650;
+}
+.study-deck-count.new b {
+  color: var(--study-new);
+}
+.study-deck-count.learning b {
+  color: var(--study-learning);
+}
+.study-deck-count.review b {
+  color: var(--study-review);
+}
+.study-deck-count.zero b {
+  color: var(--secondary);
+  font-weight: 500;
 }
 
 /* ---- Study reminder, ratings waiting offline ---- */
@@ -1494,7 +1547,8 @@ polyline.occlusion-draft {
   margin: 0;
 }
 .study-model-note,
-.study-optimize-few {
+.study-optimize-few,
+.study-anki-empty {
   padding: 8px 10px;
   border-radius: 8px;
   background: var(--surface);
@@ -1550,9 +1604,23 @@ polyline.occlusion-draft {
 }
 .study-optimize-verdict {
   margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
 }
-.study-optimize-verdict.better {
+.study-optimize-verdict strong.better {
   color: var(--study-good);
+}
+.study-optimize-details summary {
+  cursor: pointer;
+  color: var(--secondary);
+  font-size: 13px;
+  width: fit-content;
+}
+.study-optimize-details[open] summary {
+  margin-bottom: 8px;
+}
+.study-optimize-details .study-stats-table {
+  font-size: 12px;
 }
 .study-optimize-retention {
   display: grid;
@@ -1570,4 +1638,43 @@ polyline.occlusion-draft {
 }
 .study-stats-model {
   margin: 12px 0 0;
+}
+
+/* ---- The view "Lernen" on phones (design review #346, A11) ----
+   The database toolbar takes one line (filter and view settings left, the
+   record tools right; sorting and search do not exist in a study view), so
+   "Lernen starten" comes up, as a full-width main action. */
+@container main (max-width: 767px) {
+  .database.study-view .database-toolbar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 4px 0;
+  }
+  .database.study-view .toolbar-left {
+    order: 0;
+  }
+  .database.study-view .toolbar-right {
+    width: auto;
+    margin-left: auto;
+  }
+  /* The filter chip shows only its icon until a filter is set; the label
+     stays for screen readers. */
+  .database.study-view .toolbar-chip:not(.active) .toolbar-chip-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .database.study-view .study-overview {
+    padding-top: 8px;
+  }
+  .study-today .study-actions > .primary {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 48px;
+    font-size: 16px;
+  }
 }
