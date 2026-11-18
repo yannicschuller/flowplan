@@ -54,6 +54,8 @@ Inhalt
 15. Doku-Seiten
 16. Umsetzung in Phasen
 17. Offene Fragen und Risiken
+18. Entscheidungen beim Bau von Phase 2 und 3a
+19. Entscheidungen beim Bau von Phase 3b und 4
 
 ---
 
@@ -1737,3 +1739,160 @@ weil sie erst mit Zuordnung sichtbar wird.
 - Offen: Werkzeugleisten-Knopf für Lücken, Stapel in der Suchpalette,
   Lücken in der Suche als Klartext indexieren (§12.4), Push/App-Deep-Link
   `#study` in flowplan-app freigeben (`src/navigation.ts`).
+
+---
+
+## 19. Entscheidungen beim Bau von Phase 3b und 4
+
+**Anki-Import (`lib/importers/anki-read.ts`, `lib/importers/anki.ts`, `lib/anki-mapping.ts`)**
+
+- §17.5 entschieden: **zstd über Node selbst** (`zlib.zstdDecompressSync`,
+  Node ≥ 22.15/23.8; das Image hat Node 26) – **keine neue Abhängigkeit**
+  (kein `fzstd`). Fehlt zstd (Node 22.13/22.14), liest der Import die
+  mitgelieferte `collection.anki2`/`anki21`; ist das nur Ankis Platzhalter
+  („Please update …“), kommt die Fehlermeldung mit „Ältere Anki-Versionen
+  unterstützen“. Entpacken mit `maxOutputLength` (Sammlung 1 GB, Medien je
+  100 MB) gegen zstd-Bomben.
+- Reihenfolge der Sammlungen: `collection.anki21b` → `anki21` → `anki2`.
+  Schema 18 (Tabellen `notetypes`/`fields`/`templates`/`decks`) wird über
+  einen kleinen Protobuf-Leser (`protoFields`, nur Varint und
+  längenbegrenzte Felder) gelesen: `NotetypeConfig.kind` (1 = Cloze),
+  `original_stock_kind` (9; 1 Basic … 6 Image Occlusion),
+  `Template.Config` `q_format`/`a_format` (1/2), Decknamen mit `\x1f`.
+  Medienliste neu: `MediaEntries` (zstd), Feld 1 Name, 2 Größe, 255 alter
+  ZIP-Name. `.colpkg` ist dasselbe Format und geht mit.
+- SQLite wie AFFiNE: Temp-Datei, `readOnly`, `query_only`,
+  `trusted_schema=0`, nur echte Tabellen. Ein Statement-Zeitlimit hat
+  `node:sqlite` nicht; gelesen werden nur einfache Scans mit `LIMIT`.
+  Grenzen: 50 000 Notizen (darüber 413), 200 000 Karten, 1 Mio.
+  Wiederholungen (darüber kein Lernstand, Hinweis), 50 Felder, 100 000
+  Zeichen je Feld (gekürzt, Hinweis), Paket ≤ 100 MB (`ARCHIVE_LIMIT`,
+  im Speicher).
+- Zuordnung: Notiztyp → Art (`ankiKind`: Stock-Kind, sonst Name und
+  Vorlagen), Felder → Rollen aus der **ersten Vorlage** (`templateRefs`:
+  Felder der Frage vorne, nur in der Antwort hinten – das erste „Rückseite“,
+  weitere „Zusatz“ –, `{{hint:…}}` Hinweis, `{{type:…}}` Rückseite). Die
+  Vorschau (`dryRun`) liefert `anki` (Stapel, Notiztypen mit Feldern,
+  Beispielwerten und Vorschlag), der Assistent schickt die geänderte
+  Zuordnung als `anki`-JSON mit dem behaltenen Upload zurück
+  (`/api/import/source`, `source=anki`, Hintergrundjob mit Fortschritt).
+  Mehrere Felder einer Rolle werden mit `<br>` verbunden.
+- **Decks:** eine Datenbank je oberstem Stapel; Unterstapel als Auswahl
+  **Deck** (Wert ohne den obersten Namen, `Lektion 1::Teil 2`). Die
+  Variante „Unterstapel als eigene Datenbanken“ gibt es nicht (dokumentiert).
+  Das Deck einer Notiz ist das ihrer ersten Karte (`odid` bei gefilterten
+  Stapeln).
+- **Eigenschaft oder Dokument je Seite und Datenbank:** enthält irgendeine
+  Vorder- bzw. Rückseite der Datenbank Bilder, `[sound:]`, Tabellen, Listen,
+  `<pre>`, `<sub>`/`<sup>`, MathJax oder > 4000 Zeichen, kommt diese Seite
+  ins Eintragsdokument (`{document:"above"}`/`"below"` bzw. `"all"`), sonst
+  in eine Text-Eigenschaft (Inline-Markdown über `htmlToInline`). Der Titel
+  ist immer die Vorderseite als Klartext.
+- **HTML:** eigenes `sanitize-html` mit Grundformatierung (keine Klassen,
+  Stile, Event-Attribute; Links nur http(s)/mailto), danach `cleanHtml`
+  im Writer. Bilder aus dem Netz werden Links (kein Laden fremder Bilder),
+  `[sound:x]` → Anhang-Block (`<audio>`), MathJax `\(…\)`/`\[…\]` →
+  `data-math`, `{{cN::…}}` ohne HTML darin → Mark `data-cloze` (mit HTML
+  bleibt die Anki-Schreibweise – `deriveCards` versteht beide).
+- **Medien:** nur verwendete, je Datei ≤ Upload-Grenze der Instanz, Anzahl
+  ≤ `FLOWPLAN_IMPORT_MAX_FILES`, Kontingente prüft der Writer; fehlende und
+  übersprungene stehen im Importbericht.
+- **Rückwärtskarte** ist je Datenbank (`settings.study.reverse`): gemischte
+  Stapel entscheidet die Mehrheit der Nicht-Lückentext-Notizen, mit Hinweis.
+  „Basic (optional reversed card)“ wird ohne Rückwärtskarte übernommen.
+- **Image Occlusion** (Phase 6): als `basic` mit Überschrift und Bild vorne,
+  „Back Extra“ hinten – ist das leer, steht das Bild auf beiden Seiten
+  (sonst gäbe es keine Karte). Masken werden noch nicht gelesen; Hinweis in
+  Vorschau und Importbericht.
+- **Writer** (`lib/importers/write.ts`): `ImportDatabase.settings` (die
+  Zuordnung, vor den Einträgen geschrieben, damit der Kartenindex sie
+  sieht), `rows[].id` (vom Importer gewählt, für den Lernstand) und
+  `ImportTree.maxRows` (Anki: 50 000 statt 5000 je Datenbank).
+- **Lernstand** (Häkchen, nur die importierende Person,
+  `importStudyHistory` in `lib/study.ts`): Wiederholungen mit `ease` 1–4 und
+  `type` 0–3 je Karte nach Zeit sortiert durch `schedule()` gespielt, jede
+  als `review_log` mit `source='import'`; Karte → `sub`: Cloze `c{ord+1}`,
+  sonst ord 0 → `""`, 1 → `"r"`. Karten, die es im Stapel nicht gibt (etwa
+  die Rückwärtskarte eines Stapels ohne `reverse`), werden übersprungen.
+  Ankis FSRS-Werte (`cards.data` `s`/`d`) ersetzen Stabilität und
+  Schwierigkeit einer Karte im Zustand Wiederholung; `queue=-1` →
+  `suspended`. Ausgesetzte **neue** Karten bleiben neu (ohne Zustand gibt
+  es kein Aussetzen). Zeitzone: die des Browsers (`zone`).
+
+**Anki-Export (`lib/study-anki-export.ts`, `studyAnkiExport`)**
+
+- `GET /api/pages/{id}/study/export?format=apkg`, Rechte und Auswahl wie der
+  CSV-Export (lesbare Einträge, Filter der Ansicht, auch ausgesetzte).
+  Legacy `collection.anki2` (Schema 11) mit eigenen Notiztypen „Basic
+  (Flowplan)“, „… (and reversed card)“, „… (type in the answer)“ und „Cloze
+  (Flowplan)“, je mit Feldern Hinweis/Zusatz; MC als Basic mit Optionen als
+  Liste vorne. Dokumentseiten: Lücken-Marks → `{{cN::…(::Hinweis)}}`,
+  `data-math` → `\(…\)`, Bilder/Audio als Medien – **nur Dateien dieser
+  Datenbank** (`files.page_id`), höchstens 80 MB. Die Auswahl **Deck** wird
+  zu Unterstapeln (Rundweg). Lernstand: nicht (Karten sind neu).
+- Rundweg-Test: Export → Import ergibt dieselben Vorder-/Rückseiten,
+  Kartentypen und Kartenzahl.
+
+**KI (`lib/ai/flashcards.ts`, `components/study/ai-cards.tsx`)**
+
+- Neues Feature `flashcards` in `lib/ai/features.ts` – Admin-Schalter und
+  persönliche Abschaltung greifen damit; ohne Feature geht weder Vorschlagen
+  noch Hinzufügen. Kein eigener Modellname: es gilt der konfigurierte
+  Anbieter (auch Ollama).
+- Quellen: Seite/Eintrag (`aiPageMarkdown`, prüft KI-Lesen), Auswahl (Text
+  aus dem Browser, aber Leserecht und KI-Lesen der Seite werden geprüft),
+  Datei (`file_texts` – Text, den `lib/file-text.ts` für die Suche schon
+  ausliest, inkl. OCR; verborgene Datensatz-Dateien und Papierkorb
+  ausgeschlossen; noch nicht gelesen → 409), eingefügter Text. Secrets
+  geschwärzt, Quelle als `<quelle>` umzäunt, vorhandene Karten als
+  `<kontext>`.
+- Vorhandene Vorderseiten des Zielstapels (sichtbare Einträge, lesbare
+  Vorderseiten-Eigenschaft) gehen nur in den Prompt, wenn die KI den Stapel
+  lesen darf; der Dublettenvergleich (`frontKey`: Groß/klein, Akzente,
+  Satzzeichen, Lücken gefüllt) läuft immer auf dem Server. „Neu erzeugen“
+  schickt die bisherigen Vorschläge als `avoid`.
+- Antwort über `aiJson` (robust, ein Wiederholversuch), jede Karte über
+  `checkCard`: unbekannter Typ → basic, Lücken machen Lückentext, Cloze ohne
+  Lücke → basic, MC mit < 2 falschen Optionen → basic, „typed“ mit langer
+  Antwort → basic, nicht gewählte Typen → nächster gewählter (Cloze fällt
+  weg). Markiert: `duplicate`, `yesNo` (beide im Prüfschritt abgehakt).
+- Grenzen: 200 Karten, Quelle 400 000 Zeichen (darüber 413 „Abschnitt
+  wählen“), Teile zu 12 000 (lokal) bzw. 40 000 Zeichen, höchstens 12,
+  parallel 3; jeder Teil ist ein KI-Aufruf mit `limitAi`/Statistik.
+  Schätzung (`estimate: true`) ohne Anfrage an das Modell.
+- Hinzufügen: erneut geprüft (Feature, Schreibrecht), über `rows.import`
+  (legt fehlende Auswahl-Optionen/Tags an), Kartentyp über die Option der
+  Kartentyp-Eigenschaft (`typeOfOption`), MC-Optionen in
+  `settings.study.choices`, Tags für alle; neuer Stapel = Datenbank der
+  Art „Lernkarten“. Stapel mit Dokumentseiten nehmen keine KI-Karten (409).
+  Audit `ai.cards` mit der Zahl.
+- Einstiege: „Mit KI erstellen“ in der Lernen-Ansicht (Stapel
+  vorgewählt), Textmenü „Lernkarten erstellen“ bei einer Auswahl (nur mit
+  Maus/Tastatur-Auswahl sichtbar, wie das Textmenü), Suchpalette
+  „Lernkarten mit KI erstellen“ (offene Seite bzw. offener Stapel). Alle
+  über das Fenster-Ereignis `flowplan:flashcards-ai`; nach dem Hinzufügen
+  lädt `flowplan:study-changed` die Lernen-Ansicht neu. Der Einstieg im
+  PDF-Betrachter („Aus diesem PDF“) fehlt noch – die Dateiquelle im Dialog
+  deckt PDFs der Seite ab.
+- Galerie: Szene `study-anki-import`; der KI-Dialog steht wie alle
+  KI-Dialoge in `scripts/gallery/uncovered.json` (die Galerie hat keinen
+  KI-Anbieter); Bilder davon aus `tests/browser/study-ai.spec.ts`
+  (`STUDY_SCREENSHOTS`).
+
+**Für die nächsten Phasen**
+
+- 5 App: der Anki-Import läuft als Hintergrundjob (`launchJob`) – die App
+  kann ihn über `/api/import/source/job` verfolgen; KI-Karten brauchen
+  Server-KI (kein Gerätemodell, `DEVICE_AI_FEATURES` unverändert).
+- 6 Bildverdeckung: Ankis Image-Occlusion-Notizen tragen die Masken im Feld
+  „Occlusion“ als `{{c1::image-occlusion:rect:left=…:top=…:width=…:height=…}}`
+  (Anteile 0–1, auch `ellipse`/`polygon`) – daraus `data-occlusion`
+  erzeugen und die Notizen dann als `occlusion` statt `basic` importieren;
+  der Export kann den Fallback „Basic mit Bild“ behalten.
+- 7 Teilen: der Export kennt nur Dateien der Datenbank; ein Marketplace-
+  Paket nimmt die Lernstände ohnehin nicht mit.
+- 8 Optimierung: importierte Wiederholungen (`source='import'`) zählen für
+  die Parameteroptimierung wie eigene.
+- Offen: Unterstapel als eigene Datenbanken (Option), Lernstand für
+  ausgesetzte neue Karten, PDF-Betrachter-Einstieg der KI, KI-Karten in
+  Stapel mit Dokumentseiten (Vorder-/Rückseite ins Dokument schreiben).
