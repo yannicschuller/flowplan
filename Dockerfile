@@ -157,6 +157,11 @@ COPY --chmod=644 lib/instance-move-pull.ts /app/instance-move-pull.ts
 # Job), node /app/scripts/db-schema.mjs.
 COPY --chmod=644 scripts/db-migrate.mjs scripts/db-search-rebuild.mjs scripts/db-schema.mjs /app/scripts/
 COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /app/lib/db-driver/
+# The rebuild of a stuck Litestream replica (docker/entrypoint.sh, marker
+# litestream-reset with "remote"): deletes <S3_PREFIX>/db/ in the bucket,
+# signed with the app's S3 library (bundled into the app, so copied here).
+COPY --chmod=644 scripts/litestream-replica-reset.mjs /app/scripts/
+COPY --from=build --chown=node:node /app/node_modules/aws4fetch /app/node_modules/aws4fetch
 # Any UID/GID (#193): Compose's user: "UID:GID" may run the image as a user
 # without an entry in /etc/passwd. Everything it writes goes to the data
 # folder, /tmp (HOME, see docker/entrypoint.sh) or Next's cache below; the

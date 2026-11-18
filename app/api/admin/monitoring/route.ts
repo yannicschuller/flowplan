@@ -7,7 +7,10 @@
 // off (`metrics.save`), deletes them (`metrics.clear`) or the error
 // details (`errors.clear`, answers the empty list), checks the AI
 // provider again (`ai.ping`) or changes the recommendations
-// (`recommendation.hide|snooze|restore`, `recommendations.settings`).
+// (`recommendation.hide|snooze|restore`, `recommendations.settings`), or
+// rebuilds a stuck Litestream replica on the next start
+// (`litestream.rebuild`, `litestream.cancel`, then `litestream.restart`;
+// lib/litestream-health.ts).
 // Administrators in the browser only; API tokens never.
 import { serverError } from "@/lib/request-context";
 import { z } from "zod";
@@ -22,6 +25,7 @@ import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_
 import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
 import { clearErrorDetails, errorDetails } from "@/lib/error-details";
+import { litestreamActions, litestreamAdminAction } from "@/lib/litestream-health";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -58,6 +62,7 @@ const postSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("metrics.clear") }),
   z.object({ action: z.literal("ai.ping") }),
   z.object({ action: z.literal("errors.clear") }),
+  z.object({ action: z.enum(litestreamActions) }),
 ]);
 
 export const POST = withRequestLocale(async (req: Request) => {
@@ -74,6 +79,8 @@ export const POST = withRequestLocale(async (req: Request) => {
       return Response.json(await recommendations(), noStore);
     }
     const body = postSchema.parse(raw);
+    if (body.action === "litestream.rebuild" || body.action === "litestream.cancel" || body.action === "litestream.restart")
+      return Response.json(await litestreamAdminAction(user, body.action), noStore);
     if (body.action === "metrics.save") {
       if ((await metricsSetting()).locked) throw new HttpError(409, "Die Statistik ist mit FLOWPLAN_METRICS=off ausgeschaltet.");
       await saveMetricsSetting(body.enabled);

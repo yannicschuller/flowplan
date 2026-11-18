@@ -15961,6 +15961,25 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   background: #3a2c14;
   color: #f2c27a;
 }
+/* Buttons of a note (the stuck Litestream replica): on a line of their own. */
+.mon-note-actions {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 22px;
+}
+.mon-note > span:not(.mon-note-actions) {
+  min-width: 0;
+  flex: 1 1 0;
+}
+.mon-note:has(> .mon-note-actions) {
+  align-items: flex-start;
+}
+.mon-note:has(> .mon-note-actions) > svg {
+  flex: none;
+  margin-top: 2px;
+}
 .mon-health ul {
   display: grid;
   gap: 10px;

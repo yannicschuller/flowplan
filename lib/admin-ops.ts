@@ -276,7 +276,9 @@ async function writeSetting(key: string, value: unknown) {
 
 /* ---------- Health alerts ---------- */
 
-export const alertEvents = ["backup_failed", "storage_high", "worker_error", "login_failures", "security"] as const;
+// litestream_stuck: the Litestream replica in the bucket is stuck
+// (lib/litestream-health.ts) – sent once per incident, not once a day.
+export const alertEvents = ["backup_failed", "storage_high", "worker_error", "login_failures", "security", "litestream_stuck"] as const;
 export type AlertEvent = (typeof alertEvents)[number];
 type StoredAlerts = { url: string; events: AlertEvent[]; secret: string; version?: number };
 const ALERTS_KEY = "opsAlerts";
@@ -292,6 +294,8 @@ async function storedAlerts(): Promise<(StoredAlerts & { plainSecret: string }) 
   const events = (stored.events || []).filter((e) => alertEvents.includes(e));
   // Saved before security incidents existed: they are reported as well.
   if (!stored.version && !events.includes("security")) events.push("security");
+  // … and before the stuck Litestream replica (version 3).
+  if ((stored.version ?? 0) < 3 && !events.includes("litestream_stuck")) events.push("litestream_stuck");
   return { ...stored, events, plainSecret };
 }
 export async function alertSettingsForAdmin() {
@@ -328,7 +332,7 @@ export async function saveAlertSettings(actorId: string, input: unknown) {
     throw new HttpError(400, "Die Webhook-Adresse muss mit https:// beginnen.");
   const previous = await storedAlerts();
   const secret = !newSecret && previous?.plainSecret ? previous.plainSecret : randomBytes(24).toString("base64url");
-  await writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 2 });
+  await writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 3 });
   await audit(actorId, "admin.ops.alerts", "instance", parsed.host);
   return await alertSettingsForAdmin();
 }
@@ -349,6 +353,8 @@ export async function activeAlerts(now = Date.now()): Promise<{ event: AlertEven
   await flushOpsEvents();
   const logins = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind='login_failure' AND at>=?", now - 3600_000))?.n || 0);
   if (logins >= LOGIN_ALERT_THRESHOLD) result.push({ event: "login_failures", detail: String(logins) });
+  const replica = await (await import("./litestream-health")).openLitestreamIncident().catch(() => null);
+  if (replica) result.push({ event: "litestream_stuck", detail: `${replica.files}${replica.truncated ? "+" : ""} L0, ${replica.repair}` });
   return result;
 }
 
@@ -359,6 +365,7 @@ const alertTitle = (event: AlertEvent | "test") =>
     worker_error: ct("Worker-Fehler", "Worker error"),
     login_failures: ct("Viele fehlgeschlagene Anmeldungen", "Many failed sign-ins"),
     security: ct("Sicherheitsvorfall", "Security incident"),
+    litestream_stuck: ct("Litestream-Replik hängt", "Litestream replica stuck"),
     test: ct("Test-Benachrichtigung", "Test notification"),
   })[event];
 
@@ -394,6 +401,7 @@ const alertTitleIn = (event: AlertEvent) => (say: (de: string, en: string) => st
     worker_error: say("Worker-Fehler", "Worker error"),
     login_failures: say("Viele fehlgeschlagene Anmeldungen", "Many failed sign-ins"),
     security: say("Sicherheitsvorfall", "Security incident"),
+    litestream_stuck: say("Litestream-Replik hängt", "Litestream replica stuck"),
   })[event];
 
 // Sends each configured alert that holds now, once per event and day: to
@@ -407,6 +415,8 @@ export async function checkHealthAlerts(now = Date.now()) {
   const day = localDay(now);
   const sent: { event: AlertEvent; status: number | null; error: string | null }[] = [];
   for (const alert of await activeAlerts(now)) {
+    // Sent once per incident when it is found (sendIncidentAlert).
+    if (alert.event === "litestream_stuck") continue;
     const toWebhook = !!webhook && webhook.events.includes(alert.event);
     if (!toWebhook && !admins) continue;
     // Claimed before sending, so two runs at once do not both send.
@@ -418,6 +428,22 @@ export async function checkHealthAlerts(now = Date.now()) {
     sent.push({ event: alert.event, ...result });
   }
   return sent;
+}
+
+// An alert once per incident, right away (`key` names the incident; the
+// stuck Litestream replica, lib/litestream-health.ts): to the operator's
+// webhook when it chose the event, and to the administrators' chat apps.
+export async function sendIncidentAlert(event: AlertEvent, key: string, detail: string, now = Date.now()) {
+  const config = await storedAlerts();
+  const webhook = config?.plainSecret && config.events.includes(event) ? config : null;
+  const admins = (await opsMessengerAdmins()).length > 0;
+  if (!webhook && !admins) return null;
+  if (!(await run("INSERT INTO ops_alerts(event,day,sent_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", event, key.slice(0, 80), now)).changes) return null;
+  if (admins) await queueOpsAlert(alertTitleIn(event), detail, now);
+  if (!webhook) return { status: null, error: null };
+  const result = await deliver(webhook, event, detail, now);
+  await run("UPDATE ops_alerts SET status=?,error=? WHERE event=? AND day=?", result.status, result.error, event, key.slice(0, 80));
+  return result;
 }
 
 // A new security incident (lib/security-detect.ts), right away – not once

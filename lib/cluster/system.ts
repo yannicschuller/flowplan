@@ -14,6 +14,7 @@ import { isLeader, leaderError, leaderSince } from "./leader";
 import { storageConfig, storageStatus } from "../storage";
 import { secondInstances, type SecondInstance } from "./single-instance";
 import { waitingContainer, type WaitingContainer } from "./data-dir-lock";
+import { litestreamStatus, type LitestreamStatus } from "../litestream-health";
 
 export type SystemOverview = {
   mode: "single" | "cluster";
@@ -37,6 +38,9 @@ export type SystemOverview = {
   // SQLite: a second container on the same data folder waits for its lock
   // (docker/entrypoint.sh, lib/cluster/data-dir-lock.ts).
   waitingContainer: WaitingContainer | null;
+  // SQLite with Litestream: whether the replica in the bucket is stuck and
+  // its repair (lib/litestream-health.ts); null when it does not apply.
+  litestream: LitestreamStatus | null;
 };
 
 const count = async (query: string, ...params: number[]) => Number((await one<{ n: number }>(query, ...params))?.n || 0);
@@ -121,5 +125,6 @@ export async function systemOverview(now = Date.now()): Promise<SystemOverview> 
     },
     secondInstances: await secondInstances(now),
     waitingContainer: waitingContainer(now),
+    litestream: await litestreamStatus(),
   };
 }

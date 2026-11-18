@@ -157,8 +157,35 @@ overlap_warning() {
 # (.flowplan.sqlite-litestream/ltx), never the database; Litestream then
 # takes the bucket's last position and writes a full snapshot unless the
 # WAL still continues it.
+# With "remote" as the marker's first line (written by the app when the
+# replica in the bucket is stuck, or by Administration → Überwachung →
+# "Replik jetzt neu aufbauen"; lib/litestream-health.ts) the replica in the
+# bucket goes first: scripts/litestream-replica-reset.mjs deletes every
+# object under <S3_PREFIX>/db/ and nothing else. Litestream then finds an
+# empty bucket and starts afresh with a full snapshot. Not without a local
+# database (the replica would be its only copy). When the delete fails,
+# nothing is reset, the marker stays for the next start and Litestream
+# replicates as before.
 litestream_reset_if_asked() {
   if [ -f "$DATA/litestream-reset" ]; then
+    reset_mode="$(head -n 1 "$DATA/litestream-reset" 2>/dev/null | tr -d '[:space:]')"
+    if [ "$reset_mode" = remote ]; then
+      if [ ! -s "$DB" ]; then
+        echo "Litestream: $DATA/litestream-reset asks to rebuild the replica, but there is no local database; the replica in the bucket is kept and the marker stays." >&2
+        return 0
+      fi
+      echo "Litestream: deleting the replica in the bucket (${S3_PREFIX:+$S3_PREFIX/}db/) to rebuild it ($DATA/litestream-reset)."
+      if ! node /app/scripts/litestream-replica-reset.mjs; then
+        {
+          echo "=========================================================================="
+          echo "Litestream: DELETING THE REPLICA IN THE BUCKET FAILED. Nothing was reset;"
+          echo "  $DATA/litestream-reset stays and the repair is tried again on the next start."
+          echo "  Flowplan starts normally, Litestream replicates as before."
+          echo "=========================================================================="
+        } >&2
+        return 0
+      fi
+    fi
     echo "Litestream: resetting the local replication state ($DATA/litestream-reset)."
     if litestream reset -config /etc/litestream.yml "$DB"; then
       rm -f "$DATA/litestream-reset"
@@ -166,6 +193,13 @@ litestream_reset_if_asked() {
       echo "Litestream: the reset failed; $DATA/litestream-reset stays for the next start." >&2
     fi
   fi
+}
+# When Litestream starts replicating in this container (with the lock
+# held): the app checks the replica in the bucket only here, and only once
+# Litestream has run for a while (lib/litestream-health.ts).
+mark_replicating() {
+  printf 'since=%s\nhost=%s\n' "$(date +%s)" "$ME" > "$DATA/.flowplan-replicating.$$" 2>/dev/null \
+    && mv -f "$DATA/.flowplan-replicating.$$" "$DATA/.flowplan-replicating" 2>/dev/null || rm -f "$DATA/.flowplan-replicating.$$" 2>/dev/null || true
 }
 if [ -z "$POSTGRES" ]; then
   if ! command -v flock > /dev/null 2>&1; then
@@ -241,6 +275,7 @@ supervise() {
         if [ -n "$replicate" ]; then
           echo "Flowplan: the other container has stopped and released $DATA; Litestream starts replicating now."
           if [ -z "$signal" ]; then litestream_reset_if_asked; fi
+          mark_replicating
         else
           echo "Flowplan: the other container has stopped and released $DATA."
         fi
@@ -334,6 +369,7 @@ if [ -n "$LITESTREAM" ]; then
   # exit code; app and replication live and die together.
   litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists "$DB"
   litestream_reset_if_asked
+  mark_replicating
   exec litestream replicate -config /etc/litestream.yml -exec "node server.js"
 fi
 if [ -n "$OVERLAP" ]; then supervise ""; fi

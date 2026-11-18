@@ -20,7 +20,10 @@ const stubs: Record<string, string> = {
   id: `case "$1" in -u) echo 1000 ;; -g) echo 1000 ;; *) exit 1 ;; esac`,
   // The app: runs until SIGTERM/SIGINT (exit FAKE_NODE_TERM_CODE) or, with
   // FAKE_NODE_EXIT, exits with that code after a moment.
+  // The replica delete (scripts/litestream-replica-reset.mjs) logs and
+  // exits with FAKE_DELETE_CODE (default 0).
   node: `echo "node $* pid=$$" >> "$LOG"
+case "$1" in */litestream-replica-reset.mjs) exit "\${FAKE_DELETE_CODE:-0}" ;; esac
 trap 'echo "node got TERM" >> "$LOG"; exit "\${FAKE_NODE_TERM_CODE:-0}"' TERM
 if [ -n "\${FAKE_NODE_EXIT:-}" ]; then sleep 1; echo "node exits $FAKE_NODE_EXIT" >> "$LOG"; exit "$FAKE_NODE_EXIT"; fi
 while :; do sleep 0.1; done`,
@@ -299,6 +302,104 @@ test("litestream-reset in the data folder: `litestream reset` runs under the loc
   assert.equal(existsSync(join(b.data, "litestream-reset")), false, "one reset only");
   run.child.kill("SIGTERM");
   await run.exit;
+});
+
+// The rebuild of a stuck replica (lib/litestream-health.ts writes the
+// marker with "remote"): the bucket's db/ goes first, then the local state,
+// then replication starts – all under the lock.
+const RESET_SCRIPT = "node /app/scripts/litestream-replica-reset.mjs";
+const withoutPid = (b: Box) => lines(b).map((l) => l.replace(/ pid=\d+$/, ""));
+test("marker 'remote': the delete script, then the local reset, then replicate; the marker goes", { skip }, async () => {
+  const b = box(withS3);
+  writeFileSync(join(b.data, "flowplan.sqlite"), "db");
+  writeFileSync(join(b.data, "litestream-reset"), "remote\nsource=auto\nat=1763470000\n");
+  const run = start(b);
+  await until("node server.js", () => has(b, /^node server\.js/));
+  assert.deepEqual(withoutPid(b).slice(0, 4), [
+    `litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists ${join(b.data, "flowplan.sqlite")}`,
+    RESET_SCRIPT,
+    `litestream reset -config /etc/litestream.yml ${join(b.data, "flowplan.sqlite")}`,
+    "litestream replicate -config /etc/litestream.yml -exec node server.js",
+  ]);
+  assert.equal(existsSync(join(b.data, "litestream-reset")), false, "removed after both steps");
+  assert.match(run.output(), /deleting the replica in the bucket \(flowplan\/db\/\)/);
+  // Litestream replicates here from now on: the app's check may run.
+  assert.match(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), /^since=\d+\nhost=.+\n$/);
+  assert.equal(readFileSync(join(b.data, "flowplan.sqlite"), "utf8"), "db", "the database is never touched");
+  run.child.kill("SIGTERM");
+  await run.exit;
+});
+
+test("marker 'remote' and the delete fails: no reset, the marker stays, the app still starts with Litestream", { skip }, async () => {
+  const b = box({ ...withS3, FAKE_DELETE_CODE: "1" });
+  writeFileSync(join(b.data, "flowplan.sqlite"), "db");
+  writeFileSync(join(b.data, "litestream-reset"), "remote\n");
+  const run = start(b);
+  await until("node server.js", () => has(b, /^node server\.js/));
+  const log = withoutPid(b);
+  assert.ok(log.includes(RESET_SCRIPT));
+  assert.equal(log.some((l) => l.startsWith("litestream reset")), false);
+  assert.ok(log.includes("litestream replicate -config /etc/litestream.yml -exec node server.js"));
+  assert.equal(readFileSync(join(b.data, "litestream-reset"), "utf8"), "remote\n", "kept for the next start");
+  assert.match(run.output(), /DELETING THE REPLICA IN THE BUCKET FAILED/);
+  run.child.kill("SIGTERM");
+  assert.equal(await run.exit, 0);
+});
+
+test("an empty marker stays local-only: no delete script", { skip }, async () => {
+  const b = box(withS3);
+  writeFileSync(join(b.data, "flowplan.sqlite"), "db");
+  writeFileSync(join(b.data, "litestream-reset"), "");
+  const run = start(b);
+  await until("node server.js", () => has(b, /^node server\.js/));
+  assert.equal(has(b, /litestream-replica-reset/), false);
+  assert.ok(has(b, /^litestream reset /));
+  assert.equal(existsSync(join(b.data, "litestream-reset")), false);
+  run.child.kill("SIGTERM");
+  await run.exit;
+});
+
+test("marker 'remote' without a local database: the replica is its only copy and stays", { skip }, async () => {
+  const b = box(withS3);
+  writeFileSync(join(b.data, "litestream-reset"), "remote\n");
+  const run = start(b);
+  await until("node server.js", () => has(b, /^node server\.js/));
+  assert.equal(has(b, /litestream-replica-reset/), false);
+  assert.equal(has(b, /^litestream reset /), false);
+  assert.ok(existsSync(join(b.data, "litestream-reset")));
+  assert.match(run.output(), /there is no local database; the replica in the bucket is kept/);
+  run.child.kill("SIGTERM");
+  await run.exit;
+});
+
+test("lock held, then free: marker 'remote' is applied before Litestream starts in the waiting container", { skip }, async () => {
+  const b = box(withS3);
+  writeFileSync(join(b.data, "flowplan.sqlite"), "db");
+  writeFileSync(join(b.data, "litestream-reset"), "remote\n");
+  writeFileSync(join(b.data, ".flowplan-replicating"), "since=1\nhost=the-old-container\n");
+  const other = await holdLock(b);
+  const run = start(b);
+  await until("node server.js", () => has(b, /^node server\.js/));
+  await new Promise((r) => setTimeout(r, 1200));
+  assert.equal(has(b, /litestream-replica-reset|^litestream/), false, "nothing without the lock");
+  assert.match(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), /host=the-old-container/, "the other container's file stays until this one replicates");
+  await other.release();
+  await until("litestream replicate", () => has(b, /^litestream replicate/));
+  assert.deepEqual(withoutPid(b).filter((l) => l !== "node server.js").slice(0, 3), [
+    RESET_SCRIPT,
+    `litestream reset -config /etc/litestream.yml ${join(b.data, "flowplan.sqlite")}`,
+    "litestream replicate -config /etc/litestream.yml",
+  ]);
+  assert.doesNotMatch(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), /the-old-container/);
+  run.child.kill("SIGTERM");
+  assert.equal(await run.exit, 0);
+});
+
+test("the image ships the delete script with its S3 library", () => {
+  const dockerfile = readFileSync("Dockerfile", "utf8");
+  assert.match(dockerfile, /COPY --chmod=644 scripts\/litestream-replica-reset\.mjs \/app\/scripts\//);
+  assert.match(dockerfile, /COPY --from=build --chown=node:node \/app\/node_modules\/aws4fetch \/app\/node_modules\/aws4fetch/);
+  assert.ok(readFileSync("docker/entrypoint.sh", "utf8").includes(RESET_SCRIPT));
 });
 
 test("PostgreSQL: no data folder lock", { skip }, async () => {

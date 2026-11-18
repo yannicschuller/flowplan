@@ -53,6 +53,7 @@ import { ServerCard } from "./monitoring-server";
 import { Recommendations } from "./monitoring-advice";
 import { ErrorDetailsCard, type ErrorSlot } from "./monitoring-errors";
 import { useDocs } from "./parts";
+import { LitestreamWarning } from "./monitoring-litestream";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
@@ -98,6 +99,7 @@ export default function MonitoringSection() {
             </p>
           )}
           <SecondInstanceWarning s={d.system} />
+          <LitestreamWarning s={d.system} reload={() => void live.reload()} />
           <Health d={d} />
           <Kpis d={d} />
           <Recommendations data={d.advice} onChange={() => void live.reload()} />
@@ -770,6 +772,9 @@ function eventText(e: MonitoringEvent, t: T): { title: string; detail?: string }
         "admin.metrics": t("Statistik", "Statistics"),
         "admin.metrics.clear": t("Statistik gelöscht", "Statistics deleted"),
         "admin.errors.clear": t("Fehlerdetails gelöscht", "Error details cleared"),
+        "admin.litestream.rebuild": t("Litestream-Replik neu aufbauen", "Rebuild the Litestream replica"),
+        "admin.litestream.rebuild.cancel": t("Neuaufbau der Litestream-Replik abgebrochen", "Rebuild of the Litestream replica cancelled"),
+        "admin.litestream.restart": t("Neustart für die Litestream-Reparatur", "Restart for the Litestream repair"),
       };
       const name = names[e.subject || ""] || e.subject;
       return { title: t(`Einstellung geändert: ${name}`, `Setting changed: ${name}`), detail: e.detail };

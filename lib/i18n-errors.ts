@@ -5,6 +5,11 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // The stuck Litestream replica (lib/litestream-health.ts).
+  "Litestream repliziert in diesem Container nicht (aus, PostgreSQL, kein S3 oder ein anderer Container hält das Datenverzeichnis).":
+    "Litestream does not replicate in this container (off, PostgreSQL, no S3, or another container holds the data folder).",
+  "Litestream repliziert in diesem Container nicht.": "Litestream does not replicate in this container.",
+  "Es ist keine Reparatur vorgemerkt.": "No repair is scheduled.",
   // Flashcards (lib/study.ts).
   "Für diese Datenbank sind noch keine Lernkarten eingerichtet.": "No flashcards are set up for this database yet.",
   "Karte nicht gefunden.": "Card not found.",
@@ -1547,6 +1552,7 @@ const exact: Record<string, string> = {
   "Kein Beispielbereich vorhanden.": "There is no sample space.",
 };
 const patterns: [RegExp, string][] = [
+  [/^Die Sicherung vorher ist fehlgeschlagen, die Replik bleibt: (.+)$/, "The backup before it failed, the replica stays: $1"],
   [/^„(.+)“ lässt sich nicht als Kartenseite verwenden\.$/, "“$1” cannot be used as a side of a card."],
   // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).
   [/^(\d+) sehr lange Felder wurden nach (\d+) Zeichen gekürzt\.$/, "$1 very long fields were cut after $2 characters."],
