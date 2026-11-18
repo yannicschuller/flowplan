@@ -77,19 +77,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # Litestream, built from its released source (the module v0.5.18, checked
 # against the Go checksum database) instead of taken from its image: the
 # published 0.5.18 binary carries github.com/go-jose/go-jose/v4 4.1.4
-# (CVE-2026-116587, a DoS when parsing JWKs with RSA keys), fixed in 4.1.6.
-# Only that dependency is raised; built like the official one (pure Go,
-# CGO off, -s -w, the same version string). Back to the official image once
-# a Litestream release ships go-jose ≥ 4.1.6.
+# (CVE-2026-116587, a DoS when parsing JWKs with RSA keys), fixed in 4.1.6,
+# and golang.org/x/net 0.60.0 (CVE-2026-78661, a DoS in x/net/html), fixed
+# in 0.62.0. Only those are raised (with what x/net needs along); built
+# like the official one (pure Go, CGO off, -s -w, the same version string). Back to the official image once
+# a Litestream release ships both fixes.
 FROM --platform=$BUILDPLATFORM golang:1.26.11-trixie AS litestream
 ARG TARGETOS TARGETARCH
 ENV GOFLAGS=-modcacherw GOTOOLCHAIN=local
 RUN version=0.5.18 \
   && dir=$(cd /tmp && go mod download -json "github.com/benbjohnson/litestream@v$version" | sed -n 's/^\s*"Dir": "\(.*\)",$/\1/p') \
   && cp -r "$dir" /src && chmod -R u+w /src && cd /src \
-  && go get github.com/go-jose/go-jose/v4@v4.1.6 \
+  && go get github.com/go-jose/go-jose/v4@v4.1.6 golang.org/x/net@v0.62.0 \
   && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w -X main.Version=$version" -o /usr/local/bin/litestream ./cmd/litestream \
   && go version -m /usr/local/bin/litestream | grep -q 'go-jose/go-jose/v4\s*v4.1.6' \
+  && go version -m /usr/local/bin/litestream | grep -q 'golang.org/x/net\s*v0.62.0' \
   && rm -rf /root/go /root/.cache /src
 FROM node:26-trixie-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \
