@@ -154,6 +154,19 @@ live charts go above the tiles (`status` slot of the shell).
   AsyncLocalStorage; route handlers' catches note the exception with
   `serverError(e)`, Next's own with `onRequestError` (instrumentation.ts).
   Every answer carries `X-Request-Id`. Tests: `tests/error-details.test.ts`.
+- Restarts (`#admin/monitoring/restarts`,
+  `components/settings/admin/monitoring-restarts.tsx`,
+  `/api/admin/monitoring?view=restarts`, `?view=restart&id=…` when a row is
+  opened): `lib/restarts/tracker.ts` writes a heartbeat every 30 s and an
+  exit marker (clean on SIGTERM/SIGINT via `lib/cluster/runtime.ts`, crash on
+  an exit with another code) to `<data>/logs/`; the next start classifies
+  the previous run (clean, crash, oom, killed) and `lib/restarts/history.ts`
+  keeps it in `restart_events` (30 days) with the run's last 200 log lines
+  from `lib/restarts/log-file.ts` (the app's stdout/stderr) and
+  `docker/entrypoint.sh` (Litestream's output), both redacted by
+  `lib/restarts/redact.ts`. A crash or two unexpected restarts within an
+  hour raise `ops.unexpected_restart` once per incident. Tests:
+  `tests/restarts.test.ts`, `tests/docker-data-lock.test.ts`.
 
 ## Adding or moving a section
 

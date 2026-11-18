@@ -738,6 +738,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Zustand der Dienste", en: "Health of the services" }, anchor: "health" },
       { title: { de: "Anfragen & Fehler", en: "Requests & errors" }, anchor: "traffic" },
       { title: { de: "Fehler im Detail", en: "Errors in detail" }, keywords: { de: "fehler-id stack 500 ausnahme", en: "error id request id stack 500 exception" }, anchor: "errors" },
+      { title: { de: "Neustarts", en: "Restarts" }, keywords: { de: "absturz oom speicher neustart log protokoll", en: "crash oom memory restart log" }, anchor: "restarts" },
       { title: { de: "Aktive Personen", en: "Active people" }, anchor: "people" },
       { title: { de: "Anmeldungen", en: "Sign-ins" }, anchor: "signins" },
       { title: { de: "Abgewiesene Anfragen", en: "Refused requests" }, anchor: "refused" },

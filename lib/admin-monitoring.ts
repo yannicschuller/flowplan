@@ -314,6 +314,7 @@ export type MonitoringEvent = {
     | "maintenance"
     | "restore_pending"
     | "started"
+    | "restart"
     | "admin";
   level: "error" | "warn" | "info" | "ok";
   at: number;
@@ -362,6 +363,12 @@ export async function monitoringEvents(now = Date.now(), update: UpdateStatus | 
   if (maintenance && maintenance.end > now) out.push({ kind: "maintenance", level: "info", at: maintenance.start, count: maintenance.end, detail: maintenance.message });
   if (pendingRestore()) out.push({ kind: "restore_pending", level: "warn", at: now });
   out.push({ kind: "started", level: "info", at: now - Math.round(process.uptime() * 1000), subject: buildInfo().version });
+  // Unexpected restarts (lib/restarts/history.ts): the reason as subject.
+  for (const r of await all<{ at: number; reason: string; instance: string; error: string | null }>(
+    "SELECT at,reason,instance,error FROM restart_events WHERE reason<>'clean' AND at>=? ORDER BY at DESC LIMIT 5",
+    since,
+  ))
+    out.push({ kind: "restart", level: r.reason === "crash" ? "error" : "warn", at: Number(r.at), subject: r.reason, detail: r.error ? r.error.split("\n")[0].slice(0, 200) : r.instance || undefined });
   for (const a of await all<{ action: string; created_at: string; name: string | null }>(
     "SELECT a.action,a.created_at,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id WHERE a.action LIKE 'admin.%' AND a.created_at>=? ORDER BY a.created_at DESC LIMIT 10",
     new Date(since).toISOString().replace("T", " ").slice(0, 19),

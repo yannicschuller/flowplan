@@ -6,9 +6,10 @@
 // actions – then the background workers, alerts by webhook
 // (/api/admin/operations) and the switch of the usage statistics. The
 // maintenance notice has its own section (#admin/maintenance).
-// Anchors: #admin/monitoring/<health|recommendations|traffic|errors|server|people|signins|refused|storage|
+// Anchors: #admin/monitoring/<health|recommendations|traffic|errors|server|restarts|people|signins|refused|storage|
 // deliveries|ai|queues|events|actions|system|workers|instance|alerts|metrics>.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowClockwise,
   ArrowCircleUp,
@@ -53,7 +54,7 @@ import { ServerCard } from "./monitoring-server";
 import { Recommendations } from "./monitoring-advice";
 import { ErrorDetailsCard, type ErrorSlot } from "./monitoring-errors";
 import { useDocs } from "./parts";
-import { LitestreamWarning } from "./monitoring-litestream";
+import { restartTitle } from "./restart-labels";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
@@ -99,13 +100,14 @@ export default function MonitoringSection() {
             </p>
           )}
           <SecondInstanceWarning s={d.system} />
-          <LitestreamWarning s={d.system} reload={() => void live.reload()} />
+          {litestreamNeedsWarning(d.system) && <LitestreamWarning s={d.system} reload={() => void live.reload()} />}
           <Health d={d} />
           <Kpis d={d} />
           <Recommendations data={d.advice} onChange={() => void live.reload()} />
           <Traffic d={d} onPick={(at) => setSlot({ from: at, to: at + d.requests.bucketMs })} />
           <ErrorDetailsCard range={range} refreshKey={d.errorsDay.errors} slot={slot} onSlot={setSlot} />
           <ServerCard s={d.server} range={range} />
+          <RestartsWhenVisible />
           {/* Two stacks of cards that never leave holes (one stack on narrow
               screens); each card stays in its column when it grows. */}
           <div className="mon-columns">
@@ -759,6 +761,8 @@ function eventText(e: MonitoringEvent, t: T): { title: string; detail?: string }
       return { title: t("Wiederherstellung wartet auf den Neustart", "Restore waits for a restart") };
     case "started":
       return { title: t("Flowplan gestartet", "Flowplan started"), detail: e.subject ? `v${e.subject}` : undefined };
+    case "restart":
+      return { title: restartTitle(e.subject || "", t), detail: e.detail };
     case "admin": {
       // The audit action as the setting's name, where it has one.
       const names: Record<string, string> = {
@@ -950,6 +954,47 @@ function Workers({ ops }: { ops: OpsOverview | null }) {
 // database (lib/cluster/single-instance.ts): stays until only one runs.
 // SQLite: a second container on the same data folder waits for its lock
 // (lib/cluster/data-dir-lock.ts) – shown on both containers.
+/* ---------- Loaded when needed ---------- */
+
+// The stuck Litestream replica's warning (monitoring-litestream.tsx): its
+// code loads only while there is something to show – rarely.
+const LitestreamWarning = dynamic(() => import("./monitoring-litestream").then((m) => m.LitestreamWarning), { ssr: false });
+const litestreamNeedsWarning = (s: SystemOverview) => !!s.litestream?.active && (!!s.litestream.incident || s.litestream.marker === "remote");
+
+// Restarts (monitoring-restarts.tsx).
+
+// Its code and data load once the card is near the screen (or its anchor
+// is opened): the dashboard's JavaScript budget is tight.
+const RestartsCard = dynamic(() => import("./monitoring-restarts").then((m) => m.RestartsCard), { ssr: false, loading: () => <RestartsPlaceholder /> });
+function RestartsPlaceholder({ ref }: { ref?: Ref<HTMLElement> }) {
+  const t = useT();
+  return (
+    <section className="setting-group mon-card" id="restarts" aria-labelledby="restarts-title" ref={ref} data-testid="restarts-placeholder">
+      <header>
+        <div>
+          <h2 id="restarts-title">{t("Neustarts", "Restarts")}</h2>
+        </div>
+      </header>
+      <div className="mon-card-body">
+        <p className="muted">{t("Lädt …", "Loading …")}</p>
+      </div>
+    </section>
+  );
+}
+function RestartsWhenVisible() {
+  const ref = useRef<HTMLElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (shown || !element) return;
+    if (typeof IntersectionObserver === "undefined") return setShown(true);
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setShown(true), { rootMargin: "300px" });
+    io.observe(element);
+    return () => io.disconnect();
+  }, [shown]);
+  return shown ? <RestartsCard /> : <RestartsPlaceholder ref={ref} />;
+}
+
 function SecondInstanceWarning({ s }: { s: SystemOverview }) {
   const t = useT();
   const docs = useDocs();

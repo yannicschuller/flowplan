@@ -30,6 +30,7 @@ import { resignLeadership, startLeaderElection, stopDuties, waitForDuties } from
 import { startHeartbeat, stopHeartbeat } from "./instances";
 import { closeSession } from "./pg-session";
 import { releaseSingleInstance, singleInstanceGuarded, startSingleInstanceGuard } from "./single-instance";
+import { noteStopSignal } from "../restarts/tracker";
 
 // Phases of the shutdown tasks; tasks of one phase run side by side.
 export const SHUTDOWN_PHASE = { work: 10, files: 20, release: 30, close: 40 } as const;
@@ -117,6 +118,8 @@ export async function startInstance(options: { pool?: () => { total: number; idl
   const underNext = process.env.NEXT_RUNTIME === "nodejs" && !manual;
   for (const [signal, code] of [["SIGTERM", 143], ["SIGINT", 130]] as const)
     process.once(signal, () => {
+      // The exit marker "clean" for the restart history (lib/restarts/tracker.ts).
+      noteStopSignal(signal);
       void stopInstance(signal, { waitForServer: underNext }).then(() => {
         if (manual) process.exit(code);
       });

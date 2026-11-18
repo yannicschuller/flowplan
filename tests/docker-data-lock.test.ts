@@ -24,14 +24,17 @@ const stubs: Record<string, string> = {
   // exits with FAKE_DELETE_CODE (default 0).
   node: `echo "node $* pid=$$" >> "$LOG"
 case "$1" in */litestream-replica-reset.mjs) exit "\${FAKE_DELETE_CODE:-0}" ;; esac
+if [ -n "\${FAKE_NODE_SAY:-}" ]; then echo "$FAKE_NODE_SAY"; echo "$FAKE_NODE_SAY (stderr)" >&2; fi
 trap 'echo "node got TERM" >> "$LOG"; exit "\${FAKE_NODE_TERM_CODE:-0}"' TERM
 if [ -n "\${FAKE_NODE_EXIT:-}" ]; then sleep 1; echo "node exits $FAKE_NODE_EXIT" >> "$LOG"; exit "$FAKE_NODE_EXIT"; fi
 while :; do sleep 0.1; done`,
   // Litestream: restore and reset log and return; replicate -exec runs the
   // app as its child; replicate alone runs until SIGTERM. FAKE_LS_DIE=n:
   // the first n replicate runs without -exec die at once.
+  // FAKE_LS_SAY: a line on stdout and one on stderr (restore and replicate).
   litestream: `cmd="$1"; shift
 echo "litestream $cmd $*" >> "$LOG"
+if [ -n "\${FAKE_LS_SAY:-}" ]; then echo "$cmd: $FAKE_LS_SAY"; echo "$cmd: stderr $FAKE_LS_SAY" >&2; fi
 case "$cmd" in
   replicate)
     exe=""
@@ -82,6 +85,9 @@ function box(env: Record<string, string> = {}): Box {
   };
 }
 const withS3 = { S3_BUCKET: "bucket", S3_ACCESS_KEY_ID: "x", S3_SECRET_ACCESS_KEY: "y" };
+// With Litestream's output saved (ls_log_open), the app runs through the
+// entrypoint again to get the container's own stdout back.
+const replicateExec = (b: Box) => `litestream replicate -config /etc/litestream.yml -exec sh ${b.script} --exec-app`;
 
 const lines = (b: Box) => readFileSync(b.log, "utf8").split("\n").filter(Boolean);
 const has = (b: Box, re: RegExp) => lines(b).some((l) => re.test(l));
@@ -101,15 +107,17 @@ function start(b: Box, shell = "sh"): Run {
   child.stderr!.on("data", (d) => (out += d));
   const exited = new Promise<number | null>((r) => child.on("exit", (code, signal) => r(code ?? (signal ? -1 : null))));
   // Never hang the run: a container that does not stop is a failure.
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const exit = Promise.race([
     exited,
-    new Promise<number | null>((_, reject) =>
-      setTimeout(() => {
+    new Promise<number | null>((_, reject) => {
+      timer = setTimeout(() => {
         child.kill("SIGKILL");
-        reject(new Error(`the entrypoint did not exit:\n${out}\n${readFileSync(b.log, "utf8")}`));
-      }, 10000).unref(),
-    ),
-  ]);
+        reject(new Error(`the entrypoint did not exit:\n${out}\n${existsSync(b.log) ? readFileSync(b.log, "utf8") : ""}`));
+      }, 10000);
+      timer.unref();
+    }),
+  ]).finally(() => clearTimeout(timer));
   return { child, exit, output: () => out };
 }
 
@@ -132,7 +140,7 @@ test("lock free with Litestream: restore under the lock, then exec replicate -ex
   await until("node", () => has(b, /^node server\.js/));
   assert.deepEqual(lines(b).slice(0, 3).map((l) => l.replace(/ pid=\d+$/, "")), [
     `litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists ${join(b.data, "flowplan.sqlite")}`,
-    "litestream replicate -config /etc/litestream.yml -exec node server.js",
+    replicateExec(b),
     "node server.js",
   ]);
   // exec: the entrypoint's PID became Litestream, then the app.
@@ -297,7 +305,7 @@ test("litestream-reset in the data folder: `litestream reset` runs under the loc
   assert.deepEqual(lines(b).slice(0, 3), [
     `litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists ${join(b.data, "flowplan.sqlite")}`,
     `litestream reset -config /etc/litestream.yml ${join(b.data, "flowplan.sqlite")}`,
-    "litestream replicate -config /etc/litestream.yml -exec node server.js",
+    replicateExec(b),
   ]);
   assert.equal(existsSync(join(b.data, "litestream-reset")), false, "one reset only");
   run.child.kill("SIGTERM");
@@ -319,7 +327,7 @@ test("marker 'remote': the delete script, then the local reset, then replicate; 
     `litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists ${join(b.data, "flowplan.sqlite")}`,
     RESET_SCRIPT,
     `litestream reset -config /etc/litestream.yml ${join(b.data, "flowplan.sqlite")}`,
-    "litestream replicate -config /etc/litestream.yml -exec node server.js",
+    replicateExec(b),
   ]);
   assert.equal(existsSync(join(b.data, "litestream-reset")), false, "removed after both steps");
   assert.match(run.output(), /deleting the replica in the bucket \(flowplan\/db\/\)/);
@@ -339,7 +347,7 @@ test("marker 'remote' and the delete fails: no reset, the marker stays, the app 
   const log = withoutPid(b);
   assert.ok(log.includes(RESET_SCRIPT));
   assert.equal(log.some((l) => l.startsWith("litestream reset")), false);
-  assert.ok(log.includes("litestream replicate -config /etc/litestream.yml -exec node server.js"));
+  assert.ok(log.includes(replicateExec(b)));
   assert.equal(readFileSync(join(b.data, "litestream-reset"), "utf8"), "remote\n", "kept for the next start");
   assert.match(run.output(), /DELETING THE REPLICA IN THE BUCKET FAILED/);
   run.child.kill("SIGTERM");
@@ -426,4 +434,96 @@ test("the image has flock (util-linux) and the lock comes before the instance re
   assert.ok(at("flock -n -E 75 9") > 0);
   assert.ok(at("flock -n -E 75 9") < at('[ -f "$DATA/restore-pending/READY" ] && [ ! -f'));
   assert.ok(at("flock -n -E 75 9") < at("litestream restore"));
+});
+
+// Litestream's own output, also in $DATA/logs/litestream.log (redacted) for
+// the restart history: through a FIFO and `tee -p` to the container's
+// stdout and to awk. PID 1, signals and exit codes stay as they were; the
+// app's own lines never go into that file (it saves them itself).
+const SECRET = "ls-secret-value-123";
+const logFile = (b: Box) => join(b.data, "logs", "litestream.log");
+const fileText = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : "");
+const say = `sync key=${SECRET} to http://user:pw@10.1.2.3:9000 from [2001:db8::7]`;
+
+test("Litestream's lines reach the container log unchanged and logs/litestream.log redacted; the app keeps its own stdout; exec path, PID and exit code as before", { skip }, async () => {
+  const b = box({ ...withS3, S3_SECRET_ACCESS_KEY: SECRET, FAKE_LS_SAY: say, FAKE_NODE_SAY: "app line", FAKE_NODE_TERM_CODE: "7" });
+  const run = start(b);
+  await until("node", () => has(b, /^node server\.js/));
+  await until("litestream.log", () => /replicate: stderr/.test(fileText(logFile(b))));
+  await until("app line", () => run.output().includes("app line (stderr)"));
+  const file = fileText(logFile(b));
+  assert.match(file, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z - start /m, "a start mark per container");
+  assert.match(file, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z - litestream restore: sync key=\[redacted\] to http:\/\/\[redacted\]@\[ip\]:9000 from \[\[ip\]\]$/m);
+  assert.match(file, / - litestream replicate: stderr sync key=\[redacted\]/);
+  assert.doesNotMatch(file, new RegExp(`${SECRET}|10\\.1\\.2\\.3|2001:db8|app line`));
+  // The container's log has every line as before, the app's too.
+  assert.ok(run.output().includes(`restore: ${say}`), run.output());
+  assert.ok(run.output().includes(`replicate: stderr ${say}`));
+  assert.ok(run.output().includes("app line\n"));
+  // exec: the entrypoint's PID became Litestream, then the app.
+  assert.equal(Number(/pid=(\d+)/.exec(lines(b).find((l) => l.startsWith("node server.js"))!)![1]), run.child.pid);
+  assert.ok(lines(b).includes(replicateExec(b)));
+  run.child.kill("SIGTERM");
+  assert.equal(await run.exit, 7, "the app's exit code is the container's");
+  assert.ok(has(b, /^node got TERM$/));
+});
+
+test("exec path with the log copy: an app that exits by itself ends the container with its exit code", { skip }, async () => {
+  const b = box({ ...withS3, FAKE_LS_SAY: "hello", FAKE_NODE_EXIT: "5" });
+  const run = start(b);
+  assert.equal(await run.exit, 5);
+  assert.match(fileText(logFile(b)), / - litestream replicate: hello$/m);
+});
+
+test("supervised path: Litestream's lines reach the container log and the file; SIGTERM order and exit code unchanged", { skip }, async () => {
+  const b = box({ ...withS3, S3_SECRET_ACCESS_KEY: SECRET, FAKE_LS_SAY: say, FAKE_NODE_TERM_CODE: "3" });
+  writeFileSync(join(b.data, "flowplan.sqlite"), "");
+  const other = await holdLock(b);
+  const run = start(b);
+  await until("node", () => has(b, /^node server\.js/));
+  assert.equal(existsSync(logFile(b)), false, "nothing before the lock is free");
+  await other.release();
+  await until("litestream.log", () => /replicate: stderr/.test(fileText(logFile(b))));
+  assert.ok(run.output().includes(`replicate: ${say}`));
+  assert.doesNotMatch(fileText(logFile(b)), new RegExp(SECRET));
+  assert.deepEqual(lines(b).filter((l) => l.startsWith("litestream")), ["litestream replicate -config /etc/litestream.yml"], "the plain command line, no wrapper");
+  run.child.kill("SIGTERM");
+  assert.equal(await run.exit, 3);
+  const log = lines(b);
+  assert.ok(log.indexOf("node got TERM") >= 0 && log.indexOf("node got TERM") < log.indexOf("litestream got TERM"), log.join("\n"));
+});
+
+test("logs folder not writable, or FLOWPLAN_LOG_FILE=off: everything as before, Litestream's output only in the container log", { skip }, async () => {
+  for (const variant of ["file", "off"] as const) {
+    const b = box({ ...withS3, FAKE_LS_SAY: "hello", ...(variant === "off" ? { FLOWPLAN_LOG_FILE: "off" } : {}) });
+    // A file where the folder would be: mkdir fails (root ignores modes).
+    if (variant === "file") writeFileSync(join(b.data, "logs"), "");
+    const run = start(b);
+    await until("node", () => has(b, /^node server\.js/));
+    assert.ok(lines(b).includes("litestream replicate -config /etc/litestream.yml -exec node server.js"), lines(b).join("\n"));
+    assert.ok(run.output().includes("replicate: hello"));
+    if (variant === "file") assert.match(run.output(), /logs is not writable; Litestream's output is not saved there/);
+    else assert.equal(existsSync(join(b.data, "logs")), false);
+    run.child.kill("SIGTERM");
+    assert.equal(await run.exit, 0);
+  }
+});
+
+test("the copy rotates at 1,000 lines into litestream.log.1", { skip }, () => {
+  const awk = /^ls_awk='\n([\s\S]*?)'$/m.exec(readFileSync("docker/entrypoint.sh", "utf8"))![1];
+  const dir = mkdtempSync(join(tmpdir(), "flowplan-ls-awk-"));
+  dirs.push(dir);
+  const file = join(dir, "litestream.log");
+  const input = Array.from({ length: 2500 }, (_, i) => `line ${i}`).join("\n") + "\n";
+  const result = spawnSync("awk", ["-v", `file=${file}`, awk], { input, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const current = readFileSync(file, "utf8").trim().split("\n");
+  const previous = readFileSync(`${file}.1`, "utf8").trim().split("\n");
+  assert.equal(previous.length, 1000);
+  assert.equal(current.length, 500);
+  assert.match(current.at(-1)!, / - litestream line 2499$/);
+  assert.match(previous[0], / - litestream line 1000$/);
+  // Seconds since the epoch as an ISO time (no date command per line).
+  const at = Date.parse(current[0].split(" ")[0]);
+  assert.ok(Math.abs(at - Date.now()) < 10_000, current[0]);
 });

@@ -306,6 +306,17 @@
   font: 12px var(--font-mono);
   user-select: all;
 }
+/* Restarts (monitoring-restarts.tsx): the date is no error, the log scrolls. */
+.mon-error-what strong.mon-restart-when {
+  color: inherit;
+}
+.mon-restart-log {
+  max-height: 420px;
+  overflow: auto;
+}
+.mon-errgroup summary > .status-badge {
+  justify-self: start;
+}
 
 /* ---------- Queues: one line per queue with a status dot ---------- */
 .mon-queues {

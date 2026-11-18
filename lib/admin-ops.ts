@@ -87,6 +87,9 @@ export async function sweepOpsEvents(now = Date.now()) {
   await flushOpsEvents();
   await run("DELETE FROM ops_events WHERE at<?", now - KEEP_EVENTS_DAYS * DAY);
   await run("DELETE FROM ops_alerts WHERE sent_at<?", now - 90 * DAY);
+  // The restart history after 30 days, and the log files of containers
+  // that are long gone (lib/restarts/history.ts).
+  await (await import("./restarts/history")).sweepRestartEvents(now);
 }
 
 /* ---------- Background workers ---------- */
@@ -278,7 +281,9 @@ async function writeSetting(key: string, value: unknown) {
 
 // litestream_stuck: the Litestream replica in the bucket is stuck
 // (lib/litestream-health.ts) – sent once per incident, not once a day.
-export const alertEvents = ["backup_failed", "storage_high", "worker_error", "login_failures", "security", "litestream_stuck"] as const;
+// unexpected_restart: a crash, or two unexpected restarts within an hour
+// (lib/restarts/history.ts) – also once per incident.
+export const alertEvents = ["backup_failed", "storage_high", "worker_error", "login_failures", "security", "litestream_stuck", "unexpected_restart"] as const;
 export type AlertEvent = (typeof alertEvents)[number];
 type StoredAlerts = { url: string; events: AlertEvent[]; secret: string; version?: number };
 const ALERTS_KEY = "opsAlerts";
@@ -296,6 +301,8 @@ async function storedAlerts(): Promise<(StoredAlerts & { plainSecret: string }) 
   if (!stored.version && !events.includes("security")) events.push("security");
   // … and before the stuck Litestream replica (version 3).
   if ((stored.version ?? 0) < 3 && !events.includes("litestream_stuck")) events.push("litestream_stuck");
+  // … and before unexpected restarts (version 4).
+  if ((stored.version ?? 0) < 4 && !events.includes("unexpected_restart")) events.push("unexpected_restart");
   return { ...stored, events, plainSecret };
 }
 export async function alertSettingsForAdmin() {
@@ -332,7 +339,7 @@ export async function saveAlertSettings(actorId: string, input: unknown) {
     throw new HttpError(400, "Die Webhook-Adresse muss mit https:// beginnen.");
   const previous = await storedAlerts();
   const secret = !newSecret && previous?.plainSecret ? previous.plainSecret : randomBytes(24).toString("base64url");
-  await writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 3 });
+  await writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 4 });
   await audit(actorId, "admin.ops.alerts", "instance", parsed.host);
   return await alertSettingsForAdmin();
 }
@@ -355,6 +362,8 @@ export async function activeAlerts(now = Date.now()): Promise<{ event: AlertEven
   if (logins >= LOGIN_ALERT_THRESHOLD) result.push({ event: "login_failures", detail: String(logins) });
   const replica = await (await import("./litestream-health")).openLitestreamIncident().catch(() => null);
   if (replica) result.push({ event: "litestream_stuck", detail: `${replica.files}${replica.truncated ? "+" : ""} L0, ${replica.repair}` });
+  const restarts = await (await import("./restarts/history")).openRestartIncident(now).catch(() => null);
+  if (restarts) result.push({ event: "unexpected_restart", detail: String(restarts.restarts) });
   return result;
 }
 
@@ -366,6 +375,7 @@ const alertTitle = (event: AlertEvent | "test") =>
     login_failures: ct("Viele fehlgeschlagene Anmeldungen", "Many failed sign-ins"),
     security: ct("Sicherheitsvorfall", "Security incident"),
     litestream_stuck: ct("Litestream-Replik hängt", "Litestream replica stuck"),
+    unexpected_restart: ct("Unerwartete Neustarts", "Unexpected restarts"),
     test: ct("Test-Benachrichtigung", "Test notification"),
   })[event];
 
@@ -402,6 +412,7 @@ const alertTitleIn = (event: AlertEvent) => (say: (de: string, en: string) => st
     login_failures: say("Viele fehlgeschlagene Anmeldungen", "Many failed sign-ins"),
     security: say("Sicherheitsvorfall", "Security incident"),
     litestream_stuck: say("Litestream-Replik hängt", "Litestream replica stuck"),
+    unexpected_restart: say("Unerwartete Neustarts", "Unexpected restarts"),
   })[event];
 
 // Sends each configured alert that holds now, once per event and day: to
@@ -416,7 +427,7 @@ export async function checkHealthAlerts(now = Date.now()) {
   const sent: { event: AlertEvent; status: number | null; error: string | null }[] = [];
   for (const alert of await activeAlerts(now)) {
     // Sent once per incident when it is found (sendIncidentAlert).
-    if (alert.event === "litestream_stuck") continue;
+    if (alert.event === "litestream_stuck" || alert.event === "unexpected_restart") continue;
     const toWebhook = !!webhook && webhook.events.includes(alert.event);
     if (!toWebhook && !admins) continue;
     // Claimed before sending, so two runs at once do not both send.
@@ -431,7 +442,8 @@ export async function checkHealthAlerts(now = Date.now()) {
 }
 
 // An alert once per incident, right away (`key` names the incident; the
-// stuck Litestream replica, lib/litestream-health.ts): to the operator's
+// stuck Litestream replica, lib/litestream-health.ts; unexpected restarts,
+// lib/restarts/history.ts): to the operator's
 // webhook when it chose the event, and to the administrators' chat apps.
 export async function sendIncidentAlert(event: AlertEvent, key: string, detail: string, now = Date.now()) {
   const config = await storedAlerts();

@@ -34,6 +34,7 @@ export function AlertsForm({
     ["login_failures", t("Viele fehlgeschlagene Anmeldungen (50 in einer Stunde)", "Many failed sign-ins (50 in one hour)")],
     ["security", t("Sicherheitsvorfälle (sofort, siehe Sicherheit)", "Security incidents (right away, see Security)")],
     ["litestream_stuck", t("Litestream-Replik hängt (sofort, einmal je Vorfall)", "Litestream replica stuck (right away, once per incident)")],
+    ["unexpected_restart", t("Unerwartete Neustarts: ein Absturz oder zwei in einer Stunde (sofort, einmal je Vorfall)", "Unexpected restarts: a crash or two within an hour (right away, once per incident)")],
   ];
   return (
     <SettingGroup

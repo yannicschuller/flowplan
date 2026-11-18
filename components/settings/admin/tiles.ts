@@ -167,7 +167,13 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
           ? join(workers > 0 && t(`${workers} Dienste mit Fehler`, `${workers} workers failing`), alerts > 0 && t(`${alerts} Warnungen`, `${alerts} alerts`))
           : t(`Alles in Ordnung · ${s.monitoring.loginFailures} fehlgeschlagene Anmeldungen (24 Std.)`, `All fine · ${s.monitoring.loginFailures} failed sign-ins (24 h)`),
       tone: workers || alerts ? "error" : undefined,
-      badge: workers ? s.monitoring.failingWorkers.join(", ") : alerts ? t("Warnung", "Alert") : undefined,
+      badge: workers
+        ? s.monitoring.failingWorkers.join(", ")
+        : alerts
+          ? s.monitoring.alerts.includes("unexpected_restart")
+            ? t("Unerwartete Neustarts", "Unexpected restarts")
+            : t("Warnung", "Alert")
+          : undefined,
       // Errors per hour when there were any, else the requests.
       ...(c.errors24h.some((v) => (v || 0) > 0)
         ? { spark: c.errors24h, sparkTone: 2 as const, sparkLabel: t("Fehler (5xx) je Stunde, letzte 24 Stunden", "Errors (5xx) per hour, last 24 hours") }

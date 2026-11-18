@@ -166,7 +166,9 @@ COPY --from=build --chown=node:node /app/node_modules/aws4fetch /app/node_module
 # without an entry in /etc/passwd. Everything it writes goes to the data
 # folder, /tmp (HOME, see docker/entrypoint.sh) or Next's cache below; the
 # app code stays read-only for it.
-RUN setpriv --version && flock --version \
+# awk, mkfifo and tee -p copy Litestream's output to the data folder's
+# logs (docker/entrypoint.sh, ls_log_open); without them it is not saved.
+RUN setpriv --version && flock --version && awk 'BEGIN { srand(); exit !(srand() > 0) }' && mkfifo --version > /dev/null && tee -i -p --version > /dev/null \
   && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache
 # Helper scripts started with docker exec (as root, see below) continue as
 # PUID:PGID before they write anything (scripts/drop-root.mjs).

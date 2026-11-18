@@ -3,7 +3,9 @@
 // of the landing page (numbers and the charts of its carousel), `?view=ai`
 // the AI statistics (`&days=7|30|90`, per person too), `?view=errors` the
 // error details (lib/error-details.ts, with `range` for the counts and
-// trend); `?range=1h|24h|7d` picks the request chart's span. POST switches the usage statistics on or
+// trend), `?view=restarts` the restart history and `?view=restart&id=…`
+// one restart with its saved log lines (lib/restarts/history.ts, loaded
+// when the section opens and when a row is opened); `?range=1h|24h|7d` picks the request chart's span. POST switches the usage statistics on or
 // off (`metrics.save`), deletes them (`metrics.clear`) or the error
 // details (`errors.clear`, answers the empty list), checks the AI
 // provider again (`ai.ping`) or changes the recommendations
@@ -26,6 +28,7 @@ import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
 import { clearErrorDetails, errorDetails } from "@/lib/error-details";
 import { litestreamActions, litestreamAdminAction } from "@/lib/litestream-health";
+import { restartsForAdmin } from "@/lib/restarts/history";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -40,8 +43,10 @@ const rangeOf = (raw: string | null): RequestRange => (REQUEST_RANGES.includes(r
 
 export const GET = withRequestLocale(async (req: Request) => {
   try {
-    await admin();
+    const user = await admin();
     const url = new URL(req.url);
+    const view = url.searchParams.get("view");
+    if (view === "restarts" || view === "restart") return Response.json(await restartsForAdmin(user, view === "restart" ? url.searchParams.get("id") || "" : null), noStore);
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(await monitoringLive(Date.now(), range), noStore);
     if (url.searchParams.get("view") === "errors") return Response.json(await errorDetails(Date.now(), range), noStore);

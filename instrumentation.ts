@@ -17,8 +17,16 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
-    // What is running, as the first line Flowplan writes (#194).
+    // The server log on disk and the heartbeat for the restart history
+    // (Administration → Überwachung → Neustarts): before the first line, so
+    // the copy has it; what the previous run left is taken over here, before
+    // this run writes anything (lib/restarts/tracker.ts).
+    const { installLogCapture } = await import("./lib/restarts/log-file");
+    installLogCapture();
     const { buildInfo, versionLine } = await import("./lib/build-info");
+    const { startRestartTracker, setTrackerInstance } = await import("./lib/restarts/tracker");
+    startRestartTracker({ version: buildInfo().version || null });
+    // What is running, as the first line Flowplan writes (#194).
     console.log(versionLine());
     // Cluster mode (FLOWPLAN_CLUSTER=1): PostgreSQL, Redis and S3 are
     // checked first – the process exits naming what is missing – then the
@@ -27,6 +35,12 @@ export async function register() {
     const { startInstance } = await import("./lib/cluster/runtime");
     const { poolStats } = await import("./lib/db-driver");
     await startInstance({ pool: poolStats, version: buildInfo().version || null });
+    // The previous run's end into the restart history, then every five
+    // minutes runs of other containers on this data folder that went stale.
+    const { instanceId } = await import("./lib/cluster/config");
+    setTrackerInstance(instanceId());
+    const { startRestartWorker } = await import("./lib/restarts/history");
+    await startRestartWorker().catch((e) => console.error("Restart history failed:", (e as Error)?.message));
     // A new instance on a public address without FLOWPLAN_SETUP_TOKEN: the
     // first visitor could create the administrator (lib/local-auth.ts).
     // With the token: where the first account is created (without the token).

@@ -5,6 +5,8 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // The restart history (lib/restarts/history.ts).
+  "Dieser Neustart ist nicht (mehr) gespeichert.": "This restart is not (or no longer) saved.",
   // The stuck Litestream replica (lib/litestream-health.ts).
   "Litestream repliziert in diesem Container nicht (aus, PostgreSQL, kein S3 oder ein anderer Container hält das Datenverzeichnis).":
     "Litestream does not replicate in this container (off, PostgreSQL, no S3, or another container holds the data folder).",

@@ -1573,6 +1573,7 @@ function migrate(d: DatabaseSync) {
   migrateServerMetrics(d);
   migrateErrorDetails(d);
   migrateSharedJobState(d);
+  migrateRestartEvents(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1709,6 +1710,19 @@ function migrateSharedJobState(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS print_snapshots(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,html TEXT,bytes INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS print_snapshots_user ON print_snapshots(user_id);
     CREATE INDEX IF NOT EXISTS print_snapshots_expires ON print_snapshots(expires_at);`);
+}
+// The restart history of the monitoring (lib/restarts/history.ts): one row
+// per previous run that ended – when it was noticed, when the run started
+// and ended, its uptime, the reason (clean, crash, oom, killed), signal or
+// exit code, the version, its last heartbeat (memory, JSON), the error
+// (redacted) and, for an unexpected one, its last 200 log lines (redacted,
+// JSON) with their count; `incident` names the alert it belongs to. No
+// address, no person. Kept 30 days. A new table only – an older version
+// leaves it alone – so the schema number stays.
+function migrateRestartEvents(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS restart_events(id TEXT PRIMARY KEY,at INTEGER NOT NULL,ended_at INTEGER NOT NULL,instance TEXT NOT NULL DEFAULT '',host TEXT NOT NULL DEFAULT '',previous_start INTEGER NOT NULL,uptime_ms INTEGER NOT NULL DEFAULT 0,reason TEXT NOT NULL,signal TEXT,exit_code INTEGER,version TEXT,heartbeat TEXT,error TEXT,line_count INTEGER NOT NULL DEFAULT 0,log_lines TEXT,incident TEXT);
+    CREATE INDEX IF NOT EXISTS restart_events_at ON restart_events(at);
+    CREATE INDEX IF NOT EXISTS restart_events_incident ON restart_events(incident);`);
 }
 // Schema 102 – a workspace's look (#196): workspaces.theme (JSON, NULL =
 // Flowplan's own: accent, background tint, typefaces; lib/workspace-theme.ts),

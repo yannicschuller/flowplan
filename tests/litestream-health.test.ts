@@ -267,7 +267,7 @@ test("alert settings saved before this event get it as well", sqlite, async () =
     "INSERT INTO instance_settings(key,value) VALUES('opsAlerts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     JSON.stringify({ url: "https://alerts.example.test/hook", events: ["backup_failed", "security"], secret: sealSecret("s", "ops-alerts"), version: 2 }),
   );
-  assert.deepEqual((await alertSettingsForAdmin()).events, ["backup_failed", "security", "litestream_stuck"]);
+  assert.deepEqual((await alertSettingsForAdmin()).events, ["backup_failed", "security", "litestream_stuck", "unexpected_restart"]);
   await run("DELETE FROM instance_settings WHERE key='opsAlerts'");
 });
 

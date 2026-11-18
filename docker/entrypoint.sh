@@ -46,6 +46,15 @@ if [ "$(id -u)" = 0 ]; then
   export HOME
   exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$0" "$@"
 fi
+# The app under `litestream replicate -exec` while Litestream's output is
+# copied to the log file (ls_log_open below): the app writes to the
+# container's own stdout/stderr again (kept on fds 3 and 4), not through
+# Litestream's copy – it saves its own lines (lib/restarts/log-file.ts).
+# After the user switch: Litestream already runs as that user.
+if [ "${1:-}" = --exec-app ]; then
+  if { true >&3 && true >&4; } 2> /dev/null; then exec node server.js >&3 2>&4 3>&- 4>&-; fi
+  exec node server.js
+fi
 if [ -n "${PUID:-}${PGID:-}" ] && [ "${PUID:-1000}:${PGID:-${PUID:-1000}}" != "$(id -u):$(id -g)" ]; then
   echo "PUID/PGID are ignored: the container was started as UID $(id -u), GID $(id -g) (user:, --user or runAsUser). PUID/PGID need the image's default start: remove user:, or set only user: \"${PUID:-1000}:${PGID:-${PUID:-1000}}\"." >&2
 fi
@@ -94,6 +103,159 @@ case "${DATABASE_URL:-}" in
   *) POSTGRES= ;;
 esac
 LITESTREAM=
+
+# Litestream's own output, also saved (redacted) in $DATA/logs/litestream.log
+# (rotated at 1,000 lines or 1 MB to litestream.log.1) for the restart
+# history (Administration → Überwachung → Neustarts, lib/restarts/). The
+# container's log keeps every line as before. Litestream writes to a FIFO;
+# `tee -p` copies each chunk at once to the container's stdout and to awk,
+# which masks secrets (values of variables named *TOKEN*, *SECRET*,
+# *PASSWORD*, *KEY*, bearer tokens, URL credentials, key=value secrets),
+# e-mail and IP addresses, adds the time and rotates. Both ignore TERM,
+# INT, HUP and PIPE and end when Litestream closes its output; when awk
+# fails (a full disk) only the file stops, tee goes on. Litestream starts
+# with SIGPIPE ignored, so a copy that is gone never ends it. PID 1, the
+# signals and the exit code stay Litestream's (exec path) or the shell's
+# (supervise). Nothing of this when FLOWPLAN_LOG_FILE=off, $DATA/logs is
+# not writable, or awk, mkfifo, tee -p or /dev/fd are missing.
+# Limit: on the exec path Litestream is PID 1; when it exits, the kernel
+# ends the copying processes with it, so its very last line at a stop can
+# miss the file (and, rarely, the container log).
+ls_log_on=
+ls_reader=
+ls_awk='
+
+function iso(t,   s, z, era, doe, yoe, y, doy, mp, d, m) {
+  s = t % 86400; z = (t - s) / 86400 + 719468
+  era = int(z / 146097); doe = z - era * 146097
+  yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
+  y = yoe + era * 400; doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
+  mp = int((5 * doy + 2) / 153); d = doy - int((153 * mp + 2) / 5) + 1
+  m = mp < 10 ? mp + 3 : mp - 9; if (m <= 2) y++
+  return sprintf("%04d-%02d-%02dT%02d:%02d:%02d.000Z", y, m, d, int(s / 3600), int((s % 3600) / 60), s % 60)
+}
+function clock() { srand(); return srand() }
+function word(c) { return c ~ /[0-9A-Za-z]/ }
+function lit(s, from, to,   out, i) {
+  out = ""
+  while ((i = index(s, from)) > 0) { out = out substr(s, 1, i - 1) to; s = substr(s, i + length(from)) }
+  return out s
+}
+function addr(r,   port, t, n) {
+  if (r ~ /^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+(:[0-9]+)?$/) { port = ""; if (match(r, /:[0-9]+$/)) port = substr(r, RSTART); return "[ip]" port }
+  t = r; n = gsub(/:/, ":", t)
+  if (index(r, "::") > 0 || n >= 7) return "[ip]"
+  return r
+}
+function ips(s,   out, pre, run, tail) {
+  out = ""
+  while (match(s, /[0-9A-Fa-f:.]+/)) {
+    pre = substr(s, 1, RSTART - 1); run = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+    tail = ""; while (run ~ /[.]$/) { tail = tail "."; run = substr(run, 1, length(run) - 1) }
+    if (!word(substr(out pre, length(out pre), 1)) && !word(substr(s, 1, 1))) run = addr(run)
+    out = out pre run tail
+  }
+  return out s
+}
+function pairs(s,   out, m) {
+  out = ""
+  while (match(tolower(s), /(password|passwd|secret|token|api_?key|access_?key(_id)?|secret_?key|authorization|credentials?)["]?[ \t]*[:=][ \t]*["]?[^ \t",;&]+/)) {
+    m = substr(s, RSTART, RLENGTH); out = out substr(s, 1, RSTART - 1); s = substr(s, RSTART + RLENGTH)
+    match(m, /[:=][ \t]*["]?/)
+    out = out substr(m, 1, RSTART + RLENGTH - 1) "[redacted]"
+  }
+  return out s
+}
+function creds(s,   out, m) {
+  out = ""
+  while (match(s, /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^ \/@]+@/)) {
+    m = substr(s, RSTART, RLENGTH); out = out substr(s, 1, RSTART - 1) substr(m, 1, index(m, "://") + 2) "[redacted]@"; s = substr(s, RSTART + RLENGTH)
+  }
+  return out s
+}
+function redact(s,   i) {
+  for (i = 1; i <= nsecret; i++) s = lit(s, secret[i], "[redacted]")
+  s = creds(s)
+  gsub(/[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+[A-Za-z0-9._~+\/=-]+/, "Bearer [redacted]", s)
+  s = pairs(s)
+  gsub(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z][A-Za-z]+/, "[e-mail]", s)
+  return ips(s)
+}
+BEGIN {
+  nsecret = 0
+  for (k in ENVIRON) {
+    v = ENVIRON[k]; u = toupper(k)
+    if (u ~ /TOKEN|SECRET|PASSWORD|PASSWD|KEY|CREDENTIAL/ && u !~ /_(FILE|PATH|DIR)$/ && length(v) >= 6 && v !~ /^(true|false|on|off)$/) secret[++nsecret] = v
+  }
+  for (i = 1; i <= nsecret; i++) for (j = i + 1; j <= nsecret; j++) if (length(secret[j]) > length(secret[i])) { t = secret[i]; secret[i] = secret[j]; secret[j] = t }
+  if (mark) { out = iso(clock()) " - start Flowplan container start"; print out >> file; fflush(file); lines++; bytes += length(out) + 1 }
+}
+{
+  line = $0; sub(/\r$/, "", line)
+  if (line == "") next
+  if (length(line) > 2000) line = substr(line, 1, 2000)
+  out = iso(clock()) " - litestream " redact(line)
+  if (lines > 0 && (lines + 1 > 1000 || bytes + length(out) + 1 > 1048576)) {
+    close(file); system("mv -f \"" file "\" \"" file ".1\"")
+    lines = 0; bytes = 0
+  }
+  print out >> file; fflush(file)
+  lines++; bytes += length(out) + 1
+}'
+# Opens fd 6: what is written to it reaches the container's stdout and the
+# file. ls_log_on=1 when it works; nothing changes when it does not.
+ls_log_open() {
+  if [ -n "$ls_log_on" ] || [ "${FLOWPLAN_LOG_FILE:-on}" = off ]; then return 0; fi
+  ls_dir="$DATA/logs"
+  # The app runs as "sh $0 --exec-app" (Litestream splits -exec at
+  # spaces); awk hands the file name to mv in double quotes.
+  case "$0$ls_dir" in *[[:space:]\"\$\`\\]*) return 0 ;; esac
+  [ -f "$0" ] || return 0
+  mkdir -p "$ls_dir" 2> /dev/null || true
+  if ! { [ -d "$ls_dir" ] && [ -w "$ls_dir" ]; }; then
+    echo "Flowplan: $ls_dir is not writable; Litestream's output is not saved there." >&2
+    return 0
+  fi
+  { command -v awk && command -v mkfifo; } > /dev/null 2>&1 || return 0
+  tee -i -p < /dev/null > /dev/null 2>&1 || return 0
+  awk -v file=/dev/null "$ls_awk" < /dev/null > /dev/null 2>&1 || return 0
+  # mawk (Debian's awk) reads a pipe in blocks unless told otherwise: the
+  # lines would wait until Litestream ends.
+  ls_awk_line=
+  if awk -W interactive 'BEGIN { exit 0 }' < /dev/null > /dev/null 2>&1; then ls_awk_line="-W interactive"; fi
+  ls_fifo="$(mktemp -d "${TMPDIR:-/tmp}/flowplan-log.XXXXXX" 2> /dev/null)" || return 0
+  if ! mkfifo -m 600 "$ls_fifo/litestream" 2> /dev/null; then
+    rm -rf "$ls_fifo"
+    return 0
+  fi
+  # Read-write: opening it never blocks; the FIFO's name goes at once.
+  exec 7<> "$ls_fifo/litestream"
+  rm -rf "$ls_fifo"
+  if [ ! -e /dev/fd/7 ]; then
+    exec 7>&-
+    return 0
+  fi
+  ls_file="$ls_dir/litestream.log"
+  ls_lines="$(wc -l < "$ls_file" 2> /dev/null || echo 0)"
+  ls_bytes="$(wc -c < "$ls_file" 2> /dev/null || echo 0)"
+  (
+    trap '' TERM INT HUP PIPE
+    # Not the data folder lock (fd 9): it goes with the container's processes.
+    exec 9>&- 5>&1 < /dev/fd/7 7>&-
+    { tee -i -p /dev/fd/8 8>&1 >&5 2> /dev/null 5>&-; } | awk $ls_awk_line -v file="$ls_file" -v lines="$ls_lines" -v bytes="$ls_bytes" -v mark=1 "$ls_awk" > /dev/null 2>&1
+  ) &
+  ls_reader=$!
+  # Write-only from here: when the copy is gone, a write fails instead of
+  # filling the FIFO.
+  exec 6> /dev/fd/7 7>&-
+  trap '' PIPE
+  ls_log_on=1
+}
+# A Litestream command with its output through fd 6 (exit code unchanged).
+ls_run() {
+  if [ -n "$ls_log_on" ]; then "$@" >&6 2>&6 6>&-; else "$@"; fi
+}
+
 if [ -z "$POSTGRES" ] && [ -n "${S3_BUCKET:-}" ] && [ "${FLOWPLAN_LITESTREAM:-on}" != "off" ]; then LITESTREAM=1; fi
 
 # One container per SQLite data folder. A rollout with overlap (Coolify's
@@ -187,7 +349,7 @@ litestream_reset_if_asked() {
       fi
     fi
     echo "Litestream: resetting the local replication state ($DATA/litestream-reset)."
-    if litestream reset -config /etc/litestream.yml "$DB"; then
+    if ls_run litestream reset -config /etc/litestream.yml "$DB"; then
       rm -f "$DATA/litestream-reset"
     else
       echo "Litestream: the reset failed; $DATA/litestream-reset stays for the next start." >&2
@@ -260,7 +422,7 @@ supervise() {
   forwarded=
   trap 'signal=TERM' TERM
   trap 'signal=INT' INT
-  node server.js &
+  node server.js 6>&- &
   app=$!
   while kill -0 "$app" 2> /dev/null; do
     if [ -n "$signal" ] && [ -z "$forwarded" ]; then
@@ -274,6 +436,7 @@ supervise() {
         unmark_waiting
         if [ -n "$replicate" ]; then
           echo "Flowplan: the other container has stopped and released $DATA; Litestream starts replicating now."
+          ls_log_open
           if [ -z "$signal" ]; then litestream_reset_if_asked; fi
           mark_replicating
         else
@@ -296,7 +459,12 @@ supervise() {
         ls_next=$((now + delay))
       fi
       if [ -z "$ls_pid" ] && [ "$now" -ge "$ls_next" ]; then
-        litestream replicate -config /etc/litestream.yml &
+        # Started directly (not through ls_run): $! must be Litestream itself.
+        if [ -n "$ls_log_on" ]; then
+          litestream replicate -config /etc/litestream.yml >&6 2>&6 6>&- &
+        else
+          litestream replicate -config /etc/litestream.yml &
+        fi
         ls_pid=$!
         ls_started="$now"
       fi
@@ -311,6 +479,11 @@ supervise() {
     wait "$ls_pid" || true
   fi
   if [ -z "$locked" ]; then unmark_waiting; fi
+  # Litestream's last lines into the file before the container ends.
+  if [ -n "$ls_log_on" ]; then
+    exec 6>&-
+    wait "$ls_reader" 2> /dev/null || true
+  fi
   exit "$app_code"
 }
 
@@ -367,9 +540,14 @@ if [ -n "$LITESTREAM" ]; then
   # Lock free at once keeps Litestream's own -exec: it forwards signals,
   # replicates the app's last writes after it exits and ends with the app's
   # exit code; app and replication live and die together.
-  litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists "$DB"
+  ls_log_open
+  ls_run litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists "$DB"
   litestream_reset_if_asked
   mark_replicating
+  if [ -n "$ls_log_on" ]; then
+    exec 3>&1 4>&2
+    exec litestream replicate -config /etc/litestream.yml -exec "sh $0 --exec-app" >&6 2>&6 6>&-
+  fi
   exec litestream replicate -config /etc/litestream.yml -exec "node server.js"
 fi
 if [ -n "$OVERLAP" ]; then supervise ""; fi
