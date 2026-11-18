@@ -25,12 +25,14 @@ const tagName = (node: Node) => ((node.name as { name?: string } | undefined)?.n
 const attribute = (opening: Node, name: string) =>
   (opening.attributes as Attribute[]).find((a) => a.type === "JSXAttribute" && a.name?.name === name);
 
-// Every <form> in the source that contains a password input: type="password"
-// or an expression that can be "password" (type={show ? "text" : "password"}).
+// Every <form> in the source that contains a password input: type="password",
+// an expression that can be "password" (type={show ? "text" : "password"}),
+// or the shared field with the eye button (components/password-input.tsx, #372).
 function passwordForms(file: string, text = readFileSync(file, "utf8")) {
   const ast = parse(text, { sourceType: "module", plugins: ["jsx", "typescript"], errorRecovery: true }) as unknown as Node;
   const found: { line: number; post: boolean; action: boolean }[] = [];
   const isPasswordInput = (opening: Node) => {
+    if (tagName(opening) === "PasswordInput") return true;
     const value = tagName(opening) === "input" ? attribute(opening, "type")?.value : null;
     return !!value && /["'`]password["'`]/.test(text.slice(value.start, value.end));
   };
