@@ -25,6 +25,8 @@ type State = {
   closed: boolean;
   lastError: string | null;
   timer?: ReturnType<typeof setTimeout>;
+  // Queries in flight on this connection (see on()).
+  busy: number;
 };
 // "session": LISTEN and the leader lock. "duties": the per-duty locks of
 // the leader's rounds (lib/cluster/leader.ts) – on a connection of their
@@ -32,7 +34,7 @@ type State = {
 // of a round still running on it.
 type Name = "session" | "duties";
 const holder = globalThis as unknown as { flowplanPgSession?: State; flowplanPgSessions?: Map<Name, State> };
-const fresh = (name: Name): State => ({ name, client: null, connecting: null, listeners: new Map(), generation: 0, attempt: 0, closed: false, lastError: null });
+const fresh = (name: Name): State => ({ name, client: null, connecting: null, listeners: new Map(), generation: 0, attempt: 0, closed: false, lastError: null, busy: 0 });
 const state = (name: Name = "session"): State => {
   const all = (holder.flowplanPgSessions ??= new Map());
   let s = all.get(name);
@@ -105,9 +107,10 @@ async function open(s: State): Promise<pg.Client> {
     }
     throw error;
   }
-  // The connection must not keep scripts and tests alive.
-  (client as unknown as { connection?: { stream?: { unref?: () => void } } }).connection?.stream?.unref?.();
   for (const channel of s.listeners.keys()) await client.query(`LISTEN ${quote(channel)}`);
+  // An idle connection must not keep scripts and tests alive (a query in
+  // flight does, see on()).
+  if (!s.busy) socket(client)?.unref?.();
   s.client = client;
   s.generation++;
   s.attempt = 0;
@@ -123,7 +126,7 @@ export async function listen(channel: string, listener: Listener): Promise<() =>
   const first = !set;
   if (!set) s.listeners.set(channel, (set = new Set()));
   set.add(listener);
-  if (first && s.client) await s.client.query(`LISTEN ${quote(channel)}`);
+  if (first && s.client) await on("session", (client) => client.query(`LISTEN ${quote(channel)}`));
   else if (!s.client) await sessionClient();
   return () => {
     set.delete(listener);
@@ -147,8 +150,16 @@ export async function dutySessionQuery<T extends pg.QueryResultRow = pg.QueryRes
 // the reconnect (above) reaches the address again – the new primary. The
 // locks held on it are gone with it, which the leader election notices
 // (a new generation).
+//
+// While a query is in flight the connection keeps the process alive: with
+// the socket unref'd, a process waiting only for this answer would find its
+// event loop empty and end (or run its "beforeExit" handlers – the tests
+// drop their schema there) before the answer arrives.
 async function on<T>(name: Name, fn: (client: pg.Client) => Promise<T>): Promise<T> {
+  const s = state(name);
   const client = await sessionClient(name);
+  s.busy++;
+  socket(client)?.ref?.();
   try {
     return await fn(client);
   } catch (error) {
@@ -157,8 +168,11 @@ async function on<T>(name: Name, fn: (client: pg.Client) => Promise<T>): Promise
       void client.end().catch(() => {});
     }
     throw error;
+  } finally {
+    if (!--s.busy) for (const c of new Set([client, s.client])) if (c) socket(c)?.unref?.();
   }
 }
+const socket = (client: pg.Client) => (client as unknown as { connection?: { stream?: { ref?: () => void; unref?: () => void } } }).connection?.stream;
 export const dutySessionGeneration = () => state("duties").generation;
 
 // Closes both connections (graceful shutdown, tests).

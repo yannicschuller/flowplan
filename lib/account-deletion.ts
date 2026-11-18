@@ -83,7 +83,7 @@ const PERSONAL = [
   // The own task page per workspace (#208); the page itself stays a page.
   "personal_task_pages",
   "presence",
-  "editor_presence",
+  // (editor_presence has no user_id: its rows go with the sessions.)
   "record_views",
   "task_reminders",
   "date_reminders",
