@@ -6,6 +6,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { ArrowRight } from "@phosphor-icons/react";
 import type { InstanceSettings } from "@/lib/instance-settings";
+import { docsLanguage } from "@/lib/i18n";
 import { useLocale, useT } from "../../i18n";
 import { Select } from "../../select";
 import { SaveState, SettingRow, StatusBadge, Switch, useSaveState, type Tone } from "../../settings-ui";
@@ -42,10 +43,11 @@ export function FixLink({ href, children }: { href: string; children: ReactNode 
   );
 }
 
-// Docs pages (docs.flowplan.org) in German or English, with the heading's
-// anchor in that language.
+// Docs pages (docs.flowplan.org) in the reader's language, with the
+// heading's anchor: German, or the English text (also under /fr and /zh,
+// which show English pages with a note, #367).
 export function useDocs() {
-  const lang = useLocale() === "de" ? "de" : "en";
+  const lang = docsLanguage(useLocale());
   return (page: string, anchorDe?: string, anchorEn?: string) => `https://docs.flowplan.org/${lang}/${page}${anchorDe ? `#${lang === "de" ? anchorDe : anchorEn || anchorDe}` : ""}`;
 }
 

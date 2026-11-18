@@ -41,7 +41,7 @@ import {
   UsersThree,
   type Icon,
 } from "@phosphor-icons/react";
-import { LANGUAGES, LOCALES, isLocale, type Locale } from "@/lib/i18n";
+import { LANGUAGES, LOCALES, docsLanguage, isLocale, type Locale } from "@/lib/i18n";
 import type { ThemeChoice } from "@/lib/theme";
 import { ONBOARDING_GOALS, type OnboardingGoal, type OnboardingSource } from "@/lib/getting-started-items";
 import { STARTERS, starterCommand, startersFor, type StarterId } from "@/lib/onboarding-goals";
@@ -114,7 +114,9 @@ export function Onboarding({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<{ id: string; title: string }[]>([]);
-  const docs = (slug: string) => `https://docs.flowplan.org/${locale === "de" ? "de" : "en"}/${slug}`;
+  // French and Chinese: the docs have a translated "first steps" page and
+  // show the other pages in English with a note (#367).
+  const docs = (slug: string) => `https://docs.flowplan.org/${docsLanguage(locale)}/${slug}`;
   const tool = source && source !== "fresh" ? migrationSource(source) : null;
   // Offline use on this device (#295, lib/offline-offer.ts): asked here on
   // the device the introduction runs on.

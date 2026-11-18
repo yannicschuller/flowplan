@@ -65,7 +65,7 @@ export function LitestreamWarning({ s, reload }: { s: SystemOverview; reload: ()
       void act("litestream.restart");
   };
   const link = (
-    <a href={docs("storage-and-backups", "litestream-zustand-reparieren", "repair-the-litestream-state")} target="_blank" rel="noreferrer">
+    <a href={docs("restore", "litestream-zustand-reparieren", "repair-the-litestream-state")} target="_blank" rel="noreferrer">
       {t("Litestream-Zustand reparieren", "Repair the Litestream state")}
     </a>
   );

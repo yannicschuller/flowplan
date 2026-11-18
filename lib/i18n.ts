@@ -23,6 +23,10 @@ export const LANGUAGES = {
 export type Locale = keyof typeof LANGUAGES;
 // The language of the texts: "en-US" → "en".
 export type TextLocale = Exclude<Locale, `${string}-${string}`>;
+// The language path of docs.flowplan.org for a UI language (#367): German,
+// English, and French and Chinese (a translated first-steps page, the
+// rest in English with a note).
+export const docsLanguage = (locale: string): "de" | "en" | "fr" | "zh" => (locale === "de" || locale === "fr" || locale === "zh" ? locale : "en");
 export const textLocale = (locale: Locale) => locale.split("-")[0] as TextLocale;
 export const LOCALES = Object.keys(LANGUAGES) as Locale[];
 export const LOCALE_COOKIE = "flowplan-lang";

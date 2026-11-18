@@ -59,7 +59,7 @@ test("a stuck replica: warning, rebuild on the next start, restart now", async (
   await expect(warning).toContainText("Die Litestream-Replik im Bucket hängt");
   await expect(warning).toContainText("1.000+ Änderungsdateien");
   await expect(warning).toContainText("Die automatische Reparatur ist aus (FLOWPLAN_LITESTREAM_AUTOHEAL=off).");
-  await expect(warning.getByRole("link", { name: "Litestream-Zustand reparieren" })).toHaveAttribute("href", "https://docs.flowplan.org/de/storage-and-backups#litestream-zustand-reparieren");
+  await expect(warning.getByRole("link", { name: "Litestream-Zustand reparieren" })).toHaveAttribute("href", "https://docs.flowplan.org/de/restore#litestream-zustand-reparieren");
   await warning.scrollIntoViewIfNeeded();
   await warning.screenshot({ path: `test-results/litestream-replica/${testInfo.project.name}-stuck.png` });
 

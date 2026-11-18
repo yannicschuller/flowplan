@@ -10,6 +10,7 @@ import { openWhatsNew } from "@/lib/update-notes-client";
 import { DISCORD_URL, ISSUES_URL, LICENSE_URL, SPONSOR_URL, hideSponsorInPage } from "@/lib/about";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useT } from "../../i18n";
+import { docsLanguage } from "@/lib/i18n";
 import { SettingGroup, SettingRow, StatusBadge } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
 
@@ -35,7 +36,7 @@ export default function AboutSection() {
   const about = boot.instance?.about;
   // The mobile apps' bridge, for an app whose user agent the server missed.
   const inApp = useSyncExternalStore(noSubscribe, () => hideSponsorInPage(), () => false);
-  const docsUrl = `https://docs.flowplan.org/${locale === "de" ? "de" : "en"}`;
+  const docsUrl = `https://docs.flowplan.org/${docsLanguage(locale)}`;
   const sponsor = !!about?.sponsor && !inApp;
   const source = about?.sourceUrl || "https://github.com/yannicschuller/flowplan";
   const channel = about?.channel === "beta" ? t("Beta", "Beta") : about?.channel === "release" ? t("Release", "Release") : "";
