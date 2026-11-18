@@ -3,6 +3,7 @@ import { calendarSchema } from "./database-calendar";
 import { gallerySchema } from "./database-gallery";
 import { feedSchema } from "./database-feed";
 import { chartSchema } from "./database-chart";
+import { studyViewSchema } from "./study-schema";
 import { filterSchema, filterGroupSchema } from "./database-filters";
 import { z } from "zod";
 import { OPTION_COLORS } from "./option-colors";
@@ -100,8 +101,11 @@ export const view = z
       "chart",
       "feed",
       "sprint",
+      // Flashcards (docs/specs/flashcards.md): the deck's overview and session.
+      "study",
     ]),
     chart: chartSchema.optional(),
+    study: studyViewSchema.optional(),
     feed: feedSchema.optional(),
     gallery: gallerySchema.optional(),
     timeline: timelineSchema.optional(),

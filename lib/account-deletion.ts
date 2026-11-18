@@ -130,6 +130,10 @@ const PERSONAL = [
   // single records and the cursor on a whiteboard.
   "row_grants",
   "whiteboard_presence",
+  // Flashcards: learning state, log and own settings (docs/specs/flashcards.md §13.3).
+  "card_states",
+  "review_log",
+  "study_prefs",
 ];
 
 // Disabling an account (Administration → Users, SCIM "active": false, the

@@ -7,7 +7,7 @@
 import type { CSSProperties } from "react";
 import { useT } from "./i18n";
 
-export type ViewShape = "table" | "board" | "calendar" | "gallery" | "list" | "timeline" | "chart" | "feed" | "form" | "sprint";
+export type ViewShape = "table" | "board" | "calendar" | "gallery" | "list" | "timeline" | "chart" | "feed" | "form" | "sprint" | "study";
 
 const bar = (width: string | number, height?: number, style: CSSProperties = {}) => (
   <span className="sk" style={{ width, ...(height ? { height } : {}), ...style }} />
@@ -54,6 +54,7 @@ export function ViewShapeBody({ type = "table" }: { type?: ViewShape }) {
       );
     case "list":
     case "feed":
+    case "study":
       return <LinesBody rows={7} avatar />;
     case "timeline":
       return (

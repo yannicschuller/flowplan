@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { settingsSchema, type DatabaseSettings } from "./database-settings-schema";
+import { studyFieldIds } from "./study-content";
 import { rowAccessModes } from "./row-access-modes";
 import { journalOptionsSchema, trackerSchema } from "./journal-extras";
 import { parseLayout, layoutBytes, MAX_LAYOUT_BYTES } from "./home-layout-schema";
@@ -159,6 +160,8 @@ export async function importDatabaseSettings(
   if (settings.due && "field" in settings.due && !known.has(settings.due.field)) delete settings.due;
   if (settings.workflow && !known.has(settings.workflow.field)) delete settings.workflow;
   if (settings.pointsField && !known.has(settings.pointsField)) delete settings.pointsField;
+  // Flashcards: a mapping whose properties are missing is no deck.
+  if (settings.study && studyFieldIds(settings.study).some((id) => !known.has(id))) delete settings.study;
   settings.automations = settings.automations?.map((a) => ({
     ...a,
     createdBy: ctx.user,

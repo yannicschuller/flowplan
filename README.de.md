@@ -49,7 +49,7 @@
 
 ## Auf einen Blick
 
-- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, Notizbücher für Handschrift, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen und Workflows.
+- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit elf Ansichten, Whiteboards, Notizbücher für Handschrift, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen und Workflows.
 - **Komplett Open Source** unter der AGPL-3.0 – keine geschlossene Enterprise-Version, keine Funktionen hinter einem Lizenzschlüssel.
 - **Ein Container mit SQLite** – nichts weiter zu betreiben, kein externer Suchdienst. Für größere Teams optional [PostgreSQL](https://docs.flowplan.org/de/postgresql) und ein [Cluster](https://docs.flowplan.org/de/cluster) aus mehreren Instanzen. Oder gehostet in Deutschland auf [app.flowplan.org](https://app.flowplan.org).
 - **Optionale KI** – standardmäßig aus; Admins schalten sie pro Funktion und Person ein, komplett lokal mit [Ollama](https://ollama.com) oder mit Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Du bestimmst, welche Seiten sie lesen darf.
@@ -234,7 +234,7 @@ Ein fairer Vergleich ist schwer – jedes dieser Werkzeuge kann etwas gut. Das h
 | **Open Source** | ✅ | ❌ | ❌ | ✅ | ✅ | ⚠️ Quellcode einsehbar |
 | **Lizenz** | AGPL-3.0 | proprietär | proprietär | MIT (Community Edition)² | AGPL-3.0 | BSL 1.1 |
 | **Funktioniert offline** | ✅³ | ⚠️ Seiten für offline gespeichert | ❌ | ✅ Local-first | ✅ Local-first | ❌ |
-| **Datenbanken** | ✅ 10 Ansichten | ✅ | ⚠️ neu, nur Cloud | ⚠️ Datenbank-Blöcke | ✅ | ❌ |
+| **Datenbanken** | ✅ 11 Ansichten | ✅ | ⚠️ neu, nur Cloud | ⚠️ Datenbank-Blöcke | ✅ | ❌ |
 | **Whiteboards** | ✅ | ❌ nur Einbettungen | ✅ Cloud | ✅ Edgeless-Modus | ⚠️ nicht eingebaut, soweit wir wissen | ❌ |
 | **Journal** | ✅ | ⚠️ Vorlagen | ⚠️ Vorlagen | ✅ | ⚠️ Vorlagen | ⚠️ Vorlagen |
 | **Ende-zu-Ende-Verschlüsselung** | ⚠️ verschlüsselte Bereiche, nur Dokumente⁴ | ❌ | ❌ | ⚠️ nur lokale Daten, soweit wir wissen | ⚠️ Stand unklar | ❌ |
