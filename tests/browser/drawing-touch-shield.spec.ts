@@ -404,7 +404,7 @@ test("the hovering pen: controls light up, a dot shows where it draws, a pen tap
   const layerBox = (await block.locator(".ink-layer").boundingBox())!;
   expect(Math.abs(dotBox.x + dotBox.width / 2 - (layerBox.x + 120))).toBeLessThan(2);
   // A pinpoint, not a blob over the line one aims at (#315).
-  expect(dotBox.width).toBeLessThanOrEqual(4);
+  expect(dotBox.width).toBeLessThanOrEqual(2.5);
   // Drawing (pen down), a mouse, a finger, leaving: no dot.
   await pointer(page, ".ink-block .ink-layer", "pointermove", { pointerType: "pen", buttons: 1, dx: 130, dy: 80 });
   await expect(dot).not.toHaveClass(/is-shown/);
