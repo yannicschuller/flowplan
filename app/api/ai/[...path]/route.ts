@@ -34,6 +34,7 @@ import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
 import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
 import { aiJournalSummaryResponse } from "@/lib/ai/journal-summary";
 import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/lib/ai/actions";
+import { FLASHCARD_LIMITS, addFlashcards, proposeFlashcards, type ProposeCardsInput } from "@/lib/ai/flashcards";
 import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/capture-suggest";
 import { improveCapture, IMPROVE_LIMITS } from "@/lib/ai/capture-improve";
 import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
@@ -228,6 +229,13 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       if (path[1] === "propose")
         return NextResponse.json(await proposeActions(user, (await body(req, ACTION_LIMITS.context * 4 + 100_000)) as ProposeInput, req.signal), noStore);
       if (path[1] === "run") return NextResponse.json(await runActions(user, await body(req, 2_000_000)), noStore);
+    }
+    // Flashcards (lib/ai/flashcards.ts): suggestions from a page, a
+    // selection, a file or text to review, then the confirmed cards added.
+    if (path.length === 2 && path[0] === "flashcards") {
+      if (path[1] === "propose")
+        return NextResponse.json(await proposeFlashcards(user, (await body(req, FLASHCARD_LIMITS.textChars * 4 + 200_000)) as ProposeCardsInput, req.signal), noStore);
+      if (path[1] === "add") return NextResponse.json(await addFlashcards(user, await body(req, 2_000_000)), noStore);
     }
     // Quick capture (desktop app): where a text belongs, as chips to accept
     // – from the instance's AI, or the prompt for the Mac's on-device model

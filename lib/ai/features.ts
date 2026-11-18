@@ -65,6 +65,15 @@ export const AI_FEATURES = [
     ],
   },
   {
+    // Flashcards from pages, selections, files and text (lib/ai/flashcards.ts).
+    id: "flashcards",
+    label: ["Lernkarten erstellen", "Create flashcards"],
+    description: [
+      "Karten aus Seiten, PDFs und Auswahl vorschlagen – angelegt wird erst nach deiner Prüfung.",
+      "Propose cards from pages, PDFs and selections – nothing is added before you review it.",
+    ],
+  },
+  {
     // The AI nodes of workflows (lib/workflows/nodes/ai.ts): data only, never actions.
     id: "workflows",
     label: ["KI in Workflows", "AI in workflows"],

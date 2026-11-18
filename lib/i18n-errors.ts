@@ -29,6 +29,15 @@ const exact: Record<string, string> = {
   "Ungültige Zuordnung.": "Invalid mapping.",
   "Im Anki-Paket wurden keine Notizen gefunden.": "No notes were found in the Anki package.",
   "Anki-Pakete bitte als .apkg- oder .colpkg-Datei importieren.": "Please import Anki packages as an .apkg or .colpkg file.",
+  // AI flashcards (lib/ai/flashcards.ts).
+  "Wähle einen Eintrag der Datenbank, eine Seite oder einen Text.": "Choose a record of the database, a page or a text.",
+  "Der Text dieser Datei wird noch gelesen – versuche es gleich noch einmal.": "The text of this file is still being read – try again in a moment.",
+  "In dieser Datei wurde kein Text gefunden.": "No text was found in this file.",
+  "Hier steht noch nichts, woraus sich Lernkarten erstellen ließen.": "There is nothing here yet to create flashcards from.",
+  "Die Quelle ist zu lang. Bitte wähle einen Abschnitt aus (höchstens 400 000 Zeichen).": "The source is too long. Please choose a section (at most 400,000 characters).",
+  "Wähle einen Stapel.": "Choose a deck.",
+  "Dieser Stapel liest eine Kartenseite aus dem Dokument der Einträge; KI-Karten brauchen Eigenschaften für Vorder- und Rückseite.":
+    "This deck reads a side of its cards from the records' document; AI cards need properties for front and back.",
   // The PDF worker thread (lib/pdf-text.ts).
   "Der PDF-Worker wurde beendet.": "The PDF worker was stopped.",
   "Zeitüberschreitung beim Lesen der PDF-Datei.": "Reading the PDF file timed out.",

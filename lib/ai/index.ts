@@ -9,7 +9,7 @@
 // AI may read.
 //
 // FEATURE IDS (lib/ai/features.ts): "write" | "summarize" | "ask" | "database"
-// | "actions" | "whiteboard" | "workflows" | "handwriting".
+// | "actions" | "whiteboard" | "workflows" | "handwriting" | "flashcards".
 // Add new ones there; administration and settings pick them up.
 //
 // SERVER
