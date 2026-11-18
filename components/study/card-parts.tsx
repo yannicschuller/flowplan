@@ -45,8 +45,8 @@ function ClozeText({ text, formatted, n, reveal }: { text: string; formatted?: b
   );
 }
 
-export function Side({ side, pageId }: { side: StudySide; pageId: string }) {
-  if ("html" in side) return <ReadOnlyDocument html={side.html} pageId={pageId} className="study-document" />;
+export function Side({ side, pageId, shareToken }: { side: StudySide; pageId: string; shareToken?: string }) {
+  if ("html" in side) return <ReadOnlyDocument html={side.html} pageId={pageId} shareToken={shareToken} className="study-document" />;
   return (
     <p className="study-text">
       {side.cloze ? <ClozeText text={side.text} formatted={side.formatted} n={side.cloze.n} reveal={side.cloze.reveal} /> : plainOrInline(side.text, side.formatted)}

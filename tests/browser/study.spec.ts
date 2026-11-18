@@ -121,7 +121,7 @@ test("the template “Lernkarten-Datenbank” is a deck at once", async ({ page 
   const { boot, command } = await signedIn(page);
   const created = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Karten ${info.project.name} ${Date.now()}`, kind: "database", starterTemplate: "flashcards" });
   await page.goto(`/#page=${created.id}`);
-  await expect(page.locator(".study-today .study-count.new strong")).toHaveText("6");
+  await expect(page.locator(".study-today .study-count.new strong")).toHaveText("8");
   await expect(page.getByRole("dialog", { name: "Karten einrichten" })).toHaveCount(0);
   await page.getByRole("button", { name: "Lernen starten" }).click();
   const focus = page.getByRole("dialog", { name: /^Lernen: / });

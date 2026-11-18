@@ -29,8 +29,34 @@ export type CatalogTemplate = {
   settings?: Record<string, unknown>;
 };
 // The card mapping of the flashcard templates: front the title, back and
-// extra properties, the card type from its property, both directions off.
-const flashcardSettings = { study: { version: 1, type: { field: "type" }, front: { field: "title" }, back: { field: "back" }, extra: { field: "example" }, tags: { field: "tags" } } };
+// extra properties, the card type from its property, the wrong options of
+// a multiple choice card from their own property, both directions off.
+export const flashcardSettings = { study: { version: 1, type: { field: "type" }, front: { field: "title" }, back: { field: "back" }, extra: { field: "example" }, choices: { field: "choices" }, tags: { field: "tags" } } };
+// Vocabulary: type the translation (accents count), both directions, the
+// example sentence as the hint.
+export const vocabularySettings = {
+  study: { version: 1, type: { fixed: "typed" }, front: { field: "title" }, back: { field: "translation" }, hint: { field: "example" }, reverse: true, typedCompare: { ignoreCase: true, ignoreAccents: false, ignorePunctuation: true } },
+};
+// The keyboard shortcuts: the keys on the Mac in front, the action behind,
+// and back again; the area as the hint. On Windows and Linux the column
+// "pc" becomes the front ("Karten einrichten").
+export const shortcutSettings = { study: { version: 1, type: { fixed: "basic" }, front: { field: "mac" }, back: { field: "title" }, hint: { field: "area" }, reverse: true } };
+// The picture of the image occlusion example (public/examples): the inner
+// planets without labels; one mask over each planet.
+export const PLANETS_IMAGE = "/examples/inner-planets.svg";
+export const planetMasks = (names: [string, string, string, string]) => ({
+  v: 1,
+  mode: "hide-all",
+  masks: [
+    { id: "mercury", shape: "ellipse", x: 0.225, y: 0.45, w: 0.05, h: 0.1, label: names[0] },
+    { id: "venus", shape: "ellipse", x: 0.3625, y: 0.4, w: 0.1, h: 0.2, label: names[1] },
+    { id: "earth", shape: "ellipse", x: 0.5475, y: 0.395, w: 0.105, h: 0.21, label: names[2] },
+    { id: "mars", shape: "ellipse", x: 0.75, y: 0.425, w: 0.075, h: 0.15, label: names[3] },
+  ],
+});
+// An image with masks in a record's document (lib/study-occlusion.ts).
+export const occludedImage = (src: string, alt: string, occlusion: object) =>
+  `<img src="${src}" alt="${alt}" data-occlusion="${JSON.stringify(occlusion).replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">`;
 
 export const task = (text: string, done = false) =>
   `<li data-type="taskItem" data-checked="${done}"><label><input type="checkbox"${done ? " checked" : ""}></label><div><p>${text}</p></div></li>`;
@@ -230,7 +256,8 @@ export const templateCatalog: Record<string, CatalogTemplate> = {
       { id: "back", name: "Rückseite", type: "text" },
       { id: "example", name: "Beispiel", type: "text" },
       { id: "tags", name: "Tags", type: "multiselect", options: ["Grundlagen", "Lerntipps"] },
-      { id: "type", name: "Kartentyp", type: "select", options: ["Vorder-/Rückseite", "Lückentext", "Antwort eintippen", "Multiple Choice"] },
+      { id: "type", name: "Kartentyp", type: "select", options: ["Vorder-/Rückseite", "Lückentext", "Antwort eintippen", "Multiple Choice", "Bildverdeckung"] },
+      { id: "choices", name: "Falsche Antworten", type: "text" },
     ],
     views: [view("study", "Lernen", "study"), view("table", "Alle Karten", "table")],
     settings: flashcardSettings,
@@ -241,7 +268,57 @@ export const templateCatalog: Record<string, CatalogTemplate> = {
       { cells: { title: "Ein neuer Lerntag beginnt um {{c1::04:00}} Uhr in deiner Zeitzone.", back: "Eine Lücke: Text markieren → „Als Lücke“ oder {{c1::…}} tippen.", type: "Lückentext", tags: ["Grundlagen"] } },
       { cells: { title: "Wie viele neue Karten pro Tag sind zum Start sinnvoll? (Zahl eintippen)", back: "20", example: "Jede neue Karte bringt in den nächsten Tagen einige Wiederholungen mit.", type: "Antwort eintippen", tags: ["Lerntipps"] } },
       { cells: { title: "Was gehört auf eine gute Karte?", back: "Genau eine Tatsache, kurz gefragt und kurz beantwortet.", example: "Statt „Alles über Zellen“: „Was ist die Aufgabe der Mitochondrien?“", tags: ["Lerntipps"] } },
+      { cells: { title: "Welche Wertung wählst du, wenn du die Antwort nicht wusstest?", back: "Nochmal", choices: "Schwer\nGut\nLeicht", example: "Ehrlich werten: „Nochmal“ holt die Karte bald zurück.", type: "Multiple Choice", tags: ["Grundlagen"] } },
+      {
+        cells: { title: "Welcher Planet liegt an der markierten Stelle?", back: "", example: "Bildverdeckung: im Dokument des Eintrags „…“ am Bild → „Bildverdeckung bearbeiten“.", type: "Bildverdeckung", tags: ["Grundlagen"] },
+        content: `<p>Die inneren Planeten, von der Sonne aus gesehen.</p>${occludedImage(PLANETS_IMAGE, "Die Sonne und die vier inneren Planeten", planetMasks(["Merkur", "Venus", "Erde", "Mars"]))}`,
+      },
     ],
+  },
+  vocabulary: {
+    name: "Vokabeln",
+    category: "personal",
+    icon: "🔤",
+    kind: "database",
+    description: "Wörter mit Übersetzung, Beispielsatz und Lektion – Flowplan fragt sie in beide Richtungen ab, du tippst die Antwort ein.",
+    fields: [
+      { id: "title", name: "Wort", type: "text" },
+      { id: "translation", name: "Übersetzung", type: "text" },
+      { id: "example", name: "Beispielsatz", type: "text" },
+      { id: "pos", name: "Wortart", type: "select", options: ["Nomen", "Verb", "Adjektiv", "Ausdruck"] },
+      { id: "lesson", name: "Lektion", type: "select", options: ["Lektion 1", "Lektion 2"] },
+    ],
+    views: [
+      view("study", "Lernen", "study"),
+      view("lesson1", "Lernen: Lektion 1", "study", { filters: [{ field: "lesson", op: "eq", value: "Lektion 1" }] } as Partial<View>),
+      view("table", "Alle Vokabeln", "table"),
+    ],
+    settings: vocabularySettings,
+    rows: [
+      { cells: { title: "hola", translation: "hallo", example: "¡Hola! ¿Qué tal?", pos: "Ausdruck", lesson: "Lektion 1" } },
+      { cells: { title: "gracias", translation: "danke", example: "Muchas gracias por la ayuda.", pos: "Ausdruck", lesson: "Lektion 1" } },
+      { cells: { title: "el perro", translation: "der Hund", example: "El perro duerme en el sofá.", pos: "Nomen", lesson: "Lektion 1" } },
+      { cells: { title: "la casa", translation: "das Haus", example: "Mi casa es tu casa.", pos: "Nomen", lesson: "Lektion 1" } },
+      { cells: { title: "comer", translation: "essen", example: "Comemos a las dos.", pos: "Verb", lesson: "Lektion 2" } },
+      { cells: { title: "rápido", translation: "schnell", example: "El tren es muy rápido.", pos: "Adjektiv", lesson: "Lektion 2" } },
+      { cells: { title: "la estación", translation: "der Bahnhof", example: "¿Dónde está la estación?", pos: "Nomen", lesson: "Lektion 2" } },
+    ],
+  },
+  shortcuts: {
+    name: "Flowplan-Tastenkürzel",
+    category: "knowledge",
+    icon: "⌨️",
+    kind: "database",
+    description: "Lernkarten zu Flowplans Tastenkürzeln: „Was macht ⌘ K?“ und umgekehrt, mit den Tasten für Mac und für Windows und Linux.",
+    fields: [
+      { id: "title", name: "Aktion", type: "text" },
+      { id: "mac", name: "macOS", type: "text" },
+      { id: "pc", name: "Windows und Linux", type: "text" },
+      { id: "area", name: "Bereich", type: "select", options: ["App", "Editor", "Lernkarten", "Präsentation"] },
+    ],
+    views: [view("study", "Lernen", "study"), view("table", "Alle Kürzel", "table")],
+    settings: shortcutSettings,
+    // The records come from the keymap (lib/template-rows.ts).
   },
   wiki: {
     name: "Team-Wiki",

@@ -21,11 +21,15 @@ export type OnboardingSource = (typeof ONBOARDING_SOURCES)[number];
 // - search: the quick search or ⌘K opened (the browser reports it)
 // - import: anything imported (ZIP, AFFiNE, Obsidian …, Markdown files) –
 //   left out when it happened in the introduction already
-export const CHECKLIST_ITEMS = ["page", "task", "invite", "app", "search", "import"] as const;
+// - shortcuts: "Lerne Flowplans Tastenkürzel" – a first flashcard rated
+//   (study.review); offered with the deck of the template
+//   "Flowplan-Tastenkürzel", only to people who start Flowplan for studying
+//   (goal "study") and may create pages
+export const CHECKLIST_ITEMS = ["page", "task", "invite", "app", "search", "import", "shortcuts"] as const;
 export type ChecklistItem = (typeof CHECKLIST_ITEMS)[number];
 // Items the server sees happen; the others are reported by the browser or
 // ticked by hand (every item can be ticked by hand).
-export const AUTOMATIC_ITEMS: readonly ChecklistItem[] = ["page", "task", "invite", "import"];
+export const AUTOMATIC_ITEMS: readonly ChecklistItem[] = ["page", "task", "invite", "import", "shortcuts"];
 
 export type ChecklistState = {
   startedAt: number;
@@ -48,6 +52,7 @@ export function checklistView(state: ChecklistState, who: { owner: boolean; gues
     if (item === "page" || item === "task") return who.canWrite;
     // Imported in the introduction already: nothing left to do here.
     if (item === "import") return who.canWrite && !(state.done.import !== undefined && state.done.import <= state.startedAt);
+    if (item === "shortcuts") return who.canWrite && state.goal === "study";
     return true;
   }).map((id) => ({ id, done: state.done[id] !== undefined }));
   return {

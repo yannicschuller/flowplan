@@ -37,7 +37,7 @@ import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
 import { PublicationCopy } from "./publication-copy";
 import { HttpError } from "@/lib/auth";
-import type { Field, Row, View } from "@/lib/types";
+import type { Field, Page, Row, View } from "@/lib/types";
 import {
   guestFields,
   sharedContent,
@@ -59,6 +59,10 @@ import { mapAsync } from "../lib/each-async";
 import { recordScope } from "@/lib/record-share";
 import { renderPublicRecord } from "./public-record";
 import { publicPageClass } from "@/lib/public-page-class";
+import { sharedStudyCards } from "@/lib/shared-study";
+import { PublicStudy } from "./public-study";
+import { activeUser } from "@/lib/auth";
+import { pageRole } from "@/lib/permissions";
 
 // A property value on a published page; formatted text (#126) with its
 // formatting (no links inside a card that is itself a link; line breaks
@@ -80,6 +84,8 @@ type PublishedPageProps = {
   rowId?: string;
   viewId?: string;
   month?: string;
+  // The part of a deck's cards shown by its study view (1, 2, …).
+  cards?: string;
 };
 // A link with an end date or a password (lib/share-access.ts): after its end
 // a short note, without the unlock cookie the password form. Everything
@@ -141,6 +147,7 @@ async function renderPublishedPage({
   rowId,
   viewId,
   month: monthParam,
+  cards: cardsParam,
 }: PublishedPageProps) {
   const t = await serverT();
   let context;
@@ -158,7 +165,7 @@ async function renderPublishedPage({
   // Views are published with their filters, sorting and order when their
   // layout only needs public properties; forms are never listed.
   const publicViews = (d?.views || []).filter((v) =>
-    publicLayout(v, d!.fields),
+    publicLayout(v, d!.fields, d!.settings?.study),
   );
   const month = publicMonth(monthParam);
   // Without a publishable view the first one is shown as a plain table.
@@ -366,6 +373,15 @@ async function renderPublishedPage({
             }
           })}
         />)
+      ) : d && !record && activeView?.type === "study" ? (
+        await publicStudySection({
+          token,
+          page,
+          view: activeView,
+          part: cardsParam,
+          link: (part) => `${href(page.id)}?view=${encodeURIComponent(activeView.id)}${part > 1 ? `&cards=${part}` : ""}`,
+          member: !customHost,
+        })
       ) : d && !record && activeView?.type === "calendar" ? (
         <PublicCalendar
           records={records}
@@ -715,5 +731,48 @@ async function PublicFiles({
         ) : null;
       })}
     </span>
+  );
+}
+
+// The study view of a shared deck (lib/shared-study.ts): its cards in parts
+// of 100 to browse, practice in the browser, and for a signed-in member of
+// the workspace "In Flowplan lernen" (not on a custom domain, which has no
+// session of the app).
+const BROWSE_PART = 100;
+async function publicStudySection({
+  token,
+  page,
+  view,
+  part: partParam,
+  link,
+  member,
+}: {
+  token: string;
+  page: { id: string; title: string };
+  view: View;
+  part?: string;
+  link: (part: number) => string;
+  member: boolean;
+}) {
+  const part = Math.max(1, Math.min(10_000, Math.floor(Number(partParam) || 1)));
+  const answer = await sharedStudyCards(token, { pageId: page.id, viewId: view.id, offset: (part - 1) * BROWSE_PART, limit: BROWSE_PART });
+  let memberHref: string | undefined;
+  if (member) {
+    const user = await activeUser().catch(() => null);
+    const full = user ? await one<Page>("SELECT * FROM pages WHERE id=?", page.id) : null;
+    if (user && full && (await pageRole(user, full).catch(() => null))) memberHref = `/#page=${page.id}`;
+  }
+  return (
+    <PublicStudy
+      token={token}
+      pageId={page.id}
+      viewId={view.id}
+      title={page.title}
+      cards={answer.cards}
+      total={answer.total}
+      first={answer.offset + 1}
+      pages={{ previous: part > 1 ? link(part - 1) : undefined, next: answer.offset + BROWSE_PART < answer.total ? link(part + 1) : undefined }}
+      memberHref={memberHref}
+    />
   );
 }

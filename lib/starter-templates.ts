@@ -8,6 +8,7 @@ import { catalogFor } from "./template-catalogs";
 import { contentLocale } from "./content-locale";
 import { starterSurvey } from "./survey-server";
 import { forEachAsync } from "./each-async";
+import { catalogRows } from "./template-rows";
 
 export const starterTemplates = templateCatalog;
 export type StarterTemplateKey = TemplateKey;
@@ -29,7 +30,7 @@ export async function applyStarterTemplate(pageId: string, userId: string, key: 
   );
   if (template.settings) await run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(template.settings), pageId);
   if (template.survey) await starterSurvey(pageId, contentLocale());
-  await forEachAsync((template.rows || []), async (row, i) =>
+  await forEachAsync(catalogRows(key, template, contentLocale()), async (row, i) =>
     await run(
       "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
       id(),

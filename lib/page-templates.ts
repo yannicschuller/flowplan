@@ -32,6 +32,8 @@ import { importNotebook, notebookArchiveSchema } from "./notebook";
 import type { Identity, Page, Field, Space } from "./types";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 import { claimTicketPrefix } from "./ticket-refs";
+import { databaseSettings, storeSettings } from "./database-settings";
+import { fittingStudySettings } from "./study-schema";
 
 export const savedRowTemplateSchema = z.object({
   name: z.string().min(1).max(500),
@@ -45,6 +47,10 @@ export const savedDatabaseTemplateSchema = z.object({
     page_id: z.string().uuid().optional(),
     fields: z.array(field).min(1).max(80),
     views: z.array(view).min(1).max(30),
+    // Of the database settings only the card mapping of a flashcard deck
+    // travels (docs/specs/flashcards.md §8.4) – checked against the
+    // properties when applied; learning states never do.
+    settings: z.object({ study: z.unknown().optional() }).optional(),
   }),
   rows: z
     .array(
@@ -340,6 +346,10 @@ export async function applyPageTemplate(
       ),
       page.id,
     );
+    // The card mapping of a flashcard deck, before the records (their
+    // cards are indexed with it).
+    const study = fittingStudySettings(source.database.settings?.study, nextFields);
+    if (study) await storeSettings(page.id, { ...(await databaseSettings(page.id)), study });
     // A prefix another database already uses: a free one (WEB2).
     await claimTicketPrefix(page.id);
     for (const row of rows) {

@@ -12,6 +12,10 @@
 // The content is German (language "de"); the English name goes into
 // `titles.en`, the English description into the English summary and
 // description. Licence CC0-1.0.
+// Flashcard decks (a card mapping in `settings.study`) bring it along and
+// carry the tag "Lernkarten" in the category "knowledge" or "personal" – no
+// category of their own (docs/specs/flashcards.md §8.4: no change of the
+// contract with the marketplace).
 // Workflows keep their gaps as "$ask:<gap>" tokens plus a `gaps` list
 // (labels); the import clears what is still open and lists it
 // (lib/marketplace-package.ts). Next to it payload/workflow-meta.json
@@ -24,6 +28,7 @@
 import { createHash } from "node:crypto";
 import { ZipFile } from "yazl";
 import { templateCatalog, resolveCatalogDates, type CatalogTemplate } from "./template-catalog";
+import { catalogRows } from "./template-rows";
 import { templateCatalogEn } from "./template-catalog-en";
 import { galleryTemplates, galleryCategories, type GalleryCategory } from "./whiteboard-template-gallery";
 import { layoutGraph, workflowTemplates, type Gap } from "./workflows/templates";
@@ -37,6 +42,8 @@ import { templateCategoryLabels, type TemplateCategory } from "./template-catego
 import { extraOfficial, type ExtraItem } from "./marketplace-official-extra";
 
 const MTIME = new Date(Date.UTC(2026, 0, 1));
+// The tag of flashcard decks in the marketplace.
+export const FLASHCARD_TAG = "Lernkarten";
 // Example dates ("@+3") are resolved against this day.
 export const OFFICIAL_REFERENCE_DAY = new Date(2027, 0, 4);
 const tDe = (d: string, _e: string) => d;
@@ -112,12 +119,13 @@ async function envelope(m: Meta, version: string, previews: Map<string, Buffer>)
 
 // A catalog template as flowplan-template-1 (what "Als Vorlage speichern" would write).
 async function catalogPayload(key: string, t: CatalogTemplate) {
+  const study = t.settings?.study;
   const content =
     t.kind === "document"
       ? { html: t.html || "", icon: t.icon }
       : {
-          database: { fields: t.fields || [], views: t.views || [] },
-          rows: (t.rows || []).map((row, i) => ({ id: stableUuid(`official:${key}:row:${i}`), cells: resolveCatalogDates(row.cells, OFFICIAL_REFERENCE_DAY), content: row.content || "", position: i })),
+          database: { fields: t.fields || [], views: t.views || [], ...(study ? { settings: { study } } : {}) },
+          rows: catalogRows(key, t, "de").map((row, i) => ({ id: stableUuid(`official:${key}:row:${i}`), cells: resolveCatalogDates(row.cells, OFFICIAL_REFERENCE_DAY), content: row.content || "", position: i })),
           relationPairs: [],
           icon: t.icon,
         };
@@ -195,7 +203,7 @@ export async function officialPackages(version: string, previews: Map<string, Bu
           titleEn: e?.name ?? "",
           summary: { de: t.description, en: e?.description ?? "" },
           category: t.category,
-          tags: ["Flowplan", deLabels[t.category], t.kind === "database" ? "Datenbank" : "Dokument"],
+          tags: ["Flowplan", deLabels[t.category], t.kind === "database" ? "Datenbank" : "Dokument", ...(t.settings?.study ? [FLASHCARD_TAG] : [])],
           payload: "payload/template.zip",
           entries: [["payload/template.zip", await catalogPayload(key, t)]],
         },

@@ -843,6 +843,7 @@ const exact: Record<string, string> = {
   "Diese Veröffentlichung darf nicht kopiert werden.": "This publication may not be copied.",
   "Veröffentlichung nicht gefunden.": "Publication not found.",
   "Seite nicht veröffentlicht.": "Page not published.",
+  "Keine Lernkarten in dieser Freigabe.": "No flashcards in this share.",
   "Datei nicht veröffentlicht.": "File not published.",
   "Ungültiger Push-Schlüssel.": "Invalid push key.",
   "Push-Abonnement stimmt nicht überein.": "Push subscription does not match.",

@@ -16,6 +16,8 @@ import { imageFileId } from "./page-appearance";
 import { fileIdOf } from "./file-cells";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
 import { localUpload, publishUpload } from "./storage";
+import { databaseSettings, storeSettings } from "./database-settings";
+import { fittingStudySettings } from "./study-schema";
 
 // Visitors may copy a publication into their own workspace. Only what the
 // publication shows is copied: published pages, public properties, published
@@ -188,12 +190,18 @@ export async function copyPublication(user: Identity, input: unknown) {
         sorts: [],
       },
     ];
+    // A flashcard deck keeps its card mapping when every property it
+    // reads came along, with a study view (docs/specs/flashcards.md §7.3);
+    // nobody's learning state is copied.
+    const study = fittingStudySettings((await databaseSettings(p.id)).study, fields);
+    if (study) views.unshift({ id: id(), name: ct("Lernen", "Study"), type: "study", filters: [], sorts: [] });
     await run(
       "UPDATE databases SET fields=?,views=? WHERE page_id=?",
       JSON.stringify(fields),
       JSON.stringify(views),
       copy,
     );
+    if (study) await storeSettings(copy, { ...(await databaseSettings(copy)), study });
     for (const row of await all<Row & { cells: string }>(
       "SELECT * FROM rows WHERE page_id=? AND access!='private' ORDER BY position",
       p.id,

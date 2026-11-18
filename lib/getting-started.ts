@@ -165,5 +165,12 @@ export async function gettingStartedAfterCommand(user: Identity, action: string,
     case "page.import":
       if (typeof b.workspaceId === "string") await noteGettingStarted(user.id, b.workspaceId, "import");
       return;
+    // A first card rated: "Lerne Flowplans Tastenkürzel" (or any deck).
+    case "study.review": {
+      if (typeof b.pageId !== "string") return;
+      const page = await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", b.pageId);
+      if (page) await noteGettingStarted(user.id, page.workspace_id, "shortcuts");
+      return;
+    }
   }
 }

@@ -95,6 +95,20 @@ export const studyPrefsInput = z.object({
   retention: z.number().min(0.7).max(0.99).nullable().optional(),
 });
 
+// A mapping that came with a template, a package or a copy: kept only when
+// it still fits the properties (each one there and of a type a side may
+// use, front and back different) – else the deck starts without one.
+export function fittingStudySettings(raw: unknown, fields: { id: string; type: string }[]): StudySettings | undefined {
+  const parsed = studySettingsSchema.safeParse(raw);
+  if (!parsed.success) return undefined;
+  const s = parsed.data;
+  const ids = [s.front, s.back, s.hint, s.extra, s.choices, "field" in s.type ? s.type : undefined].flatMap((x) => (x && "field" in x ? [x.field] : []));
+  if (ids.some((id) => !STUDY_FIELD_TYPES.has(fields.find((f) => f.id === id)?.type ?? ""))) return undefined;
+  if (s.tags && !fields.some((f) => f.id === s.tags!.field)) return undefined;
+  if (JSON.stringify(s.front) === JSON.stringify(s.back)) return undefined;
+  return s;
+}
+
 // The first text property for a side, as the setup dialog suggests it.
 export function suggestStudySettings(fields: { id: string; type: string }[]): StudySettings {
   const texts = fields.filter((f) => f.type === "text");

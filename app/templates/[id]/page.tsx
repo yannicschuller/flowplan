@@ -8,6 +8,7 @@ import { cellText } from "@/lib/cell-text";
 import { HttpError } from "@/lib/auth";
 import { resolveCatalogDates } from "@/lib/template-catalog";
 import { catalogFor } from "@/lib/template-catalogs";
+import { catalogRows } from "@/lib/template-rows";
 import { requestLocale } from "@/lib/i18n-server";
 import { computedCells } from "@/lib/database";
 import type { Row } from "@/lib/types";
@@ -47,7 +48,7 @@ export default async function TemplatePreview({
   if (builtIn) {
     const fields = builtIn.fields || [];
     // Formulas are computed like in the app.
-    const rows = (builtIn.rows || []).map((r) =>
+    const rows = catalogRows(id.slice(8), builtIn, await requestLocale()).map((r) =>
       computedCells({ cells: resolveCatalogDates(r.cells) } as Row, fields),
     );
     return (

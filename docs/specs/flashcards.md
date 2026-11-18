@@ -2161,3 +2161,115 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
 - Ankis Text-Formen (Beschriftungen auf dem Bild) und „Basic mit
   maskiertem Bild“ als Export-Alternative.
 - Chinesische Texte des Editors (fr vollständig).
+
+---
+
+## 22. Entscheidungen beim Bau von Phase 7
+
+**Öffentlicher Link (§7.3, `lib/shared-study.ts`, `components/public-study.tsx`, `components/study/public-practice.tsx`)**
+
+- Eine Lernen-Ansicht ist öffentlich (`publicLayout`), wenn **jede**
+  Eigenschaft der Kartenzuordnung (`studyFieldIds`) öffentlich ist
+  (`publicFieldIds`) – sonst gibt es über den Link weder die Ansicht noch
+  Karten (404), wie in der App („lieber keine als halbe“). Die Tags-
+  Eigenschaft zählt nicht dazu; ist sie verborgen, fehlen nur die Tags.
+  Private Einträge nie, Ansichtsfilter (Teilstapel) auf den öffentlichen
+  Zellen wie bei den anderen öffentlichen Ansichten.
+- Kartenindex: `GET /api/share/<token>?study=1&pageId=…&viewId=…&offset=…`
+  (die vorhandene Freigabe-API, Schutz über `publicPage`: Passwort-Cookie
+  und Ablauf wie überall). Höchstens 2 000 Karten je Antwort, `next` nennt
+  den nächsten Versatz; der Client holt höchstens 10 Teile. Die Karten
+  kommen so aufbereitet wie `study.queue` sie zeigt (`present` aus
+  `lib/study.ts`, Lücken, MC-Optionen aus den öffentlichen Rückseiten
+  desselben Stapels), ohne `memory`. Dokumente gehen durch `publishedHtml`
+  (neuer optionaler Datei-Prüfer, damit nicht jedes Bild alle
+  Eintragsdokumente neu durchsucht); Bilder nur unter
+  `/api/share/<token>/files/…`. Die Share-Routen stehen nicht in der
+  OpenAPI – keine SDK-Änderung. Keine eigene Ratenbegrenzung (wie die
+  übrigen GETs des Links), kein Zähler, keine Adresse.
+- **Durchblättern**: Server-HTML (eine Client-Komponente, auf dem Server
+  gerendert) mit je 100 Karten pro Seite (`?cards=2` …); Klick oder
+  „Umdrehen“ dreht die Karte (React-State, keine Inline-Skripte). Ohne
+  JavaScript sind nur die Vorderseiten sichtbar.
+- **Üben**: `components/study/focus-core.tsx` ist jetzt der Fokusmodus
+  ohne Server (`FocusSession` mit `backend: load/rate/undo/more`); die App
+  nutzt ihn über `StudyFocus` (`./focus.tsx`, Server + Offline-Kopie wie
+  bisher), der öffentliche Link über `public-practice.tsx`, per
+  `next/dynamic` erst beim Klick auf „Üben“ geladen.
+- Fortschritt: `localStorage` unter `flowplan-study:<token>`
+  (`lib/public-study-progress.ts`): je Stapel der Stand zu Beginn des
+  Lerntags (`base`) und die Wertungen des Tages; Wertungen früherer Tage
+  werden beim nächsten Start in den Stand gefaltet. Die Warteschlange baut
+  `localQueue` aus `lib/study-offline.ts` (dieselben Funktionen wie offline
+  in der App), Grenzen und Parameter aus den Stapel-Vorgaben, Tageswechsel
+  04:00 in der Zeitzone des Browsers. „Heute mehr lernen“ und Rückgängig
+  wirken lokal. Ohne `localStorage` (Probe schlägt fehl) bleibt alles im
+  Speicher: eine einmalige Sitzung mit eigenem Hinweistext.
+- Der Hinweis „Dein Fortschritt bleibt nur in diesem Browser. Flowplan
+  speichert nichts davon.“ erscheint einmal im Fokusmodus („Verstanden“
+  merkt sich `noted`), mit „Fortschritt löschen“; danach steht „Fortschritt
+  löschen“ neben „Durchblättern/Üben“, solange etwas gespeichert ist.
+- „In Flowplan lernen“: serverseitig `activeUser()` + `pageRole` – nur für
+  angemeldete Mitglieder mit Leserecht, Link `/#page=<id>` (öffnet den
+  Stapel, startet keine Sitzung). Auf eigenen Domains nicht (dort gibt es
+  keine Sitzung der App).
+- Kopie einer Veröffentlichung übernimmt die Kartenzuordnung, wenn alle
+  ihre Eigenschaften mitkommen, plus eine Ansicht „Lernen“; Lernstände nie.
+
+**Marketplace (§8.4) – keine Vertragsänderung**
+
+- `savedDatabaseTemplateSchema` nimmt `database.settings.study` an (nur
+  das, alle anderen Einstellungen fallen weg); `template.save` schreibt nur
+  noch `settings.study` in die Nutzlast (vorher lagen alle Einstellungen
+  samt Automationen darin, angewendet wurde nichts davon). Beim Anwenden
+  prüft `fittingStudySettings` (`lib/study-schema.ts`) die Zuordnung gegen
+  die Eigenschaften; passt sie nicht, entsteht der Stapel ohne Zuordnung.
+  Gilt für Vorlage anwenden, Export/Import (`template-exchange`),
+  Marketplace-Pakete und das Arbeitsbereichs-Archiv (`lib/archive.ts`
+  parst über dasselbe Schema). Ansichtstyp `study`, Lücken-Marks und
+  `data-occlusion` gingen schon durch; Rundweg-Test
+  `tests/study-templates.test.ts`.
+- Kategorie: `knowledge` bzw. `personal` + Schlagwort **„Lernkarten“**
+  (`FLASHCARD_TAG`, offizielle Pakete setzen es für Vorlagen mit
+  `settings.study`). Die Sicherheitsprüfung von flowplan-marketplace
+  (`scanPackage`) und dessen Paketleser (`inspectPackage`) geben den drei
+  offiziellen Stapeln und einem Paket mit hochgeladenem Bild, Lücken-Mark,
+  `{{c1::…}}` und Masken (Rechteck, Polygon) **clean** – geprüft per
+  Skript, das Repository blieb unverändert.
+
+**Vorlagen (§8.5)**
+
+- „Lernkarten-Datenbank“: neue Eigenschaft **Falsche Antworten**
+  (`settings.study.choices`), Option „Bildverdeckung“, je eine Beispielkarte
+  für Multiple Choice und Bildverdeckung (vier Masken über
+  `public/examples/inner-planets.svg`, ein Bild ohne Text – sprachneutral;
+  nicht unter `public/templates/`, das wäre die Route `/templates`).
+- „Vokabeln“ (`personal`): Wort/Übersetzung, `typed` fest, umgekehrt an,
+  Akzente zählen, Beispielsatz als Hinweis, Ansichten „Lernen“, „Lernen:
+  Lektion 1“ (Filter), „Alle Vokabeln“; sieben spanische Beispiele.
+- „Flowplan-Tastenkürzel“ (`knowledge`): Spalten macOS / Windows und Linux,
+  Vorderseite macOS, Rückseite die Aktion, umgekehrt an, Bereich als
+  Hinweis. Die Einträge schreibt `npm run shortcut-cards`
+  (`scripts/shortcut-card-rows.ts`: Standard-Kürzel aus `lib/keymap.ts`,
+  Editor, Lernkarten und Präsentation aus der Übersicht, Namen wie in
+  `components/keyboard-shortcuts.tsx`, keine Maus-Kombinationen) nach
+  `lib/template-shortcut-cards.ts`; ein Test meldet, wenn sie nicht mehr zur
+  Tastaturbelegung passen. Sie stehen **nicht** im Katalog-Modul (das die
+  App-Hülle für die Namen lädt), sondern werden serverseitig über
+  `catalogRows` (`lib/template-rows.ts`) eingesetzt – Anlegen,
+  Vorschauseite `/templates/starter-shortcuts`, offizielle Pakete.
+- `npm run marketplace-official -- <Ziel>` erzeugt nur Dateien in einem
+  Ordner (kein Hochladen); es nimmt `settings.study` und das Schlagwort mit.
+  Für die drei Stapel in einen Scratch-Ordner ausgeführt.
+- Einführung: Punkt **„Lerne Flowplans Tastenkürzel“** (`shortcuts`) nur
+  für Personen mit Ziel „Lernen“ und Schreibrecht; der Pfeil öffnet „Neue
+  Seite“ mit der Vorlage, abgehakt wird er von selbst mit der ersten
+  Wertung im Arbeitsbereich (`study.review`).
+
+**Offen**
+
+- „In Flowplan lernen“ öffnet nur den Stapel (kein Deep-Link in die
+  Sitzung oder eine bestimmte Lernen-Ansicht).
+- Kartenvorschau auf der Marketplace-Seite (`payload/study-meta.json`) und
+  eine eigene Kategorie „Lernen“ (Vertragsänderung, §8.4) – später.
+- Durchblättern ohne JavaScript zeigt nur Vorderseiten.

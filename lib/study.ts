@@ -76,7 +76,7 @@ const hashOf = (card: DerivedCard) =>
     .slice(0, 32);
 // The HTML of a record's document as lib/row-documents.ts ensureRowDocument
 // would create it, without creating it.
-function documentHtml(row: Pick<StoredRow, "content">, stored: string | undefined) {
+export function documentHtml(row: Pick<StoredRow, "content">, stored: string | undefined) {
   if (stored !== undefined) return stored;
   const source = row.content || "";
   return source.startsWith("<") ? cleanHtml(source) : source ? `<p>${escaped(source).replaceAll("\n", "</p><p>")}</p>` : "";
@@ -331,11 +331,18 @@ export type ShownCard = {
 const clean = (side: CardSide | undefined): CardSide | undefined => (side && "html" in side ? { html: cleanHtml(side.html) } : side);
 const POOL_ROWS = 80;
 const WRONG_OPTIONS = 3;
-type Candidate = { rowId: string; text: string; key: string; tags: string[] };
+export type Candidate = { rowId: string; text: string; key: string; tags: string[] };
+// The records whose backs may fill a choice card's options: at most 80 of
+// the pool, picked at random but the same all day.
+export const poolRows = (rowIds: Iterable<string>, day: string) =>
+  [...new Set(rowIds)].sort((a, b) => seededRank(day, a) - seededRank(day, b)).slice(0, POOL_ROWS);
 async function distractorPool(deck: Deck, settings: StudySettings, pool: QueueCard[], day: string): Promise<Candidate[]> {
-  const ids = [...new Set(pool.map((c) => c.rowId))].sort((a, b) => seededRank(day, a) - seededRank(day, b)).slice(0, POOL_ROWS);
+  const ids = poolRows(pool.map((c) => c.rowId), day);
   if (!ids.length) return [];
-  const derived = await cardsOfRows(settings, deck.fields, await rowsOf(deck.page.id, ids));
+  return choiceCandidates(await cardsOfRows(settings, deck.fields, await rowsOf(deck.page.id, ids)));
+}
+// The backs of the records' first cards as options (pure).
+export function choiceCandidates(derived: Map<string, DerivedCard[]>): Candidate[] {
   const out: Candidate[] = [];
   for (const [rowId, cards] of derived) {
     const card = cards.find((c) => c.sub === "" && c.kind !== "cloze");
@@ -364,7 +371,8 @@ function choiceOptions(card: DerivedCard, rowId: string, candidates: Candidate[]
   }
   return { options: [correct, ...wrong.slice(0, MAX_CHOICES - 1)], correct: 0 };
 }
-function present(card: DerivedCard, c: QueueCard, candidates: Candidate[]): ShownCard {
+// Also for the cards of a public link (lib/shared-study.ts).
+export function present(card: DerivedCard, c: Pick<QueueCard, "rowId" | "sub" | "memory">, candidates: Candidate[]): ShownCard {
   const base = { rowId: c.rowId, sub: c.sub, kind: card.kind, memory: c.memory, ...(card.hint ? { hint: clean(card.hint) } : {}), ...(card.extra ? { extra: clean(card.extra) } : {}) };
   if (card.cloze) {
     const { n, on } = card.cloze;

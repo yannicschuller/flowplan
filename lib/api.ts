@@ -3720,7 +3720,11 @@ async function runCommand(
           p.kind === "database"
             ? JSON.stringify({
                 appearance: pageAppearance(p),
-                database: await database(p.id),
+                database: await (async () => {
+                  // Of the settings only the card mapping (flashcards §8.4).
+                  const { settings, ...rest } = await database(p.id);
+                  return { ...rest, ...(settings?.study ? { settings: { study: settings.study } } : {}) };
+                })(),
                 // Only the records this person sees go into the template.
                 rows: await visibleRows(user, p, await rows(p.id)),
                 ...(await databaseTemplateExtras(user, p)),

@@ -12,6 +12,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { identityFromToken } = await import("../lib/auth");
 const { command } = await import("../lib/api");
 const { templateCatalog } = await import("../lib/template-catalog");
+const { catalogRows } = await import("../lib/template-rows");
 const { templateCategoryIds } = await import("../lib/template-categories");
 const { stateHtml } = await import("../lib/document-server");
 const { startDemo } = await import("../lib/demo");
@@ -66,7 +67,7 @@ test("every template creates a valid page", async () => {
     // The same validation as a change in the app.
     await command(ana, { action: "database.update", pageId: page, version: db.version, fields: JSON.parse(db.fields), views: JSON.parse(db.views) });
     const rows = await all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", page);
-    assert.equal(rows.length, t.rows?.length || 0, `${key}: example entries`);
+    assert.equal(rows.length, catalogRows(key, t, "de").length, `${key}: example entries`);
     for (const row of rows) assert.doesNotMatch(row.cells, /"@[+-]\d+"/, `${key}: dates resolved`);
   }
 });

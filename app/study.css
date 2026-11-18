@@ -1354,3 +1354,108 @@ polyline.occlusion-draft {
     max-height: 180px;
   }
 }
+
+/* ---- Public link: browse and practise (components/public-study.tsx) ---- */
+.public-study {
+  margin-top: 8px;
+}
+.public-study-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+.public-study-modes {
+  display: inline-flex;
+  gap: 6px;
+}
+.public-study-modes .button[aria-pressed="true"]:not(.primary) {
+  border-color: var(--accent-strong, var(--blue));
+  color: var(--accent-strong, var(--blue));
+}
+.public-study-count {
+  margin-right: auto;
+}
+.public-study-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 14px;
+}
+.public-study-grid > li {
+  display: flex;
+  min-width: 0;
+}
+.public-flashcard {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 150px;
+  padding: 18px 18px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.public-flashcard.flipped {
+  border-color: color-mix(in srgb, var(--accent-strong, var(--blue)) 45%, var(--border));
+}
+.public-flashcard .study-text {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.public-flashcard-back {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.public-flashcard-hint {
+  font-size: 0.9rem;
+}
+.public-flashcard-turn {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  font-size: 0.85rem;
+}
+.public-flashcard .occlusion-frame img {
+  max-height: 260px;
+}
+.public-study-pages {
+  justify-content: space-between;
+  margin-top: 18px;
+}
+.public-study-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  width: min(720px, calc(100% - 28px));
+  margin: 8px auto 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 0.92rem;
+}
+.public-study-note p {
+  flex: 1 1 220px;
+  margin: 0;
+}
+.public-study-note-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}

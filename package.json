@@ -35,7 +35,8 @@
     "gallery": "node --import tsx scripts/gallery/run.ts",
     "help-docs": "node scripts/help-docs.mjs",
     "move": "node scripts/move.mjs",
-    "marketplace-official": "node --import tsx scripts/marketplace-official.mjs"
+    "marketplace-official": "node --import tsx scripts/marketplace-official.mjs",
+    "shortcut-cards": "node --import tsx scripts/shortcut-cards.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

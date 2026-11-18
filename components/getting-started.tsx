@@ -51,6 +51,7 @@ export default function GettingStarted({
     app: { label: t("Die App installieren", "Install the app"), action: t("Apps und Geräte öffnen", "Open apps and devices") },
     search: { label: t("Suche und Befehle ausprobieren", "Try search and commands") + (searchKey ? ` (${searchKey})` : ""), action: t("Suche öffnen", "Open search") },
     import: { label: t("Inhalte importieren", "Import content"), action: t("Import öffnen", "Open import") },
+    shortcuts: { label: t("Lerne Flowplans Tastenkürzel", "Learn Flowplan's keyboard shortcuts"), action: t("Lernkarten anlegen", "Create the flashcards") },
   };
   const total = state.items.length;
   const all = total > 0 && state.doneCount === total;

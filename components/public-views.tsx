@@ -19,6 +19,8 @@ import {
   shiftDateValue,
 } from "@/lib/recurrence";
 import { publicField, publicFieldIds } from "@/lib/shared-content";
+import { publicStudyMapping } from "@/lib/shared-study";
+import type { StudySettings } from "@/lib/study-schema";
 import type { Field, Row, View } from "@/lib/types";
 
 // Read-only, server-rendered calendar, timeline and chart views for
@@ -39,8 +41,11 @@ const monthLabel = (month: string, tag: string) =>
     timeZone: "UTC",
   });
 
-// Whether a view can be published without revealing hidden properties.
-export function publicLayout(view: View, fields: Field[]) {
+// Whether a view can be published without revealing hidden properties. A
+// study view: when the card mapping reads only public properties
+// (lib/shared-study.ts).
+export function publicLayout(view: View, fields: Field[], study?: StudySettings) {
+  if (view.type === "study") return publicStudyMapping(study, fields);
   const publicIds = publicFieldIds(fields);
   const visible = (id?: string) => !!id && publicIds.has(id);
   if (view.type === "calendar" || view.type === "timeline") {

@@ -247,9 +247,9 @@ test("the database kind and the template “Lernkarten-Datenbank” start as dec
   const templateId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", starterTemplate: "flashcards", title: "Vorlage" })).id as string;
   const q = await queue(owner, templateId);
   assert.equal(q.configured, true);
-  assert.equal(q.total, 6);
+  assert.equal(q.total, 11, "six cards, multiple choice and four masks");
   // The example property is shown after the answer.
   assert.ok(q.cards.some((c: any) => c.extra?.text?.includes("Taste")));
   // A reader studies the template's cards too.
-  assert.equal((await queue(reader, templateId)).counts.new, 6);
+  assert.equal((await queue(reader, templateId)).counts.new, 8, "one card per record today (siblings wait)");
 });

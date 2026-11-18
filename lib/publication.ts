@@ -412,6 +412,16 @@ export function publishedHtml(
   token: string,
   pages: { id: string }[],
   hidden?: Map<string, string>,
+  // Whether the share serves a file (default: publicFile); callers that
+  // publish many documents of one page pass a cached check.
+  served: (fileId: string) => Promise<boolean> = async (fileId) => {
+    try {
+      await publicFile(token, fileId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
 ) {
   const pageIds = new Set(pages.map((p) => p.id));
   const hide = (attrs: Record<string, string>, attr: string) => {
@@ -434,12 +444,8 @@ export function publishedHtml(
     for (const attr of ["src", "href", "data-pdf"]) {
       const file = /^\/api\/files\/([\w-]+)$/.exec(attrs[attr] || "");
       if (file) {
-        try {
-          await publicFile(token, file[1]);
-          attrs[attr] = `/api/share/${token}/files/${file[1]}`;
-        } catch {
-          hide(attrs, attr);
-        }
+        if (await served(file[1])) attrs[attr] = `/api/share/${token}/files/${file[1]}`;
+        else hide(attrs, attr);
       }
       // Page and block links (#88: the block part stays behind).
       const link = /^\/?#page=([\w-]+)(?:&block=[\w-]{1,64})?$/.exec(attrs[attr] || "");

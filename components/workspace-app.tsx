@@ -4648,6 +4648,12 @@ export default function WorkspaceApp({
                   if (first) addPage("document", null, first.id);
                 } else if (item === "task") go("tasks");
                 else if (item === "search") openSearch();
+                // The deck of the template "Flowplan-Tastenkürzel".
+                else if (item === "shortcuts") {
+                  const first = boot.spaces.find((sp) => !sp.deleted_at);
+                  const name = catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en").shortcuts?.name ?? "";
+                  if (first) newPageFromTemplate({ starter: "shortcuts", name, kind: "database" }, first.id, null, false);
+                }
                 else
                   location.hash = settingsHash(
                     item === "invite" ? { area: "settings", section: "members" } : item === "app" ? { area: "settings", section: "devices" } : { area: "settings", section: "data", anchor: "import" },

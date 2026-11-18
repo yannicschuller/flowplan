@@ -10,13 +10,13 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ row?: string; view?: string; month?: string }>;
+  searchParams: Promise<{ row?: string; view?: string; month?: string; cards?: string }>;
 }) {
   const { token } = await params;
-  const { row, view, month } = await searchParams;
+  const { row, view, month, cards } = await searchParams;
   return (
     <>
-      <PublishedPage token={token} customHost={await requestCustomHost(token)} rowId={row} viewId={view} month={month} />
+      <PublishedPage token={token} customHost={await requestCustomHost(token)} rowId={row} viewId={view} month={month} cards={cards} />
       <PublicLegalFooter />
     </>
   );

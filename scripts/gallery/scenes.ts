@@ -90,6 +90,22 @@ async function studied(ctx: SceneContext, db: string) {
       if ((i + d) % 3 !== 0)
         await ctx.command({ action: "study.review", pageId: db, rowId, sub: "", rating: (i + d) % 4 === 0 ? 1 : 3, id: crypto.randomUUID(), zone: "Europe/Berlin", reviewedAt: Date.now() - d * day - i * 1000 });
 }
+// A published deck (flashcards phase 7): a few cards of every kind of text,
+// a cloze among them; the publication's token.
+async function publishedDeck(ctx: SceneContext) {
+  const db = await studyDeck(ctx, "Spanisch A1");
+  for (const [title, back] of [
+    ["¿Dónde está la estación?", "Wo ist der Bahnhof?"],
+    ["el perro", "der Hund"],
+    ["Me llamo {{c1::Ana}} y vivo en {{c2::Madrid}}.", ""],
+    ["gracias", "danke"],
+    ["la casa", "das Haus"],
+  ])
+    await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
+  await ctx.command({ action: "page.publish", pageId: db, enabled: true });
+  const { page } = await (await ctx.api.get(`/api/pages/${db}`)).json();
+  return page.public_token as string;
+}
 const docPath = (c: SceneContext) => `#page=${c.ids.documentId}`;
 const dbPath = (c: SceneContext) => `#page=${c.ids.databaseId}`;
 const recordPath = (c: SceneContext) => `#page=${c.ids.databaseId}&row=${c.ids.rowId}`;
@@ -793,7 +809,7 @@ const databaseScenes: Scene[] = [
     id: "study-focus",
     group: "Databases",
     title: "Flashcards: focus mode",
-    covers: ["components/study/focus.tsx"],
+    covers: ["components/study/focus.tsx", "components/study/focus-core.tsx"],
     steps: async (page, ctx) => {
       const db = await ctx.fixture({ kind: "database", title: "Spanisch A1" });
       const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
@@ -1687,6 +1703,34 @@ const publicScenes: Scene[] = [
   { id: "public-database", group: "Public", title: "Published database", path: (c) => `/share/${c.ids.publicDbToken}`, signedOut: true },
   { id: "share-link", group: "Public", title: "Share link (editor)", path: (c) => `/share/${c.ids.shareLinkToken}`, signedOut: true },
   { id: "public-templates", group: "Public", title: "Template gallery", path: "/templates", signedOut: true },
+  // A published deck: its cards to browse (one turned over) and the
+  // practice without an account (state in the browser only).
+  {
+    id: "public-study-browse",
+    group: "Public",
+    title: "Published deck: browse",
+    signedOut: true,
+    covers: ["components/public-study.tsx"],
+    steps: async (page, ctx) => {
+      await ctx.open(`/share/${await publishedDeck(ctx)}`);
+      await page.locator(".public-flashcard").first().click();
+      await page.locator(".public-flashcard.flipped").waitFor();
+    },
+  },
+  {
+    id: "public-study-practice",
+    group: "Public",
+    title: "Published deck: practise",
+    signedOut: true,
+    covers: ["components/study/public-practice.tsx"],
+    steps: async (page, ctx) => {
+      await ctx.open(`/share/${await publishedDeck(ctx)}`);
+      await button(page, "Üben").click();
+      await page.locator(".public-study-note").waitFor();
+      await button(page, /^Antwort zeigen/).click();
+      await page.locator(".study-ratings").waitFor();
+    },
+  },
 ];
 
 const errorScenes: Scene[] = [

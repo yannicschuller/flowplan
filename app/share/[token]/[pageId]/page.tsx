@@ -11,10 +11,10 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ token: string; pageId: string }>;
-  searchParams: Promise<{ row?: string; view?: string; month?: string }>;
+  searchParams: Promise<{ row?: string; view?: string; month?: string; cards?: string }>;
 }) {
   const { token, pageId } = await params;
-  const { row, view, month } = await searchParams;
+  const { row, view, month, cards } = await searchParams;
   return (
     <>
       <PublishedPage
@@ -24,6 +24,7 @@ export default async function Page({
         rowId={row}
         viewId={view}
         month={month}
+        cards={cards}
       />
       <PublicLegalFooter />
     </>

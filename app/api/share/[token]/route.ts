@@ -3,6 +3,7 @@ import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
 import { sharedContent, mutateSharedContent } from "@/lib/shared-content";
+import { sharedStudyCards } from "@/lib/shared-study";
 import { sharePresence } from "@/lib/share-presence";
 import { dispatchPush } from "@/lib/push";
 import { withShareRequest } from "@/lib/share-access";
@@ -36,6 +37,19 @@ export async function GET(
   try {
     const { token } = await params,
       url = new URL(req.url);
+    // The cards of a shared deck (lib/shared-study.ts): ?study=1, the
+    // study view, and the offset of the next part.
+    if (url.searchParams.get("study") === "1")
+      return NextResponse.json(
+        await withShareRequest(req, async () =>
+          await sharedStudyCards(token, {
+            pageId: url.searchParams.get("pageId") || undefined,
+            viewId: url.searchParams.get("viewId") || undefined,
+            offset: Number(url.searchParams.get("offset") || 0) || 0,
+          }),
+        ),
+        { headers },
+      );
     return NextResponse.json(
       await withShareRequest(req, async () =>
         await sharedContent(
