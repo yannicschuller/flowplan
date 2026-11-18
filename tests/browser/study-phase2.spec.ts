@@ -128,6 +128,9 @@ test("cloze, typed and multiple choice cards in the focus mode", async ({ page }
   await field.press("Enter");
   await expect(focus.locator(".study-typed-result")).toContainText("Fast richtig: 1 Zeichen anders");
   await expect(focus.locator(".study-diff ins")).toHaveText("h");
+  // The expected answer once: the back that only repeats it is left out (#346).
+  await expect(focus.locator(".study-typed-expected")).toContainText("der Bahnhof");
+  await expect(focus.locator(".study-back")).not.toContainText("der Bahnhof");
   await expect(focus.getByRole("button", { name: /^Schwer, .*\(Vorschlag\)$/ })).toBeVisible();
   await page.screenshot({ path: `test-results/study-typed-${info.project.name}.png` });
   // The person may rate otherwise: Easy instead of the suggestion.
@@ -149,6 +152,10 @@ test("cloze, typed and multiple choice cards in the focus mode", async ({ page }
   else await page.keyboard.press((await wrong.locator("kbd").textContent())!.toLowerCase());
   await expect(focus.locator(".study-choice.wrong")).toHaveCount(1);
   await expect(focus.locator(".study-choice.right")).toContainText("Madrid");
+  // Right and wrong not by colour alone; the answer not again below.
+  await expect(focus.locator(".study-choice.right .study-choice-mark")).toHaveText("richtig");
+  await expect(focus.locator(".study-choice.wrong .study-choice-mark")).toHaveText("deine Wahl, falsch");
+  await expect(focus.locator(".study-back")).not.toContainText("Madrid");
   await expect(focus.getByRole("button", { name: /^Nochmal, .*\(Vorschlag\)$/ })).toBeVisible();
   await page.screenshot({ path: `test-results/study-choice-${info.project.name}.png` });
   await page.keyboard.press("Enter");

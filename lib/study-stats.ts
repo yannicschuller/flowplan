@@ -226,6 +226,10 @@ export async function studyDecks(user: Identity, workspaceId: string, zone?: str
   return (await studyDue(user, { workspaceId, zone })).decks.map(({ icon: _icon, ...d }) => d);
 }
 
+// The streak of a workspace for the end of a focus session (lib/study.ts
+// studyQueue): the same as #study's "Serie".
+export const studyStreak = (user: Identity, workspaceId: string, today: string) => streakOf(user, workspaceId, today);
+
 // Consecutive study days with a rating up to today – today counts once
 // studied; studied yesterday but not yet today keeps the streak.
 // Without a workspace: across all of the person's workspaces.

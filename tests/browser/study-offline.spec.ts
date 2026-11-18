@@ -85,14 +85,14 @@ test("a deck studied offline: ratings wait on the device and are sent when the c
   await context.setOffline(true);
   await page.getByRole("button", { name: "Lernen starten" }).click();
   const focus = page.getByRole("dialog", { name: /^Lernen: / });
-  await expect(focus.locator(".study-count-chip.new")).toHaveText("neu 3");
+  await expect(focus.locator(".study-focus-count.new b")).toHaveText("3");
   for (let i = 0; i < 2; i++) {
     await focus.getByRole("button", { name: /^Antwort zeigen/ }).click();
     await expect(focus.getByRole("button", { name: /^Gut/ })).toBeVisible();
     await focus.getByRole("button", { name: /^Gut/ }).click();
   }
   await expect(focus.locator(".study-pending")).toHaveText("2 Wertungen warten auf Verbindung");
-  await expect(focus.locator(".study-count-chip.new")).toHaveText("neu 1");
+  await expect(focus.locator(".study-focus-count.new b")).toHaveText("1");
   await picture(page, "offline-focus", info);
   // Undo takes the waiting rating back on the device.
   await page.keyboard.press("z");

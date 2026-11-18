@@ -253,3 +253,18 @@ test("the database kind and the template “Lernkarten-Datenbank” start as dec
   // A reader studies the template's cards too.
   assert.equal((await queue(reader, templateId)).counts.new, 8, "one card per record today (siblings wait)");
 });
+
+test("a session's last batch carries the streak for the summary (#346)", async () => {
+  const pageId = await deck("Serie", { newPerDay: 1 });
+  await card(pageId, "uno", "eins");
+  const first = await queue(owner, pageId);
+  // Cards left: no streak; the counts only (limit 0) never have one.
+  assert.equal(first.streak, undefined);
+  const after = await rate(owner, pageId, first.cards[0], 4);
+  assert.equal(after.streak, undefined);
+  assert.equal((await queue(owner, pageId, { limit: 0 })).streak, undefined);
+  // Nothing left today: the workspace's streak, today counted.
+  const last = await queue(owner, pageId);
+  assert.deepEqual(last.cards, []);
+  assert.ok(last.streak >= 1);
+});
