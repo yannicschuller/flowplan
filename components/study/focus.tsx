@@ -21,7 +21,7 @@ import type { Memory } from "@/lib/fsrs";
 import { FocusSession, studyZoneNow, type FocusBackend, type Ready, type StudyCard, type StudyOverview } from "./focus-core";
 
 export { studyZoneNow } from "./focus-core";
-export type { StudyCard, StudyOverview, StudySide } from "./focus-core";
+export type { StudyCard, StudyModel, StudyFit, StudyOverview, StudySide } from "./focus-core";
 
 export function StudyFocus({
   pageId,

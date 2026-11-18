@@ -12,7 +12,7 @@ import { api } from "../ui";
 import { BarChart, ChartTable } from "../charts";
 import { formatNumber } from "@/lib/field-format";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { studyZoneNow } from "./focus";
+import { studyZoneNow, type StudyModel } from "./focus";
 
 export type StudyStatsData = {
   day: string;
@@ -27,6 +27,8 @@ export type StudyStatsData = {
   retention: { days: number; reviews: number; rate: number | null }[];
   target: number | null;
   states: { new: number; learning: number; young: number; mature: number; suspended: number };
+  // One deck: the FSRS parameters it uses for the person.
+  model?: StudyModel | null;
 };
 
 const utc = (day: string) => new Date(`${day}T00:00:00Z`);
@@ -189,7 +191,24 @@ export function StudyStats({ stats }: { stats: StudyStatsData }) {
           </ul>
         </section>
       </div>
+      {stats.model && <ModelLine model={stats.model} />}
     </div>
+  );
+}
+// Which FSRS parameters the deck uses for the person (§23).
+function ModelLine({ model }: { model: StudyModel }) {
+  const t = useT();
+  const day = model.at ? new Intl.DateTimeFormat(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric" }).format(new Date(model.at)) : "";
+  const reviews = formatNumber(model.reviews ?? 0);
+  return (
+    <p className="muted study-stats-model">
+      {model.source === "default"
+        ? t("Gedächtnismodell: FSRS-6 mit Standardparametern.", "Memory model: FSRS-6 with default parameters.")
+        : model.source === "deck"
+          ? t(`Gedächtnismodell: FSRS-6 mit deinen Parametern für diesen Stapel, optimiert am ${day} aus ${reviews} Wertungen.`, `Memory model: FSRS-6 with your parameters for this deck, optimised on ${day} from ${reviews} ratings.`)
+          : t(`Gedächtnismodell: FSRS-6 mit deinen Parametern für alle Stapel, optimiert am ${day} aus ${reviews} Wertungen.`, `Memory model: FSRS-6 with your parameters for all decks, optimised on ${day} from ${reviews} ratings.`)}
+      {model.fit && ` ${t(`RMSE ${formatNumber(model.fit.after.rmse * 100, "", 1)} % statt ${formatNumber(model.fit.before.rmse * 100, "", 1)} %.`, `RMSE ${formatNumber(model.fit.after.rmse * 100, "", 1)} % instead of ${formatNumber(model.fit.before.rmse * 100, "", 1)} %.`)}`}
+    </p>
   );
 }
 

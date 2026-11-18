@@ -3369,6 +3369,8 @@ async function runCommand(
       case "study.reminder":
       case "study.undo":
       case "study.prefs":
+      case "study.history":
+      case "study.params":
       case "study.due":
       case "study.stats":
         result = await studyCommand(user, action, b);
@@ -4039,6 +4041,8 @@ async function runCommand(
         "study.reminder",
         "study.undo",
         "study.prefs",
+        "study.history",
+        "study.params",
         "study.due",
         "study.stats",
       ].includes(action) &&

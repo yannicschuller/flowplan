@@ -27,6 +27,7 @@ import { drainStudyCards } from "./study";
 import { studyFieldIds } from "./study-content";
 import { DEFAULT_DAY_START, addDays, studyClock, studyZone } from "./study-day";
 import { STUDY_DEFAULTS, type StudySettings } from "./study-schema";
+import { personalWeights } from "./study-params";
 import type { Field, Identity, Page } from "./types";
 
 const placeholders = (n: number) => Array.from({ length: n }, () => "?").join(",");
@@ -375,8 +376,15 @@ export async function studyStats(user: Identity, raw: unknown) {
     overdue,
     retention: await Promise.all([7, 30, 365].map(retention)),
     target,
+    // The FSRS weights the deck uses for the person (§23): FSRS-6's defaults, or
+    // optimised ones (of this deck or of all decks) with their date.
+    model: input.pageId ? await modelOf(user.id, input.pageId) : null,
     states,
   };
+}
+async function modelOf(userId: string, pageId: string) {
+  const { source, at, reviews, fit } = await personalWeights(userId, pageId);
+  return { source, at, reviews, fit };
 }
 async function targetRetention(user: Identity, deck: Deck) {
   const own = await one<{ retention: number | null }>("SELECT retention FROM study_prefs WHERE user_id=? AND page_id=?", user.id, deck.page.id);

@@ -11,8 +11,9 @@
 // access) and the CSV export of the cards, with the person's own learning
 // state on request.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, Sparkle, UploadSimple } from "@phosphor-icons/react";
+import { Brain, ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, Sparkle, UploadSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, api, needsConnection } from "./ui";
 import { Select } from "./select";
@@ -21,13 +22,18 @@ import { safeCollisionPadding } from "./safe-area";
 import { StudyFocus, studyZoneNow, type StudyOverview } from "./study/focus";
 import { NotOffline, studyLoad, useStudyPending } from "./study/offline";
 import { StudyPendingNote } from "./study/pending";
-import { tr } from "@/lib/locale-tag";
+import { LOCALE_TAG, tr } from "@/lib/locale-tag";
+import { formatNumber } from "@/lib/field-format";
 import { StudyImport } from "./study/import";
 import { StudyStatsPanel } from "./study/stats";
 import { deriveCards, needsDocument } from "@/lib/study-content";
 import { filterCount, effectiveFilterGroup } from "@/lib/database-filters";
 import { STUDY_FIELD_TYPES, cardTypes, suggestStudySettings, studySettingsSchema, typeOfOption, type CardType, type StudySettings } from "@/lib/study-schema";
 import type { Database, Page, Row, View } from "@/lib/types";
+
+// "Parameter optimieren" with its Web Worker (components/study/optimize.tsx):
+// loaded when opened.
+const StudyOptimize = dynamic(() => import("./study/optimize"), { ssr: false });
 
 // From the server, or offline from the device's copy of the deck
 // (components/study/offline.ts).
@@ -64,6 +70,7 @@ export default function DatabaseStudy({
     [error, setError] = useState(""),
     [setup, setSetup] = useState(false),
     [prefs, setPrefs] = useState(false),
+    [optimizing, setOptimizing] = useState(false),
     [session, setSession] = useState(false),
     [importing, setImporting] = useState(false),
     [stats, setStats] = useState(false),
@@ -308,6 +315,24 @@ export default function DatabaseStudy({
             } catch (e) {
               setError((e as Error).message);
             }
+          }}
+          onOptimize={() => {
+            if (needsConnection()) return;
+            setPrefs(false);
+            setOptimizing(true);
+          }}
+        />
+      )}
+      {optimizing && (
+        <StudyOptimize
+          open
+          onClose={() => setOptimizing(false)}
+          pageId={page.id}
+          onApplied={(next, message) => {
+            setOverview(next);
+            setOptimizing(false);
+            setNotice(message);
+            setStatsVersion((v) => v + 1);
           }}
         />
       )}
@@ -642,13 +667,18 @@ function StudyPrefs({
   onClose,
   overview,
   onSave,
+  onOptimize,
 }: {
   open: boolean;
   onClose: () => void;
   overview: Extract<StudyOverview, { configured: true }>;
   onSave: (b: { newPerDay: number | null; reviewsPerDay: number | null; retention: number | null }) => Promise<void>;
+  onOptimize: () => void;
 }) {
   const t = useT();
+  const model = overview.model,
+    note = overview.optimizer;
+  const modelDate = model?.at ? new Date(model.at).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric" }) : "";
   const own = overview.prefs,
     deck = overview.deckDefaults;
   const [draft, setDraft] = useState({ newPerDay: "", reviewsPerDay: "", retention: "" });
@@ -697,6 +727,29 @@ function StudyPrefs({
             "A higher retention means reviewing more often and forgetting less. 90 % suits most people.",
           )}
         </p>
+        <section className="study-model" aria-labelledby="study-model-title">
+          <h4 id="study-model-title">{t("Gedächtnismodell (FSRS)", "Memory model (FSRS)")}</h4>
+          <p className="muted">
+            {model?.source === "deck"
+              ? t(`Deine optimierten Parameter für diesen Stapel, vom ${modelDate}.`, `Your optimised parameters for this deck, of ${modelDate}.`)
+              : model?.source === "all"
+                ? t(`Deine optimierten Parameter für alle Stapel, vom ${modelDate}.`, `Your optimised parameters for all decks, of ${modelDate}.`)
+                : t("Standardparameter von FSRS-6.", "FSRS-6's default parameters.")}
+          </p>
+          {note?.suggest && (
+            <p className="study-model-note">
+              {note.suggest === "first"
+                ? t(
+                    `Du hast hier ${formatNumber(note.reviews)} Wertungen – genug, um die Parameter an dein Gedächtnis anzupassen.`,
+                    `You have ${formatNumber(note.reviews)} ratings here – enough to fit the parameters to your memory.`,
+                  )
+                : t(`Seit dem letzten Optimieren sind ${formatNumber(note.since ?? 0)} Wertungen dazugekommen – optimieren lohnt sich wieder.`, `${formatNumber(note.since ?? 0)} ratings since you last optimised – worth optimising again.`)}
+            </p>
+          )}
+          <button type="button" className="button compact" onClick={onOptimize}>
+            <Brain aria-hidden /> {t("Parameter optimieren …", "Optimise parameters …")}
+          </button>
+        </section>
         <div className="modal-actions">
           <button type="button" className="button" onClick={() => setDraft({ newPerDay: "", reviewsPerDay: "", retention: "" })}>
             {t("Vorgaben des Stapels", "Deck defaults")}

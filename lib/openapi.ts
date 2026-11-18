@@ -103,7 +103,7 @@ export const commandActionNames = [
   "form.update", "form.submit", "survey.save",
   "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points",
   // Flashcards (docs/specs/flashcards.md, lib/study.ts).
-  "study.settings", "study.queue", "study.review", "study.reviews", "study.undo", "study.prefs", "study.reminder", "study.due", "study.stats",
+  "study.settings", "study.queue", "study.review", "study.reviews", "study.undo", "study.prefs", "study.reminder", "study.history", "study.params", "study.due", "study.stats",
   "recordView.save", "recordView.delete", "git.setup", "git.disable", "git.token",
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "inviteLink.create", "inviteLink.revoke", "member.role", "member.guest",
@@ -245,6 +245,35 @@ export const commandActions: ActionDoc[] = [
       reviewsPerDay: z.number().int().min(0).max(99999).nullable().optional(),
       retention: z.number().min(0.7).max(0.99).nullable().optional(),
       more: z.object({ new: z.number().int().min(0).optional(), review: z.number().int().min(0).optional() }).optional(),
+    }),
+    result: z.object({}).passthrough(),
+  },
+  {
+    action: "study.history",
+    summary: "Your review log of a deck, for fitting FSRS parameters",
+    description:
+      "Read access is enough; your own ratings only (undone ones left out). `scope`: `deck` (this deck's reviews) or `all` (all your decks). With at least `minimum` (1000) ratings: `cards`, each `{ t, r }` – the ratings in order and the study days since the review before (`t[0]` is 0) – of cards whose log starts with their first rating, at most 200,000 reviews (`truncated`); `costs` (seconds per learning, recalled and forgotten review, shares of the first ratings and of Hard/Good/Easy) for the recommended retention. Also `current` (the weights this scope uses now, null: FSRS-6's defaults), `defaults`, `retention`, `maxInterval` and `model` (what the deck uses: `source` default, deck or all, `at`, `reviews`). Flowplan fits the weights in your browser and stores them with study.params.",
+    input: z.object({ action: z.literal("study.history"), pageId: uuid, scope: z.enum(["deck", "all"]).optional(), zone: z.string().max(100).optional() }),
+    result: z.object({}).passthrough(),
+  },
+  {
+    action: "study.params",
+    summary: "Store or reset your FSRS parameters",
+    description:
+      "Read access is enough. `weights`: the 21 FSRS-6 weights (clamped to FSRS-6's bounds), or `null` for FSRS-6's defaults again; `scope` `deck` (this deck) or `all` (every deck without weights of its own). Optional `reviews` and `fit` (`before`/`after`: `logLoss`, `rmse`, `items`) are kept for the statistics. The stability and difficulty of your cards in the scope are computed again from their log (`recomputed`: how many changed); due dates stay. Answers the deck's overview like study.prefs.",
+    input: z.object({
+      action: z.literal("study.params"),
+      pageId: uuid,
+      scope: z.enum(["deck", "all"]).optional(),
+      weights: z.array(z.number()).length(21).nullable(),
+      reviews: z.number().int().min(0).optional(),
+      fit: z
+        .object({
+          before: z.object({ logLoss: z.number(), rmse: z.number(), items: z.number().int() }),
+          after: z.object({ logLoss: z.number(), rmse: z.number(), items: z.number().int() }),
+        })
+        .optional(),
+      zone: z.string().max(100).optional(),
     }),
     result: z.object({}).passthrough(),
   },

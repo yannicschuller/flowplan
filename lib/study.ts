@@ -25,11 +25,14 @@ import { cleanHtml, escaped } from "./document-server";
 import { effectiveFilterGroup, filterCount, matchesFilterGroup } from "./database-filters";
 import { allow } from "./action-limits";
 import { schedule, replay, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
-import { DEFAULT_DAY_START, REMIND_AT, reminderMoment, studyClock, studyDay, studyZone } from "./study-day";
+import { DEFAULT_DAY_START, REMIND_AT, daysBetween, reminderMoment, studyClock, studyDay, studyZone } from "./study-day";
 import { buildQueue, seededRank, sessionOrder, type QueueCard } from "./study-queue";
 import { MAX_CHOICES, deriveCards, foldChoice, needsDocument, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, type CardSide, type DerivedCard, type OcclusionCard } from "./study-content";
 import { clozeHtml } from "./study-cloze";
 import { STUDY_DEFAULTS, STUDY_FIELD_TYPES, studyPrefsInput, studySettingsSchema, type StudySettings } from "./study-schema";
+import { decksWithWeights, personalWeights, storedWeights, type ParamsScope } from "./study-params";
+import { DEFAULT_WEIGHTS, MIN_REVIEWS, DEFAULT_COSTS, clampWeights, memoryOf as foldMemory, type ReviewCosts, type TrainingCard } from "./fsrs/optimize";
+import { clipParameters } from "ts-fsrs";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
 import { inlineToHtml, toPlain } from "./inline-markdown";
 import { readUpload } from "./storage";
@@ -213,9 +216,19 @@ async function effective(user: Identity, pageId: string, settings: StudySettings
   const newPerDay = own?.new_per_day ?? settings.newPerDay ?? STUDY_DEFAULTS.newPerDay;
   const reviewsPerDay = own?.reviews_per_day ?? settings.reviewsPerDay ?? STUDY_DEFAULTS.reviewsPerDay;
   const retention = own?.retention ?? settings.retention ?? STUDY_DEFAULTS.retention;
-  const params: FsrsParams = { retention, learningSteps: settings.learningSteps, relearningSteps: settings.relearningSteps, maxInterval: settings.maxInterval };
+  // The person's optimised weights (§23): the deck's own, else those for
+  // all decks, else FSRS-6's defaults.
+  const { weights, ...model } = await personalWeights(user.id, pageId);
+  const params: FsrsParams = {
+    retention,
+    learningSteps: settings.learningSteps,
+    relearningSteps: settings.relearningSteps,
+    maxInterval: settings.maxInterval,
+    ...(weights ? { weights } : {}),
+  };
   return {
     params,
+    model,
     limits: { new: newPerDay + (more.new || 0), review: reviewsPerDay + (more.review || 0) },
     prefs: {
       newPerDay: own?.new_per_day ?? null,
@@ -465,6 +478,9 @@ export async function studyQueue(user: Identity, raw: unknown) {
     blocked,
     settings,
     params: mine.params,
+    model: mine.model,
+    // The overview only: the note "Parameter optimieren" (§23).
+    ...(input.limit === 0 ? { optimizer: await optimizerNote(user, deck.page.id, mine.model, now) } : {}),
     limits: mine.limits,
     prefs: mine.prefs,
     deckDefaults: mine.deck,
@@ -523,6 +539,7 @@ export async function studyOffline(user: Identity, raw: unknown) {
     blocked,
     settings,
     params: mine.params,
+    model: mine.model,
     limits: mine.limits,
     // The limits of a later study day (without today's "Heute mehr lernen").
     baseLimits: { new: mine.limits.new - mine.prefs.moreToday.new, review: mine.limits.review - mine.prefs.moreToday.review },
@@ -871,6 +888,246 @@ export async function studyUndo(user: Identity, raw: unknown) {
   return { ...overview, undone: log.id, card: card ?? null };
 }
 
+// ---- Parameter optimisation (§23) ----
+
+// The fit itself runs in the person's browser (components/study/optimize-
+// worker.ts, lib/fsrs/optimize.ts): the server hands out the log in a
+// compact form (study.history) and stores the 21 numbers it gets back
+// (study.params).
+const historyInput = z.object({ pageId: uuid, scope: z.enum(["deck", "all"]).default("deck"), zone: zoneInput });
+// At most this many reviews go to the browser (the cards studied last).
+export const MAX_HISTORY_REVIEWS = 200_000;
+// The gentle note in "Meine Einstellungen": optimise again after this many
+// new reviews, or after a month with some.
+const REOPTIMIZE_REVIEWS = 1000,
+  REOPTIMIZE_DAYS = 30,
+  REOPTIMIZE_SOME = 200;
+type HistoryRow = { row_id: string; sub: string; rating: number; state_before: number; day: string; duration_ms: number | null };
+const scopeFilter = (scope: ParamsScope, pageId: string) => (scope === "deck" ? { sql: " AND page_id=?", args: [pageId] } : { sql: "", args: [] as string[] });
+async function reviewCount(userId: string, scope: ParamsScope, pageId: string, after?: number) {
+  const f = scopeFilter(scope, pageId);
+  const r = await one<{ n: number }>(
+    `SELECT COUNT(*) n FROM review_log WHERE user_id=? AND undone_at IS NULL${f.sql}${after === undefined ? "" : " AND reviewed_at>?"}`,
+    userId,
+    ...f.args,
+    ...(after === undefined ? [] : [after]),
+  );
+  return Number(r?.n || 0);
+}
+type Model = Awaited<ReturnType<typeof effective>>["model"];
+async function optimizerNote(user: Identity, pageId: string, model: Model, now: number) {
+  const reviews = await reviewCount(user.id, "deck", pageId);
+  if (model.source === "default" || model.at === null) return { reviews, since: null, suggest: reviews >= MIN_REVIEWS ? ("first" as const) : null };
+  const since = await reviewCount(user.id, model.source, pageId, model.at);
+  const due = since >= REOPTIMIZE_REVIEWS || (now - model.at >= REOPTIMIZE_DAYS * 86_400_000 && since >= REOPTIMIZE_SOME);
+  return { reviews, since, suggest: due ? ("again" as const) : null };
+}
+// The logs of cards as the optimiser reads them: per card the ratings in
+// order and the study days since the review before. A card whose log does
+// not start with its first rating (state before: new) is left out.
+export function trainingCards(rows: HistoryRow[]): TrainingCard[] {
+  const cards: TrainingCard[] = [];
+  let key = "",
+    current: TrainingCard | null = null,
+    lastDay = "",
+    skip = false;
+  for (const row of rows) {
+    const k = `${row.row_id}\u0000${row.sub}`;
+    if (k !== key) {
+      if (current && !skip) cards.push(current);
+      key = k;
+      skip = Number(row.state_before) !== 0;
+      current = { t: [0], r: [Number(row.rating)] };
+      lastDay = row.day;
+      continue;
+    }
+    if (skip || !current) continue;
+    current.t.push(Math.max(0, daysBetween(lastDay, row.day)));
+    current.r.push(Number(row.rating));
+    lastDay = row.day;
+  }
+  if (current && !skip) cards.push(current);
+  return cards;
+}
+// Seconds per kind of review and the shares of ratings, for the
+// recommended retention (lib/fsrs/optimize.ts recommendRetention); too few
+// timed reviews keep the defaults.
+export function reviewCosts(rows: Pick<HistoryRow, "rating" | "state_before" | "duration_ms">[]): ReviewCosts {
+  const MIN = 20;
+  const sum = { learn: 0, learnN: 0, cards: 0, recall: 0, recallN: 0, lapse: 0, lapseN: 0, relearn: 0 };
+  const first = [0, 0, 0, 0],
+    recalled = [0, 0, 0];
+  for (const r of rows) {
+    const state = Number(r.state_before),
+      rating = Number(r.rating),
+      ms = r.duration_ms === null ? null : Number(r.duration_ms);
+    if (state === 0) {
+      first[rating - 1]++;
+      sum.cards++;
+    }
+    if (state === 2 && rating > 1) recalled[rating - 2]++;
+    if (ms === null) continue;
+    if (state === 0 || state === 1) {
+      sum.learn += ms;
+      sum.learnN++;
+    } else if (state === 2 && rating > 1) {
+      sum.recall += ms;
+      sum.recallN++;
+    } else if (state === 2) {
+      sum.lapse += ms;
+      sum.lapseN++;
+    } else sum.relearn += ms;
+  }
+  const seconds = (ms: number) => Math.round(ms / 100) / 10;
+  const shares = <T extends number[]>(counts: T, fallback: T) => {
+    const n = counts.reduce((a, b) => a + b, 0);
+    return (n >= MIN ? counts.map((x) => Math.round((x / n) * 1000) / 1000) : fallback) as T;
+  };
+  return {
+    learn: sum.learnN >= MIN && sum.cards ? seconds(sum.learn / Math.max(1, Math.min(sum.cards, sum.learnN))) : DEFAULT_COSTS.learn,
+    recall: sum.recallN >= MIN ? seconds(sum.recall / sum.recallN) : DEFAULT_COSTS.recall,
+    forget: sum.lapseN >= MIN ? seconds((sum.lapse + sum.relearn) / sum.lapseN) : DEFAULT_COSTS.forget,
+    first: shares(first as [number, number, number, number], DEFAULT_COSTS.first),
+    recalled: shares(recalled as [number, number, number], DEFAULT_COSTS.recalled),
+  };
+}
+async function historyRows(userId: string, scope: ParamsScope, pageId: string) {
+  const f = scopeFilter(scope, pageId);
+  return await all<HistoryRow>(
+    `SELECT row_id,sub,rating,state_before,day,duration_ms FROM review_log WHERE user_id=? AND undone_at IS NULL${f.sql} ORDER BY row_id,sub,reviewed_at,id`,
+    userId,
+    ...f.args,
+  );
+}
+// The person's own log of a deck or of all their decks, for the optimiser:
+// below MIN_REVIEWS ratings only the count.
+export async function studyHistory(user: Identity, raw: unknown) {
+  const input = historyInput.parse(raw);
+  if (!allow(`study-history:${user.id}`, 20, 60_000)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  const deck = await deckOf(user, input.pageId);
+  const settings = requireDeck(deck);
+  const clock = await zoneFor(user, input.zone);
+  const mine = await effective(user, deck.page.id, settings, studyDay(Date.now(), clock.zone, clock.dayStart));
+  const stored = await storedWeights(user.id, deck.page.id, input.scope);
+  // "Before": what this scope uses now.
+  const current = input.scope === "deck" ? mine.params.weights ?? null : stored?.weights ?? null;
+  const base = {
+    scope: input.scope,
+    minimum: MIN_REVIEWS,
+    retention: mine.params.retention,
+    maxInterval: settings.maxInterval,
+    model: mine.model,
+    stored: stored ? { at: stored.at, reviews: stored.reviews } : null,
+    current,
+    defaults: [...DEFAULT_WEIGHTS],
+  };
+  const reviews = await reviewCount(user.id, input.scope, deck.page.id);
+  if (reviews < MIN_REVIEWS) return { ...base, reviews, cards: [] as TrainingCard[], costs: DEFAULT_COSTS, truncated: false };
+  const rows = await historyRows(user.id, input.scope, deck.page.id);
+  let cards = trainingCards(rows);
+  const total = cards.reduce((n, c) => n + c.r.length, 0);
+  const truncated = total > MAX_HISTORY_REVIEWS;
+  if (truncated) {
+    // Keep the longest-studied cards up to the cap (the order is stable).
+    let n = 0;
+    cards = [...cards]
+      .sort((a, b) => b.r.length - a.r.length)
+      .filter((c) => {
+        n += c.r.length;
+        return n <= MAX_HISTORY_REVIEWS;
+      });
+  }
+  return { ...base, reviews, cards, costs: reviewCosts(rows), truncated };
+}
+const fitInput = z.object({ logLoss: z.number().min(0).max(100), rmse: z.number().min(0).max(1), items: z.number().int().min(0) }).strict();
+const paramsInput = z.object({
+  pageId: uuid,
+  scope: z.enum(["deck", "all"]).default("deck"),
+  // The 21 weights, clamped to FSRS-6's bounds; null: FSRS-6's defaults again.
+  weights: z.array(z.number().finite()).length(21).nullable(),
+  reviews: z.number().int().min(0).optional(),
+  fit: z.object({ before: fitInput, after: fitInput }).strict().optional(),
+  zone: zoneInput,
+});
+// Stores (or resets) the person's weights for a deck or for all decks and
+// computes the stability and difficulty of their cards there again from
+// the log (Anki does the same); due dates stay.
+export async function studyParams(user: Identity, raw: unknown) {
+  const input = paramsInput.parse(raw);
+  const deck = await deckOf(user, input.pageId);
+  requireDeck(deck);
+  const now = Date.now();
+  const target = input.scope === "all" ? "" : deck.page.id;
+  const value = input.weights
+    ? JSON.stringify({ version: 1, w: clampWeights(input.weights), reviews: input.reviews ?? (await reviewCount(user.id, input.scope, deck.page.id)), ...(input.fit ? { fit: input.fit } : {}) })
+    : null;
+  await run(
+    `INSERT INTO study_prefs(user_id,page_id,params,params_at,updated_at) VALUES(?,?,?,?,?)
+     ON CONFLICT(user_id,page_id) DO UPDATE SET params=excluded.params,params_at=excluded.params_at,updated_at=excluded.updated_at`,
+    user.id,
+    target,
+    value,
+    value ? now : null,
+    now,
+  );
+  const recomputed = await recomputeMemory(user, input.scope, deck.page.id);
+  const overview = await studyQueue(user, { pageId: input.pageId, zone: input.zone, limit: 0 });
+  return { ...overview, recomputed };
+}
+// The cards of the scope get the stability and difficulty their log gives
+// under the weights their deck now uses.
+async function recomputeMemory(user: Identity, scope: ParamsScope, pageId: string) {
+  const own = scope === "all" ? await decksWithWeights(user.id) : new Set<string>();
+  const states = await all<{ row_id: string; sub: string; page_id: string; stability: number; difficulty: number }>(
+    `SELECT row_id,sub,page_id,stability,difficulty FROM card_states WHERE user_id=?${scope === "deck" ? " AND page_id=?" : ""}`,
+    user.id,
+    ...(scope === "deck" ? [pageId] : []),
+  );
+  const affected = states.filter((s) => scope === "deck" || !own.has(s.page_id));
+  if (!affected.length) return 0;
+  const byCard = new Map(affected.map((s) => [`${s.row_id}\u0000${s.sub}`, s]));
+  const rows = (
+    await all<HistoryRow>(
+      `SELECT l.row_id,l.sub,l.rating,l.state_before,l.day,l.duration_ms FROM review_log l JOIN card_states s ON s.user_id=l.user_id AND s.row_id=l.row_id AND s.sub=l.sub
+        WHERE l.user_id=? AND l.undone_at IS NULL${scope === "deck" ? " AND s.page_id=?" : ""} ORDER BY l.row_id,l.sub,l.reviewed_at,l.id`,
+      user.id,
+      ...(scope === "deck" ? [pageId] : []),
+    )
+  ).filter((r) => byCard.has(`${r.row_id}\u0000${r.sub}`));
+  // Weights per deck, clipped like the scheduler clips them (ts-fsrs, by
+  // the deck's relearning steps).
+  const weightsOf = new Map<string, number[]>();
+  const weightsFor = async (deckId: string) => {
+    if (!weightsOf.has(deckId)) {
+      const settings = (await databaseSettings(deckId)).study;
+      const w = (await personalWeights(user.id, deckId)).weights ?? [...DEFAULT_WEIGHTS];
+      weightsOf.set(deckId, clipParameters(w, settings?.relearningSteps.length ?? 1, true));
+    }
+    return weightsOf.get(deckId)!;
+  };
+  let changed = 0;
+  const groups = new Map<string, HistoryRow[]>();
+  for (const r of rows) {
+    const k = `${r.row_id}\u0000${r.sub}`;
+    const list = groups.get(k);
+    if (list) list.push(r);
+    else groups.set(k, [r]);
+  }
+  for (const [k, list] of groups) {
+    const [card] = trainingCards(list);
+    const state = byCard.get(k)!;
+    if (!card) continue;
+    const memory = foldMemory(card, await weightsFor(state.page_id));
+    if (!memory) continue;
+    const stability = Math.round(memory.stability * 1e8) / 1e8,
+      difficulty = Math.round(memory.difficulty * 1e8) / 1e8;
+    if (Math.abs(stability - Number(state.stability)) < 1e-6 && Math.abs(difficulty - Number(state.difficulty)) < 1e-6) continue;
+    await run("UPDATE card_states SET stability=?,difficulty=?,updated_at=? WHERE user_id=? AND row_id=? AND sub=?", stability, difficulty, Date.now(), user.id, state.row_id, state.sub);
+    changed++;
+  }
+  return changed;
+}
+
 // ---- Settings ----
 
 // The daily study reminder (§10.3, lib/study-reminders.ts): a local time
@@ -1155,6 +1412,10 @@ export async function studyCommand(user: Identity, action: string, b: Record<str
       return await studyUndo(user, b);
     case "study.prefs":
       return await studyPrefs(user, b);
+    case "study.history":
+      return await studyHistory(user, b);
+    case "study.params":
+      return await studyParams(user, b);
     case "study.due":
       return await (await import("./study-stats")).studyDue(user, b);
     case "study.stats":

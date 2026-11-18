@@ -56,6 +56,10 @@ Inhalt
 17. Offene Fragen und Risiken
 18. Entscheidungen beim Bau von Phase 2 und 3a
 19. Entscheidungen beim Bau von Phase 3b und 4
+20. Entscheidungen beim Bau von Phase 5
+21. Entscheidungen beim Bau von Phase 6
+22. Entscheidungen beim Bau von Phase 7
+23. Entscheidungen beim Bau von Phase 8
 
 ---
 
@@ -2273,3 +2277,150 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
 - Kartenvorschau auf der Marketplace-Seite (`payload/study-meta.json`) und
   eine eigene Kategorie „Lernen“ (Vertragsänderung, §8.4) – später.
 - Durchblättern ohne JavaScript zeigt nur Vorderseiten.
+
+---
+
+## 23. Entscheidungen beim Bau von Phase 8
+
+**Optimierer: eigener TypeScript-Code statt `fsrs-rs` (`lib/fsrs/optimize.ts`)**
+
+- Entschieden für (a): ein Optimierer in reinem TypeScript ohne eigene
+  Abhängigkeit. `fsrs-rs` gibt es für JavaScript nur als Node-Binding
+  (native Binärdatei je Plattform im Docker-Image und in den Linux-Archiven)
+  oder als WebAssembly-Build, den wir selbst bauen und pflegen müssten;
+  beides für ~300 Zeilen Rechnung. Die Ergebnisse prüfen Tests gegen
+  Referenzwerte (unten).
+- Modell: FSRS-6 genau wie das gepinnte `ts-fsrs` 5.4.2 rechnet
+  (`next_state`, `forgetting_curve`, Kurzzeitstabilität am selben Tag,
+  Untergrenze nach dem Vergessen `S/e^(w17·w18)`), ohne dessen Runden auf 8
+  Stellen. Grenzen der Gewichte: `CLAMP_PARAMETERS` aus `ts-fsrs` (dieselben
+  wie fsrs-rs), Startwerte `default_w` – nichts abgetippt.
+- Ziel wie fsrs-rs: Log-Loss (binäre Kreuzentropie) zwischen vorhergesagter
+  Abrufwahrscheinlichkeit R und Ergebnis (Wertung > 1) jeder Wiederholung,
+  die mindestens einen Lerntag nach der vorigen kommt; Wiederholungen am
+  selben Tag bewegen nur den Zustand. Dazu ein kleiner L2-Zug zur Vorgabe
+  (32 Pseudo-Wertungen je (Abstand / Spannweite des Gewichts)²), damit ein
+  kurzes Protokoll nicht davonläuft.
+- Gradient exakt per Vorwärts-Differentiation (duale Zahlen mit 21
+  Ableitungen, die Ableitungen jeder Formel ausgeschrieben – ein Array je
+  Ergebnis statt je Rechenschritt, rund zehnmal schneller). Adam (lr 0,04,
+  β 0,9/0,999), 5 Epochen, Lernrate kosinus-abfallend, Mini-Batches ganzer
+  Karten (64–512 Vorhersagen), Mischen mit festem Seed → **deterministisch**.
+  w0–w3 (Anfangsstabilitäten) im Logarithmus optimiert: fsrs-rs trainiert
+  sie vorab getrennt; so erreichen sie Werte wie 0,2 → 20 ohne eigenen
+  Schritt. Nach jedem Schritt auf die Grenzen begrenzt, am Ende auf 4
+  Stellen gerundet.
+- Messung: Log-Loss und **RMSE (Klassen)** – Vorhersagen in 20 Klassen von
+  R, Wurzel der nach Anzahl gewichteten mittleren quadratischen Abweichung
+  zwischen mittlerer Vorhersage und Trefferquote je Klasse.
+- Nicht von fsrs-rs übernommen: das getrennte Vortraining von w0–w3, seine
+  Ausreißerfilter, seine genauen Regularisierungskonstanten. Die Zahlen sind
+  daher ähnlich, nicht gleich denen von Anki.
+- Tests (`tests/fsrs-optimize.test.ts`): Faltung eines Protokolls = Zustand
+  aus `lib/fsrs replay` (ts-fsrs mit Lernschritten und Lerntagen, 300
+  zufällige Karten, zwei Gewichtssätze); Log-Loss = von Hand aus
+  `ts-fsrs`; Gradient = finite Differenzen; synthetische Protokolle aus
+  bekannten Gewichten (`tests/helpers/fsrs-synthetic.ts`, erzeugt mit
+  `ts-fsrs` selbst): Verlust fällt auf den der Wahrheit, Gewichte rücken
+  näher (Abstand < 0,75 × Abstand der Vorgabe, w1–w3 und w20 einzeln),
+  neues Protokoll derselben „Person“ besser als die Vorgabe; Grenzen auch
+  bei Protokollen, die hinausdrängen; gleiche Eingabe → gleiche Gewichte.
+  20 000 Wertungen: unter 1 s in Node.
+
+**Wo gerechnet wird: Web Worker im Browser**
+
+- Entschieden: Web Worker (`components/study/optimize-worker.ts`, geladen
+  mit `new Worker(new URL(…), { type: "module" })`; CSP `worker-src 'self'
+  blob:` reicht). Der Server liefert das Protokoll kompakt
+  (`study.history`), der Browser rechnet und schickt die 21 Zahlen zurück
+  (`study.params`). Gründe: keine Last auf dem Server (Cluster, kleine
+  Instanzen), keine Ereignisschleife blockiert; die Worker-Threads des
+  Servers sind reines `.mjs` neben den Quellen (`lib/workers/`) – der
+  TypeScript-Optimierer müsste dafür doppelt oder mit eigenem Build-Schritt
+  existieren; §4.1 sah den Browser schon vor. Die Gewichte sind die
+  eigenen der Person, also genügt es, sie beim Speichern auf die Grenzen zu
+  begrenzen. Folge: über API/MCP lässt sich nicht optimieren, nur Gewichte
+  setzen (offen, unten).
+- Der Dialog „Parameter optimieren“ (`components/study/optimize.tsx`) lädt
+  per `next/dynamic` aus `components/database-study.tsx` (selbst schon
+  nachgeladen); der Worker erst beim Klick auf „Optimieren“. Nichts Neues
+  in der App-Hülle.
+
+**Umfang: je Stapel oder für alle Stapel (`lib/study-params.ts`)**
+
+- Wie Grenzen und Behaltensrate: `study_prefs.params` der Zeile
+  `(Person, Stapel)` oder `(Person, '')` für alle Stapel; ein Stapel nutzt
+  seine eigenen, sonst die für alle, sonst FSRS-6. JSON `{ version, w,
+  reviews, fit: { before, after } }`, `params_at` = Zeitpunkt. **Keine
+  Migration** – die Spalten gibt es seit Phase 1.
+- `study.history { pageId, scope }`: Wertungen der Person (ohne
+  rückgängig gemachte, mit `import` und `offline`) des Stapels bzw. aller
+  ihrer Stapel; unter **1 000** nur die Zahl. Sonst je Karte
+  `{ t, r }` (Lerntage seit der vorigen aus `review_log.day`, Wertungen);
+  Karten, deren Protokoll nicht mit der ersten Wertung (`state_before = 0`)
+  beginnt, fallen weg; höchstens 200 000 Wertungen (die am längsten
+  gelernten Karten). Dazu Kosten für die Behaltensrate, die Gewichte im
+  Einsatz (`current`) und die Vorgabe.
+- `study.params { pageId, scope, weights | null, reviews?, fit? }` speichert
+  bzw. setzt zurück und **rechnet Stabilität und Schwierigkeit** der Karten
+  im Umfang neu aus ihrem Protokoll (wie Anki); Fälligkeiten bleiben. Für
+  „alle Stapel“ nur Stapel ohne eigene Gewichte. Gewichte je Stapel wie im
+  Planer begrenzt (`clipParameters` mit der Zahl der Wiederlernschritte).
+- Planung: `effective()` in `lib/study.ts` setzt `params.weights` – damit
+  nutzen Wertung, Rückgängig, Nachspielen (`study.reviews`), Import, die
+  Vorschau auf den Knöpfen und die Offline-Kopie (`GET …/study?offline=1`
+  trägt `params`, `lib/study-offline.ts` plant mit `deck.params`) dieselben
+  Gewichte. Antworten tragen `model { source, at, reviews, fit }`.
+- Beide Befehle brauchen nur Lesen, sind nicht im Aktivitätsprotokoll,
+  SDKs neu erzeugt.
+
+**„Behaltensrate empfehlen“ (vereinfachtes CMRR)**
+
+- Aus den neuen Gewichten: Simulation eines Jahres mit 2 000 Karten (eine
+  alle paar Stunden neu), je Behaltensrate 70–95 % in ganzen Prozent: Intervall
+  `I(r, S)`, erinnert mit Wahrscheinlichkeit R, nach dem Vergessen ein
+  Wiederlernschritt am selben Tag. Kosten in Sekunden aus dem eigenen
+  Protokoll (`duration_ms`: Lernen, erinnert, vergessen samt Wiederlernen;
+  Anteile der ersten Wertungen und von Schwer/Gut/Leicht), unter 20
+  gemessenen Wertungen Vorgaben (20 s, 8 s, 23 s). Empfohlen wird die Rate
+  mit der wenigsten Zeit je behaltener Karte (Summe von R am Ende);
+  Vergessen zählt **2,5-fach** (Verlustaversion) – ohne das gewinnt bei
+  FSRS-6 immer die niedrigste Rate. Gleiche Zufallszahlen für jede Rate,
+  Kurve über ±2 Punkte geglättet; deterministisch.
+- Anders als Anki: keine Simulation mit den Tagesgrenzen des Stapels, kein
+  Zeitbudget. Die Empfehlung ist ein Vorschlag mit eigenem Knopf
+  („84 % für diesen Stapel übernehmen“ → `study.prefs { retention }`).
+
+**Oberfläche**
+
+- „Meine Einstellungen“ des Stapels: Abschnitt „Gedächtnismodell (FSRS)“
+  (Standard / eigene für diesen Stapel / für alle, mit Datum), Knopf
+  „Parameter optimieren …“ (braucht Verbindung).
+- Dialog: Umfang „Dieser Stapel“ / „Alle meine Stapel“, Stand und Zahl der
+  Wertungen; unter 1 000 der Hinweis „Zum Optimieren braucht es mindestens
+  1.000 Wertungen – hier sind es 312 …“ und kein Start. Nach dem Rechnen
+  (Fortschritt, abbrechbar) eine Tabelle Log-Loss / RMSE für Vorgabe,
+  Bisher (falls eigene) und Optimiert, das Urteil „besser“ oder „Keine
+  Verbesserung“, die empfohlene Behaltensrate. „Übernehmen“ nur, wenn der
+  Log-Loss sinkt; sonst „Vorgabe behalten“ / „Bisherige behalten“;
+  „Auf Vorgabe zurücksetzen“, solange eigene gespeichert sind.
+- **Hinweis zum Neu-Optimieren** (nur in „Meine Einstellungen“, keine
+  Benachrichtigung): mit Standardgewichten ab 1 000 Wertungen im Stapel;
+  mit eigenen nach 1 000 neuen Wertungen im Umfang oder nach 30 Tagen mit
+  mindestens 200 neuen (`optimizer` in der Übersicht, `study.queue` mit
+  `limit: 0`).
+- Statistik des Stapels: „Gedächtnismodell: FSRS-6 mit Standardparametern“
+  bzw. „… mit deinen Parametern für diesen Stapel, optimiert am … aus …
+  Wertungen. RMSE … statt …“ (`study.stats` → `model`).
+- Galerie-Szene `study-optimize` (1 161 synthetische Wertungen), Browser-
+  Test `tests/browser/study-optimize.spec.ts` (Desktop und Telefon).
+
+**Offen**
+
+- Optimieren über API/MCP (bräuchte den Optimierer im Server-Worker).
+- Optimieren je Unterstapel (Lernen-Ansicht mit Filtern) oder je Kartentyp.
+- Vortraining von w0–w3 und Ausreißerfilter wie fsrs-rs; Abgleich der
+  Zahlen mit Anki an einem echten Protokoll.
+- Empfehlung mit Tagesgrenzen und Zeitbudget des Stapels (wie Ankis
+  Simulator); Kurve der Arbeit je Rate im Dialog.
+- Optimieren offline (das Protokoll liegt nicht in der Offline-Kopie).
