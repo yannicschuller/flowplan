@@ -35,6 +35,7 @@ import {
   useE2ee,
   type SpaceInfo,
 } from "./e2ee-store";
+import { PasswordInput } from "./password-input";
 
 const EncryptedEditor = dynamic(() => loadView(() => import("./encrypted-editor")), { ssr: false });
 export const MIN_PASSPHRASE = 10;
@@ -113,11 +114,11 @@ export function E2eeSetupDialog({ open, onClose, onDone }: { open: boolean; onCl
           </p>
           <label>
             {t("Passphrase", "Passphrase")}
-            <input type="password" autoComplete="new-password" autoFocus value={passphrase} onChange={(e) => setPassphrase(e.target.value)} minLength={MIN_PASSPHRASE} required />
+            <PasswordInput autoComplete="new-password" autoFocus value={passphrase} onChange={(e) => setPassphrase(e.target.value)} minLength={MIN_PASSPHRASE} required />
           </label>
           <label>
             {t("Passphrase wiederholen", "Repeat passphrase")}
-            <input type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required />
+            <PasswordInput autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required />
           </label>
           <p className="muted">
             {t(
@@ -231,8 +232,7 @@ export function E2eeUnlockDialog({ open, onClose, onDone }: { open: boolean; onC
         )}
         <label>
           {mode === "passphrase" ? t("Passphrase", "Passphrase") : t("Neue Passphrase", "New passphrase")}
-          <input
-            type="password"
+          <PasswordInput
             autoFocus={mode === "passphrase"}
             autoComplete={mode === "passphrase" ? "current-password" : "new-password"}
             value={passphrase}
@@ -643,11 +643,11 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
         >
           <label>
             {t("Bisherige Passphrase", "Current passphrase")}
-            <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+            <PasswordInput autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
           </label>
           <label>
             {t("Neue Passphrase", "New passphrase")}
-            <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required />
+            <PasswordInput autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required />
           </label>
           <button className="button primary" disabled={busy}>
             {t("Ändern", "Change")}
@@ -677,7 +677,7 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
           >
             <label>
               {t("Passphrase", "Passphrase")}
-              <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+              <PasswordInput autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
             </label>
             <button className="button primary" disabled={busy}>
               {t("Erzeugen", "Create||key")}

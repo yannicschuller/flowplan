@@ -11,6 +11,7 @@ import { Fingerprint, Plus, Trash } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 import { useT } from "./i18n";
 import { CONTROL, SaveState, SettingRow, StatusBadge, useSaveState } from "./settings-ui";
+import { PasswordInput } from "./password-input";
 
 type Passkey = { id: string; name: string; created_at: number; last_used_at: number | null };
 async function post<T = { ok: true; passkeys: Passkey[] }>(path: string, body?: unknown): Promise<T> {
@@ -124,15 +125,15 @@ export function PasswordRow() {
         <form method="post" action="/api/auth/no-script" id="password-form" className="setting-row wide account-form" onSubmit={submit}>
           <label>
             {t("Bisheriges Passwort", "Current password")}
-            <input className={CONTROL.lg} name="current" type="password" autoComplete="current-password" required maxLength={200} autoFocus />
+            <PasswordInput className={CONTROL.lg} name="current" autoComplete="current-password" required maxLength={200} autoFocus />
           </label>
           <label>
             {t("Neues Passwort", "New password")}
-            <input className={CONTROL.lg} name="next" type="password" autoComplete="new-password" required minLength={10} maxLength={200} />
+            <PasswordInput className={CONTROL.lg} name="next" autoComplete="new-password" required minLength={10} maxLength={200} />
           </label>
           <label>
             {t("Neues Passwort wiederholen", "Repeat new password")}
-            <input className={CONTROL.lg} name="repeat" type="password" autoComplete="new-password" required minLength={10} maxLength={200} />
+            <PasswordInput className={CONTROL.lg} name="repeat" autoComplete="new-password" required minLength={10} maxLength={200} />
           </label>
           {error && (
             <p role="alert" className="error">

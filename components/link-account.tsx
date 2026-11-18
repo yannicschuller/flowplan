@@ -13,6 +13,7 @@ import type { PendingLinkInfo } from "@/lib/oidc-link";
 import { BrandMark } from "./brand-mark";
 import { AuthLayout } from "./auth-layout";
 import { useT } from "./i18n";
+import { PasswordInput } from "./password-input";
 
 async function post(path: string, body?: unknown) {
   const response = await fetch(`/api/auth/${path}`, {
@@ -108,7 +109,7 @@ export default function LinkAccount({ info, instanceName = "" }: { info: Pending
                 info.password && (
                   <label>
                     {info.ldap ? t("Passwort deines Verzeichniskontos", "Password of your directory account") : t("Passwort des bestehenden Kontos", "Password of the existing account")}
-                    <input name="password" type="password" autoComplete="current-password" required maxLength={200} autoFocus />
+                    <PasswordInput name="password" autoComplete="current-password" required maxLength={200} autoFocus />
                   </label>
                 )
               )}

@@ -5,6 +5,7 @@ import { serverMessage } from "@/lib/server-message";
 import { useState, type FormEvent } from "react";
 import { LockKey, SpinnerGap } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { PasswordInput } from "./password-input";
 
 export function SharePasswordForm({ token }: { token: string }) {
   const t = useT();
@@ -38,7 +39,7 @@ export function SharePasswordForm({ token }: { token: string }) {
       )}
       <label>
         {t("Passwort", "Password")}
-        <input name="password" type="password" autoComplete="off" required maxLength={200} autoFocus />
+        <PasswordInput name="password" autoComplete="off" required maxLength={200} autoFocus />
       </label>
       <button className="button primary" disabled={busy}>
         {busy ? <SpinnerGap className="spin" /> : <LockKey size={17} />}

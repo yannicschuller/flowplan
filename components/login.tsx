@@ -30,6 +30,7 @@ import {
   writeLastSignIn,
   type SignInWay,
 } from "@/lib/sign-in-ways";
+import { PasswordInput } from "./password-input";
 
 // Restoring a backup at setup is rare: its code (and the table of server
 // messages it uses) loads only when chosen.
@@ -530,10 +531,9 @@ export default function Login({
                 </button>
               )}
             </div>
-            <input
+            <PasswordInput
               id={passwordId}
               name="password"
-              type="password"
               autoComplete={mode === "register" ? "new-password" : "current-password"}
               required
               minLength={mode === "register" ? 10 : undefined}

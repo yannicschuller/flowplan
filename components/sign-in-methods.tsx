@@ -15,6 +15,7 @@ import type { StepUpMethods } from "@/lib/step-up";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
 import { CONTROL, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
+import { PasswordInput } from "./password-input";
 
 export type Overview = SignInOverview & { confirm: StepUpMethods };
 export async function post<T = Overview>(path: string, body?: unknown): Promise<T> {
@@ -264,11 +265,11 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
           <>
             <label>
               {t("Neues Passwort", "New password")}
-              <input className={CONTROL.lg} name="next" type="password" autoComplete="new-password" required minLength={10} maxLength={200} autoFocus />
+              <PasswordInput className={CONTROL.lg} name="next" autoComplete="new-password" required minLength={10} maxLength={200} autoFocus />
             </label>
             <label>
               {t("Neues Passwort wiederholen", "Repeat new password")}
-              <input className={CONTROL.lg} name="repeat" type="password" autoComplete="new-password" required minLength={10} maxLength={200} />
+              <PasswordInput className={CONTROL.lg} name="repeat" autoComplete="new-password" required minLength={10} maxLength={200} />
             </label>
           </>
         )}
@@ -277,7 +278,7 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
           {methods.password && !useCode && (
             <label>
               {t("Aktuelles Passwort", "Current password")}
-              <input className={CONTROL.lg} name="password" type="password" autoComplete="current-password" required maxLength={200} autoFocus={!pending.newPassword} />
+              <PasswordInput className={CONTROL.lg} name="password" autoComplete="current-password" required maxLength={200} autoFocus={!pending.newPassword} />
             </label>
           )}
           {methods.code && useCode && (

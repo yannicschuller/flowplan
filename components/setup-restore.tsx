@@ -10,6 +10,7 @@ import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { RestoreProgress, RestoreResult } from "@/lib/setup-restore";
 import { useT } from "./i18n";
+import { PasswordInput } from "./password-input";
 
 type Source = "file" | "s3" | "sftp";
 const ENDPOINT = "/api/setup/restore";
@@ -238,9 +239,8 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
       </div>
       <label className={askKey ? "setup-restore-key asked" : "setup-restore-key"}>
         {askKey ? t("Schlüssel der Sicherung", "Key of the backup") : t("Schlüssel, falls verschlüsselt (optional)", "Key if encrypted (optional)")}
-        <input
+        <PasswordInput
           ref={keyInput}
-          type="password"
           autoComplete="off"
           spellCheck={false}
           value={key}
@@ -294,7 +294,7 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
               </label>
               <label>
                 {t("Geheimer Schlüssel", "Secret access key")}
-                <input name="secretAccessKey" type="password" required autoComplete="off" />
+                <PasswordInput name="secretAccessKey" required autoComplete="off" />
               </label>
             </>
           ) : (
@@ -315,7 +315,7 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
               </label>
               <label>
                 {t("Passwort", "Password")}
-                <input name="password" type="password" autoComplete="off" />
+                <PasswordInput name="password" autoComplete="off" />
               </label>
               <details>
                 <summary>{t("Stattdessen mit privatem Schlüssel", "With a private key instead")}</summary>
@@ -325,7 +325,7 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
                 </label>
                 <label>
                   {t("Passphrase (optional)", "Passphrase (optional)")}
-                  <input name="passphrase" type="password" autoComplete="off" />
+                  <PasswordInput name="passphrase" autoComplete="off" />
                 </label>
               </details>
               <label>

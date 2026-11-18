@@ -6,6 +6,7 @@ import { BrandMark } from "./brand-mark";
 import { AuthLayout } from "./auth-layout";
 import { useT } from "./i18n";
 import { AppProfilesLink } from "./app-profiles-link";
+import { PasswordInput } from "./password-input";
 
 // `confirmed`: the confirmation link of a new account, opened in another
 // browser than the one that signed up – its owner chooses the password now.
@@ -76,12 +77,12 @@ export default function ResetPassword({ token, confirmed = false }: { token: str
             )}
             <label>
               {t("Neues Passwort", "New password")}
-              <input name="password" type="password" autoComplete="new-password" required minLength={10} maxLength={200} />
+              <PasswordInput name="password" autoComplete="new-password" required minLength={10} maxLength={200} />
               <small>{t("Mindestens 10 Zeichen.", "At least 10 characters.")}</small>
             </label>
             <label>
               {t("Passwort wiederholen", "Repeat password")}
-              <input name="repeat" type="password" autoComplete="new-password" required minLength={10} maxLength={200} />
+              <PasswordInput name="repeat" autoComplete="new-password" required minLength={10} maxLength={200} />
             </label>
             <button className="button primary wide" disabled={busy}>
               {t("Passwort festlegen", "Set password")}

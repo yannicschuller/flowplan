@@ -22,6 +22,7 @@ import { AppProfilesLink } from "./app-profiles-link";
 import { useT } from "./i18n";
 import { SettingRow, StatusBadge } from "./settings-ui";
 import type { TwoFactorStatus } from "@/lib/two-factor";
+import { PasswordInput } from "./password-input";
 
 type Setup = {
   secret: string;
@@ -313,8 +314,7 @@ export function TwoFactorSettings({
               "Zum Ändern: Passwort oder aktueller Code aus der App",
               "To change it: password or current code from the app",
             )}
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               maxLength={200}
               value={confirm}

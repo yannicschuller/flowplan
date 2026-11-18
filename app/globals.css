@@ -39406,3 +39406,42 @@ a.favorite-nav.selected {
     padding-bottom: max(70px, 45vh);
   }
 }
+
+/* ---------- Password fields with an eye button (components/password-input.tsx, #372) ---------- */
+.password-field {
+  position: relative;
+  display: block;
+  max-width: 100%;
+}
+.password-field > input {
+  width: 100%;
+  padding-right: 40px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--secondary);
+  cursor: pointer;
+}
+.password-toggle:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.password-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+}
+/* The browser's own reveal button (Edge) would sit next to ours. */
+.password-field > input::-ms-reveal {
+  display: none;
+}
