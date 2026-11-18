@@ -5,23 +5,82 @@
 // deck –, a session per deck, "Alle fälligen lernen" (the decks one after
 // the other, each within its own limits), the streak and the statistics
 // over all decks – and "Aus Anki importieren" (components/study/anki-import.tsx).
+// Also the daily study reminder ("Lernerinnerung", lib/study-reminders.ts):
+// on or off and its time, saved with study.reminder for all workspaces.
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { Cards, ChartBar, DownloadSimple, Fire, Play } from "@phosphor-icons/react";
+import { BellRinging, Cards, ChartBar, DownloadSimple, Fire, Play } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { PageIcon, api } from "../ui";
+import { Switch } from "../settings-ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { StudyFocus, studyZoneNow } from "./focus";
 import { StudyStatsPanel } from "./stats";
+import { useStudyPending } from "./offline";
+import { StudyPendingNote } from "./pending";
 import type { Space } from "@/lib/types";
 
 const StudyAnkiImport = dynamic(() => import("./anki-import"), { ssr: false });
 
 type DueDeck = { pageId: string; title: string; icon: string; new: number; learning: number; review: number; total: number };
-type Due = { day: string; zone: string; decks: DueDeck[]; streak: number };
+type Due = { day: string; zone: string; decks: DueDeck[]; streak: number; reminder?: string | null };
 const left = (d: DueDeck) => d.new + d.learning + d.review;
+const DEFAULT_REMINDER = "18:00";
 
-export function StudyScreen({ workspaceId, spaces = [], onOpenPage }: { workspaceId: string; spaces?: Pick<Space, "id" | "name">[]; onOpenPage: (pageId: string) => void }) {
+function StudyReminder({ value, onSaved }: { value: string | null; onSaved: (value: string | null) => void }) {
+  const t = useT();
+  const [draft, setDraft] = useState(value || DEFAULT_REMINDER),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  useEffect(() => setDraft(value || DEFAULT_REMINDER), [value]);
+  const save = async (next: string | null) => {
+    setBusy(true);
+    try {
+      await api("/api/command", { action: "study.reminder", remindAt: next, zone: studyZoneNow() });
+      onSaved(next);
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="study-reminder" aria-labelledby="study-screen-reminder">
+      <h3 id="study-screen-reminder">
+        <BellRinging aria-hidden /> {t("Lernerinnerung", "Study reminder")}
+      </h3>
+      <div className="study-reminder-row">
+        <Switch checked={!!value} disabled={busy} label={t("Täglich an fällige Karten erinnern", "Remind me daily of due cards")} onChange={(on) => void save(on ? draft : null)} />
+        <span>{t("Täglich erinnern um", "Remind me daily at")}</span>
+        <input
+          type="time"
+          step={300}
+          value={draft}
+          disabled={busy}
+          aria-label={t("Uhrzeit der Lernerinnerung", "Time of the study reminder")}
+          onChange={(e) => setDraft(e.target.value.slice(0, 5) || DEFAULT_REMINDER)}
+          onBlur={() => {
+            if (value && draft !== value) void save(draft);
+          }}
+        />
+      </div>
+      <p className="muted">
+        {t(
+          "Nur an Tagen, an denen Karten fällig sind und du noch nicht gelernt hast. Nach 30 Tagen ohne Lernen pausiert die Erinnerung. Wohin sie kommt, stellst du unter Einstellungen → Benachrichtigungen bei „Lernerinnerungen“ ein.",
+          "Only on days with cards due that you have not studied yet. After 30 days without studying the reminder pauses. Where it arrives you choose under Settings → Notifications at “Study reminders”.",
+        )}
+      </p>
+      {error && (
+        <p className="study-error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { workspaceId: string; userId?: string; spaces?: Pick<Space, "id" | "name">[]; onOpenPage: (pageId: string) => void }) {
   const t = useT();
   const [due, setDue] = useState<Due | null>(null),
     [error, setError] = useState(""),
@@ -40,6 +99,7 @@ export function StudyScreen({ workspaceId, spaces = [], onOpenPage }: { workspac
   useEffect(() => {
     void load();
   }, [load, version]);
+  const pending = useStudyPending(userId);
   const decks = due?.decks || [];
   const open = decks.filter((d) => left(d) > 0);
   const total = open.reduce((n, d) => n + left(d), 0);
@@ -67,6 +127,7 @@ export function StudyScreen({ workspaceId, spaces = [], onOpenPage }: { workspac
           {error}
         </p>
       )}
+      <StudyPendingNote count={pending} />
       {!due && !error && <p className="muted">{t("Stapel werden geladen …", "Loading decks …")}</p>}
       {due && !decks.length && (
         <div className="study-empty">
@@ -112,6 +173,7 @@ export function StudyScreen({ workspaceId, spaces = [], onOpenPage }: { workspac
           <p className="muted">{t("Die Zahlen gelten für den ganzen Stapel; Ansichten mit Filtern lernen davon nur einen Teil.", "The numbers are for the whole deck; views with filters study only part of it.")}</p>
         </section>
       )}
+      {due && decks.length > 0 && <StudyReminder value={due.reminder ?? null} onSaved={(reminder) => setDue((d) => (d ? { ...d, reminder } : d))} />}
       {decks.length > 0 && (
         <section className="study-stats-panel" aria-labelledby="study-screen-stats">
           <h3 id="study-screen-stats">

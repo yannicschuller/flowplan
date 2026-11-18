@@ -15,10 +15,18 @@ export const notificationKinds = {
   // Incidents of the detection rules (lib/security-detect.ts): only for
   // administrators, see adminOnlyKinds.
   incident: "Sicherheitsvorfälle der Instanz",
+  // The daily reminder to study flashcards (lib/study-reminders.ts): push
+  // only by default – it is no news to keep in the inbox.
+  study: "Lernerinnerungen",
 } as const;
 export type NotificationKind = keyof typeof notificationKinds;
 // Kinds only administrators get and see in the settings.
 export const adminOnlyKinds: readonly NotificationKind[] = ["incident"];
+// Kinds whose other channels do not hang on the inbox: a study reminder is
+// pushed without being kept in the inbox (notifications.push_only,
+// lib/study-reminders.ts). For every other kind push, e-mail and chat apps
+// carry what the inbox holds.
+export const inboxFreeKinds: readonly NotificationKind[] = ["study"];
 export const kindsFor = (admin: boolean) =>
   (Object.keys(notificationKinds) as NotificationKind[]).filter((kind) => admin || !adminOnlyKinds.includes(kind));
 // What applies until a person changes it: what concerns them directly
@@ -41,8 +49,8 @@ export const notificationDefaults: Record<NotificationKind, NotificationChannels
   workflow_ops: { inbox: true, push: true, email: true, messenger: true },
   security: { inbox: true, push: true, email: true, messenger: true },
   incident: { inbox: true, push: true, email: true, messenger: true },
-};
-// SQL for "this channel is on for this person and kind": their own setting,
+  study: { inbox: false, push: true, email: false, messenger: false },
+};// SQL for "this channel is on for this person and kind": their own setting,
 // else the default (table notification_defaults, filled from the map above).
 // The chat-app column of a person's row may be NULL (rows saved before it
 // existed): then the default applies.

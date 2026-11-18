@@ -158,7 +158,7 @@ async function tileData(user: Identity, dashboard: Page, tile: Tile, cache: { lo
         .slice(0, tile.limit)
         .map((p) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind, updated_at: p.updated_at }));
       const unread = (await one<{ n: number }>(
-        "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL",
+        "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL AND push_only IS NULL",
         user.id,
       ))!.n;
       return { available: true, pages, unread };

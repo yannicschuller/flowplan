@@ -1896,3 +1896,150 @@ weil sie erst mit Zuordnung sichtbar wird.
 - Offen: Unterstapel als eigene Datenbanken (Option), Lernstand für
   ausgesetzte neue Karten, PDF-Betrachter-Einstieg der KI, KI-Karten in
   Stapel mit Dokumentseiten (Vorder-/Rückseite ins Dokument schreiben).
+
+---
+
+## 20. Entscheidungen beim Bau von Phase 5
+
+**Push-Erinnerung (`lib/study-reminders.ts`, §10.3)**
+
+- Benachrichtigungsart `study` „Lernerinnerungen“, Vorgabe Push an,
+  Posteingang/E-Mail/Chat-Apps aus. Bisher hing Push am Posteingang (der
+  Trigger `notification_inbox_pref` verwarf eine Benachrichtigung ohne
+  Posteingang ganz, `setNotificationPref` schaltete Push mit dem
+  Posteingang aus). Neu: `inboxFreeKinds = ["study"]` – für diese Art
+  bleiben die anderen Kanäle ohne Posteingang wählbar (Server und
+  Einstellungen). Technisch eine Zeile mit `notifications.push_only = 1`:
+  der Trigger lässt sie durch, Posteingangsliste, Ungelesen-Zählungen (Badge,
+  Dashboard, Desktop-Feed, App-Zusammenfassung) lassen sie aus. Der
+  allgemeine Push-Text („…im Posteingang“) heißt für die Art „Deine
+  Lernkarten warten auf dich.“
+- Migration `migrateStudyReminders` (nach `migrateFlashcards`):
+  `notifications.push_only`, `study_prefs.reminder_paused_at`, Teilindex
+  `study_prefs_reminders`. Nur nullbare Spalten → Schemanummer bleibt 104
+  (eine ältere Version zeigte eine Push-only-Erinnerung im Posteingang,
+  sonst nichts). `remind_at`/`reminded_day` gab es seit Phase 1.
+- Einstellung: Befehl `study.reminder { remindAt: 'HH:MM' | null, zone }`,
+  Oberfläche „Lernerinnerung“ (Schalter + Uhrzeit, Vorgabe 18:00) auf
+  `#study`; `study.due` liefert `reminder` mit. Liegt die Uhrzeit beim
+  Speichern heute schon zurück, gilt `reminded_day = heute` (kein
+  sofortiger Push). Eine Uhrzeit vor dem Tageswechsel (02:00 bei 04:00)
+  gehört zum Ende desselben Lerntags (`reminderMoment` in
+  `lib/study-day.ts`).
+- Takt `leaderDuty("study-reminders")` alle 5 Minuten. Regeln
+  (`reminderStep`, rein): Uhrzeit erreicht, `reminded_day` ≠ Lerntag; dann
+  heute schon gelernt (irgendein Stapel) → Tag erledigt; Karten fällig über
+  **alle Arbeitsbereiche** (`studyDueEverywhere`, neue innerhalb der
+  Grenzen zählen) – 0 → Tag erledigt. Das Setzen von `reminded_day` ist
+  der Anspruch (UPDATE … IS DISTINCT FROM), also cluster- und
+  doppel-sicher. Ist kein Kanal der Art an, entsteht keine Zeile.
+- Pause: „aktiv“ = max(letzte Wertung, `study_prefs.updated_at`) – das
+  Speichern der Erinnerung und ein Zonenwechsel zählen mit. Nach 30
+  Tagen ohne Aktivität einmal „Lernerinnerungen pausiert …“
+  (`reminder_paused_at`), dann nichts mehr, bis wieder bewertet wird.
+- Text „12 Karten warten auf dich – „Spanisch A1“ und 2 weitere Stapel.“
+  (Stapel mit den meisten Karten), Englisch über Muster in
+  `lib/i18n-errors.ts`, Link `#study` (`notifications.link`,
+  `isNotificationLink` erlaubt jetzt `#study`).
+
+**App: Zusammenfassung und Widget (§10.2)**
+
+- `GET /api/mobile/summary` (neu: optional `zone`) hat für Personen mit
+  Stapeln `study: { due, new, streak, deck, remindAt }` – `deck` (der
+  Stapel mit den meisten Karten) für das Widget, `remindAt` für die lokale
+  Erinnerung der App. Ohne Stapel fehlt das Feld (ältere Apps prüfen nur
+  bekannte Felder).
+- Neue Widget-Art `study` am Ende von `widgetKinds`, Konfiguration
+  `{ pageIds?: uuid[] }` (höchstens 20), Daten: Zahl, neue, Serie, bis zu 5
+  Stapel mit Link, `url: "/#study"`, unter 2 KB; Optionen listen die
+  Stapel. Gezählt über alle Arbeitsbereiche der Person.
+- flowplan-app: das native Widget „Karten fällig“ (`FlowplanStudy`, iOS
+  und Android) liest die Zusammenfassung wie „Posteingang“ – keine
+  Stapelauswahl in der App (das wäre ein Widget der konfigurierbaren
+  Suite mit AppIntent-Konfiguration in Swift; die Server-Art `study` ist
+  dafür vorbereitet). Lokale Erinnerung `planStudyReminder`: nur ohne
+  Push, nur mit `remindAt`, heute zur Uhrzeit, solange `due > 0`.
+- Schnellaktion „Lernen“ (iOS: auf Platz 3, Suche rückt hinter
+  „Notiz“; Android: App-Verknüpfung nach „Meine Aufgaben“) nur, wenn die
+  Zusammenfassung Stapel meldet. Siri: die zehn App Shortcuts sind
+  belegt – „Fällige Karten lernen“ ist eine AppIntent-Aktion der
+  Kurzbefehle-App (`FPStudyIntent`, öffnet `#study`), ohne eigene
+  Siri-Phrase; mit einem eigenen Kurzbefehl startet sie per Siri.
+
+**Offline (§10.4)**
+
+- `GET /api/pages/<id>/study?offline=1` (`studyOffline`): alle lernbaren
+  Karten (höchstens 5000, die nächsten zuerst) mit Inhalt und eigenem
+  Stand, heutige Wertungen (`done`, `studiedRows`), `limits` und
+  `baseLimits` (ohne „Heute mehr“), Parameter, Einstellungen und je
+  Lernen-Ansicht mit Filtern die Einträge (`views`) – Teilstapel gehen
+  offline. Alle Antworten von `study.queue` tragen jetzt `userId`.
+- Offline-Kopie: `GET /api/offline/changes` liefert `study` (lesbare
+  Stapel mit eigener Wertung in 14 Tagen); `planStudy` (und `public/sw.js`)
+  holt sie bei jedem Abgleich neu (der Lernstand steht nicht im
+  Änderungsprotokoll) und wirft andere weg. Nach einer Sitzung mit
+  Verbindung erneuert die Seite den gespeicherten Stapel selbst. In
+  flowplan-app lässt `src/offline/policy.ts` den Schlüssel
+  `/api/pages/<id>/study?…` zu.
+- Client: `lib/study-offline.ts` (rein: `localQueue` mit `buildQueue`,
+  `sessionOrder`, `schedule`; IndexedDB `flowplan-study`, Einträge mit
+  `userId`) und `components/study/offline.ts` (`studyLoad` – offline oder
+  ohne Server-Antwort lokal; `flushStudyReviews` mit eigenem `fetch` und
+  30-s-Abbruch statt `api()`, damit kein Anmelde-Warten die Warteschlange
+  blockiert; `useStudyPending`). Gesendet wird beim Start, bei „online“
+  und alle 30 s (app-weit in `workspace-app`). Rückgängig einer noch
+  wartenden Wertung geschieht auf dem Gerät.
+- `study.reviews` (≤ 500): Idempotenz über `review_log.id` ohne
+  Zeitgrenze (`duplicate`; fremde ID `conflict`). Reihenfolge nach
+  `reviewedAt`. **Protokoll gewinnt:** neuer als die letzte Wertung der
+  Karte → Planung vom Stand wie online; älter → Einfügen, Stand vor ihr
+  aus dem Protokoll gefaltet und danach die ganze Kette nachgespielt
+  (`replayed`; Fuzz-Seed = Review-ID). Die Nach-Werte späterer
+  Protokollzeilen bleiben unverändert (Protokoll ist unveränderlich).
+- Uhr: §10.4 Punkt 6 und 7 widersprachen sich (Untergrenze „letzte
+  Wertung“ vs. Einordnen älterer Wertungen). Entschieden: bei
+  `study.reviews` nur die Obergrenze jetzt + 5 min; eine ältere Wertung
+  wird eingeordnet, nicht verschoben. `study.review` (online) behält die
+  Untergrenze. Älter als 30 Tage → `source='offline'`, sonst `web`/`app`
+  (vom Client) bzw. `api`. `baseReps` wird angenommen, aber nicht
+  gebraucht (die Zeit ordnet).
+- Karte weg/kein Zugriff → Wertung im Protokoll, Stand unberührt,
+  `orphaned`. Stapel endgültig gelöscht oder kein Mitglied mehr → nichts
+  gespeichert, auch `orphaned`.
+- `lib/offline-actions.ts`: `onlineOnlyRequests` / `needsServerRequest`
+  für KI-Karten (`/api/ai/flashcards/`), Anki-Import (`/api/import/source`)
+  und Export (`/study/export`); die Dialoge und Export-Links rufen
+  `needsConnection()`. Wertungen sind nicht online-only.
+- Hinweis „N Wertungen warten auf Verbindung“ in Übersicht, `#study` und
+  Fokusmodus (`components/study/pending.tsx`, Stil `offline-pending`).
+
+**Kleine Nacharbeiten aus Phase 2**
+
+- Werkzeugleiste: Knopf `cloze` „Lücke (Lernkarte)“ nach „Verdecken“,
+  gruppierbar, **standardmäßig ausgeblendet** (`DEFAULT_HIDDEN`) – die
+  Leiste bleibt für alle wie bisher; setzt eine neue Nummer bzw. entfernt
+  die Lücke unter der Schreibmarke.
+- Suche: `htmlText`, Zellwerte und formatierter Text gehen durch
+  `clozeFilled` – `{{c1::Paris}}` wird als „Paris“ indexiert. Bestehende
+  Einträge werden beim nächsten Ändern neu indexiert (kein eigener
+  Neuaufbau).
+- Suchpalette: „Lernen: <Stapel>“ für jeden Stapel mit Karten für heute
+  (beim Öffnen der Palette über `/api/study/due` geladen, höchstens 30);
+  startet die Sitzung direkt (`StudyFocus` in `workspace-app`).
+
+**Doku:** neue Seite `flashcards-app` „Lernkarten: Erinnerung, App,
+offline und API“ (DE/EN) – die Seite `flashcards` lag sonst über der
+Wortgrenze; „API und MCP“ zog mit um (Anker in `anchor-map.json`), eigene
+Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
+
+**Offen**
+
+- App: Stapelauswahl im nativen Widget (Suite-Widget), eigene Siri-Phrase
+  (Platz in den App Shortcuts), Android-Symbol für die Verknüpfung
+  „Lernen“ (nutzt das Datenbank-Symbol).
+- Offline: `#study` (alle Stapel) braucht Verbindung; die Kopie hält
+  Bilder der Karten nur, wenn „Einträge offline“ an ist. In der
+  gespeicherten Seite der iPhone-App gehen wartende Wertungen erst nach
+  dem Laden der Live-Seite raus (im Test von `check:offline` geprüft).
+- Optimierung (Phase 8) kann `review_log` mit `source='offline'` wie
+  andere nutzen.

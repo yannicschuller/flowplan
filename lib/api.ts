@@ -511,7 +511,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     ),
     // Behind a journal PIN not entered: only that the journal is locked.
     notifications: await mapAsync(await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
-      "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC,seq DESC LIMIT 100",
+      "SELECT * FROM notifications WHERE user_id=? AND push_only IS NULL ORDER BY created_at DESC,seq DESC LIMIT 100",
       user.id,
     ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE, markup: null } : n)),
     // Which AI features work here, with which provider, and which pages the
@@ -3365,6 +3365,8 @@ async function runCommand(
       }
       case "study.queue":
       case "study.review":
+      case "study.reviews":
+      case "study.reminder":
       case "study.undo":
       case "study.prefs":
       case "study.due":
@@ -4029,6 +4031,8 @@ async function runCommand(
         // the activity log.
         "study.queue",
         "study.review",
+        "study.reviews",
+        "study.reminder",
         "study.undo",
         "study.prefs",
         "study.due",

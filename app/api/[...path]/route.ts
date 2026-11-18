@@ -175,7 +175,7 @@ import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
 import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
 import { ssoGroupReports } from "@/lib/sso-group-report";
-import { studyAnkiExport, studyExport, studyQueue } from "@/lib/study";
+import { studyAnkiExport, studyExport, studyOffline, studyQueue } from "@/lib/study";
 import { studyDue, studyStats } from "@/lib/study-stats";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -510,8 +510,11 @@ async function handleGET(
       return NextResponse.json(part === "peers" ? await notebookPeers(user, page) : { trash: await sheetTrash(page) }, { headers: { "Cache-Control": "no-store" } });
     }
     // Flashcards (lib/study.ts): the person's own counts and next cards of a
-    // deck – the command study.queue as a read, for read tokens too.
+    // deck – the command study.queue as a read, for read tokens too. With
+    // offline=1 the whole deck for the offline copy (lib/offline-plan.ts).
     if (path.length === 3 && path[0] === "pages" && path[2] === "study") {
+      if (url.searchParams.get("offline") === "1")
+        return NextResponse.json(await studyOffline(user, { pageId: path[1], zone: url.searchParams.get("zone") || undefined }), { headers: { "Cache-Control": "no-store" } });
       const limit = url.searchParams.get("limit");
       return NextResponse.json(
         await studyQueue(user, {

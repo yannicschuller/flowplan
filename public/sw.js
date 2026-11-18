@@ -178,6 +178,8 @@ const ROW_KEY = new RegExp(`^/api/pages/(${UUID})/rows/(${UUID})(?:[/?]|$)`, "i"
 const ROW_EXACT = new RegExp(`^/api/pages/(${UUID})/rows/(${UUID})$`, "i");
 const FILE_KEY = new RegExp(`^/api/files/(${UUID})(?:[/?]|$)`, "i");
 const FILE_REF = new RegExp(`/api/files/(${UUID})`, "gi");
+// Flashcard decks studied in the last 14 days, whole (lib/offline-plan.ts planStudy).
+const STUDY_KEY = new RegExp(`^/api/pages/(${UUID})/study\\?offline=1$`, "i");
 // Mirrors lib/offline-plan.ts (tests/offline-plan.test.ts compares them).
 const offlinePlan = {
   fileRefs(text) {
@@ -235,6 +237,14 @@ const offlinePlan = {
     }
     const add = includeRecords ? [...wanted].filter((id) => !stored.has(id)).map((id) => `/api/files/${id}`) : [];
     return { add, drop };
+  },
+  planStudy({ keys, decks }) {
+    const wanted = new Set(decks.map((id) => id.toLowerCase()));
+    const drop = keys.filter((key) => {
+      const deck = STUDY_KEY.exec(key)?.[1]?.toLowerCase();
+      return !!deck && !wanted.has(deck);
+    });
+    return { fetch: decks.map((id) => `/api/pages/${id}/study?offline=1`), drop };
   },
 };
 async function offlineMarker() {
@@ -384,6 +394,12 @@ async function backgroundRefresh() {
   const records = offlinePlan.planRecords({ keys, rows, changedRows: changes.rows, full: changes.full, includeRecords: false });
   for (const key of records.drop) await data.delete(key);
   await queue(records.refresh);
+  if (Array.isArray(changes.study)) {
+    keys = (await data.keys()).map(cacheKey);
+    const study = offlinePlan.planStudy({ keys, decks: changes.study });
+    for (const key of study.drop) await data.delete(key);
+    await queue(study.fetch);
+  }
   keys = (await data.keys()).map(cacheKey);
   const referenced = new Set();
   for (const key of keys) {

@@ -54,3 +54,15 @@ export function virtualTime(ms: number, zone: string, dayStart = DEFAULT_DAY_STA
 }
 // The study day a virtual instant falls on.
 export const virtualDay = (virtual: number) => new Date(virtual).toISOString().slice(0, 10);
+
+// The daily study reminder (docs/specs/flashcards.md §10.3,
+// lib/study-reminders.ts): a local time 'HH:MM'. Its moment within a study
+// day: that wall time on the day's date – or, for a time before the day's
+// start (02:00 with the day starting at 04:00), on the next date, which
+// still belongs to the day.
+export const REMIND_AT = /^([01]\d|2[0-3]):[0-5]\d$/;
+export function reminderMoment(day: string, remindAt: string, zone: string, dayStart = DEFAULT_DAY_START): number {
+  const [hour, minute] = remindAt.split(":").map(Number);
+  const date = Temporal.PlainDate.from(day).add({ days: hour < hourOf(dayStart) ? 1 : 0 });
+  return date.toPlainDateTime(new Temporal.PlainTime(hour, minute)).toZonedDateTime(zone, { disambiguation: "compatible" }).epochMilliseconds;
+}

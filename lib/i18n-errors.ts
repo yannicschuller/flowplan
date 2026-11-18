@@ -15,6 +15,9 @@ const exact: Record<string, string> = {
   "Nur Wertungen der letzten 24 Stunden lassen sich rückgängig machen.": "Only ratings of the last 24 hours can be undone.",
   "Nur die letzte Wertung einer Karte lässt sich rückgängig machen.": "Only the last rating of a card can be undone.",
   "Vorder- und Rückseite brauchen verschiedene Inhalte.": "Front and back need different content.",
+  // The study reminder (lib/study-reminders.ts).
+  "Lernerinnerungen pausiert: Du hast seit 30 Tagen nicht gelernt. Sobald du wieder lernst, erinnert Flowplan dich wieder.":
+    "Study reminders paused: you have not studied for 30 days. As soon as you study again, Flowplan reminds you again.",
   // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).
   "Die Anki-Sammlung ist zu groß.": "The Anki collection is too large.",
   "Die Anki-Datei ist beschädigt.": "The Anki file is damaged.",
@@ -1742,6 +1745,11 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat deine Inhalte über den Notfallzugriff exportiert \(„(.+)“\)\.$/, "$1 exported your content through emergency access (“$2”)."],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
   [/^Die Besprechung „(.+)“ beginnt gleich\.$/, "The meeting “$1” starts soon."],
+  // The daily study reminder (lib/study-reminders.ts reminderText).
+  [/^1 Karte wartet auf dich – „(.+)“\.$/, "1 card is waiting for you – “$1”."],
+  [/^(\d+) Karten warten auf dich – „(.+)“ und ein weiterer Stapel\.$/, "$1 cards are waiting for you – “$2” and one more deck."],
+  [/^(\d+) Karten warten auf dich – „(.+)“ und (\d+) weitere Stapel\.$/, "$1 cards are waiting for you – “$2” and $3 more decks."],
+  [/^(\d+) Karten warten auf dich – „(.+)“\.$/, "$1 cards are waiting for you – “$2”."],
   // A chat app the instance turned off (lib/messengers.ts).
   [/^Chat-App (.+) ausgeschaltet: wiederholt abgewiesen \((.+)\)\. Bitte unter Einstellungen → Benachrichtigungen prüfen und wieder einschalten\.$/, "Chat app $1 switched off: refused repeatedly ($2). Please check it under Settings → Notifications and switch it on again."],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],

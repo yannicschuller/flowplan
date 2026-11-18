@@ -18,6 +18,8 @@ export const widgetKinds = [
   "meeting",
   "jobs",
   "incident",
+  // "Karten fällig" (docs/specs/flashcards.md §10.2): new kinds go at the end.
+  "study",
 ] as const;
 export type WidgetKind = (typeof widgetKinds)[number];
 
@@ -82,6 +84,8 @@ export const widgetConfigs = {
   meeting: z.object({ sources: z.array(source).max(10).default([]), journalId: uuid.optional() }),
   jobs: z.object({}),
   incident: z.object({}),
+  // All decks, or the chosen ones.
+  study: z.object({ pageIds: z.array(uuid).max(20).optional() }),
 } satisfies Record<WidgetKind, z.ZodType>;
 export type WidgetConfig<K extends WidgetKind> = z.infer<(typeof widgetConfigs)[K]>;
 

@@ -3130,6 +3130,18 @@ export default function DocumentEditor({
                     <EyeSlash />
                   </button>
                 ),
+                // Flashcards (lib/cloze-mark.ts): the selection as a gap with
+                // a new number, or the gap at the cursor removed.
+                cloze: () => (
+                  <button
+                    title={t("Lücke (Lernkarte)", "Cloze (flashcard)") + (keyHints.keys("Mod+Alt+G") && ` · ${keyHints.keys("Mod+Alt+G")}`)}
+                    aria-pressed={!!editor?.isActive("cloze")}
+                    className={editor?.isActive("cloze") ? "active" : ""}
+                    onClick={() => (editor?.isActive("cloze") ? editor.chain().focus().unsetCloze().run() : editor?.chain().focus().setCloze().run())}
+                  >
+                    <Cards />
+                  </button>
+                ),
                 suggest: () => (
                   <button
                     title={suggesting ? t("Vorschlagen beenden – wieder direkt bearbeiten", "Stop suggesting – edit directly again") : t("Vorschlagen: Änderungen als Vorschläge markieren", "Suggest: mark changes as suggestions")}
@@ -3279,6 +3291,7 @@ export default function DocumentEditor({
                 superscript: { label: t("Hochgestellt", "Superscript"), icon: <TextSuperscript />, run: () => chain()?.toggleSuperscript().run(), active: !!editor?.isActive("superscript") },
                 subscript: { label: t("Tiefgestellt", "Subscript"), icon: <TextSubscript />, run: () => chain()?.toggleSubscript().run(), active: !!editor?.isActive("subscript") },
                 spoiler: { label: t("Verdecken (Spoiler)", "Hide (spoiler)"), icon: <EyeSlash />, run: () => chain()?.toggleMark("spoiler").run(), active: !!editor?.isActive("spoiler") },
+                cloze: { label: t("Lücke (Lernkarte)", "Cloze (flashcard)"), icon: <Cards />, run: () => (editor?.isActive("cloze") ? chain()?.unsetCloze().run() : chain()?.setCloze().run()), active: !!editor?.isActive("cloze") },
                 suggest: { label: t("Vorschlagen", "Suggest"), icon: <PencilLine />, run: () => setSuggesting(!suggesting), active: suggesting },
                 authors: { label: t("Autoren anzeigen", "Show authors"), icon: <UsersThree />, run: () => setAuthorsOn(!authorsOn), active: authorsOn },
                 link: {

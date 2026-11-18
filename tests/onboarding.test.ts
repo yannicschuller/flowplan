@@ -30,7 +30,9 @@ test("the introduction turns e-mail summaries off and on for every kind", async 
   const ben = await person("Ben");
   const wid = await createWorkspace(ben.id, "Ben");
   const off = (await command(ben, { action: "notification.email", workspaceId: wid, email: false })) as Record<string, { email: boolean; inbox: boolean }>;
-  assert.ok(Object.values(off).every((p) => p.email === false && p.inbox === true));
+  // The inbox stays as it was (a study reminder has none by default).
+  const { notificationDefaults } = await import("../lib/notification-kinds");
+  assert.ok(Object.entries(off).every(([kind, p]) => p.email === false && p.inbox === notificationDefaults[kind as keyof typeof notificationDefaults].inbox));
   const on = (await command(ben, { action: "notification.email", workspaceId: wid, email: true })) as Record<string, { email: boolean }>;
   // On means: as by default – what concerns the person, not every edit.
   assert.equal(on.mention.email, true);

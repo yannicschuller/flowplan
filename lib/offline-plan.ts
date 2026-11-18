@@ -111,6 +111,24 @@ export function planFiles({ keys, referenced, includeRecords }: FilePlanInput) {
   return { add, drop };
 }
 
+// Flashcards (docs/specs/flashcards.md §10.4): the decks the person studied
+// in the last 14 days (GET /api/offline/changes `study`) are stored whole
+// for studying offline – fetched again on every refresh (the learning
+// state changes with each rating, which the change log does not see) and
+// dropped once the deck is no longer among them.
+const STUDY_KEY = new RegExp(`^/api/pages/(${UUID})/study\\?offline=1$`, "i");
+export const studyUrl = (pageId: string) => `/api/pages/${pageId}/study?offline=1`;
+export const isStudyKey = (key: string) => STUDY_KEY.test(key);
+export type StudyPlanInput = { keys: string[]; decks: string[] };
+export function planStudy({ keys, decks }: StudyPlanInput) {
+  const wanted = new Set(decks.map((id) => id.toLowerCase()));
+  const drop = keys.filter((key) => {
+    const deck = STUDY_KEY.exec(key)?.[1]?.toLowerCase();
+    return !!deck && !wanted.has(deck);
+  });
+  return { fetch: decks.map(studyUrl), drop };
+}
+
 // Visible record ids of a stored page answer (databases only).
 export function pageRows(data: unknown): string[] {
   const rows = (data as { rows?: { id?: unknown }[] } | null)?.rows;

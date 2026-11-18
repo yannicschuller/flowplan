@@ -31,6 +31,8 @@ import {
   OfflineConflicts,
 } from "./offline-queue";
 import { applyQueue } from "@/lib/offline-queue";
+import { useStudyPending } from "./study/offline";
+import { browserZone } from "@/lib/date-values";
 import { draftKey, draftSent, keyed } from "@/lib/idempotency-key";
 import {
   parsePageLocation,
@@ -361,6 +363,8 @@ const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ss
 const StudyScreen = dynamic(() => loadView(() => import("./study/screen")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
 // "Lernkarten mit KI erstellen" (lib/ai/flashcards.ts): loaded when opened.
 const StudyAiCards = dynamic(() => import("./study/ai-cards"), { ssr: false });
+// "Lernen: <Stapel>" of the command palette: a session started from there.
+const StudyFocus = dynamic(() => import("./study/focus").then((m) => m.StudyFocus), { ssr: false });
 // Notebooks bring the ink engine: loaded with the first notebook.
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 // Workflows bring the canvas (xyflow): loaded with the first workflow page.
@@ -562,6 +566,10 @@ export default function WorkspaceApp({
     // The AI flashcards dialog and where it was opened from (the study
     // view, a selection in the editor, the command palette).
     [aiCards, setAiCards] = useState<AiCardsStart | null>(null),
+    // The decks for "Lernen: <Stapel>" (loaded when the palette opens) and
+    // the session started from there.
+    [paletteDecks, setPaletteDecks] = useState<{ pageId: string; title: string; left: number }[]>([]),
+    [studyDeck, setStudyDeck] = useState<{ pageId: string; title: string } | null>(null),
     // The highlighted row of the command palette (aria-activedescendant).
     [paletteActive, setPaletteActive] = useState(0),
     // The page that is the Tab stop of its space's tree (roving tabindex).
@@ -963,6 +971,20 @@ export default function WorkspaceApp({
     searchOpen = useRef(false),
     mainRef = useRef<HTMLElement>(null);
   searchOpen.current = search;
+  // "Lernen: <Stapel>": the decks of the workspace with cards left today,
+  // once per opening of the palette (the deck list is not in the bootstrap).
+  useEffect(() => {
+    if (!search || deviceOffline()) return;
+    let live = true;
+    void api<{ decks: { pageId: string; title: string; new: number; learning: number; review: number }[] }>(
+      `/api/study/due?${new URLSearchParams({ workspace: boot.workspace.id, zone: browserZone() })}`,
+    )
+      .then((due) => live && setPaletteDecks(due.decks.map((d) => ({ pageId: d.pageId, title: d.title, left: d.new + d.learning + d.review })).filter((d) => d.left > 0).slice(0, 30)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [search, boot.workspace.id]);
   const openSearch = useCallback(() => {
     if (!searchOpen.current) searchOpener.current = document.activeElement as HTMLElement | null;
     setSearch(true);
@@ -1184,6 +1206,9 @@ export default function WorkspaceApp({
     onSynced: refresh,
     notify,
   });
+  // Flashcard ratings made offline (components/study/offline.ts): sent
+  // once the connection is back, wherever the person is in the app.
+  useStudyPending(boot.user.id, undefined, true);
   const dataRef = useRef(data);
   dataRef.current = data;
   const bootRef = useRef(boot);
@@ -3801,6 +3826,9 @@ export default function WorkspaceApp({
     { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
     { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study") },
+    // Each deck with something left today (#study's counts, loaded when the
+    // palette opens).
+    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || "Ohne Titel"}`, `Study: ${d.title || "Untitled"}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }) })),
     // From the open page (a deck: into it), else from pasted text or a file.
     ...(aiUsable(boot.ai, "flashcards") && !boot.workspace.guest
       ? [
@@ -5776,7 +5804,8 @@ export default function WorkspaceApp({
               onPurgeSpace={(space) => setSpaceManager({ space, purge: true })}
             />
           )}
-          {screen === "study" && <StudyScreen workspaceId={boot.workspace.id} spaces={boot.spaces} onOpenPage={(id) => void openPage(id)} />}
+          {screen === "study" && <StudyScreen workspaceId={boot.workspace.id} userId={boot.user.id} spaces={boot.spaces} onOpenPage={(id) => void openPage(id)} />}
+          {studyDeck && <StudyFocus key={studyDeck.pageId} pageId={studyDeck.pageId} title={studyDeck.title || t("Lernen", "Study")} onClose={() => setStudyDeck(null)} />}
           {aiCards && (
             <StudyAiCards open onClose={() => setAiCards(null)} workspaceId={boot.workspace.id} spaces={boot.spaces} start={aiCards} onOpenPage={(id) => void openPage(id)} />
           )}

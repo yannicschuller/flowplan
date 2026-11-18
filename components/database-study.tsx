@@ -10,15 +10,18 @@
 // import of cards from text or a file (components/study/import.tsx, write
 // access) and the CSV export of the cards, with the person's own learning
 // state on request.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, Sparkle, UploadSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { Modal, api } from "./ui";
+import { Modal, api, needsConnection } from "./ui";
 import { Select } from "./select";
 import { useAiAvailability } from "./ai-context";
 import { safeCollisionPadding } from "./safe-area";
 import { StudyFocus, studyZoneNow, type StudyOverview } from "./study/focus";
+import { NotOffline, studyLoad, useStudyPending } from "./study/offline";
+import { StudyPendingNote } from "./study/pending";
+import { tr } from "@/lib/locale-tag";
 import { StudyImport } from "./study/import";
 import { StudyStatsPanel } from "./study/stats";
 import { deriveCards } from "@/lib/study-content";
@@ -26,10 +29,15 @@ import { filterCount, effectiveFilterGroup } from "@/lib/database-filters";
 import { STUDY_FIELD_TYPES, cardTypes, suggestStudySettings, studySettingsSchema, typeOfOption, type CardType, type StudySettings } from "@/lib/study-schema";
 import type { Database, Page, Row, View } from "@/lib/types";
 
-export async function loadStudy(pageId: string, viewId: string | undefined, limit: number) {
-  const query = new URLSearchParams({ zone: studyZoneNow(), limit: String(limit) });
-  if (viewId) query.set("view", viewId);
-  return await api<StudyOverview>(`/api/pages/${pageId}/study?${query}`);
+// From the server, or offline from the device's copy of the deck
+// (components/study/offline.ts).
+export async function loadStudy(pageId: string, viewId: string | undefined, limit: number, userId?: string) {
+  try {
+    return await studyLoad<StudyOverview>(pageId, { viewId, limit, zone: studyZoneNow(), userId });
+  } catch (error) {
+    if (error instanceof NotOffline) throw new Error(tr("Dieser Stapel ist auf diesem Gerät nicht offline verfügbar.", "This deck is not available offline on this device."));
+    throw error;
+  }
 }
 
 export default function DatabaseStudy({
@@ -61,14 +69,25 @@ export default function DatabaseStudy({
     [stats, setStats] = useState(false),
     [statsVersion, setStatsVersion] = useState(0),
     [notice, setNotice] = useState("");
+  // Ratings made offline that wait on this device (components/study/offline.ts).
+  const userRef = useRef<string | undefined>(undefined);
+  const pending = useStudyPending(overview?.userId, page.id);
   const reload = useCallback(async () => {
     try {
-      setOverview(await loadStudy(page.id, view.id, 0));
+      const next = await loadStudy(page.id, view.id, 0, userRef.current);
+      userRef.current = next.userId ?? userRef.current;
+      setOverview(next);
       setError("");
     } catch (e) {
       setError((e as Error).message);
     }
   }, [page.id, view.id]);
+  // Sent meanwhile: the counts again.
+  const sentRef = useRef(pending);
+  useEffect(() => {
+    if (sentRef.current > pending) void reload();
+    sentRef.current = pending;
+  }, [pending, reload]);
   const mappingKey = JSON.stringify(mapping || null);
   const filterKey = JSON.stringify(effectiveFilterGroup(view));
   useEffect(() => {
@@ -137,6 +156,7 @@ export default function DatabaseStudy({
       <section className="study-today" aria-labelledby={`study-today-${view.id}`}>
         <h3 id={`study-today-${view.id}`}>{t("Heute", "Today")}</h3>
         {error && <p className="study-error" role="alert">{error}</p>}
+        <StudyPendingNote count={pending} />
         {overview?.blocked === "hidden" && (
           <p className="muted">{t("Eine Kartenseite ist eine Eigenschaft, die du nicht sehen darfst – hier gibt es für dich keine Karten.", "A side of the cards is a property you may not see – there are no cards for you here.")}</p>
         )}
@@ -230,17 +250,17 @@ export default function DatabaseStudy({
               <Dropdown.Portal>
                 <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
                   <Dropdown.Item asChild className="dropdown-item">
-                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id })}`} download>
+                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id })}`} download onClick={(e) => needsConnection() && e.preventDefault()}>
                       <span>{t("Karten als CSV", "Cards as CSV")}</span>
                     </a>
                   </Dropdown.Item>
                   <Dropdown.Item asChild className="dropdown-item">
-                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id, state: "1" })}`} download>
+                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id, state: "1" })}`} download onClick={(e) => needsConnection() && e.preventDefault()}>
                       <span>{t("Karten mit meinem Lernstand als CSV", "Cards with my learning state as CSV")}</span>
                     </a>
                   </Dropdown.Item>
                   <Dropdown.Item asChild className="dropdown-item">
-                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id, format: "apkg" })}`} download>
+                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id, format: "apkg" })}`} download onClick={(e) => needsConnection() && e.preventDefault()}>
                       <span>{t("Als Anki-Paket (.apkg, ohne Lernstand)", "As an Anki package (.apkg, without learning state)")}</span>
                     </a>
                   </Dropdown.Item>

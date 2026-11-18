@@ -43,6 +43,8 @@ const recordInput = {
   includeRecords: true,
 };
 const fileInput = { keys, referenced: [f1, f3], includeRecords: true };
+// Flashcards (docs/specs/flashcards.md §10.4): decks studied lately, whole.
+const studyInput = { keys: [...keys, `/api/pages/${a}/study?offline=1`, `/api/pages/${c}/study?offline=1`, `/api/pages/${c}/study?limit=50`], decks: [c, d] };
 
 test("pages: new and changed are fetched, gone ones dropped with everything below", () => {
   const result = plan.planPages(pageInput);
@@ -80,4 +82,16 @@ test("the service worker plans the same way", () => {
   same(worker.planRecords(recordInput), plan.planRecords(recordInput));
   same(worker.planFiles(fileInput), plan.planFiles(fileInput));
   same(worker.fileRefs(`/api/files/${f1} /api/files/${f1}`), plan.fileRefs(`/api/files/${f1} /api/files/${f1}`));
+  same(worker.planStudy(studyInput), plan.planStudy(studyInput));
+});
+
+test("study: recent decks fetched every time, others dropped", () => {
+  const result = plan.planStudy(studyInput);
+  assert.deepEqual(result.fetch, [plan.studyUrl(c), plan.studyUrl(d)]);
+  assert.deepEqual(result.drop, [`/api/pages/${a}/study?offline=1`]);
+  assert.ok(plan.isStudyKey(plan.studyUrl(a)));
+  assert.equal(plan.isPageKey(plan.studyUrl(a)), false);
+  // A page no longer readable takes its deck along (planPages).
+  assert.ok(plan.planPages({ ...pageInput, keys: studyInput.keys }).drop.includes(`/api/pages/${a}/study?offline=1`) === false);
+  assert.ok(plan.planPages({ ...pageInput, keys: studyInput.keys, readable: [c, d] }).drop.includes(`/api/pages/${a}/study?offline=1`));
 });

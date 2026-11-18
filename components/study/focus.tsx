@@ -29,8 +29,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowCounterClockwise, Hourglass, Lightbulb, X } from "@phosphor-icons/react";
 import { useLocale, useT } from "../i18n";
 import { localeTag } from "@/lib/i18n";
-import { api } from "../ui";
+import { api, isTransient } from "../ui";
+import { NotOffline, refreshStoredDeck, studyLoad, studyRateOffline, useStudyPending } from "./offline";
+import { dropReviews, pendingReviews } from "@/lib/study-offline";
 import { CHOICE_KEYS, ChoiceOptions, Side, TypedVerdict, choiceOrder, type StudySide } from "./card-parts";
+import { StudyPendingNote } from "./pending";
 import { compareTyped, type TypedResult } from "@/lib/study-compare";
 import { intervalOf, preview, type FsrsParams, type Memory, type StudyRating } from "@/lib/fsrs";
 import type { TypedCompare } from "@/lib/study-schema";
@@ -52,7 +55,9 @@ export type StudyCard = {
   choice?: { options: string[]; correct: number };
 };
 type Counts = { new: number; learning: number; review: number };
-type Base = { pageId: string; title: string; zone: string; dayStart: number; day: string; dayEnd: number; now: number };
+// `offline`: built on the device (components/study/offline.ts), `pending`:
+// ratings of the deck waiting for the connection.
+type Base = { pageId: string; title: string; userId?: string; zone: string; dayStart: number; day: string; dayEnd: number; now: number; offline?: boolean; pending?: number };
 export type StudyOverview =
   | (Base & { configured: false })
   | (Base & {
@@ -122,7 +127,8 @@ type Shown = {
   // The rating the answer suggests (Space and Enter take it).
   suggested: StudyRating | null;
 };
-type Done = { reviewId: string; card: StudyCard; rating: StudyRating; wasNew: boolean; durationMs: number };
+// `offline`: the rating waits on the device (undone there).
+type Done = { reviewId: string; card: StudyCard; rating: StudyRating; wasNew: boolean; durationMs: number; offline?: boolean };
 
 export function StudyFocus({
   pageId,
@@ -172,17 +178,25 @@ export function StudyFocus({
   }, []);
   // The next batch from the server: learning cards due soon first, then
   // reviews and new cards within today's limits. `ahead`: learning cards
-  // due later today too ("Früher zeigen").
+  // due later today too ("Früher zeigen"). Offline the device builds it
+  // from its copy of the deck (components/study/offline.ts).
+  const userRef = useRef<string | undefined>(undefined),
+    tRef = useRef(t);
+  tRef.current = t;
   const load = useCallback(
     async (ahead = false) => {
-      const query = new URLSearchParams({ zone, limit: "50" });
-      if (viewId) query.set("view", viewId);
-      if (ahead) query.set("ahead", "1");
-      const batch = await api<StudyOverview>(`/api/pages/${pageId}/study?${query}`);
+      let batch: StudyOverview;
+      try {
+        batch = await studyLoad<StudyOverview>(pageId, { viewId, limit: 50, ahead, zone, userId: userRef.current });
+      } catch (e) {
+        if (e instanceof NotOffline) throw new Error(tRef.current("Dieser Stapel ist auf diesem Gerät nicht offline verfügbar.", "This deck is not available offline on this device."));
+        throw e;
+      }
       if (!batch.configured) {
         closeRef.current();
         return;
       }
+      userRef.current = batch.userId ?? userRef.current;
       setDeck(batch);
       setQueue(batch.cards.slice(1));
       show(batch.cards[0], !!batch.nextDue);
@@ -266,19 +280,41 @@ export function StudyFocus({
       const state = timer.current;
       const durationMs = Math.min(MAX_DURATION, Math.round(state.spent + (state.since === null ? 0 : performance.now() - state.since)));
       try {
-        const answer = await api<Ready & { review: { memory: Memory } }>("/api/command", {
-          action: "study.review",
-          id: shown.reviewId,
-          pageId,
-          rowId: shown.card.rowId,
-          sub: shown.card.sub,
-          rating,
-          zone,
-          durationMs,
-          ...(viewId ? { viewId } : {}),
-        });
-        setDeck((d) => (d ? { ...d, ...answer, cards: d.cards } : d));
-        setHistory((h) => [...h, { reviewId: shown.reviewId, card: shown.card, rating, wasNew: !shown.card.memory, durationMs }].slice(-UNDO_DEPTH));
+        // Offline (or the server out of reach): the rating waits on the
+        // device and the counts come from its copy of the deck.
+        const keep = async () => {
+          const userId = userRef.current;
+          if (!userId) throw new Error(tRef.current("Dieser Stapel ist auf diesem Gerät nicht offline verfügbar.", "This deck is not available offline on this device."));
+          await studyRateOffline({ id: shown.reviewId, userId, pageId, rowId: shown.card.rowId, sub: shown.card.sub, rating, reviewedAt: Date.now(), zone, durationMs, baseReps: shown.card.memory?.reps ?? 0 });
+          const local = await studyLoad<StudyOverview>(pageId, { viewId, limit: 0, zone, userId }).catch(() => null);
+          return local?.configured ? local : null;
+        };
+        let offline = !!deck.offline;
+        let answer: Ready | null;
+        if (offline) answer = await keep();
+        else
+          try {
+            answer = await api<Ready & { review: { memory: Memory } }>("/api/command", {
+              action: "study.review",
+              id: shown.reviewId,
+              pageId,
+              rowId: shown.card.rowId,
+              sub: shown.card.sub,
+              rating,
+              zone,
+              durationMs,
+              ...(viewId ? { viewId } : {}),
+            });
+          } catch (e) {
+            if (!isTransient(e)) throw e;
+            offline = true;
+            answer = await keep();
+          }
+        if (answer) {
+          const next = answer;
+          setDeck((d) => (d ? { ...d, ...next, cards: d.cards } : d));
+        }
+        setHistory((h) => [...h, { reviewId: shown.reviewId, card: shown.card, rating, wasNew: !shown.card.memory, durationMs, offline }].slice(-UNDO_DEPTH));
         setPosition((p) => p + 1);
         setError("");
         if (queue.length) {
@@ -298,20 +334,31 @@ export function StudyFocus({
     if (!last || busy.current) return;
     busy.current = true;
     try {
-      const answer = await api<Ready & { card: StudyCard | null }>("/api/command", { action: "study.undo", pageId, reviewId: last.reviewId, zone, ...(viewId ? { viewId } : {}) });
-      setDeck((d) => (d ? { ...d, ...answer, cards: d.cards } : d));
+      // A rating still waiting on the device is simply taken back there.
+      const userId = userRef.current;
+      const waiting = last.offline && userId && (await pendingReviews(userId, pageId)).some((r) => r.id === last.reviewId);
+      let answer: (Ready & { card?: StudyCard | null }) | null;
+      if (waiting) {
+        await dropReviews([last.reviewId]);
+        const local = deck?.offline ? await studyLoad<StudyOverview>(pageId, { viewId, limit: 0, zone, userId }).catch(() => null) : null;
+        answer = local?.configured ? { ...local, card: null } : null;
+      } else answer = await api<Ready & { card: StudyCard | null }>("/api/command", { action: "study.undo", pageId, reviewId: last.reviewId, zone, ...(viewId ? { viewId } : {}) });
+      if (answer) {
+        const next = answer;
+        setDeck((d) => (d ? { ...d, ...next, cards: d.cards } : d));
+      }
       setHistory((h) => h.slice(0, -1));
       setPosition((p) => Math.max(1, p - 1));
       // The card again, unrated; the one shown waits behind it.
       if (shown && phase === "card") setQueue((q) => [shown.card, ...q.filter((c) => !(c.rowId === shown.card.rowId && c.sub === shown.card.sub))]);
-      show(answer.card ?? last.card);
+      show(answer?.card ?? last.card);
       setAnnounce(t("Letzte Wertung rückgängig gemacht.", "Last rating undone."));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       busy.current = false;
     }
-  }, [history, pageId, zone, viewId, shown, phase, show, t]);
+  }, [history, pageId, zone, viewId, shown, phase, show, t, deck?.offline]);
   // Keys win over the app's shortcuts while the session is open.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -418,6 +465,9 @@ export function StudyFocus({
     resetCard();
     if (rating && shown?.revealed) void rate(rating);
   };
+  const pending = useStudyPending(deck?.userId, pageId);
+  // Studied online: the device's copy of the deck follows when it ends.
+  useEffect(() => () => void refreshStoredDeck(pageId), [pageId]);
   const left = deck ? deck.counts.new + deck.counts.learning + deck.counts.review : 0;
   const reviewed = history.length;
   const labels: Record<StudyRating, string> = { 1: t("Nochmal", "Again"), 2: t("Schwer", "Hard"), 3: t("Gut", "Good"), 4: t("Leicht", "Easy") };
@@ -444,6 +494,7 @@ export function StudyFocus({
         </button>
       </header>
       <progress className="study-progress" max={Math.max(1, reviewed + left)} value={reviewed} aria-label={t("Fortschritt", "Progress")} />
+      {pending > 0 && <StudyPendingNote count={pending} className="study-focus-pending" />}
       <div className="sr-only" aria-live="polite">
         {announce}
       </div>

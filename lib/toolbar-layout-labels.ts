@@ -22,6 +22,7 @@ export function toolbarItemLabels(t: T): Record<ToolbarItem, string> {
     superscript: t("Hochgestellt", "Superscript"),
     subscript: t("Tiefgestellt", "Subscript"),
     spoiler: t("Verdecken (Spoiler)", "Hide (spoiler)"),
+    cloze: t("Lücke (Lernkarte)", "Cloze (flashcard)"),
     suggest: t("Vorschlagen", "Suggest"),
     authors: t("Autoren anzeigen", "Show authors"),
     link: "Link",

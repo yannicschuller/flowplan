@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsClockwise, PencilSimple, Sparkle, Warning } from "@phosphor-icons/react";
 import { useT } from "../i18n";
-import { Modal, api } from "../ui";
+import { Modal, api, needsConnection } from "../ui";
 import { Select } from "../select";
 import { AiProviderFooter } from "../ai-context";
 import { studyZoneNow } from "./focus";
@@ -125,7 +125,8 @@ export function StudyAiCards({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, source, deck, count, types.join(), result]);
   const propose = async (again = false) => {
-    if (!source) return;
+    // The AI needs the server (lib/offline-actions.ts onlineOnlyRequests).
+    if (!source || needsConnection()) return;
     abort.current?.abort();
     const controller = new AbortController();
     abort.current = controller;
@@ -144,7 +145,7 @@ export function StudyAiCards({
   };
   const add = async () => {
     const picked = cards.filter((c) => c.picked && c.front.trim());
-    if (!picked.length) return;
+    if (!picked.length || needsConnection()) return;
     setBusy("add");
     setError("");
     try {

@@ -376,14 +376,15 @@ const day = z
   .optional();
 
 // What the widgets and the Live Activity show. `today` is the phone's date,
-// so "due today" means the person's day, not the server's.
-export async function mobileSummary(user: Identity, todayInput?: unknown) {
+// so "due today" means the person's day, not the server's. `zone` (IANA,
+// optional) is the phone's time zone for the study day of flashcards.
+export async function mobileSummary(user: Identity, todayInput?: unknown, zone?: string | null) {
   const now = new Date();
   const today =
     day.parse(todayInput) ||
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const unread = Number(
-    (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id))?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL AND push_only IS NULL", user.id))?.n || 0,
   );
   // Overdue, today, upcoming, undated – as in the "Tasks" widget with "My
   // tasks": the document tasks and the open records assigned to the person
@@ -408,6 +409,10 @@ export async function mobileSummary(user: Identity, todayInput?: unknown) {
     today,
   );
   const due = tasks.filter((t) => t.due && t.due <= today);
+  // Flashcards (docs/specs/flashcards.md §10.2): only for a person with
+  // decks – the field is optional, older apps ignore it.
+  const { studyDueEverywhere } = await import("./study-stats");
+  const cards = await studyDueEverywhere(user, typeof zone === "string" && zone.length <= 100 ? zone : undefined);
   return {
     name: user.name,
     unread,
@@ -423,6 +428,9 @@ export async function mobileSummary(user: Identity, todayInput?: unknown) {
       })),
     },
     timer: await runningTimer(user),
+    // deck: the one with the most left (the widget names it); remindAt: the
+    // daily reminder, for the app's own reminder without push.
+    ...(cards.decks.length ? { study: { due: cards.due, new: cards.new, streak: cards.streak, deck: (cards.decks.find((d) => d.new + d.learning + d.review > 0)?.title || "").slice(0, 80), remindAt: cards.remindAt } } : {}),
     today,
     at: Date.now(),
     // The person administers the instance: the app also shows the

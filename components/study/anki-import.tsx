@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileArrowUp, Warning } from "@phosphor-icons/react";
 import { useT } from "../i18n";
-import { Modal } from "../ui";
+import { Modal, needsConnection, offlineNotice } from "../ui";
 import { Select } from "../select";
 import { sendImport, waitForJob, warningText } from "../import-client";
 import { browserZone } from "@/lib/date-values";
@@ -71,6 +71,8 @@ export function StudyAnkiImport({
     onClose();
   };
   const run = async (query: URLSearchParams, body: File | null) => {
+    // The import is the server's (lib/offline-actions.ts onlineOnlyRequests).
+    if (needsConnection()) throw new Error(offlineNotice());
     query.set("background", "1");
     setProgress(body ? { phase: "upload", share: 0 } : { phase: "work", share: null });
     try {

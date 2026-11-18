@@ -108,6 +108,7 @@ const labels: Record<string, string> = {
   "Änderungen an Seiten, denen du folgst": "Changes to pages you follow",
   "Sicherheitshinweise zu deinem Konto und deinen Seiten": "Security notices about your account and pages",
   "Sicherheitsvorfälle der Instanz": "Security incidents of the instance",
+  Lernerinnerungen: "Study reminders",
   // charts
   Standard: "Default",
   Warm: "Warm",

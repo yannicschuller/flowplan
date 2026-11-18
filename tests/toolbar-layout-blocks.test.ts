@@ -19,7 +19,7 @@ type Layout = import("../lib/toolbar-layout").ToolbarLayout;
 test("blocks of the / menu: not in the default, added at the end, taken out again, groupable", () => {
   assert.ok(L.defaultToolbarLayout().order.every((e) => !L.isToolbarBlock(e)), "the default toolbar is unchanged");
   assert.equal(L.blocksOutside(L.defaultToolbarLayout()).length, L.TOOLBAR_BLOCKS.length);
-  assert.deepEqual(L.defaultToolbarLayout().hidden, ["bulletList", "orderedList", "indent", "outdent"]);
+  assert.deepEqual(L.defaultToolbarLayout().hidden, ["bulletList", "orderedList", "indent", "outdent", "cloze"]);
   // A layout stored before the blocks stays as it was.
   const read = L.toolbarLayoutOf({ order: L.DEFAULT_TOOLBAR_ORDER.filter((e) => e !== "bold"), hidden: ["italic"] });
   assert.ok(read.order.every((e) => !L.isToolbarBlock(e)), "blocks are never put back on their own");
@@ -41,7 +41,7 @@ test("blocks of the / menu: not in the default, added at the end, taken out agai
   assert.deepEqual(layout.order[layout.order.length - 1], ["block:code", "block:math"]);
   layout = L.toolbarLayoutOf(L.setToolbarItemShown(layout, "block:math", false));
   assert.deepEqual(layout.order[layout.order.length - 1], ["block:code", "block:math"]);
-  assert.deepEqual(layout.hidden, ["bulletList", "orderedList", "indent", "outdent", "block:math"]);
+  assert.deepEqual(layout.hidden, ["cloze", "bulletList", "orderedList", "indent", "outdent", "block:math"]);
   assert.deepEqual(L.toolbarEntries(layout).at(-1), "block:code");
   assert.deepEqual(L.groupWithNext({ order: ["addBlock", "block:callout"], hidden: [] }, 0).order, [["addBlock", "block:callout"]]);
   // Unknown block ids are dropped when read, refused when saved.
@@ -102,7 +102,7 @@ test("the instance's default toolbar: for everyone without their own, reset goes
   const lenient = await instanceSettings();
   assert.equal(lenient.trashDays, 30, "the other settings stay");
   assert.ok(lenient.toolbarLayoutDefault && !JSON.stringify(lenient.toolbarLayoutDefault).includes("rocket"), "read leniently");
-  assert.deepEqual(lenient.toolbarLayoutDefault.hidden, ["bulletList", "orderedList", "indent", "outdent"]);
+  assert.deepEqual(lenient.toolbarLayoutDefault.hidden, ["cloze", "bulletList", "orderedList", "indent", "outdent"]);
   await run("UPDATE instance_settings SET value=? WHERE key='toolbarLayoutDefault'", '"broken"');
   assert.equal((await instanceSettings()).toolbarLayoutDefault, null);
   // Back to the built-in one; the built-in layout itself is stored as null.

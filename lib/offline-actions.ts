@@ -26,3 +26,10 @@ export const onlineOnlyActions: ReadonlySet<string> = new Set([
   "form.submit",
 ]);
 export const needsServer = (body: { action?: unknown }) => typeof body.action === "string" && onlineOnlyActions.has(body.action);
+// Requests other than commands that need the server: flashcards made by
+// the AI (lib/ai/flashcards.ts), the Anki import (an upload and a job of
+// the server) and the export of a deck (CSV, .apkg). Rating flashcards is
+// not among them – study.review and study.reviews wait on the device
+// (lib/study-offline.ts, docs/specs/flashcards.md §10.4).
+export const onlineOnlyRequests: readonly RegExp[] = [/^\/api\/ai\/flashcards\//, /^\/api\/import\/source(\/|\?|$)/, /^\/api\/pages\/[^/?]+\/study\/export(\?|$)/];
+export const needsServerRequest = (url: string) => onlineOnlyRequests.some((pattern) => pattern.test(url));
