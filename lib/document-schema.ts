@@ -38,6 +38,7 @@ import { PageBreak } from "./page-break-node";
 import { FlowCodeBlock } from "./code-block";
 import { Bibliography, Citation } from "./citation-nodes";
 import { meetingExtensions } from "./meeting-schema";
+import { Cloze } from "./cloze-mark";
 import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
 import { BlockColorAttribute } from "./block-colors";
@@ -855,6 +856,7 @@ export const documentExtensions = [
   Superscript,
   Subscript,
   Spoiler,
+  Cloze,
   Indent,
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Callout,

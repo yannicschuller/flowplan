@@ -31,6 +31,8 @@ export const SHORTCUT_ACTIONS = [
   "unfoldAll",
   "back",
   "forward",
+  // The screen #study, flashcards of all decks (no combination by default).
+  "study",
 ] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
 export type Keymap = Record<ShortcutAction, string[]>;
@@ -70,6 +72,7 @@ export const DEFAULT_KEYMAP: Keymap = {
   // while typing: there it stays with the text (actionForEvent).
   back: ["Mod+[", "Alt+ArrowLeft"],
   forward: ["Mod+]", "Alt+ArrowRight"],
+  study: [],
 };
 // At most this many combinations per action.
 export const MAX_COMBOS = 3;
@@ -85,6 +88,10 @@ export const EDITOR_SHORTCUTS: { combo: string; id: string }[] = [
   { combo: "Mod+Shift+E", id: "center" },
   { combo: "Mod+Shift+H", id: "highlight" },
   { combo: "Mod+Alt+H", id: "spoiler" },
+  // A flashcard's gap (lib/cloze-mark.ts): a new number, with Shift the
+  // number before.
+  { combo: "Mod+Alt+G", id: "cloze" },
+  { combo: "Mod+Alt+Shift+G", id: "cloze" },
   { combo: "Mod+.", id: "superscript" },
   { combo: "Mod+,", id: "subscript" },
   { combo: "Mod+Alt+F", id: "footnote" },

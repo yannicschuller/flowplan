@@ -25,7 +25,7 @@ import { parsePageLocation, pageLocationHash } from "./page-location";
 import { parseSettingsHash, settingsHash } from "./settings-sections";
 import { createBackPreview, type BackEdge, type BackPhase, type BackTarget } from "./back-preview";
 
-const TOP_SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin"];
+const TOP_SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "study"];
 const MAX_STACK = 50;
 
 // The place a fragment stands for in the list of places visited: a page

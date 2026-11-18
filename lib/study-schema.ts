@@ -6,11 +6,23 @@
 import { z } from "zod";
 
 const fid = z.string().min(1).max(500);
-// All card types of the concept; phase 1 derives basic cards (and their
-// reverse) only – the other types are accepted so the stored setting of a
-// later version survives, and give no cards here.
+// All card types of the concept (§5). Derived: basic (and its reverse),
+// cloze, typed and choice; occlusion (phase 6) is accepted so the stored
+// setting of a later version survives, and gives no cards yet.
 export const cardTypes = ["basic", "cloze", "typed", "choice", "occlusion"] as const;
 export type CardType = (typeof cardTypes)[number];
+// The card type of a record: the same for all, or from a select property
+// whose options are mapped to types (unmapped options by their name, see
+// typeOfOption; anything else is basic).
+const cardTypeSetting = z.union([
+  z.object({ fixed: z.enum(cardTypes) }).strict(),
+  z.object({ field: fid, map: z.record(z.string().max(100), z.enum(cardTypes)).optional() }).strict(),
+]);
+// Typed answers (§5.3): what the comparison ignores.
+export const typedCompareSchema = z
+  .object({ ignoreCase: z.boolean().default(true), ignoreAccents: z.boolean().default(false), ignorePunctuation: z.boolean().default(true) })
+  .strict();
+export type TypedCompare = z.infer<typeof typedCompareSchema>;
 // A side of the card: a property (text) or the record's document – all of
 // it, or the part above / below its first top-level horizontal rule (`---`,
 // lib/study-content.ts).
@@ -20,12 +32,18 @@ const stepMinutes = z.number().positive().max(60 * 24 * 7);
 
 export const studySettingsSchema = z.object({
   version: z.literal(1),
-  type: z.object({ fixed: z.enum(cardTypes) }).strict().default({ fixed: "basic" }),
+  type: cardTypeSetting.default({ fixed: "basic" }),
   front: frontSource,
   back: backSource,
   // Shown on request before revealing / after the answer.
   hint: z.object({ field: fid }).strict().optional(),
   extra: z.object({ field: fid }).strict().optional(),
+  // Multiple choice (§5.4): the wrong options from a property (a
+  // multi-select, or text with one option per line); without one, from the
+  // backs of other cards of the deck the person may see.
+  choices: z.object({ field: fid }).strict().optional(),
+  // A tags property: generated options prefer cards with the same tags.
+  tags: z.object({ field: fid }).strict().optional(),
   // A second card per record, back → front.
   reverse: z.boolean().default(false),
   // The deck's defaults; each person may override limits and retention for
@@ -40,10 +58,25 @@ export const studySettingsSchema = z.object({
   // one card of the record was studied (§4.7).
   buryNew: z.boolean().default(true),
   buryReviews: z.boolean().default(true),
+  typedCompare: typedCompareSchema.default({ ignoreCase: true, ignoreAccents: false, ignorePunctuation: true }),
 });
 export type StudySettings = z.infer<typeof studySettingsSchema>;
 // The types a side may come from: text-like properties (stored values).
 export const STUDY_FIELD_TYPES: ReadonlySet<string> = new Set(["text", "url", "email", "phone", "select", "multiselect", "number"]);
+// Options of a card type property read by their name (German and English,
+// any letter case) when the mapping does not name them.
+const TYPE_NAMES: [RegExp, CardType][] = [
+  [/^(cloze|l(ü|ue)cke(ntext)?|l(ü|ue)ckentext)$/, "cloze"],
+  [/^(typed|type( in)?( the)? answer|eintippen|antwort eintippen|tippen)$/, "typed"],
+  [/^(choice|multiple[ -]?choice|mc|auswahl)$/, "choice"],
+  [/^(occlusion|image occlusion|bildverdeckung)$/, "occlusion"],
+];
+export function typeOfOption(value: string, map?: Record<string, CardType>): CardType {
+  if (map && value in map) return map[value];
+  const name = value.trim().toLowerCase();
+  if ((cardTypes as readonly string[]).includes(name)) return name as CardType;
+  return TYPE_NAMES.find(([re]) => re.test(name))?.[1] ?? "basic";
+}
 export const STUDY_DEFAULTS = { newPerDay: 20, reviewsPerDay: 200, retention: 0.9 } as const;
 
 // A view of type "study" (lib/database-schema.ts view.study).

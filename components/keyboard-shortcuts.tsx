@@ -71,6 +71,8 @@ export function actionLabel(action: ShortcutAction, t: T): string {
       return t("Zurück zur vorherigen Seite", "Back to the previous page");
     case "forward":
       return t("Vorwärts zur nächsten Seite", "Forward to the next page");
+    case "study":
+      return t("Lernen: fällige Karten öffnen", "Study: open the due cards");
   }
 }
 
@@ -81,6 +83,7 @@ const editorLabels: Record<string, [string, string]> = {
   code: ["Code im Text", "Inline code"],
   highlight: ["Markieren", "Highlight"],
   spoiler: ["Verdecken", "Spoiler"],
+  cloze: ["Lücke (Lernkarte)", "Cloze (flashcard)"],
   heading: ["Überschrift", "Heading"],
   orderedList: ["Nummerierte Liste", "Numbered list"],
   bulletList: ["Aufzählung", "Bulleted list"],
@@ -143,6 +146,7 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Durchstreichen", "Strikethrough"), keys: [k("Mod+Shift+S")] },
         { label: t("Markieren", "Highlight"), keys: [k("Mod+Shift+H")] },
         { label: t("Verdecken (Spoiler)", "Hide (spoiler)"), keys: [k("Mod+Alt+H")] },
+        { label: t("Lücke für Lernkarten: neue Nummer / gleiche Nummer wie die vorige", "Flashcard cloze: new number / same number as the one before"), keys: [k("Mod+Alt+G"), k("Mod+Alt+Shift+G")] },
         { label: t("Überschrift 1–3", "Heading 1–3"), keys: [k("Mod+Alt+1"), k("Mod+Alt+2"), k("Mod+Alt+3")] },
         { label: t("Text zentrieren", "Centre the text"), keys: [k("Mod+Shift+E")] },
         { label: t("Fußnote", "Footnote"), keys: [k("Mod+Alt+F")] },
@@ -154,6 +158,18 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Seitenlink in neuem Tab öffnen", "Open a page link in a new tab"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
         { label: t("Seitenlink in geteilter Ansicht öffnen", "Open a page link in split view"), keys: [mac ? t("⌘ ⇧ + Klick", "⌘ ⇧ + click") : t("Ctrl + Shift + Klick", "Ctrl + Shift + click")] },
         ...(ai ? [{ label: t("KI-Schreibassistent", "AI writing assistant"), keys: [k("Mod+J")] }] : []),
+      ],
+    },
+    {
+      // A flashcard session (components/study/focus.tsx, lib/keymap.ts STUDY_KEYS).
+      title: t("Lernkarten", "Flashcards"),
+      items: [
+        { label: t("Antwort zeigen; aufgedeckt: Gut oder der Vorschlag", "Show the answer; revealed: Good or the suggestion"), keys: [t("Leertaste", "Space"), "↵"] },
+        { label: t("Nochmal / Schwer / Gut / Leicht", "Again / Hard / Good / Easy"), keys: ["1", "2", "3", "4"] },
+        { label: t("Multiple Choice: Antwort wählen", "Multiple choice: pick an answer"), keys: ["A", "…", "E"] },
+        { label: t("Hinweis zeigen", "Show the hint"), keys: ["H"] },
+        { label: t("Letzte Wertung rückgängig", "Undo the last rating"), keys: ["Z", k("Mod+Z")] },
+        { label: t("Sitzung beenden", "End the session"), keys: ["Esc"] },
       ],
     },
     {

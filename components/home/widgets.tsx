@@ -284,6 +284,8 @@ function ServerWidget({ widget }: { widget: HomeWidget }) {
       return <InstanceWidget widget={widget} data={data} />;
     case "myActivity":
       return <MyActivityWidget widget={widget} config={widget.config} data={data} />;
+    case "study":
+      return <StudyWidget widget={widget} data={data} />;
     default:
       return null;
   }
@@ -1284,6 +1286,55 @@ function InstanceWidget({ widget, data }: { widget: HomeWidget; data: Record<str
           ))}
         </ul>
       )}
+    </>
+  );
+}
+
+// "Fällige Karten" (docs/specs/flashcards.md §10.1): what is left today per
+// deck – new, in learning steps, due – the person's own, with the streak
+// and "Lernen", which opens the screen #study.
+type StudyDeckLine = { pageId: string; title: string; icon: string; new: number; learning: number; review: number };
+function StudyWidget({ widget, data }: { widget: HomeWidget; data: Record<string, any> }) {
+  const t = useT();
+  const decks = (data.decks || []) as StudyDeckLine[];
+  const due = Number(data.due || 0);
+  const streak = Number(data.streak || 0);
+  if (!decks.length)
+    return (
+      <>
+        <Heading widget={widget} />
+        <Unconfigured>
+          {t("Noch keine Lernkarten: Lege eine Datenbank der Art „Lernkarten“ an oder füge einer Datenbank die Ansicht „Lernen“ hinzu.", "No flashcards yet: create a database of the kind “Flashcards” or add the view “Study” to a database.")}
+        </Unconfigured>
+      </>
+    );
+  return (
+    <>
+      <Heading widget={widget}>
+        {streak > 0 && (
+          <span className="home-count home-study-streak" title={t(`${streak} Lerntage in Folge`, `${streak} study days in a row`)}>
+            {t(`Serie ${streak}`, `Streak ${streak}`)}
+          </span>
+        )}
+      </Heading>
+      <p className="home-study-total">
+        <strong>{formatNumber(due)}</strong> {due === 1 ? t("Karte fällig", "card due") : t("Karten fällig", "cards due")}
+      </p>
+      <ul className="home-list home-study-decks">
+        {decks.map((d) => (
+          <li key={d.pageId}>
+            <a href={`/#page=${d.pageId}`}>
+              <PageIcon name={shownPageIcon(d.icon, "database")} size={15} />
+              <span className="home-study-title">{d.title || t("Ohne Titel", "Untitled")}</span>
+              <small>{t(`${d.new} neu · ${d.learning + d.review} fällig`, `${d.new} new · ${d.learning + d.review} due`)}</small>
+            </a>
+          </li>
+        ))}
+      </ul>
+      {Number(data.more) > 0 && <p className="muted">{t(`und ${data.more} weitere Stapel`, `and ${data.more} more decks`)}</p>}
+      <a className={`button compact home-study-start${due ? " primary" : ""}`} href="/#study">
+        {due === 0 ? t("Für heute geschafft", "Done for today") : t("Lernen", "Study")}
+      </a>
     </>
   );
 }

@@ -325,7 +325,21 @@ const instance: Builder<"instance"> = async (ctx) => await widgetData(ctx, "inci
 // their numbers, never anyone else's.
 const myActivity: Builder<"myActivity"> = async (ctx, scope, config) => await myActivityData(scope.user, scope.workspaceId, ctx.today, ctx.zone, config.period);
 
-const builders: { [K in ServerWidgetKind]: Builder<K> } = { tasks, calendar, journal, database, pinned, focus, habits, counter, activity, stats, instance, myActivity };
+// "Fällige Karten": what is left today per deck (lib/study-stats.ts, the
+// same counts as #study), the person's own; at most 8 decks.
+const study: Builder<"study"> = async (ctx, scope, config) => {
+  const { studyDue } = await import("./study-stats");
+  const due = await studyDue(scope.user, { workspaceId: scope.workspaceId, zone: ctx.zone, ...(config.pageIds.length ? { pageIds: config.pageIds } : {}) });
+  const decks = due.decks.filter((d) => d.total > 0);
+  return {
+    due: decks.reduce((sum, d) => sum + d.new + d.learning + d.review, 0),
+    decks: decks.slice(0, 8).map((d) => ({ pageId: d.pageId, title: clip(d.title, 80), icon: d.icon, new: d.new, learning: d.learning, review: d.review })),
+    more: Math.max(0, decks.length - 8),
+    streak: due.streak,
+  };
+};
+
+const builders: { [K in ServerWidgetKind]: Builder<K> } = { tasks, calendar, journal, database, pinned, focus, habits, counter, activity, stats, instance, myActivity, study };
 
 export const homeDataSchema = z.object({
   workspaceId: uuid,
@@ -424,6 +438,10 @@ export async function homeOptions(user: Identity, query: { workspaceId: string |
       return { calendars: await filterAsync(await calendarSourceList(user, 60), (c) => scope.inside(c.pageId)) };
     case "habits":
       return { habits: await filterAsync(await habitDatabases(user), (d) => scope.inside(d.id)) };
+    case "study": {
+      const { readableDecks } = await import("./study-stats");
+      return { decks: (await readableDecks(user, workspaceId)).map((d) => ({ id: d.page.id, name: d.page.title })) };
+    }
     case "database": {
       // Views and properties of one database.
       const pageId = await scope.need(uuid.parse(query.pageId));

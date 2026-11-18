@@ -1,17 +1,19 @@
 "use client";
 // "An diesem Tag erledigt" (#169): below a journal day, the database records
-// that became done that day and the tasks ticked off in documents (#208) (lib/journal-completed.ts). Computed on every
+// that became done that day, the tasks ticked off in documents (#208) and
+// the flashcards the reader studied per deck (lib/journal-completed.ts). Computed on every
 // load, nothing is stored in the day; hidden while there is nothing.
 // "Alle / Nur meine" in the header: the server filters (mine=1), and the
 // choice is the reader's per journal on all devices (journal.completedMine).
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle, CheckSquare } from "@phosphor-icons/react";
+import { Cards, CheckCircle, CheckSquare } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { api } from "./ui";
 
 // A record, or a task ticked off in a document (#208; `database` is then its page).
-type Completed = { kind?: "record" | "task"; pageId: string; rowId: string; title: string; database: string; icon: string; at: number };
+// "study": the cards studied in a deck that day (`count`; the reader's own).
+type Completed = { kind?: "record" | "task" | "study"; pageId: string; rowId: string; title: string; database: string; icon: string; at: number; count?: number };
 type List = { items: Completed[]; more: number; mine: boolean; all: number };
 const time = new Intl.DateTimeFormat(LOCALE_TAG, { hour: "2-digit", minute: "2-digit" });
 
@@ -78,11 +80,22 @@ export function JournalCompleted({ pageId, journalId }: { pageId: string; journa
           {list.items.map((item) => (
             <li key={`${item.kind || "record"}-${item.pageId}-${item.rowId}-${item.kind === "task" ? item.title : ""}`} data-kind={item.kind || "record"}>
               <time dateTime={new Date(item.at).toISOString()}>{time.format(new Date(item.at))}</time>
-              <a href={item.rowId ? `/#page=${item.pageId}&row=${item.rowId}` : `/#page=${item.pageId}`}>
-                {item.kind === "task" && <CheckSquare size={13} aria-label={t("Aufgabe", "Task")} className="journal-completed-task" />}
-                {item.title || (item.kind === "task" ? t("Ohne Text", "No text") : t("Ohne Titel", "Untitled"))}
-              </a>
-              <small>{item.database || (item.kind === "task" ? t("Ohne Titel", "Untitled") : t("Datenbank", "Database"))}</small>
+              {item.kind === "study" ? (
+                <a href={`/#page=${item.pageId}`}>
+                  <Cards size={13} aria-label={t("Lernkarten", "Flashcards")} className="journal-completed-task" />
+                  {item.count === 1 ? t("1 Karte gelernt", "Studied 1 card") : t(`${item.count ?? 0} Karten gelernt`, `Studied ${item.count ?? 0} cards`)}
+                </a>
+              ) : (
+                <a href={item.rowId ? `/#page=${item.pageId}&row=${item.rowId}` : `/#page=${item.pageId}`}>
+                  {item.kind === "task" && <CheckSquare size={13} aria-label={t("Aufgabe", "Task")} className="journal-completed-task" />}
+                  {item.title || (item.kind === "task" ? t("Ohne Text", "No text") : t("Ohne Titel", "Untitled"))}
+                </a>
+              )}
+              <small>
+                {item.kind === "study"
+                  ? t(`in ${item.database || "Ohne Titel"}`, `in ${item.database || "Untitled"}`)
+                  : item.database || (item.kind === "task" ? t("Ohne Titel", "Untitled") : t("Datenbank", "Database"))}
+              </small>
             </li>
           ))}
         </ul>

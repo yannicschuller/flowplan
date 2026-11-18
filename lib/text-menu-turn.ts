@@ -46,4 +46,4 @@ export const sameKind = (a: TextBlockKind, b: TextBlockKind) =>
 
 // The marks "Formatierung entfernen" takes off the selection. Links,
 // comments, suggestions and other marks that carry content stay.
-export const CLEARED_MARKS = ["bold", "italic", "underline", "strike", "code", "highlight", "textColor", "superscript", "subscript", "spoiler"];
+export const CLEARED_MARKS = ["bold", "italic", "underline", "strike", "code", "highlight", "textColor", "superscript", "subscript", "spoiler", "cloze"];

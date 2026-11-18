@@ -490,7 +490,7 @@ function Gallery({ widgets, isAdmin, onAdd, onClose }: { widgets: HomeWidget[]; 
 
 // ---- Settings of one widget ----
 
-function useOptions<T>(workspaceId: string, kind: "calendar" | "habits" | "database", pageId?: string) {
+function useOptions<T>(workspaceId: string, kind: "calendar" | "habits" | "database" | "study", pageId?: string) {
   const [value, setValue] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -748,6 +748,9 @@ function WidgetSettings({ widget, workspaceId, pages, spaces, onClose, onSave }:
     case "habits":
       fields = <HabitFields workspaceId={workspaceId} value={c.pageId} onChange={(id) => set({ pageId: id })} />;
       break;
+    case "study":
+      fields = <StudyFields workspaceId={workspaceId} value={c.pageIds || []} onChange={(ids) => set({ pageIds: ids })} />;
+      break;
     case "counter":
       fields = (
         <>
@@ -924,6 +927,33 @@ function HabitFields({ workspaceId, value, onChange }: { workspaceId: string; va
       </label>
       <p className="muted">{t("Eine Datenbank mit einem Datum und Kontrollkästchen: jeder Tag ein Eintrag, jedes Kästchen eine Gewohnheit.", "A database with a date and checkboxes: one record per day, one checkbox per habit.")}</p>
     </>
+  );
+}
+
+// "Fällige Karten": all decks, or the ones ticked.
+function StudyFields({ workspaceId, value, onChange }: { workspaceId: string; value: string[]; onChange: (ids: string[]) => void }) {
+  const t = useT();
+  const { value: options } = useOptions<{ decks: { id: string; name: string }[] }>(workspaceId, "study");
+  const decks = options?.decks || [];
+  return (
+    <fieldset className="home-choice">
+      <legend>{t("Stapel", "Decks")}</legend>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={!value.length} onChange={(e) => e.target.checked && onChange([])} />
+        {t("Alle Stapel", "All decks")}
+      </label>
+      {decks.map((d) => (
+        <label key={d.id} className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={value.includes(d.id)}
+            onChange={(e) => onChange(e.target.checked ? [...value, d.id].slice(0, 20) : value.filter((id) => id !== d.id))}
+          />
+          {d.name || t("Ohne Titel", "Untitled")}
+        </label>
+      ))}
+      {options && !decks.length && <p className="muted">{t("Noch keine Lernkarten-Stapel in diesem Arbeitsbereich.", "No flashcard decks in this workspace yet.")}</p>}
+    </fieldset>
   );
 }
 

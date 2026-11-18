@@ -28,6 +28,9 @@ export type QueueInput = {
   studiedRows: ReadonlySet<string>;
   bury: { new: boolean; review: boolean };
   view?: Partial<StudyViewConfig>;
+  // How far ahead learning cards come (ms): 20 minutes, or the rest of the
+  // day for "Früher zeigen".
+  learnAhead?: number;
 };
 export type Queue = {
   learning: QueueCard[];
@@ -83,8 +86,9 @@ export function buildQueue(input: QueueInput): Queue {
   for (const card of learning) taken.add(card.rowId);
   const review = pick(reviews, input.bury.review, Math.max(0, input.limits.review - input.done.review));
   const added = pick(fresh, input.bury.new, Math.max(0, input.limits.new - input.done.new));
-  const dueNow = learning.filter((c) => c.memory!.due <= now + LEARN_AHEAD_MS);
-  const later = learning.find((c) => c.memory!.due > now + LEARN_AHEAD_MS);
+  const ahead = input.learnAhead ?? LEARN_AHEAD_MS;
+  const dueNow = learning.filter((c) => c.memory!.due <= now + ahead);
+  const later = learning.find((c) => c.memory!.due > now + ahead);
   return {
     learning: dueNow,
     review,

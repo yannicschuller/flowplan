@@ -81,6 +81,9 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-pdf",
         "data-title",
         "data-spoiler",
+        // A gap of a flashcard (lib/cloze-mark.ts).
+        "data-cloze",
+        "data-cloze-hint",
         "data-indent",
         "data-callout",
         "data-math",

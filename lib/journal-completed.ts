@@ -14,6 +14,13 @@
 // property assigns to them, whoever ticked them off. Entries from before
 // schema 96 have no user and count as the reader's only by the assignment.
 // The choice is the reader's per journal (page_view_prefs.completed_mine).
+//
+// Flashcards studied that day (docs/specs/flashcards.md §11.2) are a third
+// kind, "study": one line per deck with the reader's own count ("32 Karten
+// gelernt in Spanisch A1") from their review_log – the calendar day in the
+// reader's zone, not the study day starting at 04:00 (decided: the journal
+// is a calendar). Always the reader's own, under "Alle" as well: nobody
+// sees another person's learning (lib/study-stats.ts studiedOn).
 import { z } from "zod";
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -28,8 +35,10 @@ import { Temporal, validZone } from "./date-values";
 import type { Field, Identity, Page } from "./types";
 
 export type CompletedRecord = {
-  // A database record, or a task ticked off in a document (#208).
-  kind?: "record" | "task";
+  // A database record, a task ticked off in a document (#208), or the
+  // flashcards studied in a deck (`count` cards; rowId and title empty).
+  kind?: "record" | "task" | "study";
+  count?: number;
   pageId: string;
   // A task in a page: "" (one in a record's document: the record).
   rowId: string;
@@ -97,7 +106,9 @@ export async function completedOn(
   );
   const locked = await lockedPageIds(user, workspaceId);
   const tasks = await completedTasks(user, workspaceId, start, end, locked, dayId);
-  if (!entries.length && !tasks.length) return { items: [], more: 0, mine, all: 0 };
+  const { studiedOn } = await import("./study-stats");
+  const studied = await studiedOn(user, workspaceId, start, end, locked);
+  if (!entries.length && !tasks.length && !studied.length) return { items: [], more: 0, mine, all: 0 };
   const byPage = new Map<string, Map<string, { at: number; by: string | null }>>();
   for (const e of entries) {
     const rows = byPage.get(e.page_id) || new Map<string, { at: number; by: string | null }>();
@@ -143,6 +154,11 @@ export async function completedOn(
     everything++;
     if (mine && !task.mine) continue;
     items.push(task.item);
+  }
+  // The reader's own studying counts under both filters.
+  for (const deck of studied) {
+    everything++;
+    items.push({ kind: "study", pageId: deck.pageId, rowId: "", title: "", database: deck.title, icon: deck.icon, at: deck.at, count: deck.count });
   }
   items.sort((a, b) => a.at - b.at);
   return { items: items.slice(0, limit), more: Math.max(0, items.length - limit), mine, all: everything };

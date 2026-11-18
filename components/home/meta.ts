@@ -23,6 +23,7 @@ import {
   Tray,
   Bell,
   CalendarBlank,
+  Cards,
   type Icon,
 } from "@phosphor-icons/react";
 import type { HomeWidget, HomeWidgetKind } from "@/lib/home-layout-schema";
@@ -151,6 +152,12 @@ export const widgetMeta: Record<HomeWidgetKind, { icon: Icon; name: Text; descri
     description: { de: "Backups, Fehlerquote, Hintergrunddienste und Speicher – für die Administration.", en: "Backups, error rate, background workers and storage – for administrators." },
     group: "tools",
     adminOnly: true,
+  },
+  study: {
+    icon: Cards,
+    name: { de: "Fällige Karten", en: "Due cards" },
+    description: { de: "Was du heute in deinen Lernkarten-Stapeln wiederholen kannst, mit Serie und Start.", en: "What is due today in your flashcard decks, with your streak and a start button." },
+    group: "plan",
   },
   myActivity: {
     icon: ChartBar,

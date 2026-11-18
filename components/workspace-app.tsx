@@ -145,6 +145,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import * as PageMenu from "./page-menu";
 import {
   Images,
+  Cards,
   BookmarkSimple,
   Stack,
   CaretDown,
@@ -356,6 +357,7 @@ const CollectionEditor = dynamic(() => loadView(() => import("./collection-edito
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // A space as a library (#329): loaded when a library opens.
 const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
+const StudyScreen = dynamic(() => loadView(() => import("./study/screen")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
 // Notebooks bring the ink engine: loaded with the first notebook.
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 // Workflows bring the canvas (xyflow): loaded with the first workflow page.
@@ -482,7 +484,9 @@ type Screen =
   | "collection"
   // A space as a library (#329, components/library-view.tsx):
   // #library/<space>, a book's contents #library/<space>/<book>.
-  | "library";
+  | "library"
+  // Flashcards of all decks (components/study/screen.tsx): #study.
+  | "study";
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -1949,7 +1953,7 @@ export default function WorkspaceApp({
           );
         } else if (!keepNav) setMobile(false);
       } else if (
-        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags"].includes(
+        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags", "study"].includes(
           fragment,
         ) ||
         /^tags\/[0-9a-f-]{36}$/.test(fragment) ||
@@ -2263,6 +2267,9 @@ export default function WorkspaceApp({
       case "forward":
         goForward();
         break;
+      case "study":
+        go("study");
+        break;
     }
   };
   shortcutRef.current = runShortcut;
@@ -2332,6 +2339,8 @@ export default function WorkspaceApp({
         return screenLook(t("Graph", "Graph"), Graph);
       case "media":
         return screenLook(t("Medien", "Media"), ImageSquare);
+      case "study":
+        return screenLook(t("Lernen", "Study"), Cards);
       case "trash":
         return screenLook(t("Papierkorb", "Trash"), Trash);
       default:
@@ -3781,6 +3790,7 @@ export default function WorkspaceApp({
     { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks") },
     { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
+    { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study") },
     { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
     { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
@@ -3973,6 +3983,7 @@ export default function WorkspaceApp({
   const sidebarTools: SidebarTool[] = [
     { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => !needsConnection() && setTemplates(true) },
     { id: "media", label: t("Medien", "Media"), icon: Images, selected: screen === "media", onSelect: () => go("media") },
+    { id: "study", label: t("Lernen", "Study"), title: t("Lernkarten: fällige Karten", "Flashcards: due cards") + hint("study"), icon: Cards, selected: screen === "study", onSelect: () => go("study") },
     { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
     { id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") },
     { id: "trash", label: t("Papierkorb", "Trash"), icon: Trash, selected: screen === "trash", onSelect: () => go("trash") },
@@ -4756,6 +4767,7 @@ export default function WorkspaceApp({
                     library: t("Bibliothek", "Library"),
                     graph: t("Graph", "Graph"),
                     media: t("Medien", "Media"),
+                    study: t("Lernen", "Study"),
                     settings: t("Einstellungen", "Settings"),
                     admin: t("Administration", "Administration"),
                     page: t("Seite", "Page"),
@@ -5736,6 +5748,7 @@ export default function WorkspaceApp({
               onPurgeSpace={(space) => setSpaceManager({ space, purge: true })}
             />
           )}
+          {screen === "study" && <StudyScreen workspaceId={boot.workspace.id} onOpenPage={(id) => void openPage(id)} />}
           {screen === "media" && (
             <MediaLibrary
               workspaceId={boot.workspace.id}

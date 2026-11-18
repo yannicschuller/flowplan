@@ -240,9 +240,31 @@ export function markdownToRawHtml(
     },
     renderer: () => PAGE_BREAK_HTML,
   };
+  // A flashcard's gap in Anki's syntax, {{c1::answer}} or
+  // {{c1::answer::hint}} (lib/markdown.ts writes the editor's mark so),
+  // becomes the mark again (lib/cloze-mark.ts); the answer keeps its inline
+  // Markdown. Nested gaps are not read (the outer one stays text).
+  const cloze: TokenizerAndRendererExtension = {
+    name: "cloze",
+    level: "inline",
+    start(src: string) {
+      const index = src.search(/\{\{c\d{1,2}::/);
+      return index < 0 ? undefined : index;
+    },
+    tokenizer(src: string) {
+      const found = /^\{\{c(\d{1,2})::((?:(?!\{\{|\}\}|::)[\s\S]){1,2000}?)(?:::((?:(?!\{\{|\}\})[^\n]){0,200}?))?\}\}/.exec(src);
+      const n = found ? Number(found[1]) : 0;
+      if (!found || n < 1 || n > 99) return undefined;
+      return { type: "cloze", raw: found[0], n, hint: (found[3] || "").trim(), tokens: this.lexer.inlineTokens(found[2]) };
+    },
+    renderer(token) {
+      const hint = token.hint ? ` data-cloze-hint="${escaped(decode(String(token.hint).replace(/\\(.)/g, "$1")))}"` : "";
+      return `<span data-cloze="${Number(token.n)}"${hint}>${this.parser.parseInline(token.tokens || [])}</span>`;
+    },
+  };
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
-    extensions: [footnoteRef, caret, pageBreak],
+    extensions: [footnoteRef, caret, pageBreak, cloze],
     hooks: { processAllTokens: (tokens) => attachCaptions(tokens as Token[]) },
     renderer: {
       link({ href, tokens }: Tokens.Link) {

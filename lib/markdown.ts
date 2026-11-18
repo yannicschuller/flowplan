@@ -359,10 +359,16 @@ export function htmlToMarkdown(
         const url = context.url(String(mark.attrs.href || ""));
         if (url) result = `[${result}](<${markdownUrl(url)}>)`;
       }
+      // A flashcard's gap (lib/cloze-mark.ts) in Anki's syntax, which the
+      // import reads back (lib/markdown-html.ts).
+      if (mark.type.name === "cloze") {
+        const hint = String(mark.attrs.hint || "").replace(/[{}:\n]/g, " ").trim();
+        result = `{{c${Number(mark.attrs.n) || 1}::${result}${hint ? `::${markdownText(hint)}` : ""}}}`;
+      }
       // Without a Markdown form: as inline HTML in the source view.
       if (
         source &&
-        !["bold", "italic", "strike", "underline", "link", "code"].includes(mark.type.name) &&
+        !["bold", "italic", "strike", "underline", "link", "code", "cloze"].includes(mark.type.name) &&
         !(mark.type.name === "highlight" && !mark.attrs.color)
       ) {
         const wrap = markHtml(mark);

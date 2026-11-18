@@ -26,10 +26,10 @@ type Card =
   | { kind: "contact"; rect: DOMRect; contact: ContactCardData }
   | { kind: "person"; rect: DOMRect; name: string; email: string };
 
-// Spoiler text in read-only content opens (and closes) with a click; while
-// writing it stays readable.
+// Spoiler text – and a flashcard's gap (lib/cloze-mark.ts) – in read-only
+// content opens (and closes) with a click; while writing it stays readable.
 export function revealSpoiler(event: MouseEvent | React.MouseEvent) {
-  const spoiler = (event.target as Element | null)?.closest?.("[data-spoiler]");
+  const spoiler = (event.target as Element | null)?.closest?.("[data-spoiler], [data-cloze]");
   // Inside editors the editor's own plugin opens spoilers.
   if (!spoiler || spoiler.closest(".ProseMirror")) return false;
   event.preventDefault();

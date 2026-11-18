@@ -59,6 +59,10 @@ const line = (text: string) => text.replace(/\s+/g, " ").trim();
 // One item as the journal shows it: its title and the page or database it is in.
 export function completedLine(item: CompletedRecord, locale: Locale = contentLocale()) {
   const tr = translate(locale);
+  if (item.kind === "study") {
+    const deck = line(item.database) || tr("Ohne Titel", "Untitled");
+    return item.count === 1 ? tr(`1 Karte gelernt in ${deck}`, `Studied 1 card in ${deck}`) : tr(`${item.count ?? 0} Karten gelernt in ${deck}`, `Studied ${item.count ?? 0} cards in ${deck}`);
+  }
   return `${line(item.title) || tr("Ohne Titel", "Untitled")} (${line(item.database) || tr("Ohne Titel", "Untitled")})`;
 }
 

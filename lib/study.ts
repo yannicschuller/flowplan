@@ -26,9 +26,15 @@ import { effectiveFilterGroup, filterCount, matchesFilterGroup } from "./databas
 import { allow } from "./action-limits";
 import { schedule, replay, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
 import { DEFAULT_DAY_START, studyClock, studyDay, studyZone } from "./study-day";
-import { buildQueue, sessionOrder, type QueueCard } from "./study-queue";
-import { deriveCards, studyFieldIds, usesDocument, type CardSide, type DerivedCard } from "./study-content";
+import { buildQueue, seededRank, sessionOrder, type QueueCard } from "./study-queue";
+import { MAX_CHOICES, deriveCards, foldChoice, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, usesDocument, type CardSide, type DerivedCard } from "./study-content";
+import { clozeHtml } from "./study-cloze";
 import { STUDY_DEFAULTS, STUDY_FIELD_TYPES, studyPrefsInput, studySettingsSchema, type StudySettings } from "./study-schema";
+import { htmlToMarkdown, type MarkdownContext } from "./markdown";
+import { toPlain } from "./inline-markdown";
+import { CSV_FORMULA } from "./cell-text";
+import { ct } from "./content-locale";
+import { exportName } from "./export-name";
 import type { Field, Identity, Page, View } from "./types";
 
 const uuid = z.string().uuid();
@@ -54,7 +60,11 @@ const requireDeck = (deck: Deck) => {
 // ---- The card index ----
 
 type StoredRow = { id: string; page_id: string; cells: string; content: string | null; position: number };
-const hashOf = (card: DerivedCard) => createHash("sha256").update(JSON.stringify([card.front, card.back])).digest("hex").slice(0, 32);
+const hashOf = (card: DerivedCard) =>
+  createHash("sha256")
+    .update(JSON.stringify(card.choices ? [card.front, card.back, card.choices] : [card.front, card.back]))
+    .digest("hex")
+    .slice(0, 32);
 // The HTML of a record's document as lib/row-documents.ts ensureRowDocument
 // would create it, without creating it.
 function documentHtml(row: Pick<StoredRow, "content">, stored: string | undefined) {
@@ -237,7 +247,7 @@ const memoryOf = (s: Omit<StateRow, "row_id" | "sub" | "position">): Memory | nu
     : null;
 // Cards the person may study in this deck (and view): readable records,
 // the view's filters (sub-decks), not suspended.
-async function studyable(user: Identity, deck: Deck, settings: StudySettings, viewId?: string) {
+async function studyable(user: Identity, deck: Deck, settings: StudySettings, viewId?: string, withSuspended = false) {
   const hidden = await hiddenFieldsFor(user, deck.page, deck.fields);
   // A side the person may not read: no cards at all (rather none than half).
   if (studyFieldIds(settings).some((id) => hidden.has(id) || !deck.fields.some((f) => f.id === id))) return { cards: [] as QueueCard[], blocked: "hidden" as const };
@@ -261,7 +271,7 @@ async function studyable(user: Identity, deck: Deck, settings: StudySettings, vi
     deck.page.id,
   );
   const cards = rows
-    .filter((r) => !invisible.has(r.row_id) && (!matching || matching.has(r.row_id)) && !Number(r.suspended))
+    .filter((r) => !invisible.has(r.row_id) && (!matching || matching.has(r.row_id)) && (withSuspended || !Number(r.suspended)))
     .map((r) => ({ rowId: r.row_id, sub: r.sub, position: Number(r.position), memory: memoryOf(r) }));
   return { cards, blocked: null };
 }
@@ -278,14 +288,98 @@ async function todayOf(userId: string, pageId: string, day: string) {
   };
 }
 // The content of cards to show: derived again from the records now.
-async function contentOf(deck: Deck, settings: StudySettings, cards: QueueCard[]) {
+// - cloze: the side with the clozes twice – with card N's gaps hidden (the
+//   front) and with their answers marked (the back); text sides carry the
+//   number for the client (components/study/cloze.tsx), document sides are
+//   rewritten here and cleaned again. The other side comes along: the
+//   front as context above, a back as a note after revealing.
+// - typed: the expected answer as text.
+// - choice: the right option first (the client shuffles them with the
+//   review's id as seed, stable while the card is shown) and wrong ones –
+//   the record's own, filled up from the backs of other cards of `pool`:
+//   only cards this person may study (readable records, the view's
+//   filters, no hidden properties – §17.9), never others'.
+export type ShownSide = { text: string; formatted?: boolean; cloze?: { n: number; reveal: boolean } } | { html: string };
+export type ShownCard = {
+  rowId: string;
+  sub: string;
+  kind: DerivedCard["kind"];
+  memory: Memory | null;
+  front: ShownSide;
+  back: ShownSide;
+  hint?: ShownSide;
+  extra?: ShownSide;
+  context?: ShownSide;
+  note?: ShownSide;
+  typed?: { answer: string };
+  choice?: { options: string[]; correct: number };
+};
+const clean = (side: CardSide | undefined): CardSide | undefined => (side && "html" in side ? { html: cleanHtml(side.html) } : side);
+const POOL_ROWS = 80;
+const WRONG_OPTIONS = 3;
+type Candidate = { rowId: string; text: string; key: string; tags: string[] };
+async function distractorPool(deck: Deck, settings: StudySettings, pool: QueueCard[], day: string): Promise<Candidate[]> {
+  const ids = [...new Set(pool.map((c) => c.rowId))].sort((a, b) => seededRank(day, a) - seededRank(day, b)).slice(0, POOL_ROWS);
+  if (!ids.length) return [];
+  const derived = await cardsOfRows(settings, deck.fields, await rowsOf(deck.page.id, ids));
+  const out: Candidate[] = [];
+  for (const [rowId, cards] of derived) {
+    const card = cards.find((c) => c.sub === "" && c.kind !== "cloze");
+    const text = card ? sidePlain(card.back).replace(/\s+/g, " ").slice(0, 300) : "";
+    if (text) out.push({ rowId, text, key: foldChoice(text), tags: card?.tags || [] });
+  }
+  return out;
+}
+function choiceOptions(card: DerivedCard, rowId: string, candidates: Candidate[]) {
+  const correct = sidePlain(card.back).replace(/\s+/g, " ").slice(0, 300);
+  const wrong = [...(card.choices || [])];
+  const seen = new Set([foldChoice(correct), ...wrong.map(foldChoice)]);
+  if (wrong.length < WRONG_OPTIONS) {
+    const length = correct.length;
+    const tags = new Set(card.tags || []);
+    const ranked = candidates
+      .filter((c) => c.rowId !== rowId && !seen.has(c.key))
+      .map((c) => ({ c, score: (c.tags.some((t) => tags.has(t)) ? 2 : 0) + 1 - Math.abs(c.text.length - length) / Math.max(c.text.length, length, 1) }))
+      .sort((a, b) => b.score - a.score || seededRank(rowId, a.c.rowId) - seededRank(rowId, b.c.rowId));
+    for (const { c } of ranked) {
+      if (wrong.length >= WRONG_OPTIONS) break;
+      if (seen.has(c.key)) continue;
+      seen.add(c.key);
+      wrong.push(c.text);
+    }
+  }
+  return { options: [correct, ...wrong.slice(0, MAX_CHOICES - 1)], correct: 0 };
+}
+function present(card: DerivedCard, c: QueueCard, candidates: Candidate[]): ShownCard {
+  const base = { rowId: c.rowId, sub: c.sub, kind: card.kind, memory: c.memory, ...(card.hint ? { hint: clean(card.hint) } : {}), ...(card.extra ? { extra: clean(card.extra) } : {}) };
+  if (card.cloze) {
+    const { n, on } = card.cloze;
+    const side = on === "front" ? card.front : card.back,
+      other = on === "front" ? card.back : card.front;
+    const view = (reveal: boolean): ShownSide => ("html" in side ? { html: cleanHtml(clozeHtml(side.html, n, reveal)) } : { ...side, cloze: { n, reveal } });
+    const rest = sideIsEmpty(other) ? undefined : clean(other);
+    return { ...base, front: view(false), back: view(true), ...(rest ? (on === "back" ? { context: rest } : { note: rest }) : {}) };
+  }
+  const shown: ShownCard = { ...base, front: clean(card.front)!, back: clean(card.back)! };
+  if (card.kind === "typed") return { ...shown, typed: { answer: typedAnswer(card.back) } };
+  if (card.kind === "choice") {
+    const choice = choiceOptions(card, c.rowId, candidates);
+    // Fewer than two options: the card is asked like a basic one.
+    return choice.options.length > 1 ? { ...shown, choice } : shown;
+  }
+  return shown;
+}
+async function contentOf(deck: Deck, settings: StudySettings, cards: QueueCard[], pool: QueueCard[], day: string): Promise<ShownCard[]> {
   const rows = await rowsOf(deck.page.id, [...new Set(cards.map((c) => c.rowId))]);
   const derived = await cardsOfRows(settings, deck.fields, rows);
-  const clean = (side: CardSide | undefined): CardSide | undefined => (side && "html" in side ? { html: cleanHtml(side.html) } : side);
+  const needsPool = cards.some((c) => {
+    const card = derived.get(c.rowId)?.find((d) => d.sub === c.sub);
+    return card?.kind === "choice" && (card.choices?.length || 0) < WRONG_OPTIONS;
+  });
+  const candidates = needsPool ? await distractorPool(deck, settings, pool, day) : [];
   return cards.flatMap((c) => {
     const card = derived.get(c.rowId)?.find((d) => d.sub === c.sub);
-    if (!card) return [];
-    return [{ rowId: c.rowId, sub: c.sub, kind: card.kind, memory: c.memory, front: clean(card.front)!, back: clean(card.back)!, hint: clean(card.hint), extra: clean(card.extra) }];
+    return card ? [present(card, c, candidates)] : [];
   });
 }
 const queueInput = z.object({
@@ -293,6 +387,8 @@ const queueInput = z.object({
   viewId: z.string().max(100).optional(),
   zone: zoneInput,
   limit: z.number().int().min(0).max(MAX_BATCH).optional(),
+  // "Früher zeigen": learning cards due later today come now.
+  ahead: z.boolean().optional(),
 });
 // The deck's state for the person: counts, limits, settings and the next
 // cards with their content (up to 50; 0 for the overview only).
@@ -321,6 +417,7 @@ export async function studyQueue(user: Identity, raw: unknown) {
     studiedRows,
     bury: { new: settings.buryNew, review: settings.buryReviews },
     view,
+    ...(input.ahead ? { learnAhead: Math.max(0, today.end - now) } : {}),
   });
   const batch = sessionOrder(queue, view?.mixNew).slice(0, input.limit ?? MAX_BATCH);
   const states = { new: 0, learning: 0, review: 0, suspended: 0 };
@@ -341,7 +438,7 @@ export async function studyQueue(user: Identity, raw: unknown) {
     states,
     // Tomorrow's reviews (the summary's "Morgen fällig").
     tomorrow: cards.filter((c) => c.memory && c.memory.due >= today.end && c.memory.due < today.end + 86_400_000).length,
-    cards: batch.length ? await contentOf(deck, settings, batch) : [],
+    cards: batch.length ? await contentOf(deck, settings, batch, cards, today.day) : [],
   };
 }
 
@@ -477,7 +574,7 @@ export async function studyUndo(user: Identity, raw: unknown) {
   await storeState(user, deck.page, log.row_id, log.sub, memory);
   const overview = await studyQueue(user, { pageId: input.pageId, viewId: input.viewId, zone: input.zone, limit: 0 });
   const [card] = (await one("SELECT 1 FROM study_cards WHERE page_id=? AND row_id=? AND sub=?", deck.page.id, log.row_id, log.sub))
-    ? await contentOf(deck, settings, [{ rowId: log.row_id, sub: log.sub, position: 0, memory }])
+    ? await contentOf(deck, settings, [{ rowId: log.row_id, sub: log.sub, position: 0, memory }], (await studyable(user, deck, settings, input.viewId)).cards, overview.day)
     : [];
   return { ...overview, undone: log.id, card: card ?? null };
 }
@@ -540,25 +637,73 @@ export async function saveStudySettings(page: Page, raw: unknown) {
   return { settings: next };
 }
 
-// ---- All decks of a workspace (MCP, later the widget and #study) ----
+// ---- CSV export (§8.3) ----
 
-export async function studyDecks(user: Identity, workspaceId: string, zone?: string) {
-  const pages = await all<{ id: string }>(
-    "SELECT p.id FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.settings LIKE ?",
-    workspaceId,
-    '%"study"%',
+const exportInput = z.object({ pageId: uuid, state: z.boolean().optional(), zone: zoneInput, viewId: z.string().max(100).optional() });
+const csvLinks: MarkdownContext = {
+  url: (raw) => (/^(https?:|mailto:)/i.test(raw) ? raw : null),
+  linked: () => null,
+};
+// One line per card the person may study (suspended ones too): the sides
+// as written – text as plain text with its {{c1::…}} clozes, documents as
+// Markdown (the editor's clozes as {{cN::…}}) – hint, extra, tags, type and
+// the card ("" the card, "r" its reverse, "c1" … the clozes). With `state`
+// the person's own learning state; nobody else's is ever read. The import
+// wizard (lib/study-import.ts) reads the file back, one record per line
+// with the same front and back.
+export async function studyExport(user: Identity, raw: unknown) {
+  const input = exportInput.parse(raw);
+  const deck = await deckOf(user, input.pageId);
+  const settings = requireDeck(deck);
+  await drainStudyCards(deck.page.id);
+  const clock = await zoneFor(user, input.zone);
+  const { cards } = await studyable(user, deck, settings, input.viewId, true);
+  const suspended = new Set(
+    (await all<{ row_id: string; sub: string }>("SELECT row_id,sub FROM card_states WHERE user_id=? AND page_id=? AND suspended=1", user.id, deck.page.id)).map((r) => `${r.row_id}\u0000${r.sub}`),
   );
-  const out: { pageId: string; title: string; new: number; learning: number; review: number; total: number }[] = [];
-  for (const p of pages) {
-    try {
-      const deck = await studyQueue(user, { pageId: p.id, zone, limit: 0 });
-      if (deck.configured) out.push({ pageId: p.id, title: deck.title, ...deck.counts, total: deck.total });
-    } catch (error) {
-      // Pages the person may not read (or behind a PIN) are left out.
-      if (!(error instanceof HttpError)) throw error;
+  const text = (side: CardSide | undefined) =>
+    !side ? "" : "html" in side ? htmlToMarkdown(side.html, csvLinks).trim() : side.formatted ? toPlain(side.text) : side.text;
+  const types: Record<string, string> = { basic: ct("Vorder-/Rückseite", "Front/back"), cloze: ct("Lückentext", "Cloze"), typed: ct("Eintippen", "Typed"), choice: ct("Multiple Choice", "Multiple choice") };
+  const states: Record<number, string> = { 0: ct("Neu", "New"), 1: ct("Lernen", "Learning"), 2: ct("Wiederholung", "Review"), 3: ct("Wiederlernen", "Relearning") };
+  const header = [ct("Vorderseite", "Front"), ct("Rückseite", "Back"), ct("Hinweis", "Hint"), ct("Zusatz", "Extra"), "Tags", ct("Kartentyp", "Card type"), ct("Karte", "Card")];
+  if (input.state) header.push(ct("Zustand", "State"), ct("Fällig", "Due"), ct("Stabilität (Tage)", "Stability (days)"), ct("Schwierigkeit", "Difficulty"), ct("Wiederholungen", "Reviews"), ct("Vergessen", "Lapses"), ct("Ausgesetzt", "Suspended"));
+  const lines: string[][] = [];
+  const sorted = [...cards].sort((a, b) => a.position - b.position || (a.rowId < b.rowId ? -1 : a.rowId > b.rowId ? 1 : 0) || (a.sub < b.sub ? -1 : 1));
+  for (let i = 0; i < sorted.length; i += 500) {
+    const part = sorted.slice(i, i + 500);
+    const derived = await cardsOfRows(settings, deck.fields, await rowsOf(deck.page.id, [...new Set(part.map((c) => c.rowId))]));
+    for (const c of part) {
+      const card = derived.get(c.rowId)?.find((d) => d.sub === c.sub);
+      if (!card) continue;
+      // The record's sides as written (a reverse card names them as the
+      // record does, so the file reads back as one record per line).
+      const record = card.sub === "r" ? { front: card.back, back: card.front } : card;
+      const line = [text(record.front), text(record.back), text(card.hint), text(card.extra), (card.tags || []).join(", "), types[card.kind] || card.kind, card.sub];
+      if (input.state) {
+        const m = c.memory;
+        line.push(
+          states[m?.state ?? 0],
+          m ? (m.state === 2 && m.dueDay ? m.dueDay : new Date(m.due).toISOString()) : "",
+          m ? String(Math.round(m.stability * 100) / 100) : "",
+          m ? String(Math.round(m.difficulty * 100) / 100) : "",
+          m ? String(m.reps) : "0",
+          m ? String(m.lapses) : "0",
+          suspended.has(`${c.rowId}\u0000${c.sub}`) ? ct("ja", "yes") : "",
+        );
+      }
+      lines.push(line);
     }
   }
-  return out.sort((a, b) => b.review + b.learning + b.new - (a.review + a.learning + a.new) || (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+  const cell = (value: string) => {
+    const safe = CSV_FORMULA.test(value) ? `'${value}` : value;
+    return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+  };
+  void clock;
+  return {
+    name: `${exportName(deck.page.title || ct("Lernkarten", "Flashcards")).slice(0, 80)}.csv`,
+    csv: "﻿" + [header, ...lines].map((l) => l.map(cell).join(",")).join("\r\n") + "\r\n",
+    cards: lines.length,
+  };
 }
 
 // The commands (lib/api.ts): reading the deck is enough for everything but
@@ -573,6 +718,10 @@ export async function studyCommand(user: Identity, action: string, b: Record<str
       return await studyUndo(user, b);
     case "study.prefs":
       return await studyPrefs(user, b);
+    case "study.due":
+      return await (await import("./study-stats")).studyDue(user, b);
+    case "study.stats":
+      return await (await import("./study-stats")).studyStats(user, b);
     default:
       throw new HttpError(400, "Unbekannte Aktion.");
   }

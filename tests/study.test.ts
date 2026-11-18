@@ -13,7 +13,7 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-study-"));
 const { id, run, one, all } = await import("../lib/db");
 const { command, database, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
-const { studyDecks } = await import("../lib/study");
+const { studyDecks } = await import("../lib/study-stats");
 const { htmlState } = await import("../lib/document-server");
 
 async function user(name: string): Promise<Identity> {

@@ -6,17 +6,23 @@
 // einrichten"). The mapping belongs to the database (settings.study); the
 // view's filters only pick a subset of its cards, like a sub-deck. Reading
 // is enough to study: the learning state is the person's own.
-import { useCallback, useEffect, useState } from "react";
+// Also here: the statistics of the deck (components/study/stats.tsx), the
+// import of cards from text or a file (components/study/import.tsx, write
+// access) and the CSV export of the cards, with the person's own learning
+// state on request.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { Cards, CaretDown, GearSix, Play, SlidersHorizontal } from "@phosphor-icons/react";
+import { ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, UploadSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, api } from "./ui";
 import { Select } from "./select";
 import { safeCollisionPadding } from "./safe-area";
 import { StudyFocus, studyZoneNow, type StudyOverview } from "./study/focus";
-import { cellText } from "@/lib/cell-text";
+import { StudyImport } from "./study/import";
+import { StudyStatsPanel } from "./study/stats";
+import { deriveCards } from "@/lib/study-content";
 import { filterCount, effectiveFilterGroup } from "@/lib/database-filters";
-import { STUDY_FIELD_TYPES, suggestStudySettings, studySettingsSchema, type StudySettings } from "@/lib/study-schema";
+import { STUDY_FIELD_TYPES, cardTypes, suggestStudySettings, studySettingsSchema, typeOfOption, type CardType, type StudySettings } from "@/lib/study-schema";
 import type { Database, Page, Row, View } from "@/lib/types";
 
 export async function loadStudy(pageId: string, viewId: string | undefined, limit: number) {
@@ -47,7 +53,11 @@ export default function DatabaseStudy({
     [error, setError] = useState(""),
     [setup, setSetup] = useState(false),
     [prefs, setPrefs] = useState(false),
-    [session, setSession] = useState(false);
+    [session, setSession] = useState(false),
+    [importing, setImporting] = useState(false),
+    [stats, setStats] = useState(false),
+    [statsVersion, setStatsVersion] = useState(0),
+    [notice, setNotice] = useState("");
   const reload = useCallback(async () => {
     try {
       setOverview(await loadStudy(page.id, view.id, 0));
@@ -152,6 +162,11 @@ export default function DatabaseStudy({
             </Dropdown.Portal>
           </Dropdown.Root>
         </div>
+        {notice && (
+          <p className="study-notice" role="status">
+            {notice}
+          </p>
+        )}
         {overview && left === 0 && overview.total > 0 && (
           <p className="muted study-done-line">
             {overview.nextDue
@@ -179,9 +194,38 @@ export default function DatabaseStudy({
           </p>
           {filters > 0 && <p className="muted">{t(`Diese Ansicht lernt nur Karten, die zu ihren ${filters} Filtern passen.`, `This view studies only cards that match its ${filters} filters.`)}</p>}
           <div className="study-deck-buttons">
+            <button className="button compact" aria-expanded={stats} onClick={() => setStats((s) => !s)}>
+              <ChartBar aria-hidden /> {t("Statistik", "Statistics")}
+            </button>
             <button className="button compact" onClick={() => setPrefs(true)}>
               <SlidersHorizontal aria-hidden /> {t("Meine Einstellungen", "My settings")}
             </button>
+            {editable && (
+              <button className="button compact" onClick={() => setImporting(true)}>
+                <UploadSimple aria-hidden /> {t("Karten importieren", "Import cards")}
+              </button>
+            )}
+            <Dropdown.Root>
+              <Dropdown.Trigger asChild>
+                <button className="button compact">
+                  <DownloadSimple aria-hidden /> {t("Exportieren", "Export")} <CaretDown aria-hidden />
+                </button>
+              </Dropdown.Trigger>
+              <Dropdown.Portal>
+                <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
+                  <Dropdown.Item asChild className="dropdown-item">
+                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id })}`} download>
+                      <span>{t("Karten als CSV", "Cards as CSV")}</span>
+                    </a>
+                  </Dropdown.Item>
+                  <Dropdown.Item asChild className="dropdown-item">
+                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id, state: "1" })}`} download>
+                      <span>{t("Karten mit meinem Lernstand als CSV", "Cards with my learning state as CSV")}</span>
+                    </a>
+                  </Dropdown.Item>
+                </Dropdown.Content>
+              </Dropdown.Portal>
+            </Dropdown.Root>
             {editable && (
               <button className="button compact" onClick={() => setSetup(true)}>
                 <GearSix aria-hidden /> {t("Karten einrichten", "Set up cards")}
@@ -189,6 +233,26 @@ export default function DatabaseStudy({
             )}
           </div>
         </section>
+      )}
+      {overview?.configured && stats && (
+        <section className="study-stats-panel" aria-label={t("Statistik", "Statistics")}>
+          <h3>{t("Statistik", "Statistics")}</h3>
+          <StudyStatsPanel pageId={page.id} version={statsVersion} />
+        </section>
+      )}
+      {mapping && editable && (
+        <StudyImport
+          open={importing}
+          onClose={() => setImporting(false)}
+          database={database}
+          settings={mapping}
+          act={act}
+          onDone={(count) => {
+            setImporting(false);
+            setNotice(count === 1 ? t("1 Eintrag importiert.", "1 record imported.") : t(`${count} Einträge importiert.`, `${count} records imported.`));
+            void reload();
+          }}
+        />
       )}
       {setupDialog}
       {overview?.configured && (
@@ -213,6 +277,7 @@ export default function DatabaseStudy({
           title={page.title || t("Lernen", "Study")}
           onClose={() => {
             setSession(false);
+            setStatsVersion((v) => v + 1);
             void reload();
           }}
         />
@@ -252,9 +317,15 @@ export function StudySetup({
   const same = sideValue(draft.front) === sideValue(draft.back);
   // The preview counts cards of properties; document sides are counted by
   // the server (the documents are not loaded here).
-  const preview = "field" in draft.front && "field" in draft.back
-    ? rows.filter((r) => cellText(r.cells[(draft.front as { field: string }).field]).trim() && cellText(r.cells[(draft.back as { field: string }).field]).trim()).length
-    : null;
+  const preview = useMemo(() => {
+    if (!("field" in draft.front && "field" in draft.back)) return null;
+    try {
+      const settings = studySettingsSchema.parse(draft);
+      return rows.reduce((n, r) => n + deriveCards(settings, database.fields, r.cells, null).length, 0);
+    } catch {
+      return null;
+    }
+  }, [draft, rows, database.fields]);
   const number = (value: string, min: number, max: number, fallback: number) => {
     const n = Math.round(Number(value));
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
@@ -329,10 +400,82 @@ export function StudySetup({
             </label>
           ))}
         </div>
+        <CardTypeSetting draft={draft} setDraft={setDraft} database={database} />
+        <div className="form-row">
+          <label>
+            {t("Antwortoptionen (Multiple Choice)", "Answer options (multiple choice)")}
+            <Select
+              aria-label={t("Antwortoptionen (Multiple Choice)", "Answer options (multiple choice)")}
+              value={draft.choices?.field || ""}
+              onChange={(e) => {
+                const next = { ...draft };
+                if (e.target.value) next.choices = { field: e.target.value };
+                else delete next.choices;
+                setDraft(next);
+              }}
+            >
+              <option value="">{t("— keine: aus anderen Karten —", "— none: from other cards —")}</option>
+              {fields
+                .filter((f) => f.type === "text" || f.type === "multiselect")
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </Select>
+          </label>
+          <label>
+            Tags
+            <Select
+              aria-label="Tags"
+              value={draft.tags?.field || ""}
+              onChange={(e) => {
+                const next = { ...draft };
+                if (e.target.value) next.tags = { field: e.target.value };
+                else delete next.tags;
+                setDraft(next);
+              }}
+            >
+              <option value="">{t("— keine —", "— none —")}</option>
+              {fields
+                .filter((f) => f.type === "multiselect" || f.type === "select")
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </Select>
+          </label>
+        </div>
+        <fieldset className="study-typed-settings">
+          <legend>{t("Antwort eintippen: beim Vergleich ignorieren", "Typed answers: ignore when comparing")}</legend>
+          {(
+            [
+              ["ignoreCase", t("Groß- und Kleinschreibung", "Upper and lower case")],
+              ["ignoreAccents", t("Akzente (é = e)", "Accents (é = e)")],
+              ["ignorePunctuation", t("Satzzeichen", "Punctuation")],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={draft.typedCompare?.[key] ?? key !== "ignoreAccents"}
+                onChange={(e) => setDraft({ ...draft, typedCompare: { ...studySettingsSchema.shape.typedCompare.parse(draft.typedCompare), [key]: e.target.checked } })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
         <label className="checkbox-label">
           <input type="checkbox" checked={draft.reverse} onChange={(e) => setDraft({ ...draft, reverse: e.target.checked })} />
           {t("Auch umgekehrt lernen (Rückseite → Vorderseite)", "Also study in reverse (back → front)")}
         </label>
+        <p className="muted">
+          {t(
+            "Lücken: {{c1::Antwort}} in einem Textfeld oder Text im Dokument markieren → „Als Lücke“ (⌘⌥G). Jede Nummer wird eine eigene Karte.",
+            "Clozes: {{c1::answer}} in a text property, or select text in the document → “As cloze” (⌘⌥G). Every number becomes a card of its own.",
+          )}
+        </p>
         <div className="form-row study-limits">
           <label>
             {t("Neue Karten pro Tag", "New cards per day")}
@@ -349,7 +492,7 @@ export function StudySetup({
         </div>
         <p className="muted">
           {preview !== null
-            ? t(`Vorschau: ${rows.length} Einträge → ${preview * (draft.reverse ? 2 : 1)} Karten`, `Preview: ${rows.length} records → ${preview * (draft.reverse ? 2 : 1)} cards`)
+            ? t(`Vorschau: ${rows.length} Einträge → ${preview} Karten`, `Preview: ${rows.length} records → ${preview} cards`)
             : t("Karten aus Dokumenten zählt Flowplan nach dem Speichern.", "Flowplan counts cards from documents after saving.")}
           {" · "}
           {t("Dein Lernstand und der aller anderen bleibt erhalten.", "Your learning state and everyone else's is kept.")}
@@ -364,6 +507,79 @@ export function StudySetup({
         </div>
       </form>
     </Modal>
+  );
+}
+
+// The card type: the same for all records, or from a select property –
+// its options mapped to types (suggested by their names).
+function CardTypeSetting({ draft, setDraft, database }: { draft: StudySettings; setDraft: (s: StudySettings) => void; database: Database }) {
+  const t = useT();
+  const names: Record<CardType, string> = {
+    basic: t("Vorder-/Rückseite", "Front/back"),
+    cloze: t("Lückentext", "Cloze"),
+    typed: t("Antwort eintippen", "Type the answer"),
+    choice: t("Multiple Choice", "Multiple choice"),
+    occlusion: t("Bildverdeckung (bald)", "Image occlusion (soon)"),
+  };
+  const selects = database.fields.filter((f) => f.type === "select");
+  const fromField = "field" in draft.type ? draft.type : null;
+  const field = fromField ? selects.find((f) => f.id === fromField.field) : undefined;
+  const shown = cardTypes.filter((c) => c !== "occlusion");
+  return (
+    <div className="study-type-setting">
+      <div className="form-row">
+        <label>
+          {t("Kartentyp", "Card type")}
+          <Select
+            aria-label={t("Kartentyp", "Card type")}
+            value={fromField ? `field:${fromField.field}` : draft.type && "fixed" in draft.type ? draft.type.fixed : "basic"}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDraft({ ...draft, type: value.startsWith("field:") ? { field: value.slice(6) } : { fixed: value as CardType } });
+            }}
+          >
+            {shown.map((c) => (
+              <option key={c} value={c}>
+                {t(`Für alle: ${names[c]}`, `For all: ${names[c]}`)}
+              </option>
+            ))}
+            {selects.map((f) => (
+              <option key={f.id} value={`field:${f.id}`}>
+                {t(`Aus der Spalte „${f.name}“`, `From the property “${f.name}”`)}
+              </option>
+            ))}
+          </Select>
+        </label>
+      </div>
+      {fromField && field && (field.options || []).length > 0 && (
+        <div className="study-type-map" role="group" aria-label={t("Optionen zuordnen", "Map the options")}>
+          {(field.options || []).map((option) => (
+            <label key={option}>
+              <span>{option}</span>
+              <Select
+                aria-label={t(`Kartentyp für „${option}“`, `Card type for “${option}”`)}
+                value={typeOfOption(option, fromField.map)}
+                onChange={(e) => setDraft({ ...draft, type: { field: fromField.field, map: { ...(fromField.map || {}), [option]: e.target.value as CardType } } })}
+              >
+                {shown.map((c) => (
+                  <option key={c} value={c}>
+                    {names[c]}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ))}
+        </div>
+      )}
+      {((draft.type && "fixed" in draft.type && draft.type.fixed === "choice") || fromField) && (
+        <p className="muted">
+          {t(
+            "Multiple Choice ist leichter als freies Erinnern – gut für den Einstieg, für das Behalten besser Vorder-/Rückseite oder Eintippen.",
+            "Multiple choice is easier than free recall – good to start with; for remembering, front/back or typing works better.",
+          )}
+        </p>
+      )}
+    </div>
   );
 }
 

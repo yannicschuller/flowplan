@@ -41,9 +41,10 @@ export const homeWidgetKinds = [
   "links",
   "instance",
   "myActivity",
+  "study",
 ] as const;
 export type HomeWidgetKind = (typeof homeWidgetKinds)[number];
-export const serverWidgetKinds = ["tasks", "journal", "calendar", "database", "pinned", "focus", "habits", "counter", "activity", "stats", "instance", "myActivity"] as const satisfies readonly HomeWidgetKind[];
+export const serverWidgetKinds = ["tasks", "journal", "calendar", "database", "pinned", "focus", "habits", "counter", "activity", "stats", "instance", "myActivity", "study"] as const satisfies readonly HomeWidgetKind[];
 export type ServerWidgetKind = (typeof serverWidgetKinds)[number];
 export const isServerKind = (kind: HomeWidgetKind): kind is ServerWidgetKind => (serverWidgetKinds as readonly string[]).includes(kind);
 
@@ -146,6 +147,9 @@ export const widgetConfigs = {
   // Pages the person created and edited (lib/my-activity.ts), per week,
   // month or year – chosen on the widget itself (home.config).
   myActivity: z.object({ title, period: z.enum(activityPeriods).default("week") }),
+  // "Fällige Karten" (docs/specs/flashcards.md §10.1): the decks with cards
+  // due today – all, or the chosen ones.
+  study: z.object({ title, pageIds: z.array(uuid).max(20).default([]) }),
 } satisfies Record<HomeWidgetKind, z.ZodType>;
 export type WidgetConfig<K extends HomeWidgetKind> = z.infer<(typeof widgetConfigs)[K]>;
 
@@ -172,6 +176,7 @@ export const defaultSizes: Record<HomeWidgetKind, WidgetSize> = {
   links: "s",
   instance: "s",
   myActivity: "m",
+  study: "s",
 };
 
 const widgetId = z.string().regex(/^[a-z0-9-]{1,40}$/i);

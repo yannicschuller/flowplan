@@ -63,6 +63,7 @@ import {
   TextSuperscript,
   TextSubscript,
   EyeSlash,
+  Cards,
   PencilLine,
   UsersThree,
   ArrowUp,
@@ -742,6 +743,15 @@ export function TextMenu({
                   {subItem(t("Hochgestellt", "Superscript"), <TextSuperscript size={16} />, () => chain().toggleSuperscript().run(), editor.isActive("superscript"))}
                   {subItem(t("Tiefgestellt", "Subscript"), <TextSubscript size={16} />, () => chain().toggleSubscript().run(), editor.isActive("subscript"))}
                   {subItem(t("Verdecken (Spoiler)", "Hide (spoiler)"), <EyeSlash size={16} />, () => chain().toggleMark("spoiler").run(), editor.isActive("spoiler"))}
+                  {editor.schema.marks.cloze &&
+                    (editor.isActive("cloze")
+                      ? subItem(t("Lücke entfernen", "Remove cloze"), <Cards size={16} />, () => chain().unsetCloze().run(), true)
+                      : (
+                        <>
+                          {subItem(t("Als Lücke (neue Nummer)", "As cloze (new number)"), <Cards size={16} />, () => chain().setCloze().run())}
+                          {subItem(t("Als Lücke (gleiche Nummer wie vorige)", "As cloze (same number as before)"), <Cards size={16} />, () => chain().setCloze({ same: true }).run())}
+                        </>
+                      ))}
                   <Dropdown.Separator className="dropdown-separator" />
                   {subItem(t("Linksbündig", "Align left"), <TextAlignLeft size={16} />, () => chain().unsetTextAlign().run())}
                   {subItem(t("Zentrieren", "Centre"), <TextAlignCenter size={16} />, () => chain().setTextAlign("center").run(), editor.isActive({ textAlign: "center" }))}

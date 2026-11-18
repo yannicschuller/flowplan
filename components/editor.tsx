@@ -156,6 +156,7 @@ import {
   TextSubscript,
   TextSuperscript,
   EyeSlash,
+  Cards,
   Link as LinkIcon,
   Rows,
   ListBullets,
@@ -208,6 +209,7 @@ import {
   TextIndent,
   TextOutdent,
 } from "@phosphor-icons/react";
+import { Cloze } from "@/lib/cloze-mark";
 import { canShiftText, pressTab } from "@/lib/block-indent";
 import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
@@ -910,6 +912,7 @@ export default function DocumentEditor({
         Superscript,
         Subscript,
         Spoiler,
+        Cloze,
         Indent,
         // ⌘⇧L copies the block's link (#88), not "align left" (the
         // default alignment, also in the toolbar).
@@ -2311,6 +2314,15 @@ export default function DocumentEditor({
       description: t("YouTube, Vimeo, Loom, Spotify, Figma oder CodePen", "YouTube, Vimeo, Loom, Spotify, Figma or CodePen"),
       icon: ImageIcon,
       run: () => setEmbed(true),
+    },
+    {
+      id: "cloze",
+      group: "text",
+      name: t("Lücke (Lernkarte)", "Cloze (flashcard)"),
+      keywords: ["lücke", "lückentext", "cloze", "lernkarte", "flashcard", "karteikarte"],
+      description: t("Markierten Text auf einer Lernkarte abfragen", "Ask for the selected text on a flashcard"),
+      icon: Cards,
+      run: () => editor?.chain().focus().setCloze().run(),
     },
     {
       id: "spoiler",

@@ -175,7 +175,8 @@ import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
 import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
 import { ssoGroupReports } from "@/lib/sso-group-report";
-import { studyQueue } from "@/lib/study";
+import { studyExport, studyQueue } from "@/lib/study";
+import { studyDue, studyStats } from "@/lib/study-stats";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -518,7 +519,33 @@ async function handleGET(
           viewId: url.searchParams.get("view") || undefined,
           zone: url.searchParams.get("zone") || undefined,
           limit: limit === null ? undefined : Number(limit),
+          ahead: url.searchParams.get("ahead") === "1" || undefined,
         }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // A deck's cards as CSV, with the person's own learning state on request.
+    if (path.length === 4 && path[0] === "pages" && path[2] === "study" && path[3] === "export") {
+      const out = await studyExport(user, {
+        pageId: path[1],
+        state: url.searchParams.get("state") === "1",
+        zone: url.searchParams.get("zone") || undefined,
+        viewId: url.searchParams.get("view") || undefined,
+      });
+      return new Response(out.csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(out.name)}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    // All decks of a workspace: what is due, and the statistics.
+    if (path.length === 2 && path[0] === "study" && (path[1] === "due" || path[1] === "stats")) {
+      const zone = url.searchParams.get("zone") || undefined;
+      const workspaceId = url.searchParams.get("workspace") || undefined;
+      return NextResponse.json(
+        path[1] === "due" ? await studyDue(user, { workspaceId, zone }) : await studyStats(user, { workspaceId, pageId: url.searchParams.get("page") || undefined, zone }),
         { headers: { "Cache-Control": "no-store" } },
       );
     }

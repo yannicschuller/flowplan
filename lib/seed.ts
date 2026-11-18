@@ -66,19 +66,26 @@ export const defaultViews = (): View[] => [
 // docs/specs/flashcards.md) or only a title.
 export const databaseKinds = ["tasks", "documents", "contacts", "empty", "flashcards"] as const;
 export type DatabaseKind = (typeof databaseKinds)[number];
-// Front (the title), back and tags; the card mapping in settings.study.
+// Front (the title), back, tags and the card type (its options read by
+// name, lib/study-schema.ts typeOfOption); the card mapping in settings.study.
 export function flashcardsSetup() {
   return {
     fields: [
       { id: "title", name: ct("Vorderseite", "Front"), type: "text" },
       { id: "back", name: ct("Rückseite", "Back"), type: "text" },
       { id: "tags", name: "Tags", type: "multiselect", options: [] },
+      {
+        id: "type",
+        name: ct("Kartentyp", "Card type"),
+        type: "select",
+        options: [ct("Vorder-/Rückseite", "Front/back"), ct("Lückentext", "Cloze"), ct("Antwort eintippen", "Type the answer"), ct("Multiple Choice", "Multiple choice")],
+      },
     ] as Field[],
     views: [
       { id: "study", name: ct("Lernen", "Study"), type: "study", filters: [], sorts: [], default: true },
       { id: "table", name: ct("Alle Karten", "All cards"), type: "table", filters: [], sorts: [] },
     ] as View[],
-    settings: { study: studySettingsSchema.parse({ version: 1, front: { field: "title" }, back: { field: "back" } }) },
+    settings: { study: studySettingsSchema.parse({ version: 1, type: { field: "type" }, front: { field: "title" }, back: { field: "back" }, tags: { field: "tags" } }) },
   };
 }
 export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: View[]; recordLayout?: object; settings?: object } {

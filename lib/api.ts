@@ -3367,6 +3367,8 @@ async function runCommand(
       case "study.review":
       case "study.undo":
       case "study.prefs":
+      case "study.due":
+      case "study.stats":
         result = await studyCommand(user, action, b);
         break;
       case "survey.save": {
@@ -4029,6 +4031,8 @@ async function runCommand(
         "study.review",
         "study.undo",
         "study.prefs",
+        "study.due",
+        "study.stats",
       ].includes(action) &&
       // Favourites of a selection: as unaudited as a single favourite.
       !(action === "pages.bulk" && (b.operation === "favorite" || b.operation === "unfavorite"))

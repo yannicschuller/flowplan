@@ -18,7 +18,7 @@ import { all, one } from "./db";
 import { captureHandledError } from "./error-details";
 import { HttpError, appUrl } from "./auth";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
-import { studyDecks } from "./study";
+import { studyDecks } from "./study-stats";
 import { command, database, rows } from "./api";
 import { visibleRows } from "./row-access";
 import { relatedData } from "./related-data";

@@ -8,11 +8,26 @@
 import { Parser } from "htmlparser2";
 import { cellText } from "./cell-text";
 import { isFormattedText, toPlain } from "./inline-markdown";
-import type { StudySettings } from "./study-schema";
+import { clozeFilled, clozeNumbers } from "./study-cloze";
+import { typeOfOption, type CardType, type StudySettings } from "./study-schema";
 import type { Field } from "./types";
 
 export type CardSide = { text: string; formatted?: boolean } | { html: string };
-export type DerivedCard = { sub: string; kind: "basic"; front: CardSide; back: CardSide; hint?: CardSide; extra?: CardSide };
+export type DerivedKind = Exclude<CardType, "occlusion">;
+export type DerivedCard = {
+  sub: string;
+  kind: DerivedKind;
+  front: CardSide;
+  back: CardSide;
+  hint?: CardSide;
+  extra?: CardSide;
+  // A cloze card: its number and the side that holds the clozes (the
+  // other side is shown with it – the front above, the back after).
+  cloze?: { n: number; on: "front" | "back" };
+  // Multiple choice: the wrong options of the record's own property.
+  choices?: string[];
+  tags?: string[];
+};
 export type DocumentPart = "above" | "below" | "all";
 
 // The part of a document above or below its first top-level <hr>; without
@@ -73,28 +88,132 @@ function fieldSide(fields: Field[], cells: Record<string, unknown>, id: string):
   const text = cellText(cells[id]);
   return isFormattedText(field, fields) ? { text, formatted: true } : { text };
 }
-// The cards of one record (phase 1: basic and its reverse). `documentHtml`:
-// the record's document (needed only for document sides).
+
+// The plain text of HTML: blocks on lines of their own (`firstBlock`: only
+// the first block with text).
+const BLOCKS = new Set(["p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "tr", "summary", "details", "figcaption", "aside"]);
+export function htmlPlain(html: string, firstBlock = false): string {
+  if (!html) return "";
+  let out = "";
+  let done = false;
+  let depth = 0;
+  const parser = new Parser(
+    {
+      onopentag(name) {
+        if (done) return;
+        if (name === "br") out += "\n";
+        if (BLOCKS.has(name)) {
+          if (out && !out.endsWith("\n")) out += "\n";
+          depth++;
+        }
+      },
+      onclosetag(name) {
+        if (done || !BLOCKS.has(name)) return;
+        depth = Math.max(0, depth - 1);
+        if (firstBlock && depth === 0 && out.trim()) done = true;
+        else if (!out.endsWith("\n")) out += "\n";
+      },
+      ontext(text) {
+        if (!done) out += text;
+      },
+    },
+    { decodeEntities: true },
+  );
+  parser.write(html);
+  parser.end();
+  return out
+    .split("\n")
+    .map((l) => l.replace(/[ \t ]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+// A side as plain text: inline Markdown read, clozes filled.
+export const sidePlain = (side: CardSide) => clozeFilled("html" in side ? htmlPlain(side.html) : side.formatted ? toPlain(side.text) : side.text).trim();
+// The answer a typed card expects: the back as text – of a document only
+// its first paragraph (§5.3).
+export const typedAnswer = (side: CardSide) => ("html" in side ? clozeFilled(htmlPlain(side.html, true)) : sidePlain(side)).replace(/\s+/g, " ").trim();
+
+// The card type of a record (lib/study-schema.ts type).
+export function recordType(settings: StudySettings, cells: Record<string, unknown>): CardType {
+  if ("fixed" in settings.type) return settings.type.fixed;
+  const value = cellText(cells[settings.type.field]).trim();
+  return value ? typeOfOption(value, settings.type.map) : "basic";
+}
+const sideClozes = (side: CardSide) => ("html" in side ? clozeNumbers(side.html, true) : clozeNumbers(side.text));
+export const MAX_CHOICES = 5;
+export const foldChoice = (text: string) => text.normalize("NFC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+// The wrong options of a multiple choice record's own property: a
+// multi-select's values, or text with one option per line (on a single
+// line: separated by ";" or "|").
+export function ownChoices(value: unknown, correct: string): string[] {
+  let raw: string[];
+  if (Array.isArray(value)) raw = value.map((v) => cellText(v));
+  else {
+    const text = toPlain(cellText(value));
+    raw = text.includes("\n") ? text.split("\n") : text.split(/[;|]/);
+  }
+  const seen = new Set([foldChoice(correct)]);
+  const out: string[] = [];
+  for (const option of raw.map((o) => o.replace(/\s+/g, " ").trim()).filter(Boolean)) {
+    const key = foldChoice(option);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(option.slice(0, 500));
+  }
+  return out.slice(0, MAX_CHOICES - 1);
+}
+
+// The cards of one record. `documentHtml`: the record's document (needed
+// only for document sides).
+// - basic: the card and (with "reverse") its reverse "r". A basic record
+//   whose sides hold clozes gives cloze cards instead – so cards imported
+//   or typed with {{c1::…}} need no type of their own.
+// - cloze: one card per cloze number of the first side holding clozes;
+//   the other side may be empty.
+// - typed: like basic; the expected answer is the back's text.
+// - choice: one card; the back is the right option.
 export function deriveCards(settings: StudySettings, fields: Field[], cells: Record<string, unknown>, documentHtml: string | null): DerivedCard[] {
-  if (settings.type.fixed !== "basic") return [];
+  const type = recordType(settings, cells);
+  if (type === "occlusion") return [];
   const side = (source: StudySettings["front"] | StudySettings["back"]): CardSide =>
     "field" in source ? fieldSide(fields, cells, source.field) : { html: splitCardHtml(documentHtml || "", source.document) };
   const front = side(settings.front),
     back = side(settings.back);
-  // A card needs both sides: rather no card than half a card.
-  if (sideIsEmpty(front) || sideIsEmpty(back)) return [];
   const extras = {
     ...(settings.hint ? { hint: fieldSide(fields, cells, settings.hint.field) } : {}),
     ...(settings.extra ? { extra: fieldSide(fields, cells, settings.extra.field) } : {}),
   };
   for (const key of ["hint", "extra"] as const) if (extras[key] && sideIsEmpty(extras[key])) delete extras[key];
-  const cards: DerivedCard[] = [{ sub: "", kind: "basic", front, back, ...extras }];
-  if (settings.reverse) cards.push({ sub: "r", kind: "basic", front: back, back: front, ...extras });
+  const tagValue = settings.tags ? cells[settings.tags.field] : undefined;
+  const tags = Array.isArray(tagValue) ? tagValue.map((t) => cellText(t)).filter(Boolean) : cellText(tagValue) ? [cellText(tagValue)] : [];
+  const tagged = tags.length ? { tags } : {};
+  if (type === "cloze" || type === "basic") {
+    const onFront = sideClozes(front);
+    const numbers = onFront.length ? onFront : sideClozes(back);
+    if (numbers.length) {
+      const on = onFront.length ? ("front" as const) : ("back" as const);
+      return numbers.map((n) => ({ sub: `c${n}`, kind: "cloze" as const, front, back, ...extras, ...tagged, cloze: { n, on } }));
+    }
+    // A cloze record without clozes is no card.
+    if (type === "cloze") return [];
+  }
+  // A card needs both sides: rather no card than half a card.
+  if (sideIsEmpty(front) || sideIsEmpty(back)) return [];
+  if (type === "choice") {
+    const correct = sidePlain(back);
+    if (!correct) return [];
+    const own = settings.choices ? ownChoices(cells[settings.choices.field], correct) : [];
+    return [{ sub: "", kind: "choice", front, back, ...extras, ...tagged, ...(own.length ? { choices: own } : {}) }];
+  }
+  const kind = type === "typed" ? ("typed" as const) : ("basic" as const);
+  if (kind === "typed" && !typedAnswer(back)) return [];
+  const cards: DerivedCard[] = [{ sub: "", kind, front, back, ...extras, ...tagged }];
+  if (settings.reverse && (kind === "basic" || typedAnswer(front))) cards.push({ sub: "r", kind, front: back, back: front, ...extras, ...tagged });
   return cards;
 }
 // The properties a mapping reads (all must be readable for a person to get
 // cards, §3.5).
 export function studyFieldIds(settings: StudySettings) {
-  return [settings.front, settings.back, settings.hint, settings.extra].flatMap((s) => (s && "field" in s ? [s.field] : []));
+  return [settings.front, settings.back, settings.hint, settings.extra, settings.choices, "field" in settings.type ? settings.type : undefined].flatMap((s) => (s && "field" in s ? [s.field] : []));
 }
 export const usesDocument = (settings: StudySettings) => "document" in settings.front || "document" in settings.back;
