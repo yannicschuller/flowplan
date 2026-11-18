@@ -1,12 +1,13 @@
 "use client";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { formSuggestSource } from "./form-suggest-input";
 import { api } from "./ui";
 import { SurveyRunner } from "./survey-runner";
 import { FormText } from "./inline-text";
 import { FormFlow, FormThanks, useFormDraft } from "./form-flow";
-import { formRedirect, localizedFormTexts, type FormConfig } from "@/lib/form-settings";
+import { formRedirect, formSuggestionsAllowed, localizedFormTexts, type FormConfig } from "@/lib/form-settings";
 import type { Field } from "@/lib/types";
 export default function FormClient({
   token,
@@ -39,6 +40,11 @@ export default function FormClient({
   // Signed-in people (forms that are not anonymous) can continue later.
   const draft = useFormDraft(token, !anonymous && !closed);
   const redirect = formRedirect(config);
+  // Earlier answers (#374): only members-only forms that record who answered.
+  const suggest = useMemo(
+    () => (formSuggestionsAllowed({ internal, anonymous }) && Object.keys(config.suggestions || {}).length ? formSuggestSource(token) : undefined),
+    [internal, anonymous, config.suggestions, token],
+  );
   // Sends the answers (with files as multipart) and returns the reply.
   const send = async (answers: Record<string, unknown>) => {
     const files = Object.entries(answers).filter(([, v]) => Array.isArray(v) && v.some((x) => x instanceof File));
@@ -152,6 +158,7 @@ export default function FormClient({
             submitLabel={texts.submitLabel}
             initial={draft.draft}
             draft={draft.enabled ? draft : undefined}
+            suggest={suggest}
             onSubmit={submit}
           />
         ) : (

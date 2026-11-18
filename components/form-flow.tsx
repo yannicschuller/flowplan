@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight, Check } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import FormQuestions from "./form-questions";
+import type { SuggestSource } from "./form-suggest-input";
 import { formItems, formLogicItems, validateFormValues, type FormConfig, type FormItem } from "@/lib/form-settings";
 import { answersByName, evaluateLogic, fillPlaceholders, logicPages, redirectTarget } from "@/lib/form-logic";
 import type { Field } from "@/lib/types";
@@ -141,7 +142,9 @@ export function FormFlow({
   onSubmit,
   initial = null,
   draft,
+  suggest,
 }: {
+  suggest?: SuggestSource;
   fields: Field[];
   config: FormConfig;
   internal?: boolean;
@@ -193,6 +196,7 @@ export function FormFlow({
           members={members}
           related={related}
           upload={upload}
+          suggest={suggest}
           onChange={(id, value) => {
             setValues((previous) => ({ ...previous, [id]: value }));
             setErrors((previous) => ({ ...previous, [id]: "" }));
