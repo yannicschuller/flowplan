@@ -2,7 +2,18 @@ import { test, expect, type Locator } from "@playwright/test";
 
 // Tab / Shift+Tab indent paragraphs and headings visibly; lists and tasks
 // nest instead, without an extra indent of their own.
-const inset = (el: Locator) => el.evaluate((n) => parseFloat(getComputedStyle(n).paddingInlineStart) + parseFloat(getComputedStyle(n).marginInlineStart));
+// The editor may redraw a line right after typing; a node that was just
+// replaced has no computed style (NaN), so measure again until it holds.
+async function inset(el: Locator) {
+  let value = NaN;
+  await expect
+    .poll(async () => {
+      value = await el.evaluate((n) => parseFloat(getComputedStyle(n).paddingInlineStart) + parseFloat(getComputedStyle(n).marginInlineStart)).catch(() => NaN);
+      return Number.isFinite(value);
+    })
+    .toBe(true);
+  return value;
+}
 
 test("Tab indents blocks visibly, lists nest without a double indent", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Keyboard test on the desktop.");
