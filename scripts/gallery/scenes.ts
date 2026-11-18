@@ -872,7 +872,7 @@ const databaseScenes: Scene[] = [
       await image.waitFor();
       await image.click();
       await button(page, "Weitere Bildaktionen").first().click();
-      await menu(page).getByRole("menuitem", { name: "Bildverdeckung bearbeiten (Lernkarten)" }).click();
+      await page.getByRole("menuitem", { name: "Bildverdeckung bearbeiten (Lernkarten)" }).click();
       const editor = dialog(page, "Bildverdeckung bearbeiten");
       await editor.locator(".occlusion-edit-layer").waitFor();
       await editor.getByRole("button", { name: /^Karte 2: Rechteck auswählen/ }).click();
@@ -882,6 +882,7 @@ const databaseScenes: Scene[] = [
     id: "study-occlusion",
     group: "Databases",
     title: "Flashcards: image occlusion card",
+    covers: ["components/study/occlusion-image.tsx"],
     steps: async (page, ctx) => {
       const { db } = await occlusionDeck(ctx, "Geografie lernen");
       await ctx.open(`#page=${db}`);

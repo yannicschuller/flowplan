@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowArcLeft, ArrowArcRight, Circle, Cursor, ExcludeSquare, Eye, Info, Plus, Polygon, Square, Trash, UniteSquare } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { Modal } from "../ui";
-import { MaskShape, OcclusionImage } from "./card-parts";
+import { MaskShape, OcclusionImage } from "./occlusion-image";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { shortcutLetter } from "@/lib/keymap";
 import {

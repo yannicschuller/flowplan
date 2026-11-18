@@ -2110,11 +2110,17 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   ginge die Mehrfachauswahl zum Gruppieren verloren. Felder heißen nach
   ihrer Stelle in der Liste („Beschriftung von Maske 3“), das Abzeichen
   zeigt die Kartennummer (Masken einer Gruppe teilen sie).
+- Bündel: Der Editor importiert nur `occlusion-image.tsx`, nicht
+  `card-parts.tsx` (das zöge `ReadOnlyDocument` in seinen Graphen und
+  verschob die Aufteilung der gemeinsamen Chunks: +2,4 KB auf jeder
+  Seite). So gemessen (`npm run quality`) liegt jede Seite rund 1,7 KB
+  unter c222d34b; Workflow (1183 KB, Budget 1175) und Überwachung
+  (1002 KB, Budget 1000) lagen schon vorher über dem Budget.
 - Geometrie: SVG in den Pixeln des Bildes (`viewBox = naturalWidth ×
   naturalHeight`), damit Griffe quadratisch bleiben; Farben über Klassen,
   keine Inline-Styles.
 
-**Darstellung (`OcclusionImage` in `components/study/card-parts.tsx`)**
+**Darstellung (`components/study/occlusion-image.tsx`)**
 
 - SVG `viewBox="0 0 1 1"`, `preserveAspectRatio="none"` über dem Bild;
   `hide-all`: alle Masken zu, die abgefragte hervorgehoben (`asked`);
