@@ -555,17 +555,22 @@ export async function updateLocalProfile(userId: string, input: unknown, locale:
 
 // ---- Links by e-mail: confirm the address, reset the password ----
 
-const TOKEN_HOURS = { verify: 72, reset: 2 } as const;
-async function issueToken(userId: string, kind: keyof typeof TOKEN_HOURS) {
+// Tokens are kept as their hash only; a new one of a kind replaces the
+// account's previous one. "passkey-app": the link that adds a passkey in the
+// app's sign-in sheet (lib/app-passkey.ts), five minutes.
+const TOKEN_HOURS = { verify: 72, reset: 2, "passkey-app": 1 / 12 } as const;
+type TokenKind = keyof typeof TOKEN_HOURS;
+async function issueToken(userId: string, kind: TokenKind) {
   const token = randomBytes(32).toString("base64url");
   await run("DELETE FROM auth_tokens WHERE (user_id=? AND kind=?) OR expires<?", userId, kind, Date.now());
   await run("INSERT INTO auth_tokens(id,user_id,kind,expires) VALUES(?,?,?,?)", hash(token), userId, kind, Date.now() + TOKEN_HOURS[kind] * 3600_000);
   return token;
 }
-async function takeToken(token: string, kind: keyof typeof TOKEN_HOURS) {
+async function takeToken(token: string, kind: TokenKind) {
   const row = await one<{ user_id: string; expires: number }>("SELECT user_id,expires FROM auth_tokens WHERE id=? AND kind=?", hash(token), kind);
   if (!row || row.expires < Date.now()) return null;
-  await run("DELETE FROM auth_tokens WHERE id=?", hash(token));
+  // Once: of two requests at the same moment, only the one that deletes it.
+  if (!(await run("DELETE FROM auth_tokens WHERE id=? AND kind=?", hash(token), kind)).changes) return null;
   return row.user_id;
 }
 async function sendVerification(user: User, locale: Locale) {
@@ -750,7 +755,7 @@ export async function passkeyRegistrationOptions(user: User, locale: Locale) {
   });
   return { options, token: await storeChallenge(options.challenge, "register", user.id) };
 }
-export async function finishPasskeyRegistration(user: User, token: string | undefined, input: unknown, locale: Locale) {
+export async function finishPasskeyRegistration(user: Pick<User, "id">, token: string | undefined, input: unknown, locale: Locale) {
   const t = tr(locale);
   const { response, name } = z.object({ response: z.unknown(), name: z.string().trim().max(60).optional() }).parse(input);
   const challenge = await takeChallenge(token, "register");
@@ -782,6 +787,75 @@ export async function deletePasskey(userId: string, passkeyId: string) {
   if (!(await run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId)).changes) return false;
   securityEvent("account.passkey_removed", { actorId: userId });
   return true;
+}
+// ---- Adding a passkey in the app's sign-in sheet (lib/app-passkey.ts) ----
+//
+// The sheet has none of the app's cookies: a one-time token stands in for
+// the session, for this one step only. Adding a passkey asks for no more
+// than a browser session today (no step-up, like passkey-register-options),
+// and the link asks for the same: issued only to a signed-in browser session
+// (never an API token or a demo), for an account with e-mail and password.
+// It is kept hashed, lasts five minutes, replaces the account's previous one
+// and is used up by the first exchange for a ceremony, whatever follows.
+// Used, it stays as "passkey-app-used" for the ceremony's five minutes, so
+// the session that asked for it can tell "used" from "waiting" (the desktop
+// app, which opens it in the default browser and hears nothing back).
+export const APP_PASSKEY_LINK_MS = TOKEN_HOURS["passkey-app"] * 3600_000;
+export const APP_PASSKEY_LINKS = { max: 5, windowMs: 15 * 60_000 } as const;
+export async function issueAppPasskeyToken(user: Pick<User, "id">, locale: Locale, now = Date.now()) {
+  const t = tr(locale);
+  if (!(await accountOf(user.id))) throw new HttpError(400, t("Passkeys gibt es für Konten mit E-Mail und Passwort; SSO-Konten melden sich beim Anbieter an.", "Passkeys are for accounts with e-mail and password; SSO accounts sign in with their provider."));
+  if (!allow(`passkey-app:${user.id}`, APP_PASSKEY_LINKS.max, APP_PASSKEY_LINKS.windowMs, now))
+    throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  const token = await issueToken(user.id, "passkey-app");
+  securityEvent("account.passkey_app_link", { actorId: user.id });
+  return token;
+}
+const appLinkExpired = (t: Tr) =>
+  new HttpError(400, t("Der Link ist abgelaufen oder wurde schon benutzt. Tippe in der App noch einmal auf „Passkey hinzufügen“.", "The link has expired or was already used. Tap “Add a passkey” in the app again."));
+// For the page: whose link it is, without using it up (null: unknown,
+// expired or used).
+export async function appPasskeyTokenAccount(token: unknown) {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  return (
+    (await one<{ name: string; email: string }>(
+      "SELECT u.name,u.email FROM auth_tokens t JOIN users u ON u.id=t.user_id JOIN local_accounts a ON a.user_id=u.id WHERE t.id=? AND t.kind='passkey-app' AND t.expires>=? AND u.disabled=0",
+      hash(token),
+      Date.now(),
+    )) ?? null
+  );
+}
+// The token for the ceremony of its account (the same as
+// passkeyRegistrationOptions for a session).
+async function takeAppPasskeyToken(token: string, now = Date.now()) {
+  const row = await one<{ user_id: string }>("SELECT user_id FROM auth_tokens WHERE id=? AND kind='passkey-app' AND expires>=?", hash(token), now);
+  if (!row) return null;
+  // Once: of two requests at the same moment, only the one that changes it.
+  const used = await run("UPDATE auth_tokens SET kind='passkey-app-used',expires=? WHERE id=? AND kind='passkey-app' AND expires>=?", now + APP_PASSKEY_LINK_MS, hash(token), now);
+  return used.changes ? row.user_id : null;
+}
+// Whether the link of this account was used (its ceremony started),
+// is still waiting, or is gone (expired, replaced, another account's).
+export async function appPasskeyLinkStatus(userId: string, token: unknown, now = Date.now()): Promise<"waiting" | "used" | "gone"> {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return "gone";
+  const row = await one<{ kind: string; expires: number }>("SELECT kind,expires FROM auth_tokens WHERE id=? AND user_id=? AND kind IN ('passkey-app','passkey-app-used')", hash(token), userId);
+  if (!row || row.expires < now) return "gone";
+  return row.kind === "passkey-app" ? "waiting" : "used";
+}
+export async function appPasskeyRegistrationOptions(token: unknown, locale: Locale) {
+  const t = tr(locale);
+  const userId = typeof token === "string" && /^[A-Za-z0-9_-]{43}$/.test(token) ? await takeAppPasskeyToken(token) : null;
+  const user = userId ? await one<User & { disabled: number }>("SELECT * FROM users WHERE id=?", userId) : undefined;
+  if (!user || user.disabled) throw appLinkExpired(t);
+  securityEvent("account.passkey_app_link_used", { actorId: user.id });
+  return await passkeyRegistrationOptions(user, locale);
+}
+// Finishes the ceremony for the account it was made for.
+export async function finishAppPasskeyRegistration(token: string | undefined, input: unknown, locale: Locale) {
+  const t = tr(locale);
+  const row = token ? await one<{ user_id: string | null }>("SELECT user_id FROM auth_challenges WHERE id=? AND kind='register'", hash(token)) : undefined;
+  if (!row?.user_id) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
+  return await finishPasskeyRegistration({ id: row.user_id }, token, input, locale);
 }
 export async function passkeyLoginOptions() {
   if (!localLoginEnabled()) throw new HttpError(403, "Passkeys sind ausgeschaltet.");

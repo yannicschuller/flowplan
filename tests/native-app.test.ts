@@ -8,6 +8,7 @@ import {
   desktopPageLink,
   desktopPasskeysInBrowser,
   desktopPasskeysInWindow,
+  desktopPasskeyLink,
   flowplanAppHost,
   holdForProfileSwitcher,
   marketplacePublishWay,
@@ -260,4 +261,19 @@ test("passkeys in the iPhone/iPad/Android app are added in the browser; a browse
   assert.equal(appPasskeysInBrowser({ platform: "ios" }, iphone), "note");
   assert.equal(appPasskeysInBrowser(undefined, iphone), "note");
   assert.equal(appPasskeysInBrowser(undefined, safari), null);
+});
+
+test("the desktop app opens “Passkey hinzufügen” in the default browser only with its bridge method", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Electron/45.0.0 Safari/537.36 FlowplanDesktop/1.3.12";
+  assert.equal(desktopPasskeyLink({ addPasskeyInBrowser: async () => true }, mac), true);
+  // Older desktop apps keep their way (in the window, or the note).
+  assert.equal(desktopPasskeyLink({ passkeys: "window" } as never, mac), false);
+  assert.equal(desktopPasskeyLink(undefined, mac), false);
+  // Only the desktop app's bridge counts.
+  assert.equal(desktopPasskeyLink({ addPasskeyInBrowser: async () => true }, safari), false);
+  // The settings offer both ways where Touch ID runs in the window as well.
+  const source = readFileSync(new URL("../components/account-security.tsx", import.meta.url), "utf8");
+  assert.match(source, /Im Schlüsselbund \(iCloud\)/);
+  assert.match(source, /Nur in dieser App \(Touch ID\)/);
+  assert.match(source, /!inApp && !desktopLink/);
 });

@@ -75,7 +75,13 @@ import {
   isLocalAccount,
   passkeyConfirmOptions,
   setNewPassword,
+  issueAppPasskeyToken,
+  appPasskeyRegistrationOptions,
+  finishAppPasskeyRegistration,
+  appPasskeyLinkStatus,
+  APP_PASSKEY_LINK_MS,
 } from "@/lib/local-auth";
+import { appPasskeyLink } from "@/lib/app-passkey";
 import {
   PENDING_MAX_AGE,
   afterPasskey,
@@ -582,6 +588,19 @@ async function handlePOST(
       await signIn(userId, groups, wantsRemember(input), await provesApp({ via: "form", userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
+    // ---- A passkey added in the app's sign-in sheet (lib/app-passkey.ts):
+    // no session there – the one-time token from passkey-app-link stands in
+    // for it, for this ceremony only ----
+    if (action === "passkey-app-options") {
+      const { token } = (await body()) as { token?: unknown };
+      const { options, token: ceremony } = await appPasskeyRegistrationOptions(token, locale);
+      await rememberChallenge(ceremony);
+      return NextResponse.json(options, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (action === "passkey-app-register") {
+      await finishAppPasskeyRegistration(await takeChallengeCookie(), await body(), locale);
+      return NextResponse.json({ ok: true });
+    }
     // ---- A first SSO sign-in that waits to be connected (#101,
     // app/link-account): the person proves the existing account ----
     if (["link-password", "link-code", "link-passkey", "link-separate", "link-cancel"].includes(action)) {
@@ -712,11 +731,26 @@ async function handlePOST(
       return NextResponse.json({ status: await twoFactorStatus(user.id) });
     }
     // ---- The signed-in person's password and passkeys ----
-    if (["profile", "password-change", "passkey-register-options", "passkey-register", "passkey-delete", "passkeys"].includes(action)) {
+    if (["profile", "password-change", "passkey-register-options", "passkey-register", "passkey-delete", "passkeys", "passkey-app-link", "passkey-app-status"].includes(action)) {
       const user = await currentUser();
       if (!user || user.demo) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       // API tokens act for scripts: they never change how the person signs in.
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
+      // "Passkey hinzufügen" in the app: a link for its sign-in sheet. Only
+      // from a browser session of its own (not while the instance waits for
+      // the authenticator app to be set up) – never logged.
+      if (action === "passkey-app-link") {
+        if (user.twoFactorSetup) throw new HttpError(403, translate(locale)("Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.", "Please set up two-factor sign-in first."));
+        const token = await issueAppPasskeyToken(user, locale);
+        return NextResponse.json({ url: appPasskeyLink(new URL(appUrl()).origin, token), expiresIn: APP_PASSKEY_LINK_MS }, { headers: { "Cache-Control": "no-store" } });
+      }
+      // The desktop app opens the link in the default browser: its window
+      // asks whether it was used, with the token it got – for its own
+      // account only, nothing else.
+      if (action === "passkey-app-status") {
+        const { token } = (await body()) as { token?: unknown };
+        return NextResponse.json({ status: await appPasskeyLinkStatus(user.id, token), passkeys: await listPasskeys(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      }
       if (action === "profile") await updateLocalProfile(user.id, await body(), locale);
       else if (action === "password-change") {
         await changePassword(user.id, await body(), locale);

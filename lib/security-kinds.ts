@@ -14,6 +14,9 @@ export const securityKinds = {
   "account.password_reset": { severity: "warn", de: "Passwort zurückgesetzt", en: "Password reset" },
   "account.passkey_added": { severity: "info", de: "Passkey hinzugefügt", en: "Passkey added" },
   "account.passkey_removed": { severity: "warn", de: "Passkey entfernt", en: "Passkey removed" },
+  // "Passkey hinzufügen" in the iPhone/iPad/Android app (lib/app-passkey.ts).
+  "account.passkey_app_link": { severity: "info", de: "Passkey-Link für die App erstellt", en: "Passkey link for the app created" },
+  "account.passkey_app_link_used": { severity: "info", de: "Passkey-Link der App benutzt", en: "Passkey link of the app used" },
   "account.2fa_on": { severity: "info", de: "Zwei-Faktor eingeschaltet", en: "Two-factor turned on" },
   "account.2fa_off": { severity: "warn", de: "Zwei-Faktor ausgeschaltet", en: "Two-factor turned off" },
   "account.token_created": { severity: "info", de: "API-Token erstellt", en: "API token created" },
