@@ -2,6 +2,23 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.10.1 – 2026-11-18
+
+### Bug fixes
+
+- Litestream: the automatic repair of a stuck replica failed in the image with "Cannot find module", because the folder /app/scripts was not readable for the app user. The build checks this now.
+- The archives for installs without Docker (e.g. YunoHost) are attached to the release again.
+- No more "cannot open … litestream.log" on the first start with Litestream.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.10.1 ([22b3075](https://github.com/yannicschuller/flowplan/commit/22b3075fba40193071afb8fed35b7dc5e90a1743))
+- Entrypoint: no "cannot open" for a Litestream log that does not exist yet ([4fa57f2](https://github.com/yannicschuller/flowplan/commit/4fa57f2ac98066ac5c0e2809b684a21f14958de4))
+- Image: /app/scripts stays traversable for the app user ([d04a30c](https://github.com/yannicschuller/flowplan/commit/d04a30c037eeef315eb91808250084927a58f3af))
+
+</details>
+
 ## v0.10.0 – 2026-11-18
 
 ### Security
