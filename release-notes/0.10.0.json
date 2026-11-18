@@ -1,0 +1,116 @@
+{
+  "security": [
+    {
+      "de": "Workflows: E-Mails an Adressen aus Platzhaltern, KI-Antworten oder Formularen brauchen jetzt einen eigenen Schalter; HTTP-Ziele und Empfänger aus KI- oder Auslöserdaten nur, wenn es erlaubt ist. Bestehende Workflows, die das schon tun, laufen weiter und werden in der Administration genannt.",
+      "en": "Workflows: e-mail to addresses from placeholders, AI answers or forms now needs its own switch; HTTP targets and recipients from AI or trigger data only where allowed. Existing workflows that already do this keep running and are listed in the administration."
+    },
+    {
+      "de": "KI und MCP: Inhalte anderer Personen und eingebettetes Material kommen als Daten zurück und können keine Anweisungen mehr einschleusen.",
+      "en": "AI and MCP: other people's content and embedded material come back as data and can no longer pass for instructions."
+    },
+    {
+      "de": "Image: Litestream mit behobenen Lücken in go-jose (CVE-2026-116587) und golang.org/x/net (CVE-2026-78661).",
+      "en": "Image: Litestream with the fixes for go-jose (CVE-2026-116587) and golang.org/x/net (CVE-2026-78661)."
+    }
+  ],
+  "features": [
+    {
+      "de": "Lernkarten: Jede Datenbank wird zum Kartenstapel, geplant mit FSRS – Vorder-/Rückseite, Lückentext, Antwort eintippen, Multiple Choice und Bildverdeckung, Fokusmodus mit Tasten und Wischgesten, Grenzen pro Stapel und ein eigener Lernstand pro Person.",
+      "en": "Flashcards: any database becomes a deck, scheduled with FSRS – front and back, cloze, type the answer, multiple choice and image occlusion, a focus mode with keys and swipes, limits per deck and every person's own learning state."
+    },
+    {
+      "de": "Lernkarten: Übersicht „Lernen“ über alle Stapel, Statistik mit Heatmap und Prognose, Widget „Fällige Karten“, gelernte Karten im Journal, tägliche Lernerinnerung und Lernen ohne Verbindung.",
+      "en": "Flashcards: a \"Study\" overview of all decks, statistics with heatmap and forecast, a \"Cards due\" widget, studied cards in the journal, a daily study reminder and studying without a connection."
+    },
+    {
+      "de": "Lernkarten: Import aus Anki (.apkg, mit Medien und auf Wunsch dem Lernstand), Quizlet und CSV; Export als Anki-Paket oder CSV.",
+      "en": "Flashcards: import from Anki (.apkg, with media and optionally the learning state), Quizlet and CSV; export as an Anki package or CSV."
+    },
+    {
+      "de": "Lernkarten mit KI erstellen – aus einer Seite, einer Markierung, einem PDF oder eingefügtem Text, mit Prüfschritt vor dem Hinzufügen.",
+      "en": "Create flashcards with AI – from a page, a selection, a PDF or pasted text, with a review step before they are added."
+    },
+    {
+      "de": "Lernkarten teilen: ein öffentlicher Link zum Durchblättern und Üben ohne Konto (Fortschritt nur im Browser), Stapel als Vorlage und im Marketplace, neue Vorlagen „Vokabeln“ und „Flowplan-Tastenkürzel“.",
+      "en": "Share flashcards: a public link to browse and practise without an account (progress stays in the browser), decks as templates and in the marketplace, new templates \"Vocabulary\" and \"Flowplan shortcuts\"."
+    },
+    {
+      "de": "Eigenes Gedächtnismodell: FSRS-Parameter ab 1.000 Wertungen aus dem eigenen Lernprotokoll optimieren, mit Vergleich vorher/nachher und empfohlener Behaltensrate.",
+      "en": "Your own memory model: fit the FSRS parameters to your review log from 1,000 reviews, with a before/after comparison and a recommended retention."
+    },
+    {
+      "de": "Bereiche als Bibliothek mit Büchern anzeigen, und Import aus BookStack über seine API.",
+      "en": "Show a space as a library of books, and import from BookStack through its API.",
+      "issues": [329]
+    },
+    {
+      "de": "Benachrichtigungen mit formatierten Nachrichten, Erwähnungen und Formeln.",
+      "en": "Notifications with formatted messages, mentions and formulas.",
+      "issues": [330]
+    },
+    {
+      "de": "Datumseigenschaften optional mit Uhrzeit; Tags lassen sich in der Suche tippen und mit # vorschlagen.",
+      "en": "Date properties optionally with a time; tags can be typed in search and suggested with #.",
+      "issues": [327, 328]
+    },
+    {
+      "de": "App: „Instanz wechseln …“ im Arbeitsbereich-Menü (und langes Drücken auf das eigene Konto) öffnet die Profile der App.",
+      "en": "App: \"Switch instance…\" in the workspace menu (and a long press on your account) opens the app's profiles."
+    },
+    {
+      "de": "Überwachung: unerwartete Neustarts mit Grund (Absturz, vermutlich Speicher voll, ohne Spur) und den letzten Logzeilen vor dem Neustart; Fehler im Detail (woher 5xx-Antworten kommen), Server- und KI-Statistiken und Empfehlungen.",
+      "en": "Monitoring: unexpected restarts with a reason (crash, likely out of memory, without a trace) and the last log lines before them; errors in detail (where 5xx answers come from), server and AI statistics and recommendations."
+    },
+    {
+      "de": "Litestream: Eine festhängende Replik im Bucket wird erkannt und beim nächsten Start neu aufgebaut; zwei Container auf einem Datenordner starten keine zweite Replikation mehr.",
+      "en": "Litestream: a stuck replica in the bucket is detected and rebuilt on the next start; two containers on one data folder no longer start a second replication."
+    },
+    {
+      "de": "Hochverfügbarkeit: PostgreSQL übersteht Verbindungsabbrüche und Failover, Cluster-Modus auf Kubernetes mit Helm-Chart 0.3.0, Warnung bei zwei Instanzen ohne Cluster-Modus, Beispiel für Hetzner Cloud.",
+      "en": "High availability: PostgreSQL survives lost connections and a failover, cluster mode on Kubernetes with Helm chart 0.3.0, a warning for two instances without cluster mode, an example for Hetzner Cloud."
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Zeichenblöcke: öffnen nur mit „Zeichnen“ oder dem Pencil, ein „…“-Menü am Block, ein einmaliger Hinweis zur Höhe und ein feiner Hover-Punkt.",
+      "en": "Drawing blocks: open only with Draw or the Pencil, a \"…\" menu on the block, a one-time height tip and a fine hover dot.",
+      "issues": [315, 322, 324]
+    },
+    {
+      "de": "Schneller: weniger Anfragen beim Öffnen von Seiten, 304-Antworten für unveränderte Daten, KaTeX, mathjs und Emoji-Daten erst bei Bedarf, PDFs in einem eigenen Thread.",
+      "en": "Faster: fewer requests when a page opens, 304 answers for unchanged data, KaTeX, mathjs and emoji data only when needed, PDFs in a thread of their own."
+    },
+    {
+      "de": "Workflows laufen in der Zeitzone ihrer Erstellerin oder ihres Erstellers; ein nächtlicher Lauf lässt den Journal-Tag von gestern nicht mehr verschwinden.",
+      "en": "Workflows run in their creator's time zone; a night run no longer makes yesterday's journal day disappear."
+    },
+    {
+      "de": "Whiteboard: Die Werkzeugleiste eines Elements steht auch auf schmalen Boards über oder unter dem Element, nicht darauf.",
+      "en": "Whiteboard: an element's toolbar sits above or below it on narrow boards too, not on top of it."
+    },
+    {
+      "de": "Seitenleiste bleibt pro Gerät ausgeblendet, ein einziger Offline-Hinweis, heute im Journal offline öffnen, kein kurzes Aufblitzen der Startseite beim Neuladen.",
+      "en": "The sidebar stays hidden per device, a single offline indicator, today's journal entry opens offline, no flash of the start page on reload.",
+      "issues": [331, 332, 333]
+    },
+    {
+      "de": "Französisch durchgehend mit „vous“.",
+      "en": "French uses \"vous\" throughout."
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Journal: Ein Tag mit erledigten Aufgaben bleibt erhalten, ein leerer Tag kommt in den Papierkorb statt endgültig gelöscht zu werden.",
+      "en": "Journal: a day with tasks done that day stays, an empty day goes to the trash instead of being deleted."
+    },
+    {
+      "de": "Desktop-App unter macOS und Linux: „Passkey hinzufügen“ hängt nicht mehr, sondern verweist auf den Browser.",
+      "en": "Desktop app on macOS and Linux: \"Add a passkey\" no longer hangs but points to the browser."
+    },
+    {
+      "de": "Journal-Titel passt auf Handys in eine Zeile; die Kachel „Arbeitsbereiche“ nennt keine Demo-Arbeitsbereiche mehr.",
+      "en": "The journal day title fits on one line on phones; the workspaces tile no longer names demo workspaces.",
+      "issues": [334]
+    }
+  ]
+}
