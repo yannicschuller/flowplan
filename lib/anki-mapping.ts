@@ -25,8 +25,15 @@ export const ankiOptionsSchema = z.object({
   notetypes: z.record(z.string().regex(/^-?\d{1,20}$/), notetypeMappingSchema).default({}),
   // The person's own learning state from Anki's review log (§8.1).
   state: z.boolean().default(false),
+  // Sub-decks: values of the select property "Deck" in the database of
+  // their top-level deck (the default), or databases of their own below
+  // the top-level deck's page (#341).
+  subdecks: z.enum(["property", "databases"]).default("property"),
 });
 export type AnkiOptions = z.infer<typeof ankiOptionsSchema>;
+// Sub-decks as databases: at most this many databases per import (more
+// fall back to the property "Deck", with a note).
+export const ANKI_MAX_DATABASES = 200;
 
 // What the preview tells the wizard.
 export type AnkiPreview = {
@@ -35,8 +42,16 @@ export type AnkiPreview = {
   cards: number;
   reviews: number;
   suspended: number;
+  // Suspended cards without a review: with the learning state they stay
+  // suspended new cards.
+  suspendedNew: number;
+  // How many databases the import makes with sub-decks as databases of
+  // their own (decks with notes; a top-level deck without notes of its own
+  // becomes a plain page above them).
+  databases: number;
   media: { files: number; bytes: number; missing: number; skipped: number };
-  // One database per top-level deck; its sub-decks as values of "Deck".
+  // Per top-level deck: its notes (sub-decks included) and the sub-decks
+  // (as values of "Deck", or as databases of their own).
   decks: { name: string; notes: number; subdecks: string[]; rich: boolean; reverse: boolean }[];
   notetypes: {
     id: string;

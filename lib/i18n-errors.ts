@@ -22,6 +22,12 @@ const exact: Record<string, string> = {
   "Nur Wertungen der letzten 24 Stunden lassen sich rückgängig machen.": "Only ratings of the last 24 hours can be undone.",
   "Nur die letzte Wertung einer Karte lässt sich rückgängig machen.": "Only the last rating of a card can be undone.",
   "Vorder- und Rückseite brauchen verschiedene Inhalte.": "Front and back need different content.",
+  // FSRS parameters per part of a deck and on the server (#344).
+  "Unterstapel brauchen eine Auswahl-Eigenschaft.": "Sub-decks need a select property.",
+  "Diesen Teil des Stapels gibt es nicht.": "This part of the deck does not exist.",
+  "Gerade läuft schon eine Optimierung. Bitte versuche es gleich noch einmal.": "An optimisation is already running. Please try again in a moment.",
+  "Die Optimierung hat zu lange gedauert. Optimiere im Browser („Parameter optimieren“) oder einen kleineren Teil des Stapels.":
+    "The optimisation took too long. Optimise in the browser (“Optimise parameters”) or a smaller part of the deck.",
   // The study reminder (lib/study-reminders.ts).
   "Lernerinnerungen pausiert: Du hast seit 30 Tagen nicht gelernt. Sobald du wieder lernst, erinnert Flowplan dich wieder.":
     "Study reminders paused: you have not studied for 30 days. As soon as you study again, Flowplan reminds you again.",
@@ -1559,6 +1565,8 @@ const patterns: [RegExp, string][] = [
   // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).
   [/^(\d+) sehr lange Felder wurden nach (\d+) Zeichen gekürzt\.$/, "$1 very long fields were cut after $2 characters."],
   [/^(\d+) Notizen ohne bekannten Notiztyp werden nicht übernommen\.$/, "$1 notes without a known note type are not imported."],
+  [/^Zum Optimieren braucht es mindestens (\d+) Wertungen – hier sind es (\d+)\.$/, "Optimising needs at least $1 ratings – there are $2 here."],
+  [/^Mehr als (\d+) Stapel: Unterstapel kommen in die Eigenschaft „Deck“ statt in eigene Datenbanken\.$/, "More than $1 decks: sub-decks go into the property “Deck” instead of databases of their own."],
   [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(an\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (on)."],
   [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(aus\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (off)."],
   [/^„(.+)“: (\d+) Tags – übernommen werden die ersten 1000\.$/, "“$1”: $2 tags – the first 1000 are imported."],

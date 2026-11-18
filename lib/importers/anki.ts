@@ -1,6 +1,8 @@
 // The Anki import (docs/specs/flashcards.md §8.1): a package read by
 // lib/importers/anki-read.ts becomes one flashcard database per top-level
-// deck, its sub-decks as the values of a select property "Deck".
+// deck, its sub-decks as the values of a select property "Deck" – or, on
+// request (#341), every sub-deck a database of its own below the page of
+// the deck above it (a deck without notes of its own is a plain page).
 // - Note types → card types: Basic, Basic (and reversed card) → basic with
 //   the reverse card, Cloze → cloze (the syntax stays, in documents as the
 //   editor's cloze mark), "type in the answer" → typed; Image Occlusion →
@@ -20,7 +22,8 @@
 //   decided per database and side.
 // - Tags → the multi-select "Tags", the note type's kind → "Kartentyp".
 // - The learning state (opt-in, only for the person importing): Anki's
-//   review log replayed through FSRS (lib/study.ts importStudyHistory).
+//   review log replayed through FSRS (lib/study.ts importStudyHistory);
+//   suspended cards stay suspended, new ones as suspended new cards.
 // The databases are written by lib/importers/write.ts like every importer's
 // (rights, quotas, files, the import report), in one transaction.
 import { readFileSync, statSync } from "node:fs";
@@ -40,7 +43,7 @@ import { importStudyHistory } from "../study";
 import { studyZone } from "../study-day";
 import { ARCHIVE_LIMIT } from "../archive";
 import type { Field, Identity, View } from "../types";
-import { ankiOptionsSchema, type AnkiCardType, type AnkiKind, type AnkiOptions, type AnkiPreview, type AnkiRole, type NotetypeMapping } from "../anki-mapping";
+import { ANKI_MAX_DATABASES, ankiOptionsSchema, type AnkiCardType, type AnkiKind, type AnkiOptions, type AnkiPreview, type AnkiRole, type NotetypeMapping } from "../anki-mapping";
 import { ANKI_LIMITS, readAnkiPackage, type AnkiNote, type AnkiNotetype, type AnkiPackage } from "./anki-read";
 import { esc, fileRef, mimeOf } from "./html";
 import { importReport, maxImportFiles, type ImportFile, type ImportPage, type ImportTree } from "./types";
@@ -282,18 +285,34 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
     const first = [...(cardsOf.get(note.id) || [])].sort((a, b) => a.ord - b.ord)[0];
     return (first && pkg.decks.get(first.did)?.name) || "Default";
   };
-  const groups = new Map<string, { notes: AnkiNote[]; subdecks: Set<string> }>();
+  // The decks of the notes: a database per top-level deck (sub-decks as
+  // values of "Deck"), or with sub-decks as databases one per deck path
+  // with notes, below the page of the deck above it (#341).
+  const paths = new Map<string, string[]>();
   let unknownType = 0;
   for (const note of pkg.notes) {
     if (!mappings.has(note.mid)) {
       unknownType++;
       continue;
     }
-    const [top, ...rest] = deckOf(note).split("::");
-    const group = groups.get(top) || { notes: [], subdecks: new Set<string>() };
+    paths.set(note.id, deckOf(note).split("::").map((part) => part.trim().slice(0, 200) || "Default"));
+  }
+  const pathsWithNotes = new Set([...paths.values()].map((p) => p.join("::")));
+  let separate = options.subdecks === "databases" && [...paths.values()].some((p) => p.length > 1);
+  if (separate && pathsWithNotes.size > ANKI_MAX_DATABASES) {
+    separate = false;
+    warnings.push(`Mehr als ${ANKI_MAX_DATABASES} Stapel: Unterstapel kommen in die Eigenschaft „Deck“ statt in eigene Datenbanken.`);
+  }
+  const groups = new Map<string, { path: string[]; notes: AnkiNote[]; subdecks: Set<string> }>();
+  for (const note of pkg.notes) {
+    const path = paths.get(note.id);
+    if (!path) continue;
+    const own = separate ? path : path.slice(0, 1);
+    const key = own.join("::");
+    const group = groups.get(key) || { path: own, notes: [], subdecks: new Set<string>() };
     group.notes.push(note);
-    if (rest.length) group.subdecks.add(rest.join("::").slice(0, 100));
-    groups.set(top, group);
+    if (!separate && path.length > 1) group.subdecks.add(path.slice(1).join("::").slice(0, 100));
+    groups.set(key, group);
   }
   if (unknownType) warnings.push(`${unknownType} Notizen ohne bekannten Notiztyp werden nicht übernommen.`);
   // Media: each file once, within the limits of an upload and an import.
@@ -331,7 +350,29 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
   let occlusionNotes = 0,
     noMasks = 0,
     skippedShapes = 0;
-  [...groups].forEach(([deckName, group], deckIndex) => {
+  // Sub-decks as databases: the page of every deck above one (a database
+  // when it has notes of its own, else a plain page holding them).
+  const pageKeys = new Map<string, string>();
+  const keyOf = (path: string[]) => pageKeys.get(path.join("::"));
+  if (separate) {
+    const needed = new Set<string>();
+    for (const group of groups.values()) for (let n = 1; n < group.path.length; n++) needed.add(group.path.slice(0, n).join("::"));
+    [...needed]
+      .filter((p) => !groups.has(p))
+      .sort((a, b) => a.split("::").length - b.split("::").length || a.localeCompare(b))
+      .forEach((p, i) => pageKeys.set(p, `anki-folder-${i}`));
+  }
+  // Parents before children: shorter paths first.
+  const ordered = [...groups].sort(([, a], [, b]) => a.path.length - b.path.length);
+  ordered.forEach(([, group], deckIndex) => pageKeys.set(group.path.join("::"), `anki-deck-${deckIndex}`));
+  for (const [p, key] of pageKeys) {
+    if (!key.startsWith("anki-folder-")) continue;
+    const path = p.split("::");
+    pages.push({ key, parent: path.length > 1 ? keyOf(path.slice(0, -1)) ?? null : null, title: path[path.length - 1], html: "", folder: true });
+  }
+  const tops = new Map<string, AnkiPreview["decks"][number]>();
+  ordered.forEach(([, group], deckIndex) => {
+    const deckName = group.path.join("::");
     const key = `anki-deck-${deckIndex}`;
     const fieldCtx = ctx(key);
     const roleSides = group.notes.map((note) => {
@@ -387,6 +428,8 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
       ...(hints ? { hint: { field: "hint" } } : {}),
       ...(extras ? { extra: { field: "extra" } } : {}),
       tags: { field: "tags" },
+      // The sub-decks: values of "Deck", each may get weights of its own.
+      ...(subdecks.length ? { subdeck: { field: "deck" } } : {}),
       reverse,
     });
     const records = roleSides.map(({ note, mapping, sides: s, occlusion }) => {
@@ -408,7 +451,7 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
             ? withMasks(backHtml, masks)
             : backHtml
           : "";
-      const deck = deckOf(note).split("::").slice(1).join("::").slice(0, 100);
+      const deck = separate ? "" : (paths.get(note.id) || []).slice(1).join("::").slice(0, 100);
       const cells: Record<string, unknown> = {
         // A picture without header is named by its file.
         title: (ankiPlain(front) || (masks ? mediaName(FIRST_IMAGE.exec(front + back)?.[1] || "") : "")).slice(0, 1000),
@@ -421,9 +464,19 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
       };
       return { id: rowId, cells, html };
     });
-    pages.push({ key, parent: null, title: deckName.slice(0, 200) || "Anki", html: "", kind: "database", database: { fields, views, rows: records, settings: { study } } });
-    deckInfo.push({ name: deckName, notes: group.notes.length, subdecks, rich: richFront || richBack, reverse });
+    const parent = group.path.length > 1 ? keyOf(group.path.slice(0, -1)) ?? null : null;
+    pages.push({ key, parent, title: group.path[group.path.length - 1].slice(0, 200) || "Anki", html: "", kind: "database", database: { fields, views, rows: records, settings: { study } } });
+    // The preview per top-level deck (its sub-decks' databases summed up).
+    const top = tops.get(group.path[0]);
+    const below = group.path.length > 1 ? [group.path.slice(1).join("::").slice(0, 100)] : [];
+    if (top) {
+      top.notes += group.notes.length;
+      top.subdecks.push(...subdecks, ...below);
+      top.rich ||= richFront || richBack;
+      top.reverse ||= reverse;
+    } else tops.set(group.path[0], { name: group.path[0], notes: group.notes.length, subdecks: [...subdecks, ...below], rich: richFront || richBack, reverse });
   });
+  deckInfo.push(...[...tops.values()].map((d) => ({ ...d, subdecks: [...new Set(d.subdecks)].sort() })));
   media.missing = missingNames.size;
   media.skipped = skippedNames.size;
   if (missingNames.size) warnings.push(missingNames.size === 1 ? "1 Mediendatei fehlt im Anki-Paket." : `${missingNames.size} Mediendateien fehlen im Anki-Paket.`);
@@ -434,6 +487,8 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
   if (skippedShapes) warnings.push(`${skippedShapes} Formen der Bildverdeckung (Text oder unbekannt) werden nicht übernommen.`);
   if (pkg.reviewsSkipped) warnings.push(`Das Anki-Paket hat mehr als ${ANKI_LIMITS.reviews} Wiederholungen; der Lernstand kann nicht übernommen werden.`);
   const suspended = pkg.cards.filter((c) => c.queue === -1).length;
+  const reviewed = new Set(pkg.reviews.map((r) => r.cid));
+  const suspendedNew = pkg.cards.filter((c) => c.queue === -1 && !reviewed.has(c.id)).length;
   const noteCount = new Map<string, number>();
   for (const note of pkg.notes) noteCount.set(note.mid, (noteCount.get(note.mid) || 0) + 1);
   const preview: AnkiPreview = {
@@ -442,6 +497,8 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
     cards: pkg.cards.length,
     reviews: pkg.reviews.length,
     suspended,
+    suspendedNew,
+    databases: pathsWithNotes.size,
     media,
     decks: deckInfo,
     notetypes: [...pkg.notetypes.values()]
@@ -536,8 +593,9 @@ async function replayAnki(user: Identity, pkg: AnkiPackage, plan: AnkiPlan, zone
   const perRow = new Map<string, { rowId: string; sub: string; reviews: { at: number; rating: 1 | 2 | 3 | 4 }[]; suspended: boolean; memory?: { stability: number; difficulty: number } }[]>();
   for (const card of pkg.cards) {
     const row = plan.rows.get(card.nid);
-    const reviews = byCard.get(card.id);
-    if (!row || !reviews?.length) continue;
+    const reviews = byCard.get(card.id) || [];
+    // A suspended card never studied stays a suspended new card.
+    if (!row || (!reviews.length && card.queue !== -1)) continue;
     const sub = cardSub(row.mapping, card.ord, row.occlusion);
     if (sub === null) continue;
     const list = perRow.get(row.rowId) || [];

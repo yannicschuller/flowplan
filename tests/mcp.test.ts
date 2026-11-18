@@ -123,7 +123,8 @@ test("a workspace the person is not in is refused", async () => {
 test("read tokens only see and use read tools", async () => {
   const names = mcpToolNames(benRead);
   assert.ok(names.includes("read_page"));
-  for (const name of ["create_page", "append_to_page", "update_page", "move_page", "trash_page", "set_task", "create_record", "update_record", "trash_record"])
+  assert.ok(names.includes("optimize_flashcard_parameters"), "fitting FSRS parameters only reads");
+  for (const name of ["create_page", "append_to_page", "update_page", "move_page", "trash_page", "set_task", "create_record", "update_record", "trash_record", "set_flashcard_parameters"])
     assert.equal(names.includes(name), false);
   const listed = (await rpc(benRead, "tools/list")).result!.tools as { name: string }[];
   assert.equal(listed.some((t) => t.name === "append_to_page"), false);

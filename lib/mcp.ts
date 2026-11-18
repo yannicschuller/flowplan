@@ -19,6 +19,7 @@ import { captureHandledError } from "./error-details";
 import { HttpError, appUrl } from "./auth";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { studyDecks } from "./study-stats";
+import { studyOptimize } from "./study";
 import { command, database, rows } from "./api";
 import { visibleRows } from "./row-access";
 import { relatedData } from "./related-data";
@@ -1054,6 +1055,44 @@ const tools: Tool[] = [
     run: (async (user: Identity, args: { workspaceId: string; timeZone?: string }) => {
       await requireMember(user, args.workspaceId);
       return { decks: (await studyDecks(user, args.workspaceId, args.timeZone)).map((d) => ({ ...d, link: pageLink(d.pageId) })) };
+    }) as Tool["run"],
+  },
+  // FSRS parameters (#344, lib/study.ts study.optimize / study.params):
+  // fitting only reads (the person's own ratings); storing is a separate
+  // tool, so a client can show the result before it applies.
+  {
+    name: "optimize_flashcard_parameters",
+    title: "Optimise flashcard parameters",
+    description:
+      "Fits the FSRS-6 memory model to your own ratings of a flashcard deck (or of all your decks, or one part of the deck: group subdeck:<value> or type:<card type>, see the deck's groups) and recommends a desired retention, simulated with the deck's cards within your daily limits and an optional time budget (minutesPerDay). Nothing is stored: pass the weights to set_flashcard_parameters to use them. Needs at least 1000 ratings; at most 50,000 reviews count; one run per server at a time, a few per person in ten minutes. Answers the weights, how well they and the current ones predict your ratings (log loss, RMSE), whether they are better, and per desired retention 70–95 % the cards and minutes per day.",
+    input: z.object({
+      pageId: id("Database ID of the deck"),
+      scope: z.enum(["deck", "all"]).optional().describe("deck (default) or all your decks"),
+      group: z.string().max(110).optional().describe("A part of the deck: subdeck:<value> or type:<basic|cloze|typed|choice|occlusion>"),
+      minutesPerDay: z.number().int().min(1).max(1440).optional().describe("Time budget per day for the recommended retention"),
+      timeZone: z.string().max(100).optional().describe("IANA time zone, e.g. Europe/Berlin"),
+    }),
+    write: false,
+    // Straight to the domain (it only reads; read tokens may not send commands).
+    run: (async (user: Identity, args: { pageId: string; scope?: "deck" | "all"; group?: string; minutesPerDay?: number; timeZone?: string }) =>
+      await studyOptimize(user, { pageId: args.pageId, scope: args.scope, group: args.group, minutesPerDay: args.minutesPerDay, zone: args.timeZone, apply: false })) as Tool["run"],
+  },
+  {
+    name: "set_flashcard_parameters",
+    title: "Set flashcard parameters",
+    description:
+      "Stores your own FSRS-6 weights (21 numbers, e.g. from optimize_flashcard_parameters) for a flashcard deck, for all your decks (scope all) or for one part of the deck (group), or with weights null goes back to FSRS-6's defaults (the deck's weights for a part). The stability and difficulty of your cards there are computed again from their log; due dates stay. Only your own learning state changes.",
+    input: z.object({
+      pageId: id("Database ID of the deck"),
+      scope: z.enum(["deck", "all"]).optional(),
+      group: z.string().max(110).optional().describe("A part of the deck: subdeck:<value> or type:<card type>"),
+      weights: z.array(z.number()).length(21).nullable().describe("The 21 weights, or null for the defaults"),
+      timeZone: z.string().max(100).optional(),
+    }),
+    write: true,
+    run: (async (user: Identity, args: { pageId: string; scope?: "deck" | "all"; group?: string; weights: number[] | null; timeZone?: string }) => {
+      const answer = (await command(user, { action: "study.params", pageId: args.pageId, scope: args.scope, group: args.group, weights: args.weights, zone: args.timeZone })) as { model?: unknown; recomputed?: number };
+      return { model: answer.model, recomputed: answer.recomputed };
     }) as Tool["run"],
   },
   {

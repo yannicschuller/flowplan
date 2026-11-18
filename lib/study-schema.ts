@@ -44,6 +44,9 @@ export const studySettingsSchema = z.object({
   choices: z.object({ field: fid }).strict().optional(),
   // A tags property: generated options prefer cards with the same tags.
   tags: z.object({ field: fid }).strict().optional(),
+  // A select property whose values are sub-decks (the Anki import's
+  // "Deck"): each may get FSRS weights of its own (#344, lib/study-params.ts).
+  subdeck: z.object({ field: fid }).strict().optional(),
   // A second card per record, back → front.
   reverse: z.boolean().default(false),
   // The deck's defaults; each person may override limits and retention for
@@ -105,6 +108,7 @@ export function fittingStudySettings(raw: unknown, fields: { id: string; type: s
   const ids = [s.front, s.back, s.hint, s.extra, s.choices, "field" in s.type ? s.type : undefined].flatMap((x) => (x && "field" in x ? [x.field] : []));
   if (ids.some((id) => !STUDY_FIELD_TYPES.has(fields.find((f) => f.id === id)?.type ?? ""))) return undefined;
   if (s.tags && !fields.some((f) => f.id === s.tags!.field)) return undefined;
+  if (s.subdeck && fields.find((f) => f.id === s.subdeck!.field)?.type !== "select") return { ...s, subdeck: undefined };
   if (JSON.stringify(s.front) === JSON.stringify(s.back)) return undefined;
   return s;
 }

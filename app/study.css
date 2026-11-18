@@ -1009,6 +1009,32 @@
 .study-anki-notetype legend .muted {
   font-weight: 400;
 }
+.study-anki-subdecks {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.study-anki-subdecks legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.study-anki-subdecks .checkbox-label {
+  margin: 0;
+  align-items: flex-start;
+}
+.study-anki-subdecks .checkbox-label > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.study-anki-subdecks small {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 .study-anki-sample {
   margin: 0;
   font-size: 13px;
@@ -1917,6 +1943,29 @@ polyline.occlusion-draft {
 }
 .study-optimize-retention p {
   margin: 0;
+}
+/* A part of the deck (#344) and the workload per retention. */
+.study-optimize-group {
+  margin: 10px 0 0;
+  max-width: 360px;
+}
+.study-optimize-workload {
+  width: 100%;
+  min-width: 0;
+}
+.study-optimize-budget {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+.study-optimize-budget label {
+  margin: 0;
+  gap: 4px;
+  font-size: 13px;
+}
+.study-optimize-budget input {
+  width: 9em;
 }
 .study-optimize-actions {
   flex-wrap: wrap;

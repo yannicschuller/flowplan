@@ -2,6 +2,11 @@
 // in study_prefs.params: per deck (page_id = the deck) or for all their
 // decks (page_id = ''), like their limits and retention. A deck uses its
 // own weights, else the ones for all decks, else FSRS-6's defaults.
+// Parts of a deck (#344) may have weights of their own: a sub-deck (a
+// value of the select property the card mapping names as `subdeck`) or a
+// card type, in study_prefs.group_params of the deck's row – a card uses
+// its sub-deck's, else its card type's, else the deck's. Kept apart from
+// `params`, so a deck's own weights read as before.
 import { all, one } from "./db";
 import { clampWeights, validWeights, type Fit } from "./fsrs/optimize";
 
@@ -9,6 +14,43 @@ export type ParamsScope = "deck" | "all";
 // What study_prefs.params holds (JSON).
 export type StoredParams = { version: 1; w: number[]; reviews: number; fit?: { before: Fit; after: Fit } };
 export type ModelInfo = { source: "default" | ParamsScope; at: number | null; reviews: number | null; fit: StoredParams["fit"] | null };
+
+// A part of a deck: "subdeck:<value>" or "type:<card type>".
+export const GROUP_KEY = /^(subdeck:[^\u0000]{1,100}|type:(basic|cloze|typed|choice|occlusion))$/;
+export const MAX_GROUPS = 100;
+export type StoredGroup = StoredParams & { at: number };
+export function parseGroups(raw: string | null | undefined): Map<string, StoredGroup> {
+  const out = new Map<string, StoredGroup>();
+  if (!raw) return out;
+  try {
+    const value = JSON.parse(raw) as Record<string, Partial<StoredGroup>>;
+    for (const [key, entry] of Object.entries(value && typeof value === "object" ? value : {})) {
+      const stored = GROUP_KEY.test(key) ? parseParams(JSON.stringify(entry)) : null;
+      if (stored) out.set(key, { ...stored, at: Number(entry.at) || 0 });
+    }
+  } catch {
+    // Unreadable: no weights of parts.
+  }
+  return out;
+}
+// The weights of the parts of a deck for the person.
+export async function groupParams(userId: string, pageId: string) {
+  const row = await one<{ group_params: string | null }>("SELECT group_params FROM study_prefs WHERE user_id=? AND page_id=?", userId, pageId);
+  return parseGroups(row?.group_params);
+}
+// The value of a card's sub-deck property (a select: one value).
+export function subdeckValue(cells: Record<string, unknown> | null | undefined, field: string | undefined) {
+  if (!field || !cells) return null;
+  const v = cells[field];
+  const value = Array.isArray(v) ? v[0] : v;
+  return typeof value === "string" && value.trim() ? value.slice(0, 100) : null;
+}
+// The part whose weights a card uses: its sub-deck's, else its type's.
+export function groupOf(groups: { has(key: string): boolean }, card: { kind: string; subdeck: string | null }) {
+  if (card.subdeck !== null && groups.has(`subdeck:${card.subdeck}`)) return `subdeck:${card.subdeck}`;
+  if (groups.has(`type:${card.kind}`)) return `type:${card.kind}`;
+  return null;
+}
 
 export function parseParams(raw: string | null | undefined): StoredParams | null {
   if (!raw) return null;

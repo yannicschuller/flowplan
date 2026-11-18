@@ -16,9 +16,20 @@ import {
   lossGradient,
   memoryOf,
   optimize,
+  MIN_START,
+  OptimizeTimeout,
+  initLoss,
+  optimizeAsync,
+  outlierBuckets,
+  prepareTraining,
   recommendRetention,
   retentionCurve,
+  searchStability,
   seeded,
+  simulateDeck,
+  smoothAndFill,
+  workload,
+  type SimDeck,
   trainingItems,
   type TrainingCard,
 } from "../lib/fsrs/optimize";
@@ -165,11 +176,106 @@ test("the fit is deterministic: the same log gives the same weights", () => {
   assert.notDeepEqual(optimize(cards, { seed: 1 }).weights, a.weights);
 });
 
-test("too little to learn from: the start comes back unchanged", () => {
+test("too little to learn from: only w0–w3 are initialised (fewer than 8: the start comes back unchanged)", () => {
   const cards: TrainingCard[] = Array.from({ length: MIN_ITEMS - 1 }, () => ({ t: [0, 2], r: [3, 3] }));
   const result = optimize(cards);
-  assert.deepEqual(result.weights, [...DEFAULT_WEIGHTS]);
+  assert.deepEqual(result.weights.slice(4), DEFAULT_WEIGHTS.slice(4));
+  assert.ok(result.weights[2] > DEFAULT_WEIGHTS[2], "always remembered after two days: more stable than the default");
+  assert.deepEqual([...result.weights.slice(0, 4)].sort((a, b) => a - b), result.weights.slice(0, 4), "in order of the ratings");
   assert.equal(result.after.items, MIN_ITEMS - 1);
+  const few = optimize(cards.slice(0, MIN_START - 1));
+  assert.deepEqual(few.weights, [...DEFAULT_WEIGHTS]);
+  assert.deepEqual(optimize(cards, { prepare: false }).weights, [...DEFAULT_WEIGHTS], "without the initialisation: as before");
+});
+
+// fsrs-rs's own reference numbers (src/parameter_initialization.rs tests,
+// FSRS-6 defaults): the initialisation's objective, the search of one
+// rating's stability and the smoothing and filling of w0–w3. fsrs-rs
+// computes in f32, hence the tolerances.
+test("the initialisation of w0–w3 matches fsrs-rs's reference values", () => {
+  const data = [
+    { delta: 1, recall: 0.86666667, count: 435 },
+    { delta: 2, recall: 0.90721649, count: 97 },
+    { delta: 3, recall: 0.73015873, count: 63 },
+    { delta: 4, recall: 0.76315789, count: 38 },
+    { delta: 5, recall: 0.67857143, count: 28 },
+  ];
+  near(initLoss(data, 0.7840586, DEFAULT_WEIGHTS[0]), 279.9206961069712, 1e-6, "loss");
+  near(initLoss(data, 0.7840590622451964, DEFAULT_WEIGHTS[0]), 279.9206977311556, 1e-6, "loss");
+  near(searchStability(new Map([[1, data]]), 0.94302857).get(1)!, 0.7355089, 2e-6, "search");
+  const fill = (s: [number, number][], n: [number, number][]) => smoothAndFill(new Map(s), new Map(n))!;
+  fill([[1, 0.4], [3, 2.3], [4, 10.9]], [[1, 1], [2, 1], [3, 1], [4, 1]]).forEach((v, i) => near(v, [0.4, 1.1227008, 2.3, 10.9][i], 1e-6, `w${i}`));
+  fill([[2, 0.35]], [[2, 1]]).forEach((v, i) => near(v, [0.05738148, 0.35, 0.6242943, 2.2453482][i], 1e-6, `w${i}`));
+  fill([[2, 2], [3, 5], [4, 0.5]], [[2, 200], [3, 100], [4, 100]]).forEach((v) => near(v, 2, 1e-9, "a pair broken later in the pass is fixed too"));
+  assert.equal(smoothAndFill(new Map(), new Map()), null);
+});
+
+test("the outlier filter drops the rarest buckets (5 %, at least 20) and small or long ones, like fsrs-rs", () => {
+  const reviews = [
+    ...Array.from({ length: 300 }, () => ({ rating: 3, delta: 1 })),
+    ...Array.from({ length: 100 }, () => ({ rating: 3, delta: 3 })),
+    ...Array.from({ length: 12 }, () => ({ rating: 3, delta: 7 })),
+    ...Array.from({ length: 10 }, () => ({ rating: 3, delta: 20 })),
+    ...Array.from({ length: 30 }, () => ({ rating: 3, delta: 150 })),
+    ...Array.from({ length: 30 }, () => ({ rating: 4, delta: 150 })),
+    ...Array.from({ length: 5 }, () => ({ rating: 1, delta: 2 })),
+  ];
+  const { removed, kept } = outlierBuckets(reviews);
+  // Rating 3 (452 reviews, 5 % = 22): the smallest bucket goes (10), the
+  // next one would pass 22 and stays; 150 days is too long; Easy may wait
+  // a year; 5 reviews of Again are too few.
+  assert.deepEqual([...removed].sort(), ["1:2", "3:150", "3:20"]);
+  assert.equal(kept.length, 300 + 100 + 12 + 30);
+  // A log's cards in a removed bucket leave the training; w0–w3 come from the rest.
+  const cards: TrainingCard[] = [
+    ...syntheticLog(TRUE_WEIGHTS, 3000, 11),
+    ...Array.from({ length: 6 }, () => ({ t: [0, 400, 5], r: [3, 1, 3] })),
+  ];
+  const prepared = prepareTraining(cards);
+  assert.ok(!prepared.train.some((c) => c.t[1] === 400), "the six cards first seen again after 400 days are outliers");
+  assert.equal(prepared.removed, cards.length - prepared.train.length);
+  assert.ok(prepared.train.length > 2400, "most of the log stays");
+  assert.ok(prepared.initial && prepared.initial.length === 4);
+  // Towards the truth's initial stabilities (Hard is rare: w1 has little to go by).
+  for (const i of [0, 2, 3]) assert.ok(Math.abs(Math.log(prepared.initial![i] / TRUE_WEIGHTS[i])) < Math.abs(Math.log(DEFAULT_WEIGHTS[i] / TRUE_WEIGHTS[i])), `w${i} ${prepared.initial![i]}`);
+});
+
+test("on the server the fit pauses between mini-batches and gives the same weights; past its deadline it stops", async () => {
+  const cards = syntheticLog(TRUE_WEIGHTS, 400, 8);
+  const sync = optimize(cards);
+  const async = await optimizeAsync(cards, { sliceMs: 1 });
+  assert.deepEqual(async.weights, sync.weights);
+  await assert.rejects(optimizeAsync(syntheticLog(TRUE_WEIGHTS, 2000, 1), { sliceMs: 1, deadline: Date.now() - 1 }), OptimizeTimeout);
+});
+
+test("the workload: cards and minutes per day rise with the retention, limits and a time budget hold", async () => {
+  const random = seeded(4);
+  const deck: SimDeck = {
+    cards: Array.from({ length: 800 }, () => ({ s: 1 + random() * 60, d: 3 + random() * 5, elapsed: Math.floor(random() * 30), due: Math.floor(random() * 20) - 3 })),
+    newCards: 600,
+    newPerDay: 10,
+    reviewsPerDay: 9999,
+  };
+  const { curve, recommended } = await workload(TRUE_WEIGHTS, deck);
+  assert.equal(curve.length, 26);
+  assert.ok(curve[25].cardsPerDay > curve[0].cardsPerDay * 1.5, `${curve[0].cardsPerDay} → ${curve[25].cardsPerDay}`);
+  assert.ok(curve[25].minutesPerDay > curve[0].minutesPerDay);
+  assert.ok(curve[25].knowledge > curve[0].knowledge, "remembering more");
+  assert.ok(recommended >= 0.7 && recommended <= 0.95);
+  assert.deepEqual((await workload(TRUE_WEIGHTS, deck)).curve, curve, "deterministic");
+  // At most 30 reviews a day and 10 minutes: the cards per day stay within them.
+  const limited = await workload(TRUE_WEIGHTS, { ...deck, reviewsPerDay: 30, budget: 600 });
+  for (const p of limited.curve) {
+    assert.ok(p.cardsPerDay <= 40 + 1e-9, `${p.cardsPerDay}`);
+    assert.ok(p.minutesPerDay <= 10 + 0.5, `${p.minutesPerDay} min`);
+  }
+  // With a budget that binds, more retention does not mean more work.
+  assert.ok(limited.curve[25].cardsPerDay < curve[25].cardsPerDay);
+  // A deck too small to say anything: 2000 new cards at its limits.
+  assert.ok((await workload(TRUE_WEIGHTS, { cards: [], newCards: 3, newPerDay: 20, reviewsPerDay: 200 })).curve[10].cardsPerDay > 20);
+  // The simulation samples very large decks and scales the result.
+  const huge = simulateDeck(TRUE_WEIGHTS, 0.9, { cards: [], newCards: 45_000, newPerDay: 30, reviewsPerDay: 9999 });
+  assert.ok(huge.cardsPerDay > 30, `${huge.cardsPerDay}`);
 });
 
 test("the recommended retention is a whole per cent in 70–95 %, deterministic, and follows the costs", () => {
