@@ -1,0 +1,16 @@
+{
+  "fixes": [
+    {
+      "de": "Litestream: Die automatische Reparatur einer festhängenden Replik scheiterte im Image mit „Cannot find module“, weil der Ordner /app/scripts für den App-Benutzer nicht lesbar war. Der Build prüft das jetzt.",
+      "en": "Litestream: the automatic repair of a stuck replica failed in the image with \"Cannot find module\", because the folder /app/scripts was not readable for the app user. The build checks this now."
+    },
+    {
+      "de": "Die Archive für Installationen ohne Docker (z. B. YunoHost) werden wieder an das Release gehängt.",
+      "en": "The archives for installs without Docker (e.g. YunoHost) are attached to the release again."
+    },
+    {
+      "de": "Kein „cannot open … litestream.log“ mehr beim ersten Start mit Litestream.",
+      "en": "No more \"cannot open … litestream.log\" on the first start with Litestream."
+    }
+  ]
+}
