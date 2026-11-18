@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   APP_PROFILES_LINK,
+  appPasskeysInBrowser,
   appProfilesAction,
   armDesktopMarketplace,
   desktopPageLink,
@@ -250,4 +251,13 @@ test("the switcher sits in the workspace menu and on the account row, only with 
   const app = readFileSync(new URL("../components/workspace-app.tsx", import.meta.url), "utf8");
   assert.match(app, /\{profileSwitcher && \([\s\S]{0,300}onSelect=\{\(\) => void openProfileSwitcher\(\)\}[\s\S]{0,120}t\("Instanz wechseln …", "Switch instance…"\)/);
   assert.match(app, /onPointerDown=\{profileSwitcher \? \(e\) => void holdForProfileSwitcher\(e\) : undefined\}/);
+});
+
+test("passkeys in the iPhone/iPad/Android app are added in the browser; a browser and the desktop app are not affected", () => {
+  assert.equal(appPasskeysInBrowser({ platform: "ios", openInBrowser: () => {} }, iphone), "open");
+  assert.equal(appPasskeysInBrowser({ platform: "android", openInBrowser: () => {} }, android), "open");
+  // An older app without openInBrowser: only the note.
+  assert.equal(appPasskeysInBrowser({ platform: "ios" }, iphone), "note");
+  assert.equal(appPasskeysInBrowser(undefined, iphone), "note");
+  assert.equal(appPasskeysInBrowser(undefined, safari), null);
 });

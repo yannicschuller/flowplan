@@ -5,7 +5,7 @@
 // components/two-factor.tsx; SSO accounts are managed by their provider.
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { desktopPasskeysInBrowser } from "@/lib/native-app";
+import { appPasskeysInBrowser, desktopPasskeysInBrowser, nativeApp } from "@/lib/native-app";
 import { useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, Plus, Trash } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
@@ -161,11 +161,14 @@ export function PasskeysRow() {
   // The desktop app on macOS and Linux: its window has no authenticator, so
   // "add" would wait forever – passkeys are added in the browser there.
   const [inBrowser, setInBrowser] = useState(false);
+  // The iPhone/iPad/Android app: the same, through the system browser.
+  const [inApp, setInApp] = useState<"open" | "note" | null>(null);
   const [note, setNote] = useState<{ text: string; error?: boolean }>({ text: "" }),
     [busy, setBusy] = useState("");
   useEffect(() => {
     setSupported(browserSupportsWebAuthn());
     setInBrowser(desktopPasskeysInBrowser());
+    setInApp(appPasskeysInBrowser());
     post("passkeys")
       .then((r) => setPasskeys(r.passkeys))
       .catch(() => setPasskeys([]));
@@ -209,7 +212,17 @@ export function PasskeysRow() {
         anchor="passkeys"
         label={t("Passkeys", "Passkeys")}
         description={
-          inBrowser
+          inApp
+            ? inApp === "open"
+              ? t(
+                  "In der App legst du Passkeys im Browser an, wo sie gespeichert werden (iCloud-Schlüsselbund, Google-Passwortmanager oder dein Passwortmanager). Anmelden per Passkey geht danach auch in der App – über den Browser.",
+                  "In the app you add passkeys in the browser, where they are stored (iCloud Keychain, Google Password Manager or your password manager). Signing in with a passkey then works in the app too – through the browser.",
+                )
+              : t(
+                  "In der App legst du Passkeys im Browser an: Öffne Flowplan in Safari oder Chrome unter Einstellungen → Konto → Passkeys. Anmelden per Passkey geht danach auch in der App – über den Browser.",
+                  "In the app you add passkeys in the browser: open Flowplan in Safari or Chrome under Settings → Account → Passkeys. Signing in with a passkey then works in the app too – through the browser.",
+                )
+            : inBrowser
             ? t(
                 "In der Desktop-App legst du Passkeys im Browser an: Navigation → Im Browser öffnen zeigt diese Seite dort, dann „Passkey hinzufügen“. Anmelden per Passkey geht danach auch hier – über den Browser.",
                 "In the desktop app you add passkeys in the browser: Navigation → Open in Browser shows this page there, then “Add a passkey”. Signing in with a passkey then works here too – through the browser.",
@@ -224,7 +237,12 @@ export function PasskeysRow() {
       >
         <Note text={note.text} error={note.error} />
         {passkeys && <StatusBadge tone={count ? "ok" : "off"}>{count === 1 ? t("1 Passkey", "1 passkey") : count ? t(`${count} Passkeys`, `${count} passkeys`) : t("Keiner", "None")}</StatusBadge>}
-        {supported && !inBrowser && (
+        {inApp === "open" && (
+          <button type="button" className="button" onClick={() => nativeApp()?.openInBrowser?.(`${window.location.origin}/#settings/account/passkeys`)}>
+            <Plus size={16} aria-hidden /> {t("Im Browser hinzufügen", "Add in the browser")}
+          </button>
+        )}
+        {supported && !inBrowser && !inApp && (
           <button type="button" className="button" disabled={!!busy} onClick={() => void add()}>
             <Plus size={16} aria-hidden /> {t("Passkey hinzufügen", "Add a passkey")}
           </button>

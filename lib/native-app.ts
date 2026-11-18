@@ -142,6 +142,20 @@ export function desktopPasskeysInBrowser(
 ): boolean {
   return /FlowplanDesktop\//.test(agent) && !desktopPasskeysInWindow(app, agent);
 }
+// The iPhone, iPad and Android app: its web view offers passkeys only for
+// domains built into the app, never for a self-hosted instance, so adding
+// one fails there ("Passkey wurde nicht angelegt"). Signing in already goes
+// through the system browser (lib/desktop-sign-in.ts); adding one does too.
+// "open": the app can open the page in the browser (openInBrowser),
+// "note": an older app – say where to do it; null: not in the app.
+export function appPasskeysInBrowser(
+  app: { platform?: string; openInBrowser?: unknown } | undefined = nativeApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): "open" | "note" | null {
+  const inApp = !!app || /\bFlowplanMobile\//.test(agent);
+  if (!inApp) return null;
+  return typeof app?.openInBrowser === "function" ? "open" : "note";
+}
 // The device key of the app the page runs in, if it has one (checked; the
 // server checks again). Without one – a browser, or an older app – a
 // password sign-in lasts like a browser's.
