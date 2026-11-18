@@ -572,9 +572,18 @@ const reviewInput = z.object({
   reviewedAt: z.number().int().positive().optional(),
 });
 type LogRow = { id: string; user_id: string; page_id: string; row_id: string; sub: string; rating: number; reviewed_at: number; zone: string; undone_at: number | null; received_at: number; state_before: number };
+// No memory: the card is new again – a suspended one stays as a suspended
+// new card (state 0, schema 105), any other loses its row.
 async function storeState(user: Identity, page: Page, rowId: string, sub: string, memory: Memory | null) {
   if (!memory) {
-    await run("DELETE FROM card_states WHERE user_id=? AND row_id=? AND sub=?", user.id, rowId, sub);
+    await run(
+      "UPDATE card_states SET state=0,step=0,due=0,due_day=NULL,stability=0,difficulty=0,reps=0,lapses=0,last_review=0,orphaned_at=NULL,version=version+1,updated_at=? WHERE user_id=? AND row_id=? AND sub=? AND suspended=1",
+      Date.now(),
+      user.id,
+      rowId,
+      sub,
+    );
+    await run("DELETE FROM card_states WHERE user_id=? AND row_id=? AND sub=? AND suspended=0", user.id, rowId, sub);
     return;
   }
   await run(
@@ -603,7 +612,8 @@ async function storeState(user: Identity, page: Page, rowId: string, sub: string
 // logged as the person's (source "import"), for the person importing only.
 // Cards that are not (or no longer) cards of the deck are skipped; Anki's
 // own FSRS memory, when it has one, replaces stability and difficulty of
-// the result. A suspended card stays suspended. Returns the reviews logged.
+// the result. A suspended card stays suspended – one without reviews as a
+// suspended new card (state 0). Returns the reviews logged.
 export type ImportedHistory = {
   rowId: string;
   sub: string;
@@ -655,7 +665,10 @@ export async function importStudyHistory(user: Identity, pageId: string, cards: 
       memory = next.memory;
       logged++;
     }
-    if (!memory) continue;
+    if (!memory) {
+      if (card.suspended && !card.reviews.length) await suspendNew(user, page, card.rowId, card.sub);
+      continue;
+    }
     if (card.memory && memory.state === 2) memory = { ...memory, stability: card.memory.stability, difficulty: card.memory.difficulty };
     await storeState(user, page, card.rowId, card.sub, memory);
     if (card.suspended) await run("UPDATE card_states SET suspended=1 WHERE user_id=? AND row_id=? AND sub=?", user.id, card.rowId, card.sub);
@@ -663,6 +676,20 @@ export async function importStudyHistory(user: Identity, pageId: string, cards: 
   return logged;
 }
 
+// A suspended card that was never studied: a row of state 0, so the
+// suspension has a place (a person's own state of the card is kept).
+async function suspendNew(user: Identity, page: Page, rowId: string, sub: string) {
+  await run(
+    `INSERT INTO card_states(user_id,workspace_id,page_id,row_id,sub,state,step,due,due_day,stability,difficulty,reps,lapses,last_review,suspended,updated_at)
+     VALUES(?,?,?,?,?,0,0,0,NULL,0,0,0,0,0,1,?) ON CONFLICT(user_id,row_id,sub) DO NOTHING`,
+    user.id,
+    page.workspace_id,
+    page.id,
+    rowId,
+    sub,
+    Date.now(),
+  );
+}
 // The card must be one the person may study now.
 async function requireCard(user: Identity, deck: Deck, settings: StudySettings, rowId: string, sub: string) {
   await drainStudyCards(deck.page.id);

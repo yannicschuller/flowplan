@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 104;
+export const SCHEMA_VERSION = 105;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1574,6 +1574,8 @@ function migrate(d: DatabaseSync) {
   migrateErrorDetails(d);
   migrateSharedJobState(d);
   migrateRestartEvents(d);
+  // Schema 105 – suspended new cards (#341, docs/specs/flashcards.md §8.1).
+  migrateSuspendedNewCards(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1587,7 +1589,8 @@ function migrate(d: DatabaseSync) {
 //   study_dirty is its queue, filled by the triggers below only for
 //   databases with a mapping (row_id '' = the whole database: the mapping
 //   changed) and drained before a deck is read (lib/study.ts).
-// - card_states: the learning state per person and card (no row = new);
+// - card_states: the learning state per person and card (no row = new;
+//   state 0 since schema 105: a suspended new card);
 //   gone with the membership (foreign key on members – guests of a shared
 //   page are members too, lib/page-share.ts) and with the page.
 // - review_log: every rating, never changed but for undone_at; the id comes
@@ -1607,7 +1610,7 @@ function migrateFlashcards(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS study_cards(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('basic','cloze','typed','choice','occlusion')),position REAL NOT NULL,content_hash TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(page_id,row_id,sub));
     CREATE INDEX IF NOT EXISTS study_cards_row ON study_cards(row_id);
     CREATE TABLE IF NOT EXISTS study_dirty(page_id TEXT NOT NULL,row_id TEXT NOT NULL,PRIMARY KEY(page_id,row_id));
-    CREATE TABLE IF NOT EXISTS card_states(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,state INTEGER NOT NULL CHECK(state IN (1,2,3)),step INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL,due_day TEXT,stability REAL NOT NULL,difficulty REAL NOT NULL,reps INTEGER NOT NULL DEFAULT 0,lapses INTEGER NOT NULL DEFAULT 0,last_review INTEGER NOT NULL,suspended INTEGER NOT NULL DEFAULT 0,buried_day TEXT,orphaned_at INTEGER,version INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,row_id,sub),FOREIGN KEY(workspace_id,user_id) REFERENCES members(workspace_id,user_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS card_states(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,state INTEGER NOT NULL CHECK(state IN (0,1,2,3)),step INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL,due_day TEXT,stability REAL NOT NULL,difficulty REAL NOT NULL,reps INTEGER NOT NULL DEFAULT 0,lapses INTEGER NOT NULL DEFAULT 0,last_review INTEGER NOT NULL,suspended INTEGER NOT NULL DEFAULT 0,buried_day TEXT,orphaned_at INTEGER,version INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,row_id,sub),FOREIGN KEY(workspace_id,user_id) REFERENCES members(workspace_id,user_id) ON DELETE CASCADE);
     CREATE INDEX IF NOT EXISTS card_states_due ON card_states(user_id,page_id,due) WHERE suspended=0 AND orphaned_at IS NULL;
     CREATE INDEX IF NOT EXISTS card_states_user_due ON card_states(user_id,due) WHERE suspended=0 AND orphaned_at IS NULL;
     CREATE INDEX IF NOT EXISTS card_states_row ON card_states(row_id);
@@ -1625,6 +1628,36 @@ function migrateFlashcards(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS study_row_document_update AFTER UPDATE OF html ON row_documents WHEN EXISTS(SELECT 1 FROM rows r JOIN databases d ON d.page_id=r.page_id WHERE r.id=NEW.row_id AND instr(d.settings,'"study"')>0) BEGIN INSERT INTO study_dirty SELECT r.page_id,r.id FROM rows r WHERE r.id=NEW.row_id AND NOT EXISTS(SELECT 1 FROM study_dirty WHERE page_id=r.page_id AND row_id=r.id); END;
     CREATE TRIGGER IF NOT EXISTS study_database_insert AFTER INSERT ON databases WHEN instr(NEW.settings,'"study"')>0 BEGIN ${dirty("NEW.page_id", "''")} END;
     CREATE TRIGGER IF NOT EXISTS study_database_settings AFTER UPDATE OF settings ON databases WHEN (instr(NEW.settings,'"study"')>0 OR instr(OLD.settings,'"study"')>0) AND NEW.settings IS NOT OLD.settings BEGIN ${dirty("NEW.page_id", "''")} END;`);
+}
+// Schema 105 – suspended new cards (#341): card_states allows state 0, a
+// new card with a row of its own – only ever suspended (the Anki import
+// keeps a suspended card that was never studied suspended; a card whose
+// only rating is undone stays suspended the same way). Everything that
+// counts new cards counts cards without a row, and every query of due or
+// learning cards leaves suspended ones out, so a state-0 row is a
+// suspended card and nothing else. SQLite copies the table (its CHECK);
+// PostgreSQL gets the wider CHECK in a data step (lib/data-steps.ts,
+// "card-states-new-105"). An older version would refuse to write such a
+// row back after a rating, hence the new number.
+export function migrateSuspendedNewCards(d: DatabaseSync) {
+  const table = d.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='card_states'").get() as { sql?: string } | undefined;
+  if (!table?.sql || table.sql.includes("state IN (0,1,2,3)")) return;
+  const columns = "user_id,workspace_id,page_id,row_id,sub,state,step,due,due_day,stability,difficulty,reps,lapses,last_review,suspended,buried_day,orphaned_at,version,updated_at";
+  d.exec("SAVEPOINT card_states_new");
+  try {
+    d.exec(`CREATE TABLE card_states_105(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,state INTEGER NOT NULL CHECK(state IN (0,1,2,3)),step INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL,due_day TEXT,stability REAL NOT NULL,difficulty REAL NOT NULL,reps INTEGER NOT NULL DEFAULT 0,lapses INTEGER NOT NULL DEFAULT 0,last_review INTEGER NOT NULL,suspended INTEGER NOT NULL DEFAULT 0,buried_day TEXT,orphaned_at INTEGER,version INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,row_id,sub),FOREIGN KEY(workspace_id,user_id) REFERENCES members(workspace_id,user_id) ON DELETE CASCADE);
+      INSERT INTO card_states_105(${columns}) SELECT ${columns} FROM card_states;
+      DROP TABLE card_states;
+      ALTER TABLE card_states_105 RENAME TO card_states;
+      CREATE INDEX IF NOT EXISTS card_states_due ON card_states(user_id,page_id,due) WHERE suspended=0 AND orphaned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS card_states_user_due ON card_states(user_id,due) WHERE suspended=0 AND orphaned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS card_states_row ON card_states(row_id);
+      CREATE INDEX IF NOT EXISTS card_states_member ON card_states(workspace_id,user_id);`);
+  } catch (error) {
+    d.exec("ROLLBACK TO card_states_new; RELEASE card_states_new");
+    throw error;
+  }
+  d.exec("RELEASE card_states_new");
 }
 // Study reminders (docs/specs/flashcards.md §10.3, lib/study-reminders.ts):
 // - notifications.push_only: 1 for a notification that goes to push (and

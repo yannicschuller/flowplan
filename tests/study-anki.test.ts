@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { Identity } from "../lib/types";
 import { ankiPackage, sampleFixture, BASIC, CLOZE, OCCLUSION, REVERSED, TYPED, VOCAB, PNG } from "./helpers/anki-fixture";
 
@@ -308,4 +309,113 @@ test("image occlusion: masks, groups, pixels, the learning state and the export"
   await importFromSource(owner, wid, space, { name: "Anatomie.apkg", bytes: out.bytes });
   const back = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Anatomie' AND id<>?", wid, pageId))!.id;
   assert.equal(((await studyQueue(owner, { pageId: back, zone, limit: 0 })) as { total: number }).total, 3, "card for card");
+});
+
+test("sub-decks as databases of their own (#341) and suspended new cards", async () => {
+  const wid2 = await createWorkspace(owner.id, "Anki-Unterstapel");
+  const space2 = (await bootstrap(owner, wid2)).spaces[0].id;
+  const start = Date.UTC(2026, 9, 1, 8);
+  const fixture = {
+    ...sampleFixture(),
+    decks: [
+      { id: 1, name: "Default" },
+      { id: 10, name: "Sprachen" },
+      { id: 11, name: "Sprachen::Spanisch" },
+      { id: 12, name: "Sprachen::Spanisch::Lektion 1" },
+      { id: 20, name: "Physik" },
+    ],
+    notes: [
+      { id: 1, mid: BASIC.id, fields: ["hola", "hallo"], deck: 11, cards: [{ ord: 0, id: 101 }] },
+      { id: 2, mid: BASIC.id, fields: ["perro", "Hund"], deck: 12, cards: [{ ord: 0, id: 201 }] },
+      // Suspended and never studied: a suspended new card.
+      { id: 3, mid: BASIC.id, fields: ["gato", "Katze"], deck: 12, cards: [{ ord: 0, id: 301, queue: -1 }] },
+      { id: 4, mid: BASIC.id, fields: ["Kraft?", "F = m·a"], deck: 20, cards: [{ ord: 0, id: 401 }] },
+    ],
+    reviews: [{ at: start, cardId: 101, ease: 3, type: 0 }],
+    media: {},
+  };
+  const bytes = await ankiPackage(fixture);
+  const preview = await importFromSource(owner, wid2, space2, { name: "Sammlung.apkg", bytes }, { dryRun: true });
+  const anki = (preview as unknown as { anki: import("../lib/anki-mapping").AnkiPreview }).anki;
+  assert.deepEqual(anki.decks.map((d) => [d.name, d.notes, d.subdecks]), [
+    ["Sprachen", 3, ["Spanisch", "Spanisch::Lektion 1"]],
+    ["Physik", 1, []],
+  ]);
+  assert.equal(anki.databases, 3, "Spanisch, Lektion 1 and Physik have notes");
+  assert.equal(anki.suspendedNew, 1);
+  // The default stays: one database per top-level deck, sub-decks as "Deck".
+  const plan = planAnki(await readAnkiPackage(bytes), ankiOptionsSchema.parse({}), "Sammlung", { fileBytes: 1e6, files: 10 });
+  assert.deepEqual(
+    plan.tree.pages.map((p) => [p.title, p.parent]),
+    [
+      ["Sprachen", null],
+      ["Physik", null],
+    ],
+  );
+
+  const result = (await importFromSource(owner, wid2, space2, { name: "Sammlung.apkg", bytes }, { anki: JSON.stringify({ state: true, subdecks: "databases" }), zone })) as {
+    rootIds: string[];
+    reviews?: number;
+  };
+  const pages = await all<{ id: string; title: string; kind: string; parent_id: string | null }>(
+    "SELECT id,title,kind,parent_id FROM pages WHERE workspace_id=? AND space_id=? AND deleted_at IS NULL ORDER BY title",
+    wid2,
+    space2,
+  );
+  const byTitle = (title: string) => pages.find((p) => p.title === title)!;
+  assert.equal(byTitle("Sprachen").kind, "document", "a deck without notes of its own is a plain page");
+  assert.equal(byTitle("Spanisch").kind, "database");
+  assert.equal(byTitle("Spanisch").parent_id, byTitle("Sprachen").id);
+  assert.equal(byTitle("Lektion 1").kind, "database");
+  assert.equal(byTitle("Lektion 1").parent_id, byTitle("Spanisch").id, "nested by the deck's path");
+  assert.equal(byTitle("Physik").parent_id, null);
+  assert.deepEqual(new Set(result.rootIds), new Set([byTitle("Sprachen").id, byTitle("Physik").id]));
+  const lesson = await database(byTitle("Lektion 1").id);
+  assert.ok(!lesson.fields.some((f) => f.id === "deck"), "no property Deck: the database is the sub-deck");
+  assert.equal(result.reviews, 1);
+
+  // The suspended new card: a row of state 0, suspended, not in the queue.
+  const lessonId = byTitle("Lektion 1").id;
+  const gato = (await one<{ id: string }>("SELECT id FROM rows WHERE page_id=? AND cells LIKE '%gato%'", lessonId))!.id;
+  const state = await one<{ state: number; suspended: number }>("SELECT state,suspended FROM card_states WHERE user_id=? AND row_id=?", owner.id, gato);
+  assert.deepEqual({ state: Number(state?.state), suspended: Number(state?.suspended) }, { state: 0, suspended: 1 });
+  const queue = (await studyQueue(owner, { pageId: lessonId, zone, limit: 50 })) as { total: number; cards: { rowId: string }[] };
+  assert.equal(queue.total, 1, "only perro");
+  assert.ok(!queue.cards.some((c) => c.rowId === gato));
+  const { studyStats } = await import("../lib/study-stats");
+  const stats = (await studyStats(owner, { pageId: lessonId, zone })) as { states: { new: number; suspended: number } };
+  assert.deepEqual([stats.states.new, stats.states.suspended], [1, 1]);
+  // Rated anyway (the API) and undone: the suspension stays.
+  const reviewId = randomUUID();
+  await command(owner, { action: "study.review", pageId: lessonId, rowId: gato, sub: "", rating: 3, id: reviewId, zone });
+  assert.equal(Number((await one<{ suspended: number }>("SELECT suspended FROM card_states WHERE user_id=? AND row_id=?", owner.id, gato))?.suspended), 1);
+  await command(owner, { action: "study.undo", pageId: lessonId, reviewId, zone });
+  const after = await one<{ state: number; suspended: number }>("SELECT state,suspended FROM card_states WHERE user_id=? AND row_id=?", owner.id, gato);
+  assert.deepEqual({ state: Number(after?.state), suspended: Number(after?.suspended) }, { state: 0, suspended: 1 });
+  assert.equal((await all("SELECT 1 FROM card_states WHERE user_id=?", reader.id)).length, 0, "nobody else gets a state");
+});
+
+test("schema 105: an older card_states takes suspended new cards (state 0)", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { migrateSuspendedNewCards } = await import("../lib/db");
+  const d = new DatabaseSync(":memory:");
+  d.exec(`CREATE TABLE users(id TEXT PRIMARY KEY); CREATE TABLE workspaces(id TEXT PRIMARY KEY); CREATE TABLE pages(id TEXT PRIMARY KEY);
+    CREATE TABLE members(workspace_id TEXT,user_id TEXT,PRIMARY KEY(workspace_id,user_id));
+    CREATE TABLE card_states(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,state INTEGER NOT NULL CHECK(state IN (1,2,3)),step INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL,due_day TEXT,stability REAL NOT NULL,difficulty REAL NOT NULL,reps INTEGER NOT NULL DEFAULT 0,lapses INTEGER NOT NULL DEFAULT 0,last_review INTEGER NOT NULL,suspended INTEGER NOT NULL DEFAULT 0,buried_day TEXT,orphaned_at INTEGER,version INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,row_id,sub),FOREIGN KEY(workspace_id,user_id) REFERENCES members(workspace_id,user_id) ON DELETE CASCADE);
+    INSERT INTO users VALUES('u'); INSERT INTO workspaces VALUES('w'); INSERT INTO pages VALUES('p'); INSERT INTO members VALUES('w','u');
+    INSERT INTO card_states(user_id,workspace_id,page_id,row_id,sub,state,due,stability,difficulty,last_review,updated_at) VALUES('u','w','p','r','',2,5,3.5,4,1,1);`);
+  assert.throws(() => d.exec("INSERT INTO card_states(user_id,workspace_id,page_id,row_id,sub,state,due,stability,difficulty,last_review,suspended,updated_at) VALUES('u','w','p','r2','',0,0,0,0,0,1,1)"));
+  migrateSuspendedNewCards(d);
+  migrateSuspendedNewCards(d);
+  d.exec("INSERT INTO card_states(user_id,workspace_id,page_id,row_id,sub,state,due,stability,difficulty,last_review,suspended,updated_at) VALUES('u','w','p','r2','',0,0,0,0,0,1,1)");
+  assert.deepEqual(
+    (d.prepare("SELECT row_id,state,stability FROM card_states ORDER BY row_id").all() as { row_id: string; state: number; stability: number }[]).map((r) => [r.row_id, r.state, r.stability]),
+    [
+      ["r", 2, 3.5],
+      ["r2", 0, 0],
+    ],
+  );
+  const indexes = (d.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='card_states' AND name LIKE 'card_states_%'").all() as { name: string }[]).map((r) => r.name).sort();
+  assert.deepEqual(indexes, ["card_states_due", "card_states_member", "card_states_row", "card_states_user_due"]);
+  d.close();
 });

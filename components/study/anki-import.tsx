@@ -1,13 +1,15 @@
 "use client";
 // "Aus Anki importieren" (docs/specs/flashcards.md §8.1): an Anki package
-// (.apkg, .colpkg) becomes one flashcard database per top-level deck. The
+// (.apkg, .colpkg) becomes one flashcard database per top-level deck, its
+// sub-decks as values of the property "Deck" or, chosen here (#341), as
+// databases of their own below the top-level deck's page. The
 // file goes up once (lib/importers/upload.ts, a background job with
 // progress, components/import-client.ts); the preview shows decks, notes,
 // media and per note type what its fields become – card type, reverse card
 // and each field's side, as suggested by the server from Anki's templates –
 // and the import then uses the kept upload with the mapping chosen here.
 // Optionally the person's own learning state comes along (Anki's review log
-// replayed through FSRS, for them only).
+// replayed through FSRS, for them only; suspended cards stay suspended).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileArrowUp, Warning } from "@phosphor-icons/react";
 import { useT } from "../i18n";
@@ -16,11 +18,11 @@ import { Select } from "../select";
 import { sendImport, waitForJob, warningText } from "../import-client";
 import { browserZone } from "@/lib/date-values";
 import { parseClozeText } from "@/lib/study-cloze";
-import { ANKI_ROLES, type AnkiCardType, type AnkiPreview, type AnkiRole, type NotetypeMapping } from "@/lib/anki-mapping";
+import { ANKI_MAX_DATABASES, ANKI_ROLES, type AnkiCardType, type AnkiPreview, type AnkiRole, type NotetypeMapping } from "@/lib/anki-mapping";
 import type { Space } from "@/lib/types";
 
 type Preview = { warnings: string[]; files: number; bytes: number; upload?: string; anki: AnkiPreview };
-type Outcome = { rootIds: string[]; rows: number; reviews?: number; report?: { pageId: string; total: number } };
+type Outcome = { rootIds: string[]; rows: number; reviews?: number; report?: { pageId: string; total: number }; decks?: number };
 
 // Sizes as the media library shows them: KB below a megabyte (a no-break
 // space before the unit, so "KB" never stands alone on a phone).
@@ -80,6 +82,7 @@ export function StudyAnkiImport({
     [preview, setPreview] = useState<Preview | null>(null),
     [mapping, setMapping] = useState<Record<string, NotetypeMapping>>({}),
     [state, setState] = useState(false),
+    [subdecks, setSubdecks] = useState<"property" | "databases">("property"),
     [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number | null } | null>(null),
     [error, setError] = useState(""),
     [done, setDone] = useState<Outcome | null>(null);
@@ -94,6 +97,7 @@ export function StudyAnkiImport({
     setPreview(null);
     setMapping({});
     setState(false);
+    setSubdecks("property");
     setError("");
     setDone(null);
     setSpace(spaceId || spaces[0]?.id || "");
@@ -134,11 +138,11 @@ export function StudyAnkiImport({
     if (!preview || !file) return;
     setError("");
     try {
-      const query = new URLSearchParams({ workspaceId, spaceId: space, source: "anki", name: file.name, anki: JSON.stringify({ notetypes: mapping, state }), zone: browserZone() });
+      const query = new URLSearchParams({ workspaceId, spaceId: space, source: "anki", name: file.name, anki: JSON.stringify({ notetypes: mapping, state, subdecks: separate ? "databases" : "property" }), zone: browserZone() });
       if (upload.current) query.set("upload", upload.current);
       const result = (await run(query, upload.current ? null : file)) as Outcome;
       upload.current = undefined;
-      setDone(result);
+      setDone({ ...result, decks: separate ? anki!.databases : anki!.decks.length });
     } catch (e) {
       setError((e as Error).message === "network" ? t("Keine Verbindung zum Server.", "No connection to the server.") : (e as Error).message);
     }
@@ -164,6 +168,11 @@ export function StudyAnkiImport({
   const notes = (n: number) => (n === 1 ? t("1 Notiz", "1 note") : t(`${n} Notizen`, `${n} notes`));
   const anki = preview?.anki;
   const cards = useMemo(() => anki?.decks.reduce((n, d) => n + d.notes, 0) || 0, [anki]);
+  // Sub-decks as databases of their own: offered when there are any.
+  const hasSubdecks = !!anki?.decks.some((d) => d.subdecks.length);
+  const tooMany = !!anki && anki.databases > ANKI_MAX_DATABASES;
+  const separate = hasSubdecks && !tooMany && subdecks === "databases";
+  const deckCount = anki ? (separate ? anki.databases : anki.decks.length) : 0;
   return (
     <Modal open={open} onClose={close} title={t("Aus Anki importieren", "Import from Anki")} wide sheet className="study-import study-anki-import">
       <div className="study-import-body">
@@ -172,9 +181,9 @@ export function StudyAnkiImport({
             <p>
               {done.rows === 1
                 ? t("1 Notiz importiert.", "1 note imported.")
-                : done.rootIds.length === 1
+                : (done.decks ?? done.rootIds.length) === 1
                   ? t(`${done.rows} Notizen in einen Stapel importiert.`, `${done.rows} notes imported into one deck.`)
-                  : t(`${done.rows} Notizen in ${done.rootIds.length} Stapeln importiert.`, `${done.rows} notes imported into ${done.rootIds.length} decks.`)}
+                  : t(`${done.rows} Notizen in ${done.decks ?? done.rootIds.length} Stapeln importiert.`, `${done.rows} notes imported into ${done.decks ?? done.rootIds.length} decks.`)}
               {done.reviews !== undefined && ` ${t(`${done.reviews} Wiederholungen als dein Lernstand übernommen.`, `${done.reviews} reviews taken over as your learning state.`)}`}
             </p>
             {done.report && onOpenPage && (
@@ -187,8 +196,8 @@ export function StudyAnkiImport({
           <>
             <p className="muted">
               {t(
-                "Exportiere in Anki einen Stapel („Datei → Exportieren …“, Format „Anki-Stapelpaket (.apkg)“) oder die ganze Sammlung (.colpkg). Jeder oberste Stapel wird eine Lernkarten-Datenbank, Unterstapel kommen in die Eigenschaft „Deck“. Bilder und Töne kommen mit.",
-                "In Anki, export a deck (“File → Export …”, format “Anki Deck Package (.apkg)”) or the whole collection (.colpkg). Every top-level deck becomes a flashcard database, sub-decks go into the property “Deck”. Images and sounds come along.",
+                "Exportiere in Anki einen Stapel („Datei → Exportieren …“, Format „Anki-Stapelpaket (.apkg)“) oder die ganze Sammlung (.colpkg). Jeder oberste Stapel wird eine Lernkarten-Datenbank; Unterstapel kommen in die Eigenschaft „Deck“ oder werden eigene Datenbanken. Bilder und Töne kommen mit.",
+                "In Anki, export a deck (“File → Export …”, format “Anki Deck Package (.apkg)”) or the whole collection (.colpkg). Every top-level deck becomes a flashcard database; sub-decks go into the property “Deck” or become databases of their own. Images and sounds come along.",
               )}
             </p>
             <div className="form-row study-anki-file">
@@ -252,6 +261,37 @@ export function StudyAnkiImport({
                 ))}
               </ul>
             </section>
+            {hasSubdecks && (
+              <fieldset className="study-anki-subdecks">
+                <legend>{t("Unterstapel", "Sub-decks")}</legend>
+                <label className="checkbox-label">
+                  <input type="radio" name="anki-subdecks" checked={!separate} disabled={busy} onChange={() => setSubdecks("property")} />
+                  <span>
+                    {t("In die Eigenschaft „Deck“", "Into the property “Deck”")}
+                    <small className="muted">
+                      {t(
+                        "Eine Datenbank je oberstem Stapel; in der Lernen-Ansicht filterst du nach Unterstapeln.",
+                        "One database per top-level deck; in the study view you filter by sub-deck.",
+                      )}
+                    </small>
+                  </span>
+                </label>
+                <label className="checkbox-label">
+                  <input type="radio" name="anki-subdecks" checked={separate} disabled={busy || tooMany} onChange={() => setSubdecks("databases")} />
+                  <span>
+                    {t("Als eigene Datenbanken", "As databases of their own")}
+                    <small className="muted">
+                      {tooMany
+                        ? t(`Geht nur bis ${ANKI_MAX_DATABASES} Stapel – dieses Paket hat ${anki.databases}.`, `Only up to ${ANKI_MAX_DATABASES} decks – this package has ${anki.databases}.`)
+                        : t(
+                            `${anki.databases} Stapel, jeder Unterstapel unter der Seite des Stapels darüber – mit eigenen Grenzen und eigener Statistik.`,
+                            `${anki.databases} decks, every sub-deck below the page of the deck above it – with limits and statistics of its own.`,
+                          )}
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+            )}
             {anki.notetypes.map((nt) => {
               const m = mapping[nt.id] || nt.mapping;
               const set = (next: Partial<NotetypeMapping>) => setMapping((all) => ({ ...all, [nt.id]: { ...m, ...next } }));
@@ -330,13 +370,17 @@ export function StudyAnkiImport({
                 </fieldset>
               );
             })}
-            {anki.reviews > 0 && (
+            {(anki.reviews > 0 || anki.suspendedNew > 0) && (
               <label className="checkbox-label">
                 <input type="checkbox" checked={state} onChange={(e) => setState(e.target.checked)} />
-                {t(
-                  `Meinen Lernstand übernehmen (${anki.reviews} Wiederholungen, nur für dich – mit FSRS nachgerechnet)`,
-                  `Take over my learning state (${anki.reviews} reviews, only for you – recalculated with FSRS)`,
-                )}
+                {anki.reviews > 0
+                  ? t(
+                      `Meinen Lernstand übernehmen (${anki.reviews} Wiederholungen, nur für dich – mit FSRS nachgerechnet)`,
+                      `Take over my learning state (${anki.reviews} reviews, only for you – recalculated with FSRS)`,
+                    )
+                  : t("Meinen Lernstand übernehmen (nur für dich)", "Take over my learning state (only for you)")}
+                {anki.suspended > 0 &&
+                  ` · ${anki.suspended === 1 ? t("1 ausgesetzte Karte bleibt ausgesetzt", "1 suspended card stays suspended") : t(`${anki.suspended} ausgesetzte Karten bleiben ausgesetzt`, `${anki.suspended} suspended cards stay suspended`)}`}
               </label>
             )}
             {!cards && (
@@ -397,11 +441,11 @@ export function StudyAnkiImport({
               <button type="button" className="button primary" disabled={busy} onClick={() => void start()}>
                 {busy && preview
                   ? t("Importiere …", "Importing …")
-                  : anki.decks.length === 1
+                  : deckCount === 1
                     ? cards === 1
                       ? t("1 Notiz importieren", "Import 1 note")
                       : t(`${cards} Notizen importieren`, `Import ${cards} notes`)
-                    : t(`${notes(cards)} in ${anki.decks.length} Stapel importieren`, `Import ${notes(cards)} into ${anki.decks.length} decks`)}
+                    : t(`${notes(cards)} in ${deckCount} Stapel importieren`, `Import ${notes(cards)} into ${deckCount} decks`)}
               </button>
             )}
           </>

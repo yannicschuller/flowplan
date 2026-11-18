@@ -1784,7 +1784,7 @@ weil sie erst mit Zuordnung sichtbar wird.
   Mehrere Felder einer Rolle werden mit `<br>` verbunden.
 - **Decks:** eine Datenbank je oberstem Stapel; Unterstapel als Auswahl
   **Deck** (Wert ohne den obersten Namen, `Lektion 1::Teil 2`). Die
-  Variante „Unterstapel als eigene Datenbanken“ gibt es nicht (dokumentiert).
+  Variante „Unterstapel als eigene Datenbanken“ ist seit #341 wählbar (§24).
   Das Deck einer Notiz ist das ihrer ersten Karte (`odid` bei gefilterten
   Stapeln).
 - **Eigenschaft oder Dokument je Seite und Datenbank:** enthält irgendeine
@@ -1821,8 +1821,8 @@ weil sie erst mit Zuordnung sichtbar wird.
   die Rückwärtskarte eines Stapels ohne `reverse`), werden übersprungen.
   Ankis FSRS-Werte (`cards.data` `s`/`d`) ersetzen Stabilität und
   Schwierigkeit einer Karte im Zustand Wiederholung; `queue=-1` →
-  `suspended`. Ausgesetzte **neue** Karten bleiben neu (ohne Zustand gibt
-  es kein Aussetzen). Zeitzone: die des Browsers (`zone`).
+  `suspended`. Ausgesetzte **neue** Karten: seit Schema 105 als Zustand 0 (§24; vorher gab
+  es ohne Zustand kein Aussetzen). Zeitzone: die des Browsers (`zone`).
 
 **Anki-Export (`lib/study-anki-export.ts`, `studyAnkiExport`)**
 
@@ -2429,3 +2429,52 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
 - Empfehlung mit Tagesgrenzen und Zeitbudget des Stapels (wie Ankis
   Simulator); Kurve der Arbeit je Rate im Dialog.
 - Optimieren offline (das Protokoll liegt nicht in der Offline-Kopie).
+
+---
+
+## 24. Entscheidungen bei #341 (Anki: Unterstapel, ausgesetzte neue Karten)
+
+**Unterstapel als eigene Datenbanken (`lib/importers/anki.ts`, Option `subdecks`)**
+
+- Im Assistenten eine Wahl „Unterstapel“ (nur wenn das Paket welche hat):
+  „In die Eigenschaft „Deck““ (Vorgabe, wie bisher) oder „Als eigene
+  Datenbanken“. `anki`-JSON: `subdecks: "property" | "databases"`.
+- Eigene Datenbanken: je Stapelpfad **mit Notizen** eine Datenbank, unter
+  der Seite des Stapels darüber (nach dem Pfad verschachtelt:
+  `Sprachen::Spanisch::Lektion 1` unter `Spanisch` unter `Sprachen`). Ein
+  Stapel ohne eigene Notizen (oft der oberste) wird eine schlichte Seite
+  (Ordner), keine leere Datenbank. Titel ist der letzte Teil des Pfads.
+  Keine Eigenschaft „Deck“ – die Datenbank ist der Unterstapel; Seiten,
+  Rückwärtskarte, Tags und Dokumentseiten entscheidet jede Datenbank für
+  sich, wie sonst je oberstem Stapel.
+- Höchstens `ANKI_MAX_DATABASES` = 200 Datenbanken je Import; darüber
+  bleibt es bei der Eigenschaft „Deck“ (Hinweis „Mehr als 200 Stapel …“),
+  der Assistent bietet die Wahl dann nicht an.
+- Vorschau: `databases` (Zahl der Datenbanken bei eigenen Datenbanken),
+  `decks` weiter je oberstem Stapel mit allen Unterstapeln. Der
+  Importknopf zählt die Stapel der gewählten Variante.
+- Lernstand: wie bisher je Datenbank (`importStudyHistory` je Seite).
+
+**Ausgesetzte neue Karten (Schema 105)**
+
+- `card_states.state` erlaubt **0**: eine neue Karte mit eigener Zeile –
+  immer ausgesetzt. Damit hat das Aussetzen einen Platz, ohne dass die
+  Karte einen Lernstand bekommt. SQLite kopiert die Tabelle
+  (`migrateSuspendedNewCards`, wie Schema 95), PostgreSQL bekommt den
+  weiteren CHECK im Datenschritt `card-states-new-105`.
+- Alles, was neue Karten zählt, zählt Karten **ohne** Zeile; alles, was
+  fällige oder Lernphase-Karten liest, lässt ausgesetzte weg – eine
+  Zeile mit Zustand 0 ist also überall „ausgesetzt“ und nichts sonst
+  (Warteschlange, Übersicht, Statistik `states.suspended`, CSV-Export
+  „Ausgesetzt“). `memoryOf` liest Zustand 0 als neu.
+- Anki-Import mit Lernstand: eine Karte mit `queue=-1` ohne Wiederholung
+  wird eine solche Zeile (`suspendNew`, bestehende Zustände bleiben). Die
+  Vorschau zählt sie (`suspendedNew`); das Häkchen „Meinen Lernstand
+  übernehmen“ erscheint auch ohne Wiederholungen und sagt „N ausgesetzte
+  Karten bleiben ausgesetzt“.
+- `storeState(…, null)` (Rückgängig der einzigen Wertung): eine
+  ausgesetzte Karte wird wieder Zustand 0 statt die Zeile zu löschen;
+  eine Wertung über die API behält das Aussetzen (das Upsert setzt
+  `suspended` nicht).
+- Ältere Versionen würden nach einer Wertung keine Zeile mit Zustand 0
+  zurückschreiben können – daher die neue Schemanummer.

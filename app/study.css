@@ -1009,6 +1009,31 @@
 .study-anki-notetype legend .muted {
   font-weight: 400;
 }
+.study-anki-subdecks {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.study-anki-subdecks legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.study-anki-subdecks .checkbox-label {
+  align-items: flex-start;
+}
+.study-anki-subdecks .checkbox-label > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.study-anki-subdecks small {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 .study-anki-sample {
   margin: 0;
   font-size: 13px;

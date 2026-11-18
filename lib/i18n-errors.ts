@@ -1559,6 +1559,7 @@ const patterns: [RegExp, string][] = [
   // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).
   [/^(\d+) sehr lange Felder wurden nach (\d+) Zeichen gekürzt\.$/, "$1 very long fields were cut after $2 characters."],
   [/^(\d+) Notizen ohne bekannten Notiztyp werden nicht übernommen\.$/, "$1 notes without a known note type are not imported."],
+  [/^Mehr als (\d+) Stapel: Unterstapel kommen in die Eigenschaft „Deck“ statt in eigene Datenbanken\.$/, "More than $1 decks: sub-decks go into the property “Deck” instead of databases of their own."],
   [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(an\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (on)."],
   [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(aus\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (off)."],
   [/^„(.+)“: (\d+) Tags – übernommen werden die ersten 1000\.$/, "“$1”: $2 tags – the first 1000 are imported."],

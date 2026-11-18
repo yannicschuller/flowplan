@@ -31,6 +31,7 @@ export const SEARCH_VISITS_STEP = "search-visits-243";
 export const SETTINGS_LEVEL_STEP = "settings-level-294";
 export const AI_DETAIL_STEP = "metrics-ai-usage";
 export const WORKFLOW_DYNAMIC_MAIL_STEP = "workflow-dynamic-mail-099";
+export const CARD_STATES_NEW_STEP = "card-states-new-105";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -47,6 +48,7 @@ export const dataSteps = (): DataStep[] => [
   { name: SETTINGS_LEVEL_STEP, run: settingsLevelForExistingAccounts },
   { name: AI_DETAIL_STEP, run: aiDetailFromTotals },
   { name: WORKFLOW_DYNAMIC_MAIL_STEP, run: keepDynamicMailForExistingWorkflows },
+  { name: CARD_STATES_NEW_STEP, run: cardStatesNewCheck },
 ];
 
 // The AI tokens counted per day and feature before the detailed AI
@@ -277,6 +279,18 @@ async function issueProvidersCheck() {
   );
   for (const c of checks) await run(`ALTER TABLE issue_connections DROP CONSTRAINT "${c.name.replace(/"/g, '""')}"`);
   await run("ALTER TABLE issue_connections ADD CONSTRAINT issue_connections_provider_check CHECK(provider IN ('github','gitlab','forgejo'))");
+}
+
+// Schema 105 – suspended new cards (#341): card_states allows state 0.
+// SQLite copies the table in migrate() (migrateSuspendedNewCards); an
+// existing PostgreSQL table gets the wider CHECK here (a new one has it).
+async function cardStatesNewCheck() {
+  if (database().backend !== "postgres") return;
+  const checks = await all<{ name: string }>(
+    "SELECT conname AS name FROM pg_constraint WHERE conrelid=to_regclass('card_states') AND contype='c' AND strpos(pg_get_constraintdef(oid),'state')>0",
+  );
+  for (const c of checks) await run(`ALTER TABLE card_states DROP CONSTRAINT "${c.name.replace(/"/g, '""')}"`);
+  await run("ALTER TABLE card_states ADD CONSTRAINT card_states_state_check CHECK(state IN (0,1,2,3))");
 }
 
 // Schema 100 – every grant names the kind and workspace of its resource
