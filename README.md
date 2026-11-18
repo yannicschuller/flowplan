@@ -312,6 +312,7 @@ Turn any database into a deck: Flowplan plans the reviews with [FSRS](https://gi
 - **Card types** – front and back (also reversed), cloze in text and documents, type the answer, multiple choice and image occlusion with a mask editor
 - **Focus mode** – keys or swipes, undo, limits per deck, a study overview across all decks, a widget for the home page and the apps
 - **Statistics** – streak, heatmap, forecast and true retention; studied cards show up in the journal
+- **Your own memory model** – from 1,000 reviews, fit FSRS to your own review log in the browser, see whether it predicts better, and take a recommended retention
 - **In and out** – import from Anki (`.apkg` with media and, if you like, the learning state), Quizlet and CSV; export as an Anki package or CSV
 - **Optional AI** – cards from a page, a selection, a PDF or pasted text, checked by you before they are added
 - **Anywhere** – push reminders, studying without a connection, and a public link to browse or practise without an account (progress stays in the browser)
