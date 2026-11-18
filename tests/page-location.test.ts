@@ -156,3 +156,20 @@ test("read-only documents open only this app's page links in the same window (#2
   ])
     assert.equal(inAppPageHash(href, base), null, href);
 });
+test("a link to a view starts its study session (#340): view and study only together, never with a record", () => {
+  for (const target of [{ pageId, viewId: "table" }, { pageId, viewId: "44444444-4444-4444-8444-444444444444", study: true }])
+    assert.deepEqual(parsePageLocation(pageLocationHash(target)), target);
+  assert.equal(pageLocationHash({ pageId, viewId: "v1", study: true }), `#page=${pageId}&view=v1&study=1`);
+  // Through the sign-in and as an in-app link the view stays.
+  assert.equal(loginReturnPath(`/#page=${pageId}&view=v1&study=1`), `/#page=${pageId}&view=v1&study=1`);
+  assert.equal(inAppPageHash(`/#page=${pageId}&view=v1&study=1`, "https://flowplan.test/"), `#page=${pageId}&view=v1&study=1`);
+  for (const hash of [
+    `#page=${pageId}&study=1`,
+    `#page=${pageId}&view=v1&study=yes`,
+    `#page=${pageId}&view=a%20b`,
+    `#page=${pageId}&view=${"x".repeat(65)}`,
+    `#page=${pageId}&view=v1&view=v2`,
+    `#page=${pageId}&row=${rowId}&view=v1`,
+  ])
+    assert.equal(parsePageLocation(hash), null, hash);
+});

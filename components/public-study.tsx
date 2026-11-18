@@ -5,7 +5,7 @@
 // account (./study/public-practice.tsx, loaded when started). The practice
 // keeps its state in this browser only; "Fortschritt löschen" removes it.
 // A signed-in member of the workspace gets "In Flowplan lernen" instead of
-// a state in the browser.
+// a state in the browser: the session of this view in the app (#340).
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { ArrowsClockwise, Cards, GraduationCap } from "@phosphor-icons/react";
@@ -17,12 +17,29 @@ import type { PublicStudyCard } from "@/lib/shared-study";
 
 const PublicPractice = dynamic(() => import("./study/public-practice"), { ssr: false });
 
-function FlashCard({ card, pageId, token, index }: { card: PublicStudyCard; pageId: string; token: string; index: number }) {
+// Until the script runs (or without JavaScript), a card turns with
+// <details>: the back opens below the front, in the server's HTML (#340).
+function FlashCard({ card, pageId, token, index, live }: { card: PublicStudyCard; pageId: string; token: string; index: number; live: boolean }) {
   const t = useT();
   const [flipped, setFlipped] = useState(false);
   const turn = () => setFlipped((f) => !f);
   const side = (s: PublicStudyCard["front"]) => <Side side={s} pageId={pageId} shareToken={token} />;
   const answer = card.occlusion ? ("text" in card.back ? card.back.text : "") : "";
+  // A cloze shows its answer in place of the front once turned; under
+  // <details> the front stays, so the back carries it.
+  const back = (
+    <div className="public-flashcard-back">
+      {!card.occlusion && (card.kind !== "cloze" || !live) && side(card.back)}
+      {answer && <p className="study-text occlusion-answer">{answer}</p>}
+      {card.note && <div className="study-extra">{side(card.note)}</div>}
+      {card.extra && <div className="study-extra">{side(card.extra)}</div>}
+    </div>
+  );
+  const turnLabel = (
+    <>
+      <ArrowsClockwise aria-hidden size={14} /> {flipped ? t("Vorderseite", "Front") : t("Umdrehen", "Turn over")}
+    </>
+  );
   return (
     <li>
       <article
@@ -43,17 +60,19 @@ function FlashCard({ card, pageId, token, index }: { card: PublicStudyCard; page
           <div className="public-flashcard-front">{side(card.front)}</div>
         )}
         {!flipped && card.hint && <div className="public-flashcard-hint muted">{side(card.hint)}</div>}
-        {flipped && (
-          <div className="public-flashcard-back">
-            {card.kind !== "cloze" && !card.occlusion && side(card.back)}
-            {answer && <p className="study-text occlusion-answer">{answer}</p>}
-            {card.note && <div className="study-extra">{side(card.note)}</div>}
-            {card.extra && <div className="study-extra">{side(card.extra)}</div>}
-          </div>
+        {live ? (
+          <>
+            {flipped && back}
+            <button type="button" className="text-button public-flashcard-turn" aria-pressed={flipped} onClick={turn}>
+              {turnLabel}
+            </button>
+          </>
+        ) : (
+          <details className="public-flashcard-reveal">
+            <summary className="text-button public-flashcard-turn">{turnLabel}</summary>
+            {back}
+          </details>
         )}
-        <button type="button" className="text-button public-flashcard-turn" aria-pressed={flipped} onClick={turn}>
-          <ArrowsClockwise aria-hidden size={14} /> {flipped ? t("Vorderseite", "Front") : t("Umdrehen", "Turn over")}
-        </button>
       </article>
     </li>
   );
@@ -86,6 +105,9 @@ export function PublicStudy({
   const [practice, setPractice] = useState(false);
   const [stored, setStored] = useState(false);
   const [status, setStatus] = useState("");
+  // The script runs: cards turn with their button instead of <details>.
+  const [live, setLive] = useState(false);
+  useEffect(() => setLive(true), []);
   const read = () => {
     try {
       setStored(hasProgress(token, window.localStorage));
@@ -133,7 +155,7 @@ export function PublicStudy({
       {cards.length ? (
         <ol className="public-study-grid" start={first}>
           {cards.map((card, i) => (
-            <FlashCard key={`${card.rowId}:${card.sub}`} card={card} pageId={pageId} token={token} index={first + i} />
+            <FlashCard key={`${card.rowId}:${card.sub}`} card={card} pageId={pageId} token={token} index={first + i} live={live} />
           ))}
         </ol>
       ) : (

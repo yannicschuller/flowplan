@@ -528,10 +528,26 @@ export default function DatabaseView({
   // Another field (or a new one) starts from its saved options.
   useEffect(() => setOptionsText(null), [fieldDraft.id, newField]);
   const ownHash = useRef("");
+  // A link to a view (#340, "&view=<id>", with "&study=1" its focus mode):
+  // the view opens, a study view starts its session (DatabaseStudy). The
+  // view then leaves the address, so a reload does not start it again.
+  const viewsRef = useRef(data.database.views);
+  viewsRef.current = data.database.views;
+  const [studyRequest, setStudyRequest] = useState<string | null>(null);
   useEffect(() => {
     if (!routeNavigation) return;
     const navigate = () => {
       const target = parsePageLocation(location.hash);
+      if (target?.pageId === page.id && target.viewId) {
+        const views = viewsRef.current;
+        const wanted = views.find((v) => v.id === target.viewId);
+        const shown = wanted || (target.study ? views.find((v) => v.type === "study") : undefined);
+        if (shown) setViewId(shown.id);
+        if (wanted?.type === "study" && target.study) setStudyRequest(wanted.id);
+        if (!wanted)
+          showToast({ text: t("Diese Ansicht gibt es nicht mehr – die Datenbank ist geöffnet.", "This view no longer exists – the database is open.") });
+        window.history.replaceState(null, "", `${location.pathname}${location.search}${pageLocationHash({ pageId: page.id })}`);
+      }
       const rowId = target?.pageId === page.id ? target.rowId || null : null;
       setLocalRowId(rowId);
       setFullFromUrl(!!rowId && !!target?.full);
@@ -4080,6 +4096,8 @@ export default function DatabaseView({
           editable={editable}
           act={act}
           onOpenRow={setRowId}
+          startSession={studyRequest === view.id}
+          onSessionStarted={() => setStudyRequest(null)}
         />
       )}
       {view.type === "sprint" && (

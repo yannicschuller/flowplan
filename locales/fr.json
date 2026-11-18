@@ -11948,6 +11948,7 @@
   "This view has no date.": "Cette vue n’a pas de date.",
   "This view is no longer available.": "Cette vue n’est plus disponible.",
   "This view is sorted automatically. Moving by hand removes its sorting rules. The current sorting is saved as the starting order.": "Cette vue est triée automatiquement. Un déplacement manuel supprime ses règles de tri. Le tri actuel est enregistré comme ordre de départ.",
+  "This view no longer exists – the database is open.": "Cette vue n’existe plus – la base de données est ouverte.",
   "This view studies only cards that match its {0} filters.": "Cette vue ne fait réviser que les cartes correspondant à ses {0} filtres.",
   "This was just changed elsewhere. Reload and try again.": "Cela vient d’être modifié ailleurs. Rechargez et réessayez.",
   "This webhook no longer exists": "Ce webhook n’existe plus",

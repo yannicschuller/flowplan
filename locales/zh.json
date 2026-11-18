@@ -11948,6 +11948,7 @@
   "This view has no date.": "这个视图没有日期。",
   "This view is no longer available.": "此视图不再可用。",
   "This view is sorted automatically. Moving by hand removes its sorting rules. The current sorting is saved as the starting order.": "此视图会自动排序。手动移动会删除其排序规则。当前的排序已保存为起始顺序。",
+  "This view no longer exists – the database is open.": "此视图已不存在——数据库已打开。",
   "This view studies only cards that match its {0} filters.": "此视图只学习符合其 {0} 个筛选条件的卡片。",
   "This was just changed elsewhere. Reload and try again.": "这在别处刚被更改。请重新加载并重试。",
   "This webhook no longer exists": "此 Webhook 已不存在",
