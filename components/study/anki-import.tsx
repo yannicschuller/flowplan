@@ -21,7 +21,9 @@ import type { Space } from "@/lib/types";
 type Preview = { warnings: string[]; files: number; bytes: number; upload?: string; anki: AnkiPreview };
 type Outcome = { rootIds: string[]; rows: number; reviews?: number; report?: { pageId: string; total: number } };
 
-const mb = (bytes: number) => (bytes / 1024 / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 });
+// Sizes as the media library shows them: KB below a megabyte.
+const size = (bytes: number) =>
+  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString()} KB` : `${(bytes / 1024 / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
 
 export function StudyAnkiImport({
   open,
@@ -131,10 +133,9 @@ export function StudyAnkiImport({
         {done ? (
           <div className="study-anki-done" role="status">
             <p>
-              {t(
-                `${done.rows} Notizen in ${done.rootIds.length} ${done.rootIds.length === 1 ? "Stapel" : "Stapeln"} importiert.`,
-                `${done.rows} notes imported into ${done.rootIds.length} ${done.rootIds.length === 1 ? "deck" : "decks"}.`,
-              )}
+              {done.rootIds.length === 1
+                ? t(`${done.rows} Notizen in einen Stapel importiert.`, `${done.rows} notes imported into one deck.`)
+                : t(`${done.rows} Notizen in ${done.rootIds.length} Stapeln importiert.`, `${done.rows} notes imported into ${done.rootIds.length} decks.`)}
               {done.reviews !== undefined && ` ${t(`${done.reviews} Wiederholungen als dein Lernstand übernommen.`, `${done.reviews} reviews taken over as your learning state.`)}`}
             </p>
             {done.report && onOpenPage && (
@@ -197,7 +198,7 @@ export function StudyAnkiImport({
             <section className="study-anki-summary" aria-label={t("Inhalt des Pakets", "Contents of the package")}>
               <p>
                 {t(`${anki.notes} Notizen · ${anki.cards} Karten in Anki`, `${anki.notes} notes · ${anki.cards} cards in Anki`)}
-                {anki.media.files > 0 && ` · ${t(`${anki.media.files} Mediendateien (${mb(anki.media.bytes)} MB)`, `${anki.media.files} media files (${mb(anki.media.bytes)} MB)`)}`}
+                {anki.media.files > 0 && ` · ${t(`${anki.media.files} Mediendateien (${size(anki.media.bytes)})`, `${anki.media.files} media files (${size(anki.media.bytes)})`)}`}
               </p>
               <ul className="study-anki-decks">
                 {anki.decks.map((d) => (

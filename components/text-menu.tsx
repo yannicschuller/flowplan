@@ -148,6 +148,8 @@ export function TextMenu({
   ai = "hidden",
   aiHint = "",
   onAi,
+  cards = "hidden",
+  onCards,
   tools,
 }: {
   editor: Editor | null;
@@ -159,6 +161,10 @@ export function TextMenu({
   ai?: AiAvailability;
   aiHint?: string;
   onAi?: () => void;
+  // "Lernkarten erstellen" from the selection (components/study/ai-cards.tsx):
+  // hidden without the AI feature "flashcards", disabled where the AI may not read.
+  cards?: AiAvailability;
+  onCards?: (text: string) => void;
   // The toolbar's other actions, for the full menu (#235).
   tools?: TextMenuTools;
 }) {
@@ -970,6 +976,22 @@ export function TextMenu({
             onClick={run(() => void navigator.clipboard?.writeText(editor.state.doc.textBetween(from, to, "\n")))}
           >
             <Copy size={15} /> {t("Kopieren", "Copy")}
+          </button>
+        )}
+        {!empty && cards !== "hidden" && onCards && (
+          <button
+            type="button"
+            role="menuitem"
+            aria-disabled={cards === "blocked" || undefined}
+            title={cards === "blocked" ? aiHint : t("Lernkarten aus der Auswahl mit KI erstellen", "Create flashcards from the selection with AI")}
+            onClick={() => {
+              if (cards === "blocked") return;
+              const text = editor.state.doc.textBetween(from, to, "\n");
+              close();
+              onCards(text);
+            }}
+          >
+            <Cards size={15} /> {t("Lernkarten erstellen", "Create flashcards")}
           </button>
         )}
       </div>

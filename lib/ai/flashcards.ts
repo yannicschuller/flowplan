@@ -44,10 +44,11 @@ import { chunkText, fence, guessLanguage, type TextLanguage } from "./prompts";
 import { redactSecrets } from "./redact";
 import { isLocalProvider } from "./resolve";
 import { requireAi, type AiRunOptions } from "./run";
+import { AI_CARDS_MAX, AI_CARD_TYPES, type AiCardType, type CardSuggestion, type ProposeCardsResult } from "./flashcards-shared";
 
 export const FLASHCARD_LIMITS = {
   // Cards of one run.
-  cards: 200,
+  cards: AI_CARDS_MAX,
   // The whole source; longer ones need a part chosen.
   sourceChars: 400_000,
   // A selection or pasted text sent from the browser (longer than a
@@ -68,22 +69,7 @@ export const FLASHCARD_LIMITS = {
   focus: 500,
 } as const;
 
-export const AI_CARD_TYPES = ["basic", "cloze", "typed", "choice"] as const;
-export type AiCardType = (typeof AI_CARD_TYPES)[number];
-export type CardSuggestion = {
-  id: string;
-  type: AiCardType;
-  front: string;
-  back: string;
-  hint?: string;
-  choices?: string[];
-  tags?: string[];
-  source?: string;
-  // Marks for the review: similar to a card of the deck or an earlier
-  // suggestion, a yes/no question.
-  duplicate?: boolean;
-  yesNo?: boolean;
-};
+export { AI_CARD_TYPES, type AiCardType, type CardSuggestion, type ProposeCardsResult } from "./flashcards-shared";
 
 const uuid = z.uuid();
 const sourceSchema = z.discriminatedUnion("kind", [
@@ -281,14 +267,6 @@ async function mapLimit<T, R>(items: T[], limit: number, task: (item: T, index: 
   return results;
 }
 
-export type ProposeCardsResult = {
-  cards: CardSuggestion[];
-  parts: number;
-  chars: number;
-  tokens: number;
-  title: string;
-  deck: { id: string; title: string } | null;
-};
 export async function proposeFlashcards(user: Identity, raw: ProposeCardsInput, signal?: AbortSignal): Promise<ProposeCardsResult> {
   const input = proposeCardsInput.parse(raw);
   await requireMember(user, input.workspaceId);

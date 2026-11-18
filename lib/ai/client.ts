@@ -237,3 +237,12 @@ export async function proposeAiActions({ signal, ...body }: ProposeActionsOption
 export async function runAiActions(workspaceId: string, actions: unknown[]) {
   return (await postJson<{ results: ActionResult[] }>("/api/ai/actions/run", { workspaceId, actions })).results;
 }
+
+// Flashcards (lib/ai/flashcards.ts): suggestions to review, nothing added yet.
+export async function proposeAiFlashcards(body: Record<string, unknown>, signal?: AbortSignal) {
+  return await postJson<import("./flashcards-shared").ProposeCardsResult>("/api/ai/flashcards/propose", body, signal);
+}
+// Adds the confirmed cards (checked again on the server).
+export async function addAiFlashcards(body: Record<string, unknown>) {
+  return await postJson<{ deckId: string; title: string; added: number }>("/api/ai/flashcards/add", body);
+}

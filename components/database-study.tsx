@@ -12,10 +12,11 @@
 // state on request.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, UploadSimple } from "@phosphor-icons/react";
+import { ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, Sparkle, UploadSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, api } from "./ui";
 import { Select } from "./select";
+import { useAiAvailability } from "./ai-context";
 import { safeCollisionPadding } from "./safe-area";
 import { StudyFocus, studyZoneNow, type StudyOverview } from "./study/focus";
 import { StudyImport } from "./study/import";
@@ -49,6 +50,8 @@ export default function DatabaseStudy({
 }) {
   const t = useT();
   const mapping = database.settings?.study;
+  // "Mit KI erstellen" (components/study/ai-cards.tsx, opened by workspace-app).
+  const aiCards = useAiAvailability("flashcards", null);
   const [overview, setOverview] = useState<StudyOverview | null>(null),
     [error, setError] = useState(""),
     [setup, setSetup] = useState(false),
@@ -71,6 +74,14 @@ export default function DatabaseStudy({
   useEffect(() => {
     void reload();
   }, [reload, mappingKey, filterKey, database.version]);
+  // Cards added elsewhere (the AI dialog, components/study/ai-cards.tsx).
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === page.id) void reload();
+    };
+    window.addEventListener("flowplan:study-changed", changed);
+    return () => window.removeEventListener("flowplan:study-changed", changed);
+  }, [reload, page.id]);
   // A new study view of a database without a mapping opens the setup.
   useEffect(() => {
     if (!mapping && editable) setSetup(true);
@@ -203,6 +214,11 @@ export default function DatabaseStudy({
             {editable && (
               <button className="button compact" onClick={() => setImporting(true)}>
                 <UploadSimple aria-hidden /> {t("Karten importieren", "Import cards")}
+              </button>
+            )}
+            {editable && aiCards !== "hidden" && (
+              <button className="button compact" onClick={() => window.dispatchEvent(new CustomEvent("flowplan:flashcards-ai", { detail: { deckId: page.id } }))}>
+                <Sparkle aria-hidden /> {t("Mit KI erstellen", "Create with AI")}
               </button>
             )}
             <Dropdown.Root>

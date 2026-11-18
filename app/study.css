@@ -657,13 +657,32 @@
 }
 
 /* ---- Anki import (components/study/anki-import.tsx) ---- */
-.study-anki-file {
+.study-anki-file,
+.study-anki-type,
+.study-ai-options {
+  display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
+  gap: 8px 16px;
+}
+.study-anki-file > label:not(.button),
+.study-anki-type > label:not(.checkbox-label),
+.study-ai-options > label {
+  display: grid;
+  gap: 4px;
+  flex: 0 1 260px;
+  min-width: 0;
+}
+.study-anki-file .study-import-file {
+  align-self: flex-end;
+}
+.study-anki-type .checkbox-label {
+  padding-bottom: 8px;
 }
 .study-anki-name {
   overflow-wrap: anywhere;
   font-size: 13px;
+  align-self: center;
 }
 .study-anki-summary p {
   margin: 0 0 6px;
@@ -693,10 +712,6 @@
 .study-anki-notetype legend .muted {
   font-weight: 400;
 }
-.study-anki-type {
-  flex-wrap: wrap;
-  align-items: flex-end;
-}
 .study-anki-sample {
   margin: 0;
   font-size: 13px;
@@ -709,6 +724,111 @@
 .study-screen-anki {
   order: 3;
   margin-left: auto;
+}
+
+/* ---- AI flashcards (components/study/ai-cards.tsx) ---- */
+.study-ai-source,
+.study-ai-types {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  min-width: 0;
+}
+.study-ai-source legend,
+.study-ai-types legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.study-ai-field {
+  display: grid;
+  gap: 4px;
+}
+.study-ai-options > label:has(input[type="number"]) {
+  flex: 0 0 8em;
+}
+.study-ai-options p {
+  margin: 0 0 8px;
+}
+.study-ai-gap {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--blue-light);
+  color: inherit;
+}
+.study-ai-estimate {
+  margin: 0;
+}
+.study-ai-head {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.study-ai-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.study-ai-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.study-ai-list li:not(.picked) {
+  opacity: 0.7;
+}
+.study-ai-list li > input {
+  margin-top: 3px;
+}
+.study-ai-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.study-ai-type {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.study-ai-card .study-ai-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.study-ai-meta .button {
+  margin-left: auto;
+}
+.study-ai-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: color-mix(in srgb, var(--study-hard) 80%, var(--text));
+}
+.study-ai-edit {
+  display: grid;
+  gap: 8px;
+}
+.study-ai-edit label {
+  display: grid;
+  gap: 4px;
+}
+.study-ai-edit textarea {
+  width: 100%;
+  resize: vertical;
 }
 
 /* ---- Statistics ---- */
@@ -932,4 +1052,10 @@
   .study-heatmap > :nth-child(-n + 182) {
     display: none;
   }
+}
+
+/* Three buttons in the AI review and the Anki wizard: they wrap on phones. */
+.study-ai-cards .modal-actions,
+.study-anki-import .modal-actions {
+  flex-wrap: wrap;
 }

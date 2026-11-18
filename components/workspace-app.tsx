@@ -78,6 +78,7 @@ import { proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
 import type { AiSummaryTarget } from "./ai-summary";
 import { aiUsable } from "@/lib/ai/client";
+import type { AiCardsStart } from "./study/ai-cards";
 import {
   imageFileId,
 } from "@/lib/page-appearance";
@@ -358,6 +359,8 @@ const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), 
 // A space as a library (#329): loaded when a library opens.
 const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
 const StudyScreen = dynamic(() => loadView(() => import("./study/screen")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
+// "Lernkarten mit KI erstellen" (lib/ai/flashcards.ts): loaded when opened.
+const StudyAiCards = dynamic(() => import("./study/ai-cards"), { ssr: false });
 // Notebooks bring the ink engine: loaded with the first notebook.
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 // Workflows bring the canvas (xyflow): loaded with the first workflow page.
@@ -556,6 +559,9 @@ export default function WorkspaceApp({
     [search, setSearch] = useState(false),
     // The keyboard shortcut overlay ("?", ⌘/, command, sidebar).
     [shortcuts, setShortcuts] = useState(false),
+    // The AI flashcards dialog and where it was opened from (the study
+    // view, a selection in the editor, the command palette).
+    [aiCards, setAiCards] = useState<AiCardsStart | null>(null),
     // The highlighted row of the command palette (aria-activedescendant).
     [paletteActive, setPaletteActive] = useState(0),
     // The page that is the Tab stop of its space's tree (roving tabindex).
@@ -1370,11 +1376,15 @@ export default function WorkspaceApp({
   useEffect(() => {
     const open = () => setOnboarding(true);
     const keys = () => setShortcuts(true);
+    // "flowplan:flashcards-ai" (the study view, the editor's text menu).
+    const cards = (event: Event) => setAiCards((event as CustomEvent<AiCardsStart>).detail || {});
     window.addEventListener("flowplan:onboarding", open);
     window.addEventListener("flowplan:shortcuts", keys);
+    window.addEventListener("flowplan:flashcards-ai", cards);
     return () => {
       window.removeEventListener("flowplan:onboarding", open);
       window.removeEventListener("flowplan:shortcuts", keys);
+      window.removeEventListener("flowplan:flashcards-ai", cards);
     };
   }, []);
   // Runs a command: its result shows at once where it is known in advance
@@ -3791,6 +3801,24 @@ export default function WorkspaceApp({
     { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
     { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study") },
+    // From the open page (a deck: into it), else from pasted text or a file.
+    ...(aiUsable(boot.ai, "flashcards") && !boot.workspace.guest
+      ? [
+          {
+            label: t("Lernkarten mit KI erstellen", "Create flashcards with AI"),
+            keywords: t("ki karteikarten lernen generieren vorschlagen pdf", "ki karteikarten lernen generieren vorschlagen pdf ai flashcards generate cards quiz"),
+            icon: Cards,
+            run: () =>
+              setAiCards(
+                openPageData && !openPageData.encrypted
+                  ? openPageData.page.kind === "database"
+                    ? { deckId: openPageData.page.id }
+                    : { pageId: openPageData.page.id, pageTitle: openPageData.page.title }
+                  : {},
+              ),
+          },
+        ]
+      : []),
     { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
     { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
@@ -5749,6 +5777,9 @@ export default function WorkspaceApp({
             />
           )}
           {screen === "study" && <StudyScreen workspaceId={boot.workspace.id} spaces={boot.spaces} onOpenPage={(id) => void openPage(id)} />}
+          {aiCards && (
+            <StudyAiCards open onClose={() => setAiCards(null)} workspaceId={boot.workspace.id} spaces={boot.spaces} start={aiCards} onOpenPage={(id) => void openPage(id)} />
+          )}
           {screen === "media" && (
             <MediaLibrary
               workspaceId={boot.workspace.id}

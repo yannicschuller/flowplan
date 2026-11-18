@@ -53,6 +53,7 @@
     "components/settings/user/groups.tsx",
     "components/settings/user/tags.tsx",
     "components/sign-in-methods.tsx",
+    "components/study/ai-cards.tsx",
     "components/version-changes.tsx",
     "components/whiteboard/ai-panel.tsx",
     "components/whiteboard/crop-dialog.tsx",

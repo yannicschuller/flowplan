@@ -514,6 +514,8 @@ export default function DocumentEditor({
   // read.
   const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
   const aiWrite = useAiAvailability("write", pageId, { device: true });
+  // "Lernkarten erstellen" from a selection (components/study/ai-cards.tsx).
+  const aiCards = useAiAvailability("flashcards", pageId);
   const aiSummarize = useAiAvailability("summarize", pageId, { device: true });
   // Tasks and summary from a meeting transcript (components/ai-actions.tsx).
   const aiActions = useAiAvailability("actions", pageId);
@@ -3596,6 +3598,8 @@ export default function DocumentEditor({
           ai={aiWrite}
           aiHint={aiBlockedHint}
           onAi={() => openAi.current()}
+          cards={aiCards}
+          onCards={(text) => window.dispatchEvent(new CustomEvent("flowplan:flashcards-ai", { detail: { pageId, rowId: rowId || null, text } }))}
           tools={{
             inlineMath: openInlineMath,
             suggesting,
