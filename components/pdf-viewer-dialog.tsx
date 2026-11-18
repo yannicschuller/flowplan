@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowsOut,
+  Cards,
   Check,
   ClockCounterClockwise,
   DownloadSimple,
@@ -32,6 +33,19 @@ import { recognitionAvailable, recognitionId, recognitionRequest, recognizeInk }
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./notebook/use-pinch-zoom";
 import { shortcutLetter } from "@/lib/keymap";
+
+// "Lernkarten erstellen" (#342): the AI flashcards dialog of the workspace
+// (components/study/ai-cards.tsx, opened by its event) with this PDF and
+// the page shown as the source – the range can be changed there. Offered
+// when the workspace says the feature is usable (it answers the probe
+// event synchronously) and the PDF is a file of the workspace (not a
+// shared link's).
+function flashcardsAvailable() {
+  const probe = { available: false };
+  window.dispatchEvent(new CustomEvent("flowplan:flashcards-ai-probe", { detail: probe }));
+  return probe.available;
+}
+const fileIdOf = (src: string) => /^\/api\/files\/([\w-]+)$/.exec(src)?.[1] || null;
 
 // Zoom of the pages, relative to the window width: buttons and keys step,
 // two fingers and trackpads zoom freely (as in notebooks).
@@ -133,6 +147,8 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
   const [versions, setVersions] = useState<{ version: number; by: string | null; at: number; items: number }[] | null>(null);
+  const [cards, setCards] = useState(false);
+  useEffect(() => setCards(!!fileIdOf(src) && flashcardsAvailable()), [src]);
   const editor = useInkEditor(emptyInk(), { active: annotating });
   useInkShortcuts(editor, annotating);
   const inkUrl = `${src}/ink`;
@@ -221,6 +237,15 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
     if (annotating && editor.dirty && !(await save())) return;
     setAnnotating(false);
     onClose();
+  }
+  // The viewer closes (ink saved first) and the dialog opens over the page.
+  async function createCards() {
+    const fileId = fileIdOf(src);
+    if (!fileId) return;
+    if (annotating && editor.dirty && !(await save())) return;
+    const pages = { from: current, to: current };
+    onClose();
+    window.dispatchEvent(new CustomEvent("flowplan:flashcards-ai", { detail: { file: { id: fileId, name: title || "PDF", pages } } }));
   }
   const closeRef = useRef(close);
   closeRef.current = close;
@@ -344,6 +369,18 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
             <button type="button" className="pdf-viewer-annotate" onClick={() => setAnnotating(true)} title={t("Mit Stift, Textmarker und Text anmerken", "Mark up with pen, highlighter and text")}>
               <PencilSimpleLine size={18} />
               <span>{t("Anmerken", "Annotate")}</span>
+            </button>
+          )}
+          {cards && doc && !annotating && (
+            <button
+              type="button"
+              className="pdf-viewer-annotate pdf-viewer-cards"
+              onClick={() => void createCards()}
+              aria-label={t("Lernkarten erstellen", "Create flashcards")}
+              title={t(`Lernkarten mit KI aus Seite ${current} oder weiteren Seiten erstellen`, `Create flashcards with AI from page ${current} or more pages`)}
+            >
+              <Cards size={18} />
+              <span>{t("Lernkarten erstellen", "Create flashcards")}</span>
             </button>
           )}
           <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out")} onClick={() => setZoom((z) => stepZoom(z, -1, ZOOMS.step, ZOOMS))}>

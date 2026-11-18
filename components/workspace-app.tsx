@@ -1448,7 +1448,8 @@ export default function WorkspaceApp({
   useEffect(() => {
     const open = () => setOnboarding(true);
     const keys = () => setShortcuts(true);
-    // "flowplan:flashcards-ai" (the study view, the editor's text menu).
+    // "flowplan:flashcards-ai" (the study view, the editor's text menu, the
+    // PDF viewer).
     const cards = (event: Event) => setAiCards((event as CustomEvent<AiCardsStart>).detail || {});
     window.addEventListener("flowplan:onboarding", open);
     window.addEventListener("flowplan:shortcuts", keys);
@@ -1459,6 +1460,17 @@ export default function WorkspaceApp({
       window.removeEventListener("flowplan:flashcards-ai", cards);
     };
   }, []);
+  // The PDF viewer (outside the workspace's tree) asks whether to offer
+  // "Lernkarten erstellen": answered at once on the event's detail.
+  const flashcardsUsable = aiUsable(boot.ai, "flashcards") && !boot.workspace.guest;
+  useEffect(() => {
+    const probe = (event: Event) => {
+      const detail = (event as CustomEvent<{ available?: boolean }>).detail;
+      if (detail) detail.available = flashcardsUsable;
+    };
+    window.addEventListener("flowplan:flashcards-ai-probe", probe);
+    return () => window.removeEventListener("flowplan:flashcards-ai-probe", probe);
+  }, [flashcardsUsable]);
   // Runs a command: its result shows at once where it is known in advance
   // (lib/optimistic-commands.ts) and stays until the reloaded state is
   // there; a refusal of the server takes it back and the error toast shows

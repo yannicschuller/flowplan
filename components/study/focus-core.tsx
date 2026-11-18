@@ -11,7 +11,9 @@
 // - On touch screens a revealed card is swiped: left Again, right Good, up
 //   Easy, down Hard, past 30 % of its width (height). A swipe that starts
 //   within 24 px of the screen's edge is the system's or the app's (back,
-//   sidebar) and leaves the card alone. The buttons are always there.
+//   sidebar) and leaves the card alone. The buttons are always there. On an
+//   image occlusion card two fingers zoom the picture, and zoomed in one
+//   finger pans it (./occlusion-zoom.ts claims those gestures).
 // - The intervals under the buttons come from lib/fsrs with the review's
 //   id as seed – the same the backend computes for the rating.
 // - The answer time is measured while the tab is visible, capped at 60 s.
@@ -413,6 +415,8 @@ export function FocusSession({
   // Swiping a revealed card (pointer events; the transform is set through
   // the element's style object, which the CSP allows).
   const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
+  // Gestures the zoom of an occlusion picture took (pinch, pan, double tap).
+  const zoomGate = useRef({ claimed: false }).current;
   const directionOf = (dx: number, dy: number, el: HTMLElement): StudyRating | null => {
     const { width, height } = el.getBoundingClientRect();
     if (Math.abs(dx) >= Math.abs(dy)) return Math.abs(dx) >= width * 0.3 ? (dx < 0 ? 1 : 3) : null;
@@ -424,6 +428,12 @@ export function FocusSession({
     setSwipe(null);
   };
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (zoomGate.claimed) {
+      // A second finger: the picture zooms, the swipe is off.
+      if (drag.current) resetCard();
+      drag.current = null;
+      return;
+    }
     if (e.button !== 0 || (e.target as HTMLElement).closest("a, button, input, video, audio, .study-choices")) return;
     // The edges belong to the system and the app (back, sidebar).
     if (e.clientX < EDGE || e.clientX > innerWidth - EDGE || e.clientY < EDGE || e.clientY > innerHeight - EDGE) return;
@@ -433,6 +443,11 @@ export function FocusSession({
     const d = drag.current,
       el = cardRef.current;
     if (!d || d.id !== e.pointerId || !el || !shown?.revealed) return;
+    if (zoomGate.claimed) {
+      if (d.moved) resetCard();
+      drag.current = null;
+      return;
+    }
     const dx = e.clientX - d.x,
       dy = e.clientY - d.y;
     if (!d.moved && Math.hypot(dx, dy) < 8) return;
@@ -446,6 +461,10 @@ export function FocusSession({
       el = cardRef.current;
     drag.current = null;
     if (!d || d.id !== e.pointerId || !el) return;
+    if (zoomGate.claimed) {
+      if (d.moved) resetCard();
+      return;
+    }
     if (!d.moved) {
       // A choice card is answered by its options; a tap elsewhere reveals.
       if (!shown?.revealed && !(shown?.card.choice && (e.target as HTMLElement).closest(".study-choices"))) reveal();
@@ -559,7 +578,7 @@ export function FocusSession({
                   image occlusion card its picture, the masks asked opened. */}
               {shown.card.occlusion ? (
                 <div className="study-side study-front">
-                  <OcclusionImage occlusion={shown.card.occlusion} reveal={shown.revealed} />
+                  <OcclusionImage occlusion={shown.card.occlusion} reveal={shown.revealed} zoom={zoomGate} />
                 </div>
               ) : shown.card.kind === "cloze" && shown.revealed ? (
                 <div className="study-side study-front study-back" ref={backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>

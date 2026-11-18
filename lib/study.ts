@@ -1576,8 +1576,8 @@ export async function studyAnkiExport(user: Identity, raw: unknown) {
         const { toAnkiOcclusion, occlusionTargets } = await import("./study-occlusion");
         for (const src of [...new Set(list.map((c) => c.occlusion!.src))]) {
           const cardsOfImage = list.filter((c) => c.occlusion!.src === src);
-          const { mode, masks, alt } = cardsOfImage[0].occlusion!;
-          const occlusion = { v: 1 as const, mode, masks };
+          const { mode, masks, texts, alt } = cardsOfImage[0].occlusion!;
+          const occlusion = { v: 1 as const, mode, masks, ...(texts ? { texts } : {}) };
           const keys = occlusionTargets(occlusion).map((t) => t.key);
           notes.push({
             kind: "occlusion",

@@ -1576,7 +1576,7 @@ const patterns: [RegExp, string][] = [
   [/^(\d+) Mediendateien sind zu groß oder zu viele und werden nicht übernommen\.$/, "$1 media files are too large or too many and are not imported."],
   [/^(\d+) Bildverdeckungs-Notizen werden als Vorder-\/Rückseite mit dem Bild übernommen \(ohne Masken\)\.$/, "$1 image occlusion notes are imported as front/back with the image (without masks)."],
   [/^(\d+) von (\d+) Bildverdeckungs-Notizen haben keine lesbaren Masken oder kein Bild und ergeben keine Karte\.$/, "$1 of $2 image occlusion notes have no readable masks or no image and give no card."],
-  [/^(\d+) Formen der Bildverdeckung \(Text oder unbekannt\) werden nicht übernommen\.$/, "$1 image occlusion shapes (text or unknown) are not imported."],
+  [/^(\d+) Formen der Bildverdeckung \(unbekannte Art\) werden nicht übernommen\.$/, "$1 image occlusion shapes of an unknown kind are not imported."],
   [/^Das Anki-Paket hat mehr als (\d+) Wiederholungen; der Lernstand kann nicht übernommen werden\.$/, "The Anki package has more than $1 reviews; the learning state cannot be taken over."],
   [/^Das Anki-Paket hat (\d+) Notizen; erlaubt sind höchstens (\d+) je Import\.$/, "The Anki package has $1 notes; at most $2 are allowed per import."],
   [/^Mehr als (\d+) Seiten: weitere Seiten werden nicht übernommen \(FLOWPLAN_IMPORT_MAX_DOCS\)\.$/, "More than $1 pages: further pages are not imported (FLOWPLAN_IMPORT_MAX_DOCS)."],

@@ -17,12 +17,15 @@
 // - The masks are an SVG layer over the picture in the picture's own
 //   pixels (its viewBox), so handles stay square; geometry is SVG
 //   attributes, colours are classes – no inline styles.
+// - Texts on the picture (Anki's text shapes, imported, #343) are kept,
+//   drawn over the masks and listed: their wording can be changed or they
+//   can be removed; they are never asked.
 // Loaded on demand (components/editor.tsx, next/dynamic).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowArcLeft, ArrowArcRight, Circle, Cursor, ExcludeSquare, Eye, Info, Plus, Polygon, Square, Trash, UniteSquare } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { Modal } from "../ui";
-import { MaskShape, OcclusionImage } from "./occlusion-image";
+import { MaskShape, OcclusionImage, OcclusionTextShape } from "./occlusion-image";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { shortcutLetter } from "@/lib/keymap";
 import {
@@ -36,6 +39,7 @@ import {
   type OcclusionMask,
   type OcclusionMode,
   type OcclusionPoint,
+  type OcclusionText,
 } from "@/lib/study-occlusion";
 
 export type OcclusionEditResult = { occlusion: string | null; alt: string };
@@ -71,6 +75,7 @@ export function OcclusionEditor({ src, alt, value, onSave, onClose }: { src: str
   const initial = useMemo(() => parseOcclusion(value), [value]);
   const [masks, setMasks] = useState<OcclusionMask[]>(initial?.masks || []),
     [mode, setMode] = useState<OcclusionMode>(initial?.mode || "hide-all"),
+    [texts, setTexts] = useState<OcclusionText[]>(initial?.texts || []),
     [past, setPast] = useState<Snapshot[]>([]),
     [future, setFuture] = useState<Snapshot[]>([]),
     [selected, setSelected] = useState<string[]>([]),
@@ -327,7 +332,7 @@ export function OcclusionEditor({ src, alt, value, onSave, onClose }: { src: str
   });
 
   const save = () => {
-    onSave({ occlusion: occlusionAttribute(occlusion), alt: altText.replace(/\s+/g, " ").trim().slice(0, 500) });
+    onSave({ occlusion: occlusionAttribute({ ...occlusion, texts: texts.filter((x) => x.text.trim()) }), alt: altText.replace(/\s+/g, " ").trim().slice(0, 500) });
     onClose();
   };
   const tools: [Tool, string, React.ReactNode][] = [
@@ -439,7 +444,7 @@ export function OcclusionEditor({ src, alt, value, onSave, onClose }: { src: str
             ) : preview && previewTarget ? (
               <div className="occlusion-preview">
                 <OcclusionImage
-                  occlusion={{ src, alt: altText, mode, masks, target: previewTarget.masks, index: previewIndex + 1, total: targets.length }}
+                  occlusion={{ src, alt: altText, mode, masks, texts, target: previewTarget.masks, index: previewIndex + 1, total: targets.length }}
                   reveal={preview.revealed}
                 />
                 <p className="muted">
@@ -488,6 +493,9 @@ export function OcclusionEditor({ src, alt, value, onSave, onClose }: { src: str
                           {number.get(m.id)}
                         </text>
                       </g>
+                    ))}
+                    {texts.map((x) => (
+                      <OcclusionTextShape key={x.id} text={x} scale={{ x: W, y: H }} />
                     ))}
                     {draft && (
                       <MaskShape mask={{ id: "draft", shape: tool === "ellipse" ? "ellipse" : "rect", ...boxOf(draft.from, draft.to) }} className="occlusion-mask occlusion-draft" scale={{ x: W, y: H }} />
@@ -586,6 +594,36 @@ export function OcclusionEditor({ src, alt, value, onSave, onClose }: { src: str
                   </li>
                 ))}
               </ol>
+            )}
+            {texts.length > 0 && (
+              <div className="occlusion-texts-list">
+                <p className="occlusion-texts-head">{t("Texte auf dem Bild (werden nicht abgefragt)", "Text on the picture (not asked)")}</p>
+                <ul aria-label={t("Texte auf dem Bild", "Text on the picture")}>
+                  {texts.map((x, i) => (
+                    <li key={x.id}>
+                      <textarea
+                        value={x.text}
+                        rows={Math.min(3, x.text.split("\n").length)}
+                        maxLength={500}
+                        aria-label={t(`Text ${i + 1} auf dem Bild`, `Text ${i + 1} on the picture`)}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setTexts((list) => list.map((y) => (y.id === x.id ? { ...y, text: value } : y)));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={t(`Text ${i + 1} entfernen`, `Remove text ${i + 1}`)}
+                        title={t("Entfernen", "Remove")}
+                        onClick={() => setTexts((list) => list.filter((y) => y.id !== x.id))}
+                      >
+                        <Trash size={16} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <label className="occlusion-alt">
               {t("Alternativtext des Bildes", "Alternative text of the picture")}

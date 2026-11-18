@@ -59,6 +59,26 @@ export function loadPdf(src: string) {
   }
   return doc;
 }
+// The text layer of pages `from`–`to` (within the document), a paragraph
+// break between pages – for flashcards from a page range
+// (components/study/ai-cards.tsx). Scans without a text layer give "".
+export async function pdfPagesText(src: string, from: number, to: number) {
+  const doc = await loadPdf(src);
+  const first = Math.max(1, Math.min(from, to, doc.numPages)),
+    last = Math.min(doc.numPages, Math.max(from, to));
+  const pages: string[] = [];
+  for (let n = first; n <= last; n++) {
+    const content = await (await doc.getPage(n)).getTextContent();
+    let text = "";
+    for (const item of content.items) {
+      if (!("str" in item)) continue;
+      text += item.str + (item.hasEOL ? "\n" : "");
+    }
+    pages.push(text.replace(/[ \t]+\n/g, "\n").trim());
+  }
+  return { text: pages.filter(Boolean).join("\n\n"), from: first, to: last, total: doc.numPages };
+}
+export const pdfPageCount = async (src: string) => (await loadPdf(src)).numPages;
 // A canvas draws one page at a time: a new size (zoom) cancels the
 // drawing still in progress.
 const drawing = new WeakMap<HTMLCanvasElement, { cancel: () => void }>();

@@ -143,7 +143,9 @@ test("Anki's Occlusion field: shapes, groups, mode and pixels", () => {
     "{{c1::image-occlusion:rect:left=.1:top=.2:width=.3:height=.1:oi=1}}<br>{{c2::image-occlusion:ellipse:left=.5:top=.5:rx=.1:ry=.05:oi=1}}<br>{{c2::image-occlusion:polygon:points=.1,.6 .3,.6 .2,.9:oi=1}}<br>{{c3::image-occlusion:text:text=Hallo:left=.1:top=.1}}";
   const read = fromAnkiOcclusion(field, next);
   assert.equal(read.occlusion!.mode, "hide-all");
-  assert.equal(read.skipped, 1, "the text shape");
+  assert.equal(read.skipped, 0, "the text shape is taken over (#343)");
+  assert.equal(read.texts, 1);
+  assert.deepEqual(read.occlusion!.texts?.map((x) => [x.text, x.x, x.y]), [["Hallo", 0.1, 0.1]]);
   assert.deepEqual(
     read.occlusion!.masks.map((m) => [m.shape, m.x, m.y, m.w, m.h, !!m.group]),
     [
@@ -169,6 +171,54 @@ test("Anki's Occlusion field: shapes, groups, mode and pixels", () => {
   const again = fromAnkiOcclusion(written, next).occlusion!;
   assert.deepEqual(occlusionTargets(again).map((t) => t.masks.length), [1, 2]);
   assert.deepEqual(again.masks.map((m) => [m.shape, m.x, m.y, m.w, m.h]), parseOcclusion(masks())!.masks.map((m) => [m.shape, m.x, m.y, m.w, m.h]));
+});
+
+test("texts on the picture (#343): cleaned, optional, never a card", () => {
+  const T = "44444444-4444-4444-8444-444444444444";
+  const withTexts = { ...masks(), texts: [{ id: T, x: 0.2, y: 1.4, text: "  Aorta\r\n  links  \u0007", size: 0.9 }, { id: "bad id!", x: 0, y: 0, text: "x" }, { id: "t2", x: 0, y: 0, text: "   " }] };
+  const parsed = parseOcclusion(withTexts)!;
+  assert.deepEqual(parsed.texts, [{ id: T, x: 0.2, y: 1, text: "Aorta\nlinks", size: 0.5 }], "inside the picture, lines kept, size limited");
+  assert.equal(parseOcclusion(masks())!.texts, undefined, "an attribute without texts reads as before");
+  assert.equal(occlusionAttribute(masks()), JSON.stringify(parseOcclusion(masks())), "and is stored as before");
+  assert.equal(parseOcclusion({ v: 1, mode: "hide-all", masks: [], texts: withTexts.texts }), null, "texts alone are no card");
+  assert.deepEqual(occlusionTargets(parsed).map((t) => t.key), [`o:${A}`, `g:${G}`], "texts give no cards");
+  // A text may not reuse a mask's id.
+  assert.equal(parseOcclusion({ ...masks(), texts: [{ id: A, x: 0, y: 0, text: "x" }] })!.texts, undefined);
+  // Kept by the document cleaning and given to the card.
+  const clean = cleanHtml(`<p>${img(withTexts as never)}</p>`);
+  assert.deepEqual(occludedImages(clean)[0].occlusion.texts?.map((x) => x.text), ["Aorta\nlinks"]);
+  const settings = studySettingsSchema.parse({ version: 1, type: { fixed: "occlusion" }, front: { field: "title" }, back: { document: "all" } });
+  const [card] = deriveCards(settings, fields, { title: "Herz" }, clean);
+  assert.deepEqual(card.occlusion?.texts?.map((x) => x.id), [T]);
+});
+
+test("Anki's text shapes: escapes, font size and scale, written back with number 0", () => {
+  let n = 0;
+  const next = () => `t${++n}`;
+  const field =
+    "{{c1::image-occlusion:rect:left=.5:top=.5:width=.1:height=.1}}<br>{{c0::image-occlusion:text:left=.2:top=.3:text=Aorta\\: links &amp; rechts:scale=2:fs=.04}}<br>{{c0::image-occlusion:text:left=.1:top=.1:text=Ohne Größe}}";
+  const read = fromAnkiOcclusion(field, next, { width: 800, height: 400 });
+  assert.deepEqual(
+    read.occlusion!.texts?.map((x) => [x.text, x.x, x.y, x.size]),
+    [
+      ["Aorta: links & rechts", 0.2, 0.3, 0.08],
+      ["Ohne Größe", 0.1, 0.1, 0.1],
+    ],
+    "fs times scale; without fs Anki's 40 px of the picture's height",
+  );
+  assert.equal(fromAnkiOcclusion("{{c1::image-occlusion:rect:left=.5:top=.5:width=.1:height=.1}}<br>{{c0::image-occlusion:text:left=.1:top=.1:text=x}}", next).occlusion!.texts?.[0].size, 0.05, "no size known");
+  // Pixels (Anki 23.10): the font size in pixels too.
+  const pixels = fromAnkiOcclusion("{{c1::image-occlusion:rect:left=64:top=40:width=128:height=80}}<br>{{c0::image-occlusion:text:left=64:top=200:text=Mitte:fs=20}}", next, { width: 640, height: 400 });
+  assert.deepEqual(pixels.occlusion!.texts?.map((x) => [x.x, x.y, x.size]), [[0.1, 0.5, 0.05]]);
+  // Only texts, no mask: nothing (counted as skipped).
+  const alone = fromAnkiOcclusion("{{c0::image-occlusion:text:left=.1:top=.1:text=x}}", next);
+  assert.equal(alone.occlusion, null);
+  assert.equal(alone.skipped, 1);
+  // Written back as Anki writes them, read again the same.
+  const written = toAnkiOcclusion(read.occlusion!);
+  assert.match(written, /\{\{c0::image-occlusion:text:left=\.2:top=\.3:text=Aorta\\: links & rechts:scale=1:fs=\.08\}\}/);
+  assert.deepEqual(fromAnkiOcclusion(written, next).occlusion!.texts?.map((x) => [x.text, x.x, x.y, x.size]), read.occlusion!.texts?.map((x) => [x.text, x.x, x.y, x.size]));
+  assert.deepEqual(occlusionTargets(fromAnkiOcclusion(written, next).occlusion!).length, 1, "still one card");
 });
 
 // ---- the deck ----

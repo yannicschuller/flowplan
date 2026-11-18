@@ -1,7 +1,9 @@
 // The arithmetic of zooming a scrolled surface with two fingers, a trackpad
 // pinch (ctrl + wheel, Safari's gesture events) or steps (buttons, keys).
 // Pure, for the tests; notebooks and the PDF viewer use it
-// (components/notebook/use-pinch-zoom.ts).
+// (components/notebook/use-pinch-zoom.ts), the picture of an image
+// occlusion card zooms inside its frame (components/study/occlusion-zoom.ts,
+// the "frame" functions at the end).
 //
 // A pinch is measured against its start: the factor is the distance of the
 // fingers now over their distance when the second one landed – never the
@@ -83,3 +85,39 @@ export function anchorIndex(rects: Rect[], point: XY) {
   });
   return best;
 }
+
+// ---- Zooming inside a frame (no scrolling) ----
+// The content of a fixed frame is drawn scaled by `scale` from its top left
+// and moved by `pan` (CSS translate, then scale). It always covers the
+// frame: at 1 it sits exactly in it, zoomed in it cannot be pulled away
+// from an edge.
+export type FrameView = { scale: number; pan: XY };
+export type Size = { width: number; height: number };
+export const FRAME_VIEW: FrameView = { scale: 1, pan: { x: 0, y: 0 } };
+
+export function clampPan(pan: XY, scale: number, size: Size): XY {
+  const clamp = (value: number, span: number) => Math.min(0, Math.max(span * (1 - scale), value));
+  return { x: clamp(pan.x, size.width), y: clamp(pan.y, size.height) };
+}
+// A pinch from `start` (the view and the fingers' midpoint when the second
+// finger landed, in the frame's pixels) to the midpoint `mid` now, scaled by
+// `factor` (pinchFactor): the point that was under the fingers stays under
+// them, moving the fingers pans.
+export function framePinch(start: FrameView & { mid: XY }, mid: XY, factor: number, limits: ZoomLimits, size: Size): FrameView {
+  const scale = clampZoom(start.scale * factor, limits);
+  const local = { x: (start.mid.x - start.pan.x) / start.scale, y: (start.mid.y - start.pan.y) / start.scale };
+  return { scale, pan: clampPan(pinchTranslate(local, { x: 0, y: 0 }, mid, scale), scale, size) };
+}
+// One finger moving a zoomed picture by `delta` from where it started.
+export const framePan = (start: FrameView, delta: XY, size: Size): FrameView => ({
+  scale: start.scale,
+  pan: clampPan({ x: start.pan.x + delta.x, y: start.pan.y + delta.y }, start.scale, size),
+});
+// The view kept when the fingers leave: hardly zoomed is not zoomed.
+export function settleView(view: FrameView, limits: ZoomLimits): FrameView {
+  return view.scale < 1.05 ? FRAME_VIEW : { scale: clampZoom(view.scale, limits), pan: view.pan };
+}
+// A second tap close to the first in time and place.
+export type Tap = { at: number; x: number; y: number };
+export const isDoubleTap = (previous: Tap | null, now: Tap, ms = 320, near = 30) =>
+  !!previous && now.at - previous.at <= ms && Math.hypot(now.x - previous.x, now.y - previous.y) <= near;

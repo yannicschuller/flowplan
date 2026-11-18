@@ -10,7 +10,7 @@ import { cellText } from "./cell-text";
 import { isFormattedText, toPlain } from "./inline-markdown";
 import { clozeFilled, clozeNumbers } from "./study-cloze";
 import { typeOfOption, type CardType, type StudySettings } from "./study-schema";
-import { occludedImages, occlusionTargets, withoutOccludedImages, type OcclusionMask, type OcclusionMode } from "./study-occlusion";
+import { occludedImages, occlusionTargets, withoutOccludedImages, type OcclusionMask, type OcclusionMode, type OcclusionText } from "./study-occlusion";
 import type { Field } from "./types";
 
 export type CardSide = { text: string; formatted?: boolean } | { html: string };
@@ -18,7 +18,8 @@ export type DerivedKind = CardType;
 // An image occlusion card (lib/study-occlusion.ts): the picture with all its
 // masks, the ones asked (a mask or a group) and the card's place among the
 // record's ("Bereich 3 von 7").
-export type OcclusionCard = { src: string; alt: string; mode: OcclusionMode; masks: OcclusionMask[]; target: string[]; index: number; total: number };
+// `texts`: shown on the picture, never asked (Anki's text shapes).
+export type OcclusionCard = { src: string; alt: string; mode: OcclusionMode; masks: OcclusionMask[]; texts?: OcclusionText[]; target: string[]; index: number; total: number };
 export type DerivedCard = {
   sub: string;
   kind: DerivedKind;
@@ -212,7 +213,7 @@ export function deriveCards(settings: StudySettings, fields: Field[], cells: Rec
       back,
       ...extras,
       ...tagged,
-      occlusion: { src: image.src, alt: image.alt, mode: image.occlusion.mode, masks: image.occlusion.masks, target: target.masks, index: i + 1, total: targets.length },
+      occlusion: { src: image.src, alt: image.alt, mode: image.occlusion.mode, masks: image.occlusion.masks, ...(image.occlusion.texts ? { texts: image.occlusion.texts } : {}), target: target.masks, index: i + 1, total: targets.length },
     }));
   }
   if (type === "cloze" || type === "basic") {

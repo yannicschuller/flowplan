@@ -26,7 +26,10 @@ export type CardSuggestion = {
 export type FlashcardSourceInput =
   | { kind: "page"; pageId: string; rowId?: string | null }
   | { kind: "selection"; pageId: string; rowId?: string | null; text: string }
-  | { kind: "file"; fileId: string }
+  // `text`: the text of some of a PDF's pages, read in the browser (the
+  // page range of the dialog or the PDF viewer); without it the file's
+  // whole extracted text.
+  | { kind: "file"; fileId: string; text?: string; pages?: { from: number; to: number } }
   | { kind: "text"; text: string };
 
 export type ProposeCardsResult = {

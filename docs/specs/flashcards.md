@@ -1068,7 +1068,8 @@ landen sie automatisch als offizielle Pakete im Marketplace.
 ### 9.1 Ablauf
 
 Einstiege: Lernen-Ansicht „Mit KI erstellen“, Seitenmenü „Lernkarten
-erstellen…“, Textmenü einer Auswahl, PDF-Betrachter („Aus diesem PDF“).
+erstellen…“, Textmenü einer Auswahl, PDF-Betrachter („Lernkarten erstellen“:
+die gezeigte Seite oder ein Seitenbereich).
 
 ```
 Quelle wählen ─► Optionen ─► KI schlägt vor ─► Prüfen & bearbeiten ─► Hinzufügen
@@ -1869,16 +1870,27 @@ weil sie erst mit Zuordnung sichtbar wird.
   (legt fehlende Auswahl-Optionen/Tags an), Kartentyp über die Option der
   Kartentyp-Eigenschaft (`typeOfOption`), MC-Optionen in
   `settings.study.choices`, Tags für alle; neuer Stapel = Datenbank der
-  Art „Lernkarten“. Stapel mit Dokumentseiten nehmen keine KI-Karten (409).
+  Art „Lernkarten“. Stapel mit Dokumentseiten (#342): die Seiten gehen ins
+  Dokument des Eintrags – Vorderseite über der ersten Linie, Rückseite
+  darunter (`cardDocument`, Markdown → Editor-HTML, Lücken als
+  Lücken-Markierung, keine Bilder), über `rows.import` mit `documents`;
+  der Titel bekommt die Vorderseite als Klartext, wenn er keine Seite ist.
+  Der Dublettenvergleich liest dann die Vorderseiten aus den Dokumenten.
   Audit `ai.cards` mit der Zahl.
 - Einstiege: „Mit KI erstellen“ in der Lernen-Ansicht (Stapel
   vorgewählt), Textmenü „Lernkarten erstellen“ bei einer Auswahl (nur mit
   Maus/Tastatur-Auswahl sichtbar, wie das Textmenü), Suchpalette
   „Lernkarten mit KI erstellen“ (offene Seite bzw. offener Stapel). Alle
   über das Fenster-Ereignis `flowplan:flashcards-ai`; nach dem Hinzufügen
-  lädt `flowplan:study-changed` die Lernen-Ansicht neu. Der Einstieg im
-  PDF-Betrachter („Aus diesem PDF“) fehlt noch – die Dateiquelle im Dialog
-  deckt PDFs der Seite ab.
+  lädt `flowplan:study-changed` die Lernen-Ansicht neu. Im PDF-Betrachter
+  „Lernkarten erstellen“ (#342): schließt den Betrachter und öffnet den
+  Dialog mit dem PDF als Dateiquelle und der gezeigten Seite als Bereich
+  („Seiten von … bis …“, höchstens 300, oder „Alle Seiten“). Den Text der
+  Seiten liest pdf.js im Browser (`pdfPagesText`); er geht als `text` der
+  Dateiquelle mit, die der Server wie die ganze Datei prüft. Der Betrachter
+  hat keine Textebene – eine Textauswahl gibt es dort nicht, der
+  Seitenbereich ersetzt sie. Ob der Knopf erscheint, fragt der Betrachter
+  (außerhalb des Arbeitsbereichs) über `flowplan:flashcards-ai-probe`.
 - Galerie: Szene `study-anki-import`; der KI-Dialog steht wie alle
   KI-Dialoge in `scripts/gallery/uncovered.json` (die Galerie hat keinen
   KI-Anbieter); Bilder davon aus `tests/browser/study-ai.spec.ts`
@@ -2147,8 +2159,9 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   gleiche Cloze-Nummer = Gruppe (eine Karte, wie in Anki); `oi=1` an
   irgendeiner Form → `hide-all`, sonst `hide-one`. Anki vor 23.12
   speicherte Pixel: mit der Bildgröße (`imageSize`) in Anteile
-  umgerechnet, ohne lesbares Bild übersprungen. Text-Formen und
-  unbekannte fallen weg (Zahl im Bericht). Notizen ohne Masken oder Bild
+  umgerechnet, ohne lesbares Bild übersprungen. Text-Formen werden
+  Texte auf dem Bild (#343, unten); unbekannte fallen weg (Zahl im
+  Bericht). Notizen ohne Masken oder Bild
   werden Einträge ohne Karte (Hinweis). Lernstand: Ankis Karte `ord` =
   Cloze-Nummer − 1 → Schlüssel der Maske/Gruppe.
 - Export: als Ankis Notiztyp „Image Occlusion“ (`originalStockKind` 6,
@@ -2158,13 +2171,40 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   Fehlermeldung der Vorlage; ein Basic-mit-Bild-Ersatz im Dialog (§8.2)
   wurde nicht gebaut.
 
+**Nachgezogen (#343)**
+
+- Zoomen mit zwei Fingern im Fokusmodus (`components/study/occlusion-zoom.ts`,
+  Rechnung in `lib/pinch-zoom.ts` „frame“): nur das Bild im Rahmen
+  (CSS-Transform über das Style-Objekt, CSP-konform), 1–5×, am
+  Fingermittelpunkt verankert; der Rahmen bleibt immer gefüllt. Abgrenzung
+  zu den Wischgesten über ein „Gate“: zwei Finger irgendwo auf der Karte
+  zoomen (ein begonnenes Wischen wird abgebrochen), vergrößert verschiebt
+  ein Finger das Bild statt zu werten, Tippen deckt weiter auf,
+  Doppeltipp setzt zurück, unvergrößert wertet Wischen wie bisher. Die
+  Zeiger-Listener laufen vor Reacts Handlern (pointerdown an der Karte,
+  Bewegungen am Fenster in der Capture-Phase); Safari bekommt
+  `touchmove`/`gesture*` mit `preventDefault`, damit die Seite nicht
+  zoomt. Jede neue Karte beginnt ohne Zoom. Maus und Stift bleiben außen
+  vor; im Editor und beim öffentlichen Link kein Zoom.
+- Ankis Text-Formen als `texts` im `data-occlusion`
+  (`{ id, x, y, text, size }`, linke obere Ecke in Anteilen, Schriftgröße
+  als Anteil der Bildhöhe; Ankis `fs` × `scale`, ohne `fs` 40 px der
+  Bildhöhe, Pixel vor 23.12 über die Bildgröße). Optional: ältere
+  Attribute lesen sich wie zuvor, ältere Versionen ignorieren das Feld;
+  Texte allein ergeben keine Karte, eine Text-ID darf keine Masken-ID
+  sein. Gezeigt auf beiden Seiten über den Masken (eigene SVG-Ebene im
+  Seitenverhältnis des Bildes, Text mit hellem Rand), für Screenreader in
+  der Bildunterschrift; nie abgefragt und nicht im Inhalts-Hash (ein
+  geänderter Text markiert die Karte nicht als geändert). Der Editor
+  zeigt sie, ändert ihren Wortlaut oder entfernt sie (ohne Rückgängig).
+  Der Export schreibt sie als Ankis Text-Formen mit Nummer 0
+  (`{{c0::image-occlusion:text:…}}`, wie Anki selbst); `\` und `:` in
+  Werten werden escaped und beim Lesen richtig entschlüsselt.
+
 **Offen**
 
-- Zoomen per Pinch in der Karte (`lib/pinch-zoom.ts`) – die Gesten des
-  Fokusmodus (Wischen) bräuchten eine Abgrenzung; bis dahin zoomt der
-  Browser.
-- Ankis Text-Formen (Beschriftungen auf dem Bild) und „Basic mit
-  maskiertem Bild“ als Export-Alternative.
+- Neue Texte im Editor anlegen und verschieben.
+- „Basic mit maskiertem Bild“ als Export-Alternative.
 - Chinesische Texte des Editors (fr vollständig).
 
 ---

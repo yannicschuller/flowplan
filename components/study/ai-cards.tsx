@@ -20,13 +20,25 @@ import { addAiFlashcards, proposeAiFlashcards } from "@/lib/ai/client";
 import { AI_CARDS_MAX, AI_CARD_TYPES, type AiCardType, type CardSuggestion, type FlashcardSourceInput, type ProposeCardsResult } from "@/lib/ai/flashcards-shared";
 import { parseClozeText } from "@/lib/study-cloze";
 import type { Space } from "@/lib/types";
+import { isPdfName, pdfPageCount, pdfPagesText } from "../pdf-viewer";
 
-// Where the dialog was opened from.
-export type AiCardsStart = { pageId?: string | null; rowId?: string | null; pageTitle?: string; text?: string; deckId?: string | null };
+// Where the dialog was opened from. `file`: a PDF or other attachment (the
+// PDF viewer's "Lernkarten erstellen", with the pages to take).
+export type AiCardsStart = {
+  pageId?: string | null;
+  rowId?: string | null;
+  pageTitle?: string;
+  text?: string;
+  deckId?: string | null;
+  file?: { id: string; name: string; pages?: { from: number; to: number } };
+};
 type SourceKind = FlashcardSourceInput["kind"];
 type Deck = { pageId: string; title: string };
 type FileItem = { id: string; name: string; pageTitle: string; pageId: string };
+type Range = { from: number; to: number };
 const NEW_DECK = "new";
+// Pages read in the browser at most (a longer part goes by the whole file).
+const MAX_RANGE = 300;
 
 export function StudyAiCards({
   open,
@@ -44,9 +56,13 @@ export function StudyAiCards({
   onOpenPage?: (pageId: string) => void;
 }) {
   const t = useT();
-  const [kind, setKind] = useState<SourceKind>(start.text ? "selection" : start.pageId ? "page" : "text"),
+  const [kind, setKind] = useState<SourceKind>(start.file ? "file" : start.text ? "selection" : start.pageId ? "page" : "text"),
     [text, setText] = useState(""),
-    [fileId, setFileId] = useState(""),
+    [fileId, setFileId] = useState(start.file?.id || ""),
+    // A PDF's pages: all (null) or a range, read in the browser.
+    [range, setRange] = useState<Range | null>(start.file?.pages || null),
+    [pageCount, setPageCount] = useState<number | null>(null),
+    [rangeText, setRangeText] = useState<{ key: string; text: string } | null>(null),
     [files, setFiles] = useState<FileItem[] | null>(null),
     [decks, setDecks] = useState<Deck[] | null>(null),
     [deck, setDeck] = useState(start.deckId || ""),
@@ -86,19 +102,65 @@ export function StudyAiCards({
       .then(([pdfs, others]) => {
         const all = [...pdfs, ...others.filter((f) => /\.(docx?|pptx?|xlsx?|odt|txt|md)$/i.test(f.name))];
         const own = start.pageId ? all.filter((f) => f.pageId === start.pageId) : [];
-        const list = own.length ? own : all;
+        const found = own.length ? own : all;
+        // The file the dialog was opened with comes first (also when the
+        // list does not hold it, e.g. a PDF of a record).
+        const given = start.file;
+        const list = given ? [found.find((f) => f.id === given.id) || { id: given.id, name: given.name, pageTitle: "", pageId: "" }, ...found.filter((f) => f.id !== given.id)] : found;
         setFiles(list);
         setFileId((current) => current || list[0]?.id || "");
       })
-      .catch(() => setFiles([]));
-  }, [open, kind, files, workspaceId, start.pageId]);
+      .catch(() => setFiles(start.file ? [{ id: start.file.id, name: start.file.name, pageTitle: "", pageId: "" }] : []));
+  }, [open, kind, files, workspaceId, start.pageId, start.file]);
+  const file = files?.find((f) => f.id === fileId);
+  const pdf = kind === "file" && !!file && isPdfName(file.name);
+  const fileSrc = `/api/files/${fileId}`;
+  // A PDF's page count (for the range), once a PDF is chosen.
+  useEffect(() => {
+    setPageCount(null);
+    if (!open || !pdf) return;
+    let alive = true;
+    void pdfPageCount(fileSrc)
+      .then((n) => alive && setPageCount(n))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open, pdf, fileSrc]);
+  // The text of the chosen pages, read in the browser a moment after the
+  // range settles.
+  // Pages within the document and at most MAX_RANGE of them (the fields
+  // keep what is typed).
+  const pages = useMemo((): Range | null => {
+    if (!range) return null;
+    const last = pageCount || 100_000;
+    const from = Math.max(1, Math.min(last, Math.round(range.from) || 1));
+    return { from, to: Math.max(from, Math.min(last, from + MAX_RANGE - 1, Math.round(range.to) || from)) };
+  }, [range, pageCount]);
+  const rangeKey = pdf && pages ? `${fileId}:${pages.from}-${pages.to}` : "";
+  useEffect(() => {
+    if (!rangeKey || !pages) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      void pdfPagesText(fileSrc, pages.from, pages.to)
+        .then((read) => alive && setRangeText({ key: rangeKey, text: read.text }))
+        .catch(() => alive && setRangeText({ key: rangeKey, text: "" }));
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeKey]);
+  const pagesText = rangeKey && rangeText?.key === rangeKey ? rangeText.text : null;
   const source = useMemo((): FlashcardSourceInput | null => {
     if (kind === "page" && start.pageId) return { kind, pageId: start.pageId, rowId: start.rowId || null };
     if (kind === "selection" && start.pageId && start.text) return { kind, pageId: start.pageId, rowId: start.rowId || null, text: start.text };
+    if (kind === "file" && fileId && rangeKey && pages) return pagesText?.trim() ? { kind, fileId, text: pagesText, pages } : null;
     if (kind === "file" && fileId) return { kind, fileId };
     if (kind === "text" && text.trim()) return { kind, text };
     return null;
-  }, [kind, start.pageId, start.rowId, start.text, fileId, text]);
+  }, [kind, start.pageId, start.rowId, start.text, fileId, text, rangeKey, pages, pagesText]);
   const request = (extra: Record<string, unknown> = {}) => ({
     workspaceId,
     source,
@@ -234,6 +296,49 @@ export function StudyAiCards({
               ) : (
                 <p className="muted">{t("Keine PDFs oder Dokumente gefunden.", "No PDFs or documents found.")}</p>
               ))}
+            {pdf && (
+              <fieldset className="study-ai-pages">
+                <legend>{t("Seiten", "Pages")}</legend>
+                <label className="checkbox-label">
+                  <input type="radio" name="study-ai-pages" checked={!range} onChange={() => setRange(null)} />
+                  {pageCount ? t(`Alle Seiten (${pageCount})`, `All pages (${pageCount})`) : t("Alle Seiten", "All pages")}
+                </label>
+                <span className="study-ai-range">
+                  <label className="checkbox-label">
+                    <input type="radio" name="study-ai-pages" checked={!!range} onChange={() => setRange(start.file?.pages || { from: 1, to: Math.min(pageCount || 1, 10) })} />
+                    {t("Seiten von", "Pages from")}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={pageCount || undefined}
+                    value={range?.from ?? ""}
+                    disabled={!range}
+                    aria-label={t("Erste Seite", "First page")}
+                    onChange={(e) => range && setRange({ ...range, from: Number(e.target.value) })}
+                  />
+                  <span>{t("bis", "to")}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={pageCount || undefined}
+                    value={range?.to ?? ""}
+                    disabled={!range}
+                    aria-label={t("Letzte Seite", "Last page")}
+                    onChange={(e) => range && setRange({ ...range, to: Number(e.target.value) })}
+                  />
+                </span>
+                {range && pages && (
+                  <p className="muted" role="status">
+                    {pagesText === null
+                      ? t("Die Seiten werden gelesen …", "Reading the pages …")
+                      : !pagesText.trim()
+                        ? t("Auf diesen Seiten steht kein lesbarer Text (z. B. ein Scan). Mit „Alle Seiten“ nimmt Flowplan den erkannten Text der Datei.", "These pages have no readable text (a scan, for example). With “All pages” Flowplan takes the file’s recognised text.")
+                        : t(`Seiten ${pages.from}–${pages.to}: ${pagesText.length.toLocaleString()} Zeichen`, `Pages ${pages.from}–${pages.to}: ${pagesText.length.toLocaleString()} characters`)}
+                  </p>
+                )}
+              </fieldset>
+            )}
             {kind === "text" && (
               <label className="study-import-text">
                 {t("Text", "Text")}
@@ -313,6 +418,7 @@ export function StudyAiCards({
             <p className="study-ai-head">
               {cards.length === 1 ? t("1 Karte vorgeschlagen", "1 card proposed") : t(`${cards.length} Karten vorgeschlagen`, `${cards.length} cards proposed`)}
               {result.title && ` · ${t(`Quelle: „${result.title}“`, `Source: “${result.title}”`)}`}
+              {source?.kind === "file" && source.pages && ` · ${t(`Seiten ${source.pages.from}–${source.pages.to}`, `pages ${source.pages.from}–${source.pages.to}`)}`}
             </p>
             {!cards.length && <p className="muted">{t("In der Quelle fand die KI nichts für Karten.", "The AI found nothing for cards in the source.")}</p>}
             <ul className="study-ai-list" aria-label={t("Vorgeschlagene Karten", "Proposed cards")}>

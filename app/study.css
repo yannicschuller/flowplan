@@ -659,7 +659,8 @@
   animation: none;
 }
 [data-motion="reduced"] .study-card,
-[data-motion="off"] .study-card {
+[data-motion="off"] .study-card,
+[data-motion="off"] .occlusion-zoom.is-settling {
   transition: none;
 }
 
@@ -1051,20 +1052,37 @@
 
 /* ---- AI flashcards (components/study/ai-cards.tsx) ---- */
 .study-ai-source,
+.study-ai-pages,
 .study-ai-types {
   border: 0;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px 18px;
   min-width: 0;
 }
 .study-ai-source legend,
+.study-ai-pages legend,
 .study-ai-types legend {
   padding: 0;
   margin-bottom: 4px;
   font-weight: 600;
+}
+/* A PDF's page range: "Seiten von [3] bis [5]" on one line. */
+.study-ai-range {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.study-ai-range input[type="number"] {
+  width: 5.5em;
+}
+.study-ai-pages > p {
+  flex-basis: 100%;
+  margin: 0;
 }
 .study-ai-field {
   display: grid;
@@ -1504,6 +1522,35 @@
   height: 100%;
   overflow: visible;
 }
+/* Zooming the picture with two fingers (components/study/occlusion-zoom.ts):
+   the frame clips, the picture and its layers scale from the top left. */
+.occlusion-zoom {
+  position: relative;
+  transform-origin: 0 0;
+}
+.occlusion-zoom.is-settling {
+  transition: transform 160ms ease-out;
+}
+.occlusion-frame.zoomable {
+  overflow: hidden;
+  border-radius: 6px;
+  touch-action: none;
+}
+.occlusion-frame.zoomable.is-zoomed {
+  cursor: move;
+  outline: 1px solid var(--border);
+}
+/* Texts on the picture (Anki's text shapes): shown, never asked – dark on a
+   light halo, readable on any picture, above the masks. */
+.occlusion-text {
+  fill: #1d1b20;
+  stroke: #ffffffe6;
+  stroke-width: 0.22em;
+  stroke-linejoin: round;
+  paint-order: stroke;
+  font-weight: 600;
+  pointer-events: none;
+}
 .occlusion-mask {
   stroke-width: 1.5px;
 }
@@ -1673,6 +1720,30 @@ polyline.occlusion-draft {
 .occlusion-list input {
   min-width: 0;
   padding: 5px 8px;
+}
+/* The texts on the picture (imported from Anki), below the masks. */
+.occlusion-texts-head {
+  margin: 0 0 4px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.occlusion-texts-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.occlusion-texts-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+.occlusion-texts-list textarea {
+  min-width: 0;
+  padding: 5px 8px;
+  resize: vertical;
 }
 .occlusion-pick {
   padding: 0;

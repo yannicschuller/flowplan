@@ -2848,11 +2848,21 @@ async function runCommand(
             pid(),
           );
         }
+        // Optional: each record's document (HTML, sanitized), by the
+        // index of its record – the AI flashcards of a deck that reads a
+        // side from the documents (lib/ai/flashcards.ts, #342).
+        const documents = z
+          .array(z.string().max(200000).nullable())
+          .max(imported.length)
+          .optional()
+          .parse(b.documents);
         result = { imported: imported.length, newOptions: options.added };
-        await forEachAsync(imported, async (cells, i) =>
+        await forEachAsync(imported, async (cells, i) => {
+          const rid = id();
+          const html = documents?.[i] ? cleanHtml(documents[i]) : "";
           await run(
-            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
-            id(),
+            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
+            rid,
             pid(),
             // Tag-backed properties create missing tags where allowed (#79);
             // names that may not become tags are left out.
@@ -2860,8 +2870,10 @@ async function runCommand(
             Date.now() + i,
             user.id,
             user.id,
-          ),
-        );
+            html,
+          );
+          if (html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
+        });
         break;
       }
       case "row.update": {

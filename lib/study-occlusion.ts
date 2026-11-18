@@ -10,10 +10,16 @@
 //   highlighted ("Alle verdecken, eine abfragen", Anki's default);
 //   "hide-one": only the one asked is covered ("Eine verdecken, Rest
 //   sichtbar").
+// - `texts` (optional, #343): text shown on the picture and never asked –
+//   Anki's text shapes – `{ id, x, y, text, size }`, the top left corner in
+//   proportions and the font size as a proportion of the picture's height.
+//   Older versions ignore the field; an attribute without it reads as
+//   before.
 // - Anki's Image Occlusion notes (≥ 23.10) keep their masks in the field
 //   "Occlusion" as {{c1::image-occlusion:rect:left=.2:top=.3:width=.1:height=.05:oi=1}}
-//   (also ellipse with rx/ry and polygon with points); read and written
-//   here for the import and the export.
+//   (also ellipse with rx/ry, polygon with points and text with
+//   text/scale/fs, the latter as {{c0::…}}); read and written here for the
+//   import and the export.
 // Client-safe and pure (tests/study-occlusion.test.ts).
 import { Parser } from "htmlparser2";
 
@@ -34,9 +40,14 @@ export type OcclusionMask = {
   group?: string;
   label?: string;
 };
-export type Occlusion = { v: 1; mode: OcclusionMode; masks: OcclusionMask[] };
+export type OcclusionText = { id: string; x: number; y: number; text: string; size: number };
+export type Occlusion = { v: 1; mode: OcclusionMode; masks: OcclusionMask[]; texts?: OcclusionText[] };
 
 export const MAX_MASKS = 100;
+export const MAX_TEXTS = 50;
+export const MAX_TEXT = 500;
+// The font size of a text, as a proportion of the picture's height.
+export const TEXT_SIZE = { min: 0.01, max: 0.5, fallback: 0.05 };
 export const MAX_POINTS = 64;
 export const MAX_LABEL = 200;
 // The smallest side of a mask (a click is no mask).
@@ -95,8 +106,29 @@ export function cleanMask(raw: unknown): OcclusionMask | null {
   return { id: m.id, shape, x, y, w, h, ...extra };
 }
 
+// One text on the picture as stored, or null (lines kept, at most ten).
+export function cleanText(raw: unknown): OcclusionText | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = raw as Record<string, unknown>;
+  if (typeof m.id !== "string" || !ID.test(m.id) || typeof m.text !== "string") return null;
+  const text = m.text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]+/g, " ")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 10)
+    .join("\n")
+    .slice(0, MAX_TEXT);
+  const x = unit(m.x),
+    y = unit(m.y);
+  if (!text || x === null || y === null) return null;
+  const size = typeof m.size === "number" && Number.isFinite(m.size) ? round(Math.min(TEXT_SIZE.max, Math.max(TEXT_SIZE.min, m.size))) : TEXT_SIZE.fallback;
+  return { id: m.id, x, y, text, size };
+}
+
 // The stored attribute (JSON text or an object) as masks; null when there
-// is no mask.
+// is no mask (texts alone are no card).
 export function parseOcclusion(raw: unknown): Occlusion | null {
   let value = raw;
   if (typeof value === "string") {
@@ -118,7 +150,16 @@ export function parseOcclusion(raw: unknown): Occlusion | null {
     masks.push(mask);
   }
   if (!masks.length) return null;
-  return { v: 1, mode: OCCLUSION_MODES.find((m) => m === v.mode) ?? "hide-all", masks };
+  const texts: OcclusionText[] = [];
+  const storedTexts = (value as { texts?: unknown }).texts;
+  for (const item of Array.isArray(storedTexts) ? storedTexts.slice(0, MAX_TEXTS) : []) {
+    const text = cleanText(item);
+    if (text && !seen.has(text.id)) {
+      seen.add(text.id);
+      texts.push(text);
+    }
+  }
+  return { v: 1, mode: OCCLUSION_MODES.find((m) => m === v.mode) ?? "hide-all", masks, ...(texts.length ? { texts } : {}) };
 }
 // The attribute as stored: cleaned, or null (the attribute goes).
 export function occlusionAttribute(raw: unknown): string | null {
@@ -203,13 +244,32 @@ export function withoutOccludedImages(html: string): string {
 // ---- Anki ----
 
 type AnkiShape = { n: number; shape: OcclusionShape | "text" | string; props: Record<string, string> };
+// The parts of a shape: a backslash escapes the next character ("\:" a
+// colon, "\\" a backslash).
+function ankiParts(body: string) {
+  const parts = [""];
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === "\\" && i + 1 < body.length) parts[parts.length - 1] += body[++i];
+    else if (c === ":") parts.push("");
+    else parts[parts.length - 1] += c;
+  }
+  return parts.map((p) => p.trim());
+}
 // The shapes of Anki's "Occlusion" field: {{cN::image-occlusion:<shape>:key=value:…}}
 // (a colon in a value is escaped as "\:").
 export function ankiShapes(field: string): AnkiShape[] {
   const out: AnkiShape[] = [];
-  const text = field.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+  const text = field
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&apos;/g, "'")
+    .replace(/&amp;/g, "&");
   for (const m of text.matchAll(/\{\{c(\d{1,3})::image-occlusion:([\s\S]*?)\}\}/g)) {
-    const parts = m[2].split(/(?<!\\):/).map((p) => p.replace(/\\:/g, ":").trim());
+    const parts = ankiParts(m[2]);
     const shape = parts.shift() || "";
     const props: Record<string, string> = {};
     for (const part of parts) {
@@ -220,13 +280,15 @@ export function ankiShapes(field: string): AnkiShape[] {
   }
   return out;
 }
-export type AnkiOcclusion = { occlusion: Occlusion | null; numbers: Map<number, string>; skipped: number; pixels: boolean };
+export type AnkiOcclusion = { occlusion: Occlusion | null; numbers: Map<number, string>; skipped: number; texts: number; pixels: boolean };
 // Anki's masks as Flowplan's: one mask per shape, the shapes of one cloze
 // number a group (one card, as in Anki), "oi=1" (occlude inactive) on any
 // shape makes the picture "hide-all". Anki before 23.12 stored pixels:
 // with the picture's `size` they become proportions, without it they are
-// skipped (`pixels`). Text shapes and unknown ones are skipped. `numbers`:
-// each cloze number's card key (for the learning state).
+// skipped (`pixels`). Text shapes become texts on the picture (shown, not
+// asked; Anki's font size is a proportion of the height, times the scale,
+// 40 px without one); unknown shapes are skipped. `numbers`: each cloze
+// number's card key (for the learning state).
 export function fromAnkiOcclusion(field: string, newId: () => string, size?: { width: number; height: number } | null): AnkiOcclusion {
   const shapes = ankiShapes(field);
   const numbers = new Map<number, string>();
@@ -237,10 +299,21 @@ export function fromAnkiOcclusion(field: string, newId: () => string, size?: { w
   );
   const sx = absolute ? (size?.width ?? 0) : 1,
     sy = absolute ? (size?.height ?? 0) : 1;
-  if (absolute && !(sx > 0 && sy > 0)) return { occlusion: null, numbers, skipped: shapes.length, pixels: true };
+  if (absolute && !(sx > 0 && sy > 0)) return { occlusion: null, numbers, skipped: shapes.length, texts: 0, pixels: true };
   const byNumber = new Map<number, AnkiShape[]>();
+  const texts: OcclusionText[] = [];
   let skipped = 0;
   for (const s of shapes) {
+    if (s.shape === "text") {
+      const scale = num(s.props.scale) > 0 ? num(s.props.scale) : 1;
+      const fs = num(s.props.fs);
+      // Pixels (before 23.12) by the picture's height; relative otherwise.
+      const fontSize = fs > 0 ? (absolute || fs > 1 ? fs / (size_height(size) || NaN) : fs) : 40 / (size_height(size) || NaN);
+      const text = texts.length < MAX_TEXTS ? cleanText({ id: newId(), x: num(s.props.left) / sx, y: num(s.props.top) / sy, text: s.props.text || "", size: Number.isFinite(fontSize) ? fontSize * scale : TEXT_SIZE.fallback * scale }) : null;
+      if (text) texts.push(text);
+      else skipped++;
+      continue;
+    }
     if (s.shape !== "rect" && s.shape !== "ellipse" && s.shape !== "polygon") {
       skipped++;
       continue;
@@ -290,12 +363,22 @@ export function fromAnkiOcclusion(field: string, newId: () => string, size?: { w
       for (const [n, k] of numbers) if (k === key) numbers.set(n, maskKey(m));
     }
   const limited = masks.slice(0, MAX_MASKS);
-  return { occlusion: limited.length ? { v: 1, mode: hideAll ? "hide-all" : "hide-one", masks: limited } : null, numbers, skipped: skipped + masks.length - limited.length, pixels: absolute };
+  return {
+    occlusion: limited.length ? { v: 1, mode: hideAll ? "hide-all" : "hide-one", masks: limited, ...(texts.length ? { texts } : {}) } : null,
+    numbers,
+    skipped: skipped + masks.length - limited.length + (limited.length ? 0 : texts.length),
+    texts: limited.length ? texts.length : 0,
+    pixels: absolute,
+  };
 }
+const size_height = (size: { width: number; height: number } | null | undefined) => (size && size.height > 0 ? size.height : 0);
 // Anki's number format: no leading zero, at most four decimals.
 const ankiNumber = (n: number) => String(round(n)).replace(/^0\./, ".");
+// A value in Anki's field: backslashes and colons escaped.
+const ankiValue = (value: string) => value.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/\}\}/g, "} }");
 // The masks as Anki's "Occlusion" field: one cloze number per card (in the
-// order of occlusionTargets), "oi=1" for "hide-all".
+// order of occlusionTargets), "oi=1" for "hide-all"; texts as Anki's text
+// shapes with the number 0 (no card, as Anki writes them).
 export function toAnkiOcclusion(occlusion: Occlusion): string {
   const oi = occlusion.mode === "hide-all" ? ":oi=1" : "";
   const byId = new Map(occlusion.masks.map((m) => [m.id, m]));
@@ -313,6 +396,11 @@ export function toAnkiOcclusion(occlusion: Occlusion): string {
           return `{{c${i + 1}::image-occlusion:${body}${oi}}}`;
         })
         .join("<br>"),
+    )
+    .concat(
+      (occlusion.texts || []).map(
+        (text) => `{{c0::image-occlusion:text:left=${ankiNumber(text.x)}:top=${ankiNumber(text.y)}:text=${ankiValue(text.text)}:scale=1:fs=${ankiNumber(text.size)}}}`,
+      ),
     )
     .join("<br>");
 }

@@ -201,3 +201,62 @@ test("confirmed cards are added as records of the deck, checked again", async ()
   await assert.rejects(addFlashcards(ben, { workspaceId: wid, newDeck: { spaceId: privateSpace, title: "Fremd" }, cards: [{ type: "basic", front: "x?", back: "y" }] }));
   await assert.rejects(addFlashcards(ben, { workspaceId: wid, deckId: doc, cards: [{ type: "basic", front: "x?", back: "y" }] }), /Keine Datenbank/);
 });
+
+test("a deck that reads its sides from the records' documents gets them there (#342)", async () => {
+  const docDeck = ((await command(admin, { action: "page.create", workspaceId: wid, spaceId: space, kind: "database", title: "Dokumentstapel", databaseKind: "flashcards" })) as { id: string }).id;
+  await command(admin, { action: "study.settings", pageId: docDeck, settings: { version: 1, front: { document: "above" }, back: { document: "below" } } });
+  const result = await addFlashcards(ben, {
+    workspaceId: wid,
+    deckId: docDeck,
+    cards: [
+      { type: "basic", front: "Was baut **Proteine**?", back: "die *Ribosomen*" },
+      { type: "cloze", front: "Der {{c1::Zellkern}} enthält die DNA.", back: "" },
+    ],
+  });
+  assert.equal(result.added, 2);
+  const rows = await all<{ id: string; cells: string; content: string }>("SELECT id,cells,content FROM rows WHERE page_id=? ORDER BY position", docDeck);
+  const html = await Promise.all(rows.map(async (r) => (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", r.id))!.html));
+  assert.match(html[0], /^<p>Was baut <strong>Proteine<\/strong>\?<\/p>\s*<hr ?\/?>\s*<p>die <em>Ribosomen<\/em><\/p>$/);
+  assert.match(html[1], /<span data-cloze="1">Zellkern<\/span>/, "a gap becomes the editor's mark");
+  assert.equal(rows[0].content, html[0], "the record's content matches its document");
+  assert.equal(JSON.parse(rows[0].cells).title, "Was baut Proteine?", "the title: the front as plain text");
+  assert.equal(JSON.parse(rows[1].cells).title, "Der Zellkern enthält die DNA.");
+  // The study queue reads them as cards: the front above the rule, the back below.
+  const queue = (await command(ben, { action: "study.queue", pageId: docDeck, zone: "Europe/Berlin" })) as { cards: { front: { html?: string }; back: { html?: string }; sub: string }[] };
+  const basic = queue.cards.find((c) => c.sub === "")!;
+  assert.match(basic.front.html || "", /Proteine/);
+  assert.doesNotMatch(basic.front.html || "", /Ribosomen/);
+  assert.match(basic.back.html || "", /Ribosomen/);
+  assert.ok(queue.cards.some((c) => c.sub === "c1"), "the cloze card");
+  // Their fronts count for the duplicate check of the next run.
+  mock.answer = () => answer([{ type: "basic", front: "Was baut Proteine?", back: "Ribosomen" }]);
+  const again = await proposeFlashcards(ben, { workspaceId: wid, source: { kind: "text", text: "Ribosomen bauen Proteine." }, deckId: docDeck });
+  assert.equal(again.cards[0].duplicate, true);
+  // Only the back in the document (the front a property): no rule needed.
+  await command(admin, { action: "study.settings", pageId: docDeck, settings: { version: 1, front: { field: "title" }, back: { document: "all" } } });
+  await addFlashcards(ben, { workspaceId: wid, deckId: docDeck, cards: [{ type: "basic", front: "Energie?", back: "ATP" }] });
+  const last = (await one<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position DESC LIMIT 1", docDeck))!;
+  assert.equal(JSON.parse(last.cells).title, "Energie?");
+  assert.equal((await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", last.id))!.html, "<p>ATP</p>");
+});
+
+test("cardDocument: the sides above and below the rule", async () => {
+  const { cardDocument } = await import("../lib/ai/flashcards");
+  type Settings = Parameters<typeof cardDocument>[0];
+  const s = (front: object, back: object) => ({ version: 1, type: { fixed: "basic" }, reverse: false, front, back }) as unknown as Settings;
+  assert.equal(cardDocument(s({ field: "title" }, { field: "back" }), { front: "a", back: "b" }), null);
+  assert.match(cardDocument(s({ document: "above" }, { field: "back" }), { front: "Frage", back: "b" })!, /^<p>Frage<\/p>\s*<hr ?\/?>$/);
+  assert.equal(cardDocument(s({ field: "title" }, { document: "below" }), { front: "a", back: "" }), null, "nothing to write");
+  // Pictures in the model's Markdown are not taken over.
+  assert.doesNotMatch(cardDocument(s({ field: "title" }, { document: "all" }), { front: "a", back: "![x](https://example.com/x.png) Text" })!, /<img/);
+});
+
+test("some pages of a PDF, read in the browser, as the source", async () => {
+  mock.answer = () => answer([{ type: "basic", front: "Was steht auf Seite 2?", back: "Lysosomen" }]);
+  const result = await proposeFlashcards(ben, { workspaceId: wid, source: { kind: "file", fileId: pdf, text: "Lysosomen verdauen.", pages: { from: 2, to: 2 } } });
+  assert.match(mock.chats.at(-1)!.prompt, /<quelle>\nLysosomen verdauen\.\n<\/quelle>/);
+  assert.doesNotMatch(mock.chats.at(-1)!.prompt, /Ribosomen bauen/, "only the pages given");
+  assert.equal(result.title, "skript.pdf");
+  // Checked like the whole file.
+  await assert.rejects(proposeFlashcards(ben, { workspaceId: wid, source: { kind: "file", fileId: hiddenPdf, text: "x", pages: { from: 1, to: 1 } } }), /nicht gefunden/);
+});
