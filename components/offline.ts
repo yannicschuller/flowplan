@@ -24,6 +24,7 @@ import {
   missingAssets,
   staleStaticCaches,
   staticCacheName,
+  withoutDeployment,
   type OfflineAssets,
 } from "@/lib/offline-assets";
 import { installAppOffline } from "@/lib/offline-app";
@@ -213,12 +214,18 @@ export async function storeApp(
   };
   onStart?.(missing.length);
   const others = (await copies.names()).filter((name) => isStaticCache(name) && name !== staticCacheName(assets.build));
+  // Unchanged files keep their names across builds, but not the deployment
+  // id after them (?dpl=…, next.config.ts): an older build's copy is found
+  // by the name alone.
+  let index: Map<string, { name: string; key: string }> | null = null;
   const reused = async (path: string) => {
-    for (const name of others) {
-      const hit = await (await copies.open(name)).match(path);
-      if (hit) return hit;
+    if (!index) {
+      index = new Map();
+      for (const name of others)
+        for (const key of await (await copies.open(name)).keys().catch(() => [] as string[])) if (!index.has(withoutDeployment(key))) index.set(withoutDeployment(key), { name, key });
     }
-    return null;
+    const hit = index.get(withoutDeployment(path));
+    return hit ? ((await (await copies.open(hit.name)).match(hit.key)) ?? null) : null;
   };
   // Only what is neither stored nor available from an older build counts
   // against the device's room.

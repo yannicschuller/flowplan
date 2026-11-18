@@ -79,10 +79,16 @@ export function distDir(cwd = process.cwd()) {
   return join(/*turbopackIgnore: true*/ cwd, dir);
 }
 
-export function buildOfflineAssets(dir: string, version: string, publicDir?: string): OfflineAssets {
-  const built = listStaticAssets(join(dir, "static"));
+// `deployment`: Next.js's deployment id (next.config.ts), fixed at build
+// time. With one, the page asks for every file of the build with ?dpl=<id>
+// (also scripts loaded later and fonts named in style sheets) – the list
+// names them the same way, so the copy (public/sw.js, the iPhone and iPad
+// app) finds them by the address the page uses.
+export function buildOfflineAssets(dir: string, version: string, publicDir?: string, deployment = process.env.FLOWPLAN_DEPLOYMENT_ID || ""): OfflineAssets {
+  const listed = listStaticAssets(join(dir, "static"));
   // The build id comes from the build's own files only.
-  const build = readBuildId(dir, built);
+  const build = readBuildId(dir, listed);
+  const built = deployment ? listed.map((file) => ({ ...file, path: `${file.path}?dpl=${encodeURIComponent(deployment)}` })) : listed;
   const files = [...built, ...(publicDir ? listPublicAssets(publicDir) : [])];
   return {
     build,
