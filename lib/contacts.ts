@@ -22,24 +22,10 @@ import { ct } from "./content-locale";
 import { cellText } from "./cell-text";
 import { parseRecordLayout } from "./record-layout";
 import { emptyContact, type VCardContact } from "./vcard";
-import type { Field, View } from "./types";
+import type { Field } from "./types";
+import { CONTACT_FIELDS, contactsSetup as setupOfContacts } from "./database-setup";
 
-export const CONTACT_FIELDS = {
-  title: "title",
-  firstName: "firstName",
-  lastName: "lastName",
-  company: "company",
-  position: "position",
-  email: "email",
-  phone: "phone",
-  mobile: "mobile",
-  street: "street",
-  postalCode: "postalCode",
-  city: "city",
-  country: "country",
-  birthday: "birthday",
-  tags: "tags",
-} as const;
+export { CONTACT_FIELDS };
 export type ContactKey = keyof typeof CONTACT_FIELDS;
 const F = CONTACT_FIELDS;
 // Tags the LDAP sync sets on records whose entry left the directory.
@@ -47,58 +33,7 @@ export const MISSING_TAGS = ["Nicht mehr im Verzeichnis", "No longer in director
 // What a new contact is called before it has a name (components/database-view.tsx).
 export const NEW_CONTACT_TITLES = ["Neuer Kontakt", "New contact"];
 
-export function contactsSetup(): { fields: Field[]; views: View[]; recordLayout: object } {
-  return {
-    fields: [
-      { id: F.title, name: "Name", type: "text" },
-      { id: F.firstName, name: ct("Vorname", "First name"), type: "text" },
-      { id: F.lastName, name: ct("Nachname", "Last name"), type: "text" },
-      { id: F.company, name: ct("Firma", "Company"), type: "text" },
-      { id: F.position, name: "Position", type: "text" },
-      { id: F.email, name: ct("E-Mail", "E-mail"), type: "email" },
-      { id: F.phone, name: ct("Telefon", "Phone"), type: "phone" },
-      { id: F.mobile, name: ct("Mobil", "Mobile"), type: "phone" },
-      { id: F.street, name: ct("Straße", "Street"), type: "text" },
-      { id: F.postalCode, name: ct("PLZ", "Postal code"), type: "text" },
-      { id: F.city, name: ct("Ort", "City"), type: "text" },
-      { id: F.country, name: ct("Land", "Country"), type: "text" },
-      { id: F.birthday, name: ct("Geburtstag", "Birthday"), type: "date" },
-      { id: F.tags, name: "Tags", type: "multiselect", options: [] },
-    ],
-    views: [
-      {
-        id: "list",
-        name: ct("Alle Kontakte", "All contacts"),
-        type: "list",
-        filters: [],
-        sorts: [
-          { field: F.lastName, direction: "asc" },
-          { field: F.firstName, direction: "asc" },
-        ],
-        // The name is the title; beside it company and e-mail.
-        hiddenFields: [F.firstName, F.lastName, F.position, F.phone, F.mobile, F.street, F.postalCode, F.country, F.birthday, F.tags],
-      },
-      {
-        id: "table",
-        name: ct("Tabelle", "Table"),
-        type: "table",
-        filters: [],
-        sorts: [{ field: F.lastName, direction: "asc" }],
-        hiddenFields: [F.street, F.postalCode, F.country, F.birthday],
-      },
-      {
-        id: "birthdays",
-        name: ct("Geburtstage", "Birthdays"),
-        type: "calendar",
-        filters: [],
-        sorts: [],
-        dateField: F.birthday,
-      },
-      { id: "gallery", name: ct("Galerie", "Gallery"), type: "gallery", filters: [], sorts: [{ field: F.lastName, direction: "asc" }] },
-    ],
-    recordLayout: { open: "full", properties: "top", hideEmpty: true, hidden: [], card: "contact" },
-  };
-}
+export const contactsSetup = () => setupOfContacts(ct);
 
 export function isContactsLayout(raw: unknown) {
   return parseRecordLayout(raw).card === "contact";
