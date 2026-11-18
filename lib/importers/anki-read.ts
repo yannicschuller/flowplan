@@ -202,8 +202,8 @@ export async function readAnkiPackage(bytes: Buffer): Promise<AnkiPackage> {
         for (const [key, name] of Object.entries(json))
           if (typeof name === "string" && cleanKey(name) && /^\d+$/.test(key) && entries.has(key)) media.set(name, { name, entry: key, size: entries.get(key)!.length });
       }
-    } catch (error) {
-      if (error instanceof HttpError && error.status === 400 && error.message === ANKI21B_UNSUPPORTED) throw error;
+    } catch {
+      // Also without zstd in Node: the notes still come, without media.
       warnings.push("Die Medienliste des Anki-Pakets ist nicht lesbar; Bilder und Töne fehlen.");
     }
   }
