@@ -54,7 +54,7 @@ test("note types become card types; templates tell the sides of own ones", () =>
   assert.deepEqual(suggestNotetype(REVERSED as never), { type: "basic", reverse: true, roles: ["front", "back"] });
   assert.deepEqual(suggestNotetype(TYPED as never), { type: "typed", reverse: false, roles: ["front", "back"] });
   assert.deepEqual(suggestNotetype(CLOZE as never), { type: "cloze", reverse: false, roles: ["front", "back"] });
-  assert.deepEqual(suggestNotetype(OCCLUSION as never), { type: "basic", reverse: false, roles: ["skip", "front", "front", "back", "extra"] });
+  assert.deepEqual(suggestNotetype(OCCLUSION as never), { type: "occlusion", reverse: false, roles: ["skip", "front", "front", "back", "extra"] });
   // Wort in front with its hint, meaning and example behind, the internal note left out.
   assert.deepEqual(suggestNotetype(VOCAB as never), { type: "basic", reverse: false, roles: ["front", "back", "extra", "hint", "skip"] });
 });
@@ -94,7 +94,8 @@ test("a legacy package: decks as databases, sub-decks as Deck, media, tags and t
   assert.equal(anki.suspended, 1);
   assert.equal(anki.media.missing, 1, "fehlt.png");
   assert.equal(anki.notetypes.find((n) => n.name === "Vokabel")?.samples[0].front, "la casa");
-  assert.ok(preview.warnings.some((w) => /Bildverdeckung/.test(w)));
+  assert.ok(!preview.warnings.some((w) => /Bildverdeckung/.test(w)), "image occlusion comes with its masks");
+  assert.equal(anki.notetypes.find((n) => n.name === "Image Occlusion")?.mapping.type, "occlusion");
   assert.ok(preview.warnings.some((w) => /mit und ohne Rückwärtskarte/.test(w)));
   assert.equal(Number((await one<{ n: number }>("SELECT count(*) n FROM pages WHERE workspace_id=? AND kind='database'", wid))!.n), 0, "a preview writes nothing");
 
@@ -126,10 +127,11 @@ test("a legacy package: decks as databases, sub-decks as Deck, media, tags and t
   assert.match(docs[0].html, /H<sub>2<\/sub>O/);
   assert.match(docs[1].html, /<img src="\/api\/files\/[0-9a-f-]{36}" alt="zelle.png"/);
   assert.match(docs[1].html, /<audio src="\/api\/files\/[0-9a-f-]{36}"/);
+  assert.match(docs[2].html, /<img [^>]*data-occlusion="\{&quot;v&quot;:1,&quot;mode&quot;:&quot;hide-one&quot;/, "the masks on the picture");
   assert.match(docs[3].html, /data-math="E=mc\^2"/);
   const files = await all<{ name: string; mime: string }>("SELECT name,mime FROM files WHERE page_id=? ORDER BY name", biology);
   assert.deepEqual(files.map((f) => f.name), ["zelle.mp3", "zelle.png"], "stored once, unused media not at all");
-  // The cards: cloze c1/c2, the occlusion note as basic with its image.
+  // The cards: cloze c1/c2, the occlusion note with its one mask.
   const queue = (await studyQueue(owner, { pageId: biology, zone, limit: 50 })) as { total: number; states: { new: number; review: number; learning: number } };
   assert.equal(queue.total, 5);
   // The learning state: only the person importing, replayed through FSRS.
@@ -220,4 +222,90 @@ test("the .apkg export reads back as the same cards", async () => {
   // Only who may read the deck exports it; the reader may (reading is enough).
   const other = await user("anki-stranger");
   await assert.rejects(studyAnkiExport(other, { pageId, zone }));
+});
+
+// Phase 6: Image Occlusion notes with their masks – groups, pixels of older
+// Anki versions, the learning state per mask, and back as Anki's note type.
+test("image occlusion: masks, groups, pixels, the learning state and the export", async () => {
+  const { diagramPng } = await import("./helpers/png");
+  const { occludedImages, occlusionTargets } = await import("../lib/study-occlusion");
+  const start = Date.UTC(2026, 9, 1, 8);
+  const fixture = {
+    notetypes: [OCCLUSION],
+    decks: [{ id: 30, name: "Anatomie" }],
+    notes: [
+      {
+        id: 31,
+        mid: OCCLUSION.id,
+        // c1 one rectangle, c2 an ellipse and a polygon (one card), a text shape left out.
+        fields: [
+          "{{c1::image-occlusion:rect:left=.1:top=.2:width=.2:height=.1:oi=1}}<br>{{c2::image-occlusion:ellipse:left=.5:top=.5:rx=.1:ry=.05:oi=1}}<br>{{c2::image-occlusion:polygon:points=.6,.1 .9,.1 .75,.4:oi=1}}<br>{{c3::image-occlusion:text:text=Hinweis:left=.1:top=.1}}",
+          '<img src="herz.png">',
+          "Das Herz",
+          "Vier Kammern",
+          "",
+        ],
+        deck: 30,
+        cards: [
+          { ord: 0, id: 3101 },
+          { ord: 1, id: 3102 },
+        ],
+      },
+      // Anki 23.10 kept pixels: with the picture's size (640×400) they become proportions.
+      { id: 32, mid: OCCLUSION.id, fields: ["{{c1::image-occlusion:rect:left=64:top=40:width=128:height=80}}", '<img src="herz.png">', "", "", ""], deck: 30, cards: [{ ord: 0, id: 3201 }] },
+      // Without masks: no card, said in the report.
+      { id: 33, mid: OCCLUSION.id, fields: ["", '<img src="herz.png">', "Leer", "", ""], deck: 30, cards: [{ ord: 0, id: 3301 }] },
+    ],
+    reviews: [
+      { at: start, cardId: 3101, ease: 3, type: 0 },
+      { at: start, cardId: 3102, ease: 1, type: 0 },
+      { at: start + 60_000, cardId: 3102, ease: 3, type: 0 },
+    ],
+    media: { "herz.png": diagramPng() },
+  };
+  const bytes = await ankiPackage(fixture);
+  const preview = await importFromSource(owner, wid, space, { name: "Anatomie.apkg", bytes }, { dryRun: true });
+  assert.ok(preview.warnings.some((w) => /^1 von 3 Bildverdeckungs-Notizen haben keine lesbaren Masken/.test(w)));
+  assert.ok(preview.warnings.some((w) => /^1 Formen der Bildverdeckung/.test(w)), "the text shape");
+  const result = await importFromSource(owner, wid, space, { name: "Anatomie.apkg", bytes }, { anki: JSON.stringify({ state: true }), zone });
+  assert.equal((result as { reviews?: number }).reviews, 3);
+  const pageId = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Anatomie' ORDER BY created_at DESC", wid))!.id;
+  const rows = await all<{ id: string; cells: string; html: string }>("SELECT r.id,r.cells,d.html FROM rows r JOIN row_documents d ON d.row_id=r.id WHERE r.page_id=? ORDER BY r.position", pageId);
+  assert.deepEqual(rows.map((r) => JSON.parse(r.cells).type), ["Bildverdeckung", "Bildverdeckung", "Bildverdeckung"]);
+  assert.equal(JSON.parse(rows[1].cells).title, "herz.png", "a picture without header is named by its file");
+  const [first] = occludedImages(rows[0].html);
+  assert.equal(first.occlusion.mode, "hide-all");
+  assert.deepEqual(occlusionTargets(first.occlusion).map((t) => t.masks.length), [1, 2]);
+  assert.deepEqual(occludedImages(rows[1].html)[0].occlusion.masks.map((m) => [m.x, m.y, m.w, m.h]), [[0.1, 0.1, 0.2, 0.2]]);
+  assert.deepEqual(occludedImages(rows[2].html), []);
+  const queue = (await studyQueue(owner, { pageId, zone, limit: 50 })) as { total: number };
+  assert.equal(queue.total, 3, "two cards of the first note, one of the second");
+  // The learning state: Anki's card c1 is the rectangle's, c2 the group's.
+  const states = await all<{ sub: string; reps: number }>("SELECT sub,reps FROM card_states WHERE user_id=? AND page_id=?", owner.id, pageId);
+  const targets = occlusionTargets(first.occlusion);
+  assert.deepEqual(
+    states.map((s) => [s.sub, Number(s.reps)]).sort(),
+    [
+      [targets[0].key, 1],
+      [targets[1].key, 2],
+    ].sort(),
+  );
+
+  // Exported as Anki's Image Occlusion: one note per picture, a card per mask or group.
+  const out = await studyAnkiExport(owner, { pageId, zone });
+  assert.equal(out.notes, 2);
+  const pkg = await readAnkiPackage(out.bytes);
+  const nt = [...pkg.notetypes.values()][0];
+  assert.equal(nt.name, "Image Occlusion (Flowplan)");
+  assert.equal(ankiKind(nt), "occlusion");
+  assert.deepEqual(nt.fields, ["Occlusion", "Image", "Header", "Back Extra", "Comments"]);
+  const note = pkg.notes.find((n) => n.fields[2] === "Das Herz")!;
+  assert.match(note.fields[0], /^\{\{c1::image-occlusion:rect:left=\.1:top=\.2:width=\.2:height=\.1:oi=1\}\}<br>\{\{c2::image-occlusion:ellipse:/);
+  assert.match(note.fields[1], /^<img src="herz\.png"/);
+  assert.deepEqual(pkg.cards.map((c) => c.ord).sort(), [0, 0, 1]);
+  assert.ok(pkg.media.has("herz.png"));
+  // Imported again: the same cards.
+  await importFromSource(owner, wid, space, { name: "Anatomie.apkg", bytes: out.bytes });
+  const back = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Anatomie' AND id<>?", wid, pageId))!.id;
+  assert.equal(((await studyQueue(owner, { pageId: back, zone, limit: 0 })) as { total: number }).total, 3, "card for card");
 });

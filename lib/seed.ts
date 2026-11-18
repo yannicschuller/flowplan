@@ -78,7 +78,7 @@ export function flashcardsSetup() {
         id: "type",
         name: ct("Kartentyp", "Card type"),
         type: "select",
-        options: [ct("Vorder-/Rückseite", "Front/back"), ct("Lückentext", "Cloze"), ct("Antwort eintippen", "Type the answer"), ct("Multiple Choice", "Multiple choice")],
+        options: [ct("Vorder-/Rückseite", "Front/back"), ct("Lückentext", "Cloze"), ct("Antwort eintippen", "Type the answer"), ct("Multiple Choice", "Multiple choice"), ct("Bildverdeckung", "Image occlusion")],
       },
     ] as Field[],
     views: [

@@ -3,9 +3,11 @@
 // deck, its sub-decks as the values of a select property "Deck".
 // - Note types → card types: Basic, Basic (and reversed card) → basic with
 //   the reverse card, Cloze → cloze (the syntax stays, in documents as the
-//   editor's cloze mark), "type in the answer" → typed; Image Occlusion
-//   (phase 6) as basic with the image and header – said in the preview and
-//   the import report. Own note types: their templates tell which fields
+//   editor's cloze mark), "type in the answer" → typed; Image Occlusion →
+//   occlusion: the masks of its field "Occlusion" on the picture
+//   (lib/study-occlusion.ts), the header above, Back Extra after revealing
+//   (as basic on request: the picture on both sides, without masks). Own
+//   note types: their templates tell which fields
 //   are on the front ({{Feld}} in the question), on the back (only in the
 //   answer) and hints ({{hint:Feld}}); the person may change every field's
 //   role in the preview (lib/anki-mapping.ts).
@@ -31,6 +33,8 @@ import { instanceSettings } from "../instance-settings";
 import { htmlToInline } from "../inline-markdown-html";
 import { toPlain } from "../inline-markdown";
 import { parseClozeText } from "../study-cloze";
+import { fromAnkiOcclusion, type Occlusion } from "../study-occlusion";
+import { imageSize } from "../export-docx";
 import { studySettingsSchema } from "../study-schema";
 import { importStudyHistory } from "../study";
 import { studyZone } from "../study-day";
@@ -84,7 +88,7 @@ export function suggestNotetype(nt: AnkiNotetype): NotetypeMapping {
       else if (/back extra|^extra$|rückseite/i.test(name)) roles[i] = "back";
       else if (/comments?|remarks?|kommentar|anmerkung/i.test(name)) roles[i] = "extra";
     });
-    return { type: "basic", reverse: false, roles: fallback(roles) };
+    return { type: "occlusion", reverse: false, roles: fallback(roles) };
   }
   const template = nt.templates[0];
   const question = template ? templateRefs(template.qfmt).filter((r) => at(r.name) >= 0) : [];
@@ -218,15 +222,36 @@ export const ankiPlain = (html: string) => toPlain(ankiText(html)).replace(/\s+/
 // ---- the plan ----
 
 type Mapped = NotetypeMapping & { kind: AnkiKind };
-const TYPE_OPTIONS = () => [ct("Vorder-/Rückseite", "Front/back"), ct("Lückentext", "Cloze"), ct("Antwort eintippen", "Type the answer"), ct("Multiple Choice", "Multiple choice")];
-const typeOption = (type: AnkiCardType) => TYPE_OPTIONS()[type === "cloze" ? 1 : type === "typed" ? 2 : 0];
+const TYPE_OPTIONS = () => [
+  ct("Vorder-/Rückseite", "Front/back"),
+  ct("Lückentext", "Cloze"),
+  ct("Antwort eintippen", "Type the answer"),
+  ct("Multiple Choice", "Multiple choice"),
+  ct("Bildverdeckung", "Image occlusion"),
+];
+const typeOption = (type: AnkiCardType) => TYPE_OPTIONS()[type === "cloze" ? 1 : type === "typed" ? 2 : type === "occlusion" ? 4 : 0];
 
 export type AnkiPlan = {
   tree: ImportTree;
   preview: AnkiPreview;
-  // For the learning state: the row of each note and how its cards map.
-  rows: Map<string, { rowId: string; deck: number; mapping: Mapped }>;
+  // For the learning state: the row of each note and how its cards map
+  // (image occlusion: the card of each cloze number).
+  rows: Map<string, { rowId: string; deck: number; mapping: Mapped; occlusion?: Map<number, string> }>;
 };
+
+// The masks of an Image Occlusion note (lib/study-occlusion.ts) on its
+// first picture: from the field with "image-occlusion:" shapes, pixels of
+// older Anki versions turned into proportions with the picture's size.
+const FIRST_IMAGE = /<img\b[^>]*\bsrc="([^"]*)"/i;
+function noteOcclusion(note: AnkiNote, pkg: AnkiPackage) {
+  const field = note.fields.find((f) => f.includes("image-occlusion:"));
+  if (!field) return null;
+  const image = note.fields.map((f) => FIRST_IMAGE.exec(f)?.[1]).find(Boolean);
+  const bytes = image ? pkg.readMedia(mediaName(image)) : null;
+  return fromAnkiOcclusion(field, id, bytes ? imageSize(bytes) : null);
+}
+// The record's document with the masks on its first picture.
+const withMasks = (html: string, occlusion: Occlusion) => html.replace(/<img\b/i, `<img data-occlusion="${esc(JSON.stringify(occlusion))}"`);
 
 // What each role of a note gathers: its fields' HTML, in field order.
 function sides(note: AnkiNote, mapping: NotetypeMapping) {
@@ -301,23 +326,35 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
     },
   });
   const pages: ImportPage[] = [];
-  const rows = new Map<string, { rowId: string; deck: number; mapping: Mapped }>();
+  const rows = new Map<string, { rowId: string; deck: number; mapping: Mapped; occlusion?: Map<number, string> }>();
   const deckInfo: AnkiPreview["decks"] = [];
+  let occlusionNotes = 0,
+    noMasks = 0,
+    skippedShapes = 0;
   [...groups].forEach(([deckName, group], deckIndex) => {
     const key = `anki-deck-${deckIndex}`;
     const fieldCtx = ctx(key);
     const roleSides = group.notes.map((note) => {
       const mapping = mappings.get(note.mid)!;
       const s = sides(note, mapping);
-      // Image occlusion without masks yet: the picture on both sides
-      // (Back Extra is often empty), so the note still is a card.
-      if (mapping.kind === "occlusion" && !s.back.length) s.back = [...s.front];
-      return { note, mapping, sides: s };
+      // Image occlusion: the masks go on the picture (the record's
+      // document); as basic, the picture on both sides (Back Extra is
+      // often empty), so the note still is a card.
+      const occlusion = mapping.type === "occlusion" ? noteOcclusion(note, pkg) : null;
+      if (mapping.type === "occlusion") {
+        occlusionNotes++;
+        skippedShapes += occlusion?.skipped || 0;
+        if (!occlusion?.occlusion || !s.front.concat(s.back).some((f) => FIRST_IMAGE.test(f))) {
+          noMasks++;
+          report.add("block", "Bildverdeckung ohne Masken oder ohne Bild: keine Karte.", key);
+        }
+      } else if (mapping.kind === "occlusion" && !s.back.length) s.back = [...s.front];
+      return { note, mapping, sides: s, occlusion };
     });
     // Per side: a text property, or the record's document.
     const richFront = roleSides.some((r) => r.sides.front.some(isRichField));
     const richBack = roleSides.some((r) => r.sides.back.some(isRichField));
-    const basics = roleSides.filter((r) => r.mapping.type !== "cloze");
+    const basics = roleSides.filter((r) => r.mapping.type !== "cloze" && r.mapping.type !== "occlusion");
     const reversed = basics.filter((r) => r.mapping.reverse).length;
     const reverse = reversed > 0 && reversed * 2 >= basics.length;
     if (reversed > 0 && reversed < basics.length)
@@ -352,20 +389,29 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
       tags: { field: "tags" },
       reverse,
     });
-    const records = roleSides.map(({ note, mapping, sides: s }) => {
+    const records = roleSides.map(({ note, mapping, sides: s, occlusion }) => {
       const rowId = id();
-      rows.set(note.id, { rowId, deck: deckIndex, mapping });
-      if (mapping.kind === "occlusion") report.add("block", "Bildverdeckung: als Vorder-/Rückseite mit dem Bild übernommen (Masken noch nicht).", key);
+      rows.set(note.id, { rowId, deck: deckIndex, mapping, ...(occlusion?.occlusion ? { occlusion: occlusion.numbers } : {}) });
+      if (mapping.kind === "occlusion" && mapping.type !== "occlusion") report.add("block", "Bildverdeckung: als Vorder-/Rückseite mit dem Bild übernommen (ohne Masken).", key);
       const front = join(s.front),
         back = join(s.back);
+      const frontHtml = richFront ? ankiDocumentHtml(front, fieldCtx) : "",
+        backHtml = richBack ? ankiDocumentHtml(back, fieldCtx) : "";
+      // The masks go on the first picture of the document (normally the
+      // field "Image" in front).
+      const masks = occlusion?.occlusion;
+      const onFront = !!masks && /<img\b/i.test(frontHtml);
       const html = richFront
-        ? `${ankiDocumentHtml(front, fieldCtx) || "<p></p>"}<hr>${richBack ? ankiDocumentHtml(back, fieldCtx) : ""}`
+        ? `${(onFront ? withMasks(frontHtml, masks) : frontHtml) || "<p></p>"}<hr>${masks && !onFront ? withMasks(backHtml, masks) : backHtml}`
         : richBack
-          ? ankiDocumentHtml(back, fieldCtx)
+          ? masks
+            ? withMasks(backHtml, masks)
+            : backHtml
           : "";
       const deck = deckOf(note).split("::").slice(1).join("::").slice(0, 100);
       const cells: Record<string, unknown> = {
-        title: ankiPlain(front).slice(0, 1000),
+        // A picture without header is named by its file.
+        title: (ankiPlain(front) || (masks ? mediaName(FIRST_IMAGE.exec(front + back)?.[1] || "") : "")).slice(0, 1000),
         ...(!richBack ? { back: ankiText(back) } : {}),
         ...(hints && s.hint.length ? { hint: ankiText(join(s.hint)) } : {}),
         ...(extras && s.extra.length ? { extra: ankiText(join(s.extra)) } : {}),
@@ -382,8 +428,10 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
   media.skipped = skippedNames.size;
   if (missingNames.size) warnings.push(`${missingNames.size} Mediendateien fehlen im Anki-Paket.`);
   if (skippedNames.size) warnings.push(`${skippedNames.size} Mediendateien sind zu groß oder zu viele und werden nicht übernommen.`);
-  const occlusion = [...pkg.notes].filter((n) => mappings.get(n.mid)?.kind === "occlusion").length;
-  if (occlusion) warnings.push(`${occlusion} Bildverdeckungs-Notizen werden als Vorder-/Rückseite mit dem Bild übernommen; die Masken folgen mit der Bildverdeckung in Flowplan.`);
+  const asBasic = [...pkg.notes].filter((n) => mappings.get(n.mid)?.kind === "occlusion" && mappings.get(n.mid)?.type !== "occlusion").length;
+  if (asBasic) warnings.push(`${asBasic} Bildverdeckungs-Notizen werden als Vorder-/Rückseite mit dem Bild übernommen (ohne Masken).`);
+  if (noMasks) warnings.push(`${noMasks} von ${occlusionNotes} Bildverdeckungs-Notizen haben keine lesbaren Masken oder kein Bild und ergeben keine Karte.`);
+  if (skippedShapes) warnings.push(`${skippedShapes} Formen der Bildverdeckung (Text oder unbekannt) werden nicht übernommen.`);
   if (pkg.reviewsSkipped) warnings.push(`Das Anki-Paket hat mehr als ${ANKI_LIMITS.reviews} Wiederholungen; der Lernstand kann nicht übernommen werden.`);
   const suspended = pkg.cards.filter((c) => c.queue === -1).length;
   const noteCount = new Map<string, number>();
@@ -463,7 +511,9 @@ export async function importAnki(
 
 // The cards of a note as Flowplan's: Basic's first template is the card,
 // its second the reverse; a cloze card N is "cN".
-export function cardSub(mapping: Pick<Mapped, "type">, ord: number) {
+// Image occlusion: the mask or group of cloze number N.
+export function cardSub(mapping: Pick<Mapped, "type">, ord: number, occlusion?: Map<number, string>) {
+  if (mapping.type === "occlusion") return occlusion?.get(ord + 1) ?? null;
   if (mapping.type === "cloze") return `c${ord + 1}`;
   return ord === 0 ? "" : ord === 1 ? "r" : null;
 }
@@ -488,7 +538,7 @@ async function replayAnki(user: Identity, pkg: AnkiPackage, plan: AnkiPlan, zone
     const row = plan.rows.get(card.nid);
     const reviews = byCard.get(card.id);
     if (!row || !reviews?.length) continue;
-    const sub = cardSub(row.mapping, card.ord);
+    const sub = cardSub(row.mapping, card.ord, row.occlusion);
     if (sub === null) continue;
     const list = perRow.get(row.rowId) || [];
     list.push({ rowId: row.rowId, sub, reviews, suspended: card.queue === -1, memory: ankiMemory(card.data) });

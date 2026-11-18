@@ -94,11 +94,17 @@ export type FilePlanInput = {
   // Files referred to by the stored pages and records.
   referenced: string[];
   includeRecords: boolean;
+  // Files the stored flashcard decks show (the pictures of image occlusion
+  // cards): added without includeRecords too – a card without its picture
+  // cannot be studied.
+  cards?: string[];
 };
 // Files: those no stored page refers to any more are dropped; with
-// includeRecords the referred ones not yet stored are added.
-export function planFiles({ keys, referenced, includeRecords }: FilePlanInput) {
-  const wanted = new Set(referenced.map((id) => id.toLowerCase()));
+// includeRecords the referred ones not yet stored are added (the cards'
+// always).
+export function planFiles({ keys, referenced, includeRecords, cards = [] }: FilePlanInput) {
+  const wanted = new Set([...referenced, ...cards].map((id) => id.toLowerCase()));
+  const always = new Set(cards.map((id) => id.toLowerCase()));
   const stored = new Set<string>();
   const drop: string[] = [];
   for (const key of keys) {
@@ -107,7 +113,7 @@ export function planFiles({ keys, referenced, includeRecords }: FilePlanInput) {
     if (!wanted.has(file)) drop.push(key);
     else stored.add(file);
   }
-  const add = includeRecords ? [...wanted].filter((id) => !stored.has(id)).map(fileUrl) : [];
+  const add = [...wanted].filter((id) => !stored.has(id) && (includeRecords || always.has(id))).map(fileUrl);
   return { add, drop };
 }
 

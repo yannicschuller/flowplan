@@ -27,7 +27,7 @@ import { allow } from "./action-limits";
 import { schedule, replay, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
 import { DEFAULT_DAY_START, REMIND_AT, reminderMoment, studyClock, studyDay, studyZone } from "./study-day";
 import { buildQueue, seededRank, sessionOrder, type QueueCard } from "./study-queue";
-import { MAX_CHOICES, deriveCards, foldChoice, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, usesDocument, type CardSide, type DerivedCard } from "./study-content";
+import { MAX_CHOICES, deriveCards, foldChoice, needsDocument, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, type CardSide, type DerivedCard, type OcclusionCard } from "./study-content";
 import { clozeHtml } from "./study-cloze";
 import { STUDY_DEFAULTS, STUDY_FIELD_TYPES, studyPrefsInput, studySettingsSchema, type StudySettings } from "./study-schema";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
@@ -63,7 +63,15 @@ const requireDeck = (deck: Deck) => {
 type StoredRow = { id: string; page_id: string; cells: string; content: string | null; position: number };
 const hashOf = (card: DerivedCard) =>
   createHash("sha256")
-    .update(JSON.stringify(card.choices ? [card.front, card.back, card.choices] : [card.front, card.back]))
+    .update(
+      JSON.stringify(
+        card.occlusion
+          ? [card.front, card.back, card.occlusion.src, card.occlusion.mode, card.occlusion.masks]
+          : card.choices
+            ? [card.front, card.back, card.choices]
+            : [card.front, card.back],
+      ),
+    )
     .digest("hex")
     .slice(0, 32);
 // The HTML of a record's document as lib/row-documents.ts ensureRowDocument
@@ -92,9 +100,13 @@ async function rowsOf(pageId: string, ids?: string[]) {
   }
   return out;
 }
+// Documents are read only for the records whose cards need them (document
+// sides, image occlusion records).
 async function cardsOfRows(settings: StudySettings, fields: Field[], rows: StoredRow[]) {
-  const docs = usesDocument(settings) ? await documentsOf(rows) : new Map<string, string>();
-  return new Map(rows.map((r) => [r.id, deriveCards(settings, fields, JSON.parse(r.cells || "{}"), usesDocument(settings) ? documentHtml(r, docs.get(r.id)) : null)]));
+  const parsed = rows.map((r) => ({ row: r, cells: JSON.parse(r.cells || "{}") as Record<string, unknown> }));
+  const needing = parsed.filter((p) => needsDocument(settings, p.cells));
+  const docs = needing.length ? await documentsOf(needing.map((p) => p.row)) : new Map<string, string>();
+  return new Map(parsed.map(({ row, cells }) => [row.id, deriveCards(settings, fields, cells, needsDocument(settings, cells) ? documentHtml(row, docs.get(row.id)) : null)]));
 }
 // Brings the card index of a deck up to date with the records changed since
 // (or all of them after a change of the mapping).
@@ -314,6 +326,7 @@ export type ShownCard = {
   note?: ShownSide;
   typed?: { answer: string };
   choice?: { options: string[]; correct: number };
+  occlusion?: OcclusionCard;
 };
 const clean = (side: CardSide | undefined): CardSide | undefined => (side && "html" in side ? { html: cleanHtml(side.html) } : side);
 const POOL_ROWS = 80;
@@ -360,6 +373,21 @@ function present(card: DerivedCard, c: QueueCard, candidates: Candidate[]): Show
     const view = (reveal: boolean): ShownSide => ("html" in side ? { html: cleanHtml(clozeHtml(side.html, n, reveal)) } : { ...side, cloze: { n, reveal } });
     const rest = sideIsEmpty(other) ? undefined : clean(other);
     return { ...base, front: view(false), back: view(true), ...(rest ? (on === "back" ? { context: rest } : { note: rest }) : {}) };
+  }
+  if (card.occlusion) {
+    // The picture is the card; the record's sides come with it – the front
+    // above, the back after revealing – and the back itself is the labels
+    // of the masks asked.
+    const { masks, target } = card.occlusion;
+    const labels = [...new Set(masks.filter((m) => target.includes(m.id) && m.label).map((m) => m.label!))];
+    return {
+      ...base,
+      front: { text: "" },
+      back: { text: labels.join(" · ") },
+      ...(sideIsEmpty(card.front) ? {} : { context: clean(card.front) }),
+      ...(sideIsEmpty(card.back) ? {} : { note: clean(card.back) }),
+      occlusion: card.occlusion,
+    };
   }
   const shown: ShownCard = { ...base, front: clean(card.front)!, back: clean(card.back)! };
   if (card.kind === "typed") return { ...shown, typed: { answer: typedAnswer(card.back) } };
@@ -942,7 +970,7 @@ export async function studyExport(user: Identity, raw: unknown) {
   );
   const text = (side: CardSide | undefined) =>
     !side ? "" : "html" in side ? htmlToMarkdown(side.html, csvLinks).trim() : side.formatted ? toPlain(side.text) : side.text;
-  const types: Record<string, string> = { basic: ct("Vorder-/Rückseite", "Front/back"), cloze: ct("Lückentext", "Cloze"), typed: ct("Eintippen", "Typed"), choice: ct("Multiple Choice", "Multiple choice") };
+  const types: Record<string, string> = { basic: ct("Vorder-/Rückseite", "Front/back"), cloze: ct("Lückentext", "Cloze"), typed: ct("Eintippen", "Typed"), choice: ct("Multiple Choice", "Multiple choice"), occlusion: ct("Bildverdeckung", "Image occlusion") };
   const states: Record<number, string> = { 0: ct("Neu", "New"), 1: ct("Lernen", "Learning"), 2: ct("Wiederholung", "Review"), 3: ct("Wiederlernen", "Relearning") };
   const header = [ct("Vorderseite", "Front"), ct("Rückseite", "Back"), ct("Hinweis", "Hint"), ct("Zusatz", "Extra"), "Tags", ct("Kartentyp", "Card type"), ct("Karte", "Card")];
   if (input.state) header.push(ct("Zustand", "State"), ct("Fällig", "Due"), ct("Stabilität (Tage)", "Stability (days)"), ct("Schwierigkeit", "Difficulty"), ct("Wiederholungen", "Reviews"), ct("Vergessen", "Lapses"), ct("Ausgesetzt", "Suspended"));
@@ -1031,6 +1059,25 @@ export async function studyAnkiExport(user: Identity, raw: unknown) {
       const tags = first.tags || [];
       const hint = html(first.hint),
         extra = html(first.extra);
+      if (first.kind === "occlusion") {
+        // One Image Occlusion note per picture: its masks as Anki's
+        // "Occlusion" field, a card per mask or group (cloze N → N-1).
+        const { toAnkiOcclusion, occlusionTargets } = await import("./study-occlusion");
+        for (const src of [...new Set(list.map((c) => c.occlusion!.src))]) {
+          const cardsOfImage = list.filter((c) => c.occlusion!.src === src);
+          const { mode, masks, alt } = cardsOfImage[0].occlusion!;
+          const occlusion = { v: 1 as const, mode, masks };
+          const keys = occlusionTargets(occlusion).map((t) => t.key);
+          notes.push({
+            kind: "occlusion",
+            fields: [toAnkiOcclusion(occlusion), ankiFieldHtml(`<img src="${escaped(src)}" alt="${escaped(alt)}">`, fileName), html(first.front), html(first.back), extra],
+            ords: cardsOfImage.map((c) => keys.indexOf(c.sub)).filter((i) => i >= 0),
+            tags,
+            subdeck,
+          });
+        }
+        continue;
+      }
       if (first.kind === "cloze") {
         const text = first.cloze?.on === "back" ? first.back : first.front;
         const other = first.cloze?.on === "back" ? first.front : first.back;

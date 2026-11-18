@@ -24,7 +24,7 @@ import { StudyPendingNote } from "./study/pending";
 import { tr } from "@/lib/locale-tag";
 import { StudyImport } from "./study/import";
 import { StudyStatsPanel } from "./study/stats";
-import { deriveCards } from "@/lib/study-content";
+import { deriveCards, needsDocument } from "@/lib/study-content";
 import { filterCount, effectiveFilterGroup } from "@/lib/database-filters";
 import { STUDY_FIELD_TYPES, cardTypes, suggestStudySettings, studySettingsSchema, typeOfOption, type CardType, type StudySettings } from "@/lib/study-schema";
 import type { Database, Page, Row, View } from "@/lib/types";
@@ -362,6 +362,8 @@ export function StudySetup({
     if (!("field" in draft.front && "field" in draft.back)) return null;
     try {
       const settings = studySettingsSchema.parse(draft);
+      // Image occlusion records count by their documents' masks.
+      if (rows.some((r) => needsDocument(settings, r.cells))) return null;
       return rows.reduce((n, r) => n + deriveCards(settings, database.fields, r.cells, null).length, 0);
     } catch {
       return null;
@@ -560,12 +562,13 @@ function CardTypeSetting({ draft, setDraft, database }: { draft: StudySettings; 
     cloze: t("Lückentext", "Cloze"),
     typed: t("Antwort eintippen", "Type the answer"),
     choice: t("Multiple Choice", "Multiple choice"),
-    occlusion: t("Bildverdeckung (bald)", "Image occlusion (soon)"),
+    occlusion: t("Bildverdeckung", "Image occlusion"),
   };
   const selects = database.fields.filter((f) => f.type === "select");
   const fromField = "field" in draft.type ? draft.type : null;
   const field = fromField ? selects.find((f) => f.id === fromField.field) : undefined;
-  const shown = cardTypes.filter((c) => c !== "occlusion");
+  const shown = cardTypes;
+  const occlusion = (draft.type && "fixed" in draft.type && draft.type.fixed === "occlusion") || (!!field && (field.options || []).some((o) => typeOfOption(o, fromField?.map) === "occlusion"));
   return (
     <div className="study-type-setting">
       <div className="form-row">
@@ -617,6 +620,14 @@ function CardTypeSetting({ draft, setDraft, database }: { draft: StudySettings; 
           {t(
             "Multiple Choice ist leichter als freies Erinnern – gut für den Einstieg, für das Behalten besser Vorder-/Rückseite oder Eintippen.",
             "Multiple choice is easier than free recall – good to start with; for remembering, front/back or typing works better.",
+          )}
+        </p>
+      )}
+      {occlusion && (
+        <p className="muted study-occlusion-hint">
+          {t(
+            "Bildverdeckung: Füge im Dokument des Eintrags ein Bild ein und wähle bei den Bildwerkzeugen unter „…“ „Bildverdeckung bearbeiten“. Jede Maske oder Gruppe wird eine eigene Karte; die Vorderseite steht über dem Bild, die Rückseite kommt beim Aufdecken. Gib dem Bild einen Alternativtext, damit Screenreader es beschreiben.",
+            "Image occlusion: add a picture to the record's document and choose “Edit image occlusion” under “…” in the image tools. Every mask or group becomes a card of its own; the front shows above the picture, the back when revealing. Give the picture an alternative text so screen readers can describe it.",
           )}
         </p>
       )}

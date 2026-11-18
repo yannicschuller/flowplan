@@ -361,9 +361,13 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
           .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (tag: string, key: string) => {
             const file = files.get(decodeKey(key));
             if (!file) return "";
-            // The image keeps its block id (#88).
+            // The image keeps its block id (#88) and flashcard masks (the
+            // Anki import; cleaned by cleanHtml).
             const block = /\bdata-block-id="([\w-]{1,64})"/.exec(tag)?.[1];
-            return isImage(file.mime) ? `<img src="${esc(file.url)}" alt="${esc(file.name)}"${block ? ` data-block-id="${block}"` : ""}>` : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
+            const masks = /\bdata-occlusion="([^"]*)"/.exec(tag)?.[1];
+            return isImage(file.mime)
+              ? `<img src="${esc(file.url)}" alt="${esc(file.name)}"${block ? ` data-block-id="${block}"` : ""}${masks ? ` data-occlusion="${masks}"` : ""}>`
+              : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
           })
           // Attachments become the block an upload in the editor creates (#82).
           .replace(/<div data-import-file="fp-import:\/\/file\/([^"]*)" data-title="([^"]*)"><\/div>/g, (_, key: string, title: string) =>

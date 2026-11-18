@@ -10,10 +10,15 @@ import { cellText } from "./cell-text";
 import { isFormattedText, toPlain } from "./inline-markdown";
 import { clozeFilled, clozeNumbers } from "./study-cloze";
 import { typeOfOption, type CardType, type StudySettings } from "./study-schema";
+import { occludedImages, occlusionTargets, withoutOccludedImages, type OcclusionMask, type OcclusionMode } from "./study-occlusion";
 import type { Field } from "./types";
 
 export type CardSide = { text: string; formatted?: boolean } | { html: string };
-export type DerivedKind = Exclude<CardType, "occlusion">;
+export type DerivedKind = CardType;
+// An image occlusion card (lib/study-occlusion.ts): the picture with all its
+// masks, the ones asked (a mask or a group) and the card's place among the
+// record's ("Bereich 3 von 7").
+export type OcclusionCard = { src: string; alt: string; mode: OcclusionMode; masks: OcclusionMask[]; target: string[]; index: number; total: number };
 export type DerivedCard = {
   sub: string;
   kind: DerivedKind;
@@ -26,6 +31,7 @@ export type DerivedCard = {
   cloze?: { n: number; on: "front" | "back" };
   // Multiple choice: the wrong options of the record's own property.
   choices?: string[];
+  occlusion?: OcclusionCard;
   tags?: string[];
 };
 export type DocumentPart = "above" | "below" | "all";
@@ -172,11 +178,17 @@ export function ownChoices(value: unknown, correct: string): string[] {
 //   the other side may be empty.
 // - typed: like basic; the expected answer is the back's text.
 // - choice: one card; the back is the right option.
+// - occlusion: one card per mask or group of the pictures with masks in the
+//   record's document (wherever they are in it); the sides without those
+//   pictures are the text above the picture and after revealing, and may
+//   be empty.
 export function deriveCards(settings: StudySettings, fields: Field[], cells: Record<string, unknown>, documentHtml: string | null): DerivedCard[] {
   const type = recordType(settings, cells);
-  if (type === "occlusion") return [];
-  const side = (source: StudySettings["front"] | StudySettings["back"]): CardSide =>
-    "field" in source ? fieldSide(fields, cells, source.field) : { html: splitCardHtml(documentHtml || "", source.document) };
+  const side = (source: StudySettings["front"] | StudySettings["back"]): CardSide => {
+    if ("field" in source) return fieldSide(fields, cells, source.field);
+    const html = splitCardHtml(documentHtml || "", source.document);
+    return { html: type === "occlusion" ? withoutOccludedImages(html) : html };
+  };
   const front = side(settings.front),
     back = side(settings.back);
   const extras = {
@@ -187,6 +199,22 @@ export function deriveCards(settings: StudySettings, fields: Field[], cells: Rec
   const tagValue = settings.tags ? cells[settings.tags.field] : undefined;
   const tags = Array.isArray(tagValue) ? tagValue.map((t) => cellText(t)).filter(Boolean) : cellText(tagValue) ? [cellText(tagValue)] : [];
   const tagged = tags.length ? { tags } : {};
+  if (type === "occlusion") {
+    // A key twice (a picture copied with its masks) is one card.
+    const seen = new Set<string>();
+    const targets = occludedImages(documentHtml || "")
+      .flatMap((image) => occlusionTargets(image.occlusion).map((target) => ({ image, target })))
+      .filter(({ target }) => !seen.has(target.key) && !!seen.add(target.key));
+    return targets.map(({ image, target }, i) => ({
+      sub: target.key,
+      kind: "occlusion" as const,
+      front,
+      back,
+      ...extras,
+      ...tagged,
+      occlusion: { src: image.src, alt: image.alt, mode: image.occlusion.mode, masks: image.occlusion.masks, target: target.masks, index: i + 1, total: targets.length },
+    }));
+  }
   if (type === "cloze" || type === "basic") {
     const onFront = sideClozes(front);
     const numbers = onFront.length ? onFront : sideClozes(back);
@@ -217,3 +245,6 @@ export function studyFieldIds(settings: StudySettings) {
   return [settings.front, settings.back, settings.hint, settings.extra, settings.choices, "field" in settings.type ? settings.type : undefined].flatMap((s) => (s && "field" in s ? [s.field] : []));
 }
 export const usesDocument = (settings: StudySettings) => "document" in settings.front || "document" in settings.back;
+// Whether a record's cards need its document: document sides, or an image
+// occlusion record (its pictures are in the document).
+export const needsDocument = (settings: StudySettings, cells: Record<string, unknown>) => usesDocument(settings) || recordType(settings, cells) === "occlusion";

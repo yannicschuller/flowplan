@@ -50,7 +50,9 @@ test("an Anki package through the wizard, and back out as .apkg", async ({ page 
   await expect(vocab.locator(".study-anki-sample")).toContainText("la casa → das Haus");
   // The example stays out.
   await vocab.getByLabel("Ziel für Beispiel").selectOption("skip");
-  await expect(wizard.locator(".study-import-errors")).toContainText("Bildverdeckung");
+  await expect(wizard.locator(".study-import-errors")).toContainText("Rückwärtskarte");
+  // Image occlusion comes with its masks (phase 6).
+  await expect(wizard.locator(".study-anki-notetype").filter({ hasText: "Image Occlusion" }).getByLabel("Kartentyp für Image Occlusion")).toHaveValue("occlusion");
   await shot(page, "anki-wizard", info.project.name);
   await wizard.getByRole("checkbox", { name: /Meinen Lernstand übernehmen/ }).check();
   await wizard.getByRole("button", { name: "8 Notizen in 2 Stapel importieren" }).click();

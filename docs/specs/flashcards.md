@@ -2043,3 +2043,115 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   dem Laden der Live-Seite raus (im Test von `check:offline` geprüft).
 - Optimierung (Phase 8) kann `review_log` mit `source='offline'` wie
   andere nutzen.
+
+---
+
+## 21. Entscheidungen beim Bau von Phase 6
+
+**Speicherung (`lib/study-occlusion.ts`, rein, client-tauglich)**
+
+- `data-occlusion` am Bild wie in §5.5, erweitert um `shape: "polygon"`
+  mit `points: [[x, y], …]` (0–1); `x, y, w, h` ist bei Polygonen der
+  umschließende Kasten (aus den Ecken berechnet, nie vertraut). Grenzen:
+  100 Masken je Bild, 64 Ecken, Label 200 Zeichen, kleinste Seite 0,005,
+  vier Nachkommastellen. IDs: UUID oder kürzer (`[A-Za-z0-9-]{1,36}`),
+  doppelte fallen weg; unbekannter Modus → `hide-all`.
+- `cleanHtml` lässt `data-occlusion` nur an `<img>` und nur gereinigt durch
+  (`occlusionAttribute`); ohne gültige Maske fällt das Attribut weg. Die
+  Tiptap-Bildknoten tragen es als Attribut `occlusion`; Markdown-Export
+  hält ein Bild mit Masken als HTML-Block (wie mit Markierungen).
+- „Bild ersetzen“ entfernt die Masken (sie gehörten zum alten Bild),
+  „Bild markieren“ behält sie (Anteile passen weiter).
+
+**Karten**
+
+- `sub` = `o:<Masken-ID>` bzw. `g:<Gruppen-ID>`, Reihenfolge nach der
+  ersten Maske im Dokument; derselbe Schlüssel zweimal (Bild kopiert) ist
+  eine Karte. Verschieben, Größe, Label: Schlüssel bleibt, Lernstand
+  bleibt. Gruppieren ergibt eine neue Karte `g:…`; der Editor übernimmt
+  beim Erweitern einer bestehenden Gruppe deren ID.
+- Typ `occlusion` gilt als Kartentyp wie die anderen (fest oder aus der
+  Auswahl, Option „Bildverdeckung“/„Image occlusion“, auch in der Vorlage
+  „Lernkarten-Datenbank“). Das Dokument wird je Eintrag nur gelesen, wenn
+  er es braucht (`needsDocument`: Dokumentseiten oder Typ occlusion).
+  Vorder-/Rückseite des Eintrags bleiben: ohne das maskierte Bild
+  (`withoutOccludedImages`, samt `<figure>`) als `context` über dem Bild
+  bzw. `note` nach dem Aufdecken; `back` der Karte = die Labels der
+  abgefragten Masken (leer erlaubt – eine Occlusion-Karte braucht keine
+  Textseite). Der Inhalts-Hash nimmt Bild, Modus und Masken auf.
+- Zählung: Unterkarten zählen in Zählern, Tagesgrenzen (`studyDue`) und
+  Statistik wie Lücken (nichts Eigenes nötig, getestet). Der
+  Einrichtungsdialog zeigt für Occlusion-Einträge keine Kartenzahl (die
+  käme erst aus den Dokumenten) und einen Hinweis zum Alternativtext.
+- Keine Migration, keine API-Erweiterung außer Beschreibungen
+  (`study.settings`, `study.queue` mit `occlusion`, Export, Anki-Mapping
+  `type: "occlusion"`); SDKs neu erzeugt.
+
+**Editor (`components/study/occlusion-editor.tsx`)**
+
+- Eigene Komponente statt eines Modus von `image-annotator.tsx`: der
+  Annotator rechnet in Bildpixeln und schreibt ein neues Bild; Masken sind
+  Anteile und lassen das Bild in Ruhe. Geladen per `next/dynamic` aus
+  `components/editor.tsx` (nichts Neues in der App-Hülle).
+- Angeboten unter „…“ der Bildwerkzeuge als „Bildverdeckung bearbeiten
+  (Lernkarten)“ in Eintragsdokumenten und an jedem Bild, das schon Masken
+  hat – nicht in normalen Seiten.
+- Werkzeuge: Auswählen, Rechteck, Ellipse, Polygon (Ecken antippen;
+  schließen über die erste Ecke, Doppelklick, Enter, „Polygon fertig“);
+  „Maske hinzufügen“ (Rechteck in der Mitte, für Tastatur), Gruppieren /
+  lösen, Löschen, Rückgängig/Wiederholen (50 Schritte; ein Ziehen und ein
+  Labelfeld sind je ein Schritt), Vorschau der Karte (Vorder- und
+  Rückseite). Tastatur auf der Fläche: Pfeile verschieben (Umschalt
+  weiter, Alt Größe), Entf, G, Esc. Mehrfachauswahl auf Touch über die
+  Liste (Umschalt-Klick mit Maus). Modus und Alternativtext des Bildes im
+  Seitenteil; ohne Alternativtext ein Hinweis. Ein Labelfeld wählt seine
+  Maske beim Antippen oder per Tab – nicht, wenn der Fokus nach einem
+  Tipp woanders nur zurückkehrt (Telefone halten das Tastaturfeld), sonst
+  ginge die Mehrfachauswahl zum Gruppieren verloren. Felder heißen nach
+  ihrer Stelle in der Liste („Beschriftung von Maske 3“), das Abzeichen
+  zeigt die Kartennummer (Masken einer Gruppe teilen sie).
+- Geometrie: SVG in den Pixeln des Bildes (`viewBox = naturalWidth ×
+  naturalHeight`), damit Griffe quadratisch bleiben; Farben über Klassen,
+  keine Inline-Styles.
+
+**Darstellung (`OcclusionImage` in `components/study/card-parts.tsx`)**
+
+- SVG `viewBox="0 0 1 1"`, `preserveAspectRatio="none"` über dem Bild;
+  `hide-all`: alle Masken zu, die abgefragte hervorgehoben (`asked`);
+  `hide-one`: nur die abgefragte gezeichnet. Aufgedeckt: offen mit
+  Rahmen. Bild für Screenreader `alt=""`, stattdessen eine `figcaption`
+  „Bild: … Bereich 3 von 7 verdeckt/aufgedeckt“; die Live-Region sagt das
+  Label bzw. „Bereich 3 von 7 aufgedeckt“.
+- Offline: `planFiles` holt die Dateien, auf die gespeicherte Stapel
+  verweisen (`cards`), auch ohne „Einträge offline“ – eine
+  Bildverdeckungs-Karte ohne Bild ist nicht lernbar. Das löst den Punkt
+  „Bilder der Karten nur mit Einträgen offline“ aus §20 für alle
+  Kartentypen. Die Größengrenze der Einträge gilt weiter.
+
+**Anki**
+
+- Import: Image-Occlusion-Notiztypen werden `occlusion` (wählbar nur für
+  diesen Notiztyp, sonst wie bisher „Vorder-/Rückseite mit Bild“). Masken
+  aus dem Feld mit `image-occlusion:` auf das erste Bild der Notiz;
+  gleiche Cloze-Nummer = Gruppe (eine Karte, wie in Anki); `oi=1` an
+  irgendeiner Form → `hide-all`, sonst `hide-one`. Anki vor 23.12
+  speicherte Pixel: mit der Bildgröße (`imageSize`) in Anteile
+  umgerechnet, ohne lesbares Bild übersprungen. Text-Formen und
+  unbekannte fallen weg (Zahl im Bericht). Notizen ohne Masken oder Bild
+  werden Einträge ohne Karte (Hinweis). Lernstand: Ankis Karte `ord` =
+  Cloze-Nummer − 1 → Schlüssel der Maske/Gruppe.
+- Export: als Ankis Notiztyp „Image Occlusion“ (`originalStockKind` 6,
+  Felder Occlusion, Image, Header, Back Extra, Comments, Ankis eigene
+  Vorlage), eine Notiz je Bild, Cloze-Nummern in der Reihenfolge der
+  Karten, Anteile ohne führende Null. Anki vor 23.10 zeigt die
+  Fehlermeldung der Vorlage; ein Basic-mit-Bild-Ersatz im Dialog (§8.2)
+  wurde nicht gebaut.
+
+**Offen**
+
+- Zoomen per Pinch in der Karte (`lib/pinch-zoom.ts`) – die Gesten des
+  Fokusmodus (Wischen) bräuchten eine Abgrenzung; bis dahin zoomt der
+  Browser.
+- Ankis Text-Formen (Beschriftungen auf dem Bild) und „Basic mit
+  maskiertem Bild“ als Export-Alternative.
+- Chinesische Texte des Editors (fr vollständig).

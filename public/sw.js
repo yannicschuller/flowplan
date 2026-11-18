@@ -225,8 +225,9 @@ const offlinePlan = {
     }
     return { refresh, add, drop };
   },
-  planFiles({ keys, referenced, includeRecords }) {
-    const wanted = new Set(referenced.map((id) => id.toLowerCase()));
+  planFiles({ keys, referenced, includeRecords, cards = [] }) {
+    const wanted = new Set([...referenced, ...cards].map((id) => id.toLowerCase()));
+    const always = new Set(cards.map((id) => id.toLowerCase()));
     const stored = new Set();
     const drop = [];
     for (const key of keys) {
@@ -235,7 +236,7 @@ const offlinePlan = {
       if (!wanted.has(file)) drop.push(key);
       else stored.add(file);
     }
-    const add = includeRecords ? [...wanted].filter((id) => !stored.has(id)).map((id) => `/api/files/${id}`) : [];
+    const add = [...wanted].filter((id) => !stored.has(id) && (includeRecords || always.has(id))).map((id) => `/api/files/${id}`);
     return { add, drop };
   },
   planStudy({ keys, decks }) {

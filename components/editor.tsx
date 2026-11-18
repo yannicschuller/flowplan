@@ -15,6 +15,9 @@ import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { atOpensMention, typedMenu } from "@/lib/mention-trigger";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
+import dynamic from "next/dynamic";
+// The mask editor of flashcards (image occlusion) loads when it opens.
+const OcclusionEditor = dynamic(() => import("./study/occlusion-editor").then((m) => m.OcclusionEditor), { ssr: false });
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
 import { TicketRefs } from "@/lib/ticket-ref-plugin";
@@ -460,6 +463,7 @@ export default function DocumentEditor({
     [math, setMath] = useState<MathTarget | null>(null),
     // The image being marked up (position and its attributes).
     [annotate, setAnnotate] = useState<{ pos: number; src: string; original: string | null; annotations: string | null } | null>(null),
+    [occlusion, setOcclusion] = useState<{ pos: number; src: string; alt: string; value: string | null } | null>(null),
     // The note being written: an existing one (pos) or a new one at `at`.
     [footnote, setFootnote] = useState<{ pos: number | null; note: string; at: number; original: string } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -2514,7 +2518,7 @@ export default function DocumentEditor({
       const node = editor.state.doc.nodeAt(pos);
       if (node?.type.name !== "image") return;
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: data.url, alt: original.name, original: null, annotations: null, height: null }),
+        editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: data.url, alt: original.name, original: null, annotations: null, occlusion: null, height: null }),
       );
     } catch (e) {
       onError((e as Error).message);
@@ -2527,6 +2531,21 @@ export default function DocumentEditor({
     const node = "node" in selection ? (selection as unknown as { node: { type: { name: string }; attrs: Record<string, string | null> } }).node : null;
     if (node?.type.name !== "image") return;
     setAnnotate({ pos: selection.from, src: node.attrs.src || "", original: node.attrs.original, annotations: node.attrs.annotations });
+  }
+  // Image occlusion (flashcards): the masks of an image, kept on it as
+  // data-occlusion; the picture stays.
+  function editOcclusion(pos: number) {
+    const node = editor?.state.doc.nodeAt(pos);
+    if (node?.type.name !== "image") return;
+    setOcclusion({ pos, src: String(node.attrs.src || ""), alt: String(node.attrs.alt || ""), value: node.attrs.occlusion || null });
+  }
+  function saveOcclusion(target: NonNullable<typeof occlusion>, result: { occlusion: string | null; alt: string }) {
+    const current = editor?.state.doc.nodeAt(target.pos);
+    if (!editor || current?.type.name !== "image" || current.attrs.src !== target.src) {
+      onError(t("Das Bild wurde inzwischen geändert. Bitte erneut öffnen.", "The image was changed in the meantime. Please open it again."));
+      return;
+    }
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(target.pos, undefined, { ...current.attrs, occlusion: result.occlusion, alt: result.alt || current.attrs.alt }));
   }
   // Copies the selected image to the system clipboard (toolbar button; the
   // right-click menu does not exist on a phone).
@@ -3499,6 +3518,10 @@ export default function DocumentEditor({
                 editor.chain().focus().setNodeSelection(pos).run();
                 void copySelectedImage();
               }}
+              // Masks for flashcards: in a record's document, or on an
+              // image that has them.
+              onOcclusion={(pos) => editOcclusion(pos)}
+              occlusionOffered={(pos) => !!rowId || !!editor.state.doc.nodeAt(pos)?.attrs.occlusion}
               onCopyLink={(pos) => void copyBlockLink.current(pos)}
             />
           )}
@@ -3893,6 +3916,9 @@ export default function DocumentEditor({
           onSave={(result) => saveAnnotation(annotate, result)}
           onClose={() => setAnnotate(null)}
         />
+      )}
+      {occlusion && (
+        <OcclusionEditor src={occlusion.src} alt={occlusion.alt} value={occlusion.value} onSave={(result) => saveOcclusion(occlusion, result)} onClose={() => setOcclusion(null)} />
       )}
       {math && (
         <MathEditorDialog

@@ -282,7 +282,7 @@ export function htmlToMarkdown(
     const keep =
       !MARKDOWN_BLOCKS.has(node.type.name) ||
       (node.type.name === "table" && !plainTable(node)) ||
-      (node.type.name === "image" && !!(node.attrs.width || node.attrs.height || node.attrs.annotations || node.attrs.title || node.attrs.align));
+      (node.type.name === "image" && !!(node.attrs.width || node.attrs.height || node.attrs.annotations || node.attrs.occlusion || node.attrs.title || node.attrs.align));
     if (!keep) return null;
     const index = source.blocks.length;
     const label = (blockLabels[node.type.name]?.() || node.type.name).replace(/-{2,}|>/g, " ");

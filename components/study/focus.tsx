@@ -20,7 +20,8 @@
 // - Card types (§5): a cloze card hides its gaps and shows them filled
 //   when revealed; a typed card asks for the answer in a field (Enter
 //   checks, the comparison suggests a rating), a multiple choice card
-//   offers its options (A–E, shuffled per review). The suggestion is
+//   offers its options (A–E, shuffled per review), an image occlusion card
+//   shows its picture with the masks asked covered and opens them. The suggestion is
 //   preselected – Space or Enter takes it – but every rating stays open.
 // - Only learning cards later today left: a wait screen counts down to the
 //   next one and offers "Früher zeigen" (the queue with `ahead`).
@@ -32,7 +33,8 @@ import { localeTag } from "@/lib/i18n";
 import { api, isTransient } from "../ui";
 import { NotOffline, refreshStoredDeck, studyLoad, studyRateOffline, useStudyPending } from "./offline";
 import { dropReviews, pendingReviews } from "@/lib/study-offline";
-import { CHOICE_KEYS, ChoiceOptions, Side, TypedVerdict, choiceOrder, type StudySide } from "./card-parts";
+import { CHOICE_KEYS, ChoiceOptions, OcclusionImage, Side, TypedVerdict, choiceOrder, type StudySide } from "./card-parts";
+import type { OcclusionCard } from "@/lib/study-content";
 import { StudyPendingNote } from "./pending";
 import { compareTyped, type TypedResult } from "@/lib/study-compare";
 import { intervalOf, preview, type FsrsParams, type Memory, type StudyRating } from "@/lib/fsrs";
@@ -53,6 +55,8 @@ export type StudyCard = {
   note?: StudySide;
   typed?: { answer: string };
   choice?: { options: string[]; correct: number };
+  // Image occlusion: the picture, its masks and the ones asked.
+  occlusion?: OcclusionCard;
 };
 type Counts = { new: number; learning: number; review: number };
 // `offline`: built on the device (components/study/offline.ts), `pending`:
@@ -264,7 +268,10 @@ export function StudyFocus({
   useEffect(() => {
     if (!shown?.revealed) return;
     backRef.current?.focus();
-    setAnnounce(t(`Antwort: ${sidePlain(shown.card.back)}`, `Answer: ${sidePlain(shown.card.back)}`).slice(0, 400));
+    // Image occlusion: the labels of the masks asked, else which area opened.
+    const occlusion = shown.card.occlusion;
+    const answer = sidePlain(shown.card.back) || (occlusion ? t(`Bereich ${occlusion.index} von ${occlusion.total} aufgedeckt`, `Area ${occlusion.index} of ${occlusion.total} revealed`) : "");
+    setAnnounce(t(`Antwort: ${answer}`, `Answer: ${answer}`).slice(0, 400));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown?.revealed, shown?.reviewId]);
   const clock = deck ? { zone: deck.zone, dayStart: deck.dayStart } : { zone, dayStart: 4 };
@@ -529,8 +536,13 @@ export function StudyFocus({
                 <Side side={shown.card.context} pageId={pageId} />
               </div>
             )}
-            {/* A cloze card shows its text once: with gaps, then filled. */}
-            {shown.card.kind === "cloze" && shown.revealed ? (
+            {/* A cloze card shows its text once: with gaps, then filled; an
+                image occlusion card its picture, the masks asked opened. */}
+            {shown.card.occlusion ? (
+              <div className="study-side study-front">
+                <OcclusionImage occlusion={shown.card.occlusion} reveal={shown.revealed} />
+              </div>
+            ) : shown.card.kind === "cloze" && shown.revealed ? (
               <div className="study-side study-front study-back" ref={backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>
                 <Side side={shown.card.back} pageId={pageId} />
               </div>
@@ -588,12 +600,13 @@ export function StudyFocus({
             )}
             {shown.revealed && (
               <div className="study-side study-back" ref={shown.card.kind === "cloze" ? undefined : backRef} tabIndex={-1} aria-label={t("Antwort", "Answer")}>
-                {shown.card.kind !== "cloze" && (
+                {shown.card.kind !== "cloze" && !shown.card.occlusion && (
                   <>
                     <hr />
                     <Side side={shown.card.back} pageId={pageId} />
                   </>
                 )}
+                {shown.card.occlusion && "text" in shown.card.back && shown.card.back.text && <p className="study-text occlusion-answer">{shown.card.back.text}</p>}
                 {shown.card.note && (
                   <div className="study-extra">
                     <Side side={shown.card.note} pageId={pageId} />

@@ -3,7 +3,8 @@
 // image (on touch screens: tapping it, which selects it) shows a small bar
 // in its top right corner – comment, caption, replace, download, full
 // screen and "…" with alignment, marking up, copying the image or a link to
-// it, and deleting. It replaces the "Add caption" button under the image
+// it, the masks of a flashcard (image occlusion, in records' documents), and
+// deleting. It replaces the "Add caption" button under the image
 // (#241) and the image buttons of the formatting toolbar, so they stay
 // reachable with the toolbar hidden (#235). The resize handles stay.
 import { useEffect, useReducer, useRef, useState } from "react";
@@ -19,6 +20,7 @@ import {
   ImageSquare,
   LinkSimple,
   PencilSimpleLine,
+  SelectionBackground,
   TextAa,
   TextAlignCenter,
   TextAlignLeft,
@@ -71,6 +73,8 @@ export function ImageTools({
   onAnnotate,
   onCopyImage,
   onCopyLink,
+  onOcclusion,
+  occlusionOffered,
 }: {
   editor: Editor;
   editable: boolean;
@@ -78,6 +82,9 @@ export function ImageTools({
   onAnnotate: (pos: number) => void;
   onCopyImage: (pos: number) => void;
   onCopyLink: (pos: number) => void;
+  // Flashcards: the image occlusion masks (where offered).
+  onOcclusion?: (pos: number) => void;
+  occlusionOffered?: (pos: number) => boolean;
 }) {
   const t = useT();
   const layer = useRef<HTMLDivElement>(null);
@@ -164,6 +171,9 @@ export function ImageTools({
     { icon: <TextAlignRight />, label: t("Rechts", "Right"), checked: align === "right", run: () => setAlign(pos, "right") },
     "separator",
     { icon: <PencilSimpleLine />, label: t("Bild markieren", "Mark up image"), run: () => onAnnotate(pos) },
+    ...(onOcclusion && occlusionOffered?.(pos)
+      ? [{ icon: <SelectionBackground />, label: t("Bildverdeckung bearbeiten (Lernkarten)", "Edit image occlusion (flashcards)"), run: () => onOcclusion(pos) }]
+      : []),
     { icon: <CopySimple />, label: t("Bild kopieren", "Copy image"), run: () => onCopyImage(pos) },
     { icon: <LinkSimple />, label: t("Link zum Block kopieren", "Copy link to block"), run: () => onCopyLink(pos) },
     "separator",
