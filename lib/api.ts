@@ -4014,6 +4014,10 @@ async function runCommand(
     // Content changes: who edited, and followers are told.
     if (editActions.has(action) && typeof b.pageId === "string")
       await recordPageEdit(user, b.pageId);
+    // A changed record is a change of its database: "Recently updated" on
+    // the start page and the page lists sort by the database's time (#369).
+    if (recordEditActions.has(action) && typeof b.pageId === "string")
+      await run("UPDATE pages SET updated_at=? WHERE id=? AND kind='database'", nowText(), b.pageId);
     // Workflows: a page's content or title changed (debounced, lib/workflows/hooks.ts).
     if ((action === "document.sync" || action === "whiteboard.sync") && typeof b.pageId === "string" && b.update)
       await pageChangedEvent(b.pageId, user.id, ["content"]);
@@ -4140,6 +4144,18 @@ const rowVersionActions = new Set([
 // Commands that change a page's content (`pageId`): recorded as an edit
 // (lib/page-activity.ts); "My activity" counts them from the activity log
 // (lib/my-activity.ts).
+// Actions that change a database's records (#369).
+const recordEditActions = new Set([
+  "row.create",
+  "row.update",
+  "row.delete",
+  "row.document.sync",
+  "row.move",
+  "row.schedule",
+  "rows.bulk",
+  "rows.transfer",
+  "rows.import",
+]);
 export const editActions = new Set([
   "document.sync",
   "database.update",

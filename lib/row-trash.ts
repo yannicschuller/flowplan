@@ -181,6 +181,8 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
           !!(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", target, f.relationPage || ""))),
     );
   }
+  // A restored record is a change of its database (#369).
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   await run(
     // The ticket number comes back too (unless another record took it).
     "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
