@@ -116,6 +116,7 @@ const PERSONAL = [
   "idempotency_keys",
   "push_tests",
   "background_jobs",
+  "print_snapshots",
   "widget_counter_days",
   "widget_focus",
   "weekly_digests",

@@ -11,12 +11,20 @@
 // with jobProgress() without knowing about jobs: the current job travels
 // with the async context. Entries of a previous server process count as
 // interrupted; finished ones are kept for a day and then removed.
+//
+// Everything lives in the database (background_jobs), so in cluster mode
+// any instance answers: the job runs on one instance, which marks its row
+// alive every 15 s; a job of another process not marked for a minute
+// counts as interrupted (its instance stopped or crashed). Outside cluster
+// mode there is no other process: a job of an earlier one is interrupted.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { all, one, run } from "./db";
+import { HttpError } from "./auth";
 import type { Identity } from "./types";
 import { enterArea, shiftArea } from "./server-metrics";
-import { clusterMode } from "./cluster/config";
+import { clusterMode, instanceId } from "./cluster/config";
 import { captureJobError } from "./error-details";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
@@ -24,22 +32,27 @@ export type JobKind = (typeof jobKinds)[number];
 
 const KEEP_MS = 24 * 3_600_000;
 // A process id: jobs of an earlier run of the server cannot finish any more.
+// (Not the instance id: FLOWPLAN_INSTANCE_ID may stay the same across a
+// restart of the container.)
 const BOOT = randomUUID();
-// Cluster mode: a job runs on one instance and is asked about on any – the
-// instance running it marks it alive every half minute; one not marked for
-// two minutes counts as interrupted (its instance stopped).
-const ALIVE_EVERY = 30_000;
-const ALIVE_LIMIT = 120_000;
+// The instance running a job marks it alive this often; a job of another
+// process not marked for JOB_ALIVE_LIMIT counts as interrupted.
+export const JOB_ALIVE_EVERY = 15_000;
+export const JOB_ALIVE_LIMIT = 60_000;
 const alive = globalThis as unknown as { flowplanJobsAlive?: Map<string, ReturnType<typeof setInterval>> };
 const aliveTimers = () => (alive.flowplanJobsAlive ??= new Map());
 
+// Whether a row in state "running" no longer runs anywhere.
+const isInterrupted = (job: { status: string; boot: string; updated_at: number | string }, now: number) =>
+  job.status === "running" && job.boot !== BOOT && (!clusterMode() || now - Number(job.updated_at) > JOB_ALIVE_LIMIT);
+
 const current = new AsyncLocalStorage<{ id: string; reported: number }>();
 
-export async function startJob(user: Pick<Identity, "id">, kind: JobKind, label: string) {
+export async function startJob(user: Pick<Identity, "id">, kind: JobKind, label: string, options: { launched?: boolean } = {}) {
   const jobId = randomUUID(),
     now = Date.now();
   await run(
-    "INSERT INTO background_jobs(id,user_id,kind,label,progress,status,boot,started_at,updated_at) VALUES(?,?,?,?,NULL,'running',?,?,?)",
+    "INSERT INTO background_jobs(id,user_id,kind,label,progress,status,boot,started_at,updated_at,launched,instance) VALUES(?,?,?,?,NULL,'running',?,?,?,?,?)",
     jobId,
     user.id,
     kind,
@@ -47,27 +60,38 @@ export async function startJob(user: Pick<Identity, "id">, kind: JobKind, label:
     BOOT,
     now,
     now,
+    options.launched ? 1 : 0,
+    instanceId(),
   );
-  await run("DELETE FROM background_jobs WHERE updated_at<?", now - KEEP_MS);
-  if (clusterMode()) {
-    const timer = setInterval(() => void run("UPDATE background_jobs SET updated_at=? WHERE id=? AND status='running'", Date.now(), jobId).catch(() => {}), ALIVE_EVERY);
-    timer.unref?.();
-    aliveTimers().set(jobId, timer);
-  }
+  await sweepBackgroundJobs(now);
+  const timer = setInterval(() => void run("UPDATE background_jobs SET updated_at=? WHERE id=? AND status='running'", Date.now(), jobId).catch(() => {}), JOB_ALIVE_EVERY);
+  timer.unref?.();
+  aliveTimers().set(jobId, timer);
   return jobId;
 }
 
-export async function finishJob(jobId: string, error?: unknown) {
+// Rows older than a day go; outcomes past their hour are emptied (they can
+// be large: an import's preview). On every start and in the leader's
+// sweep (lib/admin-ops.ts).
+export async function sweepBackgroundJobs(now = Date.now()) {
+  await run("DELETE FROM background_jobs WHERE updated_at<?", now - KEEP_MS);
+  await run("UPDATE background_jobs SET outcome=NULL WHERE outcome IS NOT NULL AND expires_at<?", now);
+}
+
+// `outcome`: what the poll of a launched job answers (see launchJob), as JSON.
+export async function finishJob(jobId: string, error?: unknown, outcome?: string) {
   clearInterval(aliveTimers().get(jobId));
   aliveTimers().delete(jobId);
   const now = Date.now();
   await run(
-    "UPDATE background_jobs SET status=?,progress=CASE WHEN ?='done' THEN 1 ELSE progress END,error=?,updated_at=?,finished_at=? WHERE id=? AND status='running'",
+    "UPDATE background_jobs SET status=?,progress=CASE WHEN ?='done' THEN 1 ELSE progress END,error=?,updated_at=?,finished_at=?,outcome=?,expires_at=? WHERE id=? AND status='running'",
     error === undefined ? "done" : "failed",
     error === undefined ? "done" : "failed",
     error === undefined ? null : String((error as Error)?.message || error).slice(0, 300),
     now,
     now,
+    outcome ?? null,
+    outcome === undefined ? null : now + OUTCOME_MS,
     jobId,
   );
 }
@@ -117,10 +141,10 @@ export async function trackJob<T>(user: Pick<Identity, "id">, kind: JobKind, lab
 // reverse proxy waits for an answer (504). The request only starts it and
 // answers with the job's id; the work runs when `schedule` calls it (in a
 // route: after the response, next/server after()), and the page asks for
-// its progress and outcome (jobOutcome). Outcomes are kept in memory for an
-// hour – a restart ends the work anyway (the job counts as interrupted).
-type Outcome = { userId: string; kind: JobKind; at: number; done: boolean; value?: unknown; error?: unknown };
-const outcomes = new Map<string, Outcome>();
+// its progress and outcome (jobOutcome) – on whichever instance its request
+// lands. The outcome (the work's result, or the error it threw) is kept in
+// the job's row for an hour; a restart ends the work (the job counts as
+// interrupted).
 const OUTCOME_MS = 3_600_000;
 export async function launchJob<T>(
   user: Pick<Identity, "id">,
@@ -129,44 +153,83 @@ export async function launchJob<T>(
   work: () => T | Promise<T>,
   schedule: (task: () => Promise<void>) => void = (task) => void setImmediate(task),
 ) {
-  const now = Date.now();
-  for (const [id, outcome] of outcomes) if (outcome.done && now - outcome.at > OUTCOME_MS) outcomes.delete(id);
-  const jobId = await startJob(user, kind, label);
-  const outcome: Outcome = { userId: user.id, kind, at: now, done: false };
-  outcomes.set(jobId, outcome);
+  const jobId = await startJob(user, kind, label, { launched: true });
   schedule(async () => {
     const area = enterArea("jobs");
     try {
-      outcome.value = await current.run({ id: jobId, reported: 0 }, work);
-      await finishJob(jobId).catch(() => {});
+      const value = await current.run({ id: jobId, reported: 0 }, work);
+      await finishJob(jobId, undefined, JSON.stringify({ value: value === undefined ? null : value }));
     } catch (error) {
-      outcome.error = error;
       // After its request: only the error details of the monitoring see it.
       captureJobError(kind, error);
-      await finishJob(jobId, error).catch(() => {});
+      await finishJob(jobId, error, JSON.stringify({ error: storedError(error) })).catch(() => {});
     } finally {
       area();
-      outcome.done = true;
-      outcome.at = Date.now();
     }
   });
   return jobId;
 }
-// A job of this kind the person started with launchJob that still runs.
-export const runningJob = (user: Pick<Identity, "id">, kind: JobKind) =>
-  [...outcomes.values()].some((outcome) => outcome.userId === user.id && outcome.kind === kind && !outcome.done);
+
+// An error as the job's row keeps it, and back: what the route makes of it
+// (app/api/[...path]/route.ts error()) stays the same – the status and text
+// of an HttpError, the messages of invalid input, a 500 for anything else.
+type StoredError =
+  | { kind: "http"; status: number; message: string }
+  | { kind: "input"; issues: { path: (string | number)[]; message: string }[] }
+  | { kind: "other"; message: string };
+export function storedError(error: unknown): StoredError {
+  if (error instanceof HttpError) return { kind: "http", status: error.status, message: error.message.slice(0, 2000) };
+  if (error instanceof z.ZodError)
+    return {
+      kind: "input",
+      issues: error.issues.slice(0, 50).map((i) => ({ path: i.path.filter((p): p is string | number => typeof p !== "symbol"), message: i.message.slice(0, 500) })),
+    };
+  return { kind: "other", message: String((error as Error)?.message || error).slice(0, 2000) };
+}
+export function restoredError(stored: StoredError | undefined): Error {
+  if (stored?.kind === "http") return new HttpError(stored.status, stored.message);
+  if (stored?.kind === "input") return new z.ZodError(stored.issues.map((i) => ({ code: "custom" as const, path: i.path, message: i.message, input: undefined })));
+  return new Error(stored?.message || "Job failed");
+}
+
+// A job of this kind the person started with launchJob that still runs –
+// on any instance of the installation (a job of a stopped instance does
+// not count, see isInterrupted).
+export async function runningJob(user: Pick<Identity, "id">, kind: JobKind, now = Date.now()) {
+  const rows = await all<{ status: string; boot: string; updated_at: number }>(
+    "SELECT status,boot,updated_at FROM background_jobs WHERE user_id=? AND kind=? AND status='running' AND launched=1",
+    user.id,
+    kind,
+  );
+  return rows.some((job) => !isInterrupted(job, now));
+}
 // The state of a launched job of the person: running (with its progress),
 // done (with the work's result) or failed (with the error thrown); null when
-// it is not theirs or no longer known (a restart, or more than an hour ago).
+// it is not theirs or no longer known (its instance stopped, or it ended
+// more than an hour ago).
 export async function jobOutcome(
   user: Pick<Identity, "id">,
   jobId: string,
+  now = Date.now(),
 ): Promise<{ status: "running"; progress: number | null } | { status: "done"; value: unknown } | { status: "failed"; error: unknown } | null> {
-  const outcome = outcomes.get(jobId);
-  if (!outcome || outcome.userId !== user.id) return null;
-  if (outcome.done) return outcome.error === undefined ? { status: "done", value: outcome.value } : { status: "failed", error: outcome.error };
-  const row = await one<{ progress: number | null }>("SELECT progress FROM background_jobs WHERE id=? AND user_id=?", jobId, user.id);
-  return { status: "running", progress: row?.progress == null ? null : Math.round(row.progress * 100) / 100 };
+  const row = await one<{ status: "running" | "done" | "failed"; progress: number | null; boot: string; updated_at: number; outcome: string | null; expires_at: number | null }>(
+    "SELECT status,progress,boot,updated_at,outcome,expires_at FROM background_jobs WHERE id=? AND user_id=? AND launched=1",
+    jobId,
+    user.id,
+  );
+  if (!row) return null;
+  if (row.status === "running") {
+    if (isInterrupted(row, now)) return null;
+    return { status: "running", progress: row.progress == null ? null : Math.round(row.progress * 100) / 100 };
+  }
+  if (!row.outcome || (row.expires_at !== null && Number(row.expires_at) < now)) return null;
+  let parsed: { value?: unknown; error?: StoredError };
+  try {
+    parsed = JSON.parse(row.outcome);
+  } catch {
+    return null;
+  }
+  return row.status === "done" ? { status: "done", value: parsed.value } : { status: "failed", error: restoredError(parsed.error) };
 }
 
 // A download that is produced while it streams: the job ends with the stream.
@@ -218,7 +281,7 @@ export async function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_
     user.id,
     now - recentMs,
   )).map((job) => {
-    const interrupted = job.status === "running" && (clusterMode() ? now - Number(job.updated_at) > ALIVE_LIMIT : job.boot !== BOOT);
+    const interrupted = isInterrupted(job, now);
     return {
       id: job.id,
       kind: job.kind,

@@ -1568,6 +1568,7 @@ function migrate(d: DatabaseSync) {
     d.exec("ALTER TABLE notifications ADD COLUMN markup TEXT");
   migrateServerMetrics(d);
   migrateErrorDetails(d);
+  migrateSharedJobState(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1613,6 +1614,31 @@ function migrateServerMetrics(d: DatabaseSync) {
 function migrateErrorDetails(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS error_groups(fingerprint TEXT PRIMARY KEY,kind TEXT NOT NULL DEFAULT 'request',route TEXT NOT NULL,action TEXT NOT NULL DEFAULT '',name TEXT NOT NULL,message TEXT NOT NULL DEFAULT '',status INTEGER NOT NULL DEFAULT 500,frames TEXT NOT NULL DEFAULT '[]',db_code TEXT NOT NULL DEFAULT '',count INTEGER NOT NULL DEFAULT 0,first_seen INTEGER NOT NULL,last_seen INTEGER NOT NULL,slots TEXT NOT NULL DEFAULT '{}',occurrences TEXT NOT NULL DEFAULT '[]');
     CREATE INDEX IF NOT EXISTS error_groups_last ON error_groups(last_seen);`);
+}
+// State every instance must see (cluster mode, docs/architecture/database.md
+// §14c), on both databases alike:
+// - background_jobs.launched: 1 for work started with launchJob (the import
+//   page polls its outcome; "an import is already running" counts these),
+//   .instance the instance running it, .outcome the result or the error as
+//   JSON once it ended, kept until .expires_at (an hour). The running
+//   instance marks the row alive (updated_at); a job of another process not
+//   marked for a minute counts as interrupted.
+// - print_snapshots: a print view opened in Safari (lib/print-snapshots.ts):
+//   the SHA-256 of its secret token, the person, its size, the cleaned view
+//   itself – or, when large, NULL and the view in the staging area (data
+//   folder, the bucket in cluster mode) – and when it expires (15 minutes).
+// New columns with defaults and a new table only – an older version leaves
+// them alone – so the schema number stays.
+function migrateSharedJobState(d: DatabaseSync) {
+  const jobColumns = new Set((d.prepare("PRAGMA table_info(background_jobs)").all() as { name: string }[]).map((c) => c.name));
+  if (!jobColumns.has("launched")) d.exec("ALTER TABLE background_jobs ADD COLUMN launched INTEGER NOT NULL DEFAULT 0");
+  if (!jobColumns.has("instance")) d.exec("ALTER TABLE background_jobs ADD COLUMN instance TEXT NOT NULL DEFAULT ''");
+  if (!jobColumns.has("outcome")) d.exec("ALTER TABLE background_jobs ADD COLUMN outcome TEXT");
+  if (!jobColumns.has("expires_at")) d.exec("ALTER TABLE background_jobs ADD COLUMN expires_at INTEGER");
+  d.exec(`CREATE INDEX IF NOT EXISTS background_jobs_launched ON background_jobs(user_id,kind,status,launched);
+    CREATE TABLE IF NOT EXISTS print_snapshots(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,html TEXT,bytes INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS print_snapshots_user ON print_snapshots(user_id);
+    CREATE INDEX IF NOT EXISTS print_snapshots_expires ON print_snapshots(expires_at);`);
 }
 // Schema 102 – a workspace's look (#196): workspaces.theme (JSON, NULL =
 // Flowplan's own: accent, background tint, typefaces; lib/workspace-theme.ts),
