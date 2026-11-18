@@ -10,7 +10,7 @@ import { usePaneScroll } from "@/lib/pane-scroll";
 import { HistoryButtons, type StepLook } from "./history-buttons";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
-import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
+import { desktopApp, desktopPageLink, holdForProfileSwitcher, inDesktopApp, nativeApp, offerDesktopApp, openInWindow, openProfileSwitcher, useProfileSwitcherWay } from "@/lib/native-app";
 import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
@@ -227,6 +227,7 @@ import {
   ArrowsOutSimple,
   ArrowLeft,
   Crosshair,
+  ArrowsLeftRight,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -694,6 +695,9 @@ export default function WorkspaceApp({
   // browser's copy is set, so the first paint has the width.
   useEffect(() => setFullWidthPagesLocal(boot.fullWidthPages), [boot.fullWidthPages]);
   const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
+  // Inside the iPhone, iPad and Android app: the app's profiles from the
+  // workspace menu and a long press on the own account row (lib/native-app.ts).
+  const profileSwitcher = useProfileSwitcherWay();
   // "Beim Öffnen auf dem Handy" (lib/start-screen.ts): the settings show it.
   useEffect(() => setStartScreenLocal(boot.startScreen), [boot.startScreen]);
   // The share dialog loads with its first opening and stays mounted.
@@ -4204,6 +4208,15 @@ export default function WorkspaceApp({
                   </Dropdown.Item>
                 </>
               )}
+              {profileSwitcher && (
+                <>
+                  <Dropdown.Separator className="dropdown-separator" />
+                  <Dropdown.Item className="dropdown-item" onSelect={() => void openProfileSwitcher()}>
+                    <ArrowsLeftRight />
+                    {t("Instanz wechseln …", "Switch instance…")}
+                  </Dropdown.Item>
+                </>
+              )}
             </Dropdown.Content>
           </Dropdown.Portal>
         </Dropdown.Root>
@@ -4664,7 +4677,11 @@ export default function WorkspaceApp({
           {/* Less used places as one row of symbols (on phones behind
               "Mehr" by the profile): the page tree above keeps the height. */}
           <SidebarToolRow tools={sidebarTools} />
-          <div className="profile">
+          <div
+            className="profile"
+            data-profile-switcher={profileSwitcher ? "" : undefined}
+            onPointerDown={profileSwitcher ? (e) => void holdForProfileSwitcher(e) : undefined}
+          >
             <Avatar name={boot.user.name} userId={boot.user.id} eager />
             <span>
               {boot.user.name}

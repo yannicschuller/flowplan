@@ -861,6 +861,13 @@ kbd,
   margin: 0 -10px;
   padding: 10px 16px;
 }
+/* In the app, a long press on the own account row opens the app's profiles
+   (lib/native-app.ts holdForProfileSwitcher): no text selection or callout. */
+.profile[data-profile-switcher] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .profile > span:nth-child(2) {
   font-size: 12px;
   font-weight: 600;
