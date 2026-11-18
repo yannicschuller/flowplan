@@ -21,6 +21,7 @@ import { schedule, type FsrsParams, type Memory, type StudyRating } from "./fsrs
 import { buildQueue, sessionOrder, type QueueCard } from "./study-queue";
 import { studyClock, studyDay } from "./study-day";
 import type { StudyViewConfig } from "./study-schema";
+import { STUDY_PENDING, setStudyPendingFlag } from "./study-pending-flag";
 
 export type PendingReview = {
   id: string;
@@ -145,7 +146,7 @@ export function reviewBatches(pending: PendingReview[], userId: string) {
 const DB_NAME = "flowplan-study";
 const STORE = "reviews";
 // Fired on window when the waiting ratings changed (detail: none).
-export const STUDY_PENDING = "flowplan:study-pending";
+export { STUDY_PENDING };
 let opening: Promise<IDBDatabase> | null = null;
 function database(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") return Promise.reject(new Error("IndexedDB is not available."));
@@ -190,6 +191,7 @@ export async function queueReview(review: PendingReview) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+  setStudyPendingFlag(true);
   changed();
 }
 export async function dropReviews(ids: string[]) {

@@ -31,8 +31,7 @@ import {
   OfflineConflicts,
 } from "./offline-queue";
 import { applyQueue } from "@/lib/offline-queue";
-import { useStudyPending } from "./study/offline";
-import { browserZone } from "@/lib/date-values";
+import { STUDY_PENDING, studyPendingFlag } from "@/lib/study-pending-flag";
 import { draftKey, draftSent, keyed } from "@/lib/idempotency-key";
 import {
   parsePageLocation,
@@ -977,7 +976,7 @@ export default function WorkspaceApp({
     if (!search || deviceOffline()) return;
     let live = true;
     void api<{ decks: { pageId: string; title: string; new: number; learning: number; review: number }[] }>(
-      `/api/study/due?${new URLSearchParams({ workspace: boot.workspace.id, zone: browserZone() })}`,
+      `/api/study/due?${new URLSearchParams({ workspace: boot.workspace.id, zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" })}`,
     )
       .then((due) => live && setPaletteDecks(due.decks.map((d) => ({ pageId: d.pageId, title: d.title, left: d.new + d.learning + d.review })).filter((d) => d.left > 0).slice(0, 30)))
       .catch(() => undefined);
@@ -1206,9 +1205,25 @@ export default function WorkspaceApp({
     onSynced: refresh,
     notify,
   });
-  // Flashcard ratings made offline (components/study/offline.ts): sent
-  // once the connection is back, wherever the person is in the app.
-  useStudyPending(boot.user.id, undefined, true);
+  // Flashcard ratings made offline (components/study/sync.ts): sent once
+  // the connection is back. The sending is loaded only while some wait on
+  // this device and the device is online (lib/study-pending-flag.ts).
+  useEffect(() => {
+    const userId = boot.user.id;
+    const run = () => {
+      if (!studyPendingFlag() || deviceOffline()) return;
+      void import("./study/sync").then((m) => m.syncStudyReviews(userId)).catch(() => undefined);
+    };
+    run();
+    window.addEventListener(STUDY_PENDING, run);
+    window.addEventListener("online", run);
+    const timer = setInterval(run, 30_000);
+    return () => {
+      window.removeEventListener(STUDY_PENDING, run);
+      window.removeEventListener("online", run);
+      clearInterval(timer);
+    };
+  }, [boot.user.id]);
   const dataRef = useRef(data);
   dataRef.current = data;
   const bootRef = useRef(boot);

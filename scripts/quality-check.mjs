@@ -69,8 +69,11 @@ const PAGES = [
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
   // the inactivity message (#282) in the workspace bundle; 1860 since 0.9.7;
   // 1175 since the trimming of 2026-11-16 (the canvas is now about 180 KB
-  // more than a database page, the shared part shrank).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1175, ready: ".react-flow__node, .wf-list-node" },
+  // more than a database page, the shared part shrank); 1185 since
+  // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
+  // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
+  // the margin the other pages have).
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1185, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
