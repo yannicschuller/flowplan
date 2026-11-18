@@ -118,7 +118,7 @@ export function NewPageDialog({
   const chosen: Choice = template ? "template" : kind;
   const aiDatabase = aiUsable(boot.ai, "database");
   const database = kind === "database" && !template;
-  const types: { id: Choice; icon: Icon; label: string; description: string }[] = [
+  const types: { id: Choice; icon: Icon; label: string; description: string; short?: string }[] = [
     {
       id: "document",
       icon: FileText,
@@ -147,6 +147,8 @@ export function NewPageDialog({
       id: "template",
       icon: SquaresFour,
       label: template ? t("Vorlage gewählt", "Template chosen") : t("Aus Vorlage", "From a template"),
+      // The tile shows the short word; the full label is its name (#371).
+      short: t("Vorlage", "Template"),
       description: template
         ? t(`Vorlage „${template.name}“ – tippe, um eine andere zu wählen`, `Template “${template.name}” – tap to choose another one`)
         : t("Besprechungsnotizen, Projektsteckbrief, Spezifikation … und deine gespeicherten Vorlagen", "Meeting notes, project brief, spec … and your saved templates"),
@@ -220,10 +222,11 @@ export function NewPageDialog({
               tabIndex={chosen === type.id ? 0 : -1}
               className={`np-type${chosen === type.id ? " chosen" : ""}`}
               data-type={type.id}
+              aria-label={type.short ? type.label : undefined}
               onClick={() => choose(type.id)}
             >
               <type.icon size={22} aria-hidden="true" />
-              <span>{type.label}</span>
+              <span>{type.short ?? type.label}</span>
             </button>
           ))}
         </div>

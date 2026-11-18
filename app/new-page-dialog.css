@@ -59,11 +59,17 @@
   height: 22px;
   color: var(--secondary);
 }
+/* A long label (French, a narrow phone) wraps onto a second line instead
+   of being cut off (#371). */
 .np-type span {
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   color: var(--text);
 }
 .np-type:hover {
