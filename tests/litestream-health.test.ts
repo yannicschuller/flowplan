@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { Identity } from "../lib/types";
 import { onPostgres } from "./helpers/backend";
 import { startFakeS3 } from "./helpers/fake-s3";
+import { fakeProc } from "./helpers/fake-proc";
 
 const s3 = await startFakeS3();
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-litestream-health-"));
@@ -334,4 +335,108 @@ test("an administrator cancels the automatic repair: not written again for this 
   const later = await health.checkLitestreamReplica(now + 15 * MIN, listing(2 * 60 * MIN, 3, now + 15 * MIN));
   assert.ok(later.state === "stuck" && later.incident.repair === "cancelled");
   assert.equal(existsSync(marker), false);
+});
+
+/* ---------- Litestream's memory (issue #335) ---------- */
+
+const MiB = 1024 * 1024;
+const memoryBasis = () => ({ threshold: 512 * MiB, basis: "host" as const, total: 2048 * MiB });
+// One sample a minute of Litestream (PID 1, the exec path) at these MiB,
+// from `start`.
+async function sampleMinutes(mib: number[], start: number, pid = 1) {
+  let last: Awaited<ReturnType<typeof health.checkLitestreamMemory>> | undefined;
+  for (const [i, m] of mib.entries()) {
+    const proc = fakeProc({ [pid]: { comm: "litestream", cmdline: ["litestream", "replicate"], rssKb: m * 1024 }, 40: { comm: "node" } });
+    last = await health.checkLitestreamMemory(start + i * MIN, proc, memoryBasis);
+  }
+  return last!;
+}
+const climb = (n: number, from = 600, step = 30) => Array.from({ length: n }, (_, i) => from + i * step);
+
+test("memory climbing past the threshold: stuck early – backup, marker 'remote', warning, one log entry; a new Litestream ends it", sqlite, async () => {
+  health.resetLitestreamMemory();
+  const start = Date.now() + 20 * 60 * MIN;
+  writeFileSync(replicating, `since=${Math.floor((start - 60 * MIN) / 1000)}\nhost=${hostname()}\npid=1\n`);
+  const before = backupsInBucket().length;
+  // Nine samples: above the threshold, but not yet "climbing".
+  const early = await sampleMinutes(climb(9), start);
+  assert.equal(early.state, "high");
+  assert.equal(existsSync(marker), false);
+  assert.equal((await systemOverview()).litestream?.memory?.verdict, "high", "the hint in Überwachung");
+  // The tenth: a steady climb over nine minutes.
+  const result = await sampleMinutes([600 + 9 * 30], start + 9 * MIN);
+  assert.ok(result.state === "climbing" && result.opened);
+  assert.equal(result.incident?.cause, "memory");
+  assert.equal(result.incident?.files, null);
+  assert.equal(readFileSync(marker, "utf8").split("\n")[0], "remote");
+  assert.equal(backupsInBucket().length, before + 1);
+  assert.deepEqual(await auditActions(), ["litestream.replica.reset_scheduled", "litestream.replica.stuck"]);
+  assert.ok((await activeAlerts()).some((a) => a.event === "litestream_stuck" && /Litestream \d+ MB/.test(a.detail)));
+  const status = (await systemOverview()).litestream;
+  assert.equal(status?.incident?.cause, "memory");
+  assert.equal(status?.incident?.repair, "scheduled");
+  assert.equal(status?.memory?.verdict, "climbing");
+  // Still climbing: the same incident, no second backup or log entry.
+  const again = await sampleMinutes([900], start + 10 * MIN);
+  assert.ok(again.state === "climbing" && !again.opened);
+  assert.equal(backupsInBucket().length, before + 1);
+  // The bucket check finds no old L0 files (yet): memory keeps it open.
+  await health.checkLitestreamReplica(start + 11 * MIN, listing(2 * MIN, 4, start + 11 * MIN));
+  assert.equal((await systemOverview()).litestream?.incident?.cause, "memory");
+  // After the repair: a new Litestream (another PID) with little memory.
+  const fresh = await sampleMinutes([60], start + 12 * MIN, 77);
+  assert.equal(fresh.state, "normal");
+  assert.equal(fresh.state === "normal" && fresh.incident, null);
+  assert.equal((await systemOverview()).litestream?.incident, null);
+  assert.ok((await auditActions()).includes("litestream.replica.healthy"));
+});
+
+test("memory: high but flat or a saw tooth is only the hint; right after the start a climb waits", sqlite, async () => {
+  health.resetLitestreamMemory();
+  const start = Date.now() + 30 * 60 * MIN;
+  writeFileSync(replicating, `since=${Math.floor((start - 60 * MIN) / 1000)}\nhost=${hostname()}\n`);
+  assert.equal((await sampleMinutes(Array(12).fill(900), start)).state, "high");
+  assert.equal((await sampleMinutes([600, 650, 700, 750, 800, 620, 700, 780, 850, 900], start + 12 * MIN)).state, "high");
+  assert.equal(existsSync(marker), false);
+  assert.equal((await systemOverview()).litestream?.incident, null);
+  // Litestream started five minutes before the samples: not yet.
+  health.resetLitestreamMemory();
+  writeFileSync(replicating, `since=${Math.floor((start + 40 * MIN) / 1000)}\nhost=${hostname()}\n`);
+  assert.equal((await sampleMinutes(climb(10), start + 45 * MIN)).state, "high");
+  assert.equal(existsSync(marker), false);
+  // No Litestream in /proc, or not replicating here.
+  assert.deepEqual(await health.checkLitestreamMemory(start + 60 * MIN, fakeProc({ 3: { comm: "node" } }), memoryBasis), { state: "not_found" });
+  rmSync(replicating);
+  assert.deepEqual(await health.checkLitestreamMemory(start + 61 * MIN, fakeProc({ 1: { comm: "litestream", rssKb: 9e6 } }), memoryBasis), { state: "inactive" });
+  assert.deepEqual(await auditActions(), []);
+});
+
+test("memory with FLOWPLAN_LITESTREAM_AUTOHEAL=off: warning and log entry, no marker", sqlite, async () => {
+  health.resetLitestreamMemory();
+  process.env.FLOWPLAN_LITESTREAM_AUTOHEAL = "off";
+  const start = Date.now() + 40 * 60 * MIN;
+  writeFileSync(replicating, `since=${Math.floor((start - 60 * MIN) / 1000)}\nhost=${hostname()}\n`);
+  const result = await sampleMinutes(climb(10), start, 31);
+  assert.ok(result.state === "climbing" && result.incident?.repair === "off");
+  assert.equal(existsSync(marker), false);
+  assert.deepEqual(await auditActions(), ["litestream.replica.stuck"]);
+});
+
+test("an incident found in the bucket stays open when memory is normal; the bucket check adds L0 to a memory incident", sqlite, async () => {
+  health.resetLitestreamMemory();
+  const start = Date.now() + 50 * 60 * MIN;
+  writeFileSync(replicating, `since=${Math.floor((start - 60 * MIN) / 1000)}\nhost=${hostname()}\n`);
+  await health.checkLitestreamReplica(start, listing(2 * 60 * MIN, 50, start));
+  assert.equal((await sampleMinutes([80], start + MIN)).state, "normal");
+  const status = (await systemOverview()).litestream;
+  assert.equal(status?.incident?.cause, "l0");
+  assert.equal(status?.incident?.files, 50);
+  // Memory climbs as well: the same incident, now with memory.
+  const both = await sampleMinutes(climb(10), start + 2 * MIN);
+  assert.ok(both.state === "climbing" && !both.opened && both.incident?.memory);
+  assert.equal(both.incident?.files, 50);
+  // Memory normal again, L0 still old: open.
+  await sampleMinutes([80], start + 13 * MIN, 2);
+  assert.equal((await systemOverview()).litestream?.incident?.files, 50);
+  assert.equal((await systemOverview()).litestream?.incident?.memory, null);
 });

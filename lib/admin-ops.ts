@@ -361,7 +361,17 @@ export async function activeAlerts(now = Date.now()): Promise<{ event: AlertEven
   const logins = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind='login_failure' AND at>=?", now - 3600_000))?.n || 0);
   if (logins >= LOGIN_ALERT_THRESHOLD) result.push({ event: "login_failures", detail: String(logins) });
   const replica = await (await import("./litestream-health")).openLitestreamIncident().catch(() => null);
-  if (replica) result.push({ event: "litestream_stuck", detail: `${replica.files}${replica.truncated ? "+" : ""} L0, ${replica.repair}` });
+  if (replica)
+    result.push({
+      event: "litestream_stuck",
+      detail: [
+        replica.files !== null && replica.oldestAt !== null ? `${replica.files}${replica.truncated ? "+" : ""} L0` : null,
+        replica.memory ? `Litestream ${Math.round(replica.memory.rss / 1024 / 1024)} MB` : null,
+        replica.repair,
+      ]
+        .filter(Boolean)
+        .join(", "),
+    });
   const restarts = await (await import("./restarts/history")).openRestartIncident(now).catch(() => null);
   if (restarts) result.push({ event: "unexpected_restart", detail: String(restarts.restarts) });
   return result;

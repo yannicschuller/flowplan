@@ -100,8 +100,8 @@ export async function register() {
     startIssueSyncWorker();
     const { startBackupWorker } = await import("./lib/scheduled-backup");
     startBackupWorker();
-    // SQLite with Litestream: a stuck replica in the bucket, every 15 minutes
-    // (lib/litestream-health.ts).
+    // SQLite with Litestream: a stuck replica in the bucket, every 15 minutes,
+    // and Litestream's memory, every minute (lib/litestream-health.ts).
     const { startLitestreamWorker } = await import("./lib/litestream-health");
     startLitestreamWorker();
     const { startInactiveWorker } = await import("./lib/inactive-accounts");

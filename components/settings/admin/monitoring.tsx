@@ -959,7 +959,8 @@ function Workers({ ops }: { ops: OpsOverview | null }) {
 // The stuck Litestream replica's warning (monitoring-litestream.tsx): its
 // code loads only while there is something to show – rarely.
 const LitestreamWarning = dynamic(() => import("./monitoring-litestream").then((m) => m.LitestreamWarning), { ssr: false });
-const litestreamNeedsWarning = (s: SystemOverview) => !!s.litestream?.active && (!!s.litestream.incident || s.litestream.marker === "remote");
+const litestreamNeedsWarning = (s: SystemOverview) =>
+  !!s.litestream?.active && (!!s.litestream.incident || s.litestream.marker === "remote" || (!!s.litestream.memory && s.litestream.memory.verdict !== "normal"));
 
 // Restarts (monitoring-restarts.tsx).
 

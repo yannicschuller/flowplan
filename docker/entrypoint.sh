@@ -359,9 +359,12 @@ litestream_reset_if_asked() {
 }
 # When Litestream starts replicating in this container (with the lock
 # held): the app checks the replica in the bucket only here, and only once
-# Litestream has run for a while (lib/litestream-health.ts).
+# Litestream has run for a while (lib/litestream-health.ts). $1: Litestream's
+# PID where it is known beforehand (the exec path: `exec litestream` keeps
+# this shell's PID), for the app's reading of Litestream's memory
+# (lib/litestream-memory.ts); without it the app looks for it in /proc.
 mark_replicating() {
-  printf 'since=%s\nhost=%s\n' "$(date +%s)" "$ME" > "$DATA/.flowplan-replicating.$$" 2>/dev/null \
+  { printf 'since=%s\nhost=%s\n' "$(date +%s)" "$ME" && if [ -n "${1:-}" ]; then printf 'pid=%s\n' "$1"; fi; } > "$DATA/.flowplan-replicating.$$" 2>/dev/null \
     && mv -f "$DATA/.flowplan-replicating.$$" "$DATA/.flowplan-replicating" 2>/dev/null || rm -f "$DATA/.flowplan-replicating.$$" 2>/dev/null || true
 }
 if [ -z "$POSTGRES" ]; then
@@ -460,6 +463,14 @@ supervise() {
         ls_next=$((now + delay))
       fi
       if [ -z "$ls_pid" ] && [ "$now" -ge "$ls_next" ]; then
+        # Litestream died (often the kernel's OOM killer, when a stuck
+        # replica made its memory climb, lib/litestream-memory.ts) and the
+        # app may have scheduled the repair meanwhile: apply it before the
+        # restart, while no Litestream runs – only Litestream restarts, the
+        # app keeps running. (On the exec path Litestream is the container's
+        # main process: its end ends the container, and the repair runs on
+        # the next start.)
+        if [ "$ls_started" -gt 0 ]; then litestream_reset_if_asked; fi
         # Started directly (not through ls_run): $! must be Litestream itself.
         if [ -n "$ls_log_on" ]; then
           litestream replicate -config /etc/litestream.yml >&6 2>&6 6>&- &
@@ -554,7 +565,7 @@ if [ -n "$LITESTREAM" ]; then
   ls_log_open
   ls_run litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists "$DB"
   litestream_reset_if_asked
-  mark_replicating
+  mark_replicating "$$"
   if [ -n "$ls_log_on" ]; then
     exec 3>&1 4>&2
     exec litestream replicate -config /etc/litestream.yml -exec "sh $0 --exec-app" >&6 2>&6 6>&-

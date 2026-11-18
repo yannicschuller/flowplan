@@ -5,7 +5,9 @@
 // container (docker/entrypoint.sh deletes <prefix>/db/ in the bucket and
 // Litestream begins with a full snapshot). The buttons write the same
 // marker by hand ("Replik jetzt neu aufbauen"), take it back, or end the
-// process so that the container restarts ("Jetzt neu starten").
+// process so that the container restarts ("Jetzt neu starten"). Without an
+// incident, a hint when Litestream uses a lot of memory (above the
+// threshold of lib/litestream-memory.ts, for whatever reason).
 import { useState } from "react";
 import { ArrowClockwise, ArrowsCounterClockwise, WarningCircle } from "@phosphor-icons/react";
 import type { SystemOverview } from "@/lib/cluster/system";
@@ -13,7 +15,7 @@ import type { LitestreamAction } from "@/lib/litestream-health";
 import { useT } from "../../i18n";
 import { api } from "../../ui";
 import { useAdmin } from "../admin-context";
-import { dateTime, num } from "./monitoring-format";
+import { bytes, dateTime, num } from "./monitoring-format";
 import { useDocs } from "./parts";
 
 export function LitestreamWarning({ s, reload }: { s: SystemOverview; reload: () => void }) {
@@ -26,7 +28,8 @@ export function LitestreamWarning({ s, reload }: { s: SystemOverview; reload: ()
   if (!ls?.active) return null;
   const incident = ls.incident;
   const scheduled = ls.marker === "remote";
-  if (!incident && !scheduled) return null;
+  const memory = ls.memory && ls.memory.verdict !== "normal" ? ls.memory : null;
+  if (!incident && !scheduled && !memory) return null;
   const act = async (action: LitestreamAction) => {
     setBusy(true);
     try {
@@ -97,6 +100,19 @@ export function LitestreamWarning({ s, reload }: { s: SystemOverview; reload: ()
         <span>{t("Flowplan startet neu und repariert dabei die Litestream-Replik. Die Seite verbindet sich danach von selbst wieder.", "Flowplan is restarting and repairs the Litestream replica on the way. The page reconnects by itself afterwards.")}</span>
       </p>
     );
+  if (!incident && !scheduled && memory)
+    return (
+      <p className="mon-note" role="status" data-testid="litestream-memory">
+        <WarningCircle size={16} aria-hidden />
+        <span>
+          {t(
+            `Litestream braucht gerade viel Arbeitsspeicher: ${bytes(memory.rss)} (Hinweis ab ${bytes(memory.threshold)}). Steigt das stetig weiter, hängt meist die Replik im Bucket – das erkennt Flowplan nach einigen Minuten und merkt die Reparatur vor. Ohne Reparatur beendet das System Litestream irgendwann wegen Speichermangels, und mit ihm den Container.`,
+            `Litestream is using a lot of memory right now: ${bytes(memory.rss)} (hint from ${bytes(memory.threshold)}). If it keeps climbing, the replica in the bucket is usually stuck – Flowplan detects that after a few minutes and schedules the repair. Without a repair the system eventually ends Litestream for lack of memory, and the container with it.`,
+          )}{" "}
+          {link}
+        </span>
+      </p>
+    );
   if (!incident)
     return (
       <div className="mon-note" role="status" data-testid="litestream-warning">
@@ -107,16 +123,28 @@ export function LitestreamWarning({ s, reload }: { s: SystemOverview; reload: ()
         {buttons}
       </div>
     );
-  const files = `${num(incident.files)}${incident.truncated ? "+" : ""}`;
+  const files = `${num(incident.files ?? 0)}${incident.truncated ? "+" : ""}`;
   const backup = incident.backup;
+  const climbing = incident.memory ?? null;
   return (
     <div className="mon-note warn" role="alert" data-testid="litestream-warning">
       <WarningCircle size={16} aria-hidden />
       <span>
-        {t(
-          `Die Litestream-Replik im Bucket hängt (seit ${dateTime(incident.since)}): ${files} Änderungsdateien der Ebene 0 werden nicht mehr zusammengefasst, die älteste ist von ${dateTime(incident.oldestAt)}. Meist liegt dort eine beschädigte Datei, etwa nach zwei Containern auf demselben Volume. Die Datenbank im Volume ist in Ordnung, aber eine Wiederherstellung aus dem Bucket kann scheitern.`,
-          `The Litestream replica in the bucket is stuck (since ${dateTime(incident.since)}): ${files} level 0 change files are no longer compacted, the oldest is from ${dateTime(incident.oldestAt)}. Usually a damaged file lies there, for example after two containers on the same volume. The database in the volume is fine, but a restore from the bucket may fail.`,
-        )}{" "}
+        {incident.oldestAt !== null && incident.files !== null
+          ? t(
+              `Die Litestream-Replik im Bucket hängt (seit ${dateTime(incident.since)}): ${files} Änderungsdateien der Ebene 0 werden nicht mehr zusammengefasst, die älteste ist von ${dateTime(incident.oldestAt)}. Meist liegt dort eine beschädigte Datei, etwa nach zwei Containern auf demselben Volume. Die Datenbank im Volume ist in Ordnung, aber eine Wiederherstellung aus dem Bucket kann scheitern.`,
+              `The Litestream replica in the bucket is stuck (since ${dateTime(incident.since)}): ${files} level 0 change files are no longer compacted, the oldest is from ${dateTime(incident.oldestAt)}. Usually a damaged file lies there, for example after two containers on the same volume. The database in the volume is fine, but a restore from the bucket may fail.`,
+            )
+          : t(
+              `Die Litestream-Replik im Bucket hängt offenbar (seit ${dateTime(incident.since)}): Litestreams Arbeitsspeicher steigt stetig. Das passiert, wenn das Zusammenfassen der Änderungsdateien der Ebene 0 an einer beschädigten Datei scheitert – jeder neue Versuch hält dann alle diese Dateien im Speicher. Die Datenbank im Volume ist in Ordnung.`,
+              `The Litestream replica in the bucket appears to be stuck (since ${dateTime(incident.since)}): Litestream's memory keeps climbing. That happens when compacting the level 0 change files fails on a damaged file – every new attempt then holds all those files in memory. The database in the volume is fine.`,
+            )}{" "}
+        {climbing
+          ? t(
+              `Litestream braucht ${bytes(climbing.rss)} Arbeitsspeicher, und es wird mehr (Schwelle ${bytes(climbing.threshold)}); ohne Reparatur beendet das System Litestream irgendwann wegen Speichermangels, und mit ihm den Container.`,
+              `Litestream uses ${bytes(climbing.rss)} of memory and climbing (threshold ${bytes(climbing.threshold)}); without a repair the system eventually ends Litestream for lack of memory, and the container with it.`,
+            )
+          : null}{" "}
         {scheduled
           ? scheduledText
           : incident.repair === "backup_failed"
