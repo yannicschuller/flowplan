@@ -1557,7 +1557,8 @@ for several pods that can come and go at any time:
   in the bucket in cluster mode, sealed, removed by each area's sweep after
   its time limit (a bucket lifecycle rule on `tmp/` is the safety net). No
   sticky sessions. Background jobs: a job running on another pod is marked
-  alive every 30 s and counts as interrupted only when that stops.
+  alive every 15 s and counts as interrupted only when that stops for a
+  minute (§14c).
 - **Fenced leader rounds** (lib/cluster/leader.ts, `leaderDuty(name, fn)`):
   taking the lock raises `flowplan_meta.leader_term`; a round starts only
   while the database's term is the instance's own and with the duty's own
@@ -1589,6 +1590,90 @@ for several pods that can come and go at any time:
 Not tested here: a real Kubernetes cluster (no container runtime in the
 development environment) – the chart is linted, rendered with both examples
 and validated with kubeconform in CI (.github/workflows/helm.yml).
+
+## 14c. Shared short-lived state and PostgreSQL failover (Nov 2026)
+
+What was still kept per process although another instance may be asked,
+and what a PostgreSQL behind one address needs to survive a restart or a
+failover:
+
+- **Background imports** (lib/background-jobs.ts): `launchJob`'s outcome
+  (the result, or the error as status and text / input messages / a plain
+  failure) is in its `background_jobs` row (`outcome` JSON, `expires_at`
+  an hour later; columns `launched`, `instance`), no longer in a process
+  map – any instance answers `GET /api/import/source/job`, and "Es läuft
+  schon ein Import" (409) counts the person's running launched jobs of the
+  whole installation. The instance running a job marks it alive every 15 s
+  (both modes); in cluster mode a job of another process not marked for
+  60 s counts as interrupted – the poll then answers 410 "Der Import wurde
+  unterbrochen …" as after a restart; outside cluster mode a job of an
+  earlier process is interrupted at once (as before). Outcomes past their
+  hour are emptied on every start of a job and in the leader's ops sweep;
+  rows go after a day.
+- **Print views** (lib/print-snapshots.ts): a table `print_snapshots` (the
+  SHA-256 of the secret token – the token itself is never stored –, the
+  person, size, created, expires: 15 minutes, one per person). Views
+  carry their pictures as data and may be up to 40 MB: up to 512 KB the
+  view sits in the row, larger ones in the staging area (lib/staging.ts,
+  area `print`: `data/tmp/print/` of a single container, `<prefix>/tmp/print/`
+  in the bucket, sealed, in cluster mode), so the database does not carry
+  tens of megabytes per print. Expired rows and their copies go when the
+  next view is stored and in the leader's ops sweep (every 10 minutes),
+  which also removes copies left without a row.
+- **Parallel AI answers per person** (`AI_LIMITS.concurrent` = 3,
+  lib/ai/concurrency.ts): in cluster mode a sorted set per person in Redis
+  (`<prefix>ai-running:<user>`), one entry per running answer scored with
+  the time it lapses (2 minutes, renewed every 30 s while it streams);
+  taking a slot is one Lua script. A crashed instance's slots lapse by
+  themselves (a counter with INCR/DECR would stay up). Redis away, slower
+  than 1 s or failing: each instance counts in memory (logged once, Redis
+  asked again after 15 s). Single container: in memory as before.
+- **PostgreSQL connections** (lib/db-driver/postgres.ts): TCP keepalive
+  (`FLOWPLAN_PG_KEEPALIVE`, default 10000 ms before the first probe; `off`),
+  a client-side limit per query (`FLOWPLAN_PG_QUERY_TIMEOUT`, default
+  statement_timeout + 5000 ms; lifted with the server's limit in an
+  `untimed()` transaction), idle connections closed after
+  `FLOWPLAN_PG_IDLE_TIMEOUT` (default 30000 ms). A connection error
+  (ECONNRESET/ECONNREFUSED/EPIPE/…, 57P01/57P02/57P03, class 08,
+  "Connection terminated", the client-side limit) drops the connection; the
+  statement is repeated once on a new one only outside a transaction and
+  when read-only (`SELECT`/`WITH … SELECT` without a data-modifying part,
+  locking clause or writing function – `retrySafe()`); writes and
+  statements in a transaction are never repeated. A transaction whose
+  `BEGIN` meets a dead connection starts on a fresh one. 25006
+  (read_only_sql_transaction: the old primary, now a standby, behind the
+  same address) drops that connection and marks every connection opened
+  before it – each is dropped at its next use – so the pool reconnects to
+  the address, the new primary; the session connections (LISTEN, leader
+  lock) close and reconnect on 25006 too. No list of hosts, no read/write
+  split. Tests: tests/pg-failover.test.ts (a stand-in for `pg.Pool`;
+  against a real server `pg_terminate_backend` and
+  `SET LOCAL transaction_read_only`).
+- **Two instances without cluster mode** (lib/cluster/single-instance.ts):
+  on PostgreSQL outside cluster mode each instance takes the session-level
+  advisory lock `flowplan:single-instance:<schema>` on its session
+  connection (no extra connection) and checks it every 30 s. One without it
+  logs a loud error (again every 10 minutes) and writes
+  `single_instance_conflict:<instance>` into `flowplan_meta` with each
+  check; Administration → Überwachung shows the warning on every instance
+  while such a record is younger than two minutes. It keeps serving (a
+  rolling restart overlaps for a moment); once it gets the lock its record
+  goes and the warning ends. The lock goes back at shutdown. Test:
+  tests/single-instance.test.ts (PostgreSQL).
+- **Deployment id** (next.config.ts): Next.js's `deploymentId` from
+  `FLOWPLAN_DEPLOYMENT_ID` (build time; `off` = none), else
+  `NEXT_DEPLOYMENT_ID`, else `v<version>-<commit 12>` when the commit is
+  known; not for `next dev`. Next.js adds `?dpl=<id>` to every file under
+  `/_next/static` (also fonts in style sheets and chunks loaded later) and
+  reloads instead of navigating client-side when the server's id differs.
+  It does not route by it: an instance still answers 404 for a file of
+  another build – Flowplan's own check (X-Flowplan-Build, lib/stale-copy.ts)
+  heals such a page as before. `generateBuildId` stays Next.js's random one
+  (with a deployment id Next.js would make it constant), so that check
+  still tells builds apart. The offline copy's list (`/api/offline/assets`)
+  names the build's files with the same `?dpl=` as the page asks for them;
+  unchanged files of a previous deployment are copied by name (public/sw.js
+  `ignoreSearch`, components/offline.ts).
 
 ## 15. Sizing (load test of cluster mode)
 

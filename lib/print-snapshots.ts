@@ -1,22 +1,41 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import sanitize from "sanitize-html";
+import { all, one, run } from "./db";
+import { staging } from "./staging";
 
 // Print views for iPhone and iPad apps on the home screen, which cannot print
 // themselves: the browser sends the finished view (page copy, styles, images
 // as data), and it is shown once more in Safari under a secret address – Safari
-// there has no session. Kept in memory for a short time only.
+// there has no session. Kept for 15 minutes, one per person.
+//
+// Shared by every instance (cluster mode: the Safari request may reach
+// another instance than the one that stored the view): a row in
+// print_snapshots by the SHA-256 of the token (the token itself is never
+// stored), the person, the size and the expiry. A view carries its pictures
+// as data and may be up to 40 MB: up to INLINE_BYTES it sits in the row,
+// larger ones in the staging area (lib/staging.ts, area "print": the data
+// folder of a single container, the bucket – sealed – in cluster mode), so
+// the database does not carry tens of megabytes per print.
 export const PRINT_SNAPSHOT_MAX_BYTES = 40 * 1024 * 1024;
+export const PRINT_SNAPSHOT_INLINE_BYTES = 512 * 1024;
 const TTL_MS = 15 * 60 * 1000;
-const TOTAL_BYTES = 200 * 1024 * 1024;
-const snapshots = new Map<string, { html: string; userId: string; expires: number; bytes: number }>();
+const parts = () => staging("print");
+const hashOf = (token: string) => createHash("sha256").update(token).digest("hex");
 
-function prune(now = Date.now()) {
-  let total = 0;
-  for (const [token, s] of snapshots) if (s.expires <= now) snapshots.delete(token);
-  // Oldest first out when they take too much memory together.
-  for (const [token, s] of [...snapshots].reverse()) {
-    total += s.bytes;
-    if (total > TOTAL_BYTES) snapshots.delete(token);
+// Expired views go (rows and staged copies): when a view is stored, and in
+// the leader's sweep (lib/admin-ops.ts). A staged copy whose row is gone
+// (an instance stopped between the two writes) goes once it is older than
+// the view could live.
+export async function sweepPrintSnapshots(now = Date.now(), options: { orphans?: boolean } = {}) {
+  const expired = await all<{ token_hash: string; html: string | null }>("SELECT token_hash,html FROM print_snapshots WHERE expires_at<=?", now);
+  for (const row of expired) {
+    await run("DELETE FROM print_snapshots WHERE token_hash=?", row.token_hash);
+    if (row.html === null) await parts().removeObject(row.token_hash);
+  }
+  if (!options.orphans) return;
+  for (const object of await parts().list("")) {
+    if (now - object.at < 2 * TTL_MS) continue;
+    if (!(await one("SELECT 1 AS ok FROM print_snapshots WHERE token_hash=?", object.name))) await parts().removeObject(object.name);
   }
 }
 
@@ -73,19 +92,38 @@ function withBar(html: string, marker: string, author: string) {
   return at >= 0 ? `${html.slice(0, at)}>${bar}${html.slice(at + mark.length)}` : html.replace(/^<!doctype html>/, `$&${bar}`);
 }
 
-export function storePrintSnapshot(userId: string, author: string, html: string) {
+export async function storePrintSnapshot(userId: string, author: string, html: string, now = Date.now()) {
   const marker = randomBytes(12).toString("hex");
   html = withBar(cleanPrintView(html, marker), marker, author);
-  prune();
+  await sweepPrintSnapshots(now);
   // One view per person at a time: a new one replaces the previous one.
-  for (const [token, s] of snapshots) if (s.userId === userId) snapshots.delete(token);
+  for (const old of await all<{ token_hash: string; html: string | null }>("SELECT token_hash,html FROM print_snapshots WHERE user_id=?", userId)) {
+    await run("DELETE FROM print_snapshots WHERE token_hash=?", old.token_hash);
+    if (old.html === null) await parts().removeObject(old.token_hash);
+  }
   const token = randomBytes(24).toString("base64url");
-  snapshots.set(token, { html, userId, expires: Date.now() + TTL_MS, bytes: Buffer.byteLength(html) });
-  prune();
+  const hash = hashOf(token);
+  const bytes = Buffer.byteLength(html);
+  const inline = bytes <= PRINT_SNAPSHOT_INLINE_BYTES;
+  // The copy first, then the row: a row always finds its copy.
+  if (!inline) await parts().put(hash, Buffer.from(html, "utf8"));
+  await run(
+    "INSERT INTO print_snapshots(token_hash,user_id,html,bytes,created_at,expires_at) VALUES(?,?,?,?,?,?)",
+    hash,
+    userId,
+    inline ? html : null,
+    bytes,
+    now,
+    now + TTL_MS,
+  );
   return token;
 }
 
-export function printSnapshot(token: string) {
-  prune();
-  return snapshots.get(token)?.html ?? null;
+export async function printSnapshot(token: string, now = Date.now()): Promise<string | null> {
+  if (!/^[\w-]{16,64}$/.test(token)) return null;
+  const hash = hashOf(token);
+  const row = await one<{ html: string | null; expires_at: number }>("SELECT html,expires_at FROM print_snapshots WHERE token_hash=?", hash);
+  if (!row || Number(row.expires_at) <= now) return null;
+  if (row.html !== null) return row.html;
+  return (await parts().get(hash))?.toString("utf8") ?? null;
 }

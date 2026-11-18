@@ -1851,7 +1851,7 @@ async function handlePOST(
       // progress and outcome.
       if (fields.get("background") === "1") {
         const { launchJob, runningJob } = await import("@/lib/background-jobs");
-        if (runningJob(user, "import")) {
+        if (await runningJob(user, "import")) {
           if (kept && !fields.get("upload")) upload.discardImportUpload(user.id, kept);
           throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
         }
@@ -1903,7 +1903,7 @@ async function handlePOST(
       const { requireSpace } = await import("@/lib/importers/write");
       await requireSpace(user, body.workspaceId, body.spaceId);
       const { launchJob, runningJob } = await import("@/lib/background-jobs");
-      if (runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+      if (await runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
       const job = await launchJob(user, "import", "Notion", () => importNotion(user, body.workspaceId, body.spaceId, body.token, body.items || []), (task) => after(task));
       return NextResponse.json({ job }, { status: 202 });
     }
@@ -1940,7 +1940,7 @@ async function handlePOST(
           return result;
         });
       const { launchJob, runningJob } = await import("@/lib/background-jobs");
-      if (runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+      if (await runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
       if (body.background === false) return NextResponse.json(dryRun ? await work() : await trackJob(user, "import", "BookStack", work));
       const job = await launchJob(user, "import", "BookStack", work, (task) => after(task));
       return NextResponse.json({ job }, { status: 202 });

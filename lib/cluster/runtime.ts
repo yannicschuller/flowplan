@@ -29,6 +29,7 @@ import { closeBus, startBus } from "./bus";
 import { resignLeadership, startLeaderElection, stopDuties, waitForDuties } from "./leader";
 import { startHeartbeat, stopHeartbeat } from "./instances";
 import { closeSession } from "./pg-session";
+import { releaseSingleInstance, singleInstanceGuarded, startSingleInstanceGuard } from "./single-instance";
 
 // Phases of the shutdown tasks; tasks of one phase run side by side.
 export const SHUTDOWN_PHASE = { work: 10, files: 20, release: 30, close: 40 } as const;
@@ -96,8 +97,9 @@ export async function untilDeadline(promise: Promise<unknown>, deadline: number)
 
 // Called first in instrumentation.ts. In cluster mode: the configuration
 // check (the process exits with the reasons when something is missing),
-// the bus, the leader election and the heartbeat. Both modes: SIGTERM and
-// SIGINT end the instance gracefully.
+// the bus, the leader election and the heartbeat. Outside it, on
+// PostgreSQL: the check for a second instance on the same database. Both
+// modes: SIGTERM and SIGINT end the instance gracefully.
 export async function startInstance(options: { pool?: () => { total: number; idle: number; waiting: number } | null; version?: string | null } = {}) {
   const s = state();
   if (s.started) return;
@@ -120,7 +122,12 @@ export async function startInstance(options: { pool?: () => { total: number; idl
       });
     });
   holdExit();
-  if (!cluster) return;
+  if (!cluster) {
+    // PostgreSQL without cluster mode: warns when a second instance runs
+    // against the same database (lib/cluster/single-instance.ts).
+    startSingleInstanceGuard();
+    return;
+  }
   console.log(`Cluster mode: instance ${instanceId()}`);
   await startBus();
   startLeaderElection();
@@ -135,6 +142,7 @@ export async function startInstance(options: { pool?: () => { total: number; idl
 // heartbeat go back, then the bus and the session connections close.
 function builtinTasks(): Task[] {
   const tasks: Task[] = [{ name: "leader-duties", phase: SHUTDOWN_PHASE.work, run: (deadline) => waitForDuties(deadline) }];
+  if (singleInstanceGuarded()) tasks.push({ name: "single-instance", phase: SHUTDOWN_PHASE.release, run: () => releaseSingleInstance() });
   if (clusterMode())
     tasks.push(
       { name: "leader", phase: SHUTDOWN_PHASE.release, run: () => resignLeadership() },

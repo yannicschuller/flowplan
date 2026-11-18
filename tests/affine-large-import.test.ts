@@ -87,12 +87,12 @@ test("a background job answers with its progress, result or error – only to th
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(await jobOutcome(owner, job), { status: "running", progress: null });
-  assert.equal(runningJob(owner, "import"), true, "a second import is refused meanwhile");
+  assert.equal(await runningJob(owner, "import"), true, "a second import is refused meanwhile");
   assert.equal(await jobOutcome(other, job), null, "not theirs");
   release();
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(await jobOutcome(owner, job), { status: "done", value: { pages: 3 } });
-  assert.equal(runningJob(owner, "import"), false);
+  assert.equal(await runningJob(owner, "import"), false);
 
   const failing = await launchJob(owner, "import", "kaputt.affine", () => {
     throw new HttpError(400, "Die AFFiNE-Datei kann nicht gelesen werden.");

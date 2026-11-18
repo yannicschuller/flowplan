@@ -272,9 +272,11 @@ async function storeApp(assets, shell, owner) {
     shell,
   };
   const others = (await caches.keys()).filter((n) => offlineAssets.isStaticCache(n) && n !== name);
+  // Unchanged files of an older build, also under its own deployment id
+  // (?dpl=…, the only query of the app's files): found by the name.
   const reused = async (path) => {
     for (const other of others) {
-      const hit = await (await caches.open(other)).match(path);
+      const hit = await (await caches.open(other)).match(path, { ignoreSearch: true });
       if (hit) return hit;
     }
     return null;

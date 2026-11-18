@@ -20,6 +20,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # our workflow passes GIT_COMMIT, Coolify passes SOURCE_COMMIT.
 ARG GIT_COMMIT=""
 ARG SOURCE_COMMIT=""
+# Next.js's deployment id (skew protection during a rolling update,
+# next.config.ts): empty = v<version>-<commit> from the commit above,
+# "off" = none.
+ARG FLOWPLAN_DEPLOYMENT_ID=""
 # "beta" or "release", shown in Settings → Über Flowplan (docker.yml).
 ARG FLOWPLAN_CHANNEL=""
 # The type check already runs in CI; image builds there skip it.

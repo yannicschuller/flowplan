@@ -488,6 +488,10 @@ export function startOpsWorker() {
         await sweepIdempotencyKeys(now);
         // Custom domains left unverified for a week (lib/custom-domains.ts).
         await sweepPendingDomains(now);
+        // Shared short-lived state: outcomes of background jobs past their
+        // hour, expired print views and their staged copies.
+        await (await import("./background-jobs")).sweepBackgroundJobs(now);
+        await (await import("./print-snapshots")).sweepPrintSnapshots(now, { orphans: true });
         if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
           await sweepOpsEvents(now);
           // Security events after their retention (lib/security-events.ts).

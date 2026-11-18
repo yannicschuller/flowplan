@@ -1,8 +1,9 @@
 // A minimal in-process Redis double for tests/cluster.test.ts when no real
 // Redis is given (FLOWPLAN_TEST_REDIS_URL): the RESP protocol over TCP with
 // the commands lib/cluster uses – PING, AUTH, SELECT, CLIENT, QUIT, INFO,
-// PUBLISH/SUBSCRIBE/UNSUBSCRIBE, HSET/HGETALL/HDEL, and EVAL of the rate
-// limit's sliding window (recognised by its text, run in JavaScript). Not a
+// PUBLISH/SUBSCRIBE/UNSUBSCRIBE, HSET/HGETALL/HDEL, ZREM/ZCARD, and EVAL of
+// the rate limit's sliding window and the AI slots' scripts (recognised by
+// their text, run in JavaScript). Not a
 // Redis: the real one is tested with FLOWPLAN_TEST_REDIS_URL (CI's postgres job).
 import net from "node:net";
 import { encodeCommand, parseReply } from "../../lib/cluster/redis";
@@ -72,8 +73,30 @@ export async function startFakeRedis(port = 0) {
         for (const field of args.slice(2)) if (hash?.delete(field)) removed++;
         return removed;
       }
+      case "ZREM": {
+        const list = zsets.get(args[1]) ?? [];
+        const left = list.filter((e) => !args.slice(2).includes(e.member));
+        zsets.set(args[1], left);
+        return list.length - left.length;
+      }
+      case "ZCARD":
+        return (zsets.get(args[1]) ?? []).length;
       case "EVAL": {
         const [, script, , key, now, window, max, member] = args;
+        // The parallel AI answers (lib/ai/concurrency.ts): entries scored by
+        // the time they lapse.
+        if (script.startsWith("-- ai-slot take")) {
+          const list = (zsets.get(key) ?? []).filter((e) => e.score > Number(now));
+          zsets.set(key, list);
+          if (list.length >= Number(max)) return 0;
+          list.push({ score: Number(now) + Number(window), member });
+          return 1;
+        }
+        if (script.startsWith("-- ai-slot renew")) {
+          const entry = (zsets.get(key) ?? []).find((e) => e.member === window);
+          if (entry) entry.score = Number(now);
+          return 1;
+        }
         if (!script.includes("ZREMRANGEBYSCORE")) return { error: "ERR fake Redis knows only the rate limit script" };
         const list = (zsets.get(key) ?? []).filter((e) => e.score > Number(now) - Number(window));
         list.push({ score: Number(now), member });

@@ -74,6 +74,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "workspace_activity.user_id": "drop",
   // Progress of the source's background jobs, its widget history and focus timer.
   "background_jobs.user_id": "drop",
+  // A print view lives 15 minutes (lib/print-snapshots.ts).
+  "print_snapshots.user_id": "drop",
   "widget_counter_days.user_id": "drop",
   "widget_focus.user_id": "drop",
   "push_subscriptions.user_id": "drop",

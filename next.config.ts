@@ -16,6 +16,28 @@ function gitCommit() {
 }
 const pkg = JSON.parse(readFileSync("./package.json", "utf8")) as { version: string };
 
+// Next.js's skew protection (deploymentId): during a rolling update a page
+// of one version may reach an instance of another. With an id, Next.js
+// adds ?dpl=<id> to the app's file addresses (past caches on the way),
+// sends it with client-side navigations and reloads the page instead of
+// navigating when the server's id differs. It must be the same for every
+// instance of one image, so it is fixed at build time:
+// FLOWPLAN_DEPLOYMENT_ID (build argument of the Dockerfile; "off": none),
+// else NEXT_DEPLOYMENT_ID, else v<version>-<commit> when the commit is
+// known (GIT_COMMIT/SOURCE_COMMIT or the checkout), else none. Not for the
+// development server. Next.js does not route by it: a file an instance does
+// not have is still a 404 – Flowplan's own check of the build (X-Flowplan-
+// Build, lib/stale-copy.ts) heals such a page.
+function deploymentId(): string | undefined {
+  if (process.env.NODE_ENV === "development") return undefined;
+  const given = (process.env.FLOWPLAN_DEPLOYMENT_ID || process.env.NEXT_DEPLOYMENT_ID || "").trim();
+  if (given.toLowerCase() === "off") return undefined;
+  const commit = gitCommit().trim().slice(0, 12);
+  const id = given || (commit ? `v${pkg.version}-${commit}` : "");
+  return id ? id.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64) : undefined;
+}
+const deployment = deploymentId();
+
 // The browser specs' build (lib/e2e-build.ts, scripts/build-e2e.mjs) takes
 // the demo sign-in. Never in an image: every image build sets
 // FLOWPLAN_CHANNEL (docker.yml), and the two together stop the build.
@@ -28,11 +50,24 @@ const config: NextConfig = {
   // the check does not run again per architecture.
   typescript: { ignoreBuildErrors: process.env.FLOWPLAN_SKIP_TYPECHECK === "1" },
   output: "standalone",
+  ...(deployment
+    ? {
+        deploymentId: deployment,
+        // With a deployment id Next.js would name every build alike
+        // ("build-…" constant); the stale-copy check (lib/stale-copy.ts,
+        // lib/offline-assets-server.ts) tells builds apart by BUILD_ID, so
+        // each build keeps a random one of its own (null: Next.js's default).
+        generateBuildId: async () => null,
+      }
+    : {}),
   // No "X-Powered-By: Next.js": visitors learn nothing about the stack (#41).
   poweredByHeader: false,
   env: {
     FLOWPLAN_VERSION: pkg.version,
     FLOWPLAN_COMMIT: gitCommit(),
+    // The deployment id above ("" without one): the offline copy's file list
+    // names the app's files as the page asks for them (lib/offline-assets-server.ts).
+    FLOWPLAN_DEPLOYMENT_ID: deployment || "",
     FLOWPLAN_BUILT_AT: new Date().toISOString(),
     // "beta" or "release" from the image build (Settings → Über Flowplan).
     FLOWPLAN_CHANNEL: process.env.FLOWPLAN_CHANNEL || "",

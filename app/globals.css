@@ -15942,6 +15942,14 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   background: var(--blue-light);
   font-size: 13px;
 }
+.mon-note.warn {
+  background: #fbf1dc;
+  color: #6f5b22;
+}
+[data-theme="dark"] .mon-note.warn {
+  background: #3a2c14;
+  color: #f2c27a;
+}
 .mon-health ul {
   display: grid;
   gap: 10px;

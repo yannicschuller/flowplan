@@ -136,13 +136,28 @@ export async function listen(channel: string, listener: Listener): Promise<() =>
 
 // A query on the session connection (advisory locks of the leader).
 export async function sessionQuery<T extends pg.QueryResultRow = pg.QueryResultRow>(text: string, values: unknown[] = []) {
-  const client = await sessionClient();
-  return client.query<T>(text, values);
+  return await on("session", (client) => client.query<T>(text, values));
 }
 // A query on the duties connection (the locks of running leader rounds).
 export async function dutySessionQuery<T extends pg.QueryResultRow = pg.QueryResultRow>(text: string, values: unknown[] = []) {
-  const client = await sessionClient("duties");
-  return client.query<T>(text, values);
+  return await on("duties", (client) => client.query<T>(text, values));
+}
+// After a failover the old primary may still accept this connection as a
+// read-only standby (25006 read_only_sql_transaction): it is closed, and
+// the reconnect (above) reaches the address again – the new primary. The
+// locks held on it are gone with it, which the leader election notices
+// (a new generation).
+async function on<T>(name: Name, fn: (client: pg.Client) => Promise<T>): Promise<T> {
+  const client = await sessionClient(name);
+  try {
+    return await fn(client);
+  } catch (error) {
+    if ((error as { code?: string }).code === "25006") {
+      state(name).lastError = (error as Error).message;
+      void client.end().catch(() => {});
+    }
+    throw error;
+  }
 }
 export const dutySessionGeneration = () => state("duties").generation;
 

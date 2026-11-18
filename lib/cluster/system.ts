@@ -12,6 +12,7 @@ import { checkBucket, checkDatabase, checkRedis, type Check } from "./health";
 import { liveInstances, type InstanceBeat } from "./instances";
 import { isLeader, leaderError, leaderSince } from "./leader";
 import { storageConfig, storageStatus } from "../storage";
+import { secondInstances, type SecondInstance } from "./single-instance";
 
 export type SystemOverview = {
   mode: "single" | "cluster";
@@ -29,6 +30,9 @@ export type SystemOverview = {
   instancesError: string | null;
   leader: { id: string | null; self: boolean; since: number | null; error: string | null };
   queues: { storageDue: number; storageInFlight: number; mailDue: number; pushDue: number; webhooksDue: number; messengersDue: number };
+  // PostgreSQL without cluster mode: instances that run against the same
+  // database without the single-instance lock (lib/cluster/single-instance.ts).
+  secondInstances: SecondInstance[];
 };
 
 const count = async (query: string, ...params: number[]) => Number((await one<{ n: number }>(query, ...params))?.n || 0);
@@ -111,5 +115,6 @@ export async function systemOverview(now = Date.now()): Promise<SystemOverview> 
       webhooksDue: await count("SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND next_at<=?", now),
       messengersDue: await count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at IS NULL AND available_at<=?", now),
     },
+    secondInstances: await secondInstances(now),
   };
 }

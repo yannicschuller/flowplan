@@ -121,8 +121,11 @@ const keyOf = (r: string | Request) => {
 };
 class FakeCache {
   entries = new Map<string, Response>();
-  async match(r: string | Request) {
-    return this.entries.get(keyOf(r))?.clone();
+  async match(r: string | Request, options?: { ignoreSearch?: boolean }) {
+    if (!options?.ignoreSearch) return this.entries.get(keyOf(r))?.clone();
+    const path = keyOf(r).replace(/\?.*$/, "");
+    for (const [key, response] of this.entries) if (key.replace(/\?.*$/, "") === path) return response.clone();
+    return undefined;
   }
   async put(r: string | Request, response: Response) {
     this.entries.set(keyOf(r), response);
@@ -246,6 +249,32 @@ for (const [name, store] of [
     assert.deepEqual((await caches.keys()).sort(), ["flowplan-data-v1", "flowplan-static-B2", "flowplan-static-B3"]);
   });
 
+  // With Next.js's deployment id (next.config.ts) the page asks for
+  // /_next/static/…?dpl=<id>: the list names the files so, and an
+  // unchanged file of the previous deployment is copied, not fetched again.
+  test(`${name} copies unchanged files from a build of another deployment id`, async () => {
+    const caches = new FakeCaches();
+    (await caches.open("flowplan-static-B1")).put("/_next/static/chunks/shared.js?dpl=v1-aaa", new Response("shared"));
+    const fetched: string[] = [];
+    const list: assets.OfflineAssets = {
+      build: "B2",
+      version: "0.7.1",
+      files: ["shared.js", "new.js"].map((f) => ({ path: `/_next/static/chunks/${f}?dpl=v2-bbb`, size: 10 })),
+      bytes: 20,
+    };
+    const app = await store(list, false, {
+      caches,
+      fetch: async (path) => {
+        fetched.push(path);
+        return new Response(`body of ${path}`);
+      },
+    });
+    assert.equal(app?.complete, true);
+    assert.deepEqual(fetched, ["/_next/static/chunks/new.js?dpl=v2-bbb"]);
+    const copy = await caches.open("flowplan-static-B2");
+    assert.equal(await copy.match("/_next/static/chunks/shared.js?dpl=v2-bbb").then((r) => r?.text()), "shared", "under the address the page asks for");
+  });
+
   test(`${name} stores nothing when the device lacks room`, async () => {
     const caches = new FakeCaches();
     const fetched: string[] = [];
@@ -293,4 +322,14 @@ test("the public fonts and icons the app's page loads are listed after the build
   assert.equal(list.build, "Bld123");
   assert.equal(list.bytes, 5 + 100 + 20 + 30 + 60 + 70 + 7 + 11 + 13);
   assert.deepEqual(buildOfflineAssets(dir, "0.6.0", join(pub, "missing")).files.length, 6);
+  // With a deployment id (next.config.ts) the build's files carry it, as the
+  // page asks for them; public files and the build id do not.
+  const deployed = buildOfflineAssets(dir, "0.6.0", pub, "v0-6-0-abc123");
+  assert.equal(deployed.build, "Bld123");
+  assert.equal(deployed.files[0].path, "/_next/static/Bld123/_buildManifest.js?dpl=v0-6-0-abc123");
+  assert.ok(deployed.files.filter((f) => f.path.startsWith("/_next/static/")).every((f) => f.path.endsWith("?dpl=v0-6-0-abc123")));
+  assert.deepEqual(deployed.files.slice(-3).map((f) => f.path), ["/fonts.css", "/fonts/sans%20normal.woff2", "/icons/icon-192.png"]);
+  assert.equal(assets.withoutDeployment("/_next/static/chunks/a.js?dpl=v0-6-0-abc123"), "/_next/static/chunks/a.js");
+  assert.equal(assets.withoutDeployment("/_next/static/chunks/a.js?v=1&dpl=x"), "/_next/static/chunks/a.js?v=1");
+  assert.equal(assets.withoutDeployment("/fonts.css"), "/fonts.css");
 });

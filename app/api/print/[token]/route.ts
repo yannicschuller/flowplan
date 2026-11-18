@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const PRINT_SCRIPT = `document.querySelector(".print-view-print").addEventListener("click",()=>window.print())`;
 const PRINT_HASH = createHash("sha256").update(PRINT_SCRIPT).digest("base64");
 export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
-  const html = printSnapshot((await params).token);
+  const html = await printSnapshot((await params).token);
   const base = {
     "Cache-Control": "private, no-store",
     "Referrer-Policy": "no-referrer",

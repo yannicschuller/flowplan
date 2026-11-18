@@ -52,6 +52,7 @@ import { pushTile, relayHost } from "./push-format";
 import { ServerCard } from "./monitoring-server";
 import { Recommendations } from "./monitoring-advice";
 import { ErrorDetailsCard, type ErrorSlot } from "./monitoring-errors";
+import { useDocs } from "./parts";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
@@ -96,6 +97,7 @@ export default function MonitoringSection() {
               <a href="#admin/monitoring/metrics">{t("Statistik", "Statistics")}</a>
             </p>
           )}
+          <SecondInstanceWarning s={d.system} />
           <Health d={d} />
           <Kpis d={d} />
           <Recommendations data={d.advice} onChange={() => void live.reload()} />
@@ -938,6 +940,30 @@ function Workers({ ops }: { ops: OpsOverview | null }) {
 }
 
 /* ---------- System (single container or cluster) ---------- */
+
+// PostgreSQL without cluster mode, and another instance on the same
+// database (lib/cluster/single-instance.ts): stays until only one runs.
+function SecondInstanceWarning({ s }: { s: SystemOverview }) {
+  const t = useT();
+  const docs = useDocs();
+  if (!s.secondInstances.length) return null;
+  const names = s.secondInstances.map((i) => (i.host && i.host !== i.instance ? `${i.instance} (${i.host})` : i.instance)).join(", ");
+  const since = Math.min(...s.secondInstances.map((i) => i.since));
+  return (
+    <p className="mon-note warn" role="alert">
+      <WarningCircle size={16} aria-hidden />
+      <span>
+        {t(
+          `Eine zweite Flowplan-Instanz läuft ohne Cluster-Modus gegen dieselbe Datenbank (${names}, seit ${dateTime(since)}). Geplante Aufgaben wie Erinnerungen, Zusammenfassungen, Sicherungen und Workflows laufen dann doppelt, und Live-Änderungen erreichen die andere Instanz nicht. Schalte auf allen Instanzen den Cluster-Modus ein (FLOWPLAN_CLUSTER=1 mit Redis und S3) oder beende eine der Instanzen. Während eines Neustarts im laufenden Betrieb ist das kurz normal.`,
+          `A second Flowplan instance is running against the same database without cluster mode (${names}, since ${dateTime(since)}). Timed jobs such as reminders, digests, backups and workflows then run twice, and live changes do not reach the other instance. Switch cluster mode on for every instance (FLOWPLAN_CLUSTER=1 with Redis and S3) or stop one of the instances. During a rolling restart this is normal for a moment.`,
+        )}{" "}
+        <a href={docs("cluster")} target="_blank" rel="noreferrer">
+          {t("Cluster-Modus", "Cluster mode")}
+        </a>
+      </span>
+    </p>
+  );
+}
 
 // How the installation runs (lib/cluster/system.ts): mode, database, Redis,
 // object storage, the instances alive and the leader, the shared queues.

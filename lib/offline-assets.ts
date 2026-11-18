@@ -30,6 +30,10 @@ export function staleStaticCaches(names: string[], build: string): string[] {
   return names.filter((name) => isStaticCache(name) && name !== current);
 }
 
+// A file's address without Next.js's deployment id (?dpl=…, always last;
+// next.config.ts): the same file of another build.
+export const withoutDeployment = (path: string) => path.replace(/[?&]dpl=[^&#]*$/, "");
+
 // Listed files the cache does not hold yet (keys are path plus query).
 export function missingAssets(files: OfflineAsset[], keys: string[]): OfflineAsset[] {
   const stored = new Set(keys);
