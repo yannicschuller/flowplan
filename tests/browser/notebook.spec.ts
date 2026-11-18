@@ -47,6 +47,10 @@ async function setup(page: Page) {
     return response.json();
   };
   await command({ action: "profile.onboarded" });
+  // No AI on the server, whatever specs before this one switched on (the AI
+  // specs leave theirs on): with the instance's AI, "In Text umwandeln"
+  // opens the AI dialog instead of the device's recognition.
+  await command({ action: "admin.ai", settings: { enabled: false } });
   const create = async (title: string, kind: string) =>
     (await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, kind })).id as string;
   return { boot, command, create };
