@@ -231,3 +231,20 @@ test("Markdown with placeholders: page values become page links, addresses take 
   assert.match(json, /"text":"eins"\},\{"type":"hardBreak"\},\{"type":"text","text":"zwei"/);
   assert.deepEqual(markdownBlocks("", scope), []);
 });
+
+test("a placeholder alone on its line is Markdown – an AI step's answer becomes headings, lists and tasks (#376)", async () => {
+  const { markdownBlocks } = await import("../lib/workflows/nodes/journal");
+  const answer = "# Tageszusammenfassung\n\n## Übersicht\nErste Zeile\nzweite Zeile mit **fett**\n\n- Punkt\n- [ ] Aufgabe\n\n```\ncode  \n```";
+  const scope = { values: { ai: { text: answer, title: "# kein Titel" } }, timeZone: "UTC", locale: "de" as const };
+  const blocks = markdownBlocks("{{ai.text}}\n\nVon: {{ai.title}}", scope);
+  const types = blocks.map((b) => b.type);
+  assert.deepEqual(types.slice(0, 2), ["heading", "heading"]);
+  const json = JSON.stringify(blocks);
+  assert.match(json, /"text":"fett","marks":\[\{"type":"bold"/);
+  assert.match(json, /"text":"Erste Zeile"\},\{"type":"hardBreak"\}/, "its line breaks stay");
+  assert.ok(types.some((t) => t === "bulletList") && types.some((t) => t === "taskList"));
+  assert.match(json, /"text":"code  \\n"/, "code keeps its spaces");
+  // Within a line, a value stays text.
+  assert.match(json, /"text":"Von: # kein Titel"|"text":"# kein Titel"/);
+  assert.doesNotMatch(json, /"type":"heading"[^\]]*kein Titel/);
+});

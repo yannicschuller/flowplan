@@ -49,13 +49,36 @@ const SAFE_HREF = /^(?:https?:|mailto:|\/|#)/i;
 export function markdownBlocks(markdown: string, scope: RenderScope): Json[] {
   const values: unknown[] = [];
   let source = "";
-  for (const s of parseTemplate(markdown)) {
-    if (typeof s === "string") source += s.replace(/[]/g, "");
-    else {
-      values.push(evaluatePlaceholder(s, scope));
-      source += `${OPEN}${values.length - 1}${CLOSE}`;
+  const parts = parseTemplate(markdown);
+  parts.forEach((s, index) => {
+    if (typeof s === "string") {
+      source += s.replace(/[]/g, "");
+      return;
     }
-  }
+    const value = evaluatePlaceholder(s, scope);
+    // A placeholder alone on its line – such as an AI step's answer – is
+    // Markdown itself (#376): headings, lists and tasks become blocks.
+    // Within a line or in a link it stays text, so a "#" or "*" in a
+    // record's value is just a character there.
+    const next = parts[index + 1];
+    const alone = /(^|\n)[ \t]*$/.test(source) && (next === undefined || (typeof next === "string" && /^[ \t]*(\n|$)/.test(next)));
+    if (alone && typeof value === "string") {
+      // Its line breaks stay line breaks (two spaces at the end of a
+      // line), as for values within a line – except in code blocks.
+      let fenced = false;
+      const broken = value
+        .split("\n")
+        .map((line) => {
+          if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+          return fenced || !line.trim() || /^\s*(```|~~~)/.test(line) ? line : `${line.replace(/\s+$/, "")}  `;
+        })
+        .join("\n");
+      source += broken.replace(/[]/g, "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "");
+      return;
+    }
+    values.push(value);
+    source += `${OPEN}${values.length - 1}${CLOSE}`;
+  });
   const doc = htmlJson(markdownToHtml(source)) as Json;
   const text = (i: number) => valueText(values[i], scope.locale, scope.timeZone).replace(/[\u0000-\u0008\u000b-\u001f]/g, "");
   // Attributes (a link's address, an image's source …): the value as text,
