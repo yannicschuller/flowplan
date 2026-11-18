@@ -3521,8 +3521,12 @@ export default function DatabaseView({
         </div>
       )}
       {/* Switching views cross-fades (React view transitions, started by the
-          tabs; browsers without the API switch instantly). */}
-      <ViewTransition key={view.id} enter="db-view-in" exit="db-view-out" default="none">
+          tabs; browsers without the API switch instantly): only the old
+          view takes part and fades out over the new one. While a
+          transition runs the browser hit-tests past every element taking
+          part in it – a new view taking part would lose the clicks and
+          taps of its first 100–200 ms to the .database around it (#338). */}
+      <ViewTransition key={view.id} enter="none" exit="db-view-out" default="none">
       <>
       {view.type === "table" && (
         <ScrollFade
