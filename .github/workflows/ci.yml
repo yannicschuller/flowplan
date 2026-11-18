@@ -122,6 +122,47 @@ jobs:
         env:
           QUALITY_OPTIONAL: ${{ runner.environment == 'github-hosted' && '0' || '1' }}
 
+  # The AI help (lib/ai/help-docs.json) is generated from flowplan-docs
+  # (scripts/help-docs.mjs) and easily forgotten after a docs change. This
+  # regenerates it from flowplan-docs main and compares. The docs change on
+  # their own schedule, so on a pull request a difference is only a warning
+  # (an unrelated PR stays green); on a push to main it fails, which keeps a
+  # release (only from a green main) from shipping stale help. Cheap: no
+  # npm ci, no build – the generator needs only Node.
+  help-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: yannicschuller/flowplan-docs
+          ref: main
+          path: .flowplan-docs
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - name: Compare with flowplan-docs main
+        env:
+          FLOWPLAN_DOCS_DIR: ${{ github.workspace }}/.flowplan-docs
+          EVENT: ${{ github.event_name }}
+        run: |
+          node scripts/help-docs.mjs
+          if git diff --quiet -- lib/ai/help-docs.json; then
+            echo "lib/ai/help-docs.json matches flowplan-docs main ($(git -C .flowplan-docs rev-parse --short HEAD))."
+            exit 0
+          fi
+          git diff --stat -- lib/ai/help-docs.json
+          msg="lib/ai/help-docs.json is out of date with flowplan-docs main ($(git -C .flowplan-docs rev-parse --short HEAD)). With flowplan-docs main checked out, run: FLOWPLAN_DOCS_DIR=/path/to/flowplan-docs npm run help-docs – then commit lib/ai/help-docs.json."
+          if [ "$EVENT" = push ]; then
+            echo "::error file=lib/ai/help-docs.json::$msg"
+            exit 1
+          fi
+          echo "::warning file=lib/ai/help-docs.json::$msg"
+
   # The result of the tests on SQLite, the build and the budgets, under the
   # job's old name.
   test:
