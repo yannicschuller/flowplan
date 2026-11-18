@@ -68,12 +68,15 @@ test("FSRS parameters are optimised from the own log, applied, shown and reset",
   await dialog.getByRole("button", { name: "Optimieren", exact: true }).click();
   const result = dialog.getByRole("region", { name: "Ergebnis" });
   await expect(result).toBeVisible({ timeout: 60_000 });
+  // The result in plain words; the measures behind it in a disclosure.
+  await expect(result).toContainText("Die neuen Parameter passen besser zu dir.");
+  await expect(result).toContainText(/Empfohlene Behaltensrate: \d\d %/);
+  await expect(result.getByRole("rowheader", { name: "Log-Loss" })).toBeHidden();
+  await result.getByText("Details zur Berechnung").click();
   await expect(result.getByRole("columnheader", { name: "Optimiert" })).toBeVisible();
   await expect(result.getByRole("rowheader", { name: "Log-Loss" })).toBeVisible();
   await expect(result.getByRole("rowheader", { name: "RMSE (Klassen)" })).toBeVisible();
-  await expect(result).toContainText("Die optimierten Parameter sagen deine Wertungen besser voraus");
-  await expect(result).toContainText(/Empfohlene Behaltensrate: \d\d %/);
-  await dialog.getByRole("button", { name: "Übernehmen", exact: true }).click();
+  await dialog.getByRole("button", { name: "Parameter übernehmen", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator(".study-notice")).toHaveText("Deine optimierten Parameter gelten ab jetzt.");
 
@@ -95,10 +98,11 @@ test("FSRS parameters are optimised from the own log, applied, shown and reset",
   await dialog.getByRole("button", { name: "Optimieren", exact: true }).click();
   await expect(result).toBeVisible({ timeout: 60_000 });
   // Optimised again from the same log: no better than what is in use.
+  await result.getByText("Details zur Berechnung").click();
   await expect(result.getByRole("columnheader", { name: "Bisher" })).toBeVisible();
-  const use = dialog.getByRole("button", { name: /^\d\d % für diesen Stapel übernehmen$/ });
+  const use = dialog.getByRole("button", { name: /^Behaltensrate auf \d\d % setzen$/ });
   if (await use.count()) {
-    const percent = Number((await use.textContent())!.slice(0, 2));
+    const percent = Number((await use.textContent())!.match(/\d\d/)![0]);
     await use.click();
     await expect(page.locator(".study-notice")).toHaveText(`Behaltensrate ${percent} % übernommen.`);
     expect((await command({ action: "study.queue", pageId, limit: 0 })).params.retention).toBeCloseTo(percent / 100, 5);

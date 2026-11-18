@@ -15,15 +15,48 @@ import { Modal, needsConnection, offlineNotice } from "../ui";
 import { Select } from "../select";
 import { sendImport, waitForJob, warningText } from "../import-client";
 import { browserZone } from "@/lib/date-values";
+import { parseClozeText } from "@/lib/study-cloze";
 import { ANKI_ROLES, type AnkiCardType, type AnkiPreview, type AnkiRole, type NotetypeMapping } from "@/lib/anki-mapping";
 import type { Space } from "@/lib/types";
 
 type Preview = { warnings: string[]; files: number; bytes: number; upload?: string; anki: AnkiPreview };
 type Outcome = { rootIds: string[]; rows: number; reviews?: number; report?: { pageId: string; total: number } };
 
-// Sizes as the media library shows them: KB below a megabyte.
+// Sizes as the media library shows them: KB below a megabyte (a no-break
+// space before the unit, so "KB" never stands alone on a phone).
 const size = (bytes: number) =>
-  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString()} KB` : `${(bytes / 1024 / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
+  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString()}\u00a0KB` : `${(bytes / 1024 / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })}\u00a0MB`;
+
+// A field's example as the card shows it: Anki's cloze syntax
+// ({{c1::answer::hint}}) as a gap ("[…]" or "[hint]") or, revealed, as the
+// marked answer; an image occlusion mask as "Maske 1". The examples are cut
+// at 80 characters, so a gap left open at the end still counts.
+function ClozeSample({ text, reveal }: { text: string; reveal: boolean }) {
+  const t = useT();
+  if (!text.includes("{{c")) return <>{text}</>;
+  const closed = /\{\{c\d{1,2}::(?:(?!\}\})[\s\S])*$/.test(text) ? `${text}}}` : text;
+  return (
+    <>
+      {parseClozeText(closed).map((s, i) =>
+        s.type === "text" ? (
+          s.text
+        ) : s.answer.startsWith("image-occlusion") ? (
+          <span key={i} className="cloze-gap">
+            {t(`Maske ${s.n}`, `Mask ${s.n}`)}
+          </span>
+        ) : reveal ? (
+          <span key={i} className="cloze-answer">
+            {s.answer}
+          </span>
+        ) : (
+          <span key={i} className="cloze-gap">
+            {s.hint ? `[${s.hint}]` : "[…]"}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
 
 export function StudyAnkiImport({
   open,
@@ -127,6 +160,8 @@ export function StudyAnkiImport({
     occlusion: t("Bildverdeckung", "Image occlusion"),
     custom: t("eigener Notiztyp", "own note type"),
   };
+  // Counts with their singular ("1 Notiz", not "1 Notizen").
+  const notes = (n: number) => (n === 1 ? t("1 Notiz", "1 note") : t(`${n} Notizen`, `${n} notes`));
   const anki = preview?.anki;
   const cards = useMemo(() => anki?.decks.reduce((n, d) => n + d.notes, 0) || 0, [anki]);
   return (
@@ -135,9 +170,11 @@ export function StudyAnkiImport({
         {done ? (
           <div className="study-anki-done" role="status">
             <p>
-              {done.rootIds.length === 1
-                ? t(`${done.rows} Notizen in einen Stapel importiert.`, `${done.rows} notes imported into one deck.`)
-                : t(`${done.rows} Notizen in ${done.rootIds.length} Stapeln importiert.`, `${done.rows} notes imported into ${done.rootIds.length} decks.`)}
+              {done.rows === 1
+                ? t("1 Notiz importiert.", "1 note imported.")
+                : done.rootIds.length === 1
+                  ? t(`${done.rows} Notizen in einen Stapel importiert.`, `${done.rows} notes imported into one deck.`)
+                  : t(`${done.rows} Notizen in ${done.rootIds.length} Stapeln importiert.`, `${done.rows} notes imported into ${done.rootIds.length} decks.`)}
               {done.reviews !== undefined && ` ${t(`${done.reviews} Wiederholungen als dein Lernstand übernommen.`, `${done.reviews} reviews taken over as your learning state.`)}`}
             </p>
             {done.report && onOpenPage && (
@@ -167,7 +204,7 @@ export function StudyAnkiImport({
                   </Select>
                 </label>
               )}
-              <label className={`button compact study-import-file${busy ? " disabled" : ""}`}>
+              <label className={`button compact study-import-file${busy ? " disabled" : ""}${file ? "" : " primary"}`}>
                 <FileArrowUp aria-hidden /> {file ? t("Andere Datei wählen …", "Choose another file …") : t("Anki-Datei wählen …", "Choose an Anki file …")}
                 <input
                   type="file"
@@ -199,13 +236,16 @@ export function StudyAnkiImport({
           <>
             <section className="study-anki-summary" aria-label={t("Inhalt des Pakets", "Contents of the package")}>
               <p>
-                {t(`${anki.notes} Notizen · ${anki.cards} Karten in Anki`, `${anki.notes} notes · ${anki.cards} cards in Anki`)}
-                {anki.media.files > 0 && ` · ${t(`${anki.media.files} Mediendateien (${size(anki.media.bytes)})`, `${anki.media.files} media files (${size(anki.media.bytes)})`)}`}
+                {notes(anki.notes)} · {anki.cards === 1 ? t("1 Karte in Anki", "1 card in Anki") : t(`${anki.cards} Karten in Anki`, `${anki.cards} cards in Anki`)}
+                {anki.media.files > 0 &&
+                  ` · ${anki.media.files === 1 ? t(`1 Mediendatei\u00a0(${size(anki.media.bytes)})`, `1 media file\u00a0(${size(anki.media.bytes)})`) : t(`${anki.media.files} Mediendateien\u00a0(${size(anki.media.bytes)})`, `${anki.media.files} media files\u00a0(${size(anki.media.bytes)})`)}`}
               </p>
               <ul className="study-anki-decks">
                 {anki.decks.map((d) => (
                   <li key={d.name}>
-                    <strong>{d.name}</strong> · {t(`${d.notes} Notizen`, `${d.notes} notes`)}
+                    <strong>{d.name}</strong>
+                    {"\u00a0· "}
+                    {notes(d.notes)}
                     {d.subdecks.length > 0 && <span className="muted"> · {t(`Unterstapel: ${d.subdecks.join(", ")}`, `Sub-decks: ${d.subdecks.join(", ")}`)}</span>}
                     {d.rich && <span className="muted"> · {t("Seiten mit Bildern oder Formeln kommen ins Dokument des Eintrags", "sides with images or formulas go into the record's document")}</span>}
                   </li>
@@ -220,10 +260,13 @@ export function StudyAnkiImport({
                   .map((f, i) => (m.roles[i] === role ? f.sample : ""))
                   .filter(Boolean)
                   .join(" · ");
+              // Cloze and occlusion cards have no reverse card; a cloze card
+              // asks its text with gaps and reveals the same text.
+              const gaps = m.type === "cloze" || m.type === "occlusion";
               return (
                 <fieldset key={nt.id} className="study-anki-notetype">
                   <legend>
-                    {nt.name} <span className="muted">({kindNames[nt.kind] || nt.kind} · {t(`${nt.notes} Notizen`, `${nt.notes} notes`)})</span>
+                    {nt.name} <span className="muted">({kindNames[nt.kind] || nt.kind}{"\u00a0· "}{notes(nt.notes)})</span>
                   </legend>
                   <div className="form-row study-anki-type">
                     <label>
@@ -235,17 +278,23 @@ export function StudyAnkiImport({
                         {nt.kind === "occlusion" && <option value="occlusion">{t("Bildverdeckung (mit Masken)", "Image occlusion (with masks)")}</option>}
                       </Select>
                     </label>
-                    <label className="checkbox-label">
-                      <input type="checkbox" checked={m.reverse} disabled={m.type === "cloze" || m.type === "occlusion"} onChange={(e) => set({ reverse: e.target.checked })} />
-                      {t("Auch umgekehrt abfragen", "Also ask in reverse")}
-                    </label>
+                    {!gaps && (
+                      <label className="checkbox-label">
+                        <input type="checkbox" checked={m.reverse} onChange={(e) => set({ reverse: e.target.checked })} />
+                        {t("Auch umgekehrt abfragen", "Also ask in reverse")}
+                      </label>
+                    )}
                   </div>
                   <div className="study-import-mapping" role="group" aria-label={t(`Felder von ${nt.name}`, `Fields of ${nt.name}`)}>
                     {nt.fields.map((f, i) => (
                       <label key={i}>
                         <span className="study-import-column">
                           {f.name}
-                          {f.sample && <small>{f.sample}</small>}
+                          {f.sample && (
+                            <small>
+                              <ClozeSample text={f.sample} reveal />
+                            </small>
+                          )}
                         </span>
                         <Select
                           value={m.roles[i] || "skip"}
@@ -263,9 +312,18 @@ export function StudyAnkiImport({
                   </div>
                   {(sample("front") || sample("back")) && (
                     <p className="study-anki-sample">
-                      <span>{sample("front") || "–"}</span>
+                      <span>{sample("front") ? <ClozeSample text={sample("front")} reveal={false} /> : "–"}</span>
                       <span aria-hidden> → </span>
-                      <span>{sample("back") || "–"}</span>
+                      <span>
+                        {m.type === "cloze" && sample("front") ? (
+                          <>
+                            <ClozeSample text={sample("front")} reveal />
+                            {sample("back") && ` · ${sample("back")}`}
+                          </>
+                        ) : (
+                          sample("back") || "–"
+                        )}
+                      </span>
                     </p>
                   )}
                   {!m.roles.includes("front") && <p className="study-error">{t("Kein Feld auf der Vorderseite: Diese Notizen ergeben keine Karten.", "No field on the front: these notes give no cards.")}</p>}
@@ -280,6 +338,14 @@ export function StudyAnkiImport({
                   `Take over my learning state (${anki.reviews} reviews, only for you – recalculated with FSRS)`,
                 )}
               </label>
+            )}
+            {!cards && (
+              <p className="study-anki-empty" role="status">
+                {t(
+                  "In diesem Paket sind keine Notizen, die Flowplan übernehmen kann. Exportiere in Anki einen Stapel mit Karten und wähle die Datei hier erneut.",
+                  "This package has no notes Flowplan can take over. In Anki, export a deck with cards and choose the file here again.",
+                )}
+              </p>
             )}
             {preview.warnings.length > 0 && (
               <div className="study-import-errors" role="status">
@@ -325,13 +391,19 @@ export function StudyAnkiImport({
             <button type="button" className="button" onClick={close} disabled={busy}>
               {t("Abbrechen", "Cancel")}
             </button>
-            <button type="button" className="button primary" disabled={busy || !anki || !cards} onClick={() => void start()}>
-              {busy && preview
-                ? t("Importiere …", "Importing …")
-                : anki?.decks.length === 1
-                  ? t(`${cards} Notizen importieren`, `Import ${cards} notes`)
-                  : t(`${cards} Notizen in ${anki?.decks.length || 0} Stapel importieren`, `Import ${cards} notes into ${anki?.decks.length || 0} decks`)}
-            </button>
+            {/* Only once there is something to import: before, the file
+                button is the main action; an empty package is explained. */}
+            {anki && cards > 0 && (
+              <button type="button" className="button primary" disabled={busy} onClick={() => void start()}>
+                {busy && preview
+                  ? t("Importiere …", "Importing …")
+                  : anki.decks.length === 1
+                    ? cards === 1
+                      ? t("1 Notiz importieren", "Import 1 note")
+                      : t(`${cards} Notizen importieren`, `Import ${cards} notes`)
+                    : t(`${notes(cards)} in ${anki.decks.length} Stapel importieren`, `Import ${notes(cards)} into ${anki.decks.length} decks`)}
+              </button>
+            )}
           </>
         )}
       </div>

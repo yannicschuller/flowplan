@@ -81,6 +81,9 @@ export function DatabaseToolbarChips({
     group = groupChipLabel(view, fields, t),
     properties = propertiesChipLabel(view, fields, t);
   const groupable = ["table", "list", "board"].includes(view.type);
+  // A study view orders its cards by the schedule and studies its filtered
+  // rows whatever is searched: sorting and searching do nothing there.
+  const study = view.type === "study";
   const propertiesShown = ["table", "board", "gallery", "list", "calendar", "timeline"].includes(view.type);
   const name = (base: string, chip: { label: string; active: boolean }) =>
     chip.active ? `${base} · ${chip.label}` : base;
@@ -106,15 +109,17 @@ export function DatabaseToolbarChips({
           onAdvanced={onAdvancedFilters}
         />
       </ChipPopover>
-      <ChipPopover
-        icon={<SortAscending size={15} />}
-        label={sort.label}
-        name={name(t("Sortieren", "Sort"), sort)}
-        active={sort.active}
-        panelLabel={t("Sortierung", "Sorting")}
-      >
-        <SortChipBody view={view} fields={fields} editable={editable} updateView={updateView} />
-      </ChipPopover>
+      {!study && (
+        <ChipPopover
+          icon={<SortAscending size={15} />}
+          label={sort.label}
+          name={name(t("Sortieren", "Sort"), sort)}
+          active={sort.active}
+          panelLabel={t("Sortierung", "Sorting")}
+        >
+          <SortChipBody view={view} fields={fields} editable={editable} updateView={updateView} />
+        </ChipPopover>
+      )}
       {groupable && (
         <ChipPopover
           icon={<Rows size={15} />}
@@ -144,7 +149,7 @@ export function DatabaseToolbarChips({
           <PropertiesChipBody view={view} fields={fields} editable={editable} updateView={updateView} onConfigure={onConfigure} />
         </ChipPopover>
       )}
-      <SearchChip query={query} onQuery={onQuery} />
+      {!study && <SearchChip query={query} onQuery={onQuery} />}
       <button
         type="button"
         className="toolbar-chip toolbar-chip-icon"

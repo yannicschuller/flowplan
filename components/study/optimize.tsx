@@ -4,9 +4,10 @@
 // and recommends a retention. The log comes from the server
 // (study.history); the fit runs in a Web Worker (./optimize-worker.ts) in
 // this browser; only the 21 numbers and the fit go back (study.params).
-// Before/after: log loss and RMSE (bins) of FSRS-6's defaults, of the
-// weights in use and of the new ones – the person decides whether to apply
-// them. Loaded on demand from the deck's "Meine Einstellungen"
+// The result in plain words (do the new weights predict the ratings
+// better?) and the recommended retention; the measures behind it – log loss
+// and RMSE (bins) of FSRS-6's defaults, of the weights in use and of the
+// new ones – in a disclosure. The person decides whether to apply them. Loaded on demand from the deck's "Meine Einstellungen"
 // (components/database-study.tsx), never with the app shell.
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
@@ -191,41 +192,21 @@ export default function StudyOptimize({
       )}
       {result && fits && history && (
         <section className="study-optimize-result" aria-label={t("Ergebnis", "Result")}>
-          <table className="study-stats-table">
-            <caption>{t("Wie gut sagt das Modell deine Wertungen voraus? Kleiner ist besser.", "How well does the model predict your ratings? Lower is better.")}</caption>
-            <thead>
-              <tr>
-                <th scope="col">{t("Kennzahl", "Measure")}</th>
-                {columns.map((c) => (
-                  <th scope="col" key={c.key}>
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">{t("Log-Loss", "Log loss")}</th>
-                {columns.map((c) => (
-                  <td key={c.key}>{decimal(c.fit.logLoss, 4)}</td>
-                ))}
-              </tr>
-              <tr>
-                <th scope="row">{t("RMSE (Klassen)", "RMSE (bins)")}</th>
-                {columns.map((c) => (
-                  <td key={c.key}>{percent(c.fit.rmse)}</td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-          <p className={better ? "study-optimize-verdict better" : "study-optimize-verdict"} role="status">
-            {better
-              ? t(
-                  `Die optimierten Parameter sagen deine Wertungen besser voraus (RMSE ${percent(fits.fitted.rmse)} statt ${percent(baseline!.rmse)}).`,
-                  `The optimised parameters predict your ratings better (RMSE ${percent(fits.fitted.rmse)} instead of ${percent(baseline!.rmse)}).`,
-                )
-              : t("Keine Verbesserung – die bisherigen Parameter passen schon gut.", "No improvement – the current parameters already fit well.")}{" "}
-            {t(`Aus ${formatNumber(fits.fitted.items)} Wiederholungen nach mindestens einem Tag.`, `From ${formatNumber(fits.fitted.items)} reviews after a day or more.`)}
+          <p className="study-optimize-verdict" role="status">
+            {better ? (
+              <>
+                <strong className="better">{t("Die neuen Parameter passen besser zu dir.", "The new parameters fit you better.")}</strong>{" "}
+                {t(
+                  `Flowplan sagt damit genauer voraus, wann du eine Karte vergisst – ausgewertet aus ${formatNumber(fits.fitted.items)} Wiederholungen nach mindestens einem Tag.`,
+                  `With them Flowplan predicts more accurately when you forget a card – based on ${formatNumber(fits.fitted.items)} reviews after a day or more.`,
+                )}
+              </>
+            ) : (
+              t(
+                `Keine Verbesserung – deine bisherigen Parameter passen schon gut (ausgewertet aus ${formatNumber(fits.fitted.items)} Wiederholungen nach mindestens einem Tag).`,
+                `No improvement – your current parameters already fit well (based on ${formatNumber(fits.fitted.items)} reviews after a day or more).`,
+              )
+            )}
           </p>
           <div className="study-optimize-retention">
             <p>
@@ -239,10 +220,45 @@ export default function StudyOptimize({
             </p>
             {Math.round(result.retention * 100) !== Math.round(history.retention * 100) && (
               <button type="button" className="button compact" disabled={busy} onClick={() => applyRetention(result.retention)}>
-                {t(`${Math.round(result.retention * 100)} % für diesen Stapel übernehmen`, `Use ${Math.round(result.retention * 100)} % for this deck`)}
+                {t(`Behaltensrate auf ${Math.round(result.retention * 100)} % setzen`, `Set retention to ${Math.round(result.retention * 100)} %`)}
               </button>
             )}
           </div>
+          <details className="study-optimize-details">
+            <summary>{t("Details zur Berechnung", "Calculation details")}</summary>
+            <table className="study-stats-table">
+              <caption>
+                {t(
+                  "Wie weit die Vorhersagen des Modells von deinen tatsächlichen Wertungen abweichen – kleiner ist besser. Log-Loss bewertet jede einzelne Vorhersage, RMSE die Abweichung in Gruppen ähnlicher Wiederholungen.",
+                  "How far the model's predictions are from your actual ratings – lower is better. Log loss scores every single prediction, RMSE the deviation in groups of similar reviews.",
+                )}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">{t("Kennzahl", "Measure")}</th>
+                  {columns.map((c) => (
+                    <th scope="col" key={c.key}>
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">{t("Log-Loss", "Log loss")}</th>
+                  {columns.map((c) => (
+                    <td key={c.key}>{decimal(c.fit.logLoss, 4)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <th scope="row">{t("RMSE (Klassen)", "RMSE (bins)")}</th>
+                  {columns.map((c) => (
+                    <td key={c.key}>{percent(c.fit.rmse)}</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </details>
         </section>
       )}
       <div className="modal-actions study-optimize-actions">
@@ -251,15 +267,19 @@ export default function StudyOptimize({
             {t("Auf Vorgabe zurücksetzen", "Reset to defaults")}
           </button>
         )}
-        {result ? (
+        {result && better ? (
           <>
             <button type="button" className="button" onClick={onClose}>
               {storedHere?.at || history?.model.source !== "default" ? t("Bisherige behalten", "Keep current") : t("Vorgabe behalten", "Keep defaults")}
             </button>
-            <button type="button" className="button primary" disabled={busy || !better} onClick={apply}>
-              {t("Übernehmen", "Apply")}
+            <button type="button" className="button primary" disabled={busy} onClick={apply}>
+              {t("Parameter übernehmen", "Use parameters")}
             </button>
           </>
+        ) : result ? (
+          <button type="button" className="button" onClick={onClose}>
+            {t("Schließen", "Close")}
+          </button>
         ) : progress !== null ? (
           <button type="button" className="button" onClick={stop}>
             {t("Abbrechen", "Cancel")}

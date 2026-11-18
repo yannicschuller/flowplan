@@ -2,7 +2,7 @@
 // The screen #study, "Lernen" (docs/specs/flashcards.md §2.6, §6.1): every
 // deck of the workspace with what is left today – the person's own counts
 // from one aggregated query (lib/study-stats.ts studyDue), not a queue per
-// deck –, a session per deck, "Alle fälligen lernen" (the decks one after
+// deck –, a session per deck, "Alle Stapel lernen" (the decks one after
 // the other, each within its own limits), the streak and the statistics
 // over all decks – and "Aus Anki importieren" (components/study/anki-import.tsx).
 // Also the daily study reminder ("Lernerinnerung", lib/study-reminders.ts):
@@ -88,6 +88,26 @@ function StudyReminder({ value, onSaved }: { value: string | null; onSaved: (val
   );
 }
 
+// New, learning phase, due: coloured numbers with their word, no frame (they
+// are no buttons); a zero is quiet. The same three words everywhere.
+function StudyCounts({ counts }: { counts: { new: number; learning: number; review: number } }) {
+  const t = useT();
+  const parts = [
+    { key: "new", n: counts.new, label: t("neu", "new") },
+    { key: "learning", n: counts.learning, label: t("in der Lernphase", "learning") },
+    { key: "review", n: counts.review, label: t("fällig", "due") },
+  ];
+  return (
+    <span className="study-deck-counts">
+      {parts.map((p) => (
+        <span key={p.key} className={`study-deck-count ${p.key}${p.n ? "" : " zero"}`}>
+          <b>{p.n}</b> {p.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { workspaceId: string; userId?: string; spaces?: Pick<Space, "id" | "name">[]; onOpenPage: (pageId: string) => void }) {
   const t = useT();
   const [due, setDue] = useState<Due | null>(null),
@@ -111,6 +131,7 @@ export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { 
   const decks = due?.decks || [];
   const open = decks.filter((d) => left(d) > 0);
   const total = open.reduce((n, d) => n + left(d), 0);
+  const sum = decks.reduce((n, d) => ({ new: n.new + d.new, learning: n.learning + d.learning, review: n.review + d.review }), { new: 0, learning: 0, review: 0 });
   const current = session ? session.decks[session.index] : null;
   const following = session && session.index + 1 < session.decks.length ? session.decks[session.index + 1] : null;
   return (
@@ -126,7 +147,7 @@ export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { 
         )}
         {due && due.streak > 0 && (
           <span className="study-streak" title={t(`${due.streak} Lerntage in Folge`, `${due.streak} study days in a row`)}>
-            <Fire aria-hidden weight="fill" /> {t(`Serie: ${due.streak} Tage`, `Streak: ${due.streak} days`)}
+            <Fire aria-hidden weight="fill" /> {due.streak === 1 ? t("Serie: 1 Tag", "Streak: 1 day") : t(`Serie: ${due.streak} Tage`, `Streak: ${due.streak} days`)}
           </span>
         )}
       </header>
@@ -151,13 +172,22 @@ export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { 
       )}
       {decks.length > 0 && (
         <section className="study-today" aria-labelledby="study-screen-today">
-          <h3 id="study-screen-today">{t("Heute", "Today")}</h3>
-          <p className="study-screen-total" aria-live="polite">
-            {total === 0 ? t("Für heute ist alles gelernt.", "Everything is studied for today.") : total === 1 ? t("1 Karte ist fällig.", "1 card is due.") : t(`${total} Karten sind fällig.`, `${total} cards are due.`)}
-          </p>
+          {/* "Heute dran" counts what a session would show today: new cards,
+              cards in the learning phase and due reviews. "Fällig" is only
+              the reviews, the same word as in each deck's counts below. */}
+          <div className="study-screen-total" aria-live="polite">
+            <h3 id="study-screen-today">
+              {total === 0
+                ? t("Für heute ist alles gelernt.", "Everything is studied for today.")
+                : total === 1
+                  ? t("Heute dran: 1 Karte", "Today: 1 card")
+                  : t(`Heute dran: ${total} Karten`, `Today: ${total} cards`)}
+            </h3>
+            {total > 0 && <StudyCounts counts={sum} />}
+          </div>
           <div className="study-actions">
             <button className="button primary" disabled={!open.length} onClick={() => setSession({ decks: open, index: 0 })}>
-              <Play aria-hidden weight="fill" /> {t("Alle fälligen lernen", "Study all due")}
+              <Play aria-hidden weight="fill" /> {t("Alle Stapel lernen", "Study all decks")}
             </button>
           </div>
           <ul className="study-deck-list">
@@ -167,11 +197,7 @@ export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { 
                   <PageIcon name={shownPageIcon(d.icon, "database")} size={16} />
                   <span>{d.title || t("Ohne Titel", "Untitled")}</span>
                 </button>
-                <span className="study-deck-counts" aria-label={t(`${d.new} neu, ${d.learning} in Lernschritten, ${d.review} fällig`, `${d.new} new, ${d.learning} learning, ${d.review} due`)}>
-                  <span className="study-count-chip new">{t(`neu ${d.new}`, `new ${d.new}`)}</span>
-                  <span className="study-count-chip learning">{t(`Lernen ${d.learning}`, `learning ${d.learning}`)}</span>
-                  <span className="study-count-chip review">{t(`fällig ${d.review}`, `due ${d.review}`)}</span>
-                </span>
+                <StudyCounts counts={d} />
                 <button className="button compact" disabled={!left(d)} onClick={() => setSession({ decks: [d], index: 0 })} aria-label={t(`${d.title || "Ohne Titel"} lernen`, `Study ${d.title || "Untitled"}`)}>
                   <Play aria-hidden weight="fill" /> {t("Lernen", "Study")}
                 </button>

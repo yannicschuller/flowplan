@@ -3,7 +3,8 @@
 // view "Lernen") or of all decks (#study): today, the streak, ratings per
 // study day of the last year as a heatmap, the cards due in the next 30
 // days, true retention against the target and the cards by state – the
-// person's own numbers only (lib/study-stats.ts). Every chart has its
+// person's own numbers only (lib/study-stats.ts; "reif"/mature: stability
+// of 21 days or more, said in plain words). Every chart has its
 // table; colours are levels of one token, never meaning on their own.
 import { useEffect, useState } from "react";
 import { Fire } from "@phosphor-icons/react";
@@ -34,6 +35,9 @@ export type StudyStatsData = {
 const utc = (day: string) => new Date(`${day}T00:00:00Z`);
 const shift = (day: string, n: number) => new Date(utc(day).getTime() + n * 86_400_000).toISOString().slice(0, 10);
 const percent = (rate: number | null) => (rate === null ? "–" : `${Math.round(rate * 100)} %`);
+// Below this many reviews a retention rate says little ("0 %" after three
+// reviews looks like an error): the tile shows a hint instead of a number.
+export const RETENTION_MIN_REVIEWS = 20;
 
 export function useStudyStats(query: { pageId?: string; workspaceId?: string }, version = 0) {
   const [stats, setStats] = useState<StudyStatsData | null>(null);
@@ -98,12 +102,14 @@ export function StudyStats({ stats }: { stats: StudyStatsData }) {
   const short = new Intl.DateTimeFormat(LOCALE_TAG, { day: "numeric", month: "numeric", timeZone: "UTC" });
   const long = new Intl.DateTimeFormat(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
   const month = stats.retention.find((r) => r.days === 30);
+  const monthReviews = month?.reviews || 0;
+  const fewReviews = monthReviews < RETENTION_MIN_REVIEWS;
   const total = stats.states.new + stats.states.learning + stats.states.young + stats.states.mature + stats.states.suspended;
   const states: { key: keyof StudyStatsData["states"]; label: string }[] = [
     { key: "new", label: t("Neu", "New") },
-    { key: "learning", label: t("In Lernschritten", "In learning steps") },
-    { key: "young", label: t("Jung (unter 21 Tagen)", "Young (under 21 days)") },
-    { key: "mature", label: t("Reif (ab 21 Tagen)", "Mature (21 days or more)") },
+    { key: "learning", label: t("In der Lernphase", "Learning") },
+    { key: "young", label: t("Jung (unter 21 Tagen im Gedächtnis)", "Young (remembered under 21 days)") },
+    { key: "mature", label: t("Reif (ab 21 Tagen im Gedächtnis)", "Mature (remembered 21 days or more)") },
     { key: "suspended", label: t("Ausgesetzt", "Suspended") },
   ];
   return (
@@ -126,15 +132,35 @@ export function StudyStats({ stats }: { stats: StudyStatsData }) {
         </section>
         <section className="study-stat" aria-label={t("Behaltensrate", "Retention")}>
           <h4>{t("Behaltensrate (30 Tage)", "Retention (30 days)")}</h4>
-          <strong>{percent(month?.rate ?? null)}</strong>
-          <span>
-            {stats.target !== null ? t(`Ziel ${Math.round(stats.target * 100)} %`, `target ${Math.round(stats.target * 100)} %`) : t(`aus ${formatNumber(month?.reviews || 0)} Wiederholungen`, `from ${formatNumber(month?.reviews || 0)} reviews`)}
-          </span>
+          {fewReviews ? (
+            <>
+              <strong className="study-stat-none">–</strong>
+              <span>
+                {t(
+                  `Noch zu wenige Wiederholungen (${formatNumber(monthReviews)} von ${RETENTION_MIN_REVIEWS})`,
+                  `Too few reviews yet (${formatNumber(monthReviews)} of ${RETENTION_MIN_REVIEWS})`,
+                )}
+              </span>
+            </>
+          ) : (
+            <>
+              <strong>{percent(month?.rate ?? null)}</strong>
+              <span>
+                {stats.target !== null
+                  ? t(`Ziel ${Math.round(stats.target * 100)} % · aus ${formatNumber(monthReviews)} Wiederholungen`, `target ${Math.round(stats.target * 100)} % · from ${formatNumber(monthReviews)} reviews`)
+                  : t(`aus ${formatNumber(monthReviews)} Wiederholungen`, `from ${formatNumber(monthReviews)} reviews`)}
+              </span>
+            </>
+          )}
         </section>
         <section className="study-stat" aria-label={t("Karten", "Cards")}>
           <h4>{t("Karten", "Cards")}</h4>
           <strong>{formatNumber(total)}</strong>
-          <span>{stats.scope === "all" ? t(`in ${stats.decks} Stapeln`, `in ${stats.decks} decks`) : t(`${formatNumber(stats.states.mature)} reif`, `${formatNumber(stats.states.mature)} mature`)}</span>
+          <span>
+            {stats.scope === "all"
+              ? t(`in ${stats.decks} Stapeln`, `in ${stats.decks} decks`)
+              : t(`${formatNumber(stats.states.mature)} reif (ab 21 Tagen im Gedächtnis)`, `${formatNumber(stats.states.mature)} mature (remembered 21 days or more)`)}
+          </span>
         </section>
       </div>
       <Heatmap stats={stats} />
@@ -176,7 +202,12 @@ export function StudyStats({ stats }: { stats: StudyStatsData }) {
               ))}
             </tbody>
           </table>
-          <p className="muted">{t("Anteil der Wiederholungen, die du nicht mit „Nochmal“ gewertet hast.", "Share of reviews you did not rate “Again”.")}</p>
+          <p className="muted study-stats-caption">
+            {t(
+              `Anteil der Wiederholungen, die du nicht mit „Nochmal“ gewertet hast. Aussagekräftig ab etwa ${RETENTION_MIN_REVIEWS} Wiederholungen.`,
+              `Share of reviews you did not rate “Again”. Meaningful from about ${RETENTION_MIN_REVIEWS} reviews.`,
+            )}
+          </p>
         </section>
         <section className="study-stats-block" aria-labelledby="study-states-title">
           <h4 id="study-states-title">{t("Karten nach Zustand", "Cards by state")}</h4>

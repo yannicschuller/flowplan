@@ -15,6 +15,7 @@ import dynamic from "next/dynamic";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { Brain, ChartBar, Cards, CaretDown, DownloadSimple, GearSix, Play, SlidersHorizontal, Sparkle, UploadSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { Modal, api, needsConnection } from "./ui";
 import { Select } from "./select";
 import { useAiAvailability } from "./ai-context";
@@ -182,7 +183,7 @@ export default function DatabaseStudy({
             <strong>{counts?.new ?? "–"}</strong> {t("neu", "new")}
           </li>
           <li className="study-count learning">
-            <strong>{counts?.learning ?? "–"}</strong> {t("in Lernschritten", "in learning steps")}
+            <strong>{counts?.learning ?? "–"}</strong> {t("in der Lernphase", "learning")}
           </li>
           <li className="study-count review">
             <strong>{counts?.review ?? "–"}</strong> {t("fällig", "due")}
@@ -232,7 +233,7 @@ export default function DatabaseStudy({
         <section className="study-deck" aria-label={t("Stapel", "Deck")}>
           <p className="muted">
             {t(`${overview.total} Karten`, `${overview.total} cards`)} · {t(`${overview.states.new} neu`, `${overview.states.new} new`)} ·{" "}
-            {t(`${overview.states.learning} in Lernschritten`, `${overview.states.learning} in learning steps`)} · {t(`${overview.states.review} in Wiederholung`, `${overview.states.review} in review`)}
+            {t(`${overview.states.learning} in der Lernphase`, `${overview.states.learning} learning`)} · {t(`${overview.states.review} in Wiederholung`, `${overview.states.review} in review`)}
           </p>
           <p className="muted">
             {t(
@@ -383,6 +384,8 @@ export function StudySetup({
   onSave: (settings: StudySettings) => Promise<void>;
 }) {
   const t = useT();
+  // The cloze shortcut only where it can be pressed, written for this system.
+  const keyHints = useKeyboardHints();
   const fields = database.fields.filter((f) => STUDY_FIELD_TYPES.has(f.type));
   const initial = database.settings?.study || suggestStudySettings(database.fields);
   const [draft, setDraft] = useState<StudySettings>(initial);
@@ -424,9 +427,10 @@ export function StudySetup({
       >
         <p className="muted">
           {t(
-            "Jeder Eintrag wird zur Karte. Mit einer Linie im Dokument (--- tippen) teilst du es in Frage oben und Antwort unten.",
-            "Every record becomes a card. A line in the document (type ---) splits it into the question above and the answer below.",
-          )}
+            "Jeder Eintrag wird zur Karte. Eine Linie im Dokument teilt es in Frage oben und Antwort unten – für die Linie tippst du",
+            "Every record becomes a card. A line in the document splits it into the question above and the answer below – for the line, type",
+          )}{" "}
+          <code className="study-code">---</code>
         </p>
         <div className="form-row">
           <label>
@@ -550,8 +554,8 @@ export function StudySetup({
         </label>
         <p className="muted">
           {t(
-            "Lücken: {{c1::Antwort}} in einem Textfeld oder Text im Dokument markieren → „Als Lücke“ (⌘⌥G). Jede Nummer wird eine eigene Karte.",
-            "Clozes: {{c1::answer}} in a text property, or select text in the document → “As cloze” (⌘⌥G). Every number becomes a card of its own.",
+            `Lücken: {{c1::Antwort}} in einem Textfeld oder Text im Dokument markieren → „Als Lücke“${keyHints.suffix("Mod+Alt+G")}. Jede Nummer wird eine eigene Karte.`,
+            `Clozes: {{c1::answer}} in a text property, or select text in the document → “As cloze”${keyHints.suffix("Mod+Alt+G")}. Every number becomes a card of its own.`,
           )}
         </p>
         <div className="form-row study-limits">

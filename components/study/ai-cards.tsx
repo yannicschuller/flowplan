@@ -50,7 +50,7 @@ export function StudyAiCards({
     [files, setFiles] = useState<FileItem[] | null>(null),
     [decks, setDecks] = useState<Deck[] | null>(null),
     [deck, setDeck] = useState(start.deckId || ""),
-    [newTitle, setNewTitle] = useState(start.pageTitle ? t(`Lernkarten: ${start.pageTitle}`, `Flashcards: ${start.pageTitle}`) : t("Lernkarten", "Flashcards")),
+    [newTitle, setNewTitle] = useState(start.pageTitle || t("Lernkarten", "Flashcards")),
     [space, setSpace] = useState(spaces[0]?.id || ""),
     [count, setCount] = useState(20),
     [types, setTypes] = useState<AiCardType[]>(["basic", "cloze"]),

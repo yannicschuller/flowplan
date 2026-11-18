@@ -1562,6 +1562,7 @@ const patterns: [RegExp, string][] = [
   [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(an\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (on)."],
   [/^„(.+)“: Notizen mit und ohne Rückwärtskarte – die Rückwärtskarte gilt in Flowplan für den ganzen Stapel \(aus\)\.$/, "“$1”: notes with and without a reverse card – in Flowplan the reverse card applies to the whole deck (off)."],
   [/^„(.+)“: (\d+) Tags – übernommen werden die ersten 1000\.$/, "“$1”: $2 tags – the first 1000 are imported."],
+  [/^1 Mediendatei fehlt im Anki-Paket\.$/, "1 media file is missing in the Anki package."],
   [/^(\d+) Mediendateien fehlen im Anki-Paket\.$/, "$1 media files are missing in the Anki package."],
   [/^(\d+) Mediendateien sind zu groß oder zu viele und werden nicht übernommen\.$/, "$1 media files are too large or too many and are not imported."],
   [/^(\d+) Bildverdeckungs-Notizen werden als Vorder-\/Rückseite mit dem Bild übernommen \(ohne Masken\)\.$/, "$1 image occlusion notes are imported as front/back with the image (without masks)."],

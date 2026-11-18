@@ -426,7 +426,7 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
   });
   media.missing = missingNames.size;
   media.skipped = skippedNames.size;
-  if (missingNames.size) warnings.push(`${missingNames.size} Mediendateien fehlen im Anki-Paket.`);
+  if (missingNames.size) warnings.push(missingNames.size === 1 ? "1 Mediendatei fehlt im Anki-Paket." : `${missingNames.size} Mediendateien fehlen im Anki-Paket.`);
   if (skippedNames.size) warnings.push(`${skippedNames.size} Mediendateien sind zu groß oder zu viele und werden nicht übernommen.`);
   const asBasic = [...pkg.notes].filter((n) => mappings.get(n.mid)?.kind === "occlusion" && mappings.get(n.mid)?.type !== "occlusion").length;
   if (asBasic) warnings.push(`${asBasic} Bildverdeckungs-Notizen werden als Vorder-/Rückseite mit dem Bild übernommen (ohne Masken).`);
