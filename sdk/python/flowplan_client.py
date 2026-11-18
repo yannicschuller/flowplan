@@ -745,7 +745,7 @@ WorkflowExport = TypedDict("WorkflowExport", {
     "references": dict[str, dict[str, Any]],
 }, total=False)
 
-# Turn a database into a flashcard deck (card mapping and defaults). Needs editor rights. `settings` is stored as the database's `settings.study`: `front` and `back` each a property (`{ field }`, text-like properties) or the record's document (`front: { document: "above" }` – above its first horizontal rule; `back: { document: "all" | "below" }`), optional `hint` and `extra` properties, `reverse` (a second card back → front), and the deck's defaults `newPerDay` (20), `reviewsPerDay` (200), `retention` (0.7–0.99, 0.9), `learningSteps` ([1, 10] minutes), `relearningSteps` ([10]), `maxInterval` (days), `buryNew`/`buryReviews`. `type` is `{ fixed: "basic" }` for now. `settings: null` removes the mapping; everyone's learning state rests and returns with it. Views of type `study` learn the cards their filters select.
+# Turn a database into a flashcard deck (card mapping and defaults). Needs editor rights. `settings` is stored as the database's `settings.study`: `front` and `back` each a property (`{ field }`, text-like properties) or the record's document (`front: { document: "above" }` – above its first horizontal rule; `back: { document: "all" | "below" }`), optional `hint` and `extra` properties, `reverse` (a second card back → front), and the deck's defaults `newPerDay` (20), `reviewsPerDay` (200), `retention` (0.7–0.99, 0.9), `learningSteps` ([1, 10] minutes), `relearningSteps` ([10]), `maxInterval` (days), `buryNew`/`buryReviews`. `type`: `{ fixed: "basic" | "cloze" | "typed" | "choice" }` for all records, or `{ field, map? }` – a select property whose options name the type (unmapped options by their name: "Lückentext"/"Cloze", "Eintippen"/"Typed", "Multiple Choice"; else basic). Basic records whose sides hold clozes (`{{c1::answer::hint}}` or the editor's mark) give one cloze card per number (`sub` "c1" …). `choices`: a property with the wrong options of multiple choice cards (else they come from the backs of other cards the person may see), `tags`: a tags property (preferred for those). `typedCompare`: `{ ignoreCase, ignoreAccents, ignorePunctuation }` for typed answers. `settings: null` removes the mapping; everyone's learning state rests and returns with it. Views of type `study` learn the cards their filters select.
 CommandStudySettings = TypedDict("CommandStudySettings", {
     "action": Required[Literal["study.settings"]],
     "pageId": Required[str],
@@ -763,6 +763,7 @@ CommandStudyQueue = TypedDict("CommandStudyQueue", {
     "viewId": str,
     "zone": str,
     "limit": int,
+    "ahead": bool,  # Also learning cards due later today ("Show sooner")
 }, total=False)
 
 CommandStudyQueueResult = TypedDict("CommandStudyQueueResult", {
@@ -812,6 +813,30 @@ CommandStudyPrefs = TypedDict("CommandStudyPrefs", {
 }, total=False)
 
 CommandStudyPrefsResult = TypedDict("CommandStudyPrefsResult", {
+
+}, total=False)
+
+# What is left to study today in all your decks of a workspace. Read access is enough. Per deck you may study: `new`, `learning`, `review` left today within your limits, and `total` cards; plus your `streak` (study days in a row). Counted for the whole deck (a study view's filters are not applied). Also as GET /api/study/due (read tokens).
+CommandStudyDue = TypedDict("CommandStudyDue", {
+    "action": Required[Literal["study.due"]],
+    "workspaceId": Required[str],
+    "zone": str,
+    "pageIds": list[str],
+}, total=False)
+
+CommandStudyDueResult = TypedDict("CommandStudyDueResult", {
+
+}, total=False)
+
+# Your flashcard statistics, of one deck or of all. Your own numbers only. With `pageId` one deck, else all decks of `workspaceId`: `today` (ratings, new, minutes, share correct), `streak`, `heatmap` (ratings and minutes per study day, a year), `forecast` (cards due per day, 30 days; overdue ones count today), `retention` (true retention: share of reviews not rated Again, over 7, 30 and 365 days) and the deck's `target`, `states` (new, learning, young, mature – stability of 21 days or more –, suspended). Also as GET /api/study/stats (read tokens).
+CommandStudyStats = TypedDict("CommandStudyStats", {
+    "action": Required[Literal["study.stats"]],
+    "workspaceId": str,
+    "pageId": str,
+    "zone": str,
+}, total=False)
+
+CommandStudyStatsResult = TypedDict("CommandStudyStatsResult", {
 
 }, total=False)
 
@@ -1912,7 +1937,7 @@ CommandNotificationWeeklyResult = TypedDict("CommandNotificationWeeklyResult", {
     "timeZone": Required[str],
 }, total=False)
 
-# Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, find, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, ask, theme, splitView, present, journalToday, foldAll, unfoldAll, back, forward), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything.
+# Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, find, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, ask, theme, splitView, present, journalToday, foldAll, unfoldAll, back, forward, study), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything.
 CommandShortcutsSave = TypedDict("CommandShortcutsSave", {
     "action": Required[Literal["shortcuts.save"]],
     "bindings": Required[dict[str, list[str]]],
@@ -1940,7 +1965,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyUndo", "CommandStudyPrefs", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -2072,6 +2097,23 @@ StudyQueueQuery = TypedDict("StudyQueueQuery", {
     "view": str,  # A study view whose filters select the cards
     "zone": str,  # IANA time zone of the study day
     "limit": int,  # Cards, 0–50 (default 50)
+    "ahead": Literal["1"],  # 1: also learning cards due later today
+}, total=False)
+
+StudyExportQuery = TypedDict("StudyExportQuery", {
+    "state": Literal["1"],  # 1: add your learning state
+    "zone": str,  # IANA time zone for the due dates
+}, total=False)
+
+StudyDueQuery = TypedDict("StudyDueQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "zone": str,  # IANA time zone of the study day
+}, total=False)
+
+StudyStatsQuery = TypedDict("StudyStatsQuery", {
+    "workspace": str,  # Workspace ID (all decks)
+    "page": str,  # Deck (database) ID
+    "zone": str,  # IANA time zone of the study day
 }, total=False)
 
 BlockPreviewQuery = TypedDict("BlockPreviewQuery", {
@@ -2706,6 +2748,18 @@ class FlowplanClient:
     def study_queue(self, page_id: str, query: Optional["StudyQueueQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Your flashcards of a deck — The same as the command study.queue, for read tokens too: counts, limits and your next cards. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study)"""
         return self._json("GET", "/api/pages/" + _p(page_id) + "/study", query=dict(query) if query else None, headers=headers)
+
+    def study_export(self, page_id: str, query: Optional["StudyExportQuery"] = None, headers: Optional[dict[str, str]] = None) -> bytes:
+        """A deck's cards as CSV — One line per card you may study: front, back, hint, extra, tags, type and card (`sub`); document sides as Markdown, clozes as {{c1::…}}. With `state=1` your own learning state too (state, due, stability, difficulty, reviews, lapses) – never anyone else's. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study/export)"""
+        return self._bytes("GET", "/api/pages/" + _p(page_id) + "/study/export", query=dict(query) if query else None, headers=headers)
+
+    def study_due(self, query: "StudyDueQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What is due in all your decks — The same as the command study.due, for read tokens too. Answered with `Cache-Control: no-store`. (GET /api/study/due)"""
+        return self._json("GET", "/api/study/due", query=dict(query) if query else None, headers=headers)
+
+    def study_stats(self, query: Optional["StudyStatsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Your flashcard statistics — The same as the command study.stats, for read tokens too. Answered with `Cache-Control: no-store`. (GET /api/study/stats)"""
+        return self._json("GET", "/api/study/stats", query=dict(query) if query else None, headers=headers)
 
     def block_preview(self, page_id: str, block_id: str, query: Optional["BlockPreviewQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Preview of a block link — What a pasted block link shows: the page's (or with `row` the record's) title and the start of the block's text, as `Page › text` (#88). A block link is the page address with the block: `/#page=<page>&block=<blockId>` (records: `/#page=<database>&row=<record>&block=<blockId>`). `found` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: `encrypted` is true and title and text stay empty. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/blocks/{blockId})"""

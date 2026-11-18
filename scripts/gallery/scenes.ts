@@ -30,6 +30,34 @@ async function documentReady(page: Page) {
   await loaded(page);
 }
 
+// A flashcard deck of its own (Vorderseite/Rückseite) with a study view.
+async function studyDeck(ctx: SceneContext, title: string, settings: Record<string, unknown> = {}) {
+  const db = await ctx.fixture({ kind: "database", title });
+  const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
+  await ctx.command({
+    action: "database.update",
+    pageId: db,
+    version: database.version,
+    fields: [
+      { id: "title", name: "Vorderseite", type: "text" },
+      { id: "back", name: "Rückseite", type: "text" },
+    ],
+    views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [], default: true }],
+  });
+  await ctx.command({ action: "study.settings", pageId: db, settings: { version: 1, front: { field: "title" }, back: { field: "back" }, ...settings } });
+  return db;
+}
+// A few cards rated over the last days, for the statistics and counts.
+async function studied(ctx: SceneContext, db: string) {
+  const words = [["hola", "hallo"], ["perro", "Hund"], ["gato", "Katze"], ["casa", "Haus"]];
+  const ids: string[] = [];
+  for (const [title, back] of words) ids.push((await ctx.command({ action: "row.create", pageId: db, cells: { title, back } })).id);
+  const day = 86_400_000;
+  for (let d = 4; d >= 0; d--)
+    for (const [i, rowId] of ids.entries())
+      if ((i + d) % 3 !== 0)
+        await ctx.command({ action: "study.review", pageId: db, rowId, sub: "", rating: (i + d) % 4 === 0 ? 1 : 3, id: crypto.randomUUID(), zone: "Europe/Berlin", reviewedAt: Date.now() - d * day - i * 1000 });
+}
 const docPath = (c: SceneContext) => `#page=${c.ids.documentId}`;
 const dbPath = (c: SceneContext) => `#page=${c.ids.databaseId}`;
 const recordPath = (c: SceneContext) => `#page=${c.ids.databaseId}&row=${c.ids.rowId}`;
@@ -753,6 +781,110 @@ const databaseScenes: Scene[] = [
       await button(page, "Lernen starten").click();
       await button(dialog(page, /^Lernen: /), /^Antwort zeigen/).click();
       await page.locator(".study-ratings").waitFor();
+    },
+  },
+  // Flashcards phase 2/3a: cloze, typed and multiple choice cards, the wait
+  // screen, the import wizard, the statistics, #study and the widget.
+  {
+    id: "study-import",
+    group: "Databases",
+    title: "Flashcards: import cards",
+    covers: ["components/study/import.tsx"],
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Vokabeln");
+      await ctx.open(`#page=${db}`);
+      await button(page, "Karten importieren").click();
+      const wizard = dialog(page, "Karten importieren");
+      await wizard.getByLabel("Text", { exact: true }).fill("Wort\tÜbersetzung\nhola\thallo\nperro\tHund\ngato\t\nla casa\tdas Haus");
+      await wizard.locator(".study-import-preview").waitFor();
+    },
+  },
+  {
+    id: "study-cloze",
+    group: "Databases",
+    title: "Flashcards: cloze card",
+    covers: ["components/study/card-parts.tsx"],
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Erdkunde");
+      await ctx.command({ action: "row.create", pageId: db, cells: { title: "{{c1::Paris}} liegt an der {{c2::Seine::Fluss}}.", back: "Hauptstadt Frankreichs" } });
+      await ctx.open(`#page=${db}`);
+      await button(page, "Lernen starten").click();
+      await page.locator(".cloze-gap").first().waitFor();
+    },
+  },
+  {
+    id: "study-typed",
+    group: "Databases",
+    title: "Flashcards: typed answer",
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Spanisch tippen", { type: { fixed: "typed" } });
+      await ctx.command({ action: "row.create", pageId: db, cells: { title: "la estación", back: "der Bahnhof" } });
+      await ctx.open(`#page=${db}`);
+      await button(page, "Lernen starten").click();
+      await page.getByLabel("Deine Antwort").fill("der Banhof");
+      await page.getByLabel("Deine Antwort").press("Enter");
+      await page.locator(".study-typed-result").waitFor();
+    },
+  },
+  {
+    id: "study-choice",
+    group: "Databases",
+    title: "Flashcards: multiple choice",
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Hauptstädte", { type: { fixed: "choice" } });
+      for (const [title, back] of [["Hauptstadt von Spanien?", "Madrid"], ["Hauptstadt von Italien?", "Rom"], ["Hauptstadt von Polen?", "Warschau"], ["Hauptstadt von Portugal?", "Lissabon"]])
+        await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
+      await ctx.open(`#page=${db}`);
+      await button(page, "Lernen starten").click();
+      await page.locator(".study-choice").first().click();
+      await page.locator(".study-ratings").waitFor();
+    },
+  },
+  {
+    id: "study-stats",
+    group: "Databases",
+    title: "Flashcards: statistics",
+    covers: ["components/study/stats.tsx"],
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Spanisch B1");
+      await studied(ctx, db);
+      await ctx.open(`#page=${db}`);
+      await button(page.locator(".study-deck"), "Statistik").click();
+      await page.locator(".study-stats").waitFor();
+    },
+  },
+  {
+    id: "study-screen",
+    group: "Pages",
+    title: "Flashcards: #study",
+    covers: ["components/study/screen.tsx"],
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Spanisch A1");
+      await studied(ctx, db);
+      await ctx.open("#study");
+      await page.locator(".study-deck-list").waitFor();
+    },
+  },
+  {
+    id: "home-study-widget",
+    group: "Pages",
+    title: "Start page: due cards",
+    steps: async (page, ctx) => {
+      const db = await studyDeck(ctx, "Spanisch A1");
+      for (const [title, back] of [["hola", "hallo"], ["perro", "Hund"], ["gato", "Katze"]]) await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
+      await ctx.command({
+        action: "home.save",
+        workspaceId: ctx.ids.workspaceId,
+        layout: {
+          version: 1,
+          widgets: [{ id: "cards", kind: "study", size: "m", config: {} }],
+          appearance: { header: { type: "none", value: "", position: 50 }, density: "comfortable", background: "none", icon: "", width: "normal" },
+        },
+      });
+      await ctx.open("#home");
+      await page.locator(".home-study-total").waitFor();
+      // The seeded start page again for the scenes after this one.
+      await ctx.command({ action: "home.reset", workspaceId: ctx.ids.workspaceId });
     },
   },
   {

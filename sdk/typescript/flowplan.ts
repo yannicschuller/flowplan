@@ -1109,7 +1109,7 @@ export type WorkflowExport = {
   [key: string]: unknown;
 };
 
-/** Turn a database into a flashcard deck (card mapping and defaults). Needs editor rights. `settings` is stored as the database's `settings.study`: `front` and `back` each a property (`{ field }`, text-like properties) or the record's document (`front: { document: "above" }` – above its first horizontal rule; `back: { document: "all" | "below" }`), optional `hint` and `extra` properties, `reverse` (a second card back → front), and the deck's defaults `newPerDay` (20), `reviewsPerDay` (200), `retention` (0.7–0.99, 0.9), `learningSteps` ([1, 10] minutes), `relearningSteps` ([10]), `maxInterval` (days), `buryNew`/`buryReviews`. `type` is `{ fixed: "basic" }` for now. `settings: null` removes the mapping; everyone's learning state rests and returns with it. Views of type `study` learn the cards their filters select. */
+/** Turn a database into a flashcard deck (card mapping and defaults). Needs editor rights. `settings` is stored as the database's `settings.study`: `front` and `back` each a property (`{ field }`, text-like properties) or the record's document (`front: { document: "above" }` – above its first horizontal rule; `back: { document: "all" | "below" }`), optional `hint` and `extra` properties, `reverse` (a second card back → front), and the deck's defaults `newPerDay` (20), `reviewsPerDay` (200), `retention` (0.7–0.99, 0.9), `learningSteps` ([1, 10] minutes), `relearningSteps` ([10]), `maxInterval` (days), `buryNew`/`buryReviews`. `type`: `{ fixed: "basic" | "cloze" | "typed" | "choice" }` for all records, or `{ field, map? }` – a select property whose options name the type (unmapped options by their name: "Lückentext"/"Cloze", "Eintippen"/"Typed", "Multiple Choice"; else basic). Basic records whose sides hold clozes (`{{c1::answer::hint}}` or the editor's mark) give one cloze card per number (`sub` "c1" …). `choices`: a property with the wrong options of multiple choice cards (else they come from the backs of other cards the person may see), `tags`: a tags property (preferred for those). `typedCompare`: `{ ignoreCase, ignoreAccents, ignorePunctuation }` for typed answers. `settings: null` removes the mapping; everyone's learning state rests and returns with it. Views of type `study` learn the cards their filters select. */
 export type CommandStudySettings = {
   action: "study.settings";
   pageId: string;
@@ -1117,6 +1117,9 @@ export type CommandStudySettings = {
     version: 1;
     type?: {
       fixed: "basic" | "cloze" | "typed" | "choice" | "occlusion";
+    } | {
+      field: string;
+      map?: Record<string, "basic" | "cloze" | "typed" | "choice" | "occlusion">;
     };
     front: {
       field: string;
@@ -1134,6 +1137,12 @@ export type CommandStudySettings = {
     extra?: {
       field: string;
     };
+    choices?: {
+      field: string;
+    };
+    tags?: {
+      field: string;
+    };
     reverse?: boolean;
     newPerDay?: number;
     reviewsPerDay?: number;
@@ -1143,6 +1152,11 @@ export type CommandStudySettings = {
     maxInterval?: number;
     buryNew?: boolean;
     buryReviews?: boolean;
+    typedCompare?: {
+      ignoreCase?: boolean;
+      ignoreAccents?: boolean;
+      ignorePunctuation?: boolean;
+    };
   } | null;
 };
 
@@ -1151,6 +1165,9 @@ export type CommandStudySettingsResult = {
     version: 1;
     type?: {
       fixed: "basic" | "cloze" | "typed" | "choice" | "occlusion";
+    } | {
+      field: string;
+      map?: Record<string, "basic" | "cloze" | "typed" | "choice" | "occlusion">;
     };
     front: {
       field: string;
@@ -1168,6 +1185,12 @@ export type CommandStudySettingsResult = {
     extra?: {
       field: string;
     };
+    choices?: {
+      field: string;
+    };
+    tags?: {
+      field: string;
+    };
     reverse?: boolean;
     newPerDay?: number;
     reviewsPerDay?: number;
@@ -1177,6 +1200,11 @@ export type CommandStudySettingsResult = {
     maxInterval?: number;
     buryNew?: boolean;
     buryReviews?: boolean;
+    typedCompare?: {
+      ignoreCase?: boolean;
+      ignoreAccents?: boolean;
+      ignorePunctuation?: boolean;
+    };
   } | null;
 };
 
@@ -1187,6 +1215,8 @@ export type CommandStudyQueue = {
   viewId?: string;
   zone?: string;
   limit?: number;
+  /** Also learning cards due later today ("Show sooner") */
+  ahead?: boolean;
 };
 
 export type CommandStudyQueueResult = {
@@ -1240,6 +1270,30 @@ export type CommandStudyPrefs = {
 };
 
 export type CommandStudyPrefsResult = {
+  [key: string]: unknown;
+};
+
+/** What is left to study today in all your decks of a workspace. Read access is enough. Per deck you may study: `new`, `learning`, `review` left today within your limits, and `total` cards; plus your `streak` (study days in a row). Counted for the whole deck (a study view's filters are not applied). Also as GET /api/study/due (read tokens). */
+export type CommandStudyDue = {
+  action: "study.due";
+  workspaceId: string;
+  zone?: string;
+  pageIds?: string[];
+};
+
+export type CommandStudyDueResult = {
+  [key: string]: unknown;
+};
+
+/** Your flashcard statistics, of one deck or of all. Your own numbers only. With `pageId` one deck, else all decks of `workspaceId`: `today` (ratings, new, minutes, share correct), `streak`, `heatmap` (ratings and minutes per study day, a year), `forecast` (cards due per day, 30 days; overdue ones count today), `retention` (true retention: share of reviews not rated Again, over 7, 30 and 365 days) and the deck's `target`, `states` (new, learning, young, mature – stability of 21 days or more –, suspended). Also as GET /api/study/stats (read tokens). */
+export type CommandStudyStats = {
+  action: "study.stats";
+  workspaceId?: string;
+  pageId?: string;
+  zone?: string;
+};
+
+export type CommandStudyStatsResult = {
   [key: string]: unknown;
 };
 
@@ -2989,7 +3043,7 @@ export type CommandNotificationWeeklyResult = {
   timeZone: string;
 };
 
-/** Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, find, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, ask, theme, splitView, present, journalToday, foldAll, unfoldAll, back, forward), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything. */
+/** Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, find, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, ask, theme, splitView, present, journalToday, foldAll, unfoldAll, back, forward, study), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything. */
 export type CommandShortcutsSave = {
   action: "shortcuts.save";
   bindings: Record<string, string[]>;
@@ -3200,6 +3254,14 @@ export type CommandHomeSave = {
         title?: string;
         period?: "week" | "month" | "year";
       };
+    } | {
+      id: string;
+      kind: "study";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        pageIds?: string[];
+      };
     })[];
     appearance: {
       header?: {
@@ -3226,10 +3288,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandStudySettings | CommandStudyQueue | CommandStudyReview | CommandStudyUndo | CommandStudyPrefs | CommandWorkspaceCreate | CommandWorkspaceTheme | CommandWorkspaceLinkRules | CommandWorkspacePrintPresets | CommandProfilePrint | CommandProfilePlainLook | CommandProfileTextMenu | CommandProfilePageIcon | CommandProfileExternalLinkIcon | CommandProfileQuoteShortcut | CommandProfileFormattingToolbar | CommandProfileToolbarLayout | CommandProfileMotion | CommandProfileFullWidthPages | CommandProfileStartScreen | CommandProfileUpdateNotes | CommandProfileSettingsLevel | CommandReleaseNotesList | CommandSpaceCreate | CommandSpaceUpdate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandTaskAdd | CommandTasksSeen | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandInviteLinkCreate | CommandInviteLinkRevoke | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandStudySettings | CommandStudyQueue | CommandStudyReview | CommandStudyUndo | CommandStudyPrefs | CommandStudyDue | CommandStudyStats | CommandWorkspaceCreate | CommandWorkspaceTheme | CommandWorkspaceLinkRules | CommandWorkspacePrintPresets | CommandProfilePrint | CommandProfilePlainLook | CommandProfileTextMenu | CommandProfilePageIcon | CommandProfileExternalLinkIcon | CommandProfileQuoteShortcut | CommandProfileFormattingToolbar | CommandProfileToolbarLayout | CommandProfileMotion | CommandProfileFullWidthPages | CommandProfileStartScreen | CommandProfileUpdateNotes | CommandProfileSettingsLevel | CommandReleaseNotesList | CommandSpaceCreate | CommandSpaceUpdate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandDatabaseCollapseRecordProperties | CommandJournalCompletedMine | CommandSidebarState | CommandTaskAdd | CommandTasksSeen | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandInviteLinkCreate | CommandInviteLinkRevoke | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "study.settings" } ? CommandStudySettingsResult : A extends { action: "study.queue" } ? CommandStudyQueueResult : A extends { action: "study.review" } ? CommandStudyReviewResult : A extends { action: "study.undo" } ? CommandStudyUndoResult : A extends { action: "study.prefs" } ? CommandStudyPrefsResult : A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "workspace.linkRules" } ? CommandWorkspaceLinkRulesResult : A extends { action: "workspace.printPresets" } ? CommandWorkspacePrintPresetsResult : A extends { action: "profile.print" } ? CommandProfilePrintResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "profile.pageIcon" } ? CommandProfilePageIconResult : A extends { action: "profile.externalLinkIcon" } ? CommandProfileExternalLinkIconResult : A extends { action: "profile.quoteShortcut" } ? CommandProfileQuoteShortcutResult : A extends { action: "profile.formattingToolbar" } ? CommandProfileFormattingToolbarResult : A extends { action: "profile.toolbarLayout" } ? CommandProfileToolbarLayoutResult : A extends { action: "profile.motion" } ? CommandProfileMotionResult : A extends { action: "profile.fullWidthPages" } ? CommandProfileFullWidthPagesResult : A extends { action: "profile.startScreen" } ? CommandProfileStartScreenResult : A extends { action: "profile.updateNotes" } ? CommandProfileUpdateNotesResult : A extends { action: "profile.settingsLevel" } ? CommandProfileSettingsLevelResult : A extends { action: "releaseNotes.list" } ? CommandReleaseNotesListResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.update" } ? CommandSpaceUpdateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "task.add" } ? CommandTaskAddResult : A extends { action: "tasks.seen" } ? CommandTasksSeenResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "inviteLink.create" } ? CommandInviteLinkCreateResult : A extends { action: "inviteLink.revoke" } ? CommandInviteLinkRevokeResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "study.settings" } ? CommandStudySettingsResult : A extends { action: "study.queue" } ? CommandStudyQueueResult : A extends { action: "study.review" } ? CommandStudyReviewResult : A extends { action: "study.undo" } ? CommandStudyUndoResult : A extends { action: "study.prefs" } ? CommandStudyPrefsResult : A extends { action: "study.due" } ? CommandStudyDueResult : A extends { action: "study.stats" } ? CommandStudyStatsResult : A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "workspace.theme" } ? CommandWorkspaceThemeResult : A extends { action: "workspace.linkRules" } ? CommandWorkspaceLinkRulesResult : A extends { action: "workspace.printPresets" } ? CommandWorkspacePrintPresetsResult : A extends { action: "profile.print" } ? CommandProfilePrintResult : A extends { action: "profile.plainLook" } ? CommandProfilePlainLookResult : A extends { action: "profile.textMenu" } ? CommandProfileTextMenuResult : A extends { action: "profile.pageIcon" } ? CommandProfilePageIconResult : A extends { action: "profile.externalLinkIcon" } ? CommandProfileExternalLinkIconResult : A extends { action: "profile.quoteShortcut" } ? CommandProfileQuoteShortcutResult : A extends { action: "profile.formattingToolbar" } ? CommandProfileFormattingToolbarResult : A extends { action: "profile.toolbarLayout" } ? CommandProfileToolbarLayoutResult : A extends { action: "profile.motion" } ? CommandProfileMotionResult : A extends { action: "profile.fullWidthPages" } ? CommandProfileFullWidthPagesResult : A extends { action: "profile.startScreen" } ? CommandProfileStartScreenResult : A extends { action: "profile.updateNotes" } ? CommandProfileUpdateNotesResult : A extends { action: "profile.settingsLevel" } ? CommandProfileSettingsLevelResult : A extends { action: "releaseNotes.list" } ? CommandReleaseNotesListResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.update" } ? CommandSpaceUpdateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "database.collapseRecordProperties" } ? CommandDatabaseCollapseRecordPropertiesResult : A extends { action: "journal.completedMine" } ? CommandJournalCompletedMineResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "task.add" } ? CommandTaskAddResult : A extends { action: "tasks.seen" } ? CommandTasksSeenResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "inviteLink.create" } ? CommandInviteLinkCreateResult : A extends { action: "inviteLink.revoke" } ? CommandInviteLinkRevokeResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -3720,8 +3782,23 @@ export class FlowplanClient {
   }
 
   /** Your flashcards of a deck — The same as the command study.queue, for read tokens too: counts, limits and your next cards. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study) */
-  async studyQueue(pageId: string, query?: { view?: string; zone?: string; limit?: number }, options?: RequestOptions): Promise<Record<string, unknown>> {
+  async studyQueue(pageId: string, query?: { view?: string; zone?: string; limit?: number; ahead?: "1" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/pages/${encodeURIComponent(pageId)}/study`, { query }, options);
+  }
+
+  /** A deck's cards as CSV — One line per card you may study: front, back, hint, extra, tags, type and card (`sub`); document sides as Markdown, clozes as {{c1::…}}. With `state=1` your own learning state too (state, due, stability, difficulty, reviews, lapses) – never anyone else's. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study/export) */
+  async studyExport(pageId: string, query?: { state?: "1"; zone?: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/pages/${encodeURIComponent(pageId)}/study/export`, { query }, options);
+  }
+
+  /** What is due in all your decks — The same as the command study.due, for read tokens too. Answered with `Cache-Control: no-store`. (GET /api/study/due) */
+  async studyDue(query: { workspace: string; zone?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/study/due`, { query }, options);
+  }
+
+  /** Your flashcard statistics — The same as the command study.stats, for read tokens too. Answered with `Cache-Control: no-store`. (GET /api/study/stats) */
+  async studyStats(query?: { workspace?: string; page?: string; zone?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/study/stats`, { query }, options);
   }
 
   /** Preview of a block link — What a pasted block link shows: the page's (or with `row` the record's) title and the start of the block's text, as `Page › text` (#88). A block link is the page address with the block: `/#page=<page>&block=<blockId>` (records: `/#page=<database>&row=<record>&block=<blockId>`). `found` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: `encrypted` is true and title and text stay empty. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/blocks/{blockId}) */
