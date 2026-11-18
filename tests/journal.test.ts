@@ -106,12 +106,15 @@ test("a new day gets its page once; open tasks move over, done ones stay", async
   );
 });
 
-test("a day with only carried tasks is removed; the tasks keep moving", async () => {
+test("a day with only carried tasks goes to the trash; the tasks keep moving", async () => {
   const before = (await days())[0];
   assert.equal(before.journal_date, "2026-09-02");
   // Nobody wrote anything on the 2nd; two days later the journal is opened.
   const thursday = (await roll("2026-09-04")).dayId;
-  assert.equal(await one("SELECT id FROM pages WHERE id=?", before.id), undefined);
+  const trashed = await one<Page>("SELECT * FROM pages WHERE id=?", before.id);
+  assert.ok(trashed?.deleted_at);
+  // Without the tasks that moved on: restoring it doubles nothing.
+  assert.doesNotMatch(await html(before.id), /Bericht schreiben/);
   assert.deepEqual(
     (await days()).map((d) => d.journal_date),
     ["2026-09-04", "2026-09-01"],

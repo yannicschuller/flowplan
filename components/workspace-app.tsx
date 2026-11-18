@@ -260,7 +260,7 @@ import DatabaseView, { type DatabaseData } from "./database-view";
 import { MovePageDialog } from "./move-page-dialog";
 import { MetaResolveDialog, moveIntro, ScopeChoice } from "./meta-scope";
 import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
-import { JournalView, localDay, type JournalDay } from "./journal-view";
+import { JournalView, localDay, localZone, type JournalDay } from "./journal-view";
 import { JournalDayNav, JournalTreeItem, monthLabel } from "./journal-nav";
 import { RecordTreeItem } from "./record-tree-item";
 import {
@@ -1464,6 +1464,7 @@ export default function WorkspaceApp({
         workspaceId: boot.workspace.id,
         ...(pageId ? { pageId } : {}),
         date,
+        zone: localZone(),
         ...(recreate ? { recreate: true } : {}),
       });
       if (result?.changed) await refresh();
@@ -1487,6 +1488,7 @@ export default function WorkspaceApp({
           workspaceId: boot.workspace.id,
           pageId: draftData.draft!.journalId,
           date: draftData.draft!.date,
+          zone: localZone(),
           write: true,
         });
         const same = result.dayId === draftData.page.id && result.generation === draftData.generation;
@@ -1602,7 +1604,7 @@ export default function WorkspaceApp({
         try {
           result = await api<{ dayId?: string; trashed?: boolean }>(
             "/api/command",
-            keyed({ workspaceId: bootRef.current.workspace.id, ...offlineEntryCommand(entry, localDay()) }, entry.key),
+            keyed({ workspaceId: bootRef.current.workspace.id, ...offlineEntryCommand(entry, localDay()), zone: localZone() }, entry.key),
           );
         } catch (error) {
           if (!deviceOffline() && !isTransient(error) && !offlineRefused.current.has(id)) {
@@ -3720,7 +3722,7 @@ export default function WorkspaceApp({
   // carried tasks when the journal has none for that date yet.
   async function openJournalDate(journalId: string, date: string) {
     if (deviceOffline()) return openOfflineDay(journalId, date);
-    const result = (await act({ action: "journal.roll", workspaceId: boot.workspace.id, pageId: journalId, date: localDay(), day: date })) as { dayId?: string } | null;
+    const result = (await act({ action: "journal.roll", workspaceId: boot.workspace.id, pageId: journalId, date: localDay(), zone: localZone(), day: date })) as { dayId?: string } | null;
     if (result?.dayId) return openPage(result.dayId);
   }
   function openLastJournalToday() {

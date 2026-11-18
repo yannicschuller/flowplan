@@ -3,13 +3,16 @@ import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
 import { contentLocale } from "./content-locale";
 // Journals: a page that keeps one sub page per day. When a new day starts,
 // its page is created and the open tasks of the last day move over to it.
-// A day that got no entry of its own (only carried tasks) is removed again,
-// so the journal holds only days on which something happened.
+// A day that got no entry of its own (only carried tasks) and under which
+// "An diesem Tag erledigt" lists nothing goes to the trash, so the journal
+// holds only days on which something happened; opening its date again
+// brings it back from there.
 import * as Y from "yjs";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { z } from "zod";
-import { all, one, run, nowText, inSavepoint } from "./db";
+import { all, audit, one, run, nowText } from "./db";
+import { validZone } from "./date-values";
 import { documentSchema } from "./document-schema";
 import { htmlState, stateHtml } from "./document-server";
 import { createPage } from "./seed";
@@ -188,7 +191,7 @@ async function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
   await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
 // A page nobody touched: no own text, same title, no icon or cover set, no
-// comments, no sub pages and no files.
+// comments, no sub pages, no files and not shared or published.
 async function untouched(page: Page, doc: PMNode) {
   // Compared with the template the day was created from, so a later change
   // of the template does not keep untouched days (and with today's one).
@@ -209,23 +212,52 @@ async function untouched(page: Page, doc: PMNode) {
     await used("SELECT 1 FROM files WHERE page_id=? LIMIT 1") ||
     await used(
       "SELECT 1 FROM inline_threads WHERE page_id=? LIMIT 1",
-    )
+    ) ||
+    await used("SELECT 1 FROM share_links WHERE root_id=? LIMIT 1") ||
+    await used("SELECT 1 FROM share_link_pages WHERE page_id=? LIMIT 1") ||
+    await used("SELECT 1 FROM publications WHERE page_id=? LIMIT 1") ||
+    await used("SELECT 1 FROM publication_pages WHERE page_id=? LIMIT 1")
   );
 }
-async function removeDay(page: Page) {
-  await run("DELETE FROM notifications WHERE page_id=?", page.id);
-  await run("DELETE FROM presence WHERE page_id=?", page.id);
-  await run("DELETE FROM editor_presence WHERE page_id=?", page.id);
-  await run("DELETE FROM favorites WHERE page_id=?", page.id);
-  try {
-    await inSavepoint(async () => await run("DELETE FROM pages WHERE id=?", page.id));
-  } catch {
-    // Still referenced somewhere: move it to the trash instead.
-    await run(
-      "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
-      page.id,
-    );
-  }
+// Whether "An diesem Tag erledigt" lists something below the day (tasks
+// ticked off and records done that day in other pages, lib/journal-
+// completed.ts) – the list as the person opening the journal sees it: by
+// their choice "Nur meine" / "Alle" for the journal, "Nur meine" until
+// they chose. Nothing when the journal switched the list off. The day in
+// the person's time zone; without one, in any time zone (from 14 hours
+// before UTC midnight to 12 hours after the next), so it rather stays.
+async function completedThatDay(user: Identity, day: Page, zone?: string) {
+  if (!(await journalSettings(day.parent_id!)).options.completed) return false;
+  const { completedOn, completedMineChoice } = await import("./journal-completed");
+  const mine = (await completedMineChoice(user, day.parent_id!)) ?? true;
+  const midnight = Date.parse(`${day.journal_date}T00:00:00Z`);
+  const known = !!zone && validZone(zone);
+  const list = await completedOn(user, day.workspace_id, day.journal_date!, known ? zone! : "UTC", {
+    dayId: day.id,
+    mine,
+    limit: 1,
+    ...(known ? {} : { window: { start: midnight - 14 * 3600e3, end: midnight + 36 * 3600e3 } }),
+  });
+  return list.items.length > 0;
+}
+// The audit entry that marks a day the journal moved to the trash by itself
+// (detail: its deleted_at). Only such a day comes back when its date is
+// opened again; one a person deleted stays in the trash.
+const AUTO_TRASH = "journal.dayTrashed";
+async function trashDay(user: Identity, day: Page) {
+  const at = nowText();
+  await run("UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", at, day.id);
+  await audit(user.id, AUTO_TRASH, day.id, at);
+}
+// A day of the date in the trash that the journal put there itself: back
+// out of the trash (its open tasks had moved on before, so nothing doubles).
+async function restoreAutoTrashed(day: Page | undefined) {
+  if (!day?.deleted_at) return false;
+  if (!(await one("SELECT 1 FROM audit WHERE action=? AND resource_id=? AND detail=? LIMIT 1", AUTO_TRASH, day.id, day.deleted_at)))
+    return false;
+  await run("UPDATE pages SET deleted_at=NULL WHERE id=?", day.id);
+  day.deleted_at = null;
+  return true;
 }
 
 // What a new day starts with: the open tasks of the last day before it
@@ -265,8 +297,9 @@ export async function rollJournal(
   recreate = false,
   // `keep`: the day before stays even when nobody wrote in it (the
   // workflow step "An Journaltag anhängen", ensureJournalDay) – only a
-  // person opening the journal tidies an empty day away.
-  options: { write?: boolean; keep?: boolean } = {},
+  // person opening the journal tidies an empty day away. `zone`: that
+  // person's time zone, for "An diesem Tag erledigt" (completedThatDay).
+  options: { write?: boolean; keep?: boolean; zone?: string } = {},
 ): Promise<{
   // Today's page – or, while it is a draft, the draft's id (it opens like
   // a page, GET /api/pages/<id>).
@@ -289,6 +322,13 @@ export async function rollJournal(
   );
   const generationOf = async (pageId: string) =>
     String((await one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId))?.generation || "1");
+  // Tidied away by the journal itself (another device a day ahead): back.
+  if (await restoreAutoTrashed(existing))
+    return {
+      dayId: existing!.id,
+      changed: true,
+      ...(options.write ? { generation: await generationOf(existing!.id) } : {}),
+    };
   if (existing && existing.deleted_at && recreate) {
     // The deleted page stays in the trash as an ordinary page.
     await run("UPDATE pages SET journal_date=NULL WHERE id=?", existing.id);
@@ -306,8 +346,11 @@ export async function rollJournal(
   const { previous, before, carried, daily, doc } = await dayStart(journal, today);
   if (previous && before) {
     const { ydoc, doc: previousDoc } = before;
-    if (!options.keep && (await untouched(previous, previousDoc))) await removeDay(previous);
-    else if (carried.length) {
+    const empty =
+      !options.keep &&
+      (await untouched(previous, previousDoc)) &&
+      !(await completedThatDay(user, previous, options.zone));
+    if (carried.length) {
       await storeDocument(
         previous.id,
         ydoc,
@@ -316,6 +359,9 @@ export async function rollJournal(
       // The moved tasks now live in the new day ("Meine Aufgaben").
       await indexPageTasks(previous.id, false);
     }
+    // An empty day goes to the trash (restorable like any page, never
+    // deleted for good here) – without the tasks that moved on.
+    if (empty) await trashDay(user, previous);
     ydoc.destroy();
   }
   const { dayId, generation } = await storeNewDay(user, journal, today, doc);
@@ -367,7 +413,8 @@ async function storeNewDay(user: Identity, journal: Page, today: string, doc: PM
 // before, placed by the journal's setting, and the template; "create on
 // first write" counts as written). A day before an existing later one gets
 // the template only: open tasks have moved past it already. A day in the
-// trash stays there; days after `today` are not made. It never removes,
+// trash stays there – unless the journal put it there itself (an empty day,
+// rollJournal): that one comes back. Days after `today` are not made. It never removes,
 // moves or renames another day: the day before keeps its page even when it
 // only held carried tasks (they move on as usual) – a workflow running
 // just after midnight must not make yesterday disappear.
@@ -375,6 +422,7 @@ export async function ensureJournalDay(user: Identity, journal: Page, date: stri
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
   journalDate.parse(date);
   const existing = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=?", journal.id, date);
+  if (await restoreAutoTrashed(existing)) return { dayId: existing!.id, created: true };
   if (existing?.deleted_at) throw new HttpError(409, "Dieser Tag liegt im Papierkorb.");
   if (existing) return { dayId: existing.id, created: false };
   if (date > today) throw new HttpError(400, "Ein künftiger Tag lässt sich noch nicht anlegen.");
@@ -391,28 +439,31 @@ export async function ensureJournalDay(user: Identity, journal: Page, date: stri
 // template only – no open tasks are carried over, they belong to the newest
 // day. Today goes the usual way (rollJournal); days after `today` (the
 // client's local day, checked against the server clock) are refused, and a
-// day in the trash stays there.
+// day in the trash stays there – one the journal put there itself (an empty
+// day, rollJournal) comes back.
 export async function openJournalDay(
   user: Identity,
   journal: Page,
   date: string,
   today: string,
   now = new Date().toISOString().slice(0, 10),
+  zone?: string,
 ): Promise<{ dayId: string; changed: boolean; trashed?: boolean; draft?: boolean }> {
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
   journalDate.parse(date);
   if (today < shiftDay(now, -1) || today > shiftDay(now, 1))
     throw new HttpError(400, "Das Datum passt nicht zur Serverzeit.");
   if (date > today) throw new HttpError(400, "Ein künftiger Tag lässt sich noch nicht anlegen.");
-  if (date === today) return await rollJournal(user, journal, today, now);
+  if (date === today) return await rollJournal(user, journal, today, now, false, { zone });
   const existing = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=?", journal.id, date);
+  if (await restoreAutoTrashed(existing)) return { dayId: existing!.id, changed: true };
   if (existing?.deleted_at) throw new HttpError(409, "Dieser Tag liegt im Papierkorb.");
   if (existing) return { dayId: existing.id, changed: false };
   const { dayId } = await storeNewDay(user, journal, date, dayDocument([], await templateNodes(journal.id, schema())));
   return { dayId, changed: true };
 }
 // All journals of a workspace the user may edit.
-export async function rollJournals(user: Identity, workspaceId: string, today: string) {
+export async function rollJournals(user: Identity, workspaceId: string, today: string, zone?: string) {
   let changed = false;
   for (const journal of await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND kind='journal' AND deleted_at IS NULL",
@@ -421,7 +472,7 @@ export async function rollJournals(user: Identity, workspaceId: string, today: s
     const role = await pageRole(user, journal);
     if (role !== "editor" && role !== "owner") continue;
     // Journals that create a day on the first write wait for it.
-    if ((await rollJournal(user, journal, today)).changed) changed = true;
+    if ((await rollJournal(user, journal, today, undefined, false, { zone })).changed) changed = true;
   }
   return changed;
 }

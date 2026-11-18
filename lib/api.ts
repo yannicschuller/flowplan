@@ -2012,18 +2012,21 @@ async function runCommand(
       case "journal.roll": {
         // The client sends its own date: a new day starts at local midnight.
         const date = journalDate.parse(b.date);
+        // The person's time zone: which day "An diesem Tag erledigt" covers
+        // when the day before is judged empty (lib/journal.ts).
+        const zone = typeof b.zone === "string" && b.zone.length <= 100 && validZone(b.zone) ? b.zone : undefined;
         if (b.pageId && b.day !== undefined) {
           // A day chosen in the day picker (#288): opened, or created
           // without carried tasks; never after today.
-          result = await openJournalDay(user, await write(), journalDate.parse(b.day), date);
+          result = await openJournalDay(user, await write(), journalDate.parse(b.day), date, undefined, zone);
         } else if (b.pageId) {
           const journal = await write();
           // `write`: the first keystroke, task, tracker value or file in a
           // draft day creates it (journals set to "beim ersten Schreiben").
-          result = await rollJournal(user, journal, date, undefined, b.recreate === true, { write: b.write === true });
+          result = await rollJournal(user, journal, date, undefined, b.recreate === true, { write: b.write === true, zone });
         } else {
           await requireMember(user, wid());
-          result = { changed: await rollJournals(user, wid(), date) };
+          result = { changed: await rollJournals(user, wid(), date, zone) };
         }
         // Text written in the entry without a connection (#333,
         // lib/journal-offline.ts): appended to the day, sent like an edit.
