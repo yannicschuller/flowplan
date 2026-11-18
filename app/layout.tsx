@@ -29,6 +29,7 @@ import "./emergency-access.css";
 import "./dead-man-switch.css";
 import "./start-capture.css";
 import "./onboarding-migrate.css";
+import "./study.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";
