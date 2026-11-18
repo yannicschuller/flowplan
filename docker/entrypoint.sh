@@ -532,6 +532,16 @@ if [ -n "$LITESTREAM" ]; then
   FLOWPLAN_LITESTREAM_ACTIVE=1
   FLOWPLAN_LITESTREAM_SSE_C=0
   if [ -n "$LITESTREAM_SSE_C_KEY" ]; then FLOWPLAN_LITESTREAM_SSE_C=1; fi
+  # How much Litestream logs (its own LOG_LEVEL): "warn" leaves out the
+  # routine lines of every compaction and keeps warnings and errors.
+  case "$(printf '%s' "${FLOWPLAN_LITESTREAM_LOG_LEVEL:-}" | tr '[:upper:]' '[:lower:]')" in
+    "") ;;
+    debug | info | warn | error)
+      LOG_LEVEL="$(printf '%s' "$FLOWPLAN_LITESTREAM_LOG_LEVEL" | tr '[:upper:]' '[:lower:]')"
+      export LOG_LEVEL
+      ;;
+    *) echo "FLOWPLAN_LITESTREAM_LOG_LEVEL=$FLOWPLAN_LITESTREAM_LOG_LEVEL is ignored: use debug, info, warn or error." >&2 ;;
+  esac
   export S3_REGION S3_ENDPOINT S3_PREFIX FLOWPLAN_DB LITESTREAM_SSE_C_KEY FLOWPLAN_LITESTREAM_ACTIVE FLOWPLAN_LITESTREAM_SSE_C
   if { [ -n "${FLOWPLAN_ENCRYPTION_KEY:-}" ] || [ -n "${FLOWPLAN_ENCRYPTION_KEY_FILE:-}" ]; } && [ "$FLOWPLAN_LITESTREAM_SSE_C" = 0 ]; then
     echo "Hinweis: Litestream legt die Datenbank unverschlüsselt in den Bucket. FLOWPLAN_LITESTREAM=off und stündliche verschlüsselte Sicherungen vermeiden das (siehe Doku)."

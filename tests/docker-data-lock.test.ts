@@ -34,6 +34,7 @@ while :; do sleep 0.1; done`,
   // FAKE_LS_SAY: a line on stdout and one on stderr (restore and replicate).
   litestream: `cmd="$1"; shift
 echo "litestream $cmd $*" >> "$LOG"
+[ -n "\${LOG_LEVEL:-}" ] && echo "litestream LOG_LEVEL=$LOG_LEVEL" >> "$LOG"
 if [ -n "\${FAKE_LS_SAY:-}" ]; then echo "$cmd: $FAKE_LS_SAY"; echo "$cmd: stderr $FAKE_LS_SAY" >&2; fi
 case "$cmd" in
   replicate)
@@ -526,4 +527,20 @@ test("the copy rotates at 1,000 lines into litestream.log.1", { skip }, () => {
   // Seconds since the epoch as an ISO time (no date command per line).
   const at = Date.parse(current[0].split(" ")[0]);
   assert.ok(Math.abs(at - Date.now()) < 10_000, current[0]);
+});
+
+test("FLOWPLAN_LITESTREAM_LOG_LEVEL becomes Litestream's LOG_LEVEL; an unknown value is ignored with a note", { skip }, async () => {
+  const quiet = box({ ...withS3, FLOWPLAN_LITESTREAM_LOG_LEVEL: "WARN" });
+  const a = start(quiet);
+  await until("node", () => has(quiet, /^node server\.js/));
+  assert.ok(has(quiet, /^litestream LOG_LEVEL=warn$/), lines(quiet).join("\n"));
+  a.child.kill("SIGTERM");
+  await a.exit;
+  const odd = box({ ...withS3, FLOWPLAN_LITESTREAM_LOG_LEVEL: "loud" });
+  const b = start(odd);
+  await until("node", () => has(odd, /^node server\.js/));
+  assert.equal(has(odd, /LOG_LEVEL=/), false);
+  b.child.kill("SIGTERM");
+  await b.exit;
+  assert.match(b.output(), /FLOWPLAN_LITESTREAM_LOG_LEVEL=loud is ignored/);
 });
