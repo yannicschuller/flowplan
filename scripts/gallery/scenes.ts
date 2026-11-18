@@ -948,6 +948,29 @@ const databaseScenes: Scene[] = [
     },
   },
   {
+    // Flashcards phase 8: the FSRS parameters fitted to 1161 synthetic
+    // ratings in the browser, with before/after and the recommended retention.
+    id: "study-optimize",
+    group: "Databases",
+    title: "Flashcards: optimise FSRS parameters",
+    covers: ["components/study/optimize.tsx"],
+    steps: async (page, ctx) => {
+      const { syntheticReviews } = await import("../../tests/helpers/fsrs-synthetic");
+      const db = await studyDeck(ctx, "Spanisch C1");
+      await ctx.command({ action: "rows.import", pageId: db, rows: Array.from({ length: 150 }, (_, i) => ({ title: `palabra ${i + 1}`, back: `Wort ${i + 1}` })) });
+      const { rows } = await (await ctx.api.get(`/api/pages/${db}`)).json();
+      const ids = (rows as { id: string; cells: { title: string } }[]).sort((a, b) => Number(a.cells.title.split(" ")[1]) - Number(b.cells.title.split(" ")[1])).map((r) => r.id);
+      const reviews = syntheticReviews(db, ids);
+      for (let i = 0; i < reviews.length; i += 500) await ctx.command({ action: "study.reviews", reviews: reviews.slice(i, i + 500) });
+      await ctx.open(`#page=${db}`);
+      await button(page.locator(".study-deck"), "Meine Einstellungen").click();
+      await button(dialog(page, "Meine Einstellungen"), "Parameter optimieren …").click();
+      const optimize = dialog(page, "Parameter optimieren");
+      await button(optimize, "Optimieren").click();
+      await optimize.locator(".study-optimize-result").waitFor({ timeout: 60_000 });
+    },
+  },
+  {
     id: "study-screen",
     group: "Pages",
     title: "Flashcards: #study",

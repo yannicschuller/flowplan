@@ -60,6 +60,8 @@ type Counts = { new: number; learning: number; review: number };
 // `offline`: built on the device (components/study/offline.ts), `pending`:
 // ratings of the deck waiting for the connection.
 type Base = { pageId: string; title: string; userId?: string; zone: string; dayStart: number; day: string; dayEnd: number; now: number; offline?: boolean; pending?: number };
+export type StudyFit = { logLoss: number; rmse: number; items: number };
+export type StudyModel = { source: "default" | "deck" | "all"; at: number | null; reviews: number | null; fit: { before: StudyFit; after: StudyFit } | null };
 export type StudyOverview =
   | (Base & { configured: false })
   | (Base & {
@@ -67,6 +69,10 @@ export type StudyOverview =
       blocked: "hidden" | null;
       settings?: { typedCompare?: Partial<TypedCompare> };
       params: FsrsParams;
+      // The FSRS weights in use (§23) and, in the overview, the note to
+      // optimise them.
+      model?: StudyModel;
+      optimizer?: { reviews: number; since: number | null; suggest: "first" | "again" | null };
       limits: { new: number; review: number };
       prefs: { newPerDay: number | null; reviewsPerDay: number | null; retention: number | null; moreToday: { new: number; review: number } };
       deckDefaults: { newPerDay: number; reviewsPerDay: number; retention: number };

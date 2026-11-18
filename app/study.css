@@ -1459,3 +1459,98 @@ polyline.occlusion-draft {
   gap: 6px;
   margin-left: auto;
 }
+
+/* ---- FSRS parameters (components/study/optimize.tsx, "Meine Einstellungen") ---- */
+.study-model {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 12px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.study-model h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.study-model p {
+  margin: 0;
+}
+.study-model-note,
+.study-optimize-few {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.study-optimize .segmented {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.study-optimize .segmented button {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.study-optimize .segmented button.selected {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #1d1a1426;
+}
+.study-optimize-status {
+  margin: 12px 0 8px;
+}
+.study-optimize-progress {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.study-optimize-progress progress {
+  width: 100%;
+}
+.study-optimize-result {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.study-optimize-result caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 6px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.study-optimize-result td {
+  white-space: nowrap;
+}
+.study-optimize-verdict {
+  margin: 0;
+}
+.study-optimize-verdict.better {
+  color: var(--study-good);
+}
+.study-optimize-retention {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.study-optimize-retention p {
+  margin: 0;
+}
+.study-optimize-actions {
+  flex-wrap: wrap;
+}
+.study-stats-model {
+  margin: 12px 0 0;
+}

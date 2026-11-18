@@ -845,6 +845,33 @@ CommandStudyPrefsResult = TypedDict("CommandStudyPrefsResult", {
 
 }, total=False)
 
+# Your review log of a deck, for fitting FSRS parameters. Read access is enough; your own ratings only (undone ones left out). `scope`: `deck` (this deck's reviews) or `all` (all your decks). With at least `minimum` (1000) ratings: `cards`, each `{ t, r }` – the ratings in order and the study days since the review before (`t[0]` is 0) – of cards whose log starts with their first rating, at most 200,000 reviews (`truncated`); `costs` (seconds per learning, recalled and forgotten review, shares of the first ratings and of Hard/Good/Easy) for the recommended retention. Also `current` (the weights this scope uses now, null: FSRS-6's defaults), `defaults`, `retention`, `maxInterval` and `model` (what the deck uses: `source` default, deck or all, `at`, `reviews`). Flowplan fits the weights in your browser and stores them with study.params.
+CommandStudyHistory = TypedDict("CommandStudyHistory", {
+    "action": Required[Literal["study.history"]],
+    "pageId": Required[str],
+    "scope": Literal["deck", "all"],
+    "zone": str,
+}, total=False)
+
+CommandStudyHistoryResult = TypedDict("CommandStudyHistoryResult", {
+
+}, total=False)
+
+# Store or reset your FSRS parameters. Read access is enough. `weights`: the 21 FSRS-6 weights (clamped to FSRS-6's bounds), or `null` for FSRS-6's defaults again; `scope` `deck` (this deck) or `all` (every deck without weights of its own). Optional `reviews` and `fit` (`before`/`after`: `logLoss`, `rmse`, `items`) are kept for the statistics. The stability and difficulty of your cards in the scope are computed again from their log (`recomputed`: how many changed); due dates stay. Answers the deck's overview like study.prefs.
+CommandStudyParams = TypedDict("CommandStudyParams", {
+    "action": Required[Literal["study.params"]],
+    "pageId": Required[str],
+    "scope": Literal["deck", "all"],
+    "weights": Required[Optional[list[float]]],
+    "reviews": int,
+    "fit": dict[str, Any],
+    "zone": str,
+}, total=False)
+
+CommandStudyParamsResult = TypedDict("CommandStudyParamsResult", {
+
+}, total=False)
+
 # What is left to study today in all your decks of a workspace. Read access is enough. Per deck you may study: `new`, `learning`, `review` left today within your limits, and `total` cards; plus your `streak` (study days in a row). Counted for the whole deck (a study view's filters are not applied). Also as GET /api/study/due (read tokens).
 CommandStudyDue = TypedDict("CommandStudyDue", {
     "action": Required[Literal["study.due"]],
@@ -1994,7 +2021,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
