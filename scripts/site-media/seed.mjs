@@ -8,6 +8,10 @@
 //   MEDIA_URL=… node scripts/site-media/shots.mjs [name …]   # screenshots
 //   MEDIA_URL=… node scripts/site-media/clips.mjs [name …]   # clips, then encode.sh
 //
+// The production build's standalone server works as well (faster pages, no
+// dev overlay); .github/workflows/site-media.yml checks this pipeline that
+// way once a week.
+//
 // Three people:
 // - Mia Hartmann (first account, administers the instance; English): the
 //   team workspace "Northwind Studio" with Jonas, Lena and Noah, a launch

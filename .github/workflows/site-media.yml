@@ -1,0 +1,142 @@
+# The screenshot pipeline of the docs and the website (scripts/site-media),
+# checked once a week and on demand (Actions → Site media → Run workflow):
+# a production build on an empty data directory, the stand-in AI provider,
+# seed.mjs, then shots.mjs for the docs' screenshots and one of the
+# website's. seed.mjs once broke unnoticed until a screenshot was needed
+# (#320, #363). Nothing is published: the PNGs are an artifact for 7 days;
+# publish.mjs stays a step by hand. A scene that breaks fails the run (its
+# page as <name>-failed.png in the artifact), and so does a missing PNG.
+name: Site media
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays, off the full hour and after the nightly UI gallery (03:47).
+    - cron: "37 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-media-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  MEDIA_URL: http://127.0.0.1:3641
+  MOCK_PORT: "3299"
+
+jobs:
+  shots:
+    # The weekly run only in this repository, not in forks.
+    if: github.event_name != 'schedule' || github.repository == 'yannicschuller/flowplan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The docs' screenshots (publish.mjs: DOCS), plus the website's hero.
+      SHOTS: docs-notebook docs-home-customize docs-draw-block docs-code-preview pdf-annotate hero-light
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      # Playwright's Chromium (~/.cache/ms-playwright) is kept between runs:
+      # the key changes with Playwright's version in the lockfile.
+      - id: playwright
+        if: runner.environment == 'github-hosted'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      # As in browser.yml: the browser from Playwright's CDN, its Ubuntu
+      # packages (fonts) best-effort; the own runner uses its installed
+      # Chromium. The scripts take it from CHROMIUM (lib.mjs).
+      - name: Install Chromium
+        if: runner.environment == 'github-hosted'
+        run: |
+          npx playwright install chromium
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-timeouts > /dev/null
+          timeout 300 npx playwright install-deps chromium || echo "::warning::Chromium's Ubuntu packages could not be installed (Ubuntu mirrors unreachable?); using what the runner image has"
+          echo "CHROMIUM=$(node -p "require('playwright').chromium.executablePath()")" >> "$GITHUB_ENV"
+      - name: Installed Chromium
+        if: runner.environment != 'github-hosted'
+        run: echo "CHROMIUM=/opt/pw-browsers/chromium" >> "$GITHUB_ENV"
+      # Turbopack's build cache, shared with the UI gallery and the visual
+      # tests (the same production build).
+      - uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      # The ordinary production build (CI checks the types) instead of the
+      # `next dev` in seed.mjs's header: faster pages, no dev overlay. The
+      # standalone server gets its static files and public/ next to itself,
+      # as in the Docker image.
+      - run: npm run build
+        env:
+          FLOWPLAN_SKIP_TYPECHECK: "1"
+      - run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+      - name: Start the instance and the AI mock
+        run: |
+          data="$RUNNER_TEMP/media-data"
+          mkdir -p "$data" "$RUNNER_TEMP/site-media"
+          echo "MEDIA_DATA=$data" >> "$GITHUB_ENV"
+          echo "MEDIA_DIR=$RUNNER_TEMP/site-media" >> "$GITHUB_ENV"
+          nohup node scripts/site-media/ai-mock.mjs > "$RUNNER_TEMP/ai-mock.log" 2>&1 &
+          (cd .next/standalone && NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3641 APP_URL="$MEDIA_URL" FLOWPLAN_DATA_DIR="$data" \
+            nohup node server.js > "$RUNNER_TEMP/server.log" 2>&1 &)
+          for i in $(seq 1 120); do
+            if curl -fsS "$MEDIA_URL/api/health" > /dev/null 2>&1; then echo "Instance up after ${i} s"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::The instance did not answer on /api/health within 120 s"
+          exit 1
+      - name: Seed
+        run: node scripts/site-media/seed.mjs
+      - name: Screenshots
+        run: node scripts/site-media/shots.mjs $SHOTS
+      - name: Check the screenshots
+        if: ${{ !cancelled() }}
+        run: |
+          missing=0
+          {
+            echo "### Site media"
+            echo
+            echo "| Shot | |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for name in $SHOTS; do
+            file="$MEDIA_DIR/shots/$name.png"
+            if [ -s "$file" ]; then
+              echo "| \`$name\` | ok, $(( $(stat -c %s "$file") / 1024 )) KB |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| \`$name\` | **missing** |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Screenshot $name is missing (see $name-failed.png in the artifact and the step Screenshots)"
+              missing=1
+            fi
+          done
+          exit $missing
+      - name: Server log
+        if: failure()
+        run: |
+          echo "::group::server.log"
+          tail -n 300 "$RUNNER_TEMP/server.log" || true
+          echo "::endgroup::"
+          echo "::group::ai-mock.log"
+          tail -n 100 "$RUNNER_TEMP/ai-mock.log" || true
+          echo "::endgroup::"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: site-media-shots
+          path: ${{ env.MEDIA_DIR }}/shots
+          retention-days: 7
+          if-no-files-found: warn
