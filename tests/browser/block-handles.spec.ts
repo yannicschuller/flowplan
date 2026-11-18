@@ -142,10 +142,15 @@ test("the handle's dots are centred on the first text line of paragraphs, headin
       ),
     ).toString("base64"),
   });
-  await page.goto("/#home");
-  await page.evaluate(() => localStorage.setItem("flowplan.block-handles-always", "true"));
+  // Every handle shown, set before the app loads – not on the start page
+  // first: an address changed after the start page's load event but before
+  // the app has hydrated is put back by the router, and the page would
+  // never open.
+  await page.addInitScript(() => localStorage.setItem("flowplan.block-handles-always", "true"));
   for (const font of ["sans", "serif", "mono"]) {
     await f.command({ action: "page.update", pageId: f.host.id, patch: { font } });
+    // Loaded at the page's address (first from about:blank, then the same
+    // address again) and reloaded: the page with its new font.
     await page.goto(`/#page=${f.host.id}`);
     await page.reload();
     const editor = page.getByLabel("Dokumentinhalt", { exact: true });

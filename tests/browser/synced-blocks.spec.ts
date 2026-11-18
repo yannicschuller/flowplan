@@ -47,8 +47,23 @@ test("a synced block edited on one page changes on the other", async ({ page }, 
   const copy = page.locator(".synced-block");
   await expect(copy).toContainText(text);
   // Edit here …
-  await copy.getByLabel("Dokumentinhalt", { exact: true }).click();
-  await page.keyboard.press("End");
+  const copyText = copy.getByLabel("Dokumentinhalt", { exact: true });
+  await copyText.click();
+  // 20 ms after an editor gets the focus, ProseMirror puts its own selection
+  // back into the page (prosemirror-view's focus handler): an End pressed
+  // right after the click is undone, and the text lands where the click
+  // was. Pressed until the caret stays at the end of the line.
+  await expect(async () => {
+    await page.keyboard.press("End");
+    await page.waitForTimeout(50);
+    const atEnd = await copyText.evaluate((editor) => {
+      const selection = getSelection();
+      const node = selection?.anchorNode;
+      if (!selection?.isCollapsed || !node || !editor.contains(node)) return false;
+      return selection.anchorOffset === (node.nodeType === Node.TEXT_NODE ? (node.textContent || "").length : node.childNodes.length);
+    });
+    expect(atEnd).toBe(true);
+  }).toPass();
   await page.keyboard.type(" – geändert");
   await page.waitForTimeout(1500);
   // … and see it on the first page.
