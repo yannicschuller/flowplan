@@ -38,7 +38,7 @@
 - [At a glance](#at-a-glance)
 - [Quick start](#quick-start) · [Deploy](#deploy)
 - [Features](#features) · [Screenshots](#screenshots) · [How Flowplan compares](#how-flowplan-compares) · [Private by design](#private-by-design)
-- A closer look: [Write](#write-and-think) · [Databases](#organise-with-databases) · [AI](#ai-optional) · [Whiteboards and journal](#whiteboards-and-a-journal) · [Handwriting](#handwriting-and-notebooks) · [Home page](#a-home-page-of-your-own) · [Together](#together-everywhere)
+- A closer look: [Write](#write-and-think) · [Databases](#organise-with-databases) · [Flashcards](#learn-with-flashcards) · [AI](#ai-optional) · [Whiteboards and journal](#whiteboards-and-a-journal) · [Handwriting](#handwriting-and-notebooks) · [Home page](#a-home-page-of-your-own) · [Together](#together-everywhere)
 - [For admins and integrations](#for-admins-and-integrations): [architecture](#architecture), [system requirements](#system-requirements), [security](#security)
 - [FAQ](#faq)
 - [Development](#development)
@@ -47,7 +47,7 @@
 
 ## At a glance
 
-- **Everything in one page tree** – documents, databases with eleven views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys and workflows.
+- **Everything in one page tree** – documents, databases with eleven views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys, workflows and flashcards.
 - **Completely open source** under the AGPL-3.0 – no closed enterprise edition, no features behind a licence key.
 - **One container with SQLite** – nothing else to run, no external search service. For larger teams optionally [PostgreSQL](https://docs.flowplan.org/en/postgresql) and a [cluster](https://docs.flowplan.org/en/cluster) of several instances. Or hosted in Germany at [app.flowplan.org](https://app.flowplan.org).
 - **Optional AI** – off by default; admins switch it on per feature and per person, completely local with [Ollama](https://ollama.com) or with a key for OpenAI, Anthropic, Gemini or any OpenAI-compatible service. You decide which pages it may read.
@@ -177,6 +177,9 @@ Step by step: [Deploy in one click](https://docs.flowplan.org/en/one-click-deplo
   <tr>
     <td colspan="3" valign="top">🔀 <b><a href="https://docs.flowplan.org/en/workflows">Workflows</a></b><br>Flows of nodes on a canvas, without code: a trigger – a record, page, form, schedule, mention, webhook or e-mail – then conditions, loops, waits and approvals, and actions on records and pages, notifications, AI and HTTP. Test runs, run history, versions, templates and an AI builder; a workflow never does more than the person who activated it.</td>
   </tr>
+  <tr>
+    <td colspan="3" valign="top">🧠 <b><a href="https://docs.flowplan.org/en/flashcards">Flashcards</a></b><br>Any database becomes a deck, scheduled with FSRS: front and back, cloze, typed answers, multiple choice and image occlusion, a focus mode with keys and swipes, statistics, import from Anki, Quizlet and CSV, optional AI-made cards with a review step, a widget, push reminders, studying offline and a public link to practise without an account.</td>
+  </tr>
 </table>
 
 ## Screenshots
@@ -301,6 +304,19 @@ Table, board, calendar, timeline, gallery, list, feed, chart, form and sprint vi
 - Import from CSV, Jira and Trello; Markdown with YAML frontmatter in both directions (Obsidian-friendly)
 
 </details>
+
+## Learn with flashcards
+
+Turn any database into a deck: Flowplan plans the reviews with [FSRS](https://github.com/open-spaced-repetition), the algorithm Anki uses, and every person keeps their own learning state.
+
+- **Card types** – front and back (also reversed), cloze in text and documents, type the answer, multiple choice and image occlusion with a mask editor
+- **Focus mode** – keys or swipes, undo, limits per deck, a study overview across all decks, a widget for the home page and the apps
+- **Statistics** – streak, heatmap, forecast and true retention; studied cards show up in the journal
+- **In and out** – import from Anki (`.apkg` with media and, if you like, the learning state), Quizlet and CSV; export as an Anki package or CSV
+- **Optional AI** – cards from a page, a selection, a PDF or pasted text, checked by you before they are added
+- **Anywhere** – push reminders, studying without a connection, and a public link to browse or practise without an account (progress stays in the browser)
+
+[Flashcards in the docs →](https://docs.flowplan.org/en/flashcards)
 
 ## AI, optional
 
