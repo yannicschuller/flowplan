@@ -4,26 +4,31 @@
 // from one aggregated query (lib/study-stats.ts studyDue), not a queue per
 // deck –, a session per deck, "Alle fälligen lernen" (the decks one after
 // the other, each within its own limits), the streak and the statistics
-// over all decks.
+// over all decks – and "Aus Anki importieren" (components/study/anki-import.tsx).
 import { useCallback, useEffect, useState } from "react";
-import { Cards, ChartBar, Fire, Play } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
+import { Cards, ChartBar, DownloadSimple, Fire, Play } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { PageIcon, api } from "../ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { StudyFocus, studyZoneNow } from "./focus";
 import { StudyStatsPanel } from "./stats";
+import type { Space } from "@/lib/types";
+
+const StudyAnkiImport = dynamic(() => import("./anki-import"), { ssr: false });
 
 type DueDeck = { pageId: string; title: string; icon: string; new: number; learning: number; review: number; total: number };
 type Due = { day: string; zone: string; decks: DueDeck[]; streak: number };
 const left = (d: DueDeck) => d.new + d.learning + d.review;
 
-export function StudyScreen({ workspaceId, onOpenPage }: { workspaceId: string; onOpenPage: (pageId: string) => void }) {
+export function StudyScreen({ workspaceId, spaces = [], onOpenPage }: { workspaceId: string; spaces?: Pick<Space, "id" | "name">[]; onOpenPage: (pageId: string) => void }) {
   const t = useT();
   const [due, setDue] = useState<Due | null>(null),
     [error, setError] = useState(""),
     // The decks of a running session, and which one is on.
     [session, setSession] = useState<{ decks: DueDeck[]; index: number } | null>(null),
-    [version, setVersion] = useState(0);
+    [version, setVersion] = useState(0),
+    [anki, setAnki] = useState(false);
   const load = useCallback(async () => {
     try {
       setDue(await api<Due>(`/api/study/due?${new URLSearchParams({ workspace: workspaceId, zone: studyZoneNow() })}`));
@@ -46,6 +51,11 @@ export function StudyScreen({ workspaceId, onOpenPage }: { workspaceId: string; 
         <h1>
           <Cards aria-hidden /> {t("Lernen", "Study")}
         </h1>
+        {spaces.length > 0 && (
+          <button type="button" className="button compact study-screen-anki" onClick={() => setAnki(true)}>
+            <DownloadSimple aria-hidden /> {t("Aus Anki importieren", "Import from Anki")}
+          </button>
+        )}
         {due && due.streak > 0 && (
           <span className="study-streak" title={t(`${due.streak} Lerntage in Folge`, `${due.streak} study days in a row`)}>
             <Fire aria-hidden weight="fill" /> {t(`Serie: ${due.streak} Tage`, `Streak: ${due.streak} days`)}
@@ -109,6 +119,18 @@ export function StudyScreen({ workspaceId, onOpenPage }: { workspaceId: string; 
           </h3>
           <StudyStatsPanel workspaceId={workspaceId} version={version} />
         </section>
+      )}
+      {anki && (
+        <StudyAnkiImport
+          open={anki}
+          onClose={() => {
+            setAnki(false);
+            setVersion((v) => v + 1);
+          }}
+          workspaceId={workspaceId}
+          spaces={spaces}
+          onOpenPage={onOpenPage}
+        />
       )}
       {current && (
         <StudyFocus

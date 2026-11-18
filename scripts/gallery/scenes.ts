@@ -799,6 +799,21 @@ const databaseScenes: Scene[] = [
       await wizard.locator(".study-import-preview").waitFor();
     },
   },
+  // Flashcards phase 3b: the Anki import with its preview and mapping.
+  {
+    id: "study-anki-import",
+    group: "Databases",
+    title: "Flashcards: import from Anki",
+    covers: ["components/study/anki-import.tsx"],
+    steps: async (page, ctx) => {
+      const { ankiPackage, sampleFixture } = await import("../../tests/helpers/anki-fixture");
+      await ctx.open("#study");
+      await button(page, "Aus Anki importieren").click();
+      const wizard = dialog(page, "Aus Anki importieren");
+      await wizard.getByLabel("Anki-Datei").setInputFiles({ name: "Sprachen.apkg", mimeType: "application/octet-stream", buffer: await ankiPackage(sampleFixture()) });
+      await wizard.locator(".study-anki-notetype").first().waitFor({ timeout: 30_000 });
+    },
+  },
   {
     id: "study-cloze",
     group: "Databases",

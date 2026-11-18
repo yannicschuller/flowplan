@@ -656,6 +656,61 @@
   padding-left: 20px;
 }
 
+/* ---- Anki import (components/study/anki-import.tsx) ---- */
+.study-anki-file {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.study-anki-name {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.study-anki-summary p {
+  margin: 0 0 6px;
+}
+.study-anki-decks {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.study-anki-notetype {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px 12px;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.study-anki-notetype legend {
+  padding: 0 4px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.study-anki-notetype legend .muted {
+  font-weight: 400;
+}
+.study-anki-type {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.study-anki-sample {
+  margin: 0;
+  font-size: 13px;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.study-anki-done p {
+  margin: 0 0 8px;
+}
+.study-screen-anki {
+  order: 3;
+  margin-left: auto;
+}
+
 /* ---- Statistics ---- */
 .study-stats-panel h3 {
   margin: 0 0 12px;

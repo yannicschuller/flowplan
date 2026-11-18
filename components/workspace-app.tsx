@@ -5748,7 +5748,7 @@ export default function WorkspaceApp({
               onPurgeSpace={(space) => setSpaceManager({ space, purge: true })}
             />
           )}
-          {screen === "study" && <StudyScreen workspaceId={boot.workspace.id} onOpenPage={(id) => void openPage(id)} />}
+          {screen === "study" && <StudyScreen workspaceId={boot.workspace.id} spaces={boot.spaces} onOpenPage={(id) => void openPage(id)} />}
           {screen === "media" && (
             <MediaLibrary
               workspaceId={boot.workspace.id}

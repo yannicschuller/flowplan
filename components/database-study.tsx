@@ -223,6 +223,11 @@ export default function DatabaseStudy({
                       <span>{t("Karten mit meinem Lernstand als CSV", "Cards with my learning state as CSV")}</span>
                     </a>
                   </Dropdown.Item>
+                  <Dropdown.Item asChild className="dropdown-item">
+                    <a href={`/api/pages/${page.id}/study/export?${new URLSearchParams({ zone: studyZoneNow(), view: view.id, format: "apkg" })}`} download>
+                      <span>{t("Als Anki-Paket (.apkg, ohne Lernstand)", "As an Anki package (.apkg, without learning state)")}</span>
+                    </a>
+                  </Dropdown.Item>
                 </Dropdown.Content>
               </Dropdown.Portal>
             </Dropdown.Root>

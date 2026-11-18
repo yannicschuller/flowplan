@@ -9,9 +9,11 @@
 // a large workspace takes longer than a reverse proxy waits for an answer.
 // Several PDFs chosen at once are sent as one ZIP (lib/stored-zip.ts).
 // Sending and waiting: components/import-client.ts (shared with the
-// introduction).
+// introduction). Anki packages have a wizard of their own with the mapping
+// of their note types (components/study/anki-import.tsx).
 import { useState } from "react";
-import { FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
+import { Cards, FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
 import { storedZip } from "@/lib/stored-zip";
 import { useT } from "./i18n";
 import { sendImport as send, waitForJob, warningText } from "./import-client";
@@ -19,6 +21,8 @@ import { Select } from "./select";
 import { Switch } from "./settings-ui";
 import { ImportNotion } from "./import-notion";
 import { ImportBookStack } from "./import-bookstack";
+
+const StudyAnkiImport = dynamic(() => import("./study/anki-import"), { ssr: false });
 
 type Preview = {
   source: string;
@@ -81,6 +85,7 @@ export function ImportSources({
   const [ownSpace, setSpace] = useState(spaces[0]?.id || "");
   const space = spaceId ?? ownSpace;
   const [mode, setMode] = useState<"pages" | "database">("pages");
+  const [anki, setAnki] = useState(false);
   // AFFiNE (#167): documents with exactly one link to them go below the
   // document linking to them – on unless switched off in the preview.
   const [nestLinked, setNestLinked] = useState(true);
@@ -92,6 +97,7 @@ export function ImportSources({
   const [done, setDone] = useState<{ text: string; report?: { pageId: string; total: number } } | null>(null);
   const names: Record<string, string> = {
     affine: "AFFiNE",
+    anki: t("Anki (Lernkarten)", "Anki (flashcards)"),
     confluence: "Confluence",
     evernote: "Evernote",
     gdocs: "Google Docs",
@@ -209,11 +215,11 @@ export function ImportSources({
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
-        <span className="setting-label">{t("AFFiNE, BookStack (API), Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) oder Obsidian", "AFFiNE, BookStack (API), Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) or Obsidian")}</span>
+        <span className="setting-label">{t("AFFiNE, Anki, BookStack (API), Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) oder Obsidian", "AFFiNE, Anki, BookStack (API), Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word, Notion (API) or Obsidian")}</span>
         <small>
           {t(
-            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). BookStack (API): direkt aus BookStack mit Adresse und API-Token, Regale, Bücher und Kapitel werden zu Seiten. Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Notion (API): direkt aus Notion mit einem Integrations-Token, ohne Exportdatei. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird; danach listet ein Importbericht, was nicht oder nur angenähert übernommen wurde.",
-            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). BookStack (API): straight from BookStack with its address and an API token, shelves, books and chapters become pages. Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Notion (API): straight from Notion with an integration token, without an export file. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported; afterwards an import report lists what was not or only approximately carried over.",
+            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Anki: ein Stapel (.apkg) oder die Sammlung (.colpkg), jeder oberste Stapel wird eine Lernkarten-Datenbank. BookStack (API): direkt aus BookStack mit Adresse und API-Token, Regale, Bücher und Kapitel werden zu Seiten. Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Notion (API): direkt aus Notion mit einem Integrations-Token, ohne Exportdatei. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird; danach listet ein Importbericht, was nicht oder nur angenähert übernommen wurde.",
+            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Anki: a deck (.apkg) or the collection (.colpkg), every top-level deck becomes a flashcard database. BookStack (API): straight from BookStack with its address and an API token, shelves, books and chapters become pages. Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Notion (API): straight from Notion with an integration token, without an export file. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported; afterwards an import report lists what was not or only approximately carried over.",
           )}
         </small>
       </div>
@@ -248,7 +254,7 @@ export function ImportSources({
             </Select>
           </div>
         )}
-        {source !== "notion" && source !== "bookstack" && (
+        {source !== "notion" && source !== "bookstack" && source !== "anki" && (
           <div className="ws-field">
             <label htmlFor="import-source-mode">{t("Importieren als", "Import as")}</label>
             <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy || source === "goodnotes"} aria-label={t("Importieren als", "Import as")}>
@@ -257,7 +263,14 @@ export function ImportSources({
             </Select>
           </div>
         )}
-        {source !== "notion" && source !== "bookstack" && (
+        {source === "anki" && (
+          <div className="ws-form-actions">
+            <button type="button" className="button" disabled={!canWrite || busy} onClick={() => setAnki(true)}>
+              <Cards aria-hidden /> {t("Anki-Paket importieren …", "Import Anki package …")}
+            </button>
+          </div>
+        )}
+        {source !== "notion" && source !== "bookstack" && source !== "anki" && (
           <div className="ws-form-actions">
             <label className={`button file-label ws-file${canWrite && !busy ? "" : " disabled"}`}>
               <UploadSimple aria-hidden />
@@ -279,6 +292,18 @@ export function ImportSources({
           </div>
         )}
       </div>
+      {source === "anki" && anki && (
+        <StudyAnkiImport
+          open={anki}
+          onClose={() => {
+            setAnki(false);
+            void onRefresh();
+          }}
+          workspaceId={workspaceId}
+          spaces={spaces}
+          spaceId={space || spaces[0]?.id || ""}
+        />
+      )}
       {source === "notion" && (
         <ImportNotion workspaceId={workspaceId} spaceId={space || spaces[0]?.id || ""} canWrite={canWrite} busy={busy} onJob={runNotion} onError={onError} />
       )}
