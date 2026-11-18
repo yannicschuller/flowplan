@@ -703,6 +703,58 @@ const databaseScenes: Scene[] = [
       await waitDialog(page, "Eintrag");
     },
   },
+  // Flashcards (docs/specs/flashcards.md): a database without a card
+  // mapping gets "Karten einrichten" with a study view; the focus mode with
+  // a revealed card and the rating buttons.
+  {
+    id: "study-setup",
+    group: "Databases",
+    title: "Flashcards: set up cards",
+    covers: ["components/database-study.tsx"],
+    steps: async (page, ctx) => {
+      const db = await ctx.fixture({ kind: "database", title: "Spanisch A1" });
+      const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
+      await ctx.command({
+        action: "database.update",
+        pageId: db,
+        version: database.version,
+        fields: [
+          { id: "title", name: "Spanisch", type: "text" },
+          { id: "answer", name: "Deutsch", type: "text" },
+        ],
+        views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [], default: true }],
+      });
+      for (const [title, answer] of [["el perro", "der Hund"], ["la ventana", "das Fenster"]]) await ctx.command({ action: "row.create", pageId: db, cells: { title, answer } });
+      await ctx.open(`#page=${db}`);
+      await waitDialog(page, "Karten einrichten");
+    },
+  },
+  {
+    id: "study-focus",
+    group: "Databases",
+    title: "Flashcards: focus mode",
+    covers: ["components/study/focus.tsx"],
+    steps: async (page, ctx) => {
+      const db = await ctx.fixture({ kind: "database", title: "Spanisch A1" });
+      const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
+      await ctx.command({
+        action: "database.update",
+        pageId: db,
+        version: database.version,
+        fields: [
+          { id: "title", name: "Vorderseite", type: "text" },
+          { id: "back", name: "Rückseite", type: "text" },
+        ],
+        views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [], default: true }],
+      });
+      await ctx.command({ action: "study.settings", pageId: db, settings: { version: 1, front: { field: "title" }, back: { field: "back" } } });
+      await ctx.command({ action: "row.create", pageId: db, cells: { title: "¿Dónde está la estación?", back: "Wo ist der Bahnhof?" } });
+      await ctx.open(`#page=${db}`);
+      await button(page, "Lernen starten").click();
+      await button(dialog(page, /^Lernen: /), /^Antwort zeigen/).click();
+      await page.locator(".study-ratings").waitFor();
+    },
+  },
   {
     // A due date with a time ("+ Uhrzeit", #314) and a weekly repeating task
     // that counts on from it, with a second date property to choose from.

@@ -47,7 +47,7 @@
 
 ## At a glance
 
-- **Everything in one page tree** – documents, databases with ten views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys and workflows.
+- **Everything in one page tree** – documents, databases with eleven views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys and workflows.
 - **Completely open source** under the AGPL-3.0 – no closed enterprise edition, no features behind a licence key.
 - **One container with SQLite** – nothing else to run, no external search service. For larger teams optionally [PostgreSQL](https://docs.flowplan.org/en/postgresql) and a [cluster](https://docs.flowplan.org/en/cluster) of several instances. Or hosted in Germany at [app.flowplan.org](https://app.flowplan.org).
 - **Optional AI** – off by default; admins switch it on per feature and per person, completely local with [Ollama](https://ollama.com) or with a key for OpenAI, Anthropic, Gemini or any OpenAI-compatible service. You decide which pages it may read.
@@ -232,7 +232,7 @@ A fair comparison is hard – every tool here is good at something. This is our 
 | **Open source** | ✅ | ❌ | ❌ | ✅ | ✅ | ⚠️ source-available |
 | **Licence** | AGPL-3.0 | proprietary | proprietary | MIT (Community Edition)² | AGPL-3.0 | BSL 1.1 |
 | **Works offline** | ✅³ | ⚠️ pages saved for offline | ❌ | ✅ local-first | ✅ local-first | ❌ |
-| **Databases** | ✅ 10 views | ✅ | ⚠️ newer, Cloud only | ⚠️ database blocks | ✅ | ❌ |
+| **Databases** | ✅ 11 views | ✅ | ⚠️ newer, Cloud only | ⚠️ database blocks | ✅ | ❌ |
 | **Whiteboards** | ✅ | ❌ embeds only | ✅ Cloud | ✅ edgeless mode | ⚠️ not built in, as far as we know | ❌ |
 | **Journal** | ✅ | ⚠️ templates | ⚠️ templates | ✅ | ⚠️ templates | ⚠️ templates |
 | **End-to-end encryption** | ⚠️ encrypted spaces, documents only⁴ | ❌ | ❌ | ⚠️ local data only, as far as we know | ⚠️ status unclear | ❌ |

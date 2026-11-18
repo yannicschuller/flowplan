@@ -1,0 +1,71 @@
+// Flashcards (docs/specs/flashcards.md §3.1): how the records of a database
+// become cards – stored per database in `databases.settings.study`, so two
+// study views of one database learn the same cards (their filters only pick
+// a subset, like sub-decks) – and the small configuration of a view of type
+// "study". Client-safe (zod only).
+import { z } from "zod";
+
+const fid = z.string().min(1).max(500);
+// All card types of the concept; phase 1 derives basic cards (and their
+// reverse) only – the other types are accepted so the stored setting of a
+// later version survives, and give no cards here.
+export const cardTypes = ["basic", "cloze", "typed", "choice", "occlusion"] as const;
+export type CardType = (typeof cardTypes)[number];
+// A side of the card: a property (text) or the record's document – all of
+// it, or the part above / below its first top-level horizontal rule (`---`,
+// lib/study-content.ts).
+const frontSource = z.union([z.object({ field: fid }).strict(), z.object({ document: z.enum(["above"]) }).strict()]);
+const backSource = z.union([z.object({ field: fid }).strict(), z.object({ document: z.enum(["all", "below"]) }).strict()]);
+const stepMinutes = z.number().positive().max(60 * 24 * 7);
+
+export const studySettingsSchema = z.object({
+  version: z.literal(1),
+  type: z.object({ fixed: z.enum(cardTypes) }).strict().default({ fixed: "basic" }),
+  front: frontSource,
+  back: backSource,
+  // Shown on request before revealing / after the answer.
+  hint: z.object({ field: fid }).strict().optional(),
+  extra: z.object({ field: fid }).strict().optional(),
+  // A second card per record, back → front.
+  reverse: z.boolean().default(false),
+  // The deck's defaults; each person may override limits and retention for
+  // themselves (study_prefs).
+  newPerDay: z.number().int().min(0).max(9999).default(20),
+  reviewsPerDay: z.number().int().min(0).max(99999).default(200),
+  retention: z.number().min(0.7).max(0.99).default(0.9),
+  learningSteps: z.array(stepMinutes).max(10).default([1, 10]),
+  relearningSteps: z.array(stepMinutes).max(10).default([10]),
+  maxInterval: z.number().int().min(1).max(36500).default(36500),
+  // Siblings (the reverse card of a record) wait for the next study day once
+  // one card of the record was studied (§4.7).
+  buryNew: z.boolean().default(true),
+  buryReviews: z.boolean().default(true),
+});
+export type StudySettings = z.infer<typeof studySettingsSchema>;
+// The types a side may come from: text-like properties (stored values).
+export const STUDY_FIELD_TYPES: ReadonlySet<string> = new Set(["text", "url", "email", "phone", "select", "multiselect", "number"]);
+export const STUDY_DEFAULTS = { newPerDay: 20, reviewsPerDay: 200, retention: 0.9 } as const;
+
+// A view of type "study" (lib/database-schema.ts view.study).
+export const studyViewSchema = z.object({
+  order: z.enum(["due", "random"]).default("due"),
+  newOrder: z.enum(["added", "random"]).default("added"),
+  // New cards between reviews (every n-th card), before or after them.
+  mixNew: z.enum(["mixed", "after", "before"]).default("mixed"),
+});
+export type StudyViewConfig = z.infer<typeof studyViewSchema>;
+
+// A person's own settings for a deck (study.prefs): null keeps the deck's.
+export const studyPrefsInput = z.object({
+  newPerDay: z.number().int().min(0).max(9999).nullable().optional(),
+  reviewsPerDay: z.number().int().min(0).max(99999).nullable().optional(),
+  retention: z.number().min(0.7).max(0.99).nullable().optional(),
+});
+
+// The first text property for a side, as the setup dialog suggests it.
+export function suggestStudySettings(fields: { id: string; type: string }[]): StudySettings {
+  const texts = fields.filter((f) => f.type === "text");
+  const front = texts[0]?.id || fields[0]?.id || "title";
+  const back = texts.find((f) => f.id !== front);
+  return studySettingsSchema.parse({ version: 1, front: { field: front }, back: back ? { field: back.id } : { document: "all" } });
+}

@@ -25,7 +25,8 @@ export async function updateDatabaseSettings(user: Identity, page: Page, fields:
   const current = (await databaseSettings(pageId)) as Record<string, unknown>;
   const previous = new Map(((await databaseSettings(pageId)).automations || []).map((a) => [a.id, a]));
   for (const [key, value] of Object.entries(patch)) {
-    if (!(key in settingsSchema.shape) || key === "git") throw new HttpError(400, "Unbekannte Einstellung.");
+    // The card mapping has its own action (study.settings, lib/study.ts).
+    if (!(key in settingsSchema.shape) || key === "git" || key === "study") throw new HttpError(400, "Unbekannte Einstellung.");
     if (value === null) delete current[key];
     else current[key] = value;
   }

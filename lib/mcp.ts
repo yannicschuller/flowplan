@@ -18,6 +18,7 @@ import { all, one } from "./db";
 import { captureHandledError } from "./error-details";
 import { HttpError, appUrl } from "./auth";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
+import { studyDecks } from "./study";
 import { command, database, rows } from "./api";
 import { visibleRows } from "./row-access";
 import { relatedData } from "./related-data";
@@ -1038,6 +1039,22 @@ const tools: Tool[] = [
     write: false,
     thirdParty: true,
     run: tasks as Tool["run"],
+  },
+  {
+    name: "study_decks",
+    title: "Flashcard decks and due cards",
+    description:
+      "Your flashcard decks (databases set up for studying) in a workspace with what is left to study today: new cards, cards in learning steps and reviews due, within your daily limits, and the number of cards. Counts are your own; nobody sees another person's learning state. timeZone (IANA) decides the study day, which starts at 04:00 local.",
+    input: z.object({
+      workspaceId: id("Workspace ID"),
+      timeZone: z.string().max(100).optional().describe("IANA time zone, e.g. Europe/Berlin"),
+    }),
+    write: false,
+    thirdParty: true,
+    run: (async (user: Identity, args: { workspaceId: string; timeZone?: string }) => {
+      await requireMember(user, args.workspaceId);
+      return { decks: (await studyDecks(user, args.workspaceId, args.timeZone)).map((d) => ({ ...d, link: pageLink(d.pageId) })) };
+    }) as Tool["run"],
   },
   {
     name: "create_page",

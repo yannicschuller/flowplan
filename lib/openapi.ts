@@ -31,6 +31,7 @@ import { buildInfo } from "./build-info";
 import { disclosedVersion } from "./instance-disclosure";
 import { repeatSchema } from "./recurrence";
 import { settingsSchema } from "./database-settings-schema";
+import { studySettingsSchema } from "./study-schema";
 import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
 import { MAX_COMBOS, SHORTCUT_ACTIONS } from "./keymap";
 import { toRecordsInput } from "./whiteboard-ai";
@@ -101,6 +102,8 @@ export const commandActionNames = [
   "domain.add", "domain.remove", "plugin.update", "plugin.delete",
   "form.update", "form.submit", "survey.save",
   "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points",
+  // Flashcards (docs/specs/flashcards.md, lib/study.ts).
+  "study.settings", "study.queue", "study.review", "study.undo", "study.prefs",
   "recordView.save", "recordView.delete", "git.setup", "git.disable", "git.token",
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "inviteLink.create", "inviteLink.revoke", "member.role", "member.guest",
@@ -146,6 +149,63 @@ const cells = z
 // Actions with their own schema: the ones integrations use. Everything else
 // is accepted as `{ action, ... }` (CommandOther) and checked by the server.
 export const commandActions: ActionDoc[] = [
+  {
+    action: "study.settings",
+    summary: "Turn a database into a flashcard deck (card mapping and defaults)",
+    description:
+      "Needs editor rights. `settings` is stored as the database's `settings.study`: `front` and `back` each a property (`{ field }`, text-like properties) or the record's document (`front: { document: \"above\" }` – above its first horizontal rule; `back: { document: \"all\" | \"below\" }`), optional `hint` and `extra` properties, `reverse` (a second card back → front), and the deck's defaults `newPerDay` (20), `reviewsPerDay` (200), `retention` (0.7–0.99, 0.9), `learningSteps` ([1, 10] minutes), `relearningSteps` ([10]), `maxInterval` (days), `buryNew`/`buryReviews`. `type` is `{ fixed: \"basic\" }` for now. `settings: null` removes the mapping; everyone's learning state rests and returns with it. Views of type `study` learn the cards their filters select.",
+    input: z.object({ action: z.literal("study.settings"), pageId: uuid, settings: studySettingsSchema.nullable() }),
+    result: z.object({ settings: studySettingsSchema.nullable() }),
+  },
+  {
+    action: "study.queue",
+    summary: "Your next flashcards of a deck, with counts and limits",
+    description:
+      "Read access is enough. Your own learning state only – nobody sees another person's. `zone` (IANA, else the one you sent last, else UTC) decides the study day, which starts at 04:00 local. Answers the counts left today (`counts`: new, learning, review – within your limits), `limits`, `done` today, `params` (retention, steps), and up to `limit` cards (default 50, 0 for the counts only) in session order, each with `front`/`back` (`{ text, formatted? }` – inline Markdown – or `{ html }` from the record's document) and its `memory` (null for a new card). With `viewId` the view's filters select the cards. `blocked: \"hidden\"`: a side is a property hidden from you. Also as GET /api/pages/{pageId}/study (read tokens).",
+    input: z.object({ action: z.literal("study.queue"), pageId: uuid, viewId: z.string().max(100).optional(), zone: z.string().max(100).optional(), limit: z.number().int().min(0).max(50).optional() }),
+    result: z.object({}).passthrough(),
+  },
+  {
+    action: "study.review",
+    summary: "Rate a flashcard (1 Again, 2 Hard, 3 Good, 4 Easy)",
+    description:
+      "Read access is enough – it changes only your own learning state (FSRS), not the database, and is not shown as an edit. Not for read-only tokens. `id` is a UUID you make when the card is shown: sending it again changes nothing (`duplicate: true`), and it seeds the interval's fuzz. `reviewedAt` (ms) is kept between the card's last rating and five minutes from now. Answers the deck's counts and the card's new `memory` (`state` 1 learning, 2 review, 3 relearning; `due`, `dueDay`, `stability`, `difficulty`). Limited to 600 per minute.",
+    input: z.object({
+      action: z.literal("study.review"),
+      pageId: uuid,
+      rowId: uuid,
+      sub: z.string().max(40).describe("The card of the record: \"\" (front → back) or \"r\" (reverse)"),
+      rating: z.number().int().min(1).max(4),
+      id: uuid,
+      zone: z.string().max(100).optional(),
+      viewId: z.string().max(100).optional(),
+      durationMs: z.number().int().min(0).optional(),
+      reviewedAt: z.number().int().optional(),
+    }),
+    result: z.object({}).passthrough(),
+  },
+  {
+    action: "study.undo",
+    summary: "Undo your last rating of a card",
+    description: "Only the last rating of that card, within 24 hours. The card's state is computed again from the rest of its log; answers the counts and the card to show again (`card`).",
+    input: z.object({ action: z.literal("study.undo"), pageId: uuid, reviewId: uuid, zone: z.string().max(100).optional(), viewId: z.string().max(100).optional() }),
+    result: z.object({}).passthrough(),
+  },
+  {
+    action: "study.prefs",
+    summary: "Your own limits and retention for a deck; study more today",
+    description: "Read access is enough. `newPerDay`, `reviewsPerDay`, `retention` override the deck's defaults for you (`null`: the deck's again). `more: { new?, review? }` adds to today's limits only (\"Study more today\"); it lapses with the study day.",
+    input: z.object({
+      action: z.literal("study.prefs"),
+      pageId: uuid,
+      zone: z.string().max(100).optional(),
+      newPerDay: z.number().int().min(0).max(9999).nullable().optional(),
+      reviewsPerDay: z.number().int().min(0).max(99999).nullable().optional(),
+      retention: z.number().min(0.7).max(0.99).nullable().optional(),
+      more: z.object({ new: z.number().int().min(0).optional(), review: z.number().int().min(0).optional() }).optional(),
+    }),
+    result: z.object({}).passthrough(),
+  },
   {
     action: "workspace.create",
     summary: "Create a workspace",
@@ -356,7 +416,7 @@ export const commandActions: ActionDoc[] = [
   {
     action: "page.create",
     summary: "Create a page",
-    description: "Needs editor rights on the space. Databases start with the `tasks` setup unless `databaseKind` says otherwise.",
+    description: "Needs editor rights on the space. Databases start with the `tasks` setup unless `databaseKind` says otherwise (`flashcards`: front, back and tags with the card mapping and the views Study and All cards).",
     input: z.object({
       action: z.literal("page.create"),
       workspaceId: uuid,
@@ -365,7 +425,7 @@ export const commandActions: ActionDoc[] = [
       kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"]).optional().describe("Default: document"),
       parentId: uuid.optional().describe("Parent page in the same space"),
       parentRowId: uuid.optional().describe("A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record"),
-      databaseKind: z.enum(["tasks", "documents", "contacts", "empty"]).optional(),
+      databaseKind: z.enum(["tasks", "documents", "contacts", "empty", "flashcards"]).optional(),
       templateId: z.string().max(100).optional().describe("A saved page template of the workspace"),
       meta: metaPlanInput.optional().describe("With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`"),
       starterTemplate: z.string().max(100).optional().describe("A built-in starter template key"),
@@ -1818,6 +1878,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/command", method: "post", op: { id: "command", tag: "Workspace", summary: "Change something", description: "The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*`, `emergency.*` (emergency access) and `deadman.*` (inactivity message) are refused for every token (session only). Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429).", write: true, body: { content: "application/json", schema: ref("Command"), required: true }, ok: { schema: ref("CommandResult"), description: "The result of the action" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
   // Pages
   { path: "/api/pages/{pageId}", method: "get", op: { id: "getPage", tag: "Pages", summary: "A page with its content", description: "Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts, and your own quick-search history; not for API tokens).", params: [p("pageId", "Page ID")], ok: { schema: ref("PageData"), description: "The page" }, errors: [401, 403, 404] } },
+  { path: "/api/pages/{pageId}/study", method: "get", op: { id: "studyQueue", tag: "Records", summary: "Your flashcards of a deck", description: `The same as the command study.queue, for read tokens too: counts, limits and your next cards. ${noStore}`, params: [p("pageId", "Database ID"), q("view", "A study view whose filters select the cards"), q("zone", "IANA time zone of the study day"), q("limit", "Cards, 0–50 (default 50)", { type: "integer" })], ok: { schema: { type: "object", additionalProperties: true }, description: "Counts and cards" }, errors: [400, 401, 403, 404, 429] } },
   { path: "/api/pages/{pageId}/blocks/{blockId}", method: "get", op: { id: "blockPreview", tag: "Pages", summary: "Preview of a block link", description: `What a pasted block link shows: the page's (or with \`row\` the record's) title and the start of the block's text, as \`Page › text\` (#88). A block link is the page address with the block: \`/#page=<page>&block=<blockId>\` (records: \`/#page=<database>&row=<record>&block=<blockId>\`). \`found\` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: \`encrypted\` is true and title and text stay empty. ${noStore}`, params: [p("pageId", "Page ID (the database for a record)"), p("blockId", "Block ID", { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" }), q("row", "Record ID, for a block of a record's document", { type: "string", format: "uuid" })], ok: { schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, rowId: { type: "string", format: "uuid" }, workspaceId: { type: "string", format: "uuid" }, blockId: { type: "string" }, title: { type: "string" }, text: { type: "string" }, found: { type: "boolean" }, encrypted: { type: "boolean" } }, required: ["pageId", "workspaceId", "blockId", "title", "text", "found", "encrypted"] }, description: "Title and text" }, errors: [400, 401, 403, 404] } },
   { path: "/api/blocks", method: "get", op: { id: "blockSearch", tag: "Workspace", summary: "Headings and blocks of documents", description: `For links to a block: headings and blocks of the documents a person may read whose text matches \`q\` (at least two characters). \`Page › Heading\` (or \`Page#Heading\`) lists the headings of the pages whose title matches the first part. A hit without \`blockId\` has no id yet; \`block.ids\` (POST /api/command with \`pageId\`, \`index\` and \`text\`) gives it one. ${noStore}`, params: [workspace, q("q", "Search words", { type: "string" }, true), q("exclude", "Leave out this page", { type: "string", format: "uuid" })], ok: { schema: { type: "array", items: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, pageTitle: { type: "string" }, blockId: { type: ["string", "null"] }, index: { type: "integer", minimum: 0 }, text: { type: "string" }, level: { type: ["integer", "null"], description: "Heading level, null for other blocks" } }, required: ["pageId", "pageTitle", "blockId", "index", "text", "level"] } }, description: "Matches" }, errors: [400, 401, 403] } },
   { path: "/api/link-targets", method: "get", op: { id: "linkTargets", tag: "Pages", summary: "Icons of linked pages and records", description: `For links in documents: the icon (emoji, \`icon:<name>:<colour>\`, \`/api/files/<id>\` or empty for the default) and kind of each page (\`<pageId>\`) or record (\`<pageId>:<rowId>\`) the caller may read; others are left out. At most 100 IDs. ${noStore}`, params: [q("ids", "Comma-separated `<pageId>` or `<pageId>:<rowId>`", { type: "string" }, true)], ok: { schema: { type: "object", properties: { targets: { type: "object", additionalProperties: { type: "object", properties: { icon: { type: "string" }, kind: { type: "string" } } } } } }, description: "Icon and kind by ID" }, errors: [401] } },

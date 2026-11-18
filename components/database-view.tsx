@@ -194,6 +194,7 @@ import {
 import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
+import { studyViewSchema } from "@/lib/study-schema";
 import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, requireConnection } from "./ui";
 import { CoverPicker } from "./cover-picker";
@@ -231,6 +232,7 @@ const DatabaseSprints = dynamic(() => loadView(() => import("./database-sprints"
   ssr: false,
   loading: () => <ViewSkeleton type="sprint" />,
 });
+const DatabaseStudy = dynamic(() => loadView(() => import("./database-study")), { ssr: false, loading: () => <ViewSkeleton type="study" /> });
 const DatabaseFeed = dynamic(() => loadView(() => import("./database-feed")), { ssr: false, loading: () => <ViewSkeleton type="feed" /> });
 const DatabaseCalendar = dynamic(() => loadView(() => import("./database-calendar")), { ssr: false, loading: () => <ViewSkeleton type="calendar" /> });
 const DatabaseTimeline = dynamic(() => loadView(() => import("./database-timeline")), { ssr: false, loading: () => <ViewSkeleton type="timeline" /> });
@@ -354,6 +356,7 @@ const viewTypeNames: Record<View["type"], [string, string]> = {
   chart: ["Diagramm", "Chart"],
   feed: ["Feed", "Feed"],
   sprint: ["Sprints", "Sprints"],
+  study: ["Lernen", "Study"],
 };
 // i18n-table: 1 – [German, English] pairs
 const viewTypeHints: Record<View["type"], [string, string]> = {
@@ -367,6 +370,7 @@ const viewTypeHints: Record<View["type"], [string, string]> = {
   chart: ["Balken, Linien, Torten", "Bars, lines, pies"],
   feed: ["Einträge mit Inhalt untereinander", "Records with their content"],
   sprint: ["Backlog und Sprintplanung", "Backlog and sprint planning"],
+  study: ["Karten mit Wiederholung in Abständen lernen", "Learn cards with spaced repetition"],
 };
 const computedTypes = [
   "id",
@@ -4066,6 +4070,18 @@ export default function DatabaseView({
             )}
         </ScrollFade>
       )}
+      {view.type === "study" && (
+        <DatabaseStudy
+          key={view.id}
+          page={page}
+          database={data.database}
+          view={view}
+          rows={data.rows}
+          editable={editable}
+          act={act}
+          onOpenRow={setRowId}
+        />
+      )}
       {view.type === "sprint" && (
         <DatabaseSprints
           pageId={page.id}
@@ -4256,7 +4272,7 @@ export default function DatabaseView({
           version={data.database.version}
         />
       )}
-      {shown.length === 0 && view.type !== "form" && view.type !== "chart" && (
+      {shown.length === 0 && view.type !== "form" && view.type !== "chart" && view.type !== "study" && (
         <div className="empty-state">
           <Funnel size={30} />
           <h3>{t("Keine Einträge", "No records")}</h3>
@@ -4424,6 +4440,39 @@ export default function DatabaseView({
               ))}
             </Select>
           </label>
+          {view.type === "study" && (
+            <div className="settings-section">
+              <h3>{t("Lernen", "Study")}</h3>
+              <label>
+                {t("Neue Karten", "New cards")}
+                <Select
+                  aria-label={t("Neue Karten", "New cards")}
+                  disabled={!viewEditable}
+                  value={view.study?.mixNew || "mixed"}
+                  onChange={(e) => updateView({ study: { ...studyViewSchema.parse(view.study || {}), mixNew: e.target.value as "mixed" | "after" | "before" } })}
+                >
+                  <option value="mixed">{t("Zwischen den Wiederholungen", "Between the reviews")}</option>
+                  <option value="before">{t("Vor den Wiederholungen", "Before the reviews")}</option>
+                  <option value="after">{t("Nach den Wiederholungen", "After the reviews")}</option>
+                </Select>
+              </label>
+              <label>
+                {t("Reihenfolge neuer Karten", "Order of new cards")}
+                <Select
+                  aria-label={t("Reihenfolge neuer Karten", "Order of new cards")}
+                  disabled={!viewEditable}
+                  value={view.study?.newOrder || "added"}
+                  onChange={(e) => updateView({ study: { ...studyViewSchema.parse(view.study || {}), newOrder: e.target.value as "added" | "random" } })}
+                >
+                  <option value="added">{t("Wie hinzugefügt", "As added")}</option>
+                  <option value="random">{t("Zufällig", "Random")}</option>
+                </Select>
+              </label>
+              <p className="muted">
+                {t("Die Filter dieser Ansicht wählen, welche Karten des Stapels sie lernt. Was auf die Karten kommt, gilt für die ganze Datenbank.", "The filters of this view choose which cards of the deck it studies. What goes on the cards applies to the whole database.")}
+              </p>
+            </div>
+          )}
           {view.type === "feed" && (
             <div className="settings-section">
               <h3>{t("Feed-Darstellung", "Feed layout")}</h3>

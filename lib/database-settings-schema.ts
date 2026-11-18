@@ -5,6 +5,7 @@ import { z } from "zod";
 import { filterSchema } from "./database-filters";
 import type { Field } from "./types";
 import { cleanNotifyMessage } from "./notify-text";
+import { studySettingsSchema } from "./study-schema";
 
 const fid = z.string().min(1).max(500);
 const optionValue = z.string().max(100);
@@ -111,6 +112,9 @@ export const settingsSchema = z.object({
   sprints: z.array(sprintSchema).max(200).optional(),
   // A number property with story points or hours; empty counts records.
   pointsField: fid.optional(),
+  // Flashcards (docs/specs/flashcards.md §3.1): how records become cards.
+  // Changed through study.settings only (it checks the properties).
+  study: studySettingsSchema.optional(),
   // Sealed (lib/sealed-values.ts): token and secret empty, both in
   // `sealed`, the token's hash in `tokenHash`; older ones in plain text.
   git: z

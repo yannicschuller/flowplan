@@ -23,6 +23,7 @@ import { keepDialogForLayer } from "./layer-host";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
+  Cards,
   FileText,
   Table,
   BookOpen,
@@ -132,6 +133,7 @@ export const viewIcons = {
   chart: ChartBar,
   feed: Article,
   sprint: Flag,
+  study: Cards,
 };
 // Where a Modal with `sheet` is a bottom sheet (app/mobile-ux.css, "Sheets").
 export const SHEET_MEDIA = "(max-width: 600px)";
