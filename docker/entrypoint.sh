@@ -236,8 +236,9 @@ ls_log_open() {
     return 0
   fi
   ls_file="$ls_dir/litestream.log"
-  ls_lines="$(wc -l < "$ls_file" 2> /dev/null || echo 0)"
-  ls_bytes="$(wc -c < "$ls_file" 2> /dev/null || echo 0)"
+  # A first start has no file yet: 0, without the shell's "cannot open".
+  ls_lines="$({ wc -l < "$ls_file"; } 2> /dev/null || echo 0)"
+  ls_bytes="$({ wc -c < "$ls_file"; } 2> /dev/null || echo 0)"
   (
     trap '' TERM INT HUP PIPE
     # Not the data folder lock (fd 9): it goes with the container's processes.
