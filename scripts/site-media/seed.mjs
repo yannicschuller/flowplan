@@ -59,7 +59,10 @@ const sid = boot.spaces[0].id;
 await cmd(page, { action: "workspace.update", workspaceId: wid, name: "Northwind Studio" });
 for (const p of boot.pages.filter((p) => !p.deleted_at && !p.parent_id)) await cmd(page, { action: "page.delete", pageId: p.id });
 
-// The team.
+// The team. Their accounts need open sign-up: an invitation by address
+// alone opens it only with e-mail set up (#320), which the media instance
+// has not.
+await cmd(page, { action: "admin.settings", settings: { allowSignup: true } });
 const people = { Mia: boot.user.id };
 for (const [name, full] of [["Jonas", "Jonas Weber"], ["Lena", "Lena Brandt"], ["Noah", "Noah Fischer"]]) {
   const email = name.toLowerCase() + "@example.org";
