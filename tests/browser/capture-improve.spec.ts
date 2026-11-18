@@ -1,9 +1,12 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+
+keepInstanceAi();
 
 // "Text verbessern" in quick capture (#172) against a mock OpenAI-compatible
 // provider: the button (AI icon) only with AI on and online; title and text

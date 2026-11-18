@@ -407,24 +407,13 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     // own retries put it there (centre, start) or under the stuck header
     // (#287). Its right end is beside the title column once the cell is
     // scrolled to the right edge, with the row in the middle of the pane so
-    // the header does not stick over it; the click goes there. Right after
-    // switching views the database cross-fades (React <ViewTransition>) and
-    // the new table takes no clicks yet – the poll waits for the point to
-    // be the cell's.
+    // the header does not stick over it; the click goes there. The new
+    // table takes clicks during the views' cross-fade (#338,
+    // database-view-switch-click.spec.ts).
     const startCell = tableRow.locator("td").nth(2);
     await startCell.evaluate((el) => el.scrollIntoView({ block: "center", inline: "end" }));
     const cellBox = (await startCell.boundingBox())!;
-    const point = { x: cellBox.width - 12, y: cellBox.height / 2 };
-    await expect
-      .poll(() =>
-        startCell.evaluate((el, at) => {
-          const box = el.getBoundingClientRect();
-          const hit = document.elementFromPoint(box.left + at.x, box.top + at.y);
-          return !!hit && el.contains(hit);
-        }, point),
-      )
-      .toBe(true);
-    await startCell.click({ position: point });
+    await startCell.click({ position: { x: cellBox.width - 12, y: cellBox.height / 2 } });
     await expect(tableRow.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
     const input = tableRow.getByLabel("Beginn: Uhrzeit", { exact: true });
     await expect(input).toHaveAttribute("type", "time");

@@ -1,9 +1,12 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+
+keepInstanceAi();
 
 // #134: "Liste alle Docker-Compose-Seiten mit Links auf" in the writing
 // assistant, against a stub provider that writes every page as a plain

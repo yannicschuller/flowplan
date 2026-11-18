@@ -12777,18 +12777,16 @@ textarea {
   border-radius: 7px;
 }
 
-/* Switching database views cross-fades (React <ViewTransition>). The rest
-   of the page swaps without its own fade. */
+/* Switching database views cross-fades (React <ViewTransition>): the old
+   view fades out over the new one, which is live and takes clicks at once
+   (only elements outside the transition do, #338). The rest of the page
+   swaps without its own fade. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
 }
-::view-transition-group(.db-view-in),
 ::view-transition-group(.db-view-out) {
   animation-duration: var(--motion-base);
-}
-::view-transition-new(.db-view-in) {
-  animation: fade-in var(--motion-base) var(--ease-standard) both;
 }
 ::view-transition-old(.db-view-out) {
   animation: fade-out var(--motion-fast) ease both;

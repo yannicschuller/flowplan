@@ -1,7 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdirSync } from "node:fs";
+
+keepInstanceAi();
 
 // Workflows wave 3 (#168, docs/specs/workflows.md §10.6–10.9): every
 // template of the gallery is created through its assistant, dry-run and

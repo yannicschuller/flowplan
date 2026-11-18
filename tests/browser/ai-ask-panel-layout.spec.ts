@@ -1,9 +1,12 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+
+keepInstanceAi();
 
 // The page beside "KI fragen" (#59, components/ai-ask.tsx, lib/ask-panel.ts):
 // the page lays out for the room it has left (container queries on the

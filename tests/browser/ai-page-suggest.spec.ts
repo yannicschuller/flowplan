@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+keepInstanceAi();
 
 // "KI fragen" with "Diese Seite" (#135) against a stub OpenAI-compatible
 // provider: the chip is on with a page open and the page goes along with

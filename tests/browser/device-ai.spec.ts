@@ -1,4 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
+
+keepInstanceAi();
 
 // On-device AI (lib/ai/device.ts) through a stubbed window.FlowplanApp.ai –
 // the contract of the iPhone/iPad app (and of window.FlowplanDesktop.ai):

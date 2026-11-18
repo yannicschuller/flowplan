@@ -1,9 +1,12 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+
+keepInstanceAi();
 
 // The writing assistant links existing pages (lib/ai/links.ts) against a
 // mock OpenAI-compatible provider: the prompt lists pages by handle, the

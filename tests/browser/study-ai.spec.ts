@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+keepInstanceAi();
 
 // Flashcards phase 4 (docs/specs/flashcards.md §9) against a stub
 // OpenAI-compatible provider: "Lernkarten erstellen" on a selection in a
