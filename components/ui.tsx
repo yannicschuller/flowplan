@@ -337,10 +337,12 @@ export function reportError(error: unknown, options: ErrorOptions = {}) {
   const { kind, detail } = classifyError(error);
   showError(kind, detail, options);
 }
-// What cannot work offline (#333) – a new page, database or whiteboard, a
-// template, an import, a file or picture – says so in the same calm words
-// instead of doing nothing or showing a red error. Editing what the device
-// keeps, database records and today's journal entry work offline.
+// What cannot work offline (#333) – a journal, dashboard or workflow, a
+// saved template, an import, a file over 25 MB, a page of an encrypted
+// space – says so in the same calm words instead of doing nothing or
+// showing a red error. Editing what the device keeps, database records,
+// today's journal entry and – since #370 – new documents, databases,
+// whiteboards, notebooks and uploads in documents work offline.
 export const offlineNotice = () => tr("Geht nur mit Verbindung – du bist gerade offline.", "Needs a connection – you're offline right now.");
 // Offline: shows the note and returns true (the caller stops there).
 export function needsConnection() {

@@ -12123,6 +12123,61 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   font-size: 13px;
   background: color-mix(in srgb, #f5a623 18%, var(--bg));
 }
+/* Content made offline, not yet on the server (#370). */
+.offline-mark {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-inline-start: 4px;
+  color: var(--muted);
+}
+.offline-mark-failed {
+  color: #cf4850;
+}
+.offline-page-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.offline-page-note > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.offline-page-note p {
+  margin: 0;
+}
+.offline-page-note.failed {
+  border-style: solid;
+  border-color: color-mix(in srgb, #cf4850 45%, var(--border));
+  background: color-mix(in srgb, #cf4850 7%, var(--bg));
+}
+.offline-page-note.failed > svg {
+  color: #cf4850;
+}
+.offline-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.offline-failed-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.template-grid button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .offline-conflict {
   width: 100%;
   border-collapse: collapse;

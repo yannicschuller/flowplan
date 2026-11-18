@@ -10,11 +10,31 @@ import {
   retryLater,
   withoutConflict,
   type Conflict,
+  type OfflinePageChange,
+  type OfflineUploadChange,
   type QueuedChange,
 } from "@/lib/offline-queue";
+import {
+  afterCreate,
+  createCommand,
+  discardPage,
+  discardUpload,
+  failChange,
+  failedPageOf,
+  pendingPageIds,
+  pendingUploads,
+  renamePending,
+  retryFailed,
+  uploadRoom,
+  type FailedChange,
+} from "@/lib/offline-create";
+import { setKick, setPending, setPreview, setUploader } from "@/lib/offline-pending";
 import { cellText } from "@/lib/cell-text";
+import { emptyInk } from "@/lib/ink/model";
 import { endedSession, friendlyError, Modal, sessionEnded } from "./ui";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf, newIdempotencyKey } from "@/lib/idempotency-key";
+import { primePlaceholder } from "./image-placeholder";
+import { boardStore, documentStore, dropInk, dropStore, dropUpload, keepUpload, keptInk, keptUpload, keptUploads } from "./offline-uploads";
 import type { Field, Row } from "@/lib/types";
 
 class HttpFailure extends Error {
@@ -28,12 +48,7 @@ class HttpFailure extends Error {
 // Without an answer, or while the server still works on the same key: sent
 // again on the next flush (the change stays in the queue).
 class NotYet extends Error {}
-async function post(body: Record<string, unknown>, key: string) {
-  const response = await fetch("/api/command", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", [IDEMPOTENCY_HEADER]: key },
-    body: JSON.stringify(body),
-  });
+async function answer(response: Response, url: string) {
   const result = await response.json().catch(() => null);
   // No JSON: a proxy answered while the server restarts (#284) – even its
   // "404 page not found" says nothing about the change, which stays queued.
@@ -42,7 +57,7 @@ async function post(body: Record<string, unknown>, key: string) {
   // Signed out: the change waits for the next sign-in instead of being
   // discarded.
   if (response.status === 401) {
-    endedSession("/api/command", 401);
+    endedSession(url, 401);
     throw new NotYet();
   }
   // The server briefly unreachable: sent again later, not discarded.
@@ -50,6 +65,14 @@ async function post(body: Record<string, unknown>, key: string) {
   if (!response.ok)
     throw new HttpFailure(serverMessage(result?.error) || tr("Fehler", "Error"), response.status);
   return result ?? {};
+}
+async function post(body: Record<string, unknown>, key?: string, url = "/api/command") {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(key ? { [IDEMPOTENCY_HEADER]: key } : {}) },
+    body: JSON.stringify(body),
+  });
+  return await answer(response, url);
 }
 async function currentRows(pageId: string): Promise<Row[]> {
   const response = await fetch(`/api/pages/${pageId}`, { cache: "no-store" });
@@ -59,17 +82,38 @@ async function currentRows(pageId: string): Promise<Row[]> {
   if (!response.ok) throw new HttpFailure(tr("Seite fehlt.", "Page missing."), response.status);
   return body?.rows || [];
 }
-const read = (key: string): QueuedChange[] => {
+// The content an editor or a board kept in IndexedDB (y-indexeddb), as one
+// update; null when it holds nothing.
+async function storedUpdate(name: string): Promise<Uint8Array | null> {
+  const [Y, { IndexeddbPersistence }] = await Promise.all([import("yjs"), import("y-indexeddb")]);
+  const doc = new Y.Doc();
+  const persistence = new IndexeddbPersistence(name, doc);
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
+    await persistence.whenSynced;
+    return doc.store.clients.size ? Y.encodeStateAsUpdate(doc) : null;
+  } finally {
+    await persistence.destroy();
+    doc.destroy();
+  }
+}
+const base64 = (bytes: Uint8Array) => {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+};
+const read = <T,>(key: string): T[] => {
+  try {
+    const list = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
 };
 const offline = (e: unknown) => !(e instanceof HttpFailure);
 
-// Waiting record changes of this person on this device (see
-// lib/offline-queue.ts) with sending and conflict handling.
+// Waiting changes of this person on this device – record changes (see
+// lib/offline-queue.ts) and pages, pictures and files made offline
+// (lib/offline-create.ts) – with sending, conflicts and failed changes.
 export function useOfflineQueue({
   userId,
   onSynced,
@@ -77,18 +121,28 @@ export function useOfflineQueue({
 }: {
   userId: string;
   onSynced: () => Promise<unknown>;
-  notify: (message: string) => void;
+  // `error`: a page or file the server refused (shown as an error).
+  notify: (message: string, error?: boolean) => void;
 }) {
   const key = queueKey(userId);
   const [queue, setQueue] = useState<QueuedChange[]>([]),
     [conflicts, setConflicts] = useState<Conflict[]>([]),
+    [failed, setFailed] = useState<FailedChange[]>([]),
     [syncing, setSyncing] = useState(false);
   const queueRef = useRef<QueuedChange[]>([]),
+    failedRef = useRef<FailedChange[]>([]),
     running = useRef(false);
+  // Pages made offline that the server does not have (waiting or failed)
+  // and the uploads that wait, for the editor, board and notebook.
+  const publish = useCallback(() => {
+    const failedPages = failedRef.current.flatMap((f) => (f.change.kind === "page" && !f.change.created ? [f.change.pageId] : []));
+    setPending([...pendingPageIds(queueRef.current), ...failedPages], pendingUploads(queueRef.current));
+  }, []);
   const store = useCallback(
     (next: QueuedChange[]) => {
       queueRef.current = next;
       setQueue(next);
+      publish();
       try {
         localStorage.setItem(key, JSON.stringify(next));
       } catch {
@@ -97,17 +151,41 @@ export function useOfflineQueue({
         );
       }
     },
-    [key, notify],
+    [key, notify, publish],
+  );
+  const storeFailed = useCallback(
+    (next: FailedChange[]) => {
+      failedRef.current = next;
+      setFailed(next);
+      publish();
+      try {
+        if (next.length) localStorage.setItem(`${key}:failed`, JSON.stringify(next));
+        else localStorage.removeItem(`${key}:failed`);
+      } catch {}
+    },
+    [key, publish],
   );
   useEffect(() => {
-    queueRef.current = read(key);
+    queueRef.current = read<QueuedChange>(key);
+    failedRef.current = read<FailedChange>(`${key}:failed`);
     setQueue(queueRef.current);
+    setFailed(failedRef.current);
+    publish();
     try {
       setConflicts(
         JSON.parse(localStorage.getItem(`${key}:conflicts`) || "[]"),
       );
     } catch {}
-  }, [key]);
+    // The local copies of pictures that wait, for the editor to show.
+    let alive = true;
+    void keptUploads(userId).then((list) => {
+      if (!alive) return;
+      for (const kept of list) setPreview(kept.fileId, URL.createObjectURL(kept.blob));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [key, userId, publish]);
   // Takes the list or a function of the current one, like setState: a long
   // flush must not overwrite conflicts resolved while it ran.
   const storeConflicts = useCallback(
@@ -173,6 +251,154 @@ export function useOfflineQueue({
     },
     [store],
   );
+  // A page made offline (lib/offline-create.ts pageChange).
+  const addPage = useCallback((change: OfflinePageChange) => store([...queueRef.current, change]), [store]);
+  // A new title or icon of a page that waits.
+  const renamePage = useCallback(
+    (pageId: string, patch: { title?: unknown; icon?: unknown }) => {
+      const next = renamePending(queueRef.current, failedRef.current, pageId, patch);
+      store(next.queue);
+      storeFailed(next.failed);
+    },
+    [store, storeFailed],
+  );
+  // A picture or file for later: kept in IndexedDB, uploaded in its turn.
+  const addUpload = useCallback(
+    async (pageId: string, file: File) => {
+      const room = uploadRoom(queueRef.current, failedRef.current, file.size);
+      if (room !== "ok") return { refused: room } as const;
+      const fileId = crypto.randomUUID();
+      if (!(await keepUpload(userId, fileId, file, file.name, file.type))) return { refused: "storage" } as const;
+      const change: OfflineUploadChange = {
+        id: crypto.randomUUID(),
+        kind: "upload",
+        pageId,
+        fileId,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        at: Date.now(),
+        key: newIdempotencyKey(),
+      };
+      setPreview(fileId, URL.createObjectURL(file));
+      store([...queueRef.current, change]);
+      return { fileId, url: `/api/files/${fileId}` };
+    },
+    [store, userId],
+  );
+  // Leaves the device: stored content and blobs too.
+  const cleanUp = useCallback(
+    (removed: QueuedChange[]) => {
+      for (const c of removed) {
+        if (c.kind === "upload") void dropUpload(c.fileId);
+        if (c.kind === "page") {
+          dropStore(documentStore(userId, c.pageId));
+          dropStore(boardStore(userId, c.pageId));
+          dropInk(c.pageId);
+        }
+      }
+    },
+    [userId],
+  );
+  const discard = useCallback(
+    (pageId: string) => {
+      const next = discardPage(queueRef.current, failedRef.current, pageId);
+      store(next.queue);
+      storeFailed(next.failed);
+      cleanUp(next.removed);
+      return next.removed.length > 0;
+    },
+    [store, storeFailed, cleanUp],
+  );
+  const discardFile = useCallback(
+    (fileId: string) => {
+      storeFailed(discardUpload(failedRef.current, fileId));
+      void dropUpload(fileId);
+    },
+    [storeFailed],
+  );
+  const removeById = useCallback((id: string) => store(queueRef.current.filter((c) => c.id !== id)), [store]);
+  // A refused change moves to the failed ones (a page with what depends on it).
+  const failById = useCallback(
+    (id: string, reason: string) => {
+      const index = queueRef.current.findIndex((c) => c.id === id);
+      if (index < 0) return;
+      const change = queueRef.current[index];
+      const next = failChange(queueRef.current, failedRef.current, index, reason, Date.now());
+      store(next.queue);
+      storeFailed(next.failed);
+      const what = change.kind === "page" ? change.title : change.kind === "upload" ? change.name : "";
+      notify(
+        tr(
+          `„${what}“ konnte nicht synchronisiert werden: ${reason} Der Inhalt bleibt auf diesem Gerät.`,
+          `“${what}” could not be synced: ${reason} The content stays on this device.`,
+        ),
+        true,
+      );
+    },
+    [store, storeFailed, notify],
+  );
+  const sendUpload = useCallback(async (change: OfflineUploadChange) => {
+    const kept = await keptUpload(change.fileId);
+    if (!kept) throw new HttpFailure(tr("Die Datei ist nicht mehr auf diesem Gerät.", "The file is no longer on this device."), 410);
+    const form = new FormData();
+    form.set("pageId", change.pageId);
+    form.set("fileId", change.fileId);
+    form.set("file", new File([kept.blob], kept.name || "file", { type: kept.type || kept.blob.type }));
+    const response = await fetch("/api/upload", { method: "POST", body: form, headers: { [IDEMPOTENCY_HEADER]: change.key || change.id } });
+    const result = await answer(response, "/api/upload");
+    primePlaceholder(result.url, result.placeholder);
+    await dropUpload(change.fileId);
+  }, []);
+  // The page, its uploads (the content refers to them) and then its
+  // content, kept on the device.
+  const sendPage = useCallback(
+    async (change: OfflinePageChange) => {
+      const key = change.key || change.id;
+      const docStore = documentStore(userId, change.pageId);
+      if (!change.created) {
+        const content = change.pageKind === "document" ? await storedUpdate(docStore) : null;
+        await post(createCommand(change, !!content), key);
+        const after = afterCreate(change, !!content);
+        if (after) await post(after, `${key.slice(0, 110)}-after`);
+        store(queueRef.current.map((c) => (c.id === change.id ? { ...change, created: true } : c)));
+      }
+      for (const upload of queueRef.current.filter((c): c is OfflineUploadChange => c.kind === "upload" && c.pageId === change.pageId)) {
+        try {
+          await sendUpload(upload);
+          removeById(upload.id);
+        } catch (e) {
+          if (offline(e)) throw e;
+          failById(upload.id, friendlyError(e));
+        }
+      }
+      if (change.pageKind === "document") {
+        const update = await storedUpdate(docStore);
+        // Without a key: CRDT updates merge, sent twice they change nothing.
+        if (update) await post({ action: "document.sync", pageId: change.pageId, generation: "1", update: base64(update) });
+      } else if (change.pageKind === "whiteboard") {
+        const name = boardStore(userId, change.pageId);
+        const update = await storedUpdate(name);
+        if (update) {
+          const response = await fetch(`/api/pages/${change.pageId}`, { cache: "no-store" });
+          const page = await answer(response, `/api/pages/${change.pageId}`);
+          const generation = (page as { whiteboard?: { generation?: string } }).whiteboard?.generation;
+          if (!generation) throw new NotYet();
+          await post({ action: "whiteboard.sync", pageId: change.pageId, generation, update: base64(update) });
+        }
+        dropStore(name);
+      } else if (change.pageKind === "notebook") {
+        for (const [surface, items] of Object.entries(keptInk(change.pageId))) {
+          if (!items.length) continue;
+          const doc = emptyInk();
+          doc.pages[surface] = items;
+          await post({ base: 0, doc, knows: ["image"] }, `${key.slice(0, 100)}-ink-${surface}`.slice(0, 128).replace(/[^A-Za-z0-9_-]/g, "-"), `/api/pages/${change.pageId}/ink?surface=${encodeURIComponent(surface)}`);
+        }
+        dropInk(change.pageId);
+      }
+    },
+    [userId, store, removeById, failById, sendUpload],
+  );
   const flush = useCallback(async () => {
     if (running.current || !queueRef.current.length || !navigator.onLine || sessionEnded())
       return;
@@ -182,10 +408,22 @@ export function useOfflineQueue({
     try {
       while (queueRef.current.length) {
         const change = queueRef.current[0];
+        // Made in a page that failed: it fails along, unsent.
+        const lost = failedPageOf(change, failedRef.current);
+        if (lost) {
+          const reason = failedRef.current.find((f) => f.change.kind === "page" && f.change.pageId === lost)?.reason || "";
+          const before = failedRef.current.length;
+          const next = failChange(queueRef.current, failedRef.current, 0, reason, Date.now());
+          store(next.queue);
+          storeFailed(next.failed.map((f, i) => (i >= before ? { ...f, cause: lost } : f)));
+          continue;
+        }
         // Changes queued before keys existed: their id is a UUID too.
         const key = change.key || change.id;
         try {
-          if (change.kind === "create")
+          if (change.kind === "page") await sendPage(change);
+          else if (change.kind === "upload") await sendUpload(change);
+          else if (change.kind === "create")
             await post({
               action: "row.create",
               pageId: change.pageId,
@@ -242,9 +480,15 @@ export function useOfflineQueue({
         } catch (e) {
           if (offline(e)) break;
           const reason = friendlyError(e);
+          // Pages and files are kept with the reason (nothing is lost);
+          // a refused record change is discarded as before.
+          if (change.kind === "page" || change.kind === "upload") {
+            failById(change.id, reason);
+            continue;
+          }
           notify(tr(`Offline-Änderung verworfen: ${reason}`, `Offline change discarded: ${reason}`));
         }
-        store(queueRef.current.slice(1));
+        removeById(change.id);
       }
     } finally {
       running.current = false;
@@ -252,7 +496,16 @@ export function useOfflineQueue({
       if (found.length) storeConflicts((current) => [...current, ...found]);
       await onSynced().catch(() => undefined);
     }
-  }, [store, storeConflicts, notify, onSynced]);
+  }, [store, storeFailed, storeConflicts, notify, onSynced, sendPage, sendUpload, failById, removeById]);
+  const retry = useCallback(
+    (id: string) => {
+      const next = retryFailed(queueRef.current, failedRef.current, id);
+      storeFailed(next.failed);
+      store(next.queue);
+      void flush();
+    },
+    [store, storeFailed, flush],
+  );
   useEffect(() => {
     const online = () => void flush();
     window.addEventListener("online", online);
@@ -265,6 +518,15 @@ export function useOfflineQueue({
       clearInterval(timer);
     };
   }, [flush]);
+  // The editor hands files to this queue; open views ask it to send.
+  useEffect(() => {
+    setUploader(addUpload);
+    setKick(() => void flush());
+    return () => {
+      setUploader(null);
+      setKick(null);
+    };
+  }, [addUpload, flush]);
   const resolve = useCallback(
     async (conflict: Conflict, keepMine: boolean) => {
       if (keepMine) {
@@ -295,7 +557,9 @@ export function useOfflineQueue({
     },
     [storeConflicts, onSynced],
   );
-  return { queue, conflicts, syncing, enqueue, flush, resolve };
+  // The lists as they are now (before React shows them).
+  const current = useCallback(() => ({ queue: queueRef.current, failed: failedRef.current }), []);
+  return { queue, conflicts, failed, syncing, enqueue, flush, resolve, addPage, renamePage, addUpload, discard, discardFile, retry, current };
 }
 export const isQueueable = (b: Record<string, unknown>) =>
   queueableActions.has(String(b.action)) && typeof b.pageId === "string";

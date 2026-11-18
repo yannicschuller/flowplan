@@ -31,8 +31,14 @@ import {
   OfflineConflicts,
 } from "./offline-queue";
 import { applyQueue } from "@/lib/offline-queue";
+import { isOfflinePageKind, localDatabase, localPage as localPageOf, localPageChange, offlineTemplate, pageChange, withLocalPages, type LocalState } from "@/lib/offline-create";
+import { isPendingPage, sendPendingNow } from "@/lib/offline-pending";
+import { OFFLINE_BOARD_GENERATION, keptInk } from "./offline-uploads";
+import { OfflineFailedUploads, OfflineMark, OfflinePageNotice } from "./offline-mark";
+import { fullPaper } from "@/lib/notebook-paper";
+import { emptyInk } from "@/lib/ink/model";
 import { STUDY_PENDING, studyPendingFlag } from "@/lib/study-pending-flag";
-import { draftKey, draftSent, keyed } from "@/lib/idempotency-key";
+import { draftKey, draftSent, keyed, newIdempotencyKey } from "@/lib/idempotency-key";
 import {
   parsePageLocation,
   pageLocationHash,
@@ -258,6 +264,8 @@ import {
   SHEET_MEDIA,
   deviceOffline,
   needsConnection,
+  offlineNotice as offlineNoteText,
+  showNotice,
   OfflineNotice,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
@@ -418,6 +426,9 @@ type PageData = DatabaseData & {
   // `local`: written offline, kept on this device until the day exists
   // (#333, lib/journal-offline.ts).
   draft?: { journalId: string; date: string; local?: boolean };
+  // A page made offline that the server does not have yet (#370,
+  // lib/offline-create.ts): built on this device, its content kept here.
+  offlineNew?: boolean;
   // A page of an end-to-end encrypted space (components/e2ee.tsx).
   encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
   // Tags and property values (#70, lib/page-properties-server.ts).
@@ -662,7 +673,26 @@ export default function WorkspaceApp({
   // reloaded state is there – or when the server refused (the old state
   // comes back by itself, the error toast says why).
   const [layers, setLayers] = useState<Layer[]>([]);
-  const boot = useMemo(() => layers.reduce((b, layer) => (layer.boot ? safeLayer(layer.boot, b) : b), bootState), [bootState, layers]);
+  // Record changes and content made without a connection wait on this
+  // device (components/offline-queue.tsx, lib/offline-create.ts); the views
+  // show them meanwhile – pages made offline in the sidebar and lists.
+  const refreshRef = useRef<() => Promise<unknown>>(async () => {});
+  const queueSynced = useCallback(() => refreshRef.current(), []);
+  const queueNote = useCallback((text: string, error?: boolean) => showToast({ text, tone: error ? "error" : "info" }), []);
+  const offlineQueue = useOfflineQueue({
+    userId: bootState.user.id,
+    onSynced: queueSynced,
+    notify: queueNote,
+  });
+  // A page made offline that the server does not have yet, from the lists
+  // as they are now (also right after it was made, before React shows it).
+  const peekQueue = offlineQueue.current;
+  const localWaiting = useCallback((id: string) => localPageChange(peekQueue().queue, peekQueue().failed, id), [peekQueue]);
+  const boot = useMemo(() => {
+    const b = layers.reduce((b, layer) => (layer.boot ? safeLayer(layer.boot, b) : b), bootState);
+    const pages = withLocalPages(b.pages, offlineQueue.queue, offlineQueue.failed, b.workspace.id, b.user.id);
+    return pages === b.pages ? b : { ...b, pages };
+  }, [bootState, layers, offlineQueue.queue, offlineQueue.failed]);
   // The workspace's automatic link rules (#202) for every editor; set while
   // rendering so editors created in this render already have them.
   setAutoLinkRules(boot.linkRules);
@@ -1167,7 +1197,7 @@ export default function WorkspaceApp({
     if (
       result.workspace.id !== currentWorkspace.current ||
       (screenRef.current === "page" &&
-        !(dataRef.current?.draft && dataRef.current.page.id === currentId.current) &&
+        !((dataRef.current?.draft || dataRef.current?.offlineNew) && dataRef.current.page.id === currentId.current) &&
         !result.pages.some(
           (page) => page.id === currentId.current && !page.deleted_at,
         ))
@@ -1181,8 +1211,10 @@ export default function WorkspaceApp({
       currentWorkspace.current = result.workspace.id;
       return;
     }
-    // Today's entry written offline exists only here (#333).
+    // Today's entry written offline exists only here (#333), and so does a
+    // page made offline until the queue created it (#370).
     if (dataRef.current?.draft?.local && dataRef.current.page.id === currentId.current) return;
+    if (dataRef.current?.offlineNew && dataRef.current.page.id === currentId.current && localWaiting(currentId.current)) return;
     if (currentId.current && screenRef.current === "page") {
       const pid = currentId.current;
       // A page shown for the first time (e.g. opened by its link) counts
@@ -1202,13 +1234,9 @@ export default function WorkspaceApp({
       }
     }
   }, []);
-  // Record changes without a connection wait on this device (see
-  // components/offline-queue.tsx) and are shown in the views meanwhile.
-  const offlineQueue = useOfflineQueue({
-    userId: boot.user.id,
-    onSynced: refresh,
-    notify,
-  });
+  refreshRef.current = refresh;
+  // The open page, when it was made offline and is not on the server yet.
+  const localOpen = data?.offlineNew ? localPageChange(offlineQueue.queue, offlineQueue.failed, data.page.id) : null;
   // Flashcard ratings made offline (components/study/sync.ts): sent once
   // the connection is back. The sending is loaded only while some wait on
   // this device and the device is online (lib/study-pending-flag.ts).
@@ -1445,6 +1473,25 @@ export default function WorkspaceApp({
           offlineQueue.queue,
           String(b.pageId),
         );
+      // A page made offline that the server does not have yet (#370): a
+      // new title or icon goes along with it, deleting it discards it,
+      // records wait behind it in the queue; anything else needs it created.
+      const localTarget = typeof b.pageId === "string" ? localWaiting(b.pageId) : null;
+      if (localTarget && typeof b.pageId === "string") {
+        const patch = (b.patch || {}) as Record<string, unknown>;
+        if (b.action === "page.update" && Object.keys(patch).every((k) => k === "title" || k === "icon")) {
+          offlineQueue.renamePage(b.pageId, patch);
+          if (dataRef.current?.page.id === b.pageId)
+            setData((d) => (d && d.page.id === b.pageId ? { ...d, page: { ...d.page, ...(typeof patch.title === "string" && patch.title.trim() ? { title: patch.title } : {}), ...(typeof patch.icon === "string" ? { icon: patch.icon } : {}) } } : d));
+          return { ok: true };
+        }
+        if (b.action === "page.delete") {
+          offlineQueue.discard(b.pageId);
+          return { ok: true };
+        }
+        if (isQueueable(b)) return offlineQueue.enqueue(b, rows());
+        throw new OfflineNotice();
+      }
       if (isQueueable(b) && !navigator.onLine)
         return offlineQueue.enqueue(b, rows());
       // New pages, spaces, imports … need the server (#333): a calm note.
@@ -1799,6 +1846,49 @@ export default function WorkspaceApp({
         : { pageId: data.page.id, value: data.sinceVisit || null },
     );
   }, [data]);
+  // A page made offline as the views open it (#370): what the server will
+  // create – a document (a template's text), a database with its fields,
+  // views and the template's records, an empty board, a notebook with its
+  // first sheet and the handwriting kept here.
+  const openedLocal = useRef(new Set<string>());
+  const localPageData = useCallback(
+    (change: import("@/lib/offline-queue").OfflinePageChange, state: LocalState): PageData => {
+      const b = bootRef.current;
+      const template = change.starterTemplate ? catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[change.starterTemplate] : undefined;
+      const page = { ...localPageOf(change, b.user.id, state) };
+      const data = {
+        page,
+        role: "editor",
+        comments: [],
+        snapshots: [],
+        present: [],
+        backlinks: [],
+        images: [],
+        shareLinks: [],
+        rows: [],
+        related: {},
+        rowTemplates: [],
+        form: null,
+        state: null,
+        html: change.pageKind === "document" ? template?.html || "" : "",
+        generation: "1",
+        offlineNew: true,
+      } as unknown as PageData;
+      if (change.pageKind === "database") {
+        const db = localDatabase(change, tr, template);
+        data.database = { page_id: change.pageId, fields: db.fields, views: db.views, version: 1, ...(db.settings ? { settings: db.settings as never } : {}), ...(db.recordLayout ? { recordLayout: db.recordLayout as never } : {}) };
+        data.rows = db.rows;
+      } else if (change.pageKind === "whiteboard") data.whiteboard = { state: "AAA=", generation: OFFLINE_BOARD_GENERATION };
+      else if (change.pageKind === "notebook" && change.sheetId) {
+        const ink = emptyInk();
+        const kept = keptInk(change.pageId);
+        if (kept[change.sheetId]) ink.pages[change.sheetId] = kept[change.sheetId];
+        data.notebook = { paper: fullPaper({}), sheets: [{ id: change.sheetId, position: 0, paper: {}, background: null, ink, version: 0 }], canEdit: true, outline: [] };
+      }
+      return data;
+    },
+    [],
+  );
   // For "Retry" on a page that failed to open.
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
@@ -1826,6 +1916,26 @@ export default function WorkspaceApp({
         const hash = pageLocationHash({ pageId: id });
         if (location.hash !== hash) location.hash = hash;
         if (!deviceOffline()) void flushOfflineDayRef.current(id);
+        return;
+      }
+      // A page made offline (#370): built here until the queue created it.
+      const localNew = localWaiting(id);
+      if (localNew) {
+        const local = localPageData(localNew.change, localNew.state);
+        openedLocal.current.add(id);
+        if (!keepNav) setMobile(false);
+        setScreen("page");
+        setPageId(id);
+        setComments(false);
+        setAiSummary(null);
+        setData(local);
+        html.current = local.html || "";
+        setStatus("Gespeichert");
+        setBusy(false);
+        setRevalidating(false);
+        navigationPending.current = false;
+        const hash = pageLocationHash(target || { pageId: id });
+        if (location.hash !== hash) location.hash = hash;
         return;
       }
       // Stale-while-revalidate (lib/swr-cache.ts): a page opened recently
@@ -1923,7 +2033,7 @@ export default function WorkspaceApp({
         }
       }
     },
-    [notifyError, readOfflineJournal, offlineDayData],
+    [notifyError, readOfflineJournal, offlineDayData, localWaiting, localPageData],
   );
   openPageRef.current = openPage;
   // A page in the other frame (the split view, #279): "In geteilter Ansicht
@@ -2687,8 +2797,9 @@ export default function WorkspaceApp({
     // Below this record of the parent database (#231).
     rowId: string | null = null,
   ) {
-    // A new page needs the server (#333): offline a note, no dialog.
-    if (needsConnection()) return;
+    // Offline the dialog opens too (#370): what can be made on the device
+    // is made there; the rest says it needs the connection when chosen.
+    if (rowId && needsConnection()) return;
     setParentRow(rowId);
     if (!boot.spaces.length) {
       setNewSpace(true);
@@ -2719,7 +2830,8 @@ export default function WorkspaceApp({
     parentId: string | null,
     typed: boolean,
   ) {
-    if (needsConnection()) return;
+    // Offline only built-in templates whose content comes with the app (#370).
+    if ((!("starter" in template) || !offlineTemplate(template.starter, catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[template.starter])) && needsConnection()) return;
     if (!typed || !newTitle.trim() || newTitle === suggestedTitle) {
       setNewTitle(template.name);
       setSuggestedTitle(template.name);
@@ -3417,7 +3529,7 @@ export default function WorkspaceApp({
               className={`page-nav ${active ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
               data-tree-id={p.id}
-              data-prefetch-page={p.id}
+              data-prefetch-page={p.offline ? undefined : p.id}
               role="treeitem"
               aria-level={level + 1}
               aria-selected={active}
@@ -3569,6 +3681,7 @@ export default function WorkspaceApp({
                 <span className="page-nav-label">{p.title}</span>
                 {place.today && <span className="nav-badge">{t("Heute", "Today")}</span>}
                 {p.locked === 1 && <Lock size={12} />}
+                {p.offline && <OfflineMark state={p.offline} />}
               </button>
               {canCreate && (
                 <button
@@ -3636,8 +3749,8 @@ export default function WorkspaceApp({
                   tabIndex={-1}
                   title={t("Unterseite hinzufügen", "Add sub-page")}
                   aria-label={t(`Unterseite in ${p.title} hinzufügen`, `Add sub-page in ${p.title}`)}
-                  // A journal's "+" offline opens today's entry (#333):
-                  // that works without a connection, a new page does not.
+                  // A journal's "+" offline opens today's entry (#333);
+                  // other pages get a sub-page made on the device (#370).
                   onClick={() => (p.kind === "journal" && deviceOffline() ? void openJournalToday(p.id) : addPage("document", p.id, p.space_id))}
                 >
                   <Plus size={14} />
@@ -3829,7 +3942,7 @@ export default function WorkspaceApp({
     ...(boot.user.isAdmin
       ? [{ label: t("Instanz einrichten", "Set up the instance"), keywords: t("admin status ampel mail sso sicherung backup ki https", "admin status ampel mail sso sicherung backup ki https traffic light setup backup ai"), icon: Compass, run: () => { setOnboardingStep("setup"); setOnboarding(true); } }]
       : []),
-    { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => !needsConnection() && setTemplates(true) },
+    { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
     {
       label: t("Startseite anpassen", "Customize home page"),
@@ -4056,7 +4169,7 @@ export default function WorkspaceApp({
   // The less used places at the sidebar's bottom: a row of symbols, on
   // phones behind "Mehr" (components/sidebar-tools.tsx).
   const sidebarTools: SidebarTool[] = [
-    { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => !needsConnection() && setTemplates(true) },
+    { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => setTemplates(true) },
     { id: "media", label: t("Medien", "Media"), icon: Images, selected: screen === "media", onSelect: () => go("media") },
     { id: "study", label: t("Lernen", "Study"), title: t("Lernkarten: fällige Karten", "Flashcards: due cards") + hint("study"), icon: Cards, selected: screen === "study", onSelect: () => go("study") },
     { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
@@ -4872,7 +4985,16 @@ export default function WorkspaceApp({
           </div>
           {/* Offline: a small icon instead of a banner over the page (#296). */}
           {!online && <OfflineStatus />}
-          {screen === "page" && data?.draft ? (
+          {screen === "page" && data?.offlineNew && localOpen ? (
+            <span className="topbar-note journal-draft-note">
+              <OfflineMark state={localOpen.state} />
+              {localOpen.state === "failed"
+                ? t("Nicht synchronisiert", "Not synced")
+                : online && offlineQueue.syncing
+                  ? t("Synchronisieren …", "Syncing …")
+                  : t("Noch nicht synchronisiert", "Not yet synced")}
+            </span>
+          ) : screen === "page" && data?.draft ? (
             <span className="topbar-note journal-draft-note" role="status">
               <span className="subtle-dot" />
               {data.draft.local
@@ -5432,7 +5554,7 @@ export default function WorkspaceApp({
                         size={iconPixels[data.page.icon_size || ""]}
                       />
                     </button>
-                    {editable && !data.page.cover && !data.encrypted && !data.draft && (
+                    {editable && !data.page.cover && !data.encrypted && !data.draft && !data.offlineNew && (
                       <button
                         className="add-cover text-button"
                         onClick={() => setCoverPicker(true)}
@@ -5475,7 +5597,24 @@ export default function WorkspaceApp({
                       </div>
                     )}
                   </div>
-                  {data.draft ? (
+                  {data.offlineNew ? (
+                    localOpen && (
+                      <OfflinePageNotice
+                        state={localOpen.state}
+                        reason={localOpen.reason}
+                        syncing={offlineQueue.syncing}
+                        online={online}
+                        kind={data.page.kind}
+                        html={readHtml}
+                        onRetry={() => offlineQueue.retry(data.page.id)}
+                        onDiscard={() => {
+                          offlineQueue.discard(data.page.id);
+                          go("home");
+                          setPageId(null);
+                        }}
+                      />
+                    )
+                  ) : data.draft ? (
                     <p className="journal-draft-hint" role="note">
                       {data.draft.local
                         ? t(
@@ -5503,18 +5642,23 @@ export default function WorkspaceApp({
                     />
                   )}
                   </>)}
+                  <OfflineFailedUploads
+                    failed={offlineQueue.failed.filter((f) => f.change.kind === "upload" && f.change.pageId === data.page.id && !f.cause)}
+                    onRetry={(fileId) => offlineQueue.retry(fileId)}
+                    onDiscard={(fileId) => offlineQueue.discardFile(fileId)}
+                  />
                   {/* A part that fails (offline, not in the copy) shows a
                       message instead of taking the app down (#47). */}
                   <ViewBoundary key={`view-${data.page.id}`}>
                   {data.page.kind === "database" ? (
                     <>
                       {!recordFull && offlineQueue.queue.some(
-                        (c) => c.pageId === data.page.id,
+                        (c) => c.pageId === data.page.id && c.kind !== "page" && c.kind !== "upload",
                       ) && (
                         <p className="offline-pending" role="status">
                           {
                             offlineQueue.queue.filter(
-                              (c) => c.pageId === data.page.id,
+                              (c) => c.pageId === data.page.id && c.kind !== "page" && c.kind !== "upload",
                             ).length
                           }{" "}
                           {t("Offline-Änderungen warten auf die Verbindung", "Offline changes are waiting for the connection")}
@@ -5636,7 +5780,20 @@ export default function WorkspaceApp({
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
                       draft={
-                        data.draft?.local
+                        openedLocal.current.has(data.page.id)
+                          ? {
+                              // Made offline (#370): created by the offline
+                              // queue; until then the editor keeps the text
+                              // here as for a server away.
+                              ensure: async () => {
+                                if (isPendingPage(data.page.id)) {
+                                  sendPendingNow();
+                                  throw new TypeError("Offline page not created yet");
+                                }
+                                return true;
+                              },
+                            }
+                          : data.draft?.local
                           ? {
                               // The day opens in its place once created; until
                               // then the editor waits as for a server away.
@@ -5644,9 +5801,10 @@ export default function WorkspaceApp({
                                 if (await flushOfflineDay(data.page.id)) return false;
                                 throw new TypeError("Offline draft not created yet");
                               },
+                              journal: true,
                             }
                           : data.draft
-                            ? { ensure: () => ensureDraftDay(data) }
+                            ? { ensure: () => ensureDraftDay(data), journal: true }
                             : undefined
                       }
                       generation={data.generation}
@@ -5696,7 +5854,7 @@ export default function WorkspaceApp({
                   {pageLibrary && !data.draft && !recordFull && <BookNext space={pageLibrary} pages={activePages} pageId={data.page.id} />}
                   {!data.draft && !recordFull && (<>
                   {/* While a record of this database is open its own panels show; the page's wait until it closes (no requests for what the dialog covers). */}
-                  {discoveryPanels && !recordView && !(data.page.kind === "database" && typeof location !== "undefined" && parsePageLocation(location.hash)?.rowId) && (
+                  {discoveryPanels && !recordView && !data.offlineNew && !(data.page.kind === "database" && typeof location !== "undefined" && parsePageLocation(location.hash)?.rowId) && (
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && !data.encrypted && (
@@ -5756,6 +5914,7 @@ export default function WorkspaceApp({
                         <button key={p.id} onClick={() => openPage(p.id)}>
                           <PageIcon name={p.icon} />
                           {p.title}
+                          {p.offline && <OfflineMark state={p.offline} />}
                           <ArrowUpRight />
                         </button>
                       ))}
@@ -6695,7 +6854,6 @@ export default function WorkspaceApp({
           setSuggestedTitle(name);
         }}
         onTemplates={() => {
-          if (needsConnection()) return;
           setTemplatesFor({ spaceId, parent });
           setCreate(false);
           setTemplates(true);
@@ -6720,8 +6878,53 @@ export default function WorkspaceApp({
         onError={notifyError}
         onSubmit={async (e) => {
           e.preventDefault();
-          // Gone offline while the dialog was open (#333): the note in it.
-          if (needsConnection()) return;
+          // Offline – or below a page made offline that the server does not
+          // have yet – the page is made on this device and created once the
+          // connection is back (#370). Not offline: journals, dashboards,
+          // workflows, saved templates, AI databases, PDF notebooks, pages
+          // of encrypted spaces: they need the server, the note says so.
+          const space = boot.spaces.find((s) => s.id === spaceId) as { encrypted?: number } | undefined;
+          if (deviceOffline() || (parent && isPendingPage(parent))) {
+            const catalog = catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en");
+            const starter = starterTemplate ? catalog[starterTemplate] : undefined;
+            const kind = starter?.kind ?? newKind;
+            const local =
+              isOfflinePageKind(kind) &&
+              !savedTemplate &&
+              !space?.encrypted &&
+              !parentRow &&
+              !(starterTemplate && !offlineTemplate(starterTemplate, starter)) &&
+              !(kind === "notebook" && notebookPdf) &&
+              !(kind === "database" && !starterTemplate && (aiCreate || databaseChoice.startsWith("template:")));
+            if (!local) {
+              showNotice(offlineNoteText());
+              return;
+            }
+            const id = crypto.randomUUID();
+            offlineQueue.addPage(
+              pageChange({
+                id,
+                workspaceId: boot.workspace.id,
+                spaceId,
+                parentId: parent,
+                kind,
+                title: newTitle.trim() || starter?.name || t("Ohne Titel", "Untitled"),
+                databaseKind: kind === "database" && !starterTemplate ? databaseChoice : undefined,
+                starter: starterTemplate && starter ? { key: starterTemplate, template: starter } : undefined,
+                newId: () => crypto.randomUUID(),
+                key: newIdempotencyKey(),
+                at: Date.now(),
+              }),
+            );
+            if (kind === "database" && !starterTemplate) rememberDatabaseKind(databaseChoice);
+            setNotebookPdf(null);
+            setCreate(false);
+            setAiCreate(false);
+            setAiProposal(null);
+            focusTitleOf.current = id;
+            void openPage(id);
+            return;
+          }
           // A failure shows inside this dialog, with "Retry" submitting again.
           const form = e.currentTarget;
           // Encrypted titles: the page starts with the placeholder, then
@@ -7239,6 +7442,9 @@ export default function WorkspaceApp({
               .map(([templateKey, template]) => (
                 <button
                   key={templateKey}
+                  // Offline: templates whose content comes with the app (#370).
+                  disabled={!online && !offlineTemplate(templateKey, template)}
+                  title={!online && !offlineTemplate(templateKey, template) ? offlineNoteText() : undefined}
                   onClick={() => {
                     setTemplates(false);
                     // From the "New page" dialog the page keeps its place
@@ -7265,6 +7471,11 @@ export default function WorkspaceApp({
           <Storefront aria-hidden /> {t("Mehr Vorlagen im Marketplace", "More templates in the marketplace")}
           <ArrowSquareOut aria-hidden />
         </MarketplaceLink>
+        {!online ? (
+          <p className="muted" role="note">
+            {t("Gespeicherte Vorlagen und der Marketplace gehen nur mit Verbindung – du bist gerade offline.", "Saved templates and the marketplace need a connection – you're offline right now.")}
+          </p>
+        ) : (
         <SavedTemplates
           workspaceId={boot.workspace.id}
           canCreate={canCreate}
@@ -7287,6 +7498,7 @@ export default function WorkspaceApp({
             setTemplatesFor(null);
           }}
         />
+        )}
       </Modal>
       <Modal
         open={templateName}

@@ -96,6 +96,9 @@ export type Page = {
   journal_date?: string | null;
   // 1 for the content of a synced block (not listed in the page tree).
   synced?: number;
+  // Only in the browser: made offline and not yet on the server, or
+  // refused by it (#370, lib/offline-create.ts).
+  offline?: "pending" | "failed";
   // Who looks after the page and when it is due for a review (YYYY-MM-DD),
   // repeating every N days (lib/page-review.ts).
   owner_id?: string | null;

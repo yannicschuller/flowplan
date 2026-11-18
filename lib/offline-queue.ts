@@ -45,7 +45,49 @@ export type QueuedChange = { key?: string } & (
       text: string;
       at: number;
     }
+  // A page made offline (#370, lib/offline-create.ts): created with this
+  // id once online, then its content (the editor's, the board's or the
+  // notebook's, kept on the device) is sent.
+  | OfflinePageChange
+  // A picture or file added offline: the blob waits in IndexedDB
+  // (components/offline-uploads.ts) and is uploaded with this id.
+  | OfflineUploadChange
 );
+export type OfflinePageKind = "document" | "database" | "whiteboard" | "notebook";
+export type OfflinePageChange = {
+  id: string;
+  kind: "page";
+  pageId: string;
+  workspaceId: string;
+  spaceId: string;
+  parentId: string | null;
+  pageKind: OfflinePageKind;
+  title: string;
+  icon: string;
+  fullWidth?: boolean;
+  // Databases: what they start as (lib/database-setup.ts) or a built-in
+  // template with the ids of its example records.
+  databaseKind?: string;
+  starterTemplate?: string;
+  rowIds?: string[];
+  // Notebooks: the first sheet, drawn on offline.
+  sheetId?: string;
+  // The page exists on the server; its uploads or content still wait.
+  created?: boolean;
+  at: number;
+  key?: string;
+};
+export type OfflineUploadChange = {
+  id: string;
+  kind: "upload";
+  pageId: string;
+  fileId: string;
+  name: string;
+  type: string;
+  size: number;
+  at: number;
+  key?: string;
+};
 export type Conflict = {
   change: Extract<QueuedChange, { kind: "update" }>;
   // Fields changed on both sides with the current values, or null when the
@@ -91,7 +133,7 @@ export function applyQueue(
       ];
     } else if (change.kind === "delete")
       result = result.filter((r) => r.id !== change.rowId);
-    else if (change.kind === "capture") continue;
+    else if (change.kind === "capture" || change.kind === "page" || change.kind === "upload") continue;
     else
       result = result.map((r) =>
         r.id === change.rowId

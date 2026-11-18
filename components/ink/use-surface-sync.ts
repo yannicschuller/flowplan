@@ -12,6 +12,8 @@ import { mergePage } from "@/lib/ink/merge";
 import { emptyInk, parseInk, type InkDoc, type InkItem } from "@/lib/ink/model";
 import { recognitionAvailable, recognitionId, recognitionRequest, recognizeInk } from "@/lib/ink/recognition";
 import type { InkEditor } from "./use-ink-editor";
+import { isPendingPage } from "@/lib/offline-pending";
+import { keepInk } from "../offline-uploads";
 
 export type SurfaceStatus = "saved" | "dirty" | "saving" | "error";
 type Saved = { version: number; items: InkItem[] };
@@ -145,6 +147,24 @@ export function useSurfaceSync({
     if (!dirty.length) {
       if (!inflight.current.size) setStatus("saved");
       return true;
+    }
+    // A notebook made offline (#370): its handwriting stays on this device
+    // until the offline queue created the page and sends it along.
+    if (isPendingPage(live.current.pageId) && !live.current.urls) {
+      try {
+        for (const surface of dirty) {
+          const items = live.current.editor.docRef.current.pages[surface] || NONE;
+          keepInk(live.current.pageId, surface, items);
+          saved.current.set(surface, { version: 0, items });
+        }
+        setError("");
+        setStatus("saved");
+        return true;
+      } catch (e) {
+        setError((e as Error).message);
+        setStatus("error");
+        return false;
+      }
     }
     setStatus("saving");
     try {

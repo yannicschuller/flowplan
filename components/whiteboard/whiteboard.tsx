@@ -13,6 +13,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import * as Y from "yjs";
+import { IndexeddbPersistence } from "y-indexeddb";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
@@ -79,6 +80,8 @@ import {
   ChalkboardTeacher,
 } from "@phosphor-icons/react";
 import { Modal, api, requireConnection, sessionEnded } from "../ui";
+import { isPendingPage } from "@/lib/offline-pending";
+import { boardStore, OFFLINE_BOARD_GENERATION } from "../offline-uploads";
 import { shareBoardUrl, type ShareGuest } from "../share-guest";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
 import {
@@ -341,6 +344,18 @@ export default function Whiteboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId, generation]);
   const itemsMap = useMemo(() => doc.getMap<Y.Map<unknown>>("items"), [doc]);
+  // A board made offline (#370): kept on this device (IndexedDB) until the
+  // offline queue created it and sent its content; the board then reloads
+  // with the server's version (another generation).
+  const localBoard = generation === OFFLINE_BOARD_GENERATION && !guest;
+  useEffect(() => {
+    if (!localBoard || !userId) return;
+    // Not loaded on demand: offline the code must be in the board's own chunk.
+    const persistence = new IndexeddbPersistence(boardStore(userId, pageId), doc);
+    return () => {
+      void persistence.destroy();
+    };
+  }, [localBoard, userId, pageId, doc]);
   const read = useCallback(() => {
     const list: WhiteboardItem[] = [];
     itemsMap.forEach((value, key) => {
@@ -565,7 +580,8 @@ export default function Whiteboard({
   // Exchange with the server like documents do; cursors travel along.
   const sync = useCallback(async () => {
     // Signed out: the board's changes wait here until the next sign-in.
-    if (inflight.current || sessionEnded()) return;
+    // Made offline and not created yet: nothing to exchange.
+    if (inflight.current || sessionEnded() || isPendingPage(pageId)) return;
     inflight.current = true;
     const send = editable && dirty.current;
     const guestUrl = guest ? shareBoardUrl(guest) : null;
@@ -620,7 +636,7 @@ export default function Whiteboard({
       if (dirty.current || signaled.current || !boardLive.current || Date.now() - lastExchange.current > 20_000) void sync();
     }, 900);
     const leave = () => {
-      if (!editable || !dirty.current) return;
+      if (!editable || !dirty.current || isPendingPage(pageId)) return;
       const body = JSON.stringify({
         action: guest ? "sync" : "whiteboard.sync",
         pageId,

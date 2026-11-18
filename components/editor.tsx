@@ -218,7 +218,8 @@ import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { WorkflowButtonView } from "./workflow-button";
-import { api, apiIfChanged, isTransient, Modal, needsConnection, PageIcon, requireConnection, sessionEnded } from "./ui";
+import { api, apiIfChanged, deviceOffline, isTransient, Modal, needsConnection, PageIcon, requireConnection, sessionEnded, showNotice } from "./ui";
+import { hasPendingUploads, isPendingPage, offlineUploader, onPendingChange } from "@/lib/offline-pending";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
@@ -324,7 +325,10 @@ export default function DocumentEditor({
   // A journal day that is only a draft (lib/journal-days.ts): nothing is
   // stored until the person changes something; then ensure() creates the
   // day under this page id and generation (false: it opens another page).
-  draft?: { ensure: () => Promise<boolean> };
+  // A page made offline (#370) is a draft too: ensure() waits until the
+  // offline queue created it. `journal`: a journal day (files need the
+  // server there).
+  draft?: { ensure: () => Promise<boolean>; journal?: boolean };
   // "Als Markdown bearbeiten": the page as Markdown instead of the editor.
   source?: boolean;
   // Why the source can only be read (locked page …), if so.
@@ -1337,6 +1341,9 @@ export default function DocumentEditor({
       return;
     // A draft day: nothing to poll; created by the first change the person made.
     if (!created.current && !(dirty.current && editable && changedByUser.current)) return;
+    // Pictures added offline are uploaded first (components/offline-queue.tsx):
+    // the shared document never points at a file the server lacks (#370).
+    if (hasPendingUploads(pageId)) return;
     inflight.current = true;
     try {
       if (!created.current) {
@@ -1422,6 +1429,21 @@ export default function DocumentEditor({
     }, 80);
   };
   useEffect(() => () => clearTimeout(saveTimer.current), []);
+  // Uploads of this page done, or the page created (#370): what waited goes out.
+  useEffect(
+    () =>
+      onPendingChange(() => {
+        if (hasPendingUploads(pageId) || isPendingPage(pageId)) return;
+        // A page made offline is on the server now: the editor goes on as
+        // for any page (live channel, polling).
+        if (!created.current && draftRef.current && !draftRef.current.journal)
+          void ensureCreated()
+            .then((ok) => ok && saveSoon.current())
+            .catch(() => {});
+        else if (dirty.current) saveSoon.current();
+      }),
+    [pageId, ensureCreated],
+  );
   // Push channel: changes and cursor moves of the others arrive at once.
   useEffect(() => {
     if (typeof EventSource === "undefined" || !liveOn) return;
@@ -1493,7 +1515,7 @@ export default function DocumentEditor({
   );
   const persistOnLeave = useCallback(() => {
     // A draft keeps its text on this device (IndexedDB) until it is created.
-    if (!editable || !ready.current || !dirty.current || !navigator.onLine || !created.current || sessionEnded())
+    if (!editable || !ready.current || !dirty.current || !navigator.onLine || !created.current || sessionEnded() || hasPendingUploads(pageId))
       return;
     const body = JSON.stringify({
       action: rowId ? "row.document.sync" : "document.sync",
@@ -1680,24 +1702,48 @@ export default function DocumentEditor({
         /mxfile|mxGraphModel/.test(await original.slice(0, 1_000_000).text()))
     )
       return importDrawing(original);
-    // Files and pictures need the server (#333): offline a note says so.
-    if (needsConnection()) return;
+    // Offline (or in a page made offline that is not on the server yet,
+    // #370): the file waits on this device – up to 25 MB, 200 MB in all –
+    // and is uploaded once the connection is back; the document refers to
+    // it by the id it will have. A journal draft and bigger files need the
+    // server (#333): a note says so.
+    const later = deviceOffline() || isPendingPage(pageId);
+    const queue = later && !draftRef.current?.journal ? offlineUploader() : null;
+    if (later && !queue && needsConnection()) return;
     // A file in a draft day creates the day first.
-    try {
-      if (!(await ensureCreated())) return;
-    } catch (error) {
-      onError((error as Error).message);
-      return;
-    }
+    if (!queue)
+      try {
+        if (!(await ensureCreated())) return;
+      } catch (error) {
+        onError((error as Error).message);
+        return;
+      }
     // Photos shrink before upload; the alt text keeps the original name.
     const file = await compressImage(original);
-    const form = new FormData();
-    form.set("pageId", pageId);
-    form.set("file", file);
     try {
-      const r = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
-      const data = await r.json();
-      if (!r.ok) throw new Error(serverMessage(data.error));
+      let data: { url: string; placeholder?: Parameters<typeof primePlaceholder>[1] };
+      if (queue) {
+        const kept = await queue(pageId, file);
+        if ("refused" in kept) {
+          showNotice(
+            kept.refused === "file"
+              ? t("Dateien über 25 MB gehen nur mit Verbindung – du bist gerade offline.", "Files over 25 MB need a connection – you're offline right now.")
+              : kept.refused === "total"
+                ? t("Auf diesem Gerät warten schon 200 MB an Dateien – weitere gehen erst mit Verbindung.", "200 MB of files are already waiting on this device – more need a connection.")
+                : t("Dieses Gerät kann die Datei nicht für später aufbewahren – sie geht nur mit Verbindung.", "This device cannot keep the file for later – it needs a connection."),
+          );
+          return;
+        }
+        data = { url: kept.url };
+      } else {
+        const form = new FormData();
+        form.set("pageId", pageId);
+        form.set("file", file);
+        const r = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
+        const answer = await r.json();
+        if (!r.ok) throw new Error(serverMessage(answer.error));
+        data = answer;
+      }
       primePlaceholder(data.url, data.placeholder);
       if (file.type.startsWith("image/"))
         editor

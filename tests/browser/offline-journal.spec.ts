@@ -6,7 +6,7 @@ import { test, expect, type Page, type TestInfo } from "@playwright/test";
 // Now today's entry opens offline – the stored page, or an entry kept on
 // this device that creates the day with its text once the connection is
 // back –, a new record waits in the offline queue, and what needs the
-// server (a new page) says so in a calm note.
+// server (a new journal) says so in a calm note.
 const origin = () => process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const localDay = () => {
   const d = new Date();
@@ -69,11 +69,16 @@ test("offline: today's journal entry opens and is created later, records wait, n
   await expect(page.locator(".title-cell")).toHaveCount(1);
   await expect(page.locator(".offline-pending")).toContainText("1 Offline-Änderung");
 
-  // A new page needs the server: a calm note, no dialog, no error.
+  // A new journal needs the server: a calm note in the dialog, no error
+  // (documents, databases, boards and notebooks are made offline, #370).
   await openNavigation(page, info);
   await page.getByTitle(`Seite in ${boot.spaces[0].name} hinzufügen`).first().click();
-  await expect(page.locator(".toast-info")).toContainText("Geht nur mit Verbindung – du bist gerade offline.");
-  await expect(page.getByRole("dialog", { name: "Neue Seite" })).toHaveCount(0);
+  const newPage = page.getByRole("dialog", { name: "Neue Seite" });
+  await newPage.getByRole("radio", { name: "Journal" }).click();
+  await newPage.getByRole("button", { name: "Seite erstellen" }).click();
+  await expect(newPage).toContainText("Geht nur mit Verbindung – du bist gerade offline.");
+  await newPage.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(newPage).toHaveCount(0);
   await expect(page.locator(".toast-error")).toHaveCount(0);
   if (mobile(info) && (await page.locator(".topbar").getByRole("button", { name: "Navigation schließen" }).isVisible().catch(() => false)))
     await page.keyboard.press("Escape");
