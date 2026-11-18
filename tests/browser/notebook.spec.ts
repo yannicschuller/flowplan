@@ -1,7 +1,10 @@
 import { test, expect, type CDPSession, type Page } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { readFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
 import { samplePdf } from "../helpers/pdf";
+
+keepInstanceAi();
 
 // Notebooks (components/notebook) and drawing blocks (components/ink/
 // draw-block-editor.tsx): sheets, pen input from the browser itself
@@ -47,9 +50,10 @@ async function setup(page: Page) {
     return response.json();
   };
   await command({ action: "profile.onboarded" });
-  // No AI on the server, whatever specs before this one switched on (the AI
-  // specs leave theirs on): with the instance's AI, "In Text umwandeln"
-  // opens the AI dialog instead of the device's recognition.
+  // No AI on the server (the AI specs restore theirs, tests/browser/
+  // instance-ai.ts, but an instance may have it on): with the instance's
+  // AI, "In Text umwandeln" opens the AI dialog instead of the device's
+  // recognition.
   await command({ action: "admin.ai", settings: { enabled: false } });
   const create = async (title: string, kind: string) =>
     (await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, kind })).id as string;

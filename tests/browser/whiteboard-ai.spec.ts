@@ -1,11 +1,14 @@
 import { boardInsert } from "./whiteboard-ui";
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import * as Y from "yjs";
+
+keepInstanceAi();
 
 // AI on whiteboards (components/whiteboard/ai-panel.tsx) against a mock
 // OpenAI-compatible provider: notes grouped by theme (one undo step), a

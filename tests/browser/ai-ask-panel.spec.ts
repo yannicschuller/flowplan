@@ -1,9 +1,12 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { keepInstanceAi } from "./instance-ai";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+
+keepInstanceAi();
 
 // "KI fragen" as a side panel (#59, components/ai-ask.tsx) against a mock
 // OpenAI-compatible provider that streams its answer slowly: no dialog and
