@@ -7,7 +7,10 @@
 // block's own Done button and Escape end drawing; while that button is out
 // of sight (scrolled away), a small "Done" pill at the top of the window (at
 // the bottom when the block is up there) does. A mouse click on the shield
-// ends drawing too, as a click outside does without it. The shield lies in
+// ends drawing too, as a click outside does without it. With the block
+// (almost) out of sight – flung away by a swipe with momentum – there is
+// nothing to protect: the shield lets touches through so the page scrolls
+// back to it, and the pill's Done stays (#322). The shield lies in
 // <body>, outside the document's text: nothing on it is editable.
 // Placed through CSS variables on the shield (as the outline popover does);
 // modals stay above it.
@@ -27,6 +30,8 @@ const PARTS = ".ink-toolbar, .ink-menu, .ink-ui";
 const PALM = 40;
 // A press this long (ms) on the pill is a resting hand, not a tap.
 const LONG_PRESS = 700;
+// Less of the block than this (CSS pixels) on screen counts as away.
+const AWAY = 48;
 
 // The hint comes with the first shield of the session only.
 let hinted = false;
@@ -76,6 +81,10 @@ export function InkTouchShield({ block: blockRef, onDone }: { block: RefObject<H
       const roomTop = top >= PILL_ROOM,
         roomBottom = vh - bottom >= PILL_ROOM;
       root.classList.toggle("is-pill-bottom", !roomTop && roomBottom);
+      // Out of sight: touches scroll the page again (#322).
+      const seenHeight = Math.min(vh, box.bottom) - Math.max(0, box.top),
+        seenWidth = Math.min(vw, box.right) - Math.max(0, box.left);
+      root.classList.toggle("is-away", seenHeight < AWAY || seenWidth < AWAY);
     };
     const place = () => {
       cancelAnimationFrame(frame);
@@ -133,10 +142,12 @@ export function InkTouchShield({ block: blockRef, onDone }: { block: RefObject<H
     if (!mounted || !root) return;
     const panels = [...root.querySelectorAll<HTMLElement>(".ink-shield-panel")];
     const cancel = (event: Event) => {
+      if (root.classList.contains("is-away")) return;
       if (event.cancelable) event.preventDefault();
       event.stopPropagation();
     };
     const pointer = (event: PointerEvent) => {
+      if (root.classList.contains("is-away")) return;
       cancel(event);
       if (event.pointerType === "mouse" && event.button === 0) done.current();
     };

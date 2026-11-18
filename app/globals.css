@@ -34137,6 +34137,15 @@ label.ws-search input {
 .ink-shield.is-done-hidden .ink-shield-done {
   display: none;
 }
+/* The block is out of sight (#322): touches scroll the page back to it,
+   and the pill's Done is the way out. */
+.ink-shield.is-away .ink-shield-panel {
+  pointer-events: none;
+  touch-action: auto;
+}
+.ink-shield.is-away .ink-shield-done {
+  display: flex;
+}
 .ink-shield-done {
   display: flex;
   align-items: center;

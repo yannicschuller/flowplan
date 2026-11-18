@@ -173,6 +173,24 @@ test("touches outside an active drawing block are ignored until Done", async ({ 
   await expect(pill).toBeHidden();
   await scroller.evaluate((el) => (el.scrollTop += el.querySelector(".ink-block")!.getBoundingClientRect().top - el.getBoundingClientRect().top + 20));
   await expect(pill).toBeVisible();
+  // #322: flung fully out of sight (a swipe with momentum), the shield lets
+  // touches through – a swipe scrolls the page back – and the block stays
+  // in drawing; back on screen, the shield swallows touches again.
+  await scroller.evaluate((el) => (el.scrollTop += el.querySelector(".ink-block")!.getBoundingClientRect().bottom - el.getBoundingClientRect().top + 200));
+  await expect(shield).toHaveClass(/is-away/);
+  await expect(pill).toBeVisible();
+  const away = await scroller.evaluate((el) => el.scrollTop);
+  const mid = (await scroller.boundingBox())!;
+  await swipe(cdp, page, mid.x + mid.width / 2, mid.y + 100, mid.y + 400);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeLessThan(away);
+  await expect(block).toHaveClass(/is-active/);
+  await scroller.evaluate((el) => (el.scrollTop = 0));
+  await expect(shield).not.toHaveClass(/is-away/);
+  const still = await scroller.evaluate((el) => el.scrollTop);
+  await swipe(cdp, page, box.x + box.width / 2, below + 300, below);
+  expect(await scroller.evaluate((el) => el.scrollTop)).toBe(still);
+  await scroller.evaluate((el) => (el.scrollTop += el.querySelector(".ink-block")!.getBoundingClientRect().top - el.getBoundingClientRect().top + 20));
+  await expect(pill).toBeVisible();
   await pill.tap();
   await expect(shield).toHaveCount(0);
   await expect(block).not.toHaveClass(/is-active/);
