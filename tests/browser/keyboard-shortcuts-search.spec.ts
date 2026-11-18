@@ -53,11 +53,11 @@ test("the search field filters the shortcuts by name and keys; Escape clears it 
 test("own combinations are found by their keys", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Desktop layout.");
   await page.request.post("/api/auth/demo", { headers: { origin } });
-  await page.request.post("/api/command", { headers: { origin }, data: { action: "shortcuts.save", bindings: { theme: ["Mod+Alt+G"] } } });
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "shortcuts.save", bindings: { theme: ["Mod+Alt+J"] } } });
   try {
     const dialog = await openShortcuts(page);
     const search = dialog.getByRole("searchbox", { name: "Tastenkürzel durchsuchen" });
-    await search.fill("ctrl alt g");
+    await search.fill("ctrl alt j");
     const rows = dialog.locator(".shortcut-row");
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toHaveAttribute("data-action", "theme");

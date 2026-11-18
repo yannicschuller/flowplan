@@ -7,7 +7,7 @@ import { join } from "node:path";
 // button in the drawer's profile row and open as a list in a sheet; wider
 // windows keep the row of symbols (#185, components/sidebar-tools.tsx).
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
-const PLACES = ["Vorlagen", "Medien", "Tags", "Graph", "Papierkorb", "Einstellungen", "Tastenkürzel"];
+const PLACES = ["Vorlagen", "Medien", "Lernen", "Tags", "Graph", "Papierkorb", "Einstellungen", "Tastenkürzel"];
 
 async function signIn(page: Page) {
   await page.request.post("/api/auth/demo", { headers: { origin } });
