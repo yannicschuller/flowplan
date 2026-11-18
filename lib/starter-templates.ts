@@ -13,7 +13,9 @@ import { catalogRows } from "./template-rows";
 export const starterTemplates = templateCatalog;
 export type StarterTemplateKey = TemplateKey;
 
-export async function applyStarterTemplate(pageId: string, userId: string, key: StarterTemplateKey) {
+// `rowIds`: the ids of the example records, when the device chose them
+// (a page made offline, #370 – lib/client-ids.ts claimRowIds).
+export async function applyStarterTemplate(pageId: string, userId: string, key: StarterTemplateKey, rowIds?: string[]) {
   const template = catalogFor(contentLocale())[key];
   await run("UPDATE pages SET icon=? WHERE id=?", template.icon, pageId);
   if (template.fullWidth) await run("UPDATE pages SET full_width=1 WHERE id=?", pageId);
@@ -33,7 +35,7 @@ export async function applyStarterTemplate(pageId: string, userId: string, key: 
   await forEachAsync(catalogRows(key, template, contentLocale()), async (row, i) =>
     await run(
       "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
-      id(),
+      rowIds?.[i] ?? id(),
       pageId,
       JSON.stringify(resolveCatalogDates(row.cells)),
       i,

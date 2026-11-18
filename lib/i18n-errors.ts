@@ -614,6 +614,7 @@ const exact: Record<string, string> = {
   "Doppelte Eigenschaft oder Ansicht.": "Duplicate property or view.",
   "Datensatz zu groß.": "Record too large.",
   "Diese Kennung ist bereits vergeben.": "This ID is already taken.",
+  "Die Kennungen der Einträge passen nicht zur Vorlage.": "The record IDs do not match the template.",
   "Datensatz fehlt.": "Record missing.",
   "Datensatz wurde geändert. Bitte neu laden.": "The record was changed. Please reload.",
   "Dokumentinhalt über den Dokumenteditor bearbeiten.": "Edit document content in the document editor.",

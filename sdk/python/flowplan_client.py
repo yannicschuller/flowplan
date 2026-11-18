@@ -1161,6 +1161,9 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "templateId": str,  # A saved page template of the workspace
     "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`
     "starterTemplate": str,  # A built-in starter template key
+    "pageId": str,  # The new page's id, chosen by the client (pages made offline): a UUID nobody uses yet. Sent again by the same person for the same space, the existing page answers and nothing is created twice
+    "rowIds": list[str],  # With `starterTemplate` of a database: the ids of its example records, one per record
+    "sheetId": str,  # Notebooks: the id of the first sheet
 }, total=False)
 
 CommandPageCreateResult = TypedDict("CommandPageCreateResult", {
@@ -2351,6 +2354,7 @@ UploadFileForm = TypedDict("UploadFileForm", {
     "pageId": Required[str],
     "file": Required[FormFile],
     "purpose": Literal["cover", "e2ee"],
+    "fileId": str,
 }, total=False)
 
 ImagePlaceholdersQuery = TypedDict("ImagePlaceholdersQuery", {

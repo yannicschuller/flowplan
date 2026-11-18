@@ -242,6 +242,8 @@ import { duplicatePageTree } from "./page-tree";
 import { applyStarterTemplate, starterTemplates } from "./starter-templates";
 import { catalogFor } from "./template-catalogs";
 import { templateKeys } from "./template-catalog";
+import { catalogRows } from "./template-rows";
+import { claimPageId, claimRowIds, claimSheetId } from "./client-ids";
 import {
   requireRow,
   rowTemplates,
@@ -1539,6 +1541,19 @@ async function runCommand(
           typeof b.starterTemplate === "string" && Object.hasOwn(starterTemplates, b.starterTemplate)
             ? catalogFor(contentLocale())[b.starterTemplate]?.name
             : undefined;
+        // Made offline (#370): the device's id, so what was made in the
+        // page meanwhile refers to it; the same page sent again is created
+        // once (lib/client-ids.ts).
+        const claimed = b.pageId !== undefined ? await claimPageId(user, wid(), sid, b.pageId) : null;
+        if (claimed?.existing) {
+          result = { id: claimed.id };
+          break;
+        }
+        const exampleRows =
+          b.rowIds !== undefined && typeof b.starterTemplate === "string" && Object.hasOwn(starterTemplates, b.starterTemplate)
+            ? await claimRowIds(b.rowIds, catalogRows(b.starterTemplate, catalogFor(contentLocale())[b.starterTemplate], contentLocale()).length)
+            : undefined;
+        const firstSheet = kind === "notebook" && b.sheetId !== undefined ? await claimSheetId(b.sheetId) : undefined;
         const created = await createPage(
           wid(),
           sid,
@@ -1547,7 +1562,9 @@ async function runCommand(
           kind,
           parent,
           b.aiDatabase !== undefined ? "empty" : z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
+          claimed?.id,
         );
+        if (firstSheet) await run("UPDATE notebook_sheets SET id=? WHERE page_id=?", firstSheet, created);
         if (parentRow) await run("UPDATE pages SET parent_row_id=? WHERE id=?", parentRow, created);
         // A new workflow runs in the creator's time zone (their browser's):
         // "täglich · 23:55" and "today" mean their 23:55 and their day, not UTC's.
@@ -1575,7 +1592,7 @@ async function runCommand(
           const key = z.enum(templateKeys).parse(b.starterTemplate);
           if (starterTemplates[key].kind !== kind)
             throw new HttpError(400, "Vorlage passt nicht zum Seitentyp.");
-          await applyStarterTemplate(created, user.id, key);
+          await applyStarterTemplate(created, user.id, key, exampleRows);
         }
         await afterEncryptedPageCreate(created, b);
         await pageCreatedEvent(created, user.id);

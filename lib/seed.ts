@@ -1,118 +1,16 @@
 import { createWorkflowRecord } from "./workflows/store";
 import { createNotebook } from "./notebook";
 import { id, run, all, one, transaction } from "./db";
-import type { Field, View } from "./types";
 import { ct } from "./content-locale";
-import { contactsSetup } from "./contacts";
-import { studySettingsSchema } from "./study-schema";
+import { databaseKinds, databaseSetup as setupDatabase, defaultFields as setupDefaultFields, defaultViews as setupDefaultViews, flashcardsSetup as setupFlashcards, type DatabaseKind } from "./database-setup";
 import { forEachAsync } from "./each-async";
-// A new database starts as a task list, in the language of the request.
-export const defaultFields = (): Field[] => [
-  { id: "title", name: ct("Aufgabe", "Task"), type: "text" },
-  {
-    id: "status",
-    name: "Status",
-    type: "select",
-    options: [ct("Nicht begonnen", "Not started"), ct("In Arbeit", "In progress"), ct("Erledigt", "Done")],
-  },
-  {
-    id: "priority",
-    name: ct("Priorität", "Priority"),
-    type: "select",
-    options: [ct("Hoch", "High"), ct("Mittel", "Medium"), ct("Niedrig", "Low")],
-  },
-  { id: "date", name: ct("Fällig am", "Due"), type: "date" },
-  { id: "assignee", name: ct("Verantwortlich", "Assignee"), type: "person" },
-  {
-    id: "tags",
-    name: "Tags",
-    type: "multiselect",
-    options: ["Design", ct("Produkt", "Product"), ct("Entwicklung", "Engineering")],
-  },
-];
-export const defaultViews = (): View[] => [
-  { id: "table", name: ct("Alle Aufgaben", "All tasks"), type: "table", filters: [], sorts: [] },
-  {
-    id: "board",
-    name: "Board",
-    type: "board",
-    filters: [],
-    sorts: [],
-    groupBy: "status",
-  },
-  {
-    id: "calendar",
-    name: ct("Kalender", "Calendar"),
-    type: "calendar",
-    filters: [],
-    sorts: [],
-    dateField: "date",
-  },
-  { id: "gallery", name: ct("Galerie", "Gallery"), type: "gallery", filters: [], sorts: [] },
-  {
-    id: "timeline",
-    name: "Timeline",
-    type: "timeline",
-    filters: [],
-    sorts: [],
-    dateField: "date",
-  },
-  { id: "list", name: ct("Liste", "List"), type: "list", filters: [], sorts: [] },
-  { id: "form", name: ct("Formular", "Form"), type: "form", filters: [], sorts: [] },
-];
-// What a new database starts as: a task list, a collection of documents
-// (records open as a full page), contacts with a profile card
-// (lib/contacts.ts), flashcards (a deck with the view "Lernen",
-// docs/specs/flashcards.md) or only a title.
-export const databaseKinds = ["tasks", "documents", "contacts", "empty", "flashcards"] as const;
-export type DatabaseKind = (typeof databaseKinds)[number];
-// Front (the title), back, tags and the card type (its options read by
-// name, lib/study-schema.ts typeOfOption); the card mapping in settings.study.
-export function flashcardsSetup() {
-  return {
-    fields: [
-      { id: "title", name: ct("Vorderseite", "Front"), type: "text" },
-      { id: "back", name: ct("Rückseite", "Back"), type: "text" },
-      { id: "tags", name: "Tags", type: "multiselect", options: [] },
-      {
-        id: "type",
-        name: ct("Kartentyp", "Card type"),
-        type: "select",
-        options: [ct("Vorder-/Rückseite", "Front/back"), ct("Lückentext", "Cloze"), ct("Antwort eintippen", "Type the answer"), ct("Multiple Choice", "Multiple choice"), ct("Bildverdeckung", "Image occlusion")],
-      },
-    ] as Field[],
-    views: [
-      { id: "study", name: ct("Lernen", "Study"), type: "study", filters: [], sorts: [], default: true },
-      { id: "table", name: ct("Alle Karten", "All cards"), type: "table", filters: [], sorts: [] },
-    ] as View[],
-    settings: { study: studySettingsSchema.parse({ version: 1, type: { field: "type" }, front: { field: "title" }, back: { field: "back" }, tags: { field: "tags" } }) },
-  };
-}
-export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: View[]; recordLayout?: object; settings?: object } {
-  if (kind === "flashcards") return flashcardsSetup();
-  if (kind === "documents")
-    return {
-      fields: [
-        { id: "title", name: ct("Titel", "Title"), type: "text" },
-        { id: "tags", name: "Tags", type: "multiselect", options: [] },
-        { id: "created", name: ct("Erstellt", "Created"), type: "created_at" },
-        { id: "edited", name: ct("Bearbeitet", "Edited"), type: "updated_at" },
-      ],
-      views: [
-        { id: "list", name: ct("Alle Dokumente", "All documents"), type: "list", filters: [], sorts: [{ field: "edited", direction: "desc" }] },
-        { id: "gallery", name: ct("Galerie", "Gallery"), type: "gallery", filters: [], sorts: [] },
-        { id: "table", name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] },
-      ],
-      recordLayout: { open: "full", properties: "top", hideEmpty: true, hidden: [] },
-    };
-  if (kind === "contacts") return contactsSetup();
-  if (kind === "empty")
-    return {
-      fields: [{ id: "title", name: "Name", type: "text" }],
-      views: [{ id: "table", name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] }],
-    };
-  return { fields: defaultFields(), views: defaultViews() };
-}
+// A new database starts as a task list, in the language of the request
+// (lib/database-setup.ts, shared with databases made offline).
+export const defaultFields = () => setupDefaultFields(ct);
+export const defaultViews = () => setupDefaultViews(ct);
+export { databaseKinds, type DatabaseKind };
+export const flashcardsSetup = () => setupFlashcards(ct);
+export const databaseSetup = (kind: DatabaseKind) => setupDatabase(kind, ct);
 export async function createPage(
   workspace: string,
   space: string,

@@ -2,9 +2,13 @@
 // device edits what its offline copy holds: documents (lib/offline-*.ts,
 // the editor's IndexedDB), database records – also new ones – through the
 // offline queue (lib/offline-queue.ts) and today's journal entry
-// (lib/journal-offline.ts). Creating anything else needs the server: these
-// commands are not sent offline; the person gets a calm note instead of a
-// failed request (components/ui.tsx needsConnection, OfflineNotice).
+// (lib/journal-offline.ts). New documents, databases, whiteboards and
+// notebooks, pages from built-in templates and uploads in documents are
+// made on the device and wait in the same queue (#370, lib/offline-create.ts)
+// – the "New page" dialog does that itself, without sending page.create.
+// Creating anything else needs the server: these commands are not sent
+// offline; the person gets a calm note instead of a failed request
+// (components/ui.tsx needsConnection, OfflineNotice).
 export const onlineOnlyActions: ReadonlySet<string> = new Set([
   "page.create",
   "page.duplicate",
