@@ -7,7 +7,9 @@ import { z } from "zod";
 
 export const ANKI_ROLES = ["front", "back", "hint", "extra", "skip"] as const;
 export type AnkiRole = (typeof ANKI_ROLES)[number];
-export const ANKI_CARD_TYPES = ["basic", "typed", "cloze"] as const;
+// "occlusion": Anki's Image Occlusion notes with their masks (offered for
+// that note type only).
+export const ANKI_CARD_TYPES = ["basic", "typed", "cloze", "occlusion"] as const;
 export type AnkiCardType = (typeof ANKI_CARD_TYPES)[number];
 // What a note type is in Anki (its stock kind, else by name and templates).
 export type AnkiKind = "basic" | "reversed" | "optional" | "typed" | "cloze" | "occlusion" | "custom";

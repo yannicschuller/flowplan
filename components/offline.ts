@@ -16,6 +16,7 @@ import {
   planPages,
   planRecords,
   planStudy,
+  isStudyKey,
 } from "@/lib/offline-plan";
 import type { OfflineChanges } from "@/lib/offline-changes";
 import {
@@ -498,14 +499,15 @@ async function refreshNow({
 
     // 3. Files: drop the ones no stored page refers to, add the others.
     keys = await data.keys();
-    const referenced = new Set<string>();
+    const referenced = new Set<string>(),
+      cards = new Set<string>();
     for (const key of keys) {
       if (!key.startsWith("/api/pages/") && !key.startsWith("/api/bootstrap")) continue;
       try {
-        for (const ref of fileRefs((await (await data.match(key))?.text()) || "")) referenced.add(ref);
+        for (const ref of fileRefs((await (await data.match(key))?.text()) || "")) (isStudyKey(key) ? cards : referenced).add(ref);
       } catch {}
     }
-    const files = planFiles({ keys, referenced: [...referenced], includeRecords });
+    const files = planFiles({ keys, referenced: [...referenced], includeRecords, cards: [...cards] });
     for (const key of files.drop) {
       extraBytes -= sizes.get(key) || 0;
       await drop(key);

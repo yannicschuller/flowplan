@@ -66,6 +66,13 @@ export const AnnotatedImage = Image.extend({
         parseHTML: (el) => el.getAttribute("data-annotations"),
         renderHTML: (attrs) => (attrs.annotations ? { "data-annotations": attrs.annotations } : {}),
       },
+      // Image occlusion masks of a flashcard (lib/study-occlusion.ts, JSON,
+      // cleaned on the server); they do not change the picture.
+      occlusion: {
+        default: null,
+        parseHTML: (el) => el.getAttribute("data-occlusion"),
+        renderHTML: (attrs) => (attrs.occlusion ? { "data-occlusion": attrs.occlusion } : {}),
+      },
       caption: captionAttribute(),
       // Where the image sits in the line (#240): centred or right, the
       // default on the left. Only these names.

@@ -6,9 +6,9 @@
 import { z } from "zod";
 
 const fid = z.string().min(1).max(500);
-// All card types of the concept (§5). Derived: basic (and its reverse),
-// cloze, typed and choice; occlusion (phase 6) is accepted so the stored
-// setting of a later version survives, and gives no cards yet.
+// All card types of the concept (§5): basic (and its reverse), cloze, typed,
+// choice and occlusion (masks over a picture in the record's document,
+// lib/study-occlusion.ts).
 export const cardTypes = ["basic", "cloze", "typed", "choice", "occlusion"] as const;
 export type CardType = (typeof cardTypes)[number];
 // The card type of a record: the same for all, or from a select property

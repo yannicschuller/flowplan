@@ -232,10 +232,11 @@ export function StudyAnkiImport({
                         <option value="basic">{t("Vorder-/Rückseite", "Front/back")}</option>
                         <option value="typed">{t("Antwort eintippen", "Type the answer")}</option>
                         <option value="cloze">{t("Lückentext", "Cloze")}</option>
+                        {nt.kind === "occlusion" && <option value="occlusion">{t("Bildverdeckung (mit Masken)", "Image occlusion (with masks)")}</option>}
                       </Select>
                     </label>
                     <label className="checkbox-label">
-                      <input type="checkbox" checked={m.reverse} disabled={m.type === "cloze"} onChange={(e) => set({ reverse: e.target.checked })} />
+                      <input type="checkbox" checked={m.reverse} disabled={m.type === "cloze" || m.type === "occlusion"} onChange={(e) => set({ reverse: e.target.checked })} />
                       {t("Auch umgekehrt abfragen", "Also ask in reverse")}
                     </label>
                   </div>

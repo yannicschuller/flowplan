@@ -47,6 +47,38 @@ async function studyDeck(ctx: SceneContext, title: string, settings: Record<stri
   await ctx.command({ action: "study.settings", pageId: db, settings: { version: 1, front: { field: "title" }, back: { field: "back" }, ...settings } });
   return db;
 }
+// An image occlusion deck (phase 6): one record whose document has a
+// diagram with five masks – two of them grouped, three labelled.
+async function occlusionDeck(ctx: SceneContext, title: string) {
+  const { diagramPng } = await import("../../tests/helpers/png");
+  const db = await studyDeck(ctx, title, { type: { fixed: "occlusion" } });
+  const row = await ctx.command({ action: "row.create", pageId: db, cells: { title: "Welche Region ist markiert?", back: "Aus dem Atlas, Seite 12" } });
+  const upload = await ctx.api.post("/api/upload", { headers: { origin: ctx.origin }, multipart: { pageId: db, file: { name: "atlas.png", mimeType: "image/png", buffer: diagramPng() } } });
+  if (!upload.ok()) throw new Error(`upload: ${upload.status()}`);
+  const { url } = await upload.json();
+  const masks = {
+    v: 1,
+    mode: "hide-all",
+    masks: [
+      { id: "0a000000-0000-4000-8000-000000000001", shape: "ellipse", x: 0.07, y: 0.17, w: 0.28, h: 0.44, label: "Nordregion" },
+      { id: "0a000000-0000-4000-8000-000000000002", shape: "rect", x: 0.39, y: 0.11, w: 0.24, h: 0.32, label: "Hochland" },
+      { id: "0a000000-0000-4000-8000-000000000003", shape: "rect", x: 0.69, y: 0.19, w: 0.24, h: 0.24, group: "0b000000-0000-4000-8000-000000000001", label: "Küste" },
+      { id: "0a000000-0000-4000-8000-000000000004", shape: "polygon", x: 0, y: 0, w: 0, h: 0, points: [[0.07, 0.69], [0.33, 0.69], [0.33, 0.89], [0.07, 0.89]], group: "0b000000-0000-4000-8000-000000000001" },
+      { id: "0a000000-0000-4000-8000-000000000005", shape: "ellipse", x: 0.41, y: 0.55, w: 0.32, h: 0.34 },
+    ],
+  };
+  const attr = JSON.stringify(masks).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const { htmlState } = await import("../../lib/document-server");
+  const { generation } = await (await ctx.api.get(`/api/pages/${db}/rows/${row.id}`)).json();
+  await ctx.command({
+    action: "row.document.sync",
+    pageId: db,
+    rowId: row.id,
+    generation,
+    update: Buffer.from(htmlState(`<p>Karte der Regionen</p><img src="${url}" alt="Karte mit fünf Regionen" data-occlusion="${attr}">`)).toString("base64"),
+  });
+  return { db, rowId: row.id as string };
+}
 // A few cards rated over the last days, for the statistics and counts.
 async function studied(ctx: SceneContext, db: string) {
   const words = [["hola", "hallo"], ["perro", "Hund"], ["gato", "Katze"], ["casa", "Haus"]];
@@ -825,6 +857,37 @@ const databaseScenes: Scene[] = [
       await ctx.open(`#page=${db}`);
       await button(page, "Lernen starten").click();
       await page.locator(".cloze-gap").first().waitFor();
+    },
+  },
+  // Flashcards phase 6: the mask editor of image occlusion and a card.
+  {
+    id: "study-occlusion-editor",
+    group: "Databases",
+    title: "Flashcards: image occlusion editor",
+    covers: ["components/study/occlusion-editor.tsx"],
+    steps: async (page, ctx) => {
+      const { db, rowId } = await occlusionDeck(ctx, "Geografie");
+      await ctx.open(`#page=${db}&row=${rowId}`);
+      const image = dialog(page, "Eintrag").locator(".ProseMirror img").first();
+      await image.waitFor();
+      await image.click();
+      await button(page, "Weitere Bildaktionen").first().click();
+      await page.getByRole("menuitem", { name: "Bildverdeckung bearbeiten (Lernkarten)" }).click();
+      const editor = dialog(page, "Bildverdeckung bearbeiten");
+      await editor.locator(".occlusion-edit-layer").waitFor();
+      await editor.getByRole("button", { name: /^Karte 2: Rechteck auswählen/ }).click();
+    },
+  },
+  {
+    id: "study-occlusion",
+    group: "Databases",
+    title: "Flashcards: image occlusion card",
+    covers: ["components/study/occlusion-image.tsx"],
+    steps: async (page, ctx) => {
+      const { db } = await occlusionDeck(ctx, "Geografie lernen");
+      await ctx.open(`#page=${db}`);
+      await button(page, "Lernen starten").click();
+      await page.locator(".occlusion-card .occlusion-mask.asked").first().waitFor();
     },
   },
   {

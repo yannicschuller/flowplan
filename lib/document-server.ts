@@ -12,6 +12,7 @@ import { importedCodeAttributes } from "./code-block-options";
 import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
 import { isPageBreakStyle } from "./page-break-node";
+import { occlusionAttribute } from "./study-occlusion";
 import { MEETING_LANGUAGES } from "./meeting-core";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 // Block and cell colours (#238, #240, lib/block-colors.ts) and toggle headings: only their names.
@@ -169,7 +170,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       // A callout's own symbol and colour name (checked in transformTags).
       aside: [dir, "data-callout-icon", "data-callout-color"],
       a: ["href", "name", "target", "rel"],
-      img: ["src", "alt", "width", "height", "data-original", "data-annotations", { name: "data-align", multiple: false, values: ["center", "right"] }],
+      img: ["src", "alt", "width", "height", "data-original", "data-annotations", "data-occlusion", { name: "data-align", multiple: false, values: ["center", "right"] }],
       input: ["type", "checked", "disabled"],
       ol: ["start", dir],
       // Cell colours (#240): only the names, like blocks.
@@ -200,6 +201,12 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       "*": (tagName, attribs) => {
         const result = transform ? transform(tagName, attribs) : { tagName, attribs };
         if (result.tagName === "div" && isPageBreakStyle(result.attribs.style)) result.attribs = { ...result.attribs, "data-page-break": "", class: "page-break" };
+        // Image occlusion masks only as Flowplan writes them (lib/study-occlusion.ts).
+        if ("data-occlusion" in result.attribs) {
+          const { "data-occlusion": raw, ...rest } = result.attribs;
+          const masks = result.tagName === "img" ? occlusionAttribute(raw) : null;
+          result.attribs = masks ? { ...rest, "data-occlusion": masks } : rest;
+        }
         return "data-drawio" in result.attribs || "data-drawio-svg" in result.attribs ? drawioAttributes(result) : result;
       },
       // Only the known providers' player URLs survive, not any page on

@@ -2,7 +2,8 @@
 // The parts of a flashcard in the focus mode (components/study/focus.tsx):
 // a side (text as React text, documents through ReadOnlyDocument), cloze
 // text with the card's gaps hidden or marked, the field of a typed answer
-// with its comparison, and the options of a multiple choice card.
+// with its comparison and the options of a multiple choice card (the
+// picture of an image occlusion card: ./occlusion-image.tsx).
 // Nothing from a cell is ever rendered as HTML; documents come sanitized
 // from the server (lib/study.ts), their gaps already rewritten.
 import { Fragment, useMemo } from "react";

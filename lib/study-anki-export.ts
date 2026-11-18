@@ -5,7 +5,9 @@
 // "Basic", "Basic (and reversed card)", "Basic (type in the answer)" and
 // "Cloze" (each with Hint and Extra; named "… (Flowplan)" so they do not
 // merge with a collection's own), multiple choice as Basic with the options
-// on the front. Cards come as new – the learning state stays in Flowplan.
+// on the front, image occlusion as Anki's "Image Occlusion" (one note per
+// picture, read by Anki ≥ 23.10). Cards come as new – the learning state
+// stays in Flowplan.
 // The collection is written with node:sqlite into a temporary file and
 // zipped with the media (lib/archive.ts writeZip).
 import { createHash, randomBytes } from "node:crypto";
@@ -16,17 +18,38 @@ import { DatabaseSync } from "node:sqlite";
 import sanitize from "sanitize-html";
 import { writeZip } from "./archive";
 
-export type AnkiModelKind = "basic" | "reversed" | "typed" | "cloze";
+export type AnkiModelKind = "basic" | "reversed" | "typed" | "cloze" | "occlusion";
 // One note: its fields as Anki HTML (Front/Text, Back/Back Extra, Hint,
-// Extra), the template ordinals of its cards (cloze N → N-1), its tags and
-// sub-deck ("Teil::Kapitel" below the deck).
-export type AnkiExportNote = { kind: AnkiModelKind; fields: [string, string, string, string]; ords: number[]; tags: string[]; subdeck?: string };
+// Extra; Image Occlusion: Occlusion, Image, Header, Back Extra, Comments),
+// the template ordinals of its cards (cloze N → N-1), its tags and sub-deck
+// ("Teil::Kapitel" below the deck).
+export type AnkiExportNote = { kind: AnkiModelKind; fields: string[]; ords: number[]; tags: string[]; subdeck?: string };
 export type AnkiExportMedia = { name: string; data: Buffer };
 
 const CSS = ".card { font-family: arial; font-size: 20px; text-align: center; color: black; background-color: white; }\n.cloze { font-weight: bold; color: blue; }\n.nightMode .cloze { color: lightblue; }";
 const HINT = "{{#Hint}}<br>{{hint:Hint}}{{/Hint}}";
 const EXTRA = "{{#Extra}}<br><br>{{Extra}}{{/Extra}}";
-const MODELS: Record<AnkiModelKind, { name: string; type: 0 | 1; fields: string[]; templates: { name: string; qfmt: string; afmt: string }[] }> = {
+// Anki's own Image Occlusion note type (stock kind 6, Anki ≥ 23.10): the
+// picture is drawn with the masks of {{cloze:Occlusion}} by Anki's own
+// script; older versions show the error line.
+const OCCLUSION_FRONT = `{{#Header}}<div>{{Header}}</div>{{/Header}}
+<div style="display: none">{{cloze:Occlusion}}</div>
+<div id="err"></div>
+<div id="image-occlusion-container">
+    {{Image}}
+    <canvas id="image-occlusion-canvas"></canvas>
+</div>
+<script>
+try {
+    anki.imageOcclusion.setup();
+} catch (exc) {
+    document.getElementById("err").innerHTML = \`Error loading image occlusion. Is your Anki version up to date?<br><br>\${exc}\`;
+}
+</script>
+`;
+const OCCLUSION_CSS =
+  "#image-occlusion-canvas { --inactive-shape-color: #ffeba2; --active-shape-color: #ff8e8e; --inactive-shape-border: 1px #212121; --active-shape-border: 1px #212121; --highlight-shape-color: #ff8e8e00; --highlight-shape-border: 1px #ff8e8e; }\n.card { font-family: arial; font-size: 20px; text-align: center; color: black; background-color: white; }";
+const MODELS: Record<AnkiModelKind, { name: string; type: 0 | 1; stock?: number; css?: string; fields: string[]; templates: { name: string; qfmt: string; afmt: string }[] }> = {
   basic: {
     name: "Basic (Flowplan)",
     type: 0,
@@ -53,6 +76,20 @@ const MODELS: Record<AnkiModelKind, { name: string; type: 0 | 1; fields: string[
     type: 1,
     fields: ["Text", "Back Extra", "Hint", "Extra"],
     templates: [{ name: "Cloze", qfmt: `{{cloze:Text}}${HINT}`, afmt: `{{cloze:Text}}<br>\n{{Back Extra}}${EXTRA}` }],
+  },
+  occlusion: {
+    name: "Image Occlusion (Flowplan)",
+    type: 1,
+    stock: 6,
+    css: OCCLUSION_CSS,
+    fields: ["Occlusion", "Image", "Header", "Back Extra", "Comments"],
+    templates: [
+      {
+        name: "Image Occlusion",
+        qfmt: OCCLUSION_FRONT,
+        afmt: `${OCCLUSION_FRONT}\n<div><button id="toggle">Toggle Masks</button></div>\n{{#Back Extra}}<div>{{Back Extra}}</div>{{/Back Extra}}\n{{#Comments}}<div>{{Comments}}</div>{{/Comments}}`,
+      },
+    ],
   },
 };
 
@@ -187,7 +224,8 @@ export async function buildAnkiPackage(deckName: string, notes: AnkiExportNote[]
           did: deckIds.get(name),
           tmpls: model.templates.map((t, ord) => ({ name: t.name, ord, qfmt: t.qfmt, afmt: t.afmt, did: null, bqfmt: "", bafmt: "" })),
           flds: model.fields.map((f, ord) => ({ name: f, ord, sticky: false, rtl: false, font: "Arial", size: 20, media: [] })),
-          css: CSS,
+          css: model.css || CSS,
+          ...(model.stock ? { originalStockKind: model.stock } : {}),
           latexPre: "\\documentclass[12pt]{article}\n\\special{papersize=3in,5in}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amssymb,amsmath}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0in}\n\\begin{document}\n",
           latexPost: "\\end{document}",
           latexsvg: false,

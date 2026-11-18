@@ -1091,3 +1091,266 @@
 .study-anki-import .modal-actions {
   flex-wrap: wrap;
 }
+
+/* ---- Image occlusion (phase 6, lib/study-occlusion.ts) ---- */
+/* The picture with an SVG layer of its masks: geometry in SVG attributes,
+   the look here. Masks asked are covered in the signal colour, the others
+   (cover all) in a quiet one; opened masks keep an outline. A colour never
+   stands alone: the screen reader text says which area is asked, the
+   number and the outline style differ too. */
+:root {
+  --occlusion-other: #f2dea0;
+  --occlusion-other-line: #8a6d1d;
+  --occlusion-asked: #ec7f68;
+  --occlusion-asked-line: #8f2a17;
+  --occlusion-open-line: #c2362f;
+}
+[data-theme="dark"] {
+  --occlusion-other: #d9c27c;
+  --occlusion-other-line: #5a4612;
+  --occlusion-asked: #e0705c;
+  --occlusion-asked-line: #3d0f06;
+  --occlusion-open-line: #f0857c;
+}
+.occlusion-card {
+  margin: 0 auto;
+  max-width: 100%;
+}
+.occlusion-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  vertical-align: top;
+}
+.occlusion-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: min(58vh, 640px);
+  width: auto;
+  height: auto;
+  border-radius: 6px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.occlusion-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.occlusion-mask {
+  stroke-width: 1.5px;
+}
+.occlusion-mask.other {
+  fill: var(--occlusion-other);
+  stroke: var(--occlusion-other-line);
+}
+.occlusion-mask.asked {
+  fill: var(--occlusion-asked);
+  stroke: var(--occlusion-asked-line);
+  stroke-width: 2.5px;
+}
+.occlusion-mask.open {
+  fill: transparent;
+  stroke: var(--occlusion-open-line);
+  stroke-width: 2.5px;
+  stroke-dasharray: 6 4;
+}
+.occlusion-answer {
+  font-weight: 600;
+}
+.study-occlusion-hint {
+  margin-top: 6px;
+}
+
+/* The mask editor (components/study/occlusion-editor.tsx). */
+.occlusion-editor {
+  display: grid;
+  gap: 12px;
+}
+.occlusion-tools button.occlusion-ungroup:not(:disabled) {
+  color: var(--secondary);
+}
+.occlusion-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+  align-items: start;
+}
+.occlusion-stage-wrap {
+  min-height: 240px;
+}
+.occlusion-edit-frame img {
+  max-height: min(62vh, 680px);
+}
+.occlusion-edit-layer {
+  touch-action: none;
+  cursor: crosshair;
+  outline: none;
+  border-radius: 6px;
+}
+.occlusion-edit-layer:focus-visible {
+  box-shadow: 0 0 0 2px var(--focus-border);
+}
+.occlusion-edit-layer.tool-select {
+  cursor: default;
+}
+.occlusion-edit-mask {
+  cursor: move;
+}
+.occlusion-edit-mask .occlusion-mask {
+  fill: var(--occlusion-other);
+  fill-opacity: 0.72;
+  stroke: var(--occlusion-other-line);
+}
+.occlusion-edit-mask.grouped .occlusion-mask {
+  stroke-dasharray: 5 3;
+}
+.occlusion-edit-mask.selected .occlusion-mask {
+  fill: var(--occlusion-asked);
+  stroke: var(--occlusion-asked-line);
+  stroke-width: 2.5px;
+}
+.occlusion-number {
+  fill: var(--occlusion-asked-line);
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
+}
+.occlusion-edit-mask.selected .occlusion-number {
+  fill: #ffffff;
+}
+.occlusion-draft {
+  fill: var(--occlusion-asked);
+  fill-opacity: 0.35;
+  stroke: var(--occlusion-asked-line);
+  stroke-width: 2px;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+polyline.occlusion-draft {
+  fill: none;
+}
+.occlusion-vertex {
+  fill: #ffffff;
+  stroke: var(--occlusion-asked-line);
+  stroke-width: 2px;
+  pointer-events: none;
+}
+.occlusion-vertex.first {
+  fill: var(--occlusion-asked);
+}
+.occlusion-handle {
+  fill: #ffffff;
+  stroke: var(--blue);
+  stroke-width: 2px;
+}
+.occlusion-handle.corner-0,
+.occlusion-handle.corner-2 {
+  cursor: nwse-resize;
+}
+.occlusion-handle.corner-1,
+.occlusion-handle.corner-3 {
+  cursor: nesw-resize;
+}
+.occlusion-side {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.modal-wide.occlusion-editor-dialog {
+  width: min(1120px, calc(100% - 32px));
+}
+.occlusion-mode label,
+.occlusion-alt {
+  margin-bottom: 0;
+}
+.occlusion-mode {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.occlusion-mode legend {
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.occlusion-count,
+.occlusion-hint,
+.occlusion-keys {
+  margin: 0;
+  font-size: 13px;
+}
+.occlusion-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+.occlusion-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border-radius: 8px;
+}
+.occlusion-list li.selected {
+  background: var(--blue-light);
+}
+.occlusion-list input {
+  min-width: 0;
+  padding: 5px 8px;
+}
+.occlusion-pick {
+  padding: 0;
+  border-radius: 999px;
+}
+.occlusion-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--occlusion-other);
+  color: #3a2c05;
+  font-weight: 700;
+  font-size: 13px;
+}
+.occlusion-list li.selected .occlusion-badge {
+  background: var(--occlusion-asked);
+  color: #ffffff;
+}
+.occlusion-alt {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.occlusion-preview {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.occlusion-preview p {
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .occlusion-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .occlusion-edit-frame img {
+    max-height: 48vh;
+  }
+  .occlusion-list {
+    max-height: 180px;
+  }
+}

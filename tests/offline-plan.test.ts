@@ -65,6 +65,8 @@ test("records: changed ones again, hidden or deleted dropped, others added on re
 test("files: unreferenced dropped, referenced added on request", () => {
   assert.deepEqual(plan.planFiles(fileInput), { add: [`/api/files/${f3}`], drop: [`/api/files/${f2}?download=1`] });
   assert.deepEqual(plan.planFiles({ ...fileInput, includeRecords: false }).add, []);
+  // The pictures of stored flashcard decks come without records too.
+  assert.deepEqual(plan.planFiles({ ...fileInput, includeRecords: false, cards: [f3.toUpperCase()] }).add, [`/api/files/${f3}`]);
   assert.deepEqual(plan.fileRefs(`{"html":"<img src=\\"/api/files/${f1}\\">","cover":"/api/files/${f1}","x":"/api/files/${f2.toUpperCase()}"}`), [f1, f2]);
   assert.deepEqual(plan.pageRows({ rows: [{ id: r1 }, { id: r2 }] }), [r1, r2]);
   assert.deepEqual(plan.pageRows({ html: "" }), []);
@@ -81,6 +83,7 @@ test("the service worker plans the same way", () => {
   same(worker.planPages({ ...pageInput, full: true }), plan.planPages({ ...pageInput, full: true }));
   same(worker.planRecords(recordInput), plan.planRecords(recordInput));
   same(worker.planFiles(fileInput), plan.planFiles(fileInput));
+  same(worker.planFiles({ ...fileInput, includeRecords: false, cards: [f3] }), plan.planFiles({ ...fileInput, includeRecords: false, cards: [f3] }));
   same(worker.fileRefs(`/api/files/${f1} /api/files/${f1}`), plan.fileRefs(`/api/files/${f1} /api/files/${f1}`));
   same(worker.planStudy(studyInput), plan.planStudy(studyInput));
 });
