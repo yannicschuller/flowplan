@@ -160,7 +160,7 @@ COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /ap
 # The rebuild of a stuck Litestream replica (docker/entrypoint.sh, marker
 # litestream-reset with "remote"): deletes <S3_PREFIX>/db/ in the bucket,
 # signed with the app's S3 library (bundled into the app, so copied here).
-COPY --chmod=644 scripts/litestream-replica-reset.mjs /app/scripts/
+COPY --chmod=644 scripts/litestream-replica-reset.mjs /app/scripts/litestream-replica-reset.mjs
 COPY --from=build --chown=node:node /app/node_modules/aws4fetch /app/node_modules/aws4fetch
 # Any UID/GID (#193): Compose's user: "UID:GID" may run the image as a user
 # without an entry in /etc/passwd. Everything it writes goes to the data
@@ -169,7 +169,9 @@ COPY --from=build --chown=node:node /app/node_modules/aws4fetch /app/node_module
 # awk, mkfifo and tee -p copy Litestream's output to the data folder's
 # logs (docker/entrypoint.sh, ls_log_open); without them it is not saved.
 RUN setpriv --version && flock --version && awk 'BEGIN { srand(); exit !(srand() > 0) }' && mkfifo --version > /dev/null && tee -i -p --version > /dev/null \
-  && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache
+  && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache \
+  && chmod 755 /app/scripts /app/lib /app/lib/db-driver \
+  && setpriv --reuid=1000 --regid=1000 --clear-groups -- test -r /app/scripts/litestream-replica-reset.mjs
 # Helper scripts started with docker exec (as root, see below) continue as
 # PUID:PGID before they write anything (scripts/drop-root.mjs).
 COPY --chmod=644 scripts/drop-root.mjs /app/drop-root.mjs
