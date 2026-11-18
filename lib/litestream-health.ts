@@ -12,6 +12,16 @@
 // than 30 minutes – right after a downtime old L0 files legitimately wait
 // for their first compaction, which runs every 30 s.
 //
+// Earlier, every minute and from /proc only (lib/litestream-memory.ts):
+// Litestream's resident memory. Each failed compaction retry buffers all L0
+// files since the corrupt one, so a stuck replica makes Litestream's memory
+// climb steadily – in production to 2.1 GB, until the kernel's OOM killer
+// ended it and with it the container (it is the main process with
+// `replicate -exec`). Memory above max(512 MiB, 25 % of the container's or
+// host's memory) that still rises over 10 samples counts as stuck too
+// (cause "memory"), with the same warning, alert and repair; memory above
+// the threshold alone is only a hint in Überwachung.
+//
 // Report: a warning in Administration → Überwachung, one alert per
 // incident (the operator's webhook and the administrators' chat apps,
 // lib/admin-ops.ts) and an entry in the activity log.
@@ -37,6 +47,19 @@ import { waitingContainer } from "./cluster/data-dir-lock";
 import { HttpError } from "./auth";
 import { requireOpsAdmin } from "./admin-ops";
 import type { Identity } from "./types";
+import {
+  LITESTREAM_MEMORY,
+  currentThreshold,
+  findLitestreamPid,
+  keepSamples,
+  memoryVerdict,
+  processRss,
+  realProc,
+  type LitestreamMemory,
+  type MemoryBasis,
+  type MemorySample,
+  type ProcReader,
+} from "./litestream-memory";
 
 const MINUTE = 60_000;
 export const LITESTREAM_CHECK = {
@@ -66,8 +89,9 @@ export function replicaPrefix(prefix: string) {
 // entrypoint writes when it starts `litestream replicate` (with the lock
 // held): null when it does not replicate here – Litestream off, PostgreSQL,
 // no S3, not started by the entrypoint, or this container waits for the
-// lock of another one.
-export function replicatingSince(): number | null {
+// lock of another one. `pid` is Litestream's PID where the entrypoint knows
+// it (the exec path: Litestream keeps the entrypoint's PID).
+function replicating(): { since: number; pid: number | null } | null {
   if (postgresUrl() || !storageConfig()) return null;
   if (process.env.FLOWPLAN_LITESTREAM === "off" || process.env.FLOWPLAN_LITESTREAM_ACTIVE !== "1") return null;
   if (waitingContainer()?.self) return null;
@@ -81,11 +105,13 @@ export function replicatingSince(): number | null {
     // one has not replicated yet).
     if (fields.get("host") !== hostname()) return null;
     const since = Number(fields.get("since")) * 1000;
-    return Number.isFinite(since) && since > 0 ? since : null;
+    const pid = Number(fields.get("pid"));
+    return Number.isFinite(since) && since > 0 ? { since, pid: Number.isInteger(pid) && pid > 0 ? pid : null } : null;
   } catch {
     return null;
   }
 }
+export const replicatingSince = (): number | null => replicating()?.since ?? null;
 
 export type MarkerMode = "remote" | "local";
 export function resetMarker(): MarkerMode | null {
@@ -130,12 +156,23 @@ export async function listLevel0(): Promise<L0Listing> {
 }
 
 export type BackupNote = { at: number; name: string; error: string | null };
+export type MemoryNote = { at: number; rss: number; threshold: number };
 export type LitestreamIncident = {
   // First seen stuck, last checked.
   since: number;
   checkedAt: number;
-  oldestAt: number;
-  files: number;
+  // What found it first: old L0 files in the bucket, or Litestream's
+  // climbing memory. Missing in incidents stored before 0.10.2 ("l0").
+  cause?: "l0" | "memory";
+  // The last bucket check found old L0 files (missing before 0.10.2: true),
+  // and the last memory sample still climbed (null otherwise). The incident
+  // ends when neither holds.
+  l0?: boolean;
+  memory?: MemoryNote | null;
+  // From the last bucket listing with old L0 files; null when memory found
+  // it and no listing has shown old L0 files yet.
+  oldestAt: number | null;
+  files: number | null;
   truncated: boolean;
   // What happens next: the marker is written (repaired on the next start),
   // automatic repair is off, an administrator took it back, or the backup
@@ -177,38 +214,39 @@ export type CheckResult =
   | { state: "starting" | "healthy"; files: number }
   | { state: "stuck"; incident: LitestreamIncident; opened: boolean };
 
-// One check (the worker every 15 minutes). `list` is the bucket listing
-// (tests pass their own).
-export async function checkLitestreamReplica(now = Date.now(), list: () => Promise<L0Listing> = listLevel0): Promise<CheckResult> {
-  const since = replicatingSince();
-  if (since === null) return { state: "inactive" };
-  const previous = await stored();
-  let listing: L0Listing;
-  try {
-    listing = await list();
-  } catch (error) {
-    const message = String((error as Error)?.message || error).slice(0, 300);
-    await store({ ...previous, lastCheck: { at: now, error: message } });
-    return { state: "error", error: message };
-  }
-  const old = listing.oldestAt !== null && now - listing.oldestAt > LITESTREAM_CHECK.oldL0;
-  const runningLong = now - since > LITESTREAM_CHECK.running;
-  if (!old || !runningLong) {
-    // Not stuck (any more): an incident ends here – after the repair on a
-    // restart the old L0 files are gone.
-    if (previous.incident && !old) await audit("", "litestream.replica.healthy", "instance", `files ${listing.files}`);
-    await store({ incident: old ? previous.incident : null, lastCheck: { at: now, error: null } });
-    return { state: old ? "starting" : "healthy", files: listing.files };
-  }
-  const opened = !previous.incident;
+// The bucket check and the memory check both change the stored incident:
+// one after the other.
+let queue: Promise<unknown> = Promise.resolve();
+function serial<T>(task: () => Promise<T>): Promise<T> {
+  const next = queue.then(task, task);
+  queue = next.catch(() => undefined);
+  return next;
+}
+const mb = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
+const l0Of = (incident: LitestreamIncident) => incident.l0 ?? incident.cause !== "memory";
+
+// Opens or continues an incident (either check) and runs the repair path:
+// backup, marker "remote" (unless FLOWPLAN_LITESTREAM_AUTOHEAL=off), the
+// warning and – on opening – one alert and the activity log entry.
+async function stuck(
+  previous: Stored,
+  now: number,
+  found: { cause: "l0"; listing: L0Listing } | { cause: "memory"; memory: MemoryNote },
+): Promise<{ incident: LitestreamIncident; opened: boolean }> {
+  const before = previous.incident;
+  const opened = !before;
+  const listing = found.cause === "l0" ? found.listing : null;
   const incident: LitestreamIncident = {
-    since: previous.incident?.since ?? now,
+    since: before?.since ?? now,
     checkedAt: now,
-    oldestAt: listing.oldestAt!,
-    files: listing.files,
-    truncated: listing.truncated,
-    repair: previous.incident?.repair ?? "off",
-    backup: previous.incident?.backup ?? null,
+    cause: before ? (before.cause ?? "l0") : found.cause,
+    l0: listing ? true : before ? l0Of(before) : false,
+    memory: found.cause === "memory" ? found.memory : (before?.memory ?? null),
+    oldestAt: listing ? listing.oldestAt : (before?.oldestAt ?? null),
+    files: listing ? listing.files : (before?.files ?? null),
+    truncated: listing ? listing.truncated : (before?.truncated ?? false),
+    repair: before?.repair ?? "off",
+    backup: before?.backup ?? null,
   };
   // An administrator took the repair back (not again for this incident), or
   // the backup before it failed less than six hours ago: it stays so.
@@ -224,24 +262,138 @@ export async function checkLitestreamReplica(now = Date.now(), list: () => Promi
     else {
       writeRemoteMarker("auto", now);
       incident.repair = "scheduled";
-      await audit("", "litestream.replica.reset_scheduled", "instance", JSON.stringify({ source: "auto", backup: backup ? backup.name : null }));
+      await audit("", "litestream.replica.reset_scheduled", "instance", JSON.stringify({ source: "auto", cause: found.cause, backup: backup ? backup.name : null }));
     }
   }
-  await store({ incident, lastCheck: { at: now, error: null } });
+  await store({ incident, lastCheck: listing ? { at: now, error: null } : previous.lastCheck });
   if (opened) {
-    const detail = `${listing.files}${listing.truncated ? "+" : ""} L0 files, oldest ${new Date(listing.oldestAt!).toISOString()}`;
+    const detail = listing
+      ? `${listing.files}${listing.truncated ? "+" : ""} L0 files, oldest ${new Date(listing.oldestAt!).toISOString()}`
+      : `Litestream's memory ${mb(incident.memory!.rss)} and still climbing, threshold ${mb(incident.memory!.threshold)}`;
     console.error(
       `Litestream: the replica in the bucket looks stuck (${detail}): compaction does not clean up level 0. ${
         incident.repair === "scheduled" ? "It is rebuilt on the next restart." : incident.repair === "backup_failed" ? "The backup before the repair failed; nothing is scheduled." : "Automatic repair is off (FLOWPLAN_LITESTREAM_AUTOHEAL=off)."
       }`,
     );
-    await audit("", "litestream.replica.stuck", "instance", JSON.stringify({ files: listing.files, oldestAt: listing.oldestAt, repair: incident.repair }));
+    await audit(
+      "",
+      "litestream.replica.stuck",
+      "instance",
+      JSON.stringify({ cause: found.cause, files: incident.files, oldestAt: incident.oldestAt, rss: incident.memory?.rss ?? null, repair: incident.repair }),
+    );
     const { sendIncidentAlert } = await import("./admin-ops");
     await sendIncidentAlert("litestream_stuck", `litestream:${incident.since}`, `${detail}; ${incident.repair}`, now).catch((error) =>
       console.error("Litestream alert failed", (error as Error)?.message),
     );
   }
-  return { state: "stuck", incident, opened };
+  return { incident, opened };
+}
+
+// One check (the worker every 15 minutes). `list` is the bucket listing
+// (tests pass their own).
+export function checkLitestreamReplica(now = Date.now(), list: () => Promise<L0Listing> = listLevel0): Promise<CheckResult> {
+  return serial(async (): Promise<CheckResult> => {
+    const since = replicatingSince();
+    if (since === null) return { state: "inactive" };
+    let listing: L0Listing;
+    try {
+      listing = await list();
+    } catch (error) {
+      const message = String((error as Error)?.message || error).slice(0, 300);
+      await store({ ...(await stored()), lastCheck: { at: now, error: message } });
+      return { state: "error", error: message };
+    }
+    const previous = await stored();
+    const old = listing.oldestAt !== null && now - listing.oldestAt > LITESTREAM_CHECK.oldL0;
+    const runningLong = now - since > LITESTREAM_CHECK.running;
+    if (!old || !runningLong) {
+      // Not stuck (any more) in the bucket: an incident ends here – after
+      // the repair on a restart the old L0 files are gone – unless
+      // Litestream's memory still climbs.
+      let incident = old ? previous.incident : null;
+      if (!old && previous.incident?.memory) incident = { ...previous.incident, l0: false };
+      else if (!old && previous.incident) await audit("", "litestream.replica.healthy", "instance", `files ${listing.files}`);
+      await store({ incident, lastCheck: { at: now, error: null } });
+      return { state: old ? "starting" : "healthy", files: listing.files };
+    }
+    const { incident, opened } = await stuck(previous, now, { cause: "l0", listing });
+    return { state: "stuck", incident, opened };
+  });
+}
+
+// The samples of this process (one Litestream at a time), on globalThis:
+// the worker and the requests for Überwachung may run in different bundles.
+const memoryState = globalThis as unknown as { flowplanLitestreamMemory?: { samples: MemorySample[]; last: LitestreamMemory | null } };
+const memoryHolder = () => (memoryState.flowplanLitestreamMemory ??= { samples: [], last: null });
+// Tests start from no samples.
+export function resetLitestreamMemory() {
+  memoryState.flowplanLitestreamMemory = { samples: [], last: null };
+}
+
+export type MemoryCheckResult =
+  | { state: "inactive" | "not_found" }
+  | { state: "normal" | "high" | "climbing"; memory: LitestreamMemory; incident: LitestreamIncident | null; opened: boolean };
+
+// One memory sample (the worker every minute; tests pass a fake /proc and
+// a fixed threshold). Climbing (lib/litestream-memory.ts memoryVerdict)
+// while Litestream has run here for longer than LITESTREAM_MEMORY.settle
+// opens or continues an incident; memory back at or below the threshold
+// ends one that only memory still held open.
+export function checkLitestreamMemory(now = Date.now(), proc: ProcReader = realProc, basis: () => MemoryBasis = () => currentThreshold()): Promise<MemoryCheckResult> {
+  return serial(async (): Promise<MemoryCheckResult> => {
+    const holder = memoryHolder();
+    const where = replicating();
+    const pid = where ? findLitestreamPid(proc, where.pid) : null;
+    const rss = pid !== null ? processRss(proc, pid) : null;
+    if (!where || pid === null || rss === null) {
+      holder.samples = [];
+      holder.last = null;
+      return { state: where ? "not_found" : "inactive" };
+    }
+    const { threshold, basis: kind, total } = basis();
+    holder.samples = keepSamples(holder.samples, { at: now, pid, rss });
+    let verdict = memoryVerdict(holder.samples, threshold);
+    if (verdict === "climbing" && now - where.since < LITESTREAM_MEMORY.settle) verdict = "high";
+    const memory: LitestreamMemory = {
+      at: now,
+      pid,
+      rss,
+      threshold,
+      basis: kind,
+      total,
+      verdict,
+      lowest: Math.min(...holder.samples.map((s) => s.rss)),
+      spanMs: now - holder.samples[0].at,
+    };
+    holder.last = memory;
+    const previous = await stored();
+    if (verdict === "climbing") {
+      const { incident, opened } = await stuck(previous, now, { cause: "memory", memory: { at: now, rss, threshold } });
+      return { state: verdict, memory, incident, opened };
+    }
+    if (verdict === "normal" && previous.incident?.memory) {
+      // Memory is down again (a new Litestream after the repair, or it
+      // recovered): the memory part ends, and the incident with it unless
+      // the bucket showed old L0 files.
+      const incident = l0Of(previous.incident) ? { ...previous.incident, memory: null } : null;
+      await store({ ...previous, incident });
+      if (!incident) await audit("", "litestream.replica.healthy", "instance", `memory ${mb(rss)}`);
+      return { state: verdict, memory, incident, opened: false };
+    }
+    return { state: verdict, memory, incident: previous.incident, opened: false };
+  });
+}
+
+// The latest sample for Überwachung: the worker's while it is recent, else
+// one read now (only /proc).
+function litestreamMemoryNow(pidHint: number | null): LitestreamMemory | null {
+  const last = memoryHolder().last;
+  if (last && Date.now() - last.at < 3 * LITESTREAM_MEMORY.interval) return last;
+  const pid = findLitestreamPid(realProc, pidHint);
+  const rss = pid !== null ? processRss(realProc, pid) : null;
+  if (pid === null || rss === null) return null;
+  const { threshold, basis, total } = currentThreshold();
+  return { at: Date.now(), pid, rss, threshold, basis, total, verdict: rss > threshold ? "high" : "normal", lowest: rss, spanMs: 0 };
 }
 
 export type LitestreamStatus = {
@@ -252,14 +404,25 @@ export type LitestreamStatus = {
   marker: MarkerMode | null;
   incident: LitestreamIncident | null;
   lastCheck: { at: number; error: string | null } | null;
+  // Litestream's memory in this container (null when not found).
+  memory: LitestreamMemory | null;
 };
 // For Administration → Überwachung (lib/cluster/system.ts): null when it
 // does not apply at all (PostgreSQL, no S3, Litestream off).
 export async function litestreamStatus(): Promise<LitestreamStatus | null> {
   if (postgresUrl() || !storageConfig() || process.env.FLOWPLAN_LITESTREAM === "off" || process.env.FLOWPLAN_LITESTREAM_ACTIVE !== "1") return null;
-  const since = replicatingSince();
+  const where = replicating();
+  const since = where?.since ?? null;
   const s = await stored();
-  return { active: since !== null, since, autoheal: autohealEnabled(), marker: resetMarker(), incident: current(s.incident, since), lastCheck: s.lastCheck };
+  return {
+    active: since !== null,
+    since,
+    autoheal: autohealEnabled(),
+    marker: resetMarker(),
+    incident: current(s.incident, since),
+    lastCheck: s.lastCheck,
+    memory: where ? litestreamMemoryNow(where.pid) : null,
+  };
 }
 // An incident counts once it was confirmed by a check since Litestream
 // started here: the one of a container before a restart (repaired by it, or
@@ -321,7 +484,12 @@ export async function litestreamAdminAction(user: Identity, action: LitestreamAc
   return { litestream: await litestreamStatus(), restarting: action === "litestream.restart" };
 }
 
-const runtime = globalThis as unknown as { flowplanLitestreamTimer?: ReturnType<typeof setInterval>; flowplanLitestreamBusy?: boolean };
+const runtime = globalThis as unknown as {
+  flowplanLitestreamTimer?: ReturnType<typeof setInterval>;
+  flowplanLitestreamMemoryTimer?: ReturnType<typeof setInterval>;
+  flowplanLitestreamBusy?: boolean;
+  flowplanLitestreamMemoryBusy?: boolean;
+};
 export function startLitestreamWorker() {
   if (runtime.flowplanLitestreamTimer) return;
   if (postgresUrl() || !storageConfig() || process.env.FLOWPLAN_LITESTREAM_ACTIVE !== "1") return;
@@ -338,4 +506,18 @@ export function startLitestreamWorker() {
   };
   runtime.flowplanLitestreamTimer = setInterval(() => void tick(), LITESTREAM_CHECK.interval);
   runtime.flowplanLitestreamTimer.unref?.();
+  // Litestream's memory, every minute (only /proc).
+  const sample = async () => {
+    if (runtime.flowplanLitestreamMemoryBusy) return;
+    runtime.flowplanLitestreamMemoryBusy = true;
+    try {
+      await checkLitestreamMemory();
+    } catch (error) {
+      console.error("Litestream memory check failed", (error as Error)?.message);
+    } finally {
+      runtime.flowplanLitestreamMemoryBusy = false;
+    }
+  };
+  runtime.flowplanLitestreamMemoryTimer = setInterval(() => void sample(), LITESTREAM_MEMORY.interval);
+  runtime.flowplanLitestreamMemoryTimer.unref?.();
 }

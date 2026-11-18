@@ -9,7 +9,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -331,8 +331,11 @@ test("marker 'remote': the delete script, then the local reset, then replicate; 
   ]);
   assert.equal(existsSync(join(b.data, "litestream-reset")), false, "removed after both steps");
   assert.match(run.output(), /deleting the replica in the bucket \(flowplan\/db\/\)/);
-  // Litestream replicates here from now on: the app's check may run.
-  assert.match(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), /^since=\d+\nhost=.+\n$/);
+  // Litestream replicates here from now on: the app's check may run. On
+  // the exec path Litestream keeps the entrypoint's PID: the app reads its
+  // memory there (lib/litestream-memory.ts).
+  assert.match(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), new RegExp(`^since=\\d+\nhost=.+\npid=${run.child.pid}\n$`));
+  assert.ok(has(b, new RegExp(`^node server\\.js pid=${run.child.pid}$`)), "the app runs under that PID after the exec chain");
   assert.equal(readFileSync(join(b.data, "flowplan.sqlite"), "utf8"), "db", "the database is never touched");
   run.child.kill("SIGTERM");
   await run.exit;
@@ -399,6 +402,50 @@ test("lock held, then free: marker 'remote' is applied before Litestream starts 
     "litestream replicate -config /etc/litestream.yml",
   ]);
   assert.doesNotMatch(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), /the-old-container/);
+  run.child.kill("SIGTERM");
+  assert.equal(await run.exit, 0);
+});
+
+// Litestream's PID among the entrypoint's children (the stub is a shell
+// script: "/bin/sh …/bin/litestream replicate …").
+function litestreamChild(parent: number): number | null {
+  for (const name of readdirSync("/proc")) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const stat = readFileSync(`/proc/${name}/stat`, "utf8");
+      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+      const cmdline = readFileSync(`/proc/${name}/cmdline`, "utf8").split("\0");
+      if (ppid === parent && cmdline.some((a) => a.endsWith("/bin/litestream")) && cmdline.includes("replicate")) return Number(name);
+    } catch {}
+  }
+  return null;
+}
+
+test("supervised path: a Litestream that dies (an OOM kill) after the app scheduled the repair – reset first, then only Litestream restarts", { skip }, async () => {
+  const b = box(withS3);
+  writeFileSync(join(b.data, "flowplan.sqlite"), "db");
+  const other = await holdLock(b);
+  const run = start(b);
+  await until("node server.js", () => has(b, /^node server\.js/));
+  await other.release();
+  await until("litestream replicate", () => has(b, /^litestream replicate/));
+  assert.doesNotMatch(readFileSync(join(b.data, ".flowplan-replicating"), "utf8"), /pid=/, "the PID is not known beforehand here: the app looks in /proc");
+  let pid: number | null = null;
+  await until("Litestream's PID", () => (pid = litestreamChild(run.child.pid!)) !== null);
+  // The app's memory check wrote the marker; the kernel then ends Litestream.
+  writeFileSync(join(b.data, "litestream-reset"), "remote\nsource=auto\nat=1763470000\n");
+  process.kill(pid!, "SIGKILL");
+  await until("second replicate", () => lines(b).filter((l) => l.startsWith("litestream replicate")).length >= 2);
+  const after = withoutPid(b).slice(withoutPid(b).indexOf("litestream replicate -config /etc/litestream.yml") + 1);
+  assert.deepEqual(after.filter((l) => l !== "node server.js"), [
+    RESET_SCRIPT,
+    `litestream reset -config /etc/litestream.yml ${join(b.data, "flowplan.sqlite")}`,
+    "litestream replicate -config /etc/litestream.yml",
+  ]);
+  assert.equal(existsSync(join(b.data, "litestream-reset")), false);
+  assert.match(run.output(), /Litestream stopped \(exit code 137\); the app keeps running/);
+  assert.equal(lines(b).filter((l) => /^node server\.js/.test(l)).length, 1, "the app was not restarted");
+  assert.equal(has(b, /^node got TERM$/), false);
   run.child.kill("SIGTERM");
   assert.equal(await run.exit, 0);
 });
