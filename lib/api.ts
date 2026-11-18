@@ -43,7 +43,7 @@ import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
-import { saveStudySettings, studyCommand } from "./study";
+import { saveStudySettings, studyCommand, studyOptimize } from "./study";
 import { gitSetup } from "./git-integration";
 import { gitAccessCommand } from "./git-backlinks";
 import { issueSyncCommand } from "./issue-sync";
@@ -874,6 +874,9 @@ async function runCommand(
       403,
       "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.",
     );
+  // Fitting FSRS parameters takes up to half a minute (#344): never inside
+  // a transaction – it reads, and stores its result in one of its own.
+  if (action === "study.optimize" && !withinTransaction) return await studyOptimize(user, b);
   const pid = () => uuid.parse(b.pageId);
   const wid = () => uuid.parse(b.workspaceId);
   const write = async () => {
@@ -3371,6 +3374,7 @@ async function runCommand(
       case "study.prefs":
       case "study.history":
       case "study.params":
+      case "study.optimize":
       case "study.due":
       case "study.stats":
         result = await studyCommand(user, action, b);
@@ -4047,6 +4051,7 @@ async function runCommand(
         "study.prefs",
         "study.history",
         "study.params",
+        "study.optimize",
         "study.due",
         "study.stats",
       ].includes(action) &&

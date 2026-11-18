@@ -56,13 +56,15 @@ export type StudyCard = {
   choice?: { options: string[]; correct: number };
   // Image occlusion: the picture, its masks and the ones asked.
   occlusion?: OcclusionCard;
+  // The weights of the card's part of the deck (#344), if it has its own.
+  weights?: number[];
 };
 type Counts = { new: number; learning: number; review: number };
 // `offline`: built on the device (components/study/offline.ts), `pending`:
 // ratings of the deck waiting for the connection.
 type Base = { pageId: string; title: string; userId?: string; zone: string; dayStart: number; day: string; dayEnd: number; now: number; offline?: boolean; pending?: number };
 export type StudyFit = { logLoss: number; rmse: number; items: number };
-export type StudyModel = { source: "default" | "deck" | "all"; at: number | null; reviews: number | null; fit: { before: StudyFit; after: StudyFit } | null };
+export type StudyModel = { source: "default" | "deck" | "all"; at: number | null; reviews: number | null; fit: { before: StudyFit; after: StudyFit } | null; groups?: number };
 export type StudyOverview =
   | (Base & { configured: false })
   | (Base & {
@@ -291,7 +293,8 @@ export function FocusSession({
   }, [shown?.revealed, shown?.reviewId]);
   const clock = deck ? { zone: deck.zone, dayStart: deck.dayStart } : { zone, dayStart: 4 };
   const outcomes = useMemo(
-    () => (deck && shown ? preview(shown.card.memory, Date.now(), deck.params, clock, shown.reviewId) : null),
+    // A card of a part of the deck with weights of its own (#344): its intervals.
+    () => (deck && shown ? preview(shown.card.memory, Date.now(), shown.card.weights ? { ...deck.params, weights: shown.card.weights } : deck.params, clock, shown.reviewId) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [deck?.params, deck?.zone, deck?.dayStart, shown?.reviewId, shown?.revealed],
   );

@@ -134,9 +134,13 @@ export function LineChart({
   maxY,
   right,
   onPick,
+  marks,
 }: {
   title: string;
   description: string;
+  // Points to mark with a labelled vertical line (the optimise dialog: the
+  // retention now and the recommended one).
+  marks?: { index: number; label: string }[];
   // Time (ms) of each point.
   x: number[];
   series: Series[];
@@ -260,6 +264,14 @@ export function LineChart({
               <text key={at} x={px(index)} y={height - 6} textAnchor={index === 0 ? "start" : "middle"} className="vz-axis">
                 {formatX(at)}
               </text>
+            ))}
+            {marks?.map((mark, k) => (
+              <g key={`mark-${mark.index}-${k}`} className="vz-mark">
+                <line x1={px(mark.index)} x2={px(mark.index)} y1={MARGIN.top} y2={MARGIN.top + inner.h} />
+                <text x={px(mark.index)} y={MARGIN.top + 10 + k * 13} dx={px(mark.index) > MARGIN.left + inner.w * 0.7 ? -4 : 4} textAnchor={px(mark.index) > MARGIN.left + inner.w * 0.7 ? "end" : "start"} className="vz-axis">
+                  {mark.label}
+                </text>
+              </g>
             ))}
             {paths.map((parts, s) =>
               parts.map((part, k) => (

@@ -528,6 +528,29 @@ export function StudySetup({
                 ))}
             </Select>
           </label>
+          {/* Sub-decks (#344): each value may get FSRS parameters of its own. */}
+          <label>
+            {t("Unterstapel", "Sub-decks")}
+            <Select
+              aria-label={t("Unterstapel", "Sub-decks")}
+              value={draft.subdeck?.field || ""}
+              onChange={(e) => {
+                const next = { ...draft };
+                if (e.target.value) next.subdeck = { field: e.target.value };
+                else delete next.subdeck;
+                setDraft(next);
+              }}
+            >
+              <option value="">{t("— keine —", "— none —")}</option>
+              {fields
+                .filter((f) => f.type === "select")
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </Select>
+          </label>
         </div>
         <fieldset className="study-typed-settings">
           <legend>{t("Antwort eintippen: beim Vergleich ignorieren", "Typed answers: ignore when comparing")}</legend>
@@ -749,6 +772,8 @@ function StudyPrefs({
               : model?.source === "all"
                 ? t(`Deine optimierten Parameter für alle Stapel, vom ${modelDate}.`, `Your optimised parameters for all decks, of ${modelDate}.`)
                 : t("Standardparameter von FSRS-6.", "FSRS-6's default parameters.")}
+            {!!model?.groups &&
+              ` ${model.groups === 1 ? t("Ein Teil des Stapels hat eigene Parameter.", "One part of the deck has parameters of its own.") : t(`${model.groups} Teile des Stapels haben eigene Parameter.`, `${model.groups} parts of the deck have parameters of their own.`)}`}
           </p>
           {note?.suggest && (
             <p className="study-model-note">

@@ -8,6 +8,18 @@ import { syntheticReviews } from "../helpers/fsrs-synthetic";
 // scheduler uses them), the statistics name them, and a reset brings the
 // defaults back. Desktop and phone.
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+// STUDY_SCREENSHOTS=<dir> keeps pictures of the result with the workload
+// chart (#344, light and dark).
+const shots = process.env.STUDY_SCREENSHOTS || "";
+async function shot(page: Page, name: string, project: string) {
+  if (!shots) return;
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${shots}/w2fc-${name}-${project === "mobile" ? 390 : 1440}-${scheme}.png` });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+}
 
 async function signedIn(page: Page) {
   await page.request.post("/api/auth/demo", { headers: { origin } });
@@ -72,6 +84,14 @@ test("FSRS parameters are optimised from the own log, applied, shown and reset",
   await expect(result).toContainText("Die neuen Parameter passen besser zu dir.");
   await expect(result).toContainText(/Empfohlene Behaltensrate: \d\d %/);
   await expect(result.getByRole("rowheader", { name: "Log-Loss" })).toBeHidden();
+  // The workload per desired retention (#344): a chart, a table, a time budget.
+  await expect(result.locator(".study-optimize-workload svg")).toBeVisible();
+  await expect(result).toContainText(/Bei \d\d % (sind es im Mittel etwa [\d.]+ Karten und [\d.]+ Minuten am Tag|ist es im Mittel kaum mehr als eine Karte oder Minute am Tag)\./);
+  await result.getByLabel("Zeit pro Tag (Minuten, optional)").fill("10");
+  await result.getByRole("button", { name: "Neu berechnen" }).click();
+  await expect(result).toContainText("und 10 Minuten am Tag", { timeout: 30_000 });
+  await result.locator(".study-optimize-retention").scrollIntoViewIfNeeded();
+  await shot(page, "optimize-workload", info.project.name);
   await result.getByText("Details zur Berechnung").click();
   await expect(result.getByRole("columnheader", { name: "Optimiert" })).toBeVisible();
   await expect(result.getByRole("rowheader", { name: "Log-Loss" })).toBeVisible();

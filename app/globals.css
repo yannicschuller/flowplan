@@ -15293,6 +15293,11 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   stroke: var(--chart-text);
   stroke-dasharray: 3 3;
 }
+.vz-mark line {
+  stroke: var(--chart-text);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
 .vz-dot {
   stroke: var(--bg);
   stroke-width: 2;

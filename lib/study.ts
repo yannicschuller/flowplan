@@ -14,7 +14,7 @@
 // - Study data is private: only `user_id = the person` is ever read.
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { all, one, run, sql } from "./db";
+import { all, one, run, sql, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -30,8 +30,8 @@ import { buildQueue, seededRank, sessionOrder, type QueueCard } from "./study-qu
 import { MAX_CHOICES, deriveCards, foldChoice, needsDocument, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, type CardSide, type DerivedCard, type OcclusionCard } from "./study-content";
 import { clozeHtml } from "./study-cloze";
 import { STUDY_DEFAULTS, STUDY_FIELD_TYPES, studyPrefsInput, studySettingsSchema, type StudySettings } from "./study-schema";
-import { decksWithWeights, personalWeights, storedWeights, type ParamsScope } from "./study-params";
-import { DEFAULT_WEIGHTS, MIN_REVIEWS, DEFAULT_COSTS, clampWeights, memoryOf as foldMemory, type ReviewCosts, type TrainingCard } from "./fsrs/optimize";
+import { GROUP_KEY, MAX_GROUPS, decksWithWeights, groupOf, groupParams, parseGroups, personalWeights, storedWeights, subdeckValue, type ParamsScope } from "./study-params";
+import { DEFAULT_WEIGHTS, MIN_REVIEWS, DEFAULT_COSTS, OptimizeTimeout, clampWeights, evaluate, memoryOf as foldMemory, optimizeAsync, pause, workload, type ReviewCosts, type TrainingCard } from "./fsrs/optimize";
 import { clipParameters } from "ts-fsrs";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
 import { inlineToHtml, toPlain } from "./inline-markdown";
@@ -218,7 +218,10 @@ async function effective(user: Identity, pageId: string, settings: StudySettings
   const retention = own?.retention ?? settings.retention ?? STUDY_DEFAULTS.retention;
   // The person's optimised weights (§23): the deck's own, else those for
   // all decks, else FSRS-6's defaults.
-  const { weights, ...model } = await personalWeights(user.id, pageId);
+  const { weights, ...deckModel } = await personalWeights(user.id, pageId);
+  // Parts of the deck with weights of their own (#344): sub-decks, card types.
+  const groups = new Map([...(await groupParams(user.id, pageId))].map(([key, g]) => [key, g.w]));
+  const model = { ...deckModel, groups: groups.size };
   const params: FsrsParams = {
     retention,
     learningSteps: settings.learningSteps,
@@ -229,6 +232,7 @@ async function effective(user: Identity, pageId: string, settings: StudySettings
   return {
     params,
     model,
+    groups,
     limits: { new: newPerDay + (more.new || 0), review: reviewsPerDay + (more.review || 0) },
     prefs: {
       newPerDay: own?.new_per_day ?? null,
@@ -238,6 +242,31 @@ async function effective(user: Identity, pageId: string, settings: StudySettings
     },
     deck: { newPerDay: settings.newPerDay, reviewsPerDay: settings.reviewsPerDay, retention: settings.retention },
   };
+}
+
+type Mine = Awaited<ReturnType<typeof effective>>;
+// The parameters a card is scheduled with: its part's weights, if any.
+const paramsWith = (mine: Mine, group: string | null): FsrsParams => (group && mine.groups.has(group) ? { ...mine.params, weights: mine.groups.get(group)! } : mine.params);
+// The part of each card (row × sub) whose weights apply – nothing to read
+// while the person has no weights for parts of this deck.
+async function cardGroups(pageId: string, settings: StudySettings, groups: { readonly size: number; has(key: string): boolean }, rowIds: string[]) {
+  const out = new Map<string, string | null>();
+  if (!groups.size || !rowIds.length) return out;
+  const ids = [...new Set(rowIds)];
+  for (let i = 0; i < ids.length; i += 400) {
+    const part = ids.slice(i, i + 400);
+    const marks = part.map(() => "?").join(",");
+    const cells = new Map<string, Record<string, unknown>>();
+    if (settings.subdeck)
+      for (const r of await all<{ id: string; cells: string }>(`SELECT id,cells FROM rows WHERE page_id=? AND id IN (${marks})`, pageId, ...part)) cells.set(r.id, JSON.parse(r.cells || "{}"));
+    for (const c of await all<{ row_id: string; sub: string; kind: string }>(`SELECT row_id,sub,kind FROM study_cards WHERE page_id=? AND row_id IN (${marks})`, pageId, ...part))
+      out.set(`${c.row_id}\u0000${c.sub}`, groupOf(groups, { kind: c.kind, subdeck: subdeckValue(cells.get(c.row_id), settings.subdeck?.field) }));
+  }
+  return out;
+}
+async function cardParams(pageId: string, settings: StudySettings, mine: Mine, rowId: string, sub: string) {
+  if (!mine.groups.size) return mine.params;
+  return paramsWith(mine, (await cardGroups(pageId, settings, mine.groups, [rowId])).get(`${rowId}\u0000${sub}`) ?? null);
 }
 
 // ---- The queue ----
@@ -340,6 +369,9 @@ export type ShownCard = {
   typed?: { answer: string };
   choice?: { options: string[]; correct: number };
   occlusion?: OcclusionCard;
+  // The weights of the card's part of the deck (#344), when it has its own.
+  weights?: number[];
+  group?: string;
 };
 const clean = (side: CardSide | undefined): CardSide | undefined => (side && "html" in side ? { html: cleanHtml(side.html) } : side);
 const POOL_ROWS = 80;
@@ -419,8 +451,11 @@ export function present(card: DerivedCard, c: Pick<QueueCard, "rowId" | "sub" | 
   }
   return shown;
 }
-async function contentOf(deck: Deck, settings: StudySettings, cards: QueueCard[], pool: QueueCard[], day: string): Promise<ShownCard[]> {
+// `groups`: the person's weights of parts of the deck – a card in one
+// carries its weights (the buttons' intervals, the offline copy).
+async function contentOf(deck: Deck, settings: StudySettings, cards: QueueCard[], pool: QueueCard[], day: string, groups?: ReadonlyMap<string, number[]>): Promise<ShownCard[]> {
   const rows = await rowsOf(deck.page.id, [...new Set(cards.map((c) => c.rowId))]);
+  const cellsOf = new Map(rows.map((r) => [r.id, r.cells]));
   const derived = await cardsOfRows(settings, deck.fields, rows);
   const needsPool = cards.some((c) => {
     const card = derived.get(c.rowId)?.find((d) => d.sub === c.sub);
@@ -429,7 +464,17 @@ async function contentOf(deck: Deck, settings: StudySettings, cards: QueueCard[]
   const candidates = needsPool ? await distractorPool(deck, settings, pool, day) : [];
   return cards.flatMap((c) => {
     const card = derived.get(c.rowId)?.find((d) => d.sub === c.sub);
-    return card ? [present(card, c, candidates)] : [];
+    if (!card) return [];
+    const shown = present(card, c, candidates);
+    if (!groups?.size) return [shown];
+    let cells: Record<string, unknown> = {};
+    try {
+      cells = JSON.parse(cellsOf.get(c.rowId) || "{}");
+    } catch {
+      // No cells: no sub-deck.
+    }
+    const group = groupOf(groups, { kind: card.kind, subdeck: subdeckValue(cells, settings.subdeck?.field) });
+    return [group ? { ...shown, weights: groups.get(group)!, group } : shown];
   });
 }
 const queueInput = z.object({
@@ -491,7 +536,7 @@ export async function studyQueue(user: Identity, raw: unknown) {
     states,
     // Tomorrow's reviews (the summary's "Morgen fällig").
     tomorrow: cards.filter((c) => c.memory && c.memory.due >= today.end && c.memory.due < today.end + 86_400_000).length,
-    cards: batch.length ? await contentOf(deck, settings, batch, cards, today.day) : [],
+    cards: batch.length ? await contentOf(deck, settings, batch, cards, today.day, mine.groups) : [],
     // A session's batch with nothing left: the summary shows the streak.
     ...(input.limit !== 0 && !batch.length ? { streak: await (await import("./study-stats")).studyStreak(user, deck.page.workspace_id, today.day) } : {}),
   };
@@ -552,7 +597,7 @@ export async function studyOffline(user: Identity, raw: unknown) {
     views,
     total: cards.length,
     truncated: kept.length < cards.length,
-    cards: kept.length ? await contentOf(deck, settings, kept, cards, today.day) : [],
+    cards: kept.length ? await contentOf(deck, settings, kept, cards, today.day, mine.groups) : [],
   };
 }
 
@@ -629,16 +674,18 @@ export async function importStudyHistory(user: Identity, pageId: string, cards: 
   const existing = new Set((await all<{ row_id: string; sub: string }>("SELECT row_id,sub FROM study_cards WHERE page_id=?", pageId)).map((c) => `${c.row_id}\u0000${c.sub}`));
   const clock = await zoneFor(user, zoneName);
   const mine = await effective(user, pageId, settings, studyDay(Date.now(), clock.zone, clock.dayStart));
+  const parts = await cardGroups(pageId, settings, mine.groups, cards.map((c) => c.rowId));
   const now = Date.now();
   let logged = 0;
   for (const card of cards) {
     if (!existing.has(`${card.rowId}\u0000${card.sub}`)) continue;
+    const params = paramsWith(mine, parts.get(`${card.rowId}\u0000${card.sub}`) ?? null);
     let memory: Memory | null = null;
     const reviews = card.reviews.filter((r) => r.at <= now + 5 * 60_000).sort((a, b) => a.at - b.at);
     for (const review of reviews) {
       const reviewId = randomUUID();
       const reviewedAt = Math.max(review.at, memory?.lastReview ?? 0);
-      const next = schedule(memory, review.rating, reviewedAt, mine.params, clock, reviewId);
+      const next = schedule(memory, review.rating, reviewedAt, params, clock, reviewId);
       await run(
         `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -720,7 +767,7 @@ export async function studyReview(user: Identity, raw: unknown) {
   const reviewedAt = Math.min(Math.max(input.reviewedAt ?? now, before?.lastReview ?? 0), now + 5 * 60_000);
   const day = studyDay(reviewedAt, clock.zone, clock.dayStart);
   const mine = await effective(user, deck.page.id, settings, day);
-  const next = schedule(before, input.rating as StudyRating, reviewedAt, mine.params, clock, input.id);
+  const next = schedule(before, input.rating as StudyRating, reviewedAt, await cardParams(deck.page.id, settings, mine, input.rowId, input.sub), clock, input.id);
   await run(
     `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -827,7 +874,9 @@ export async function studyReviews(user: Identity, raw: unknown) {
     const reviewedAt = Math.min(r.reviewedAt, now + 5 * 60_000);
     const day = studyDay(reviewedAt, zone, dayStart);
     const settings = deck?.settings;
-    const params = settings ? (await effective(user, page.id, settings, day)).params : { retention: STUDY_DEFAULTS.retention, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 };
+    const params = settings
+      ? await cardParams(page.id, settings, await effective(user, page.id, settings, day), r.rowId, r.sub)
+      : { retention: STUDY_DEFAULTS.retention, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 };
     let usable = !!(deck && settings);
     if (usable)
       await requireCard(user, deck!, settings!, r.rowId, r.sub).catch((error) => {
@@ -906,24 +955,24 @@ export async function studyUndo(user: Identity, raw: unknown) {
   const mine = await effective(user, deck.page.id, settings, studyDay(Date.now(), clock.zone, clock.dayStart));
   const memory = replay(
     history.filter((h) => h.id !== log.id),
-    mine.params,
+    await cardParams(deck.page.id, settings, mine, log.row_id, log.sub),
     clock.dayStart,
   );
   await storeState(user, deck.page, log.row_id, log.sub, memory);
   const overview = await studyQueue(user, { pageId: input.pageId, viewId: input.viewId, zone: input.zone, limit: 0 });
   const [card] = (await one("SELECT 1 FROM study_cards WHERE page_id=? AND row_id=? AND sub=?", deck.page.id, log.row_id, log.sub))
-    ? await contentOf(deck, settings, [{ rowId: log.row_id, sub: log.sub, position: 0, memory }], (await studyable(user, deck, settings, input.viewId)).cards, overview.day)
+    ? await contentOf(deck, settings, [{ rowId: log.row_id, sub: log.sub, position: 0, memory }], (await studyable(user, deck, settings, input.viewId)).cards, overview.day, mine.groups)
     : [];
   return { ...overview, undone: log.id, card: card ?? null };
 }
 
 // ---- Parameter optimisation (§23) ----
 
-// The fit itself runs in the person's browser (components/study/optimize-
+// The fit runs in the person's browser (components/study/optimize-
 // worker.ts, lib/fsrs/optimize.ts): the server hands out the log in a
 // compact form (study.history) and stores the 21 numbers it gets back
-// (study.params).
-const historyInput = z.object({ pageId: uuid, scope: z.enum(["deck", "all"]).default("deck"), zone: zoneInput });
+// (study.params). For the API and MCP the server runs the same optimiser
+// itself, within limits (study.optimize, #344).
 // At most this many reviews go to the browser (the cards studied last).
 export const MAX_HISTORY_REVIEWS = 200_000;
 // The gentle note in "Meine Einstellungen": optimise again after this many
@@ -1028,20 +1077,83 @@ async function historyRows(userId: string, scope: ParamsScope, pageId: string) {
     ...f.args,
   );
 }
-// The person's own log of a deck or of all their decks, for the optimiser:
-// below MIN_REVIEWS ratings only the count.
-export async function studyHistory(user: Identity, raw: unknown) {
-  const input = historyInput.parse(raw);
-  if (!allow(`study-history:${user.id}`, 20, 60_000)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+// The parts of a deck that may get weights of their own (#344): its
+// sub-decks (the values of the select the mapping names as `subdeck`, if
+// the person may read it) and, with more than one, its card types.
+export type DeckGroup = { key: string; kind: "subdeck" | "type"; value: string; cards: number };
+async function deckGroups(user: Identity, deck: Deck, settings: StudySettings): Promise<DeckGroup[]> {
+  const out: DeckGroup[] = [];
+  const field = settings.subdeck?.field;
+  if (field && deck.fields.some((f) => f.id === field && f.type === "select") && !(await hiddenFieldsFor(user, deck.page, deck.fields)).has(field)) {
+    const counts = new Map<string, number>();
+    const perRow = new Map((await all<{ row_id: string; n: number }>("SELECT row_id,COUNT(*) n FROM study_cards WHERE page_id=? GROUP BY row_id", deck.page.id)).map((r) => [r.row_id, Number(r.n)]));
+    for (const r of await rowsOf(deck.page.id)) {
+      if (!perRow.has(r.id)) continue;
+      let cells: Record<string, unknown> = {};
+      try {
+        cells = JSON.parse(r.cells || "{}");
+      } catch {
+        continue;
+      }
+      const value = subdeckValue(cells, field);
+      if (value) counts.set(value, (counts.get(value) || 0) + perRow.get(r.id)!);
+    }
+    for (const [value, cards] of [...counts].sort(([a], [b]) => a.localeCompare(b))) out.push({ key: `subdeck:${value}`, kind: "subdeck", value, cards });
+  }
+  const kinds = await all<{ kind: string; n: number }>("SELECT kind,COUNT(*) n FROM study_cards WHERE page_id=? GROUP BY kind ORDER BY kind", deck.page.id);
+  if (kinds.length > 1) for (const k of kinds) out.push({ key: `type:${k.kind}`, kind: "type", value: k.kind, cards: Number(k.n) });
+  return out.slice(0, MAX_GROUPS);
+}
+// The deck as the workload simulation needs it (lib/fsrs/optimize.ts
+// simulateDeck): the person's cards with a memory (stability, difficulty,
+// days since the last review, due in days; learning ones due today), the
+// new cards and the limits of a day (without "Heute mehr lernen").
+async function simulationDeck(user: Identity, deck: Deck, mine: Mine, clock: { zone: string; dayStart: number }) {
+  const today = studyDay(Date.now(), clock.zone, clock.dayStart);
+  const states = await all<{ state: number; stability: number; difficulty: number; last_review: number; due_day: string | null }>(
+    `SELECT s.state,s.stability,s.difficulty,s.last_review,s.due_day FROM card_states s JOIN study_cards c ON c.page_id=s.page_id AND c.row_id=s.row_id AND c.sub=s.sub
+      WHERE s.user_id=? AND s.page_id=? AND s.suspended=0 AND s.orphaned_at IS NULL AND s.state>0`,
+    user.id,
+    deck.page.id,
+  );
+  const total = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM study_cards WHERE page_id=?", deck.page.id))?.n || 0);
+  const suspended = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM card_states WHERE user_id=? AND page_id=? AND (suspended=1 OR orphaned_at IS NOT NULL)", user.id, deck.page.id))?.n || 0);
+  const round = (x: number) => Math.round(x * 100) / 100;
+  return {
+    cards: states.map((s) => ({
+      s: round(Number(s.stability)),
+      d: round(Number(s.difficulty)),
+      elapsed: Math.max(0, daysBetween(studyDay(Number(s.last_review), clock.zone, clock.dayStart), today)),
+      due: Number(s.state) === 2 && s.due_day ? daysBetween(today, s.due_day) : 0,
+    })),
+    newCards: Math.max(0, total - states.length - suspended),
+    newPerDay: mine.limits.new - mine.prefs.moreToday.new,
+    reviewsPerDay: mine.limits.review - mine.prefs.moreToday.review,
+  };
+}
+const groupKey = z.string().regex(GROUP_KEY);
+const historyInput = z.object({ pageId: uuid, scope: z.enum(["deck", "all"]).default("deck"), group: groupKey.optional(), zone: zoneInput });
+// The log of a scope (a deck, all decks, a part of a deck) for the
+// optimiser, at most `cap` reviews (the longest-studied cards), and what
+// the dialog and study.optimize need around it.
+async function historyFor(user: Identity, input: z.infer<typeof historyInput>, cap: number) {
   const deck = await deckOf(user, input.pageId);
   const settings = requireDeck(deck);
+  await drainStudyCards(deck.page.id);
   const clock = await zoneFor(user, input.zone);
   const mine = await effective(user, deck.page.id, settings, studyDay(Date.now(), clock.zone, clock.dayStart));
-  const stored = await storedWeights(user.id, deck.page.id, input.scope);
+  const scope = input.group ? "deck" : input.scope;
+  const groups = scope === "deck" ? await deckGroups(user, deck, settings) : [];
+  if (input.group && !groups.some((g) => g.key === input.group)) throw new HttpError(404, "Diesen Teil des Stapels gibt es nicht.");
+  const storedGroups = input.group ? parseGroups((await one<{ group_params: string | null }>("SELECT group_params FROM study_prefs WHERE user_id=? AND page_id=?", user.id, deck.page.id))?.group_params) : null;
+  const ownGroup = input.group ? storedGroups!.get(input.group) : undefined;
+  const stored = input.group ? (ownGroup ? { weights: ownGroup.w, at: ownGroup.at, reviews: ownGroup.reviews } : null) : await storedWeights(user.id, deck.page.id, scope);
   // "Before": what this scope uses now.
-  const current = input.scope === "deck" ? mine.params.weights ?? null : stored?.weights ?? null;
+  const current = input.group ? (mine.groups.get(input.group) ?? mine.params.weights ?? null) : scope === "deck" ? (mine.params.weights ?? null) : (stored?.weights ?? null);
   const base = {
-    scope: input.scope,
+    scope,
+    group: input.group ?? null,
+    groups: groups.map((g) => ({ ...g, stored: mine.groups.has(g.key) })),
     minimum: MIN_REVIEWS,
     retention: mine.params.retention,
     maxInterval: settings.maxInterval,
@@ -1049,13 +1161,21 @@ export async function studyHistory(user: Identity, raw: unknown) {
     stored: stored ? { at: stored.at, reviews: stored.reviews } : null,
     current,
     defaults: [...DEFAULT_WEIGHTS],
+    deck: await simulationDeck(user, deck, mine, clock),
   };
-  const reviews = await reviewCount(user.id, input.scope, deck.page.id);
+  let rows: HistoryRow[] | null = null;
+  let reviews: number;
+  if (input.group) {
+    const deckRows = await historyRows(user.id, "deck", deck.page.id);
+    const member = await cardGroups(deck.page.id, settings, new Set([input.group]), deckRows.map((r) => r.row_id));
+    rows = deckRows.filter((r) => member.get(`${r.row_id}\u0000${r.sub}`) === input.group);
+    reviews = rows.length;
+  } else reviews = await reviewCount(user.id, scope, deck.page.id);
   if (reviews < MIN_REVIEWS) return { ...base, reviews, cards: [] as TrainingCard[], costs: DEFAULT_COSTS, truncated: false };
-  const rows = await historyRows(user.id, input.scope, deck.page.id);
+  rows ??= await historyRows(user.id, scope, deck.page.id);
   let cards = trainingCards(rows);
   const total = cards.reduce((n, c) => n + c.r.length, 0);
-  const truncated = total > MAX_HISTORY_REVIEWS;
+  const truncated = total > cap;
   if (truncated) {
     // Keep the longest-studied cards up to the cap (the order is stable).
     let n = 0;
@@ -1063,52 +1183,139 @@ export async function studyHistory(user: Identity, raw: unknown) {
       .sort((a, b) => b.r.length - a.r.length)
       .filter((c) => {
         n += c.r.length;
-        return n <= MAX_HISTORY_REVIEWS;
+        return n <= cap;
       });
   }
   return { ...base, reviews, cards, costs: reviewCosts(rows), truncated };
+}
+// The person's own log of a deck, of a part of it or of all their decks,
+// for the optimiser in the browser: below MIN_REVIEWS ratings only the
+// count.
+export async function studyHistory(user: Identity, raw: unknown) {
+  const input = historyInput.parse(raw);
+  if (!allow(`study-history:${user.id}`, 20, 60_000)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  return await historyFor(user, input, MAX_HISTORY_REVIEWS);
 }
 const fitInput = z.object({ logLoss: z.number().min(0).max(100), rmse: z.number().min(0).max(1), items: z.number().int().min(0) }).strict();
 const paramsInput = z.object({
   pageId: uuid,
   scope: z.enum(["deck", "all"]).default("deck"),
+  // A part of the deck (#344): "subdeck:<value>" or "type:<card type>".
+  group: groupKey.optional(),
   // The 21 weights, clamped to FSRS-6's bounds; null: FSRS-6's defaults again.
   weights: z.array(z.number().finite()).length(21).nullable(),
   reviews: z.number().int().min(0).optional(),
   fit: z.object({ before: fitInput, after: fitInput }).strict().optional(),
   zone: zoneInput,
 });
-// Stores (or resets) the person's weights for a deck or for all decks and
-// computes the stability and difficulty of their cards there again from
-// the log (Anki does the same); due dates stay.
+// Stores (or resets) the person's weights for a deck, a part of it or for
+// all decks and computes the stability and difficulty of their cards there
+// again from the log (Anki does the same); due dates stay.
 export async function studyParams(user: Identity, raw: unknown) {
   const input = paramsInput.parse(raw);
   const deck = await deckOf(user, input.pageId);
-  requireDeck(deck);
-  const now = Date.now();
-  const target = input.scope === "all" ? "" : deck.page.id;
-  const value = input.weights
-    ? JSON.stringify({ version: 1, w: clampWeights(input.weights), reviews: input.reviews ?? (await reviewCount(user.id, input.scope, deck.page.id)), ...(input.fit ? { fit: input.fit } : {}) })
-    : null;
-  await run(
-    `INSERT INTO study_prefs(user_id,page_id,params,params_at,updated_at) VALUES(?,?,?,?,?)
-     ON CONFLICT(user_id,page_id) DO UPDATE SET params=excluded.params,params_at=excluded.params_at,updated_at=excluded.updated_at`,
-    user.id,
-    target,
-    value,
-    value ? now : null,
-    now,
-  );
-  const recomputed = await recomputeMemory(user, input.scope, deck.page.id);
+  const settings = requireDeck(deck);
+  if (input.group && input.weights && !(await deckGroups(user, deck, settings)).some((g) => g.key === input.group)) throw new HttpError(404, "Diesen Teil des Stapels gibt es nicht.");
+  const recomputed = await storeParams(user, deck.page.id, input.group ? "deck" : input.scope, input.group ?? null, input.weights, input.reviews, input.fit);
   const overview = await studyQueue(user, { pageId: input.pageId, zone: input.zone, limit: 0 });
   return { ...overview, recomputed };
 }
+type StoredFit = { before: z.infer<typeof fitInput>; after: z.infer<typeof fitInput> };
+async function storeParams(user: Identity, pageId: string, scope: ParamsScope, group: string | null, weights: number[] | null, reviews: number | undefined, fit: StoredFit | undefined) {
+  const now = Date.now();
+  const target = scope === "all" ? "" : pageId;
+  const value = (n: number) => ({ version: 1 as const, w: clampWeights(weights!), reviews: n, ...(fit ? { fit } : {}) });
+  if (group) {
+    const groups = await groupParams(user.id, pageId);
+    if (weights) groups.set(group, { ...value(reviews ?? 0), at: now });
+    else groups.delete(group);
+    const json = groups.size ? JSON.stringify(Object.fromEntries(groups)) : null;
+    await run(
+      `INSERT INTO study_prefs(user_id,page_id,group_params,updated_at) VALUES(?,?,?,?)
+       ON CONFLICT(user_id,page_id) DO UPDATE SET group_params=excluded.group_params,updated_at=excluded.updated_at`,
+      user.id,
+      target,
+      json,
+      now,
+    );
+  } else {
+    const json = weights ? JSON.stringify(value(reviews ?? (await reviewCount(user.id, scope, pageId)))) : null;
+    await run(
+      `INSERT INTO study_prefs(user_id,page_id,params,params_at,updated_at) VALUES(?,?,?,?,?)
+       ON CONFLICT(user_id,page_id) DO UPDATE SET params=excluded.params,params_at=excluded.params_at,updated_at=excluded.updated_at`,
+      user.id,
+      target,
+      json,
+      json ? now : null,
+      now,
+    );
+  }
+  return await recomputeMemory(user, scope, pageId);
+}
+
+// Optimising on the server (#344): the same optimiser as the browser's
+// (lib/fsrs/optimize.ts), for the API and MCP. Kept small enough not to
+// weigh on the server: at most SERVER_MAX_REVIEWS reviews (the
+// longest-studied cards), one run per instance at a time, a few per person
+// per ten minutes, paused every 20 ms (the event loop stays free) and
+// stopped after SERVER_TIME_MS.
+export const SERVER_MAX_REVIEWS = 50_000;
+export const SERVER_TIME_MS = 30_000;
+const running = globalThis as unknown as { flowplanOptimizing?: number };
+const optimizeInput = historyInput.extend({
+  // Store the result when it predicts better than the weights in use.
+  apply: z.boolean().default(false),
+  // A time budget per day for the recommended retention (minutes).
+  minutesPerDay: z.number().int().min(1).max(1440).optional(),
+});
+export async function studyOptimize(user: Identity, raw: unknown) {
+  const input = optimizeInput.parse(raw);
+  if (!allow(`study-optimize:${user.id}`, 5, 10 * 60_000)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  if ((running.flowplanOptimizing ?? 0) >= 1) throw new HttpError(503, "Gerade läuft schon eine Optimierung. Bitte versuche es gleich noch einmal.");
+  running.flowplanOptimizing = (running.flowplanOptimizing ?? 0) + 1;
+  try {
+    const deadline = Date.now() + SERVER_TIME_MS;
+    const h = await historyFor(user, input, SERVER_MAX_REVIEWS);
+    if (h.reviews < MIN_REVIEWS) throw new HttpError(409, `Zum Optimieren braucht es mindestens ${MIN_REVIEWS} Wertungen – hier sind es ${h.reviews}.`);
+    const result = await optimizeAsync(h.cards, { deadline });
+    const current = h.current ? evaluate(h.cards, h.current) : null;
+    const better = result.after.logLoss < (current ?? result.before).logLoss - 1e-5;
+    const work = await workload(result.weights, { ...h.deck, budget: input.minutesPerDay ? input.minutesPerDay * 60 : null }, h.costs, h.maxInterval, async () => {
+      if (Date.now() > deadline) throw new OptimizeTimeout("timeout");
+      await pause();
+    });
+    const fit = { before: current ?? result.before, after: result.after };
+    const applied = input.apply && better;
+    if (applied) await transaction(async () => await storeParams(user, input.pageId, h.scope, h.group, result.weights, h.reviews, fit), user);
+    return {
+      scope: h.scope,
+      group: h.group,
+      groups: h.groups,
+      reviews: h.reviews,
+      truncated: h.truncated,
+      removed: result.removed,
+      weights: result.weights,
+      fits: { defaults: result.before, current, fitted: result.after },
+      better,
+      applied,
+      retention: { current: h.retention, recommended: work.recommended, minutesPerDay: input.minutesPerDay ?? null, curve: work.curve },
+      // What the deck used before (study.queue tells what it uses now).
+      model: h.model,
+    };
+  } catch (error) {
+    if (error instanceof OptimizeTimeout) throw new HttpError(503, "Die Optimierung hat zu lange gedauert. Optimiere im Browser („Parameter optimieren“) oder einen kleineren Teil des Stapels.");
+    throw error;
+  } finally {
+    running.flowplanOptimizing = Math.max(0, (running.flowplanOptimizing ?? 1) - 1);
+  }
+}
 // The cards of the scope get the stability and difficulty their log gives
-// under the weights their deck now uses.
+// under the weights they now use (their part's, their deck's, those for all
+// decks or FSRS-6's defaults).
 async function recomputeMemory(user: Identity, scope: ParamsScope, pageId: string) {
   const own = scope === "all" ? await decksWithWeights(user.id) : new Set<string>();
   const states = await all<{ row_id: string; sub: string; page_id: string; stability: number; difficulty: number }>(
-    `SELECT row_id,sub,page_id,stability,difficulty FROM card_states WHERE user_id=?${scope === "deck" ? " AND page_id=?" : ""}`,
+    `SELECT row_id,sub,page_id,stability,difficulty FROM card_states WHERE user_id=? AND state>0${scope === "deck" ? " AND page_id=?" : ""}`,
     user.id,
     ...(scope === "deck" ? [pageId] : []),
   );
@@ -1123,30 +1330,39 @@ async function recomputeMemory(user: Identity, scope: ParamsScope, pageId: strin
       ...(scope === "deck" ? [pageId] : []),
     )
   ).filter((r) => byCard.has(`${r.row_id}\u0000${r.sub}`));
-  // Weights per deck, clipped like the scheduler clips them (ts-fsrs, by
-  // the deck's relearning steps).
-  const weightsOf = new Map<string, number[]>();
-  const weightsFor = async (deckId: string) => {
-    if (!weightsOf.has(deckId)) {
+  // Weights per deck and part, clipped like the scheduler clips them
+  // (ts-fsrs, by the deck's relearning steps).
+  const decks = new Map<string, { clip: (w: number[]) => number[]; base: number[]; groups: Map<string, number[]>; parts: Map<string, string | null> }>();
+  const deckOfCard = async (deckId: string) => {
+    if (!decks.has(deckId)) {
       const settings = (await databaseSettings(deckId)).study;
-      const w = (await personalWeights(user.id, deckId)).weights ?? [...DEFAULT_WEIGHTS];
-      weightsOf.set(deckId, clipParameters(w, settings?.relearningSteps.length ?? 1, true));
+      const steps = settings?.relearningSteps.length ?? 1;
+      const groups = new Map([...(await groupParams(user.id, deckId))].map(([k, g]) => [k, g.w]));
+      const ids = affected.filter((s) => s.page_id === deckId).map((s) => s.row_id);
+      decks.set(deckId, {
+        clip: (w) => clipParameters(w, steps, true),
+        base: (await personalWeights(user.id, deckId)).weights ?? [...DEFAULT_WEIGHTS],
+        groups,
+        parts: settings ? await cardGroups(deckId, settings, groups, ids) : new Map(),
+      });
     }
-    return weightsOf.get(deckId)!;
+    return decks.get(deckId)!;
   };
   let changed = 0;
-  const groups = new Map<string, HistoryRow[]>();
+  const perCard = new Map<string, HistoryRow[]>();
   for (const r of rows) {
     const k = `${r.row_id}\u0000${r.sub}`;
-    const list = groups.get(k);
+    const list = perCard.get(k);
     if (list) list.push(r);
-    else groups.set(k, [r]);
+    else perCard.set(k, [r]);
   }
-  for (const [k, list] of groups) {
+  for (const [k, list] of perCard) {
     const [card] = trainingCards(list);
     const state = byCard.get(k)!;
     if (!card) continue;
-    const memory = foldMemory(card, await weightsFor(state.page_id));
+    const d = await deckOfCard(state.page_id);
+    const part = d.parts.get(k);
+    const memory = foldMemory(card, d.clip(part ? d.groups.get(part)! : d.base));
     if (!memory) continue;
     const stability = Math.round(memory.stability * 1e8) / 1e8,
       difficulty = Math.round(memory.difficulty * 1e8) / 1e8;
@@ -1234,6 +1450,7 @@ export async function saveStudySettings(page: Page, raw: unknown) {
     if (!STUDY_FIELD_TYPES.has(field.type)) throw new HttpError(400, `„${field.name}“ lässt sich nicht als Kartenseite verwenden.`);
   }
   if (JSON.stringify(next.front) === JSON.stringify(next.back)) throw new HttpError(400, "Vorder- und Rückseite brauchen verschiedene Inhalte.");
+  if (next.subdeck && fields.find((f) => f.id === next.subdeck!.field)?.type !== "select") throw new HttpError(400, "Unterstapel brauchen eine Auswahl-Eigenschaft.");
   await storeSettings(page.id, { ...current, study: next });
   return { settings: next };
 }
@@ -1445,6 +1662,8 @@ export async function studyCommand(user: Identity, action: string, b: Record<str
       return await studyHistory(user, b);
     case "study.params":
       return await studyParams(user, b);
+    case "study.optimize":
+      return await studyOptimize(user, b);
     case "study.due":
       return await (await import("./study-stats")).studyDue(user, b);
     case "study.stats":

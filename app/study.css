@@ -1023,6 +1023,7 @@
   font-weight: 600;
 }
 .study-anki-subdecks .checkbox-label {
+  margin: 0;
   align-items: flex-start;
 }
 .study-anki-subdecks .checkbox-label > span {
@@ -1942,6 +1943,29 @@ polyline.occlusion-draft {
 }
 .study-optimize-retention p {
   margin: 0;
+}
+/* A part of the deck (#344) and the workload per retention. */
+.study-optimize-group {
+  margin: 10px 0 0;
+  max-width: 360px;
+}
+.study-optimize-workload {
+  width: 100%;
+  min-width: 0;
+}
+.study-optimize-budget {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+.study-optimize-budget label {
+  margin: 0;
+  gap: 4px;
+  font-size: 13px;
+}
+.study-optimize-budget input {
+  width: 9em;
 }
 .study-optimize-actions {
   flex-wrap: wrap;

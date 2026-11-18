@@ -428,6 +428,8 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
       ...(hints ? { hint: { field: "hint" } } : {}),
       ...(extras ? { extra: { field: "extra" } } : {}),
       tags: { field: "tags" },
+      // The sub-decks: values of "Deck", each may get weights of its own.
+      ...(subdecks.length ? { subdeck: { field: "deck" } } : {}),
       reverse,
     });
     const records = roleSides.map(({ note, mapping, sides: s, occlusion }) => {

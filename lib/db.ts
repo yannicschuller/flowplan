@@ -1576,6 +1576,13 @@ function migrate(d: DatabaseSync) {
   migrateRestartEvents(d);
   // Schema 105 – suspended new cards (#341, docs/specs/flashcards.md §8.1).
   migrateSuspendedNewCards(d);
+  // FSRS weights per part of a deck (#344, lib/study-params.ts):
+  // study_prefs.group_params of the deck's row holds the person's weights
+  // per sub-deck and card type (JSON). A nullable column only – an older
+  // version ignores it (those cards then use the deck's weights) – so the
+  // schema number stays.
+  if (!(d.prepare("PRAGMA table_info(study_prefs)").all() as { name: string }[]).some((c) => c.name === "group_params"))
+    d.exec("ALTER TABLE study_prefs ADD COLUMN group_params TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

@@ -55,10 +55,10 @@ async function deck(title: string) {
 const card = async (pageId: string, front: string) => (await act({ action: "row.create", pageId, cells: { title: front, back: `${front}!` } })).id as string;
 // A log written straight into review_log (fast): synthetic cards of
 // lib/fsrs's model, a day per unit of t, ending before today.
-async function seedLog(who: Identity, pageId: string, cards: { t: number[]; r: number[] }[], source = "web", start = "2025-01-06") {
+async function seedLog(who: Identity, pageId: string, cards: { t: number[]; r: number[] }[], source = "web", start = "2025-01-06", rowIds?: string[]) {
   let n = 0;
   for (const c of cards) {
-    const rowId = randomUUID();
+    const rowId = rowIds?.[cards.indexOf(c)] ?? randomUUID();
     let day = start;
     for (let i = 0; i < c.r.length; i++) {
       day = addDays(day, c.t[i]);
@@ -285,4 +285,137 @@ test("the note to optimise again: 1000 new ratings, or a month and some", async 
   assert.equal((await overview(owner, pageId)).optimizer.suggest, null);
   // The model of the memory states is the optimiser's (sanity of the import).
   assert.ok(memoryOf({ t: [0, 3], r: [3, 3] }, TRUE_WEIGHTS)!.stability > TRUE_WEIGHTS[2]);
+});
+
+// #344: weights per sub-deck (the mapping's `subdeck` select) and per
+// card type, and the optimiser on the server (study.optimize) with the
+// workload curve.
+test("parts of a deck: weights per sub-deck, the optimiser on the server, the workload", async () => {
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Teile" })).id as string;
+  const db = await database(pageId);
+  await act({
+    action: "database.update",
+    pageId,
+    version: db.version,
+    fields: [
+      { id: "title", name: "Vorderseite", type: "text" },
+      { id: "back", name: "Rückseite", type: "text" },
+      { id: "deck", name: "Deck", type: "select", options: ["A", "B"] },
+      { id: "note", name: "Notiz", type: "text" },
+    ],
+    views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [] }],
+  });
+  await assert.rejects(
+    act({ action: "study.settings", pageId, settings: { version: 1, front: { field: "title" }, back: { field: "back" }, subdeck: { field: "note" } } }),
+    /Auswahl-Eigenschaft/,
+  );
+  await act({ action: "study.settings", pageId, settings: { version: 1, front: { field: "title" }, back: { field: "back" }, subdeck: { field: "deck" } } });
+  const inA: string[] = [];
+  for (let i = 0; i < 130; i++) inA.push((await act({ action: "row.create", pageId, cells: { title: `a${i}`, back: `A${i}`, deck: "A" } })).id);
+  const inB = (await act({ action: "row.create", pageId, cells: { title: "b", back: "B", deck: "B" } })).id as string;
+  const log = syntheticLog(TRUE_WEIGHTS, 130, 31, 10);
+  // Their logs start in the past and leave every card due some day.
+  const reviews = await seedLog(owner, pageId, log, "web", "2025-03-03", inA);
+  await seedLog(owner, pageId, syntheticLog(TRUE_WEIGHTS, 1, 32), "web", "2025-03-03", [inB]);
+  for (const [i, c] of log.entries()) {
+    await run(
+      "INSERT INTO card_states(user_id,workspace_id,page_id,row_id,sub,state,step,due,due_day,stability,difficulty,reps,lapses,last_review,suspended,updated_at) VALUES(?,?,?,?,?,2,0,?,?,?,?,?,0,?,0,?)",
+      owner.id,
+      wid,
+      pageId,
+      inA[i],
+      "",
+      Date.now() - 86_400_000,
+      addDays(new Date().toISOString().slice(0, 10), -1),
+      4,
+      5,
+      c.r.length,
+      Date.now() - 5 * 86_400_000,
+      Date.now(),
+    );
+  }
+
+  const h = await history(owner, pageId);
+  assert.deepEqual(
+    h.groups.map((g: { key: string; cards: number }) => [g.key, g.cards]),
+    [
+      ["subdeck:A", 130],
+      ["subdeck:B", 1],
+    ],
+    "sub-decks only: every card is basic",
+  );
+  assert.equal(h.deck.cards.length, 130, "the cards with a memory for the workload");
+  assert.equal(h.deck.newCards, 1);
+  assert.equal(h.deck.newPerDay, 20);
+  const partA: any = await command(owner, { action: "study.history", pageId, group: "subdeck:A", zone });
+  assert.equal(partA.reviews, reviews);
+  assert.equal(partA.group, "subdeck:A");
+  assert.equal((await command(owner, { action: "study.history", pageId, group: "subdeck:B", zone }) as any).cards.length, 0, "too few");
+  await assert.rejects(command(owner, { action: "study.history", pageId, group: "subdeck:C", zone }), /Teil des Stapels/);
+
+  // On the server: the same optimiser, a result without storing it …
+  const dry: any = await command(owner, { action: "study.optimize", pageId, group: "subdeck:A", zone, minutesPerDay: 15 });
+  assert.equal(dry.applied, false);
+  assert.equal(dry.weights.length, 21);
+  assert.deepEqual(dry.weights, optimize(partA.cards).weights, "the browser's optimiser, the same result");
+  assert.ok(dry.better);
+  assert.equal(dry.retention.curve.length, 26);
+  assert.equal(dry.retention.minutesPerDay, 15);
+  assert.ok(dry.retention.curve.every((p: { minutesPerDay: number }) => p.minutesPerDay <= 15.5));
+  assert.ok(dry.retention.recommended >= 0.7 && dry.retention.recommended <= 0.95);
+  assert.equal((await one<{ group_params: string | null }>("SELECT group_params FROM study_prefs WHERE user_id=? AND page_id=?", owner.id, pageId))?.group_params ?? null, null);
+  // … and stored for the sub-deck.
+  const applied: any = await command(owner, { action: "study.optimize", pageId, group: "subdeck:A", zone, apply: true });
+  assert.equal(applied.applied, true);
+  const stored = JSON.parse((await one<{ group_params: string }>("SELECT group_params FROM study_prefs WHERE user_id=? AND page_id=?", owner.id, pageId))!.group_params);
+  assert.deepEqual(Object.keys(stored), ["subdeck:A"]);
+  assert.deepEqual(stored["subdeck:A"].w, applied.weights);
+  const after = await overview(owner, pageId);
+  assert.equal(after.model.groups, 1);
+  assert.equal(after.model.source, "default", "the deck itself keeps FSRS-6's defaults");
+  // The cards of A carry their weights (the buttons, the offline copy); B's do not.
+  const queue: any = await command(owner, { action: "study.queue", pageId, zone, limit: 50 });
+  const shownA = queue.cards.find((c: { rowId: string }) => inA.includes(c.rowId));
+  assert.deepEqual(shownA.weights, applied.weights);
+  assert.equal(shownA.group, "subdeck:A");
+  const offline: any = await command(owner, { action: "study.queue", pageId, zone, limit: 0 });
+  assert.equal(offline.params.weights, undefined);
+  // A rating of a card in A is scheduled with A's weights.
+  const rowId = shownA.rowId as string;
+  const id = randomUUID();
+  const reviewedAt = Date.now() - 1000;
+  await run("UPDATE card_states SET stability=5,difficulty=5 WHERE user_id=? AND row_id=?", owner.id, rowId);
+  const row = (await one<any>("SELECT * FROM card_states WHERE user_id=? AND row_id=?", owner.id, rowId))!;
+  const before = { state: 2 as const, step: 0, due: Number(row.due), dueDay: row.due_day, stability: Number(row.stability), difficulty: Number(row.difficulty), reps: Number(row.reps), lapses: 0, lastReview: Number(row.last_review) };
+  const settingsOf = { retention: 0.9, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 };
+  const withA = schedule(before, 3, reviewedAt, { ...settingsOf, weights: applied.weights }, { zone, dayStart: 4 }, id).memory.stability;
+  const withDefaults = schedule(before, 3, reviewedAt, settingsOf, { zone, dayStart: 4 }, id).memory.stability;
+  assert.notEqual(withA, withDefaults);
+  await command(owner, { action: "study.review", pageId, rowId, sub: "", rating: 3, id, zone, reviewedAt });
+  const state = await one<{ stability: number }>("SELECT stability FROM card_states WHERE user_id=? AND row_id=?", owner.id, rowId);
+  assert.ok(Math.abs(Number(state!.stability) - withA) < 1e-6, `${state!.stability} ≈ ${withA}`);
+  // Through MCP: fitting with a read token, storing (here: the reset of
+  // the part, back to the deck's weights) with a write token.
+  const { handleMcpMessage } = await import("../lib/mcp");
+  const { identityFromApiToken } = await import("../lib/api-tokens");
+  const tokenFor = async (scope: "read" | "write") =>
+    (await identityFromApiToken(`Bearer ${((await command(owner, { action: "token.create", name: `MCP ${scope}`, scope })) as { token: string }).token}`))!;
+  const tool = async (who: Identity, name: string, args: Record<string, unknown>) => {
+    const answer = (await handleMcpMessage(who, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } })) as unknown as { result: { content: { text: string }[]; isError?: boolean } };
+    return { error: !!answer.result.isError, text: answer.result.content[0].text };
+  };
+  const readToken = await tokenFor("read"),
+    writeToken = await tokenFor("write");
+  const fitted = await tool(readToken, "optimize_flashcard_parameters", { pageId, group: "subdeck:A", timeZone: zone });
+  assert.equal(fitted.error, false, fitted.text);
+  assert.equal(JSON.parse(fitted.text).weights.length, 21);
+  assert.equal(JSON.parse(fitted.text).applied, false, "nothing stored");
+  assert.equal((await tool(readToken, "set_flashcard_parameters", { pageId, group: "subdeck:A", weights: null })).error, true, "storing needs a write token");
+  const reset = await tool(writeToken, "set_flashcard_parameters", { pageId, group: "subdeck:A", weights: null, timeZone: zone });
+  assert.equal(reset.error, false, reset.text);
+  assert.equal((await overview(owner, pageId)).model.groups, 0);
+  // Too few ratings on the server: refused with the count.
+  await assert.rejects(command(owner, { action: "study.optimize", pageId, group: "subdeck:B", zone }), /mindestens 1000 Wertungen/);
+  // Nobody else's weights change.
+  assert.equal((await all("SELECT 1 FROM study_prefs WHERE user_id=? AND group_params IS NOT NULL", reader.id)).length, 0);
 });

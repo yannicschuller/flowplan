@@ -845,11 +845,12 @@ CommandStudyPrefsResult = TypedDict("CommandStudyPrefsResult", {
 
 }, total=False)
 
-# Your review log of a deck, for fitting FSRS parameters. Read access is enough; your own ratings only (undone ones left out). `scope`: `deck` (this deck's reviews) or `all` (all your decks). With at least `minimum` (1000) ratings: `cards`, each `{ t, r }` – the ratings in order and the study days since the review before (`t[0]` is 0) – of cards whose log starts with their first rating, at most 200,000 reviews (`truncated`); `costs` (seconds per learning, recalled and forgotten review, shares of the first ratings and of Hard/Good/Easy) for the recommended retention. Also `current` (the weights this scope uses now, null: FSRS-6's defaults), `defaults`, `retention`, `maxInterval` and `model` (what the deck uses: `source` default, deck or all, `at`, `reviews`). Flowplan fits the weights in your browser and stores them with study.params.
+# Your review log of a deck, for fitting FSRS parameters. Read access is enough; your own ratings only (undone ones left out). `scope`: `deck` (this deck's reviews) or `all` (all your decks). With at least `minimum` (1000) ratings: `cards`, each `{ t, r }` – the ratings in order and the study days since the review before (`t[0]` is 0) – of cards whose log starts with their first rating, at most 200,000 reviews (`truncated`); `costs` (seconds per learning, recalled and forgotten review, shares of the first ratings and of Hard/Good/Easy) for the recommended retention. Also `current` (the weights this scope uses now, null: FSRS-6's defaults), `defaults`, `retention`, `maxInterval`, `model` (what the deck uses: `source` default, deck or all, `at`, `reviews`, `groups`: parts with weights of their own), `groups` (the parts of the deck that may have weights of their own: `key` `subdeck:<value>` – the values of the select the card mapping names as `subdeck` – or, with more than one card type, `type:<card type>`; `cards`, `stored`) and `deck` (the deck's cards with a memory – `s`, `d`, `elapsed` and `due` in days –, `newCards`, `newPerDay`, `reviewsPerDay`, for the workload simulation). `group` limits the log to one part of the deck. Flowplan fits the weights in your browser and stores them with study.params; study.optimize does both on the server.
 CommandStudyHistory = TypedDict("CommandStudyHistory", {
     "action": Required[Literal["study.history"]],
     "pageId": Required[str],
     "scope": Literal["deck", "all"],
+    "group": str,  # A part of the deck: subdeck:<value> or type:<basic|cloze|typed|choice|occlusion>
     "zone": str,
 }, total=False)
 
@@ -857,11 +858,12 @@ CommandStudyHistoryResult = TypedDict("CommandStudyHistoryResult", {
 
 }, total=False)
 
-# Store or reset your FSRS parameters. Read access is enough. `weights`: the 21 FSRS-6 weights (clamped to FSRS-6's bounds), or `null` for FSRS-6's defaults again; `scope` `deck` (this deck) or `all` (every deck without weights of its own). Optional `reviews` and `fit` (`before`/`after`: `logLoss`, `rmse`, `items`) are kept for the statistics. The stability and difficulty of your cards in the scope are computed again from their log (`recomputed`: how many changed); due dates stay. Answers the deck's overview like study.prefs.
+# Store or reset your FSRS parameters. Read access is enough. `weights`: the 21 FSRS-6 weights (clamped to FSRS-6's bounds), or `null` for FSRS-6's defaults again; `scope` `deck` (this deck) or `all` (every deck without weights of its own); `group` (one of study.history's `groups`) stores them for that part of the deck only – its cards use them before the deck's (a sub-deck's before a card type's), `null` lets them use the deck's again. Optional `reviews` and `fit` (`before`/`after`: `logLoss`, `rmse`, `items`) are kept for the statistics. The stability and difficulty of your cards in the scope are computed again from their log (`recomputed`: how many changed); due dates stay. Answers the deck's overview like study.prefs.
 CommandStudyParams = TypedDict("CommandStudyParams", {
     "action": Required[Literal["study.params"]],
     "pageId": Required[str],
     "scope": Literal["deck", "all"],
+    "group": str,  # A part of the deck: subdeck:<value> or type:<card type>
     "weights": Required[Optional[list[float]]],
     "reviews": int,
     "fit": dict[str, Any],
@@ -869,6 +871,21 @@ CommandStudyParams = TypedDict("CommandStudyParams", {
 }, total=False)
 
 CommandStudyParamsResult = TypedDict("CommandStudyParamsResult", {
+
+}, total=False)
+
+# Fit your FSRS parameters on the server and recommend a retention. Read access is enough. The same optimiser as "Parameter optimieren" in the browser (FSRS-6, fsrs-rs's outlier filter and initialisation of w0–w3), run on the server for `scope` `deck`, `all` or one `group` of the deck (see study.history). Needs at least 1000 of your ratings (409 otherwise); at most 50,000 reviews count (the longest-studied cards, `truncated`). Limits: one optimisation per server at a time (503: try again shortly), five per person in ten minutes (429), 30 seconds at most (503: optimise in the browser or a smaller part). Answers `weights`, `fits` (`defaults`, `current`, `fitted`: `logLoss`, `rmse`, `items`), `better` (the fitted weights predict your ratings better than those in use), `removed` (cards left out as outliers), and `retention`: the `current` desired retention, the `recommended` one and the `curve` – per desired retention 70–95 % the simulated `cardsPerDay`, `minutesPerDay` and `knowledge` (cards remembered after a year) of this deck within your daily limits and the optional time budget `minutesPerDay`. With `apply: true` the weights are stored like study.params when they are `better` (`applied`).
+CommandStudyOptimize = TypedDict("CommandStudyOptimize", {
+    "action": Required[Literal["study.optimize"]],
+    "pageId": Required[str],
+    "scope": Literal["deck", "all"],
+    "group": str,  # A part of the deck: subdeck:<value> or type:<card type>
+    "apply": bool,
+    "minutesPerDay": int,  # A time budget per day for the recommended retention
+    "zone": str,
+}, total=False)
+
+CommandStudyOptimizeResult = TypedDict("CommandStudyOptimizeResult", {
 
 }, total=False)
 
@@ -2021,7 +2038,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

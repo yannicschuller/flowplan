@@ -79,12 +79,15 @@ export function localQueue<Card extends { rowId: string; sub: string; memory: Me
   const studied = new Set(sameDay ? deck.studiedRows : []);
   const key = (rowId: string, sub: string) => `${rowId}\u0000${sub}`;
   const memories = new Map(deck.cards.map((c) => [key(c.rowId, c.sub), c.memory]));
+  // A card of a part of the deck with weights of its own carries them (#344).
+  const weightsOf = new Map(deck.cards.map((c) => [key(c.rowId, c.sub), (c as { weights?: number[] }).weights]));
   const mine = pending.filter((p) => p.pageId === deck.pageId && p.userId === deck.userId).sort((a, b) => a.reviewedAt - b.reviewedAt || (a.id < b.id ? -1 : 1));
   for (const p of mine) {
     const k = key(p.rowId, p.sub);
     if (!memories.has(k)) continue;
     const before = memories.get(k) ?? null;
-    memories.set(k, schedule(before, p.rating, p.reviewedAt, deck.params, { zone: p.zone, dayStart }, p.id).memory);
+    const weights = weightsOf.get(k);
+    memories.set(k, schedule(before, p.rating, p.reviewedAt, weights ? { ...deck.params, weights } : deck.params, { zone: p.zone, dayStart }, p.id).memory);
     if (studyDay(p.reviewedAt, options.zone, dayStart) !== today.day) continue;
     done.all++;
     if (!before) done.new++;

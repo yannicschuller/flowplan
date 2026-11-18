@@ -2422,12 +2422,10 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
 
 **Offen**
 
-- Optimieren über API/MCP (bräuchte den Optimierer im Server-Worker).
-- Optimieren je Unterstapel (Lernen-Ansicht mit Filtern) oder je Kartentyp.
-- Vortraining von w0–w3 und Ausreißerfilter wie fsrs-rs; Abgleich der
-  Zahlen mit Anki an einem echten Protokoll.
-- Empfehlung mit Tagesgrenzen und Zeitbudget des Stapels (wie Ankis
-  Simulator); Kurve der Arbeit je Rate im Dialog.
+- Erledigt mit #344 (§25): Optimieren über API/MCP, je Unterstapel oder
+  Kartentyp, Vortraining von w0–w3 und Ausreißerfilter wie fsrs-rs,
+  Empfehlung mit Tagesgrenzen und Zeitbudget samt Arbeitskurve.
+- Abgleich der Zahlen mit Anki an einem echten Protokoll.
 - Optimieren offline (das Protokoll liegt nicht in der Offline-Kopie).
 
 ---
@@ -2478,3 +2476,80 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   `suspended` nicht).
 - Ältere Versionen würden nach einer Wertung keine Zeile mit Zustand 0
   zurückschreiben können – daher die neue Schemanummer.
+
+## 25. Entscheidungen bei #344 (FSRS-Optimierung)
+
+**Vortraining von w0–w3 und Ausreißerfilter wie fsrs-rs (`lib/fsrs/optimize.ts`)**
+
+- Portiert aus fsrs-rs (`parameter_initialization.rs`, `dataset.rs`
+  `outlier_bucket_decisions`): je Karte die erste Wertung und die erste
+  Wiederholung nach mindestens einem Tag („erste Langzeit-Wiederholung“).
+  Je erster Wertung Klassen nach Abstand; die kleinsten fallen weg (5 %,
+  mindestens 20), ebenso Klassen unter 6 oder mit Abstand über 100 Tagen
+  (Leicht: 365). Karten einer entfernten Klasse fallen aus dem Training.
+- Anfangsstabilität je Wertung: Kreuzentropie der Vergessenskurve mit dem
+  Standard-Zerfall gegen die (Laplace-geglättete) Trefferquote je Abstand
+  plus |S − Vorgabe|/16, Minimum per Newton mit Bisektion (wie fsrs-rs),
+  dann `smooth_and_fill` (Reihenfolge, fehlende aus den anderen, 0,41/0,54).
+  Das Training startet von dort; danach wird w0–w3 noch einmal geglättet.
+- Wie fsrs-rs: unter 8 Vorhersagen bleibt der Start, unter 64
+  (`MIN_ITEMS`) nur w0–w3 aus dem Vortraining. `before` ist weiter die
+  Güte der Vorgabe auf dem ganzen Protokoll, `after` die der neuen Gewichte
+  (ebenfalls ganzes Protokoll, mit Ausreißern).
+- Nicht übernommen: Ankis Gewichtung jüngerer Wiederholungen, die genauen
+  Regularisierungs- und Trainingskonstanten (Epochen, Lernrate).
+- Test gegen fsrs-rs' eigene Referenzwerte (Verlust 279,9206961…, Suche
+  0,7355089, `smooth_and_fill` [0,4; 1,1227008; 2,3; 10,9] und
+  [0,05738148; 0,35; 0,6242943; 2,2453482]) – ohne Download, die Zahlen
+  stehen in fsrs-rs' Tests.
+
+**Optimieren auf dem Server (API, MCP)**
+
+- `study.optimize { pageId, scope, group?, apply?, minutesPerDay? }`: derselbe
+  Optimierer (`optimizeAsync`: pausiert alle 20 ms, die Ereignisschleife
+  bleibt frei). Kein Worker-Thread – der TypeScript-Code läuft direkt.
+- Grenzen: höchstens 50 000 Wertungen (die am längsten gelernten Karten),
+  eine Optimierung je Instanz gleichzeitig (503), fünf je Person in zehn
+  Minuten (429), 30 s (503 mit Hinweis auf den Browser). Unter 1 000
+  Wertungen 409. Außerhalb jeder Transaktion (`runCommand` reicht den
+  Befehl direkt durch); gespeichert wird mit `apply: true` nur bei
+  Verbesserung, in einer eigenen Transaktion.
+- MCP: `optimize_flashcard_parameters` (nur lesen, speichert nie – ruft
+  `studyOptimize` direkt, denn Lese-Token dürfen keine Befehle) und
+  `set_flashcard_parameters` (schreiben; Gewichte oder `null`).
+
+**Gewichte je Teil des Stapels**
+
+- Teile: Unterstapel (Werte einer Auswahl, die die Kartenzuordnung als
+  `subdeck` nennt – „Karten einrichten“ → „Unterstapel“; der Anki-Import
+  setzt „Deck“) und, bei mehr als einem Kartentyp, Kartentypen. Keine
+  Filter von Lernen-Ansichten: die Gewichte einer Karte hingen sonst davon
+  ab, wo sie gelernt wird; Unterstapel und Kartentyp sind Eigenschaften der
+  Karte, also planen Wertung, Nachspielen, Rückgängig, Import und
+  Offline-Kopie gleich.
+- Speicher: `study_prefs.group_params` (JSON je Schlüssel
+  `subdeck:<Wert>`/`type:<Typ>`, Zeile des Stapels) – neue Spalte, alte
+  Versionen ignorieren sie, `params` bleibt wie bisher (rückwärtskompatibel).
+- Reihenfolge: Unterstapel vor Kartentyp vor Stapel vor „alle Stapel“ vor
+  Vorgabe. Eine Karte mit eigenen Gewichten trägt sie in der Warteschlange
+  (`weights`, für die Intervalle auf den Knöpfen und die Offline-Kopie).
+- `study.history`/`study.params` mit `group`; `history.groups` nennt die
+  Teile (Unterstapel nur, wenn die Person die Eigenschaft lesen darf).
+  Dialog: dritter Umfang „Teil des Stapels“ mit Auswahl.
+
+**Empfehlung mit Tagesgrenzen und Zeitbudget, Arbeitskurve**
+
+- `simulateDeck`: ein Jahr Tag für Tag mit den eigenen Karten des Stapels
+  (Stabilität, Schwierigkeit, Tage seit der letzten, fällig in Tagen;
+  Lernphase heute fällig) und den neuen; erst fällige (übrige bleiben
+  fällig), dann neue, je innerhalb der Tagesgrenzen der Person und des
+  optionalen Zeitbudgets. Über 20 000 Karten jede k-te (Grenzen durch k).
+  Stapel unter 50 Karten: 2 000 neue mit den Grenzen.
+- Empfohlen: die Rate mit der wenigsten Zeit je behaltener Karte – Zeit samt
+  Neulernen dessen, was am Jahresende vergessen ist –
+  (Vergessen 2,5-fach), über ±2 Punkte geglättet – mit bindendem Budget
+  also die, die am meisten behält.
+- Dialog: Satz „Bei 84 % sind es im Mittel etwa 42 Karten und 9 Minuten am
+  Tag.“, Linie „Karten pro Tag“ über 70–95 % mit Markierung „jetzt“ und
+  „empfohlen“ (`LineChart` `marks`), Tabelle; „Zeit pro Tag (Minuten,
+  optional)“ mit „Neu berechnen“ (nur die Simulation im Worker).

@@ -3,7 +3,9 @@
 // retention from the fitted model, and the memory state of a card under
 // given weights. Pure TypeScript without dependencies of its own – it runs
 // in a Web Worker in the person's browser (components/study/optimize-
-// worker.ts), the tests and, for the memory states, on the server.
+// worker.ts), on the server for the API and MCP (lib/study.ts
+// study.optimize, optimizeAsync: pausing between mini-batches, with a
+// deadline) and in the tests.
 //
 // - Model: FSRS-6 exactly as the pinned ts-fsrs computes it (next_state,
 //   forgetting_curve; tests/fsrs-optimize.test.ts compares both), without
@@ -26,15 +28,23 @@
 // - Evaluation: log loss and RMSE (bins): predictions in 20 bins of R, the
 //   root of the count-weighted mean squared difference between mean
 //   prediction and mean outcome per bin.
-// Not implemented from fsrs-rs: the separate pre-training of w0–w3, outlier
-// filters and its exact regularisation constants.
+// - From fsrs-rs (#344): the outlier filter on the first long-term reviews
+//   and the separate initialisation of w0–w3 from them (prepareTraining,
+//   ported from parameter_initialization.rs and dataset.rs, checked against
+//   its reference numbers), and the smoothing of w0–w3 after training.
+// Not taken from fsrs-rs: its recency weighting of reviews, its exact
+// regularisation constants and its training schedule (epochs, lr).
+// - The workload (#344): a year of the deck's own cards at each desired
+//   retention within its daily limits and a time budget (simulateDeck,
+//   workload) – cards and minutes per day, and the recommended retention.
 import { CLAMP_PARAMETERS, S_MIN, W17_W18_Ceiling, default_w } from "ts-fsrs";
 
 export const WEIGHT_COUNT = 21;
 // Phase 8 asks for this many ratings before optimising (§16).
 export const MIN_REVIEWS = 1000;
-// Fewer reviews a day or more apart than this: nothing to learn from.
-export const MIN_ITEMS = 50;
+// Fewer reviews a day or more apart than this: only w0–w3 are initialised
+// (fsrs-rs MIN_ITEMS_TO_TRAIN).
+export const MIN_ITEMS = 64;
 export const DEFAULT_WEIGHTS: readonly number[] = default_w;
 export const WEIGHT_BOUNDS = CLAMP_PARAMETERS(W17_W18_Ceiling, true) as unknown as readonly (readonly [number, number])[];
 const S_MAX = 36500;
@@ -272,6 +282,218 @@ function rmseBins(preds: Prediction[]) {
 // Reviews of the log that are predictions (a day or more after the one before).
 export const trainingItems = (cards: TrainingCard[]) => cards.reduce((n, card) => n + card.t.slice(1).filter((t) => t > 0).length, 0);
 
+// ---- fsrs-rs's initialisation of w0–w3 and its outlier filter ----
+
+// Ported from fsrs-rs (src/parameter_initialization.rs, src/dataset.rs
+// outlier_bucket_decisions; tests/fsrs-optimize.test.ts checks its
+// reference numbers). A card's first rating and its first review a day or
+// more later ("the first long-term review") say how stable a card is after
+// that first rating: per rating, the stability whose forgetting curve
+// (FSRS-6's default decay) fits those outcomes best is the start of w0–w3.
+export type InitialReview = { rating: number; delta: number; recalled: boolean };
+const INIT_S_MAX = 100;
+const DEFAULT_DECAY = DEFAULT_WEIGHTS[20];
+// The first long-term review of a card (null: none yet).
+export function firstLongTerm(card: TrainingCard): InitialReview | null {
+  for (let i = 1; i < card.r.length; i++) if (card.t[i] > 0) return { rating: card.r[0], delta: card.t[i], recalled: card.r[i] > 1 };
+  return null;
+}
+// Per first rating, the (rating, interval) buckets of the first long-term
+// reviews: the least populated ones go (5 %, at least 20 reviews), and so
+// do buckets of fewer than 6 or with an interval over 100 days (365 for
+// Easy). The cards of a removed bucket leave the training as well.
+export function outlierBuckets(reviews: Pick<InitialReview, "rating" | "delta">[]) {
+  const buckets = new Map<string, { rating: number; delta: number; count: number; members: number[] }>();
+  const totals = [0, 0, 0, 0, 0];
+  reviews.forEach((r, index) => {
+    const key = `${r.rating}:${r.delta}`;
+    const bucket = buckets.get(key) ?? { rating: r.rating, delta: r.delta, count: 0, members: [] };
+    bucket.count++;
+    bucket.members.push(index);
+    buckets.set(key, bucket);
+    totals[r.rating]++;
+  });
+  const removed = new Set<string>(),
+    kept: number[] = [],
+    dropped = [0, 0, 0, 0, 0];
+  const sorted = [...buckets.values()].sort((a, b) => a.rating - b.rating || a.count - b.count || a.delta - b.delta);
+  for (const b of sorted) {
+    let discard: boolean;
+    if (dropped[b.rating] + b.count < Math.max(20, Math.floor(totals[b.rating] / 20))) {
+      dropped[b.rating] += b.count;
+      discard = true;
+    } else discard = b.count < 6 || b.delta > (b.rating !== 4 ? 100 : 365);
+    if (discard) removed.add(`${b.rating}:${b.delta}`);
+    else kept.push(...b.members);
+  }
+  return { removed, kept: kept.sort((a, b) => a - b) };
+}
+// The initialisation's objective for one rating: the summed binary cross-
+// entropy of the default forgetting curve at stability `s` against the
+// mean outcome per interval, plus |s − default| / 16.
+export function initLoss(data: { delta: number; recall: number; count: number }[], s: number, defaultS: number) {
+  const factor = Math.pow(0.9, -1 / DEFAULT_DECAY) - 1;
+  let loss = 0;
+  for (const d of data) {
+    const p = Math.pow(1 + (d.delta / s) * factor, -DEFAULT_DECAY);
+    loss -= (d.recall * Math.log(p) + (1 - d.recall) * Math.log(1 - p)) * d.count;
+  }
+  return loss + Math.abs(s - defaultS) / 16;
+}
+function initSlope(data: { delta: number; recall: number; count: number }[], s: number): [number, number] {
+  const decay = DEFAULT_DECAY;
+  const factor = Math.pow(0.9, -1 / decay) - 1;
+  let slope = 0,
+    curvature = 0;
+  for (const { delta, recall: y, count: n } of data) {
+    const c = delta * factor;
+    const p = Math.pow(1 + c / s, -decay);
+    const b = (decay * c) / (s * (s + c));
+    const a = (p - y) / (1 - p);
+    slope += n * a * b;
+    curvature += n * ((1 - y) * p * Math.pow(b / (1 - p), 2) - a * b * (1 / s + 1 / (s + c)));
+  }
+  return [slope, curvature];
+}
+// fsrs-rs initial_stability: the prior's kink at the default decides the
+// side; Newton steps safeguarded by bisection find the slope's root.
+function initialStability(data: { delta: number; recall: number; count: number }[], defaultS: number) {
+  const [slope] = initSlope(data, defaultS);
+  if (Math.abs(slope) <= 1 / 16) return defaultS;
+  let [low, high, prior] = slope > 0 ? [S_MIN, defaultS, -1 / 16] : [defaultS, INIT_S_MAX, 1 / 16];
+  const boundary = slope > 0 ? low : high;
+  const atBoundary = initSlope(data, boundary)[0] + prior;
+  if ((slope > 0 && atBoundary >= 0) || (slope < 0 && atBoundary <= 0)) return boundary;
+  let s = defaultS;
+  for (let k = 0; k < 80; k++) {
+    const [g0, curvature] = initSlope(data, s);
+    const g = g0 + prior;
+    if (g > 0) high = s;
+    else low = s;
+    if (Math.fround(low) === Math.fround(high)) break;
+    const newton = s - g / curvature;
+    const next = curvature > 0 && newton > low && newton < high ? newton : (low + high) / 2;
+    if (Math.fround(next) === Math.fround(s)) return next;
+    s = next;
+  }
+  return (low + high) / 2;
+}
+// Per first rating the fitted stability (Laplace-smoothed recall per
+// interval with the average recall of the log).
+export function searchStability(byRating: Map<number, { delta: number; recall: number; count: number }[]>, averageRecall: number) {
+  const out = new Map<number, number>();
+  for (const [rating, data] of byRating) {
+    const smoothed = data.map((d) => ({ ...d, recall: (d.recall * d.count + averageRecall) / (d.count + 1) }));
+    out.set(rating, initialStability(smoothed, DEFAULT_WEIGHTS[rating - 1]));
+  }
+  return out;
+}
+// fsrs-rs smooth_and_fill: the stabilities in order of the ratings (the
+// one with fewer reviews gives way), missing ones filled in from the
+// others (in log space, with fsrs-rs's weights 0.41/0.54), clamped.
+export function smoothAndFill(stability: Map<number, number>, counts: Map<number, number>): number[] | null {
+  const s = new Map([...stability].filter(([rating]) => counts.has(rating)));
+  for (let pass = 0; pass < 20; pass++) {
+    let changed = false;
+    for (const [small, big] of [
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [1, 3],
+      [2, 4],
+      [1, 4],
+    ]) {
+      const a = s.get(small),
+        b = s.get(big);
+      if (a === undefined || b === undefined || a <= b) continue;
+      if (counts.get(small)! > counts.get(big)!) s.set(big, a);
+      else s.set(small, b);
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  const w1 = 0.41,
+    w2 = 0.54;
+  const pow = Math.pow;
+  const r = [undefined, s.get(1), s.get(2), s.get(3), s.get(4)] as (number | undefined)[];
+  const has = (i: number) => r[i] !== undefined;
+  let out: number[];
+  if (s.size === 0) return null;
+  if (s.size === 1) {
+    const [rating, value] = [...s][0];
+    const factor = value / DEFAULT_WEIGHTS[rating - 1];
+    out = DEFAULT_WEIGHTS.slice(0, 4)
+      .map((x) => x * factor)
+      .sort((a, b) => a - b);
+  } else {
+    if (s.size === 2) {
+      const k = w1 + w2 - w1 * w2;
+      if (!has(1) && !has(2)) {
+        r[2] = pow(r[3]!, 1 / (1 - w2)) * pow(r[4]!, 1 - 1 / (1 - w2));
+        r[1] = pow(r[2]!, 1 / w1) * pow(r[3]!, 1 - 1 / w1);
+      } else if (!has(1) && !has(3)) {
+        r[3] = pow(r[2]!, 1 - w2) * pow(r[4]!, w2);
+        r[1] = pow(r[2]!, 1 / w1) * pow(r[3]!, 1 - 1 / w1);
+      } else if (!has(1) && !has(4)) {
+        r[4] = pow(r[2]!, 1 - 1 / w2) * pow(r[3]!, 1 / w2);
+        r[1] = pow(r[2]!, 1 / w1) * pow(r[3]!, 1 - 1 / w1);
+      } else if (!has(2) && !has(3)) {
+        r[2] = pow(r[1]!, w1 / k) * pow(r[4]!, 1 - w1 / k);
+        r[3] = pow(r[1]!, 1 - w2 / k) * pow(r[4]!, w2 / k);
+      } else if (!has(2) && !has(4)) {
+        r[2] = pow(r[1]!, w1) * pow(r[3]!, 1 - w1);
+        r[4] = pow(r[2]!, 1 - 1 / w2) * pow(r[3]!, 1 / w2);
+      } else if (!has(3) && !has(4)) {
+        r[3] = pow(r[1]!, 1 - 1 / (1 - w1)) * pow(r[2]!, 1 / (1 - w1));
+        r[4] = pow(r[2]!, 1 - 1 / w2) * pow(r[3]!, 1 / w2);
+      }
+    } else if (s.size === 3) {
+      if (!has(1)) r[1] = pow(r[2]!, 1 / w1) * pow(r[3]!, 1 - 1 / w1);
+      else if (!has(2)) r[2] = pow(r[1]!, w1) * pow(r[3]!, 1 - w1);
+      else if (!has(3)) r[3] = pow(r[2]!, 1 - w2) * pow(r[4]!, w2);
+      else if (!has(4)) r[4] = pow(r[2]!, 1 - 1 / w2) * pow(r[3]!, 1 / w2);
+    }
+    out = r.slice(1) as number[];
+  }
+  return out.map((v) => Math.min(INIT_S_MAX, Math.max(S_MIN, v)));
+}
+// The training set after the outlier filter, the initial stabilities w0–w3
+// fitted to the first long-term reviews (null: none) and the reviews per
+// first rating (for the final smoothing).
+export function prepareTraining(cards: TrainingCard[]) {
+  const firsts = cards.map(firstLongTerm);
+  const initial = firsts.filter((f): f is InitialReview => !!f);
+  const { removed, kept } = outlierBuckets(initial);
+  const train = cards.filter((_, i) => {
+    const f = firsts[i];
+    return !f || !removed.has(`${f.rating}:${f.delta}`);
+  });
+  const init = kept.map((i) => initial[i]);
+  const counts = new Map<number, number>();
+  for (const r of init) counts.set(r.rating, (counts.get(r.rating) || 0) + 1);
+  // The share recalled of every prediction left for training.
+  let recalled = 0,
+    predictions = 0;
+  for (const card of train)
+    for (let i = 1; i < card.r.length; i++)
+      if (card.t[i] > 0) {
+        predictions++;
+        if (card.r[i] > 1) recalled++;
+      }
+  const byRating = new Map<number, { delta: number; recall: number; count: number }[]>();
+  const groups = new Map<string, { rating: number; delta: number; recalled: number; count: number }>();
+  for (const r of init) {
+    const key = `${r.rating}:${r.delta}`;
+    const g = groups.get(key) ?? { rating: r.rating, delta: r.delta, recalled: 0, count: 0 };
+    g.count++;
+    if (r.recalled) g.recalled++;
+    groups.set(key, g);
+  }
+  for (const g of [...groups.values()].sort((a, b) => a.delta - b.delta)) byRating.set(g.rating, [...(byRating.get(g.rating) || []), { delta: g.delta, recall: g.recalled / g.count, count: g.count }]);
+  const stability = predictions ? smoothAndFill(searchStability(byRating, recalled / predictions), counts) : null;
+  return { train, initial: stability, counts, removed: cards.length - train.length };
+}
+
 // ---- Fitting ----
 
 export const REGULARIZATION = 32;
@@ -282,6 +504,8 @@ const LR = 0.04,
   EPOCHS = 5,
   MAX_BATCH = 512,
   MIN_BATCH = 64;
+// Fewer predictions than this: the defaults stay (fsrs-rs: 8).
+export const MIN_START = 8;
 // A small seeded generator (mulberry32): the shuffle, the simulation.
 export function seeded(seed: number) {
   let a = seed >>> 0;
@@ -294,19 +518,39 @@ export function seeded(seed: number) {
   };
 }
 const LOG_SPACE = 4;
-export type OptimizeOptions = { start?: readonly number[]; epochs?: number; seed?: number; onProgress?: (done: number) => void };
-export type OptimizeResult = { weights: number[]; before: Fit; after: Fit };
-// Fits the weights to the cards' log, starting from `start` (FSRS-6's
-// defaults). `before` is the fit of the start, `after` that of the result.
-export function optimize(cards: TrainingCard[], options: OptimizeOptions = {}): OptimizeResult {
-  const start = clampWeights(options.start ?? DEFAULT_WEIGHTS);
+export type OptimizeOptions = {
+  // The weights to start from (else FSRS-6's defaults with w0–w3 from the
+  // initialisation); `before` is the fit of these.
+  start?: readonly number[];
+  epochs?: number;
+  seed?: number;
+  // false: no initialisation of w0–w3 and no outlier filter (as before #344).
+  prepare?: boolean;
+  onProgress?: (done: number) => void;
+};
+export type OptimizeResult = { weights: number[]; before: Fit; after: Fit; removed: number };
+// The fit as steps: yields its progress (0–1) after every mini-batch, so
+// optimizeAsync can pause between them; optimize runs it at once.
+function* fitting(cards: TrainingCard[], options: OptimizeOptions): Generator<number, OptimizeResult> {
+  const reference = clampWeights(options.start ?? DEFAULT_WEIGHTS);
   const usable = cards.filter((card) => card.r.length > 1 && card.t.slice(1).some((t) => t > 0));
-  const total = trainingItems(usable);
-  const before = evaluate(usable, start);
-  if (total < MIN_ITEMS) return { weights: start, before, after: before };
+  const before = evaluate(usable, reference);
+  if (trainingItems(usable) < MIN_START) return { weights: reference, before, after: before, removed: 0 };
+  const prepared = options.prepare === false ? { train: usable, initial: null, counts: new Map<number, number>(), removed: 0 } : prepareTraining(usable);
+  // fsrs-rs starts from the initial stabilities fitted to the first reviews.
+  const start = !options.start && prepared.initial ? clampWeights([...prepared.initial, ...DEFAULT_WEIGHTS.slice(4)]) : reference;
+  const train = prepared.train;
+  const total = trainingItems(train);
+  const finish = (w: number[]): OptimizeResult => {
+    // fsrs-rs smooths w0–w3 once more after training.
+    const smoothed = prepared.counts.size ? smoothAndFill(new Map(w.slice(0, 4).map((x, i) => [i + 1, x])), prepared.counts) : null;
+    const weights = clampWeights((smoothed ? [...smoothed, ...w.slice(4)] : w).map((x) => Math.round(x * 10_000) / 10_000));
+    return { weights, before, after: evaluate(usable, weights), removed: prepared.removed };
+  };
+  if (total < MIN_ITEMS) return finish(start);
   const batchItems = Math.min(MAX_BATCH, Math.max(MIN_BATCH, Math.ceil(total / 32)));
   // Batches of whole cards with about `batchItems` predictions each.
-  const order = usable.map((_, i) => i);
+  const order = train.map((_, i) => i);
   const random = seeded(options.seed ?? 20_231_105);
   const epochs = options.epochs ?? EPOCHS;
   const batchesOf = () => {
@@ -318,8 +562,8 @@ export function optimize(cards: TrainingCard[], options: OptimizeOptions = {}): 
     let current: TrainingCard[] = [],
       n = 0;
     for (const i of order) {
-      current.push(usable[i]);
-      n += usable[i].t.slice(1).filter((t) => t > 0).length;
+      current.push(train[i]);
+      n += train[i].t.slice(1).filter((t) => t > 0).length;
       if (n >= batchItems) {
         batches.push(current);
         current = [];
@@ -361,12 +605,40 @@ export function optimize(cards: TrainingCard[], options: OptimizeOptions = {}): 
       // Clamped after every step (fsrs-rs's parameter clipper).
       const clipped = toWeights(theta);
       for (let i = 0; i < WEIGHT_COUNT; i++) theta[i] = i < LOG_SPACE ? Math.log(clipped[i]) : clipped[i];
+      yield step / Math.max(1, steps);
     }
     options.onProgress?.((epoch + 1) / epochs);
   }
-  const weights = toWeights(theta).map((x) => Math.round(x * 10_000) / 10_000);
-  const fitted = clampWeights(weights);
-  return { weights: fitted, before, after: evaluate(usable, fitted) };
+  return finish(toWeights(theta));
+}
+// Fits the weights to the cards' log: fsrs-rs's outlier filter and
+// initialisation of w0–w3, then Adam from there. `before` is the fit of
+// the start (FSRS-6's defaults), `after` that of the result – both on the
+// whole log.
+export function optimize(cards: TrainingCard[], options: OptimizeOptions = {}): OptimizeResult {
+  const run = fitting(cards, options);
+  for (;;) {
+    const next = run.next();
+    if (next.done) return next.value;
+  }
+}
+// The same, pausing every `sliceMs` so the server's event loop stays free
+// (lib/study.ts study.optimize); past `deadline` (ms since the epoch) it
+// stops with a TimeoutError.
+export class OptimizeTimeout extends Error {}
+export const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+export async function optimizeAsync(cards: TrainingCard[], options: OptimizeOptions & { deadline?: number; sliceMs?: number } = {}): Promise<OptimizeResult> {
+  const run = fitting(cards, options);
+  let slice = Date.now();
+  for (;;) {
+    const next = run.next();
+    if (next.done) return next.value;
+    if (Date.now() - slice >= (options.sliceMs ?? 20)) {
+      if (options.deadline && Date.now() > options.deadline) throw new OptimizeTimeout("timeout");
+      await pause();
+      slice = Date.now();
+    }
+  }
 }
 
 // ---- Memory state of a card under given weights ----
@@ -464,6 +736,162 @@ export function retentionCurve(weights: readonly number[], costs: ReviewCosts = 
 }
 export function recommendRetention(weights: readonly number[], costs: ReviewCosts = DEFAULT_COSTS, maxInterval = S_MAX) {
   const curve = retentionCurve(weights, costs, maxInterval);
+  let best = { retention: 0.9, cost: Infinity };
+  curve.forEach((point, i) => {
+    const near = curve.slice(Math.max(0, i - 2), i + 3);
+    const cost = near.reduce((sum, x) => sum + x.cost, 0) / near.length;
+    if (cost < best.cost) best = { retention: point.retention, cost };
+  });
+  return best.retention;
+}
+
+// ---- The workload of a deck at each desired retention (#344) ----
+
+// Like Anki's simulator: the deck's own cards (their stability, difficulty
+// and due day) and its new cards, studied day by day for a year at a
+// desired retention within the person's daily limits and, if given, a
+// time budget – reviews due first (overdue ones stay due), then new cards.
+// Per retention: cards and minutes per day, and the knowledge at the end
+// (sum of the retrievability of every card studied).
+export type SimCard = { s: number; d: number; elapsed: number; due: number };
+export type SimDeck = {
+  cards: SimCard[];
+  newCards: number;
+  newPerDay: number;
+  reviewsPerDay: number;
+  // Seconds a day at most (null: no budget).
+  budget?: number | null;
+};
+export type WorkloadPoint = { retention: number; cardsPerDay: number; minutesPerDay: number; knowledge: number; cost: number };
+export const SIM_DECK_DAYS = 365;
+// More cards than this are sampled (every k-th card, limits divided by k,
+// counts multiplied by k).
+export const SIM_MAX_CARDS = 20_000;
+export function simulateDeck(weights: readonly number[], retention: number, deck: SimDeck, costs: ReviewCosts = DEFAULT_COSTS, maxInterval = S_MAX) {
+  const m = constants(clampWeights(weights));
+  const decay = m.decay.v,
+    factor = m.factor.v;
+  const total = deck.cards.length + deck.newCards;
+  const k = Math.max(1, Math.ceil(total / SIM_MAX_CARDS));
+  const existing = k > 1 ? deck.cards.filter((_, i) => i % k === 0) : deck.cards;
+  const fresh = Math.floor(deck.newCards / k);
+  const n = existing.length + fresh;
+  const days = SIM_DECK_DAYS;
+  const s = new Float64Array(n),
+    d = new Float64Array(n),
+    last = new Float64Array(n),
+    seen = new Uint8Array(n);
+  const random: (() => number)[] = [];
+  const calendar: number[][] = Array.from({ length: days }, () => []);
+  const interval = (stability: number) => Math.min(maxInterval, Math.max(1, Math.round((stability / factor) * (Math.pow(retention, 1 / decay) - 1))));
+  existing.forEach((card, i) => {
+    s[i] = Math.max(S_MIN, card.s);
+    d[i] = Math.min(10, Math.max(1, card.d));
+    last[i] = -Math.max(0, card.elapsed);
+    seen[i] = 1;
+    const due = Math.max(0, Math.round(card.due));
+    if (due < days) calendar[due].push(i);
+  });
+  for (let i = 0; i < n; i++) random.push(seeded(7919 * (i + 1)));
+  const newPerDay = deck.newPerDay / k,
+    reviewsPerDay = deck.reviewsPerDay / k,
+    budget = deck.budget ? deck.budget / k : null;
+  let nextNew = existing.length,
+    carry: number[] = [],
+    cards = 0,
+    time = 0,
+    weighted = 0;
+  const schedule = (i: number, day: number) => {
+    last[i] = day;
+    const at = day + interval(s[i]);
+    if (at < days) calendar[at].push(i);
+  };
+  for (let day = 0; day < days; day++) {
+    const due = carry.length ? carry.concat(calendar[day]) : calendar[day];
+    carry = [];
+    let spent = 0,
+      reviews = 0;
+    for (const i of due) {
+      if (reviews >= reviewsPerDay || (budget !== null && spent >= budget)) {
+        carry.push(i);
+        continue;
+      }
+      const t = day - last[i];
+      const mem = { s: c(s[i]), d: c(d[i]) };
+      const r = forgetting(m, t, mem.s);
+      let next: Memory;
+      if (random[i]() < r.v) {
+        next = nextOf(m, mem, t, pick(costs.recalled, random[i]()) + 2, r);
+        spent += costs.recall;
+      } else {
+        next = nextOf(m, nextOf(m, mem, t, 1, r), 0, 3);
+        spent += costs.forget;
+        weighted += costs.forget * (LOSS_AVERSION - 1);
+      }
+      s[i] = next.s.v;
+      d[i] = next.d.v;
+      reviews++;
+      schedule(i, day);
+    }
+    let learned = 0;
+    while (nextNew < n && learned + 1 <= newPerDay + 1e-9 && (budget === null || spent < budget)) {
+      const i = nextNew++;
+      const mem = first(m, pick(costs.first, random[i]()) + 1);
+      s[i] = mem.s.v;
+      d[i] = mem.d.v;
+      seen[i] = 1;
+      spent += costs.learn;
+      learned++;
+      schedule(i, day);
+    }
+    cards += reviews + learned;
+    time += spent;
+  }
+  let knowledge = 0,
+    studied = 0;
+  for (let i = 0; i < n; i++)
+    if (seen[i]) {
+      studied++;
+      knowledge += forgetting(m, days - last[i], c(s[i])).v;
+    }
+  // The weighted cost: the time spent, forgetting weighted by LOSS_AVERSION,
+  // and what learning again every card not remembered at the end would
+  // take – so a low retention does not win just because the deck's old
+  // cards count as knowledge either way.
+  const relearn = LOSS_AVERSION * costs.learn * Math.max(0, studied - knowledge);
+  return { cardsPerDay: (cards * k) / days, minutesPerDay: (time * k) / 60 / days, knowledge: knowledge * k, time: time * k, weighted: (time + weighted + relearn) * k };
+}
+const nextOf = (m: Model, mem: Memory, t: number, g: number, r?: Dual) => next(m, mem, t, g, r);
+// The workload curve 70–95 % and the recommended retention: the one with
+// the least weighted time per card remembered (reviews, forgetting weighted by LOSS_AVERSION,
+// and learning again what is forgotten at the end), smoothed over ±2
+// points – within the deck's limits and budget, so a binding budget
+// recommends the retention that keeps the most in memory. `between` lets
+// the server pause between retentions.
+export async function workload(
+  weights: readonly number[],
+  deck: SimDeck,
+  costs: ReviewCosts = DEFAULT_COSTS,
+  maxInterval = S_MAX,
+  between?: () => Promise<void>,
+): Promise<{ curve: WorkloadPoint[]; recommended: number }> {
+  // Too small a deck says little: a deck of 2000 new cards at its limits.
+  if (deck.cards.length + deck.newCards < 50) deck = { ...deck, cards: [], newCards: 2000, newPerDay: Math.max(1, deck.newPerDay) };
+  const curve: WorkloadPoint[] = [];
+  for (let p = Math.round(RETENTION_RANGE[0] * 100); p <= Math.round(RETENTION_RANGE[1] * 100); p++) {
+    const run = simulateDeck(weights, p / 100, deck, costs, maxInterval);
+    curve.push({
+      retention: p / 100,
+      cardsPerDay: Math.round(run.cardsPerDay * 10) / 10,
+      minutesPerDay: Math.round(run.minutesPerDay * 10) / 10,
+      knowledge: Math.round(run.knowledge),
+      cost: run.weighted / Math.max(run.knowledge, 1e-9),
+    });
+    await between?.();
+  }
+  return { curve, recommended: recommendFrom(curve) };
+}
+export function recommendFrom(curve: Pick<WorkloadPoint, "retention" | "cost">[]) {
   let best = { retention: 0.9, cost: Infinity };
   curve.forEach((point, i) => {
     const near = curve.slice(Math.max(0, i - 2), i + 3);
