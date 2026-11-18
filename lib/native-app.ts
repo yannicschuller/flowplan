@@ -20,6 +20,11 @@ type FlowplanApp = {
   // The app's profiles: switch to or add another instance, or change the
   // address of one never signed in (#69; app 1.1 and newer).
   openProfiles?: () => void;
+  // The app's own sheet of its profiles (name, address, the active one
+  // checked; add and manage): "Instanz wechseln …" in the workspace menu and
+  // a long press on the own account row. Takes nothing and answers nothing –
+  // the page never learns the person's other instances.
+  openProfileSwitcher?: () => void;
   // Whether "back" (window.FlowplanNavigation, lib/app-back.ts) would do
   // something: the app offers its back gesture only then.
   backState?: (canGoBack: boolean) => void;
@@ -246,6 +251,86 @@ export function openAppProfiles() {
   try {
     nativeApp()?.openProfiles?.();
   } catch {}
+}
+
+// "Instanz wechseln …" in the workspace menu and the long press on the own
+// account row: inside the iPhone, iPad and Android app only. "switcher": the
+// app's own sheet of its profiles (openProfileSwitcher); "profiles": older
+// apps with openProfiles only get their profile screen; null: nothing (a
+// browser, the desktop app with its own menu and ⇧⌘P, apps before
+// openProfiles). Pure, for the tests.
+export type ProfileSwitcherWay = "switcher" | "profiles";
+export function profileSwitcherWay(
+  app: { openProfileSwitcher?: unknown; openProfiles?: unknown } | undefined = nativeApp(),
+): ProfileSwitcherWay | null {
+  if (typeof app?.openProfileSwitcher === "function") return "switcher";
+  if (typeof app?.openProfiles === "function") return "profiles";
+  return null;
+}
+// The same for rendering: null on the server and in the first render.
+export function useProfileSwitcherWay(): ProfileSwitcherWay | null {
+  return useSyncExternalStore(noChange, () => profileSwitcherWay(), () => null);
+}
+export function openProfileSwitcher(app: Pick<FlowplanApp, "openProfileSwitcher" | "openProfiles"> | undefined = nativeApp()) {
+  const way = profileSwitcherWay(app);
+  try {
+    if (way === "switcher") app?.openProfileSwitcher?.();
+    else if (way === "profiles") app?.openProfiles?.();
+  } catch {}
+  return way;
+}
+
+// A long press (half a second, the finger still) on the own account row
+// opens the switcher; the click and context menu that end it do nothing
+// else. The row's buttons keep their own press. Returns a function that
+// stops waiting.
+export const PROFILE_HOLD_MS = 500;
+const CAPTURE = { capture: true } as const;
+export function holdForProfileSwitcher(
+  event: { pointerId: number; clientX: number; clientY: number; button: number; target: EventTarget | null },
+  open: () => unknown = openProfileSwitcher,
+): () => void {
+  const target = typeof Element === "undefined" ? null : event.target instanceof Element ? event.target : null;
+  if (event.button !== 0 || target?.closest("button, a, [role=menuitem]")) return () => {};
+  const { pointerId, clientX: x0, clientY: y0 } = event;
+  let fired = false;
+  // Once the hold opened the switcher, the click and context menu that end
+  // the press are its own (released a moment after the finger lifts).
+  const swallow = (ev: Event) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  };
+  const release = () => {
+    window.removeEventListener("click", swallow, CAPTURE);
+    window.removeEventListener("contextmenu", swallow, CAPTURE);
+  };
+  const move = (ev: PointerEvent) => {
+    if (!fired && ev.pointerId === pointerId && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) stop();
+  };
+  const end = (ev: PointerEvent) => {
+    if (ev.pointerId === pointerId) stop();
+  };
+  const stop = () => {
+    clearTimeout(timer);
+    window.removeEventListener("pointermove", move, CAPTURE);
+    window.removeEventListener("pointerup", end, CAPTURE);
+    window.removeEventListener("pointercancel", end, CAPTURE);
+    window.removeEventListener("blur", stop);
+    if (fired) setTimeout(release, 400);
+  };
+  const timer = setTimeout(() => {
+    fired = true;
+    window.addEventListener("click", swallow, CAPTURE);
+    window.addEventListener("contextmenu", swallow, CAPTURE);
+    // However the press ends, nothing stays swallowed for long.
+    setTimeout(release, 5000);
+    open();
+  }, PROFILE_HOLD_MS);
+  window.addEventListener("pointermove", move, CAPTURE);
+  window.addEventListener("pointerup", end, CAPTURE);
+  window.addEventListener("pointercancel", end, CAPTURE);
+  window.addEventListener("blur", stop);
+  return stop;
 }
 
 // Whether the app here can scan documents (newer iOS apps).

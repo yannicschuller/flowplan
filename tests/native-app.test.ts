@@ -1,6 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APP_PROFILES_LINK, appProfilesAction, armDesktopMarketplace, desktopPageLink, desktopPasskeysInWindow, flowplanAppHost, marketplacePublishWay, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
+import {
+  APP_PROFILES_LINK,
+  appProfilesAction,
+  armDesktopMarketplace,
+  desktopPageLink,
+  desktopPasskeysInWindow,
+  flowplanAppHost,
+  holdForProfileSwitcher,
+  marketplacePublishWay,
+  offerDesktopApp,
+  offlineUnsupportedReason,
+  openProfileSwitcher,
+  PROFILE_HOLD_MS,
+  profileSwitcherWay,
+} from "../lib/native-app";
 import { readFileSync } from "node:fs";
 
 const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.4.0";
@@ -130,4 +144,102 @@ test("inside a Flowplan app (#314): by the bridge or the user agent, not in brow
   assert.equal(flowplanAppHost({}, desktop), true);
   assert.equal(flowplanAppHost({}, safari), false);
   assert.equal(flowplanAppHost(undefined, ""), false);
+});
+
+test("\"Instanz wechseln …\": the app's own switcher, older apps' profiles, nothing elsewhere", () => {
+  const fn = () => {};
+  // Apps with the switcher: its sheet (the page learns nothing of the other instances).
+  assert.equal(profileSwitcherWay({ openProfileSwitcher: fn, openProfiles: fn }), "switcher");
+  assert.equal(profileSwitcherWay({ openProfileSwitcher: fn }), "switcher");
+  // Older apps with openProfiles only: their profile screen.
+  assert.equal(profileSwitcherWay({ openProfiles: fn }), "profiles");
+  assert.equal(profileSwitcherWay({ openProfileSwitcher: "yes", openProfiles: fn }), "profiles", "a broken entry is no switcher");
+  // No bridge (a browser, the desktop app) or neither function: no entry.
+  assert.equal(profileSwitcherWay(undefined), null);
+  assert.equal(profileSwitcherWay({}), null);
+  assert.equal(profileSwitcherWay({ openProfileSwitcher: 1, openProfiles: null }), null);
+  assert.equal(profileSwitcherWay(), null, "no window here: nothing");
+
+  // It calls exactly one function, with nothing, and a throwing bridge breaks nothing.
+  const calls: string[] = [];
+  const app = {
+    openProfileSwitcher: (...args: unknown[]) => void calls.push(`switcher:${args.length}`),
+    openProfiles: (...args: unknown[]) => void calls.push(`profiles:${args.length}`),
+  };
+  assert.equal(openProfileSwitcher(app), "switcher");
+  assert.equal(openProfileSwitcher({ openProfiles: app.openProfiles }), "profiles");
+  assert.equal(openProfileSwitcher(undefined), null);
+  assert.deepEqual(calls, ["switcher:0", "profiles:0"]);
+  assert.equal(
+    openProfileSwitcher({
+      openProfileSwitcher: () => {
+        throw new Error("gone");
+      },
+    }),
+    "switcher",
+  );
+});
+
+test("a long press on the own account row opens the switcher; a tap, a scroll or another button does not", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const target = new EventTarget();
+  const host = globalThis as { window?: unknown };
+  const saved = host.window;
+  host.window = target;
+  t.after(() => {
+    host.window = saved;
+  });
+  const pointer = (type: string, init: { pointerId?: number; x?: number; y?: number } = {}) =>
+    Object.assign(new Event(type, { cancelable: true }), { pointerId: init.pointerId ?? 1, clientX: init.x ?? 10, clientY: init.y ?? 10 });
+  const clicked = () => {
+    const click = new Event("click", { cancelable: true });
+    target.dispatchEvent(click);
+    return !click.defaultPrevented;
+  };
+  const down = { pointerId: 1, clientX: 10, clientY: 10, button: 0, target: null };
+  let opened = 0;
+  const open = () => opened++;
+
+  // Held still: opens once, and the click that ends the press is swallowed.
+  holdForProfileSwitcher(down, open);
+  t.mock.timers.tick(PROFILE_HOLD_MS - 1);
+  assert.equal(opened, 0);
+  t.mock.timers.tick(1);
+  assert.equal(opened, 1);
+  target.dispatchEvent(pointer("pointerup"));
+  assert.equal(clicked(), false);
+  t.mock.timers.tick(500);
+  assert.equal(clicked(), true, "later clicks are the page's again");
+
+  // A tap: lifted before the time.
+  holdForProfileSwitcher(down, open);
+  t.mock.timers.tick(200);
+  target.dispatchEvent(pointer("pointerup"));
+  t.mock.timers.tick(1000);
+  assert.equal(opened, 1);
+  assert.equal(clicked(), true);
+  // Scrolling the sidebar: the finger moves.
+  holdForProfileSwitcher(down, open);
+  target.dispatchEvent(pointer("pointermove", { x: 10, y: 40 }));
+  t.mock.timers.tick(1000);
+  assert.equal(opened, 1);
+  // Another finger's move changes nothing.
+  holdForProfileSwitcher(down, open);
+  target.dispatchEvent(pointer("pointermove", { pointerId: 2, x: 200 }));
+  t.mock.timers.tick(PROFILE_HOLD_MS);
+  assert.equal(opened, 2);
+  target.dispatchEvent(pointer("pointerup"));
+  t.mock.timers.tick(500);
+  // The secondary mouse button, or stopped from outside: nothing.
+  holdForProfileSwitcher({ ...down, button: 2 }, open);
+  holdForProfileSwitcher(down, open)();
+  t.mock.timers.tick(1000);
+  assert.equal(opened, 2);
+  assert.equal(clicked(), true);
+});
+
+test("the switcher sits in the workspace menu and on the account row, only with the bridge", () => {
+  const app = readFileSync(new URL("../components/workspace-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /\{profileSwitcher && \([\s\S]{0,300}onSelect=\{\(\) => void openProfileSwitcher\(\)\}[\s\S]{0,120}t\("Instanz wechseln …", "Switch instance…"\)/);
+  assert.match(app, /onPointerDown=\{profileSwitcher \? \(e\) => void holdForProfileSwitcher\(e\) : undefined\}/);
 });
