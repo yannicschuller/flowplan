@@ -43,6 +43,7 @@ import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
+import { saveStudySettings, studyCommand } from "./study";
 import { gitSetup } from "./git-integration";
 import { gitAccessCommand } from "./git-backlinks";
 import { issueSyncCommand } from "./issue-sync";
@@ -3353,6 +3354,21 @@ async function runCommand(
         result = await sprintCommand(user, p, action, b);
         break;
       }
+      // Flashcards (docs/specs/flashcards.md, lib/study.ts): the card
+      // mapping needs write access; studying only read access – a rating
+      // changes the person's own learning state, not the database.
+      case "study.settings": {
+        const p = await write();
+        if (p.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+        result = await saveStudySettings(p, b);
+        break;
+      }
+      case "study.queue":
+      case "study.review":
+      case "study.undo":
+      case "study.prefs":
+        result = await studyCommand(user, action, b);
+        break;
       case "survey.save": {
         // The survey builder saves questions (properties) and settings at once.
         const p = await write();
@@ -4007,6 +4023,12 @@ async function runCommand(
         "workflow.validate",
         "notification.read",
         "favorite",
+        // Studying is private (docs/specs/flashcards.md §13.3): no trace in
+        // the activity log.
+        "study.queue",
+        "study.review",
+        "study.undo",
+        "study.prefs",
       ].includes(action) &&
       // Favourites of a selection: as unaudited as a single favourite.
       !(action === "pages.bulk" && (b.operation === "favorite" || b.operation === "unfavorite"))
@@ -4106,6 +4128,7 @@ export const editActions = new Set([
   "document.sync",
   "database.update",
   "database.settings",
+  "study.settings",
   "survey.save",
   "row.schedule",
   "timeline.cascade",

@@ -27,6 +27,7 @@ export async function applyStarterTemplate(pageId: string, userId: string, key: 
     JSON.stringify(template.views || []),
     pageId,
   );
+  if (template.settings) await run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(template.settings), pageId);
   if (template.survey) await starterSurvey(pageId, contentLocale());
   await forEachAsync((template.rows || []), async (row, i) =>
     await run(

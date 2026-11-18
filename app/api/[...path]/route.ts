@@ -175,6 +175,7 @@ import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
 import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
 import { ssoGroupReports } from "@/lib/sso-group-report";
+import { studyQueue } from "@/lib/study";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -506,6 +507,20 @@ async function handleGET(
       if (page.kind !== "notebook") throw new HttpError(400, "Kein Notizbuch.");
       const part = z.enum(["peers", "trash"]).parse(url.searchParams.get("part"));
       return NextResponse.json(part === "peers" ? await notebookPeers(user, page) : { trash: await sheetTrash(page) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Flashcards (lib/study.ts): the person's own counts and next cards of a
+    // deck – the command study.queue as a read, for read tokens too.
+    if (path.length === 3 && path[0] === "pages" && path[2] === "study") {
+      const limit = url.searchParams.get("limit");
+      return NextResponse.json(
+        await studyQueue(user, {
+          pageId: path[1],
+          viewId: url.searchParams.get("view") || undefined,
+          zone: url.searchParams.get("zone") || undefined,
+          limit: limit === null ? undefined : Number(limit),
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
       const page = await requirePage(user, z.uuid().parse(path[1]));

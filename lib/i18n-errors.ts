@@ -5,6 +5,16 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Flashcards (lib/study.ts).
+  "Für diese Datenbank sind noch keine Lernkarten eingerichtet.": "No flashcards are set up for this database yet.",
+  "Karte nicht gefunden.": "Card not found.",
+  "Zu viele Wertungen in kurzer Zeit. Bitte später erneut versuchen.": "Too many ratings in a short time. Please try again later.",
+  "Diese Wertung gibt es schon.": "This rating exists already.",
+  "Wertung nicht gefunden.": "Rating not found.",
+  "Diese Wertung ist schon rückgängig gemacht.": "This rating has already been undone.",
+  "Nur Wertungen der letzten 24 Stunden lassen sich rückgängig machen.": "Only ratings of the last 24 hours can be undone.",
+  "Nur die letzte Wertung einer Karte lässt sich rückgängig machen.": "Only the last rating of a card can be undone.",
+  "Vorder- und Rückseite brauchen verschiedene Inhalte.": "Front and back need different content.",
   // The PDF worker thread (lib/pdf-text.ts).
   "Der PDF-Worker wurde beendet.": "The PDF worker was stopped.",
   "Zeitüberschreitung beim Lesen der PDF-Datei.": "Reading the PDF file timed out.",
@@ -1510,6 +1520,7 @@ const exact: Record<string, string> = {
   "Kein Beispielbereich vorhanden.": "There is no sample space.",
 };
 const patterns: [RegExp, string][] = [
+  [/^„(.+)“ lässt sich nicht als Kartenseite verwenden\.$/, "“$1” cannot be used as a side of a card."],
   [/^Mehr als (\d+) Seiten: weitere Seiten werden nicht übernommen \(FLOWPLAN_IMPORT_MAX_DOCS\)\.$/, "More than $1 pages: further pages are not imported (FLOWPLAN_IMPORT_MAX_DOCS)."],
   // The import check of marketplace packages (lib/marketplace-check.ts).
   [/^Die Vorlage braucht Flowplan (\S+) – diese Instanz hat (\S+)\.$/, "The template needs Flowplan $1 – this instance has $2."],

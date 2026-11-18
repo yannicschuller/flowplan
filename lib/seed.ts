@@ -4,6 +4,7 @@ import { id, run, all, one, transaction } from "./db";
 import type { Field, View } from "./types";
 import { ct } from "./content-locale";
 import { contactsSetup } from "./contacts";
+import { studySettingsSchema } from "./study-schema";
 import { forEachAsync } from "./each-async";
 // A new database starts as a task list, in the language of the request.
 export const defaultFields = (): Field[] => [
@@ -61,10 +62,27 @@ export const defaultViews = (): View[] => [
 ];
 // What a new database starts as: a task list, a collection of documents
 // (records open as a full page), contacts with a profile card
-// (lib/contacts.ts) or only a title.
-export const databaseKinds = ["tasks", "documents", "contacts", "empty"] as const;
+// (lib/contacts.ts), flashcards (a deck with the view "Lernen",
+// docs/specs/flashcards.md) or only a title.
+export const databaseKinds = ["tasks", "documents", "contacts", "empty", "flashcards"] as const;
 export type DatabaseKind = (typeof databaseKinds)[number];
-export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: View[]; recordLayout?: object } {
+// Front (the title), back and tags; the card mapping in settings.study.
+export function flashcardsSetup() {
+  return {
+    fields: [
+      { id: "title", name: ct("Vorderseite", "Front"), type: "text" },
+      { id: "back", name: ct("Rückseite", "Back"), type: "text" },
+      { id: "tags", name: "Tags", type: "multiselect", options: [] },
+    ] as Field[],
+    views: [
+      { id: "study", name: ct("Lernen", "Study"), type: "study", filters: [], sorts: [], default: true },
+      { id: "table", name: ct("Alle Karten", "All cards"), type: "table", filters: [], sorts: [] },
+    ] as View[],
+    settings: { study: studySettingsSchema.parse({ version: 1, front: { field: "title" }, back: { field: "back" } }) },
+  };
+}
+export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: View[]; recordLayout?: object; settings?: object } {
+  if (kind === "flashcards") return flashcardsSetup();
   if (kind === "documents")
     return {
       fields: [
@@ -128,6 +146,7 @@ export async function createPage(
     );
     if (setup.recordLayout)
       await run("UPDATE databases SET record_layout=? WHERE page_id=?", JSON.stringify(setup.recordLayout), pid);
+    if (setup.settings) await run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(setup.settings), pid);
     // Contacts are personal data: closed to the AI until a manager of the
     // page opens it ("Für KI gesperrt", lib/ai/access.ts).
     if (databaseKind === "contacts")

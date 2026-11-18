@@ -186,6 +186,29 @@ export const templateCatalogEn: Record<TemplateKey, CatalogTemplate> = {
     ],
   },
   // --------------------------------------------------------------- Knowledge
+  flashcards: {
+    name: "Flashcard database",
+    category: "knowledge",
+    icon: "🗂️",
+    kind: "database",
+    description: "Cards with a front and a back that Flowplan quizzes you on with spaced repetition – everyone with their own learning state.",
+    fields: [
+      { id: "title", name: "Front", type: "text" },
+      { id: "back", name: "Back", type: "text" },
+      { id: "example", name: "Example", type: "text" },
+      { id: "tags", name: "Tags", type: "multiselect", options: ["Basics", "Study tips"] },
+    ],
+    views: [view("study", "Study", "study"), view("table", "All cards", "table")],
+    settings: { study: { version: 1, type: { fixed: "basic" }, front: { field: "title" }, back: { field: "back" }, extra: { field: "example" } } },
+    rows: [
+      { cells: { title: "What does “spaced repetition” mean?", back: "Cards come back shortly before you would forget them – each time after a longer gap.", tags: ["Basics"] } },
+      { cells: { title: "What does “Again” mean?", back: "You did not know the answer. The card comes back in a few minutes.", example: "Key 1 or swipe left", tags: ["Basics"] } },
+      { cells: { title: "What does “Good” mean?", back: "You knew the answer after some thought. The gap grows.", example: "Key 3, Space or swipe right", tags: ["Basics"] } },
+      { cells: { title: "When does a new study day begin?", back: "At 04:00 in your time zone.", tags: ["Basics"] } },
+      { cells: { title: "How many new cards a day make sense?", back: "About 20 to start with – every new card brings a few reviews over the next days.", tags: ["Study tips"] } },
+      { cells: { title: "What makes a good card?", back: "Exactly one fact, asked briefly and answered briefly.", example: "Instead of “All about cells”: “What do mitochondria do?”", tags: ["Study tips"] } },
+    ],
+  },
   wiki: {
     name: "Team wiki",
     category: "knowledge",

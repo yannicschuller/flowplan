@@ -24,7 +24,13 @@ export type CatalogTemplate = {
   // Opens draw.io for the page's empty diagram as soon as the new page
   // shows (lib/drawio-prefs.ts, queueDrawioOpen).
   openDiagram?: boolean;
+  // Database templates: database settings to start with (the card mapping
+  // of a flashcard deck, settings.study – lib/study-schema.ts).
+  settings?: Record<string, unknown>;
 };
+// The card mapping of the flashcard templates: front the title, back and
+// extra properties, both directions off.
+const flashcardSettings = { study: { version: 1, type: { fixed: "basic" }, front: { field: "title" }, back: { field: "back" }, extra: { field: "example" } } };
 
 export const task = (text: string, done = false) =>
   `<li data-type="taskItem" data-checked="${done}"><label><input type="checkbox"${done ? " checked" : ""}></label><div><p>${text}</p></div></li>`;
@@ -213,6 +219,29 @@ export const templateCatalog: Record<string, CatalogTemplate> = {
     ],
   },
   // ----------------------------------------------------------------- Wissen
+  flashcards: {
+    name: "Lernkarten-Datenbank",
+    category: "knowledge",
+    icon: "🗂️",
+    kind: "database",
+    description: "Karteikarten mit Vorder- und Rückseite, die Flowplan mit Wiederholung in Abständen abfragt – jede Person mit ihrem eigenen Lernstand.",
+    fields: [
+      { id: "title", name: "Vorderseite", type: "text" },
+      { id: "back", name: "Rückseite", type: "text" },
+      { id: "example", name: "Beispiel", type: "text" },
+      { id: "tags", name: "Tags", type: "multiselect", options: ["Grundlagen", "Lerntipps"] },
+    ],
+    views: [view("study", "Lernen", "study"), view("table", "Alle Karten", "table")],
+    settings: flashcardSettings,
+    rows: [
+      { cells: { title: "Was bedeutet „Wiederholung in Abständen“?", back: "Karten kommen kurz bevor du sie vergessen würdest wieder – mit jedem Mal in größeren Abständen.", tags: ["Grundlagen"] } },
+      { cells: { title: "Was heißt „Nochmal“?", back: "Du wusstest die Antwort nicht. Die Karte kommt in wenigen Minuten wieder.", example: "Taste 1 oder nach links wischen", tags: ["Grundlagen"] } },
+      { cells: { title: "Was heißt „Gut“?", back: "Du wusstest die Antwort mit etwas Nachdenken. Der Abstand wächst.", example: "Taste 3, Leertaste oder nach rechts wischen", tags: ["Grundlagen"] } },
+      { cells: { title: "Wann beginnt ein neuer Lerntag?", back: "Um 04:00 Uhr in deiner Zeitzone.", tags: ["Grundlagen"] } },
+      { cells: { title: "Wie viele neue Karten pro Tag sind sinnvoll?", back: "Zum Start etwa 20 – jede neue Karte bringt in den nächsten Tagen einige Wiederholungen mit.", tags: ["Lerntipps"] } },
+      { cells: { title: "Was gehört auf eine gute Karte?", back: "Genau eine Tatsache, kurz gefragt und kurz beantwortet.", example: "Statt „Alles über Zellen“: „Was ist die Aufgabe der Mitochondrien?“", tags: ["Lerntipps"] } },
+    ],
+  },
   wiki: {
     name: "Team-Wiki",
     category: "knowledge",

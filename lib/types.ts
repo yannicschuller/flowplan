@@ -231,7 +231,9 @@ export type View = {
     | "form"
     | "chart"
     | "feed"
-    | "sprint";
+    | "sprint"
+    | "study";
+  study?: import("./study-schema").StudyViewConfig;
   gallery?: import("./database-gallery").GalleryConfig;
   feed?: import("./database-feed").FeedConfig;
   timeline?: import("./database-timeline").TimelineConfig;

@@ -126,6 +126,12 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   // "Erste Schritte" and the "Beispielbereich" (lib/getting-started.ts,
   // lib/sample-space.ts): where the target has its own, the target's stays.
   "getting_started.user_id": "move",
+  // Flashcards: the log and own settings move; a learning state of the
+  // target stays. States of a workspace go with the source's membership
+  // (foreign key on members) – the log keeps every rating.
+  "card_states.user_id": "move",
+  "review_log.user_id": "move",
+  "study_prefs.user_id": "move",
   "sample_spaces.user_id": "move",
   "home_defaults.updated_by": "move",
   "journal_unlocks.user_id": "move",

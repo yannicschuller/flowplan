@@ -1566,6 +1566,7 @@ function migrate(d: DatabaseSync) {
   // older version reads the plain body – so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "markup"))
     d.exec("ALTER TABLE notifications ADD COLUMN markup TEXT");
+  migrateFlashcards(d);
   migrateServerMetrics(d);
   migrateErrorDetails(d);
   // A database from a newer version keeps its number.
@@ -1573,6 +1574,52 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Flashcards (docs/specs/flashcards.md §3.3, lib/study.ts):
+// - study_cards: the derived index of cards (record × sub: '' the card, 'r'
+//   its reverse) of every database with a card mapping
+//   (databases.settings.study), rebuilt from rows/row_documents at any time.
+//   study_dirty is its queue, filled by the triggers below only for
+//   databases with a mapping (row_id '' = the whole database: the mapping
+//   changed) and drained before a deck is read (lib/study.ts).
+// - card_states: the learning state per person and card (no row = new);
+//   gone with the membership (foreign key on members – guests of a shared
+//   page are members too, lib/page-share.ts) and with the page.
+// - review_log: every rating, never changed but for undone_at; the id comes
+//   from the client (idempotent). No foreign key on the page: a person's own
+//   statistics outlive the trash. zone: the person's time zone then, for
+//   replaying the log (lib/fsrs replay).
+// - study_prefs: a person's own limits and retention per deck, and with
+//   page_id '' their time zone and day start.
+// Private to the person: no view for owners or admins (§13.3). New tables
+// only – an older version leaves them alone and ignores views of type
+// "study" as it ignored "sprint" and "feed" before (lib/database-schema.ts)
+// – so the schema number stays.
+function migrateFlashcards(d: DatabaseSync) {
+  const has = `EXISTS(SELECT 1 FROM databases d WHERE d.page_id=%PAGE% AND instr(d.settings,'"study"')>0)`;
+  const deck = (page: string) => has.replace("%PAGE%", page);
+  const dirty = (page: string, row: string) => `INSERT INTO study_dirty SELECT ${page},${row} WHERE NOT EXISTS(SELECT 1 FROM study_dirty WHERE page_id=${page} AND row_id=${row});`;
+  d.exec(`CREATE TABLE IF NOT EXISTS study_cards(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('basic','cloze','typed','choice','occlusion')),position REAL NOT NULL,content_hash TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(page_id,row_id,sub));
+    CREATE INDEX IF NOT EXISTS study_cards_row ON study_cards(row_id);
+    CREATE TABLE IF NOT EXISTS study_dirty(page_id TEXT NOT NULL,row_id TEXT NOT NULL,PRIMARY KEY(page_id,row_id));
+    CREATE TABLE IF NOT EXISTS card_states(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,sub TEXT NOT NULL,state INTEGER NOT NULL CHECK(state IN (1,2,3)),step INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL,due_day TEXT,stability REAL NOT NULL,difficulty REAL NOT NULL,reps INTEGER NOT NULL DEFAULT 0,lapses INTEGER NOT NULL DEFAULT 0,last_review INTEGER NOT NULL,suspended INTEGER NOT NULL DEFAULT 0,buried_day TEXT,orphaned_at INTEGER,version INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,row_id,sub),FOREIGN KEY(workspace_id,user_id) REFERENCES members(workspace_id,user_id) ON DELETE CASCADE);
+    CREATE INDEX IF NOT EXISTS card_states_due ON card_states(user_id,page_id,due) WHERE suspended=0 AND orphaned_at IS NULL;
+    CREATE INDEX IF NOT EXISTS card_states_user_due ON card_states(user_id,due) WHERE suspended=0 AND orphaned_at IS NULL;
+    CREATE INDEX IF NOT EXISTS card_states_row ON card_states(row_id);
+    CREATE INDEX IF NOT EXISTS card_states_member ON card_states(workspace_id,user_id);
+    CREATE TABLE IF NOT EXISTS review_log(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL,row_id TEXT NOT NULL,sub TEXT NOT NULL,rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 4),state_before INTEGER NOT NULL,reviewed_at INTEGER NOT NULL,day TEXT NOT NULL,zone TEXT NOT NULL,elapsed_days REAL NOT NULL,scheduled_days REAL NOT NULL,duration_ms INTEGER,stability REAL NOT NULL,difficulty REAL NOT NULL,due INTEGER NOT NULL,source TEXT NOT NULL CHECK(source IN ('web','app','offline','import','api')),undone_at INTEGER,received_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS review_log_user_day ON review_log(user_id,day);
+    CREATE INDEX IF NOT EXISTS review_log_card ON review_log(user_id,row_id,sub,reviewed_at);
+    CREATE INDEX IF NOT EXISTS review_log_page ON review_log(page_id,user_id,day);
+    CREATE INDEX IF NOT EXISTS review_log_workspace ON review_log(workspace_id);
+    CREATE TABLE IF NOT EXISTS study_prefs(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL,new_per_day INTEGER,reviews_per_day INTEGER,retention REAL,params TEXT,params_at INTEGER,extra TEXT NOT NULL DEFAULT '{}',time_zone TEXT,day_start INTEGER NOT NULL DEFAULT 4,remind_at TEXT,reminded_day TEXT,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,page_id));
+    CREATE TRIGGER IF NOT EXISTS study_row_insert AFTER INSERT ON rows WHEN ${deck("NEW.page_id")} BEGIN ${dirty("NEW.page_id", "NEW.id")} END;
+    CREATE TRIGGER IF NOT EXISTS study_row_update AFTER UPDATE OF cells,content,page_id ON rows WHEN ${deck("NEW.page_id")} OR ${deck("OLD.page_id")} BEGIN ${dirty("OLD.page_id", "OLD.id")} ${dirty("NEW.page_id", "NEW.id")} END;
+    CREATE TRIGGER IF NOT EXISTS study_row_delete AFTER DELETE ON rows WHEN ${deck("OLD.page_id")} BEGIN ${dirty("OLD.page_id", "OLD.id")} END;
+    CREATE TRIGGER IF NOT EXISTS study_row_document_insert AFTER INSERT ON row_documents WHEN EXISTS(SELECT 1 FROM rows r JOIN databases d ON d.page_id=r.page_id WHERE r.id=NEW.row_id AND instr(d.settings,'"study"')>0) BEGIN INSERT INTO study_dirty SELECT r.page_id,r.id FROM rows r WHERE r.id=NEW.row_id AND NOT EXISTS(SELECT 1 FROM study_dirty WHERE page_id=r.page_id AND row_id=r.id); END;
+    CREATE TRIGGER IF NOT EXISTS study_row_document_update AFTER UPDATE OF html ON row_documents WHEN EXISTS(SELECT 1 FROM rows r JOIN databases d ON d.page_id=r.page_id WHERE r.id=NEW.row_id AND instr(d.settings,'"study"')>0) BEGIN INSERT INTO study_dirty SELECT r.page_id,r.id FROM rows r WHERE r.id=NEW.row_id AND NOT EXISTS(SELECT 1 FROM study_dirty WHERE page_id=r.page_id AND row_id=r.id); END;
+    CREATE TRIGGER IF NOT EXISTS study_database_insert AFTER INSERT ON databases WHEN instr(NEW.settings,'"study"')>0 BEGIN ${dirty("NEW.page_id", "''")} END;
+    CREATE TRIGGER IF NOT EXISTS study_database_settings AFTER UPDATE OF settings ON databases WHEN (instr(NEW.settings,'"study"')>0 OR instr(OLD.settings,'"study"')>0) AND NEW.settings IS NOT OLD.settings BEGIN ${dirty("NEW.page_id", "''")} END;`);
 }
 // Server metrics and detailed AI statistics (lib/server-metrics.ts,
 // lib/metrics.ts, Administration → Überwachung → Server and → KI):

@@ -328,8 +328,9 @@ Field = TypedDict("Field", {
 View = TypedDict("View", {
     "id": Required[str],
     "name": Required[str],
-    "type": Required[Literal["table", "board", "calendar", "gallery", "list", "timeline", "form", "chart", "feed", "sprint"]],
+    "type": Required[Literal["table", "board", "calendar", "gallery", "list", "timeline", "form", "chart", "feed", "sprint", "study"]],
     "chart": dict[str, Any],
+    "study": dict[str, Any],
     "feed": dict[str, Any],
     "gallery": dict[str, Any],
     "timeline": dict[str, Any],
@@ -744,6 +745,76 @@ WorkflowExport = TypedDict("WorkflowExport", {
     "references": dict[str, dict[str, Any]],
 }, total=False)
 
+# Turn a database into a flashcard deck (card mapping and defaults). Needs editor rights. `settings` is stored as the database's `settings.study`: `front` and `back` each a property (`{ field }`, text-like properties) or the record's document (`front: { document: "above" }` – above its first horizontal rule; `back: { document: "all" | "below" }`), optional `hint` and `extra` properties, `reverse` (a second card back → front), and the deck's defaults `newPerDay` (20), `reviewsPerDay` (200), `retention` (0.7–0.99, 0.9), `learningSteps` ([1, 10] minutes), `relearningSteps` ([10]), `maxInterval` (days), `buryNew`/`buryReviews`. `type` is `{ fixed: "basic" }` for now. `settings: null` removes the mapping; everyone's learning state rests and returns with it. Views of type `study` learn the cards their filters select.
+CommandStudySettings = TypedDict("CommandStudySettings", {
+    "action": Required[Literal["study.settings"]],
+    "pageId": Required[str],
+    "settings": Required[Optional[dict[str, Any]]],
+}, total=False)
+
+CommandStudySettingsResult = TypedDict("CommandStudySettingsResult", {
+    "settings": Required[Optional[dict[str, Any]]],
+}, total=False)
+
+# Your next flashcards of a deck, with counts and limits. Read access is enough. Your own learning state only – nobody sees another person's. `zone` (IANA, else the one you sent last, else UTC) decides the study day, which starts at 04:00 local. Answers the counts left today (`counts`: new, learning, review – within your limits), `limits`, `done` today, `params` (retention, steps), and up to `limit` cards (default 50, 0 for the counts only) in session order, each with `front`/`back` (`{ text, formatted? }` – inline Markdown – or `{ html }` from the record's document) and its `memory` (null for a new card). With `viewId` the view's filters select the cards. `blocked: "hidden"`: a side is a property hidden from you. Also as GET /api/pages/{pageId}/study (read tokens).
+CommandStudyQueue = TypedDict("CommandStudyQueue", {
+    "action": Required[Literal["study.queue"]],
+    "pageId": Required[str],
+    "viewId": str,
+    "zone": str,
+    "limit": int,
+}, total=False)
+
+CommandStudyQueueResult = TypedDict("CommandStudyQueueResult", {
+
+}, total=False)
+
+# Rate a flashcard (1 Again, 2 Hard, 3 Good, 4 Easy). Read access is enough – it changes only your own learning state (FSRS), not the database, and is not shown as an edit. Not for read-only tokens. `id` is a UUID you make when the card is shown: sending it again changes nothing (`duplicate: true`), and it seeds the interval's fuzz. `reviewedAt` (ms) is kept between the card's last rating and five minutes from now. Answers the deck's counts and the card's new `memory` (`state` 1 learning, 2 review, 3 relearning; `due`, `dueDay`, `stability`, `difficulty`). Limited to 600 per minute.
+CommandStudyReview = TypedDict("CommandStudyReview", {
+    "action": Required[Literal["study.review"]],
+    "pageId": Required[str],
+    "rowId": Required[str],
+    "sub": Required[str],  # The card of the record: "" (front → back) or "r" (reverse)
+    "rating": Required[int],
+    "id": Required[str],
+    "zone": str,
+    "viewId": str,
+    "durationMs": int,
+    "reviewedAt": int,
+}, total=False)
+
+CommandStudyReviewResult = TypedDict("CommandStudyReviewResult", {
+
+}, total=False)
+
+# Undo your last rating of a card. Only the last rating of that card, within 24 hours. The card's state is computed again from the rest of its log; answers the counts and the card to show again (`card`).
+CommandStudyUndo = TypedDict("CommandStudyUndo", {
+    "action": Required[Literal["study.undo"]],
+    "pageId": Required[str],
+    "reviewId": Required[str],
+    "zone": str,
+    "viewId": str,
+}, total=False)
+
+CommandStudyUndoResult = TypedDict("CommandStudyUndoResult", {
+
+}, total=False)
+
+# Your own limits and retention for a deck; study more today. Read access is enough. `newPerDay`, `reviewsPerDay`, `retention` override the deck's defaults for you (`null`: the deck's again). `more: { new?, review? }` adds to today's limits only ("Study more today"); it lapses with the study day.
+CommandStudyPrefs = TypedDict("CommandStudyPrefs", {
+    "action": Required[Literal["study.prefs"]],
+    "pageId": Required[str],
+    "zone": str,
+    "newPerDay": Optional[int],
+    "reviewsPerDay": Optional[int],
+    "retention": Optional[float],
+    "more": dict[str, Any],
+}, total=False)
+
+CommandStudyPrefsResult = TypedDict("CommandStudyPrefsResult", {
+
+}, total=False)
+
 # Create a workspace
 CommandWorkspaceCreate = TypedDict("CommandWorkspaceCreate", {
     "action": Required[Literal["workspace.create"]],
@@ -979,7 +1050,7 @@ CommandSpaceReorderResult = TypedDict("CommandSpaceReorderResult", {
     "order": Required[list[str]],
 }, total=False)
 
-# Create a page. Needs editor rights on the space. Databases start with the `tasks` setup unless `databaseKind` says otherwise.
+# Create a page. Needs editor rights on the space. Databases start with the `tasks` setup unless `databaseKind` says otherwise (`flashcards`: front, back and tags with the card mapping and the views Study and All cards).
 CommandPageCreate = TypedDict("CommandPageCreate", {
     "action": Required[Literal["page.create"]],
     "workspaceId": Required[str],
@@ -988,7 +1059,7 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "kind": Literal["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"],  # Default: document
     "parentId": str,  # Parent page in the same space
     "parentRowId": str,  # A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record
-    "databaseKind": Literal["tasks", "documents", "contacts", "empty"],
+    "databaseKind": Literal["tasks", "documents", "contacts", "empty", "flashcards"],
     "templateId": str,  # A saved page template of the workspace
     "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`
     "starterTemplate": str,  # A built-in starter template key
@@ -1869,7 +1940,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyUndo", "CommandStudyPrefs", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1995,6 +2066,12 @@ RowTrashQuery = TypedDict("RowTrashQuery", {
 
 WorkspaceSettingsQuery = TypedDict("WorkspaceSettingsQuery", {
     "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+StudyQueueQuery = TypedDict("StudyQueueQuery", {
+    "view": str,  # A study view whose filters select the cards
+    "zone": str,  # IANA time zone of the study day
+    "limit": int,  # Cards, 0–50 (default 50)
 }, total=False)
 
 BlockPreviewQuery = TypedDict("BlockPreviewQuery", {
@@ -2625,6 +2702,10 @@ class FlowplanClient:
     def get_page(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "PageData":
         """A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts, and your own quick-search history; not for API tokens). (GET /api/pages/{pageId})"""
         return self._json("GET", "/api/pages/" + _p(page_id), headers=headers)
+
+    def study_queue(self, page_id: str, query: Optional["StudyQueueQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Your flashcards of a deck — The same as the command study.queue, for read tokens too: counts, limits and your next cards. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study)"""
+        return self._json("GET", "/api/pages/" + _p(page_id) + "/study", query=dict(query) if query else None, headers=headers)
 
     def block_preview(self, page_id: str, block_id: str, query: Optional["BlockPreviewQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Preview of a block link — What a pasted block link shows: the page's (or with `row` the record's) title and the start of the block's text, as `Page › text` (#88). A block link is the page address with the block: `/#page=<page>&block=<blockId>` (records: `/#page=<database>&row=<record>&block=<blockId>`). `found` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: `encrypted` is true and title and text stay empty. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/blocks/{blockId})"""
