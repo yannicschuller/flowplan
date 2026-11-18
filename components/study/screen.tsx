@@ -45,6 +45,14 @@ function StudyReminder({ value, onSaved }: { value: string | null; onSaved: (val
       setBusy(false);
     }
   };
+  // A new time is saved shortly after it was chosen (phones close their
+  // time picker without leaving the field), and when the field is left.
+  useEffect(() => {
+    if (!value || draft === value || busy) return;
+    const timer = setTimeout(() => void save(draft), 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, value]);
   return (
     <section className="study-reminder" aria-labelledby="study-screen-reminder">
       <h3 id="study-screen-reminder">
