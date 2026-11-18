@@ -17,7 +17,7 @@ type Answer = {
   stored: Record<string, number | boolean | null | undefined>;
   defaults: Limits;
   monitoring: { activeWorkflows: number; runsPerMinute: number; queuedSteps: number; runningSteps: number; waitingSteps: number; failureRate: number; undispatchedEvents: number };
-  // The update to 0.9.9 kept e-mail to addresses from placeholders for these.
+  // The update to 0.10.0 kept e-mail to addresses from placeholders for these.
   mailMigration: { at: number; workflows: { pageId: string; title: string }[] } | null;
 };
 
@@ -98,8 +98,8 @@ export function WorkflowLimits() {
               <Info size={20} aria-hidden="true" />
               <span>
                 {t(
-                  `Beim Update auf 0.9.9 eingeschaltet geblieben, weil ${data.mailMigration.workflows.length === 1 ? "ein aktiver Workflow" : `${data.mailMigration.workflows.length} aktive Workflows`} E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.`,
-                  `Left on by the update to 0.9.9 because ${data.mailMigration.workflows.length === 1 ? "an active workflow sends" : `${data.mailMigration.workflows.length} active workflows send`} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.`,
+                  `Beim Update auf 0.10.0 eingeschaltet geblieben, weil ${data.mailMigration.workflows.length === 1 ? "ein aktiver Workflow" : `${data.mailMigration.workflows.length} aktive Workflows`} E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.`,
+                  `Left on by the update to 0.10.0 because ${data.mailMigration.workflows.length === 1 ? "an active workflow sends" : `${data.mailMigration.workflows.length} active workflows send`} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.`,
                 )}
               </span>
               <span className="admin-update-links">

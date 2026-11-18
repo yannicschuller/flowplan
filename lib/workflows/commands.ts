@@ -110,7 +110,7 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
 
 // GET /api/admin/workflows: the limits in force, what is stored, the
 // environment's defaults, the monitoring counters – and, after the update
-// to 0.9.9, the workflows for which e-mail to addresses from placeholders
+// to 0.10.0, the workflows for which e-mail to addresses from placeholders
 // stayed allowed (lib/data-steps.ts WORKFLOW_DYNAMIC_MAIL_STEP).
 export async function adminWorkflows(user: Identity) {
   requireAdmin(user);

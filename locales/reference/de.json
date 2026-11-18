@@ -5908,7 +5908,7 @@
   "left": "links",
   "Left": "Links",
   "Left label": "Beschriftung links",
-  "Left on by the update to 0.9.9 because {0} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.": "Beim Update auf 0.9.9 eingeschaltet geblieben, weil {0} E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.",
+  "Left on by the update to 0.10.0 because {0} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.": "Beim Update auf 0.10.0 eingeschaltet geblieben, weil {0} E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.",
   "Left out (does not exist): {0}": "Weggelassen (gibt es nicht): {0}",
   "Left to right": "Links nach rechts",
   "Legal": "Rechtliches",

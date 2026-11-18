@@ -352,7 +352,7 @@ async function settingsLevelForExistingAccounts() {
   await run("UPDATE users SET settings_level='expert' WHERE settings_level IS NULL");
 }
 
-// 0.9.9 – e-mail from workflows to outside addresses that come from a
+// 0.10.0 – e-mail from workflows to outside addresses that come from a
 // placeholder or a property (not written in the node) needs the switch
 // `externalMailDynamic`, off by default (lib/workflows/limits.ts). An
 // instance whose activated workflows already send such mail keeps it: the

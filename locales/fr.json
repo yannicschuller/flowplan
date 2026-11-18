@@ -5908,7 +5908,7 @@
   "left": "gauche",
   "Left": "Gauche",
   "Left label": "Libellé de gauche",
-  "Left on by the update to 0.9.9 because {0} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.": "",
+  "Left on by the update to 0.10.0 because {0} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.": "",
   "Left out (does not exist): {0}": "Laissé de côté (n’existe pas) : {0}",
   "Left to right": "De gauche à droite",
   "Legal": "Informations légales",

@@ -374,7 +374,7 @@ export async function workflowState(user: Identity, pageId: string) {
           activatedAt: version.activated_at,
           note: version.note,
           // Activated before outside data choosing recipients or targets
-          // needed the setting (0.9.9): it keeps running, marked; activating
+          // needed the setting (0.10.0): it keeps running, marked; activating
           // again needs the setting (lib/workflows/provenance.ts).
           needsUntrustedSetting: activeNeedsSetting(version.graph),
         }

@@ -246,7 +246,7 @@ requests and claims queue jobs; the leader runs the timed ones).
   object now (`setupToken.existingSecret`), and an existing generated token
   is carried over into `<fullname>-setup`.
 - The root file system is read-only (`/tmp`, `/app/.next/cache` and
-  `/home/node` are `emptyDir`s); the image needs Flowplan 0.9.9 or newer.
+  `/home/node` are `emptyDir`s); the image needs Flowplan 0.10.0 or newer.
 - Resources follow the sizing guide (1 CPU, 2 GiB requested) – set
   `resources` for smaller clusters.
 - The schema Job no longer switches off the pods' own schema check

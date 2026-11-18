@@ -565,7 +565,7 @@ test("notify.email: members and addresses, escaped HTML, at most N a day, outsid
   }
 });
 
-test("update to 0.9.9: an instance whose active workflows mail addresses from placeholders keeps that, and the administration says which", async () => {
+test("update to 0.10.0: an instance whose active workflows mail addresses from placeholders keeps that, and the administration says which", async () => {
   const { runDataSteps, WORKFLOW_DYNAMIC_MAIL_STEP } = await import("../lib/data-steps");
   const { adminWorkflows } = await import("../lib/workflows/commands");
   const rerun = async () => {
