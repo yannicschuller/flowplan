@@ -1,0 +1,62 @@
+# Flowplan on one app server of a highly available setup at Hetzner Cloud:
+# several of these servers behind the Hetzner Load Balancer, PostgreSQL and
+# Redis on their own servers (postgres.yaml, redis.yaml, or managed
+# services), files in Hetzner Object Storage. See README.md and the docs
+# page "High availability" (docs.flowplan.org/en/high-availability).
+#
+#   cp .env.example .env     # fill in; the same on every app server except
+#                            # PRIVATE_IP and FLOWPLAN_INSTANCE_ID
+#   docker compose up -d
+#
+# Based on ../cluster/compose.yaml (one host, for trying it out); here one
+# Flowplan instance per server, reached by the load balancer through the
+# private network.
+name: flowplan
+
+services:
+  flowplan:
+    image: ghcr.io/yannicschuller/flowplan:${FLOWPLAN_VERSION:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # "1": active/active (cluster mode, needs REDIS_URL). "off": the
+      # active/passive variant – then Flowplan may run on one server only.
+      FLOWPLAN_CLUSTER: ${FLOWPLAN_CLUSTER:-1}
+      FLOWPLAN_INSTANCE_ID: ${FLOWPLAN_INSTANCE_ID:?set FLOWPLAN_INSTANCE_ID in .env (e.g. app-1)}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env (postgres://…)}
+      # The keys every instance shares (cluster mode refuses to start without them).
+      FLOWPLAN_ENCRYPTION_KEY: ${FLOWPLAN_ENCRYPTION_KEY:?set FLOWPLAN_ENCRYPTION_KEY in .env (openssl rand -base64 32)}
+      WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:?set WEB_PUSH_PUBLIC_KEY in .env (npx web-push generate-vapid-keys)}
+      WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:?set WEB_PUSH_PRIVATE_KEY in .env (npx web-push generate-vapid-keys)}
+      # With S3 the local folder is only a cache of the bucket.
+      FLOWPLAN_DATA_DIR: /app/data
+    # Only on the private network: the load balancer reaches the server
+    # there, the public interface has no open port for Flowplan.
+    ports:
+      - "${PRIVATE_IP:?set PRIVATE_IP in .env (this server's address in the private network)}:3000:3000"
+    volumes:
+      - flowplan-cache:/app/data
+    # Time to answer open requests, close live streams and hand the lead on.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  # Optional migration step before an update (the instances also bring the
+  # schema up to date themselves, under a lock):
+  #   docker compose run --rm schema
+  schema:
+    image: ghcr.io/yannicschuller/flowplan:${FLOWPLAN_VERSION:-latest}
+    profiles: ["tools"]
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env (postgres://…)}
+    entrypoint: []
+    command: ["node", "/app/scripts/db-schema.mjs"]
+    restart: "no"
+
+volumes:
+  flowplan-cache:

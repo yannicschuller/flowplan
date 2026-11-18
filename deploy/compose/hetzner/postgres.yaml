@@ -1,0 +1,36 @@
+# One PostgreSQL server for the Hetzner example (README.md) – the simplest
+# of the database options, a single point: back it up (scheduled backups in
+# Flowplan, Hetzner backups of the server, optionally WAL archiving).
+#   docker compose -f postgres.yaml up -d
+# Listens on the private network only. Flowplan connects as the role
+# `flowplan` (owner of the database, no superuser), created on the first
+# start by ../cluster/postgres-init.sh – copy it next to this file.
+name: flowplan-postgres
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      # The image's superuser, for administration only.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}
+      # The password of the role `flowplan` (postgres-init.sh).
+      FLOWPLAN_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Room for the app servers' pools: servers × (FLOWPLAN_PG_POOL + 3) plus
+    # backups and administration.
+    command: ["postgres", "-c", "max_connections=200"]
+    ports:
+      - "${PRIVATE_IP:?set PRIVATE_IP in .env (this server's address in the private network)}:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-flowplan.sh:ro
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U flowplan -d flowplan"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:
