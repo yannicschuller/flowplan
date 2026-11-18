@@ -14,13 +14,15 @@ import { one } from "../db";
 import { AI_MESSAGES } from "./transport";
 import { redactSecrets } from "./redact";
 import { resolveAi } from "./resolve";
+import { takeAiSlot } from "./concurrency";
 
 export const AI_LIMITS = {
   maxMessages: 100,
   // System prompt and messages together (roughly 50 000 tokens).
   maxPromptChars: 200_000,
   maxTokens: 8192,
-  // Parallel answers per person.
+  // Parallel answers per person – across all instances in cluster mode
+  // (lib/ai/concurrency.ts).
   concurrent: 3,
   // Pictures in a prompt (lib/ai/handwriting.ts): per request, and the
   // base64 characters of each.
@@ -67,8 +69,6 @@ const inputSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
 });
 
-const running = new Map<string, number>();
-
 // A failed provider call as the statistics count it: a timeout (no answer
 // in time: 504/408 or the transport's timeout) or another error.
 export function aiFailureKind(error: unknown): "error" | "timeout" {
@@ -93,9 +93,8 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   if (size > AI_LIMITS.maxPromptChars) throw new HttpError(413, "Der Text für die KI ist zu lang.");
   if (input.messages.reduce((n, m) => n + (m.images?.length || 0), 0) > AI_LIMITS.images) throw new HttpError(413, "Zu viele Bilder für die KI.");
   if (!options.charged) limitAi(user.id);
-  const count = running.get(user.id) || 0;
-  if (count >= AI_LIMITS.concurrent) throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
-  running.set(user.id, count + 1);
+  const release = await takeAiSlot(user.id, AI_LIMITS.concurrent);
+  if (!release) throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
   // Tokens per feature for the monitoring (lib/metrics.ts): as reported by
   // the provider, else estimated from the characters.
   const usage: TokenUsage = {};
@@ -130,9 +129,7 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
         } catch {}
       noteAiCall({ feature, tokensIn, tokensOut, answered, failure, ms: Date.now() - started, model: resolved.config.model, source: resolved.source, workspaceId, userId: user.id });
     }
-    const left = (running.get(user.id) || 1) - 1;
-    if (left > 0) running.set(user.id, left);
-    else running.delete(user.id);
+    release();
   }
 }
 
