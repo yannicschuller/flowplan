@@ -2768,11 +2768,12 @@ export type CommandWhiteboardToRecordsResult = {
   }[];
 };
 
-/** Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added. A date with a time for a date property without time (`noTime: true`) keeps only its day, counted in `timeZone` (IANA, default UTC). */
+/** Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added. A date with a time for a date property without time (`noTime: true`) keeps only its day, counted in `timeZone` (IANA, default UTC). `documents` (optional) gives records their document as HTML, by the index of the record (sanitized like every document; `null` for none). */
 export type CommandRowsImport = {
   action: "rows.import";
   pageId: string;
   rows: Record<string, unknown>[];
+  documents?: (string | null)[];
   timeZone?: string;
 };
 

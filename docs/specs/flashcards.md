@@ -1068,7 +1068,8 @@ landen sie automatisch als offizielle Pakete im Marketplace.
 ### 9.1 Ablauf
 
 Einstiege: Lernen-Ansicht „Mit KI erstellen“, Seitenmenü „Lernkarten
-erstellen…“, Textmenü einer Auswahl, PDF-Betrachter („Aus diesem PDF“).
+erstellen…“, Textmenü einer Auswahl, PDF-Betrachter („Lernkarten erstellen“:
+die gezeigte Seite oder ein Seitenbereich).
 
 ```
 Quelle wählen ─► Optionen ─► KI schlägt vor ─► Prüfen & bearbeiten ─► Hinzufügen
@@ -1869,16 +1870,27 @@ weil sie erst mit Zuordnung sichtbar wird.
   (legt fehlende Auswahl-Optionen/Tags an), Kartentyp über die Option der
   Kartentyp-Eigenschaft (`typeOfOption`), MC-Optionen in
   `settings.study.choices`, Tags für alle; neuer Stapel = Datenbank der
-  Art „Lernkarten“. Stapel mit Dokumentseiten nehmen keine KI-Karten (409).
+  Art „Lernkarten“. Stapel mit Dokumentseiten (#342): die Seiten gehen ins
+  Dokument des Eintrags – Vorderseite über der ersten Linie, Rückseite
+  darunter (`cardDocument`, Markdown → Editor-HTML, Lücken als
+  Lücken-Markierung, keine Bilder), über `rows.import` mit `documents`;
+  der Titel bekommt die Vorderseite als Klartext, wenn er keine Seite ist.
+  Der Dublettenvergleich liest dann die Vorderseiten aus den Dokumenten.
   Audit `ai.cards` mit der Zahl.
 - Einstiege: „Mit KI erstellen“ in der Lernen-Ansicht (Stapel
   vorgewählt), Textmenü „Lernkarten erstellen“ bei einer Auswahl (nur mit
   Maus/Tastatur-Auswahl sichtbar, wie das Textmenü), Suchpalette
   „Lernkarten mit KI erstellen“ (offene Seite bzw. offener Stapel). Alle
   über das Fenster-Ereignis `flowplan:flashcards-ai`; nach dem Hinzufügen
-  lädt `flowplan:study-changed` die Lernen-Ansicht neu. Der Einstieg im
-  PDF-Betrachter („Aus diesem PDF“) fehlt noch – die Dateiquelle im Dialog
-  deckt PDFs der Seite ab.
+  lädt `flowplan:study-changed` die Lernen-Ansicht neu. Im PDF-Betrachter
+  „Lernkarten erstellen“ (#342): schließt den Betrachter und öffnet den
+  Dialog mit dem PDF als Dateiquelle und der gezeigten Seite als Bereich
+  („Seiten von … bis …“, höchstens 300, oder „Alle Seiten“). Den Text der
+  Seiten liest pdf.js im Browser (`pdfPagesText`); er geht als `text` der
+  Dateiquelle mit, die der Server wie die ganze Datei prüft. Der Betrachter
+  hat keine Textebene – eine Textauswahl gibt es dort nicht, der
+  Seitenbereich ersetzt sie. Ob der Knopf erscheint, fragt der Betrachter
+  (außerhalb des Arbeitsbereichs) über `flowplan:flashcards-ai-probe`.
 - Galerie: Szene `study-anki-import`; der KI-Dialog steht wie alle
   KI-Dialoge in `scripts/gallery/uncovered.json` (die Galerie hat keinen
   KI-Anbieter); Bilder davon aus `tests/browser/study-ai.spec.ts`

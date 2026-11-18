@@ -18,7 +18,9 @@
 //   time, each counted by the AI rate limit and statistics (lib/ai/run.ts).
 // - Adding needs write access to the deck and the feature again (the
 //   browser is not trusted): each card is checked again and the records are
-//   created through rows.import as the person (audit "ai.cards").
+//   created through rows.import as the person (audit "ai.cards") – for a
+//   deck that reads a side from the records' documents with the sides
+//   written into the documents, above and below the rule (#342).
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { HttpError } from "../auth";
@@ -32,8 +34,10 @@ import { rowRoleResolver } from "../row-access";
 import { hiddenFileIds } from "../row-files";
 import { cellText } from "../cell-text";
 import { isFormattedText, toPlain } from "../inline-markdown";
-import { clozeNumbers } from "../study-cloze";
-import { foldChoice } from "../study-content";
+import { clozeFilled, clozeNumbers } from "../study-cloze";
+import { foldChoice, htmlPlain, splitCardHtml, usesDocument } from "../study-content";
+import { documentHtml } from "../study";
+import { markdownToHtml } from "../markdown-import";
 import { typeOfOption, type CardType, type StudySettings } from "../study-schema";
 import { estimateTokens } from "../metrics";
 import type { Field, Identity, Page } from "../types";
@@ -75,7 +79,14 @@ const uuid = z.uuid();
 const sourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("page"), pageId: uuid, rowId: uuid.nullish() }),
   z.object({ kind: z.literal("selection"), pageId: uuid, rowId: uuid.nullish(), text: z.string().trim().min(1).max(FLASHCARD_LIMITS.textChars) }),
-  z.object({ kind: z.literal("file"), fileId: uuid }),
+  // `text`: some pages of a PDF, read in the browser (the dialog's page
+  // range, the PDF viewer) – checked like the whole file.
+  z.object({
+    kind: z.literal("file"),
+    fileId: uuid,
+    text: z.string().trim().min(1).max(FLASHCARD_LIMITS.textChars).optional(),
+    pages: z.object({ from: z.number().int().min(1).max(100_000), to: z.number().int().min(1).max(100_000) }).optional(),
+  }),
   z.object({ kind: z.literal("text"), text: z.string().trim().min(1).max(FLASHCARD_LIMITS.textChars) }),
 ]);
 export type FlashcardSource = z.infer<typeof sourceSchema>;
@@ -131,6 +142,7 @@ async function loadSource(user: Identity, workspaceId: string, source: Flashcard
       // Files of records or properties the person may not see.
       if ((await hiddenFileIds(user, page)).has(file.id)) throw new HttpError(404, "Datei nicht gefunden.");
       await requireAiRead(user, page.id);
+      if (source.text) return { text: source.text, title: file.name, options: { workspaceId, pageId: page.id } };
       const extracted = await one<{ text: string | null; status: string }>("SELECT text,status FROM file_texts WHERE file_id=?", file.id);
       if (!extracted) throw new HttpError(409, "Der Text dieser Datei wird noch gelesen – versuche es gleich noch einmal.");
       if (!extracted.text?.trim()) throw new HttpError(400, "In dieser Datei wurde kein Text gefunden.");
@@ -154,16 +166,28 @@ async function deckFor(user: Identity, workspaceId: string, deckId: string, writ
 }
 // The fronts of the deck's cards the person may see – for the prompt (only
 // when the AI may read the deck) and the duplicate check.
+// A deck with its fronts in the records' documents (above the rule) reads
+// them there.
 async function existingFronts(user: Identity, deck: Deck) {
-  if (!("field" in deck.settings.front)) return [];
-  const field = deck.settings.front.field;
-  if ((await hiddenFieldsFor(user, deck.page, deck.fields)).has(field)) return [];
+  const front = deck.settings.front;
+  if ("field" in front && (await hiddenFieldsFor(user, deck.page, deck.fields)).has(front.field)) return [];
   const resolve = await rowRoleResolver(user, deck.page);
-  const rows = await all<{ id: string; access: string; created_by: string | null; cells: string }>("SELECT id,access,created_by,cells FROM rows WHERE page_id=? ORDER BY position DESC LIMIT 5000", deck.page.id);
-  return rows
-    .filter((r) => resolve(r as never))
-    .map((r) => toPlain(cellText(JSON.parse(r.cells || "{}")[field])).replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+  const rows = (
+    await all<{ id: string; access: string; created_by: string | null; cells: string; content: string | null }>(
+      "SELECT id,access,created_by,cells,content FROM rows WHERE page_id=? ORDER BY position DESC LIMIT 5000",
+      deck.page.id,
+    )
+  ).filter((r) => resolve(r as never));
+  const plain = (text: string) => text.replace(/\s+/g, " ").trim();
+  if ("field" in front) return rows.map((r) => plain(toPlain(cellText(JSON.parse(r.cells || "{}")[front.field])))).filter(Boolean);
+  const documents = new Map<string, string>();
+  for (let i = 0; i < rows.length; i += 500) {
+    const ids = rows.slice(i, i + 500).map((r) => r.id);
+    if (!ids.length) continue;
+    for (const d of await all<{ row_id: string; html: string }>(`SELECT row_id,html FROM row_documents WHERE row_id IN (${ids.map(() => "?").join(",")})`, ...ids))
+      documents.set(d.row_id, d.html);
+  }
+  return rows.map((r) => plain(htmlPlain(splitCardHtml(documentHtml(r, documents.get(r.id)), front.document)))).filter(Boolean);
 }
 
 // ---- the prompt ----
@@ -357,6 +381,20 @@ function typeValue(settings: StudySettings, fields: Field[], type: AiCardType): 
   return type === "basic" ? undefined : names[type];
 }
 
+// A card's record document for a deck that reads a side from it
+// (lib/study-content.ts splitCardHtml): the front above the first rule,
+// the back below it – or the back alone, when the front is a property (a
+// document without a rule is all answer). The sides are Markdown as the
+// AI writes them: gaps {{c1::…}} become the editor's cloze mark.
+export function cardDocument(settings: StudySettings, card: { front: string; back: string }): string | null {
+  const html = (text: string) => (text.trim() ? markdownToHtml(text, (href, kind) => (kind === "image" ? null : href)).trim() : "");
+  const frontInDocument = "document" in settings.front,
+    backInDocument = "document" in settings.back;
+  if (!frontInDocument && !backInDocument) return null;
+  const parts = [frontInDocument ? `${html(card.front)}<hr>` : "", backInDocument ? html(card.back) : ""].join("");
+  return parts || null;
+}
+
 export async function addFlashcards(user: Identity, raw: unknown) {
   const input = addCardsInput.parse(raw);
   await requireMember(user, input.workspaceId, "editor");
@@ -368,16 +406,19 @@ export async function addFlashcards(user: Identity, raw: unknown) {
   }
   const deck = await deckFor(user, input.workspaceId, deckId, true);
   const { settings, fields } = deck;
-  if (!("field" in settings.front) || !("field" in settings.back))
-    throw new HttpError(409, "Dieser Stapel liest eine Kartenseite aus dem Dokument der Einträge; KI-Karten brauchen Eigenschaften für Vorder- und Rückseite.");
   const field = (id: string) => fields.find((f) => f.id === id);
   // A side as the property takes it: the title is plain text.
   const value = (id: string, text: string) => (isFormattedText(field(id), fields) ? text : toPlain(text).replace(/\s*\n\s*/g, " "));
+  // A deck reading a side from the records' documents gets it there (see
+  // cardDocument); its title, when no side, the front as plain text.
+  const inDocument = usesDocument(settings);
+  const titleId = fields[0]?.id || "title";
+  const sideFields = [settings.front, settings.back].flatMap((s) => ("field" in s ? [s.field] : []));
   const rows = input.cards.map((card) => {
-    const cells: Record<string, unknown> = {
-      [(settings.front as { field: string }).field]: value((settings.front as { field: string }).field, card.front),
-      [(settings.back as { field: string }).field]: value((settings.back as { field: string }).field, card.back),
-    };
+    const cells: Record<string, unknown> = {};
+    if ("field" in settings.front) cells[settings.front.field] = value(settings.front.field, card.front);
+    if ("field" in settings.back) cells[settings.back.field] = value(settings.back.field, card.back);
+    if (inDocument && !sideFields.includes(titleId) && field(titleId)?.type === "text") cells[titleId] = toPlain(clozeFilled(card.front)).replace(/\s+/g, " ").trim().slice(0, 200);
     if (settings.hint && card.hint) cells[settings.hint.field] = value(settings.hint.field, card.hint);
     const type = typeValue(settings, fields, card.type);
     if (type && "field" in settings.type) cells[settings.type.field] = type;
@@ -392,7 +433,8 @@ export async function addFlashcards(user: Identity, raw: unknown) {
     }
     return cells;
   });
-  await command(user, { action: "rows.import", pageId: deck.page.id, rows, ...(input.timeZone ? { timeZone: input.timeZone } : {}) });
+  const documents = inDocument ? input.cards.map((card) => cardDocument(settings, card)) : undefined;
+  await command(user, { action: "rows.import", pageId: deck.page.id, rows, ...(documents ? { documents } : {}), ...(input.timeZone ? { timeZone: input.timeZone } : {}) });
   await audit(user.id, "ai.cards", deck.page.id, String(rows.length));
   return { deckId: deck.page.id, title: deck.page.title, added: rows.length };
 }

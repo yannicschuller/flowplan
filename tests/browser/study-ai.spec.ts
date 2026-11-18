@@ -64,7 +64,7 @@ async function shot(page: Page, name: string, project: string) {
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.waitForTimeout(200);
-    await page.screenshot({ path: `${shots}/fc3-${name}-${project === "mobile" ? 390 : 1440}-${scheme}.png` });
+    await page.screenshot({ path: `${shots}/${process.env.STUDY_SCREENSHOT_PREFIX || "fc3-"}${name}-${project === "mobile" ? 390 : 1440}-${scheme}.png` });
   }
   await page.emulateMedia({ colorScheme: "light" });
 }
@@ -149,6 +149,72 @@ test("“Mit KI erstellen” in the study view, from pasted text", async ({ page
     await dialog.getByRole("button", { name: "Fertig" }).click();
     await expect(page.locator(".study-deck")).toContainText("2 Karten", { timeout: 30_000 });
     expect((await cardsOf(page, deck)).length).toBe(2);
+  } finally {
+    await page.request.post("/api/command", { headers: { origin }, data: { action: "admin.ai", settings: { enabled: false } } });
+    await mock.close();
+  }
+});
+
+// #342: "Lernkarten erstellen" in the PDF viewer opens the dialog with the
+// PDF and the page shown; the cards go into a deck that reads its sides
+// from the records' documents (front above the rule, back below).
+test("from a page of a PDF into a deck with document sides", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const mock = await startMock();
+  try {
+    const { boot, command } = await setup(page, mock);
+    const title = `Zellbiologie ${info.project.name} ${Date.now()}`;
+    const deck = (await command({ action: "page.create", spaceId: boot.spaces[0].id, title, kind: "database", databaseKind: "flashcards" })).id as string;
+    await command({ action: "study.settings", pageId: deck, settings: { version: 1, front: { document: "above" }, back: { document: "below" } } });
+    const doc = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: `Skript ${Date.now()}`, kind: "document" });
+    const { samplePdf } = await import("../helpers/pdf");
+    const uploaded = await page.request.post("/api/upload", {
+      headers: { origin },
+      multipart: { pageId: doc.id, file: { name: "Skript.pdf", mimeType: "application/pdf", buffer: samplePdf(["Die Mitochondrien erzeugen ATP.", "Seite zwei bleibt aussen vor."]) } },
+    });
+    const { url } = await uploaded.json();
+    const { htmlState } = await import("../../lib/document-server");
+    const generation = (await (await page.request.get(`/api/pages/${doc.id}`)).json()).generation;
+    await command({
+      action: "document.sync",
+      pageId: doc.id,
+      generation,
+      update: Buffer.from(htmlState(`<div data-pdf="${url}" data-title="Skript.pdf" class="pdf-block"><a href="${url}">Skript.pdf</a></div>`)).toString("base64"),
+    });
+    await page.goto(`/#page=${doc.id}`);
+    const pdfCard = page.getByLabel("Dokumentinhalt", { exact: true }).getByRole("button", { name: "PDF „Skript.pdf“ öffnen" });
+    await expect(pdfCard).toBeVisible({ timeout: 30_000 });
+    await pdfCard.click();
+    const viewer = page.getByRole("dialog", { name: "Skript.pdf" });
+    await expect(viewer.locator("canvas.pdf-page")).toHaveCount(2);
+    await shot(page, "pdf-viewer-cards", info.project.name);
+    await viewer.getByRole("button", { name: "Lernkarten erstellen" }).click();
+    await expect(viewer).toHaveCount(0);
+    const dialog = page.getByRole("dialog", { name: "Lernkarten mit KI erstellen" });
+    await expect(dialog.getByRole("radio", { name: "PDF oder Datei" })).toBeChecked();
+    await expect(dialog.locator(".study-ai-field select")).toHaveValue(url.split("/").pop());
+    await expect(dialog.getByRole("radio", { name: "Seiten von" })).toBeChecked();
+    await expect(dialog.getByLabel("Erste Seite")).toHaveValue("1");
+    await expect(dialog.getByLabel("Letzte Seite")).toHaveValue("1");
+    await expect(dialog.locator(".study-ai-pages")).toContainText("Seiten 1–1:", { timeout: 20_000 });
+    await expect(dialog.getByRole("radio", { name: "Alle Seiten (2)" })).toBeVisible();
+    await dialog.getByLabel("Stapel").selectOption({ label: title });
+    await shot(page, "ai-pdf-pages", info.project.name);
+    await dialog.getByRole("button", { name: "Karten vorschlagen" }).click();
+    await expect(dialog.locator(".study-ai-head")).toContainText("4 Karten vorgeschlagen", { timeout: 30_000 });
+    await expect(dialog.locator(".study-ai-head")).toContainText("Seiten 1–1");
+    expect(mock.prompts.at(-1)).toContain("Die Mitochondrien erzeugen ATP.");
+    expect(mock.prompts.at(-1)).not.toContain("Seite zwei");
+    // Before #342 this was refused: the deck reads its sides from the documents.
+    await dialog.getByRole("button", { name: "3 Karten hinzufügen" }).click();
+    await expect(dialog.getByRole("status")).toContainText(`3 Karten zu „${title}“ hinzugefügt.`, { timeout: 30_000 });
+    const queue = await command({ action: "study.queue", pageId: deck, zone: "Europe/Berlin" });
+    const cards = queue.cards as { sub: string; front: { html?: string }; back: { html?: string } }[];
+    const basic = cards.find((c) => c.front.html?.includes("Was erzeugen die Mitochondrien?"));
+    expect(basic?.back.html).toContain("ATP");
+    expect(cards.some((c) => c.sub === "c1")).toBe(true);
+    expect(errors).toEqual([]);
   } finally {
     await page.request.post("/api/command", { headers: { origin }, data: { action: "admin.ai", settings: { enabled: false } } });
     await mock.close();
