@@ -2,7 +2,10 @@
 
 Status: **freigegeben**; Phase 0 (`lib/fsrs`, `lib/study-day.ts`) und
 Phase 1 (Tabellen, Ansicht „Lernen“, Einrichtung, Fokusmodus, Vorlage)
-gebaut auf dem Branch `flashcards`. Entschieden aus §17: (1) die
+gebaut auf dem Branch `flashcards`; Phase 2 (Lückentext, Eintippen,
+Multiple Choice, Warteseite, `#study`, Widget, Journal, Statistik) und
+Phase 3a (CSV-/Quizlet-Assistent, CSV-Export) auf dem Branch `fc2` – die
+Entscheidungen dazu stehen in §18. Entschieden aus §17: (1) die
 Schemanummer bleibt – nur neue Tabellen, und ältere Versionen behandeln den
 Ansichtstyp `study` wie zuvor `sprint` und `feed`; (3) Gäste einer
 freigegebenen Seite stehen in `members` (`lib/page-share.ts`), daher der
@@ -1606,4 +1609,131 @@ weil sie erst mit Zuordnung sichtbar wird.
     bereich nur auf der Karte, 24 px Abstand zum Rand.
 16. **Unsicher:** ob `lib/text-diff.ts` zeichenweise vergleicht (für Eintippen)
     und ob die Heatmap aus dem Gewohnheiten-Widget wiederverwendbar ist – beim
-    Bau prüfen.
+    Bau prüfen. → geklärt in §18.
+
+---
+
+## 18. Entscheidungen beim Bau von Phase 2 und 3a
+
+**Kartentypen (`lib/study-content.ts`, `lib/study-cloze.ts`, `lib/study-compare.ts`)**
+
+- `settings.study.type` ist `{ fixed }` oder `{ field, map? }` (Auswahl-
+  Eigenschaft). Optionen ohne Eintrag in `map` werden über ihren Namen
+  erkannt (`typeOfOption`: „Lückentext“/„Cloze“, „Antwort eintippen“/„Type
+  the answer“, „Multiple Choice“ …), sonst `basic`. Die Datenbankart
+  „Lernkarten“ und die Vorlage bekommen eine Eigenschaft **Kartentyp**.
+- Ein `basic`-Eintrag, dessen Vorder- (zuerst) oder Rückseite Lücken hat,
+  gibt Lückentext-Karten – Importe brauchen so keinen eigenen Typ. Ein
+  `cloze`-Eintrag ohne Lücken gibt keine Karte. Stehen die Lücken auf der
+  Rückseite (Dokument), kommt die Vorderseite als `context` darüber, sonst
+  die Rückseite als `note` nach dem Aufdecken.
+- §5.2 entschieden: **eigene Mark** `cloze` (`lib/cloze-mark.ts`,
+  `<span data-cloze="N" data-cloze-hint>`), außerhalb des Lernens wie ein
+  Spoiler verdeckt (`revealSpoiler` öffnet beide), im Editor getönt mit
+  Nummer. Kurzbefehl **⌘⌥G / Strg+Alt+G** (mit Umschalt: gleiche Nummer wie
+  die vorige) statt ⌘⇧C: Chrome/Edge belegen Strg+Umschalt+C für die
+  Entwicklerwerkzeuge, eine Seite kann das nicht abfangen. Textmenü „…“:
+  „Als Lücke (neue Nummer)“ / „(gleiche Nummer wie vorige)“ / „Lücke
+  entfernen“, Slash-Befehl „Lücke“. Markdown: Export `{{cN::…(::Hinweis)}}`,
+  Import über eine `marked`-Erweiterung zurück zur Mark; `cleanHtml` lässt
+  `data-cloze`/`data-cloze-hint` durch. Eine Werkzeugleisten-Schaltfläche
+  gibt es nicht (die Leiste ist frei belegbar, `lib/toolbar-layout.ts` –
+  später).
+- Die Darstellung baut der Server: Dokumentseiten werden für Karte N
+  umgeschrieben (`clozeHtml`, danach erneut `cleanHtml`), Textseiten tragen
+  `cloze: { n, reveal }` und werden im Client als React-Text gerendert
+  (`components/study/card-parts.tsx`).
+- `lib/text-diff.ts` ist ein generischer Myers-Diff über Token; Eintippen
+  vergleicht nach Graphemen (`Intl.Segmenter`). Toleranz je Stapel
+  `typedCompare` (Standard: Groß/klein ignorieren an, Akzente aus,
+  Satzzeichen an). Mehrere Antworten mit `|`. Erwartet wird bei
+  Dokument-Rückseiten der erste Absatz. Vorschlag: richtig → Gut, ein
+  Zeichen anders bei ≥ 6 Zeichen → Schwer, sonst Nochmal; Enter/Leertaste
+  übernehmen ihn, jede Wertung bleibt wählbar. Esc im Eingabefeld mit Text
+  verlässt erst das Feld (statt einer Rückfrage).
+- Multiple Choice: eigene Optionen aus `settings.study.choices` (Text mit
+  Zeilen oder `;`/`|`, oder Mehrfachauswahl), aufgefüllt auf 3 falsche aus
+  den Rückseiten von höchstens 80 Karten **derselben `studyable()`-Menge wie
+  die Warteschlange** (sichtbare Einträge, Filter der Ansicht, keine
+  verborgenen Felder) – §17.9, Test `tests/study-phase2.test.ts`. Gleiche
+  Tags (`settings.study.tags`) und ähnliche Länge zuerst. Der Server
+  schickt die richtige Antwort an Index 0, der Client mischt mit der
+  Review-ID als Seed. Weniger als zwei Optionen: die Karte wird wie
+  `basic` gefragt.
+
+**Sitzung**
+
+- Warteseite „Früher zeigen“: sind nur Lernkarten mit späterer Fälligkeit
+  übrig, zählt die Sitzung herunter und lädt 20 Minuten vor Fälligkeit
+  (Vorauslernlimit) selbst; „Früher zeigen“ ruft `study.queue` mit
+  `ahead: true` (alle Lernkarten des Lerntags).
+- `#study` (`components/study/screen.tsx`): Stapel mit Zählern aus
+  `studyDue` (`lib/study-stats.ts`) – drei gruppierte Abfragen über alle
+  Stapel (Zustände nach `page_id,state`, neue per `NOT EXISTS`, heutige
+  Wertungen aus `review_log`), Abzug privater Einträge anderer, eigene
+  Grenzen. Ansichtsfilter und Geschwister-Zurückstellen gelten dort nicht
+  (Hinweis in der Oberfläche). „Alle fälligen lernen“ = Stapel
+  nacheinander, „Weiter mit …“ in der Zusammenfassung. `SCREENS`
+  (`lib/history-nav.ts`), `TOP_SCREENS` (`lib/app-back.ts`), Seitenleiste
+  (Werkzeuge), Befehl der Suchpalette „Lernen: fällige Karten“, neue
+  Aktion `study` in `lib/keymap.ts` (ohne Vorgabe-Kombination), die Tasten
+  der Sitzung in der Tastenübersicht. Die Suchpalette listet keine
+  einzelnen Stapel (die Stapelliste steht nicht im Bootstrap) – später.
+- MCP `study_decks` nutzt jetzt `studyDue` (vorher eine Warteschlange je
+  Stapel).
+
+**Widget, Journal, Statistik**
+
+- Widget `study` („Fällige Karten“) am Ende von `homeWidgetKinds`,
+  Konfiguration `{ pageIds }` (alle oder ausgewählte), höchstens 8 Stapel.
+- Journal (§11.2 entschieden: **Kalendertag**): `completedOn` hat die Art
+  `study` mit `count`, eine Zeile je Stapel aus dem eigenen `review_log`
+  in den Kalendertag-Grenzen; zählt bei „Nur meine“ und „Alle“, nie die
+  anderer; nur noch lesbare Stapel außerhalb gesperrter Journale. Dadurch
+  zählt ein Tag mit nur Lernen als nicht leer (`completedThatDay`). Die
+  KI-Zeile: „32 Karten gelernt in Spanisch A1“. Die Journal-Doku bekommt
+  keinen eigenen Absatz (Seitenlänge), die Lernkarten-Seite beschreibt es.
+- Statistik `study.stats` / `GET /api/study/stats` je Stapel oder
+  Arbeitsbereich: Heute, Serie (heute oder bis gestern), Heatmap 365
+  Lerntage (eigene Komponente mit den Klassen der Journal-Heatmap – die
+  Heatmap des Journals ist lokal in `components/journal-view.tsx`, das
+  Gewohnheiten-Widget hat keine), Vorschau 30 Tage (Überfällige heute),
+  wahre Behaltensrate 7/30/365 (Wiederholungen mit `state_before = 2`),
+  Zustände (jung < 21 T Stabilität). Verteilungen von Stabilität und
+  Schwierigkeit und die mittlere Abrufwahrscheinlichkeit: später.
+
+**Import/Export (Phase 3a, `lib/study-import.ts`, `components/study/import.tsx`)**
+
+- Erkennung der Trennzeichen (Tab/Semikolon/Komma; Quizlet „Semikolon
+  zwischen Karten“ bei einzeiligem Text), CSV mit Anführungszeichen über
+  Papa Parse, TSV ohne Anführungszeichen wörtlich, Kopfzeile über bekannte
+  Namen und die Eigenschaftsnamen des Stapels. Spalten → beliebige
+  Text-/Auswahl-/Zahl-Eigenschaften; Fehler je Zeile, Dubletten einmal,
+  höchstens 5000 Zeilen, Werte bis 10 000 Zeichen, Dateien bis 5 MB.
+  Angelegt über `rows.import` in Stapeln zu 1000 (kein neuer Schreibweg).
+  In das Dokument eines Eintrags importiert der Assistent nicht.
+- Export `GET /api/pages/{id}/study/export[?state=1]`: eine Zeile je
+  Karte (auch ausgesetzte), Dokumente als Markdown, Formel-Schutz wie beim
+  CSV-Export, Spaltennamen in der Inhaltssprache; mit `state` nur der
+  eigene Lernstand.
+
+**Schema:** unverändert (die Tabellen von Phase 1 tragen alle Kartentypen;
+`settings.study` ist JSON). Keine neue Migration, Schemanummer bleibt.
+
+**Für die nächsten Phasen**
+
+- 3b Anki: `parseClozeText` liest Anki-Lücken samt Verschachtelung,
+  `clozeHtml` funktioniert auf Feld-HTML; die Mark-Attribute passen für den
+  Export. Der CSV-Import-Pfad (`rows.import`) kennt keine Dokumente – der
+  `.apkg`-Import braucht den Weg der anderen Importer (`lib/importers/write.ts`).
+- 4 KI: Vorschläge können direkt `{{c1::…}}` und die Spalten
+  Kartentyp/Antwortoptionen füllen; `planImport` taugt als Prüfschritt.
+- 5 App: `studyDue` liefert die Zahlen für `/api/mobile/summary` und das
+  mobile Widget; die Warteseite plant mit `nextDue`.
+- 6 Bildverdeckung: `cardTypes` enthält `occlusion`, `deriveCards` gibt
+  dafür noch nichts; im Einrichtungsdialog „Bildverdeckung (bald)“.
+- 7 Teilen: die Darstellung der Kartentypen liegt in
+  `components/study/card-parts.tsx` und ist ohne Server nutzbar.
+- Offen: Werkzeugleisten-Knopf für Lücken, Stapel in der Suchpalette,
+  Lücken in der Suche als Klartext indexieren (§12.4), Push/App-Deep-Link
+  `#study` in flowplan-app freigeben (`src/navigation.ts`).
