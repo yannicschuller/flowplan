@@ -2,6 +2,229 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.10.0 – 2026-11-18
+
+### Security
+
+- Workflows: e-mail to addresses from placeholders, AI answers or forms now needs its own switch; HTTP targets and recipients from AI or trigger data only where allowed. Existing workflows that already do this keep running and are listed in the administration.
+- AI and MCP: other people's content and embedded material come back as data and can no longer pass for instructions.
+- Image: Litestream with the fixes for go-jose (CVE-2026-116587) and golang.org/x/net (CVE-2026-78661).
+
+### New
+
+- Flashcards: any database becomes a deck, scheduled with FSRS – front and back, cloze, type the answer, multiple choice and image occlusion, a focus mode with keys and swipes, limits per deck and every person's own learning state.
+- Flashcards: a "Study" overview of all decks, statistics with heatmap and forecast, a "Cards due" widget, studied cards in the journal, a daily study reminder and studying without a connection.
+- Flashcards: import from Anki (.apkg, with media and optionally the learning state), Quizlet and CSV; export as an Anki package or CSV.
+- Create flashcards with AI – from a page, a selection, a PDF or pasted text, with a review step before they are added.
+- Share flashcards: a public link to browse and practise without an account (progress stays in the browser), decks as templates and in the marketplace, new templates "Vocabulary" and "Flowplan shortcuts".
+- Your own memory model: fit the FSRS parameters to your review log from 1,000 reviews, with a before/after comparison and a recommended retention.
+- Show a space as a library of books, and import from BookStack through its API ([#329](https://github.com/yannicschuller/flowplan/issues/329)).
+- Notifications with formatted messages, mentions and formulas ([#330](https://github.com/yannicschuller/flowplan/issues/330)).
+- Date properties optionally with a time; tags can be typed in search and suggested with # ([#327](https://github.com/yannicschuller/flowplan/issues/327), [#328](https://github.com/yannicschuller/flowplan/issues/328)).
+- App: "Switch instance…" in the workspace menu (and a long press on your account) opens the app's profiles.
+- Monitoring: unexpected restarts with a reason (crash, likely out of memory, without a trace) and the last log lines before them; errors in detail (where 5xx answers come from), server and AI statistics and recommendations.
+- Litestream: a stuck replica in the bucket is detected and rebuilt on the next start; two containers on one data folder no longer start a second replication.
+- High availability: PostgreSQL survives lost connections and a failover, cluster mode on Kubernetes with Helm chart 0.3.0, a warning for two instances without cluster mode, an example for Hetzner Cloud.
+
+### Improved
+
+- Drawing blocks: open only with Draw or the Pencil, a "…" menu on the block, a one-time height tip and a fine hover dot ([#315](https://github.com/yannicschuller/flowplan/issues/315), [#322](https://github.com/yannicschuller/flowplan/issues/322), [#324](https://github.com/yannicschuller/flowplan/issues/324)).
+- Faster: fewer requests when a page opens, 304 answers for unchanged data, KaTeX, mathjs and emoji data only when needed, PDFs in a thread of their own.
+- Workflows run in their creator's time zone; a night run no longer makes yesterday's journal day disappear.
+- Whiteboard: an element's toolbar sits above or below it on narrow boards too, not on top of it.
+- The sidebar stays hidden per device, a single offline indicator, today's journal entry opens offline, no flash of the start page on reload ([#331](https://github.com/yannicschuller/flowplan/issues/331), [#332](https://github.com/yannicschuller/flowplan/issues/332), [#333](https://github.com/yannicschuller/flowplan/issues/333)).
+- French uses "vous" throughout.
+
+### Bug fixes
+
+- Journal: a day with tasks done that day stays, an empty day goes to the trash instead of being deleted.
+- Desktop app on macOS and Linux: "Add a passkey" no longer hangs but points to the browser.
+- The journal day title fits on one line on phones; the workspaces tile no longer names demo workspaces ([#334](https://github.com/yannicschuller/flowplan/issues/334)).
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.10.0 ([87c828f](https://github.com/yannicschuller/flowplan/commit/87c828f6a94892600c4d2588bd47292600ccd025))
+- Help docs with the 0.10.0 markers ([7359ed9](https://github.com/yannicschuller/flowplan/commit/7359ed99d5e79aab908d2113be52b8ef843e0abd))
+- Version 0.10.0 instead of 0.9.9 in texts and comments ([65e4d82](https://github.com/yannicschuller/flowplan/commit/65e4d82a711e426bb871ddf9434cedc2f215aa94))
+- Browser spec: indent measures again when the line was just redrawn ([1c8eb1b](https://github.com/yannicschuller/flowplan/commit/1c8eb1b0c5350eb7fa8ac9451f463f49f0972bdb))
+- Help docs after the restarts docs ([c929873](https://github.com/yannicschuller/flowplan/commit/c9298734ec281f3db0c8ecb0789d254856fc2844))
+- Restarts: a host out of memory counts as a likely OOM ([0ff018f](https://github.com/yannicschuller/flowplan/commit/0ff018f0aadb70377a015a171762c162db9b4f91))
+- Monitoring: unexpected restarts with the saved server log ([a493d18](https://github.com/yannicschuller/flowplan/commit/a493d18d1df3ecb46944c03613cf4e3ac8d3ee42))
+- Help docs after the Litestream self-healing docs ([78f9a96](https://github.com/yannicschuller/flowplan/commit/78f9a96a741df2c46e2adca05f215d280233d313))
+- Litestream: detect a stuck replica and rebuild it on the next start ([77b0238](https://github.com/yannicschuller/flowplan/commit/77b02381a2e3d216d4db4e431b2e66dbb28fb638))
+- Help docs after the SQLite overlap docs ([8793e0d](https://github.com/yannicschuller/flowplan/commit/8793e0dcff389ae1dd36dc8bf6a7605e093b1b0b))
+- SQLite: one container per data folder (flock), no second Litestream on overlap ([ddcf943](https://github.com/yannicschuller/flowplan/commit/ddcf943df6cccf706fdacc9fd16765545a119de5))
+- Image: Litestream also with golang.org/x/net 0.62.0 (CVE-2026-78661) ([f2fed8a](https://github.com/yannicschuller/flowplan/commit/f2fed8ab76fb164c249d001c4368f6cc755e42b7))
+- Help docs after the app's instance switcher ([07b2a56](https://github.com/yannicschuller/flowplan/commit/07b2a56cc55acb7b3c0cb0172c2d0481e6318a6b))
+- App: "Instanz wechseln …" and a long press open the app's profile switcher ([bbf03f7](https://github.com/yannicschuller/flowplan/commit/bbf03f7cc4aaeb84f128656ef8ab68836988dbf3))
+- Site media: the seed opens sign-up for the team's accounts ([1c5dc90](https://github.com/yannicschuller/flowplan/commit/1c5dc90917184d7d820ae7496ad937eb26375d06))
+- Administration: the workspaces tile never names a demo workspace ([043b96a](https://github.com/yannicschuller/flowplan/commit/043b96aceedff273c69c4fa3ff50294f1aabe303))
+- Desktop app: passkeys are added in the browser on macOS and Linux ([8434cd6](https://github.com/yannicschuller/flowplan/commit/8434cd6cb9a45bb6a148b064cc7f8d03c700eb1d))
+- Image: Litestream built from source with go-jose 4.1.6 (CVE-2026-116587) ([81161a5](https://github.com/yannicschuller/flowplan/commit/81161a5cbaaa5732ac31cb55c438e406cc5f97f0))
+- Calendar time spec: click the table's start cell beside the pinned column ([d77aa32](https://github.com/yannicschuller/flowplan/commit/d77aa32ed151774c1af6d67821c55f2803f779a2))
+- README: the own memory model for flashcards ([1b04f55](https://github.com/yannicschuller/flowplan/commit/1b04f553a213b8eb997d35f349adaa4082795fd9))
+- Help docs after the optimisation docs ([413c3b1](https://github.com/yannicschuller/flowplan/commit/413c3b1fd5b5b44e6fb7f0598d545abf166da660))
+- Whiteboard: place the style bar by its measured size ([885e536](https://github.com/yannicschuller/flowplan/commit/885e536e2bd203ee93b0a1915875fdf8617ad303))
+- Notebook spec: no instance AI for the handwriting conversion tests ([1537623](https://github.com/yannicschuller/flowplan/commit/15376236593988cf165fcbc1841d879fd0eb1327))
+- Flashcards phase 8: FSRS parameter optimisation ([f7b5b9c](https://github.com/yannicschuller/flowplan/commit/f7b5b9cd0a655ed896275be8f0dccdd93943c81a))
+- Docker: a beta build rolls out only the beta instance, a release only production ([7332870](https://github.com/yannicschuller/flowplan/commit/7332870a2c6ee9947121e8599006bf00deeb8906))
+- Docker: roll out a beta and a production instance on Coolify ([d37871b](https://github.com/yannicschuller/flowplan/commit/d37871b7a5876ac4574f7d59ef32259a605c02fc))
+- README: flashcards ([2d0ee6a](https://github.com/yannicschuller/flowplan/commit/2d0ee6a69da7ea596448103118e74163ba2eb6aa))
+- Help docs after the public flashcards docs ([999bfe4](https://github.com/yannicschuller/flowplan/commit/999bfe4000605bfa95e62147acf67d4485c7c4f9))
+- Flashcards phase 7: public link, marketplace and built-in decks ([73645a2](https://github.com/yannicschuller/flowplan/commit/73645a26ab9bf9bf47714a024635c0d4476be7fe))
+- Help docs after the image occlusion docs ([177f716](https://github.com/yannicschuller/flowplan/commit/177f71640c460eeabce453a1a318449a79b92fee))
+- Study reminder: a new time is saved shortly after it was chosen ([f445fe6](https://github.com/yannicschuller/flowplan/commit/f445fe62787e9fd113bb49fc452811eb9914d8af))
+- Flashcards image occlusion: own module for the card picture ([6d85ce5](https://github.com/yannicschuller/flowplan/commit/6d85ce589293b5bc2d1511f9e1790dacc1f65401))
+- Flashcards phase 6: image occlusion ([29d36d7](https://github.com/yannicschuller/flowplan/commit/29d36d7f1a55b7feefa667edd64014304099f0e8))
+- Flashcards: offline ratings are sent without loading the queue in the app shell ([c01c9c5](https://github.com/yannicschuller/flowplan/commit/c01c9c56eb05e860681089a281c40d438308ca01))
+- Flashcards phase 5: study reminder, app summary and widget, offline study ([4503f13](https://github.com/yannicschuller/flowplan/commit/4503f130cf399750e7a98988f1194c0ef2138b00))
+- Browser spec: block selection clicks until the caret is in Alpha ([4fea68b](https://github.com/yannicschuller/flowplan/commit/4fea68b329ce7984fa7b0915ab4f33ff5d5ba3f3))
+- Visual baselines from ubuntu-latest ([e43f4f5](https://github.com/yannicschuller/flowplan/commit/e43f4f5644a8c136fac31144f63d29b1118f1bf5))
+- Browser specs: Lernen behind Mehr, a free combination for the shortcut search ([526e793](https://github.com/yannicschuller/flowplan/commit/526e793b1e05ee57aaa952842ab2f2622ed9c794))
+- Flashcards: media of a new-format package without zstd, French "par ex.", buttons wrap ([7e6a2bc](https://github.com/yannicschuller/flowplan/commit/7e6a2bc63096875f5cc34187c98612b93b67b445))
+- Flashcards spec: decisions of phase 3b and 4 ([a4d81b4](https://github.com/yannicschuller/flowplan/commit/a4d81b4e66e9b2b646b2e5e97f7ea411e88c9eaa))
+- Flashcards: translations, SDKs and help for Anki and AI cards ([85df861](https://github.com/yannicschuller/flowplan/commit/85df861b7193a8a3f69513ac865932d8d7f2b827))
+- Flashcards: "Lernkarten mit KI erstellen" dialog and browser specs ([7f0a5b8](https://github.com/yannicschuller/flowplan/commit/7f0a5b8d52af592fcac06974fda07fa2ad6bc2c1))
+- Flashcards: AI feature "flashcards" – propose, check, add ([efdb19b](https://github.com/yannicschuller/flowplan/commit/efdb19be8ddc91b775c6a5f01f7f7115a612732b))
+- Flashcards: Anki import wizard and export menu ([a77b886](https://github.com/yannicschuller/flowplan/commit/a77b886f3304b84821bd79b8a0d6299a6101f334))
+- Flashcards: Anki import and export (.apkg) ([2459a42](https://github.com/yannicschuller/flowplan/commit/2459a424934305fdf6952b0864103b16c34a9144))
+- Help docs after the flashcards docs ([3614c92](https://github.com/yannicschuller/flowplan/commit/3614c92d8313bc5e176fb3427ce47a9f2304f590))
+- Flashcards spec: decisions of phase 2 and 3a ([869f6f0](https://github.com/yannicschuller/flowplan/commit/869f6f06a3255bf05c4bbbd094cb260629d40baf))
+- Flashcards phase 2: translations, SDKs, help docs, gallery scenes, browser specs ([a80fc92](https://github.com/yannicschuller/flowplan/commit/a80fc923496f431463a01763098502003d340bae))
+- Flashcards phase 2 and 3a: cloze, typed and multiple choice cards, #study, widget, journal, statistics, CSV/Quizlet import ([c532c6e](https://github.com/yannicschuller/flowplan/commit/c532c6e8b01d2496b450f8c993451978ac7d09bb))
+- PostgreSQL session connection: keep the process alive while a query runs ([dff70c8](https://github.com/yannicschuller/flowplan/commit/dff70c804c28a3d1dcf76d7366039b99016f661c))
+- Help docs: high availability, PostgreSQL failover, cluster updates ([99b73cd](https://github.com/yannicschuller/flowplan/commit/99b73cd8996d0d03399b6f265d743d34645dda22))
+- Deploy: highly available example for Hetzner Cloud ([1568549](https://github.com/yannicschuller/flowplan/commit/15685493a6472e14c31ce9ac96ed892f91a1f124))
+- Ask AI help: the flashcards pages ([f1100ad](https://github.com/yannicschuller/flowplan/commit/f1100ad06ec3439f1d47c6b1d8ba67dd76f94b3d))
+- Flashcards phase 1: the view "Lernen", card setup and focus mode ([6d04bf0](https://github.com/yannicschuller/flowplan/commit/6d04bf0bedc8978d2f431f94b16681f0debe1ac6))
+- Flashcards phase 1: study tables, card index, commands and API ([15b6700](https://github.com/yannicschuller/flowplan/commit/15b6700340d590e4a8b577d233c4ca396d6143c4))
+- Docs: shared short-lived state and PostgreSQL failover ([e4a5e40](https://github.com/yannicschuller/flowplan/commit/e4a5e40e8767ce9696fef05fcd7dabc0c43a1309))
+- Next.js deployment id from the build for skew protection ([0a2fe6e](https://github.com/yannicschuller/flowplan/commit/0a2fe6ed58b822b5ee61e9f3376e491c35b00ce9))
+- Warn when a second instance runs without cluster mode on PostgreSQL ([2ccf43b](https://github.com/yannicschuller/flowplan/commit/2ccf43bec5c41d102bdaf14dd7f0dfce53a74cff))
+- PostgreSQL: survive lost connections and a failover ([2ef16c4](https://github.com/yannicschuller/flowplan/commit/2ef16c42f5a1412afb8fc345663519df8c3631d5))
+- Cluster: parallel AI answers per person counted across instances ([5d3b531](https://github.com/yannicschuller/flowplan/commit/5d3b53113c4719aa23c967dc8375ad9ed159b363))
+- Cluster: background job outcomes and print views live in the database ([09800a6](https://github.com/yannicschuller/flowplan/commit/09800a65f2727c243a39630b64d4c8062c2d0b06))
+- Tests: block handles and synced blocks without racing the router or ProseMirror's focus ([c427433](https://github.com/yannicschuller/flowplan/commit/c42743316dbadf5ac8cb37e4074c96ce473e73c8))
+- Flashcards phase 0: FSRS on ts-fsrs 5.4.2 and the 04:00 study day ([59518e0](https://github.com/yannicschuller/flowplan/commit/59518e0f9520423629662ee9db787f05db70e757))
+- Skill /announce: a Discord announcement for a release ([47463c8](https://github.com/yannicschuller/flowplan/commit/47463c8bc2bbc08b0d515bbc46a76bbab942e02d))
+- Journal: a day with tasks done that day stays, an empty day goes to the trash ([ed5de62](https://github.com/yannicschuller/flowplan/commit/ed5de629a35efcc1305971d6d2ad07f309138346))
+- Drawing blocks: the hovering Pencil's dot is a 2 px point without a halo (#315) ([13a8454](https://github.com/yannicschuller/flowplan/commit/13a8454512fe4fa4344516455d701057b7ac10f7))
+- Help docs and catalogues after the workflow time zone ([ac7794f](https://github.com/yannicschuller/flowplan/commit/ac7794f7d8dd7f7d2416d9eb66c471cb4911d256))
+- Workflows: a new workflow runs in its creator's time zone, and says so ([d49b704](https://github.com/yannicschuller/flowplan/commit/d49b70441a46d96cbb249362ac8c00ead08ea4df))
+- Workflows: a night run never makes yesterday's journal day disappear ([0f17c1c](https://github.com/yannicschuller/flowplan/commit/0f17c1c39d77d80d619a0032e2ddda984936f402))
+- Drawing blocks: open only with Draw, a "…" menu on the block, a first-time height tip (#322, #324) ([41b3f0f](https://github.com/yannicschuller/flowplan/commit/41b3f0f9c5566ba9275469e87e5508b71d1c6a2e))
+- Offline: today's journal entry opens, creating says it needs a connection (#333) ([77c03a2](https://github.com/yannicschuller/flowplan/commit/77c03a2f046bf0c61b939b459e473203837f90db))
+- Reload on a hash route: a placeholder instead of the server's start page ([e9a1d0e](https://github.com/yannicschuller/flowplan/commit/e9a1d0e312bbd0da97112efe276b36f035cf9709))
+- Journal: a day's date title fits on one line on phones (#334) ([93cdd63](https://github.com/yannicschuller/flowplan/commit/93cdd6315f153d22b57c028fff1f4fc98456d0d4))
+- French: "vous" imperatives in the last informal texts ([3f98102](https://github.com/yannicschuller/flowplan/commit/3f9810277cf1ffcade393fea1f3a7e3b26a10e61))
+- Offline: one indicator in the top bar, no connection toast over a kept page (#332) ([d28e9bc](https://github.com/yannicschuller/flowplan/commit/d28e9bc0752e4a528e3b201b9bb051ea9a014222))
+- Sidebar: remember the hidden sidebar per device (#331) ([2e56db4](https://github.com/yannicschuller/flowplan/commit/2e56db4eca70c1f5d16dc4f790dee698b054c5f8))
+- Tests: browser specs after the error details and a swipe that rests before lifting ([9fc1999](https://github.com/yannicschuller/flowplan/commit/9fc1999ba1e1654846962fd6f1babf7078f3e87b))
+- CI: publish the UI gallery nightly at gallery.flowplan.org ([abc5749](https://github.com/yannicschuller/flowplan/commit/abc574992cf2242ec6dccb53b0769cd4d329707f))
+- Gallery: themed report with thumbnails, WebP and a "Changed" view ([871f710](https://github.com/yannicschuller/flowplan/commit/871f71044ef57628ca028005ef4b8d09c2d23dbd))
+- Settings: the sign-in methods no longer reload in a loop ([5fb74b4](https://github.com/yannicschuller/flowplan/commit/5fb74b4653d7d51d3e38cb3f8403adad7f52bc2f))
+- Monitoring: the share bars keep round ends ([4d64487](https://github.com/yannicschuller/flowplan/commit/4d64487dbe8804bd438797e72d9a231a4e3d4ca5))
+- Tests: tag order independent of the database's collation; calendar cell click from the top ([86e8a48](https://github.com/yannicschuller/flowplan/commit/86e8a483afb9e1ebab9e5d6ba2ab785611728459))
+- Monitoring: error details stay within the card on phones ([685fc14](https://github.com/yannicschuller/flowplan/commit/685fc142541651e5d3f36635fb3d7ab905967755))
+- Help docs: regenerate after the monitoring's error details ([4d3d9b0](https://github.com/yannicschuller/flowplan/commit/4d3d9b0cc38f4c32b375441771c95141e4e9536d))
+- Monitoring: errors in detail – where the 5xx answers come from ([d1f3d1a](https://github.com/yannicschuller/flowplan/commit/d1f3d1a54bfa997f2cd839354594c3b044a9d3eb))
+- Notification e-mails: the link colour comes from lib/mail.ts (#330) ([cdbc2d5](https://github.com/yannicschuller/flowplan/commit/cdbc2d5ec2bfcf5fad6d8d1caa0c9ebed2c245a0))
+- Notification messages: underline in the format bar, placeholders in a link's address, browser spec (#330) ([cf6ff2b](https://github.com/yannicschuller/flowplan/commit/cf6ff2b826e21b6eac0c455ebedb9a7aa026c58a))
+- Import from BookStack through its REST API (#329) ([100394f](https://github.com/yannicschuller/flowplan/commit/100394f6d44c5d2a8820c23130836436d46a13d0))
+- Help docs: formatted notification messages (#330) ([83ee84f](https://github.com/yannicschuller/flowplan/commit/83ee84f12c08bae649e734040c0d34b7feae126c))
+- Notifications: formatted messages with mentions and formulas (#330) ([e7e8089](https://github.com/yannicschuller/flowplan/commit/e7e80899fea08f12362ca5b7b1ad4c8615701773))
+- Help: the space-as-library docs in the built-in help (#329) ([f47f552](https://github.com/yannicschuller/flowplan/commit/f47f552f859accaf9aa734b506784a38774e5765))
+- Spaces: show a space as a library of books (#329) ([ef34e81](https://github.com/yannicschuller/flowplan/commit/ef34e8172dc527fe33c9677a8c11d608f586d4f8))
+- Whiteboard: the board is clipped, not a scroll box – a double click no longer misses the note ([78c43f3](https://github.com/yannicschuller/flowplan/commit/78c43f3325dfa524ffadf6ad712d4ce780f5d07c))
+- Tests: the sign-in spike test can no longer straddle a full hour ([e52225d](https://github.com/yannicschuller/flowplan/commit/e52225d2ab4fc0afb3b8159f00e61ebc601a6e31))
+- Browser spec calendar-time: centre the table cell before clicking it ([b0e4afe](https://github.com/yannicschuller/flowplan/commit/b0e4afef634d637c126e245eb7aed7ddfb6345dd))
+- Search: find tags by typing; # in the search input suggests tags (#328) ([5bbec35](https://github.com/yannicschuller/flowplan/commit/5bbec35a3526826b7672fad5597239b22bb1d8c2))
+- Help docs: regenerate for the "With time" setting (#327) ([952188f](https://github.com/yannicschuller/flowplan/commit/952188fa511c7c808773d099bf87af5d65f0f711))
+- Date properties: optional "With time" setting (#327) ([e9de077](https://github.com/yannicschuller/flowplan/commit/e9de0771c27df2c7005acfe05e8086718ec07019))
+- Cursors: a tab's cursor goes when its live channel closes ([5b9afb3](https://github.com/yannicschuller/flowplan/commit/5b9afb39314060b6db39d43a160d5d9c07b86c1c))
+- Editor: a key right after a click acts where the click put the caret ([5025d8f](https://github.com/yannicschuller/flowplan/commit/5025d8f83ebdd28866874f46856543667fb32ad3))
+- Browser spec whiteboard-board: open the element link once the start page shows ([b31438a](https://github.com/yannicschuller/flowplan/commit/b31438ac1d790042fc1fe1bed1081e5a3495e922))
+- Browser spec safe-areas: the related pages come with the record's context ([5f150d9](https://github.com/yannicschuller/flowplan/commit/5f150d9d44d85cd5dfd737f34551b4406c20c043))
+- Tabs: a layout change made just before a reload or close is kept ([c8ffee1](https://github.com/yannicschuller/flowplan/commit/c8ffee13b9915aa7408c3b66f05bb9cab4a735cc))
+- Monitoring: disk forecast from Flowplan's own data; plain chart tables ([4fa3008](https://github.com/yannicschuller/flowplan/commit/4fa3008da7174b870dea85b6ca3dc468630c032b))
+- README: translation badges from translate.flowplan.org ([172c47b](https://github.com/yannicschuller/flowplan/commit/172c47b62c6a80451871736f90efcc17d5a1c3bd))
+- i18n: npm run i18n also writes the German text of every key ([8b23c02](https://github.com/yannicschuller/flowplan/commit/8b23c02919c5f73a78bf2f3c4c93dd5431ca8b73))
+- Typing: block handles keep their elements, toolbar ticks once per frame, HTML when it is needed ([1c66094](https://github.com/yannicschuller/flowplan/commit/1c660947c1af4cfd7357311320f6eca3225ca72f))
+- pdf.js in a worker thread: PDF text and scan images no longer hold the event loop ([85064bb](https://github.com/yannicschuller/flowplan/commit/85064bb8bb8e451a79b80ddb18d1d735ccc30cc7))
+- Tests: published media no longer expect Content-Length on HEAD ([32f6b42](https://github.com/yannicschuller/flowplan/commit/32f6b42c47274d0c1dadb7aec4209eb71b6d7602))
+- Server chunks: big shared packages external, the PostgreSQL schema read from its file ([b895dbc](https://github.com/yannicschuller/flowplan/commit/b895dbce3b9362313d1f40a9bb797d50acf415b3))
+- Image: no sharp, no traced sources and tests, only the tesseract cores and pdf.js parts the server loads ([d2ecc81](https://github.com/yannicschuller/flowplan/commit/d2ecc812e62f6db9d9db2d49d21438269f75f0bf))
+- Bundle: KaTeX and mathjs only when a formula is there ([3f5b1c2](https://github.com/yannicschuller/flowplan/commit/3f5b1c2f8dbdcf2b480a6f142a6b749f1ebdad60))
+- Bundle: emoji data when a picker opens, the server messages' English on first use ([b186559](https://github.com/yannicschuller/flowplan/commit/b186559b541ef25fc889642711bb7ff40be50245))
+- 10 s refresh: ETag and 304 for bootstrap and the open page, unchanged answers render nothing ([4b5d510](https://github.com/yannicschuller/flowplan/commit/4b5d5102080ac9a047514e90ff8eb4688c25a718))
+- Fewer requests when a page or record opens: threads by the live signal, one record bundle, no save without a change ([83c44f7](https://github.com/yannicschuller/flowplan/commit/83c44f7511e178853dd4923decd0f87ca00d5182))
+- Whiteboard sync: the state vector goes along, the answer is the difference; ask only on change or signal ([bb9c32b](https://github.com/yannicschuller/flowplan/commit/bb9c32bcb94fc273e63bfc676462df5897804b0d))
+- Presence: a heartbeat while alone, a newcomer by the live signal ([3e58a58](https://github.com/yannicschuller/flowplan/commit/3e58a58dc4fad2e0973a3c33b3aba6792e0a89cf))
+- Workflow queue: every round in a macrotask of its own, nothing asked while nothing is due ([575c69a](https://github.com/yannicschuller/flowplan/commit/575c69a8a35df6e4481884c9ac8ba8309d73915e))
+- Tests: the SFTP key sign-in takes a key pair ssh2 can parse ([7db2f0c](https://github.com/yannicschuller/flowplan/commit/7db2f0c06ef1a2ffb039b0d1ab02f182ce9e428c))
+- Image: PostgreSQL client tools without Perl ([35ec2a8](https://github.com/yannicschuller/flowplan/commit/35ec2a8ff8dc5cc51d24cc0e6a2ece5f443de257))
+- Tests: the nested filters spec waits for the table before opening its filter ([fd538fd](https://github.com/yannicschuller/flowplan/commit/fd538fd2043ea6106c60bd85c0430a69147cdfbe))
+- Tests: the share target spec chooses "Als Seite" itself ([b20e68b](https://github.com/yannicschuller/flowplan/commit/b20e68b2b029719ab6f482bf6eb6a5779f1cc7ce))
+- Tests: the edge swipe spec waits for the workspace before swiping ([57d9bb1](https://github.com/yannicschuller/flowplan/commit/57d9bb135b7bd67ea1dfe7963942fdc3edb28ce5))
+- Tests: the image copy spec selects the picture without a double click ([4c2f330](https://github.com/yannicschuller/flowplan/commit/4c2f3305af3d1743bd530d7fb068464486bb4715))
+- Tests: the offline spec accepts the sign-in page of a fresh instance ([c1d1bc3](https://github.com/yannicschuller/flowplan/commit/c1d1bc38b9c31f1e12e4aaef48cb39cfeb300b8b))
+- Tests: the whiteboard record card comes from the spec's own database ([3b1dc8f](https://github.com/yannicschuller/flowplan/commit/3b1dc8fa2a4c6359039dafd3f93a9adb5f3cdba1))
+- Tests: the record permissions spec brings its own second member ([bc0e093](https://github.com/yannicschuller/flowplan/commit/bc0e093f2b77631bc50174a3755e480d2dcdb14b))
+- Tabs follow a new address before the workspace renders it ([59db789](https://github.com/yannicschuller/flowplan/commit/59db789c59702ac3f62e12add05acfda79b1df09))
+- Scroll position: the first place of a visit is kept under its tab step ([f0ecf94](https://github.com/yannicschuller/flowplan/commit/f0ecf94c340bf8556aa13c02fd1d87c22c87c316))
+- Tests: the drawing shield spec waits out the palm window before the finger check ([d8077cf](https://github.com/yannicschuller/flowplan/commit/d8077cfac08d66388a95f37f2b301b5ed6934b23))
+- Drawing blocks: Escape right after a stroke ends drawing again ([d80c5ab](https://github.com/yannicschuller/flowplan/commit/d80c5ab3af252a1b68a9cfc013cc9fc52dbbfaa6))
+- Block handles: ids given to moved blocks no longer cancel the next drag ([c8797a2](https://github.com/yannicschuller/flowplan/commit/c8797a2e65c4044aaf563d13855e1eca77211bfe))
+- Block selection: ⌘A right after a click selects the clicked block's text ([d4c5c1f](https://github.com/yannicschuller/flowplan/commit/d4c5c1f41c4b4e025060caae9b819246352eab7c))
+- Server metrics tests: SQLite's page cache and the backend name on PostgreSQL ([4348e3a](https://github.com/yannicschuller/flowplan/commit/4348e3a1f8f72d61478f4a03feadbe672744ce2d))
+- Help docs: prompt-injection protection ([ac355fb](https://github.com/yannicschuller/flowplan/commit/ac355fbb8c39b2cbbd1fda2ef131d9ffae0ff6c4))
+- Help docs: configuration ([1c0ff8b](https://github.com/yannicschuller/flowplan/commit/1c0ff8beb4a12fc321c86ce3bd96524cdad72941))
+- Help docs: protection against prompt injection (workflow setting, outside e-mail, MCP, meeting notifications) ([c265c69](https://github.com/yannicschuller/flowplan/commit/c265c69d8dac9c494ab14cb5c5feb58b5770cabf))
+- Help docs: Kubernetes page, drawing blocks ([858577f](https://github.com/yannicschuller/flowplan/commit/858577ffefc69017da96b12c49d4710b2f4feb7f))
+- Chart README, design notes: the image keeps starting as root; the chart runs the pod as uid 1000 ([97956b6](https://github.com/yannicschuller/flowplan/commit/97956b6f36f798b55e59179ad183e419947c4d47))
+- Revert "Image starts as USER 1000:1000; the entrypoint keeps PUID/PGID for a start as root" ([971c6c6](https://github.com/yannicschuller/flowplan/commit/971c6c6306fdac9eed2d267295d18ed949dff261))
+- Meetings: tasks of the AI summary notify their people only after a person confirms ([91f81c0](https://github.com/yannicschuller/flowplan/commit/91f81c0ada70f9002f53ce5c90cb1da09ea370c1))
+- SDK: regenerate for the workflow setting untrustedTargets ([f31d5c0](https://github.com/yannicschuller/flowplan/commit/f31d5c05f0e4de23f99fe92a0d30345155532f9a))
+- Bump next from 16.4.3 to 16.4.5 ([ec4fba0](https://github.com/yannicschuller/flowplan/commit/ec4fba081690927395c7869b9307cd1f6d736228))
+- Move into another workspace: wait for its spaces, close the dialog at once ([1d39e6d](https://github.com/yannicschuller/flowplan/commit/1d39e6db8136010d042a0ad8d381c0b16b004cf0))
+- Help docs: drawing blocks (#322, #324) ([739ca18](https://github.com/yannicschuller/flowplan/commit/739ca1873bfb20931c8e96cf13ff8efbcb819c11))
+- Drawing blocks: no height handle while drawing (#324) ([5affc8b](https://github.com/yannicschuller/flowplan/commit/5affc8ba95a3e6250268d65d6f713a564b0c7195))
+- AI: material in prompts cannot close its block or pass for instructions ([8186eda](https://github.com/yannicschuller/flowplan/commit/8186eda963cb4a38b3ed5093342b788dd33118ed))
+- Workflows: tighter outward channels – e-mail from placeholders, pinned hosts, redirects ([6226503](https://github.com/yannicschuller/flowplan/commit/622650393ab023620ad6725711c13944102632d1))
+- Workflows: AI and trigger data choose recipients and targets only when allowed ([76d407e](https://github.com/yannicschuller/flowplan/commit/76d407e8e3ba2ef3cb497b7ae7d846aea39f4720))
+- Catalogues: the new texts of the monitoring and AI statistics ([f8ddbed](https://github.com/yannicschuller/flowplan/commit/f8ddbed4130dd951b74b8b953cad93276fd49ffe))
+- Monitoring: recommendations derived from the measurements ([b1e9144](https://github.com/yannicschuller/flowplan/commit/b1e91443d7ca63cdf82aa3e6cd7828523f037fa5))
+- Account merge: list the AI counts per person ([01d439a](https://github.com/yannicschuller/flowplan/commit/01d439a22b0c33104992ecf2da8a47dd27d91b10))
+- Help docs: the Kubernetes page and the cluster changes of 0.9.9 ([27e380f](https://github.com/yannicschuller/flowplan/commit/27e380f150f67ced0870e2c3c553374601b76cd3))
+- Design notes: Kubernetes from one pod to several (database.md §14b), .env.example for the new variables ([55804a9](https://github.com/yannicschuller/flowplan/commit/55804a91d3b1f76f8d6f38c5abdb734b3000aacd))
+- Helm chart 0.3.0: one pod to several with HA – secrets only as references, read-only root, probes and resources for production, examples, schema, CI ([3c81c3e](https://github.com/yannicschuller/flowplan/commit/3c81c3ef2eff4ecaad6e542387d95e3ba9bde4aa))
+- Image starts as USER 1000:1000; the entrypoint keeps PUID/PGID for a start as root ([d9ce2b1](https://github.com/yannicschuller/flowplan/commit/d9ce2b1696f3aa9cdd2c1f8d4e0ee04bd9754854))
+- Metrics per pod: process figures with instance_id, the installation's figures only from the leader ([4e1f0c1](https://github.com/yannicschuller/flowplan/commit/4e1f0c1e5a64f01431bcf3fdc8c8be0a79e5e1a1))
+- Cluster mode: the bucket is the truth for files; uploads in several requests keep their parts in it ([0ce5d86](https://github.com/yannicschuller/flowplan/commit/0ce5d861dca854010b93cbab97f1f9b4d1010b85))
+- Cluster mode on Kubernetes: graceful stop that holds Next.js's exit, fenced leader rounds, readiness after the opening steps ([836bbc1](https://github.com/yannicschuller/flowplan/commit/836bbc1edf187a7d5528990811f173bb7cad17a4))
+- Admin strip: chart carousel; monitoring server view and AI statistics ([2fd491c](https://github.com/yannicschuller/flowplan/commit/2fd491ca5c178fa4782a6570ae2373c93ee38dd9))
+- Workflows: targets stay in the workflow's own workspace ([678e124](https://github.com/yannicschuller/flowplan/commit/678e124049e98b28b8b90eb606b6b1a18d18594c))
+- MCP: Markdown written through MCP keeps no remote images ([dcde1ae](https://github.com/yannicschuller/flowplan/commit/dcde1ae5e499f5bac2bad908ab86838857c855bf))
+- MCP: content of other people comes back marked as data ([de7abcb](https://github.com/yannicschuller/flowplan/commit/de7abcba3ff93f0c07bf6f08b2843778a62db9a4))
+- MCP: test_workflow runs only as an offline dry run, honest tool hints ([e4ab1b6](https://github.com/yannicschuller/flowplan/commit/e4ab1b6dba85ef7249747c062ba3a14feeaedb68))
+- Drawing blocks: an existing block opens with Draw or the Pencil, a finger scrolls (#322) ([a2f6dd9](https://github.com/yannicschuller/flowplan/commit/a2f6dd9ecbe78790c45cb57d58b45fe6f6c29842))
+- Phones: switching the workspace in the drawer keeps the drawer open ([67ebb16](https://github.com/yannicschuller/flowplan/commit/67ebb16ff7b389679780b53c48f15f5ceb21d919))
+- Monitoring: server metrics, time per route and detailed AI statistics ([16ae146](https://github.com/yannicschuller/flowplan/commit/16ae146523f11cdac33c2411639606d7bcf25d51))
+- Drawing blocks: a pinpoint hover dot, an eraser ring as wide as the eraser (#315) ([5dabc0b](https://github.com/yannicschuller/flowplan/commit/5dabc0b9e7c330057f554daacae8dff10668eb38))
+- npm run test:browser: browser specs locally on a server of their own ([b4100e0](https://github.com/yannicschuller/flowplan/commit/b4100e09306482e49efad9153f27e7b3bfa6bf11))
+- Browser specs every night, failed specs in the run's summary ([5953214](https://github.com/yannicschuller/flowplan/commit/5953214b74b3376862a201c8ee1fb7d9874a2f6f))
+- CI caches: Next's build cache, Playwright's Chromium, fresh release layers ([c54c273](https://github.com/yannicschuller/flowplan/commit/c54c2735406e18d9056f958c49cec1002290a354))
+- CI on PostgreSQL: only the tests that reach the database, no second build ([12f7f79](https://github.com/yannicschuller/flowplan/commit/12f7f791462bcdafa548d553dfa13fd69ee0c2b3))
+- CI: tests split over runners, more test files at a time ([cd636a3](https://github.com/yannicschuller/flowplan/commit/cd636a370a39856de1ac8c3c7800169e85a78f96))
+- Marketplace test: skip the browser specs' build directory too ([f3ad2df](https://github.com/yannicschuller/flowplan/commit/f3ad2df1673b8ba99a21c9180c8525464e68af9d))
+- Browser specs against a production build, one server per worker ([5ff2767](https://github.com/yannicschuller/flowplan/commit/5ff2767c7d916ce2cf91dd4c3994ab387fd4dc93))
+- Large database spec: click the last step's button where it is ([b3929a5](https://github.com/yannicschuller/flowplan/commit/b3929a5874b5fd45dfe9aec96d1fbc0bf97933c2))
+- Board drop: the card glides on from where its copy is ([7dc75ba](https://github.com/yannicschuller/flowplan/commit/7dc75ba295e6f5e01ef3ecef99360fa966b24073))
+- View transitions: a skipped transition is no page error ([311be0e](https://github.com/yannicschuller/flowplan/commit/311be0ead372338bc4213283ab89230bbc0f00e5))
+
+</details>
+
 ## v0.9.8 – 2026-11-16
 
 ### Security
