@@ -5,7 +5,8 @@
 // pages the person may see (the bootstrap's, lib/library.ts); the search
 // is the workspace's, limited to the space. Loaded when a library opens.
 import { useEffect, useId, useMemo, useState } from "react";
-import { ArrowLeft, BookOpen, Books, CaretRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { ArrowLeft, BookOpen, Books, CaretRight, GearSix, MagnifyingGlass, PencilSimple, Plus, UsersThree } from "@phosphor-icons/react";
 import { useLocale, useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { CoverFrame } from "./cover-frame";
@@ -14,7 +15,8 @@ import { relativeTime } from "./home/format";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { imageFileId } from "@/lib/page-appearance";
 import { pageLocationHash } from "@/lib/page-location";
-import { continueReading, libraryBooks, libraryHash, type LibraryBook, type LibraryEntry } from "@/lib/library";
+import { settingsHash } from "@/lib/settings-sections";
+import { LIBRARY_HOME, continueReading, libraryBooks, libraryHash, type LibraryBook, type LibraryEntry } from "@/lib/library";
 import type { Page, Space } from "@/lib/types";
 
 type Hit = { id: string; rowId?: string; title: string; pageTitle?: string; icon: string; kind: string; snippet: string };
@@ -33,6 +35,11 @@ export default function LibraryView({
   clock,
   canEdit,
   onCreate,
+  userId,
+  manage = false,
+  workspaceOwner = false,
+  onManageShelf,
+  onShareBook,
 }: {
   space: Space;
   // The workspace's live pages the person may see (titles decrypted).
@@ -44,6 +51,13 @@ export default function LibraryView({
   canEdit: boolean;
   // "Neues Buch" (parent null) and "Neues Kapitel" / a page in a chapter.
   onCreate: (parentId: string | null) => void;
+  userId?: string;
+  // May change who sees the shelf (space and workspace owners).
+  manage?: boolean;
+  workspaceOwner?: boolean;
+  onManageShelf?: () => void;
+  // "Wer sieht dieses Buch?": the book page's sharing.
+  onShareBook?: (pageId: string) => void;
 }) {
   const t = useT();
   const books = useMemo(() => libraryBooks(pages, space.id), [pages, space.id]);
@@ -65,9 +79,19 @@ export default function LibraryView({
       ) : (
         <>
           {book ? (
-            <BookHeader book={book} space={space} pages={pages} visits={visits} clock={clock} />
+            <BookHeader
+              book={book}
+              space={space}
+              pages={pages}
+              visits={visits}
+              clock={clock}
+              onShare={onShareBook && (manage || (!!userId && book.page.created_by === userId)) ? () => onShareBook(book.page.id) : undefined}
+            />
           ) : (
             <div className="utility-title library-title">
+              <a className="text-button library-back" href={`#${LIBRARY_HOME}`}>
+                <ArrowLeft size={14} aria-hidden /> {t("Alle Regale", "All shelves")}
+              </a>
               <span className="library-title-icon" aria-hidden>
                 <SpaceIcon icon={space.icon} color={space.icon_color} />
               </span>
@@ -77,6 +101,7 @@ export default function LibraryView({
                 {" · "}
                 {pagesLabel(t, books.reduce((n, b) => n + b.pages, 0))}
               </p>
+              {manage && onManageShelf && <WhoCanSee space={space} workspaceOwner={workspaceOwner} onManage={onManageShelf} />}
             </div>
           )}
           <div className="library-toolbar">
@@ -122,7 +147,7 @@ export default function LibraryView({
   );
 }
 
-function BookCard({ book, spaceId, clock }: { book: LibraryBook<Page>; spaceId: string; clock: number | null }) {
+export function BookCard({ book, spaceId, clock }: { book: LibraryBook<Page>; spaceId: string; clock: number | null }) {
   const t = useT();
   const locale = useLocale();
   const cover = book.page.cover || "";
@@ -154,12 +179,14 @@ function BookHeader({
   pages,
   visits,
   clock,
+  onShare,
 }: {
   book: LibraryBook<Page>;
   space: Space;
   pages: Page[];
   visits: { pageId: string; seenAt: number }[];
   clock: number | null;
+  onShare?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -191,6 +218,11 @@ function BookHeader({
           <a className="button primary compact" href={pageHref(book.page.id)}>
             <BookOpen size={15} aria-hidden /> {t("Lesen beginnen", "Start reading")}
           </a>
+        )}
+        {onShare && (
+          <button type="button" className="button compact" onClick={onShare}>
+            <UsersThree size={15} aria-hidden /> {t("Wer sieht dieses Buch?", "Who can see this book?")}
+          </button>
         )}
       </div>
     </div>
@@ -372,7 +404,7 @@ function SearchResults({ workspaceId, spaceId, query }: { workspaceId: string; s
 }
 
 // The server marks hits with \u0002…\u0003; rendered as text only.
-function Snippet({ text }: { text: string }) {
+export function Snippet({ text }: { text: string }) {
   return (
     <>
       {text.split("\u0002").map((part, i) => {
@@ -386,5 +418,37 @@ function Snippet({ text }: { text: string }) {
         );
       })}
     </>
+  );
+}
+
+// "Wer sieht dieses Regal?": who sees the space now, and the places that
+// change it – the space's visibility, the access of groups (with their SSO,
+// SCIM or LDAP mappings) for workspace owners. Books are shared one by one.
+export function WhoCanSee({ space, workspaceOwner, onManage }: { space: Space; workspaceOwner: boolean; onManage: () => void }) {
+  const t = useT();
+  return (
+    <Dropdown.Root>
+      <Dropdown.Trigger className="text-button library-who">
+        <UsersThree size={15} aria-hidden /> {t("Wer sieht dieses Regal?", "Who can see this shelf?")}
+      </Dropdown.Trigger>
+      <Dropdown.Portal>
+        <Dropdown.Content className="dropdown library-who-menu" align="end" sideOffset={4} collisionPadding={12}>
+          <p className="library-who-note">
+            {space.visibility === "team"
+              ? t("Alle Mitglieder des Arbeitsbereichs sehen dieses Regal.", "Every member of the workspace sees this shelf.")
+              : t("Nur Personen und Gruppen mit Zugriff auf den Bereich sehen dieses Regal.", "Only people and groups with access to the space see this shelf.")}{" "}
+            {t("Einzelne Bücher teilst du über „Teilen“ der Seite.", "Single books are shared with “Share” on their page.")}
+          </p>
+          <Dropdown.Item className="dropdown-item" onSelect={onManage}>
+            <PencilSimple /> {t("Sichtbarkeit des Bereichs …", "Visibility of the space …")}
+          </Dropdown.Item>
+          {workspaceOwner && (
+            <Dropdown.Item className="dropdown-item" onSelect={() => (location.hash = settingsHash({ area: "settings", section: "groups", anchor: "access" }))}>
+              <GearSix /> {t("Zugriff für Gruppen …", "Access for groups …")}
+            </Dropdown.Item>
+          )}
+        </Dropdown.Content>
+      </Dropdown.Portal>
+    </Dropdown.Root>
   );
 }

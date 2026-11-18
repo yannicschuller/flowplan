@@ -1486,6 +1486,83 @@ const schemas: Record<string, Json> = {
     },
     required: ["id", "workspace_id", "name", "icon", "visibility", "owner_id"],
   },
+  LibraryOverview: (() => {
+    const brief = { id: { type: "string", format: "uuid" }, title: { type: "string" }, icon: { type: "string" }, kind: { type: "string" }, updatedAt: { type: "string" } };
+    const shelf = {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        name: { type: "string" },
+        icon: { type: "string" },
+        iconColor: { type: "string" },
+        visibility: { type: "string", enum: ["team", "private"] },
+        pages: { type: "integer", description: "Pages of all its books" },
+        canManage: { type: "boolean", description: "You may change who can see the shelf (the space's access)" },
+        books: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { ...brief, cover: { type: "string" }, pages: { type: "integer" }, chapters: { type: "integer" }, updatedAt: { type: ["string", "null"] } },
+            required: ["id", "title", "icon", "kind", "pages", "chapters"],
+          },
+        },
+      },
+      required: ["id", "name", "visibility", "pages", "canManage", "books"],
+    };
+    return {
+      type: "object",
+      properties: {
+        personal: { type: "array", items: shelf, description: "Your own private library spaces" },
+        shared: { type: "array", items: shelf, description: "Team library spaces and private ones shared with you" },
+        continueReading: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              spaceId: { type: "string", format: "uuid" },
+              book: { type: "object", properties: brief },
+              page: { type: "object", properties: brief },
+              position: { type: "integer", description: "Place of the page in the book's reading order (1 = the book's own page)" },
+              total: { type: "integer" },
+              visitedAt: { type: "string", format: "date-time" },
+            },
+            required: ["spaceId", "book", "page", "position", "total", "visitedAt"],
+          },
+        },
+      },
+      required: ["personal", "shared", "continueReading"],
+    };
+  })(),
+  LibrarySearch: (() => {
+    const hit = {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid", description: "The space (shelves) or page" },
+        rowId: { type: "string", description: "A record of a database page" },
+        title: { type: "string" },
+        icon: { type: "string" },
+        kind: { type: "string", description: "shelf, a page kind, row, comment or file" },
+        spaceId: { type: "string", format: "uuid" },
+        level: { type: "integer", description: "0 book, 1 chapter, 2 and more a page further down" },
+        path: { type: "array", items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" } }, required: ["id", "title"] } },
+        snippet: { type: "string" },
+      },
+      required: ["id", "title", "icon", "kind", "spaceId", "path"],
+    };
+    const list = { type: "array", items: hit };
+    return {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        shelves: list,
+        books: list,
+        chapters: list,
+        pages: list,
+        total: { type: "object", properties: { shelves: { type: "integer" }, books: { type: "integer" }, chapters: { type: "integer" }, pages: { type: "integer" } }, required: ["shelves", "books", "chapters", "pages"] },
+      },
+      required: ["query", "shelves", "books", "chapters", "pages", "total"],
+    };
+  })(),
   Library: (() => {
     const entry = {
       id: { type: "string", format: "uuid" },
@@ -1955,6 +2032,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Workspace
   { path: "/api/bootstrap", method: "get", op: { id: "bootstrap", tag: "Workspace", summary: "Workspaces, spaces, pages and members", description: "Without `workspace` the first workspace. Start here to find IDs.", params: [q("workspace", "Workspace ID (default: the first)", { type: "string", format: "uuid" })], ok: { schema: ref("Bootstrap"), description: "The workspace" }, errors: [401, 404] } },
   { path: "/api/search", method: "get", op: { id: "search", tag: "Workspace", summary: "Full-text search", description: `Pages, records, comments and file contents of a workspace. In \`q\`, \`#tag\` (or \`#"two words"\`) keeps pages with that tag, \`-#tag\` leaves them out, and \`name:value\` compares a page property (text contains; select and multiselect equal an option; numbers and dates also \`>\`, \`<\`, \`>=\`, \`<=\`, \`a..b\`; checkboxes yes/no; people by name or \`me\`; \`name:*\` set, \`name:-\` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also \`OR\` (or \`|\`), \`AND\` (implicit), \`NOT\` or \`-\` before any term or group, parentheses (NOT binds tightest, then AND, then OR), \`created_by:\`/\`creator:\` and \`updated_by:\`/\`editor:\` (a name or \`me\`), \`created:\` and \`updated:\` (\`2026-03\`, \`>2026-01-01\`, \`a..b\`, \`-7d\`, \`-2w\`, \`-3m\`, \`-1y\`, \`today\`, \`yesterday\`, \`this-week\`, \`last-week\`, \`this-month\`, \`last-month\`, \`this-year\`, \`last-year\`), \`type:document|database|whiteboard|record\`, \`in:\"Space name\"\` and \`title:\`; such queries list the matching pages and records (without snippets) by last change. ${noStore}`, params: [workspace, q("q", "Search words", { type: "string" }, true), q("kind", "Only this kind", { type: "string", enum: ["all", "document", "database", "whiteboard", "row", "comment", "file"], default: "all" }), q("space", "Only in this space", { type: "string", format: "uuid" }), q("days", "0: leave out journal days (they are ranked after other pages otherwise)", { type: "string", enum: ["0", "1"] }), q("tz", "IANA time zone for relative dates such as created:today (default UTC)"), q("sort", "`relevance`: the best match – text relevance (exact and prefix title matches first) plus your own visits, recent edits and favourites; `edited`/`created`: newest first", { type: "string", enum: ["relevance", "edited", "created"], default: "relevance" })], ok: { schema: { type: "array", items: ref("SearchResult") }, description: "Matches" }, errors: [400, 401, 403] } },
+  { path: "/api/library", method: "get", op: { id: "library", tag: "Workspace", summary: "The workspace's library", description: `Every space shown as a library (“Show as library”, \`library\` of \`space.update\`) is a shelf; its top-level pages are the books. \`personal\` are your own private spaces, \`shared\` the team's spaces and private spaces shared with you, in the sidebar's order. A book lists its pages (its own page included), the number of chapters and its latest change; \`GET /api/spaces/{spaceId}/library\` has the chapters and pages. \`continueReading\`: per book the page you visited last, most recent first (at most 6). Only pages you may read – permissions are those of the spaces and pages (space access per person and group, “Share” of a page), there is no separate library permission; \`canManage\` says whether you may change who can see a shelf (\`space.update\`, \`grant.set\`). ${noStore}`, params: [workspace], ok: { schema: ref("LibraryOverview"), description: "Shelves with their books" }, errors: [401, 403] } },
+  { path: "/api/library/search", method: "get", op: { id: "librarySearch", tag: "Workspace", summary: "Search the library", description: `Searches all shelves at once and groups the hits by level: \`shelves\` (space names), \`books\` and \`chapters\` (titles of top-level pages and their sub-pages) and \`pages\` – titles further down, then text, records, comments and files of any page of a book, with a snippet (matches between U+0002 and U+0003). Titles match the words of \`q\` (whole and leading matches first, then the tree's order); the content comes from the full-text search (\`GET /api/search\`, same query language, journal days left out) limited to the shelves. \`path\` leads from the shelf down to the hit's parent (for a record, comment or file: to its page). At most 50 hits per group; \`total\` counts them all. Same permissions as the search. ${noStore}`, params: [workspace, q("q", "Search words and filters", { type: "string" }, true), q("tz", "IANA time zone for relative dates such as created:today (default UTC)")], ok: { schema: ref("LibrarySearch"), description: "Hits grouped by level" }, errors: [400, 401, 403] } },
   { path: "/api/spaces/{spaceId}/library", method: "get", op: { id: "spaceLibrary", tag: "Workspace", summary: "A space as a library", description: `The space's top-level pages as books, their sub-pages as chapters and the chapters' sub-pages as pages, in the order of the page tree – only pages you may read (journals behind a PIN not entered, encrypted spaces and journal days left out). \`pages\` counts a book's pages including the book's own page, \`below\` the pages under a chapter or page, \`updatedAt\` of a book is the latest change in it. \`space.library\` says whether the space is shown as a library (“Show as library” in the space's settings; \`library\` of \`space.update\`); the answer is the same either way. ${noStore}`, params: [p("spaceId", "Space ID")], ok: { schema: ref("Library"), description: "Books with chapters and pages" }, errors: [401, 403, 404] } },
   { path: "/api/search/recent", method: "get", op: { id: "searchRecent", tag: "Workspace", summary: "Your recently visited pages and records", description: `The pages and records you opened last in the workspace, newest first – what the quick search shows with nothing typed. Only your own visits (never other people's), only what you may still read; visits through API tokens are not recorded. ${noStore}`, params: [workspace, q("kind", "Only this kind", { type: "string", enum: ["all", "document", "database", "whiteboard", "row"], default: "all" }), q("space", "Only in this space", { type: "string", format: "uuid" }), q("limit", "At most this many (1–50)", { type: "integer", default: 20 })], ok: { schema: { type: "array", items: ref("RecentVisit") }, description: "Visited pages and records" }, errors: [400, 401, 403] } },
   { path: "/api/notifications", method: "get", op: { id: "notifications", tag: "Workspace", summary: "My newest notifications", description: "What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command.", params: [q("since", "Server time (ISO 8601 or milliseconds)")], ok: { schema: { type: "object", properties: { now: { type: "string", format: "date-time" }, unread: { type: "integer", minimum: 0 }, notifications: { type: "array", items: { type: "object", properties: { id: { type: "string" }, kind: { type: ["string", "null"] }, text: { type: "string" }, detail: { type: "string" }, url: { type: "string", description: "Path on this instance, e.g. `/#page=…`" }, createdAt: { type: "string", format: "date-time" }, read: { type: "boolean" }, push: { type: "boolean" } }, required: ["id", "kind", "text", "detail", "url", "createdAt", "read", "push"] } } }, required: ["now", "unread", "notifications"] }, description: "Notifications" }, errors: [400, 401] } },

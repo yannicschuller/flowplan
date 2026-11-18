@@ -29,7 +29,7 @@ export const LIST_SIZE = 10;
 // The trail (without the Navigation API) keeps this many addresses.
 export const TRAIL_SIZE = 100;
 
-const SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags", "study"];
+const SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags", "study", "library"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The place an address stands for, as a hash without "#" – or null when it

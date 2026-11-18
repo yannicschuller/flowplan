@@ -65,7 +65,7 @@ import { pageShares } from "@/lib/page-share";
 import { documentLog, encryptedArchive, identityOf, isEncryptedPage, requirePlaintext, requirePlaintextSpace, spaceKeys } from "@/lib/e2ee-server";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
 import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space-git-export";
-import { spaceLibrary } from "@/lib/library-server";
+import { libraryOverview, searchLibrary, spaceLibrary } from "@/lib/library-server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
@@ -967,6 +967,17 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // The workspace's library (#329): the shelves (library spaces) with
+    // their books and "continue reading"; its search grouped by level.
+    if (path.length === 1 && path[0] === "library")
+      return NextResponse.json(await libraryOverview(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
+    if (path.length === 2 && path[0] === "library" && path[1] === "search")
+      return NextResponse.json(
+        await searchLibrary(user, z.uuid().parse(url.searchParams.get("workspace")), url.searchParams.get("q") || "", {
+          timeZone: url.searchParams.get("tz") || undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     // A space as a library (#329): books, chapters and pages one may see.
     if (path.length === 3 && path[0] === "spaces" && path[2] === "library")
       return NextResponse.json(await spaceLibrary(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });

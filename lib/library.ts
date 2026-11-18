@@ -73,8 +73,7 @@ const latest = (values: (string | null | undefined)[]) =>
   values.reduce<string | null>((max, v) => (v && (!max || v > max) ? v : max), null);
 
 // The books of a library with their chapters and pages.
-export function libraryBooks<P extends LibraryPage>(pages: readonly P[], spaceId: string): LibraryBook<P>[] {
-  const index = childrenOf(pages, spaceId);
+export function libraryBooks<P extends LibraryPage>(pages: readonly P[], spaceId: string, index = childrenOf(pages, spaceId)): LibraryBook<P>[] {
   const entry = (page: P): LibraryEntry<P> => ({ page, below: walk(index, page.id).length });
   return (index.get("") || []).map((book) => {
     const inside = walk(index, book.id);
@@ -157,8 +156,108 @@ export function continueReading<P extends LibraryPage>(
   return best?.page ?? null;
 }
 
-// The address of the library and of a book's table of contents
+// ---- The libraries of a workspace (#329 follow-up: "Bibliothek") ----
+
+// Where a page stands in its library: the book (level 0), a chapter
+// (level 1) or a page further down (2, 3, …), the way from the book down to
+// it and its place in the book's reading order.
+export type LibraryPlace<P extends LibraryPage = LibraryPage> = {
+  spaceId: string;
+  level: number;
+  book: P;
+  chapter: P | null;
+  path: P[];
+  position: number;
+  total: number;
+};
+
+// The books of a space and the place of every page in them, in one walk
+// over the tree (no lookups per page: a library of a thousand pages is
+// indexed in linear time).
+export function libraryIndex<P extends LibraryPage>(pages: readonly P[], spaceId: string) {
+  const index = childrenOf(pages, spaceId);
+  const books = libraryBooks(pages, spaceId, index);
+  const places = new Map<string, LibraryPlace<P>>();
+  for (const book of index.get("") || []) {
+    const order = [book, ...walk(index, book.id)];
+    const byId = new Map(order.map((p) => [p.id, p]));
+    order.forEach((page, at) => {
+      const path: P[] = [];
+      for (let p: P | undefined = page; p && path.length <= MAX_DEPTH; p = p.parent_id ? byId.get(p.parent_id) : undefined) {
+        path.unshift(p);
+        if (p.id === book.id) break;
+      }
+      places.set(page.id, { spaceId, level: path.length - 1, book, chapter: path[1] ?? null, path, position: at + 1, total: order.length });
+    });
+  }
+  return { books, places };
+}
+
+export type LibrarySpace = { id: string; name: string; visibility: "team" | "private"; owner_id: string; library?: number | boolean | null; deleted_at?: string | null };
+export type LibraryShelf<S extends LibrarySpace = LibrarySpace, P extends LibraryPage = LibraryPage> = {
+  space: S;
+  books: LibraryBook<P>[];
+  // Pages of all its books.
+  pages: number;
+};
+
+// The pages per space, each list in the order given.
+function bySpace<P extends LibraryPage>(pages: readonly P[]) {
+  const grouped = new Map<string, P[]>();
+  for (const p of pages) {
+    const list = grouped.get(p.space_id);
+    if (list) list.push(p);
+    else grouped.set(p.space_id, [p]);
+  }
+  return grouped;
+}
+
+// The workspace's library: every space shown as a library is a shelf, its
+// books on it. "Meine Regale" are the person's own private spaces, "Geteilt"
+// the team's spaces and private ones shared with them – in the order the
+// spaces are given (the sidebar's). Only the pages given count (those the
+// person may see); a shelf without a visible page is listed when its space
+// is given (the person may open it).
+export function libraryShelves<S extends LibrarySpace, P extends LibraryPage>(spaces: readonly S[], pages: readonly P[], userId: string) {
+  const grouped = bySpace(pages);
+  const personal: LibraryShelf<S, P>[] = [],
+    shared: LibraryShelf<S, P>[] = [];
+  for (const space of spaces) {
+    if (!space.library || space.deleted_at) continue;
+    const books = libraryBooks(grouped.get(space.id) || [], space.id);
+    const shelf = { space, books, pages: books.reduce((n, b) => n + b.pages, 0) };
+    (space.visibility === "private" && space.owner_id === userId ? personal : shared).push(shelf);
+  }
+  return { personal, shared };
+}
+
+// "Weiterlesen" on the library's start: per book the page visited last,
+// the books read most recently first, at most `limit`.
+export function readingNow<P extends LibraryPage>(
+  pages: readonly P[],
+  spaceIds: readonly string[],
+  visits: readonly { pageId: string; seenAt: number }[],
+  limit = 6,
+) {
+  const grouped = bySpace(pages);
+  const places = new Map<string, LibraryPlace<P>>();
+  for (const spaceId of spaceIds) for (const [id, place] of libraryIndex(grouped.get(spaceId) || [], spaceId).places) places.set(id, place);
+  const out: (LibraryPlace<P> & { page: P; seenAt: number })[] = [];
+  const books = new Set<string>();
+  for (const v of [...visits].sort((a, b) => b.seenAt - a.seenAt)) {
+    const place = places.get(v.pageId);
+    if (!place || books.has(place.book.id)) continue;
+    books.add(place.book.id);
+    out.push({ ...place, page: place.path[place.path.length - 1], seenAt: v.seenAt });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+// The library's start (#library) – all shelves – and the address of a
+// shelf and of a book's table of contents
 // (#library/<space>, #library/<space>/<book>).
+export const LIBRARY_HOME = "library";
 export const libraryHash = (spaceId: string, bookId?: string | null) => `library/${spaceId}${bookId ? `/${bookId}` : ""}`;
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const HASH = new RegExp(`^library/(${UUID})(?:/(${UUID}))?$`, "i");

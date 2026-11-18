@@ -1,6 +1,6 @@
 import { all, one } from "./db";
 import { HttpError } from "./auth";
-import { memoized } from "./read-memo";
+import { memoized, primeMemo } from "./read-memo";
 import type { Identity, Page, Role, Space } from "./types";
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 // The lookups below are remembered within a request or command until the
@@ -64,6 +64,27 @@ async function grantRole(user: Identity, kind: "page" | "space", resource: strin
     );
     return grants.sort((a, b) => rank[b.role] - rank[a.role])[0]?.role || null;
   });
+}
+// Many pages checked at once (a library of a thousand pages, #329): the
+// person's page grants of the workspace in one query, remembered under the
+// keys grantRole() and pageRow() use, so pageRole() asks no more per page.
+// `pages` and `spaces` are stored rows (SELECT *), not changed afterwards.
+// Inside a read memo only (an API request, a command); elsewhere a no-op.
+export async function primePageAccess(user: Identity, workspace: string, pages: readonly Page[], spaces: readonly Space[] = []) {
+  if (!pages.length && !spaces.length) return;
+  const grants = await all<{ resource_id: string; role: Role }>(
+    "SELECT resource_id,role FROM grants WHERE resource_kind='page' AND workspace_id=? AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
+    workspace,
+    user.id,
+    user.id,
+  );
+  const best = new Map<string, Role>();
+  for (const g of grants) if (!best.has(g.resource_id) || rank[g.role] > rank[best.get(g.resource_id)!]) best.set(g.resource_id, g.role);
+  primeMemo([
+    ...pages.map((p) => [`page:${p.id}`, p] as [string, unknown]),
+    ...pages.map((p) => [`grant:page:${workspace}:${p.id}:${user.id}`, best.get(p.id) || null] as [string, unknown]),
+    ...spaces.map((s) => [`space:${s.id}`, s] as [string, unknown]),
+  ]);
 }
 export async function spaceRole(user: Identity, space: Space): Promise<Role | null> {
   if (space.deleted_at) return null;

@@ -350,8 +350,10 @@ export async function searchWorkspace(
   workspaceId: string,
   rawQuery: string,
   // excludeDays: "Ohne Journaltage" – no hits on journal days at all.
-  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string; sort?: SearchSort } = {},
+  // spaceIds: only in these spaces (the shelves of the library, #329).
+  options: { kind?: SearchKind; spaceId?: string; spaceIds?: readonly string[]; excludeDays?: boolean; timeZone?: string; sort?: SearchSort } = {},
 ): Promise<SearchResult[]> {
+  if (options.spaceIds && !options.spaceIds.length) return [];
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
   await refreshSearchIndex();
@@ -360,7 +362,11 @@ export async function searchWorkspace(
   // collection finds them, latest change first. Queries the search knew
   // before keep their ranking and snippets below.
   const parsed = parseQuery(rawQuery.slice(0, 1000));
-  if (!isClassicQuery(parsed.node)) return await queryResults(user, workspaceId, parsed.node, options);
+  if (!isClassicQuery(parsed.node)) {
+    const among = options.spaceIds && new Set(options.spaceIds);
+    const results = await queryResults(user, workspaceId, parsed.node, among?.size === 1 ? { ...options, spaceId: options.spaceIds![0] } : options);
+    return among ? results.filter((r) => among.has(r.space_id)) : results;
+  }
   // `#tag`, `-#tag` and `name:value` keep the pages with these tags and
   // values (lib/page-properties.ts); the rest is searched as text.
   // A #name names the tags of that name the person may know, one per
@@ -489,8 +495,14 @@ export async function searchWorkspace(
   const scope =
     "p.workspace_id=? AND p.deleted_at IS NULL" +
     (options.spaceId ? " AND p.space_id=?" : "") +
+    (options.spaceIds ? ` AND p.space_id IN ${sql.jsonValues()}` : "") +
     (scoped ? ` AND p.id IN ${sql.jsonValues()}` : "");
-  const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : []), ...(scoped ? [JSON.stringify([...scoped])] : [])];
+  const scopeArgs = [
+    workspaceId,
+    ...(options.spaceId ? [options.spaceId] : []),
+    ...(options.spaceIds ? [JSON.stringify(options.spaceIds)] : []),
+    ...(scoped ? [JSON.stringify([...scoped])] : []),
+  ];
   if (!query) {
     if (!["all", "document", "database", ...(only ? ["whiteboard", "row"] : [])].includes(kind)) return [];
     for (const page of await all<Page>(
@@ -507,6 +519,7 @@ export async function searchWorkspace(
       for (const r of tagged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
         if (done()) break;
         if (options.spaceId && r.spaceId !== options.spaceId) continue;
+        if (options.spaceIds && !options.spaceIds.includes(r.spaceId)) continue;
         if (!databases.has(r.pageId)) databases.set(r.pageId, (await one<Page>("SELECT * FROM pages WHERE id=?", r.pageId))!);
         const page = databases.get(r.pageId)!;
         if (!(await allowed(page))) continue;

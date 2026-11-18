@@ -62,7 +62,7 @@ import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
 import { CollectionView } from "./collection-view";
 import { BookNav, BookNext } from "./book-nav";
-import { libraryHash, parseLibraryHash } from "@/lib/library";
+import { LIBRARY_HOME, libraryHash, parseLibraryHash } from "@/lib/library";
 import { CollectionsNav } from "./collections-nav";
 import type { CollectionDraft } from "./collection-editor";
 import type { CollectionInfo } from "@/lib/collections";
@@ -360,6 +360,8 @@ const CollectionEditor = dynamic(() => loadView(() => import("./collection-edito
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // A space as a library (#329): loaded when a library opens.
 const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
+// The workspace's library with all shelves and its search (#library).
+const LibraryHome = dynamic(() => loadView(() => import("./library-home")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
 const StudyScreen = dynamic(() => loadView(() => import("./study/screen")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
 // "Lernkarten mit KI erstellen" (lib/ai/flashcards.ts): loaded when opened.
 const StudyAiCards = dynamic(() => import("./study/ai-cards"), { ssr: false });
@@ -490,7 +492,8 @@ type Screen =
   // A collection's results (#86, components/collection-view.tsx): #collection/<id>.
   | "collection"
   // A space as a library (#329, components/library-view.tsx):
-  // #library/<space>, a book's contents #library/<space>/<book>.
+  // #library/<space>, a book's contents #library/<space>/<book>; all
+  // shelves with the library search (components/library-home.tsx): #library.
   | "library"
   // Flashcards of all decks (components/study/screen.tsx): #study.
   | "study";
@@ -966,7 +969,8 @@ export default function WorkspaceApp({
   // Collections (#86): the one shown and the editor's draft.
   const [collectionId, setCollectionId] = useState<string | null>(null),
     [collectionDraft, setCollectionDraft] = useState<CollectionDraft | null>(null);
-  // The library shown (#329): its space and the book opened, if any.
+  // The library shown (#329): its space and the book opened, if any; null
+  // on the library's start (#library).
   const [libraryPlace, setLibraryPlace] = useState<{ spaceId: string; bookId: string | null } | null>(null);
   // The element that opened the quick search gets the focus back when it
   // closes (the search button, a tree item or the editor).
@@ -1952,6 +1956,11 @@ export default function WorkspaceApp({
     if (keepNav && location.hash !== `#${s}`) keepNavOnce.current = true;
     location.hash = s;
   }
+  // The library's start with all shelves (#library).
+  function openLibraryHome() {
+    setLibraryPlace(null);
+    go("library");
+  }
   useEffect(() => {
     installTaskFeedback();
     const choice = themeChoice();
@@ -1994,7 +2003,7 @@ export default function WorkspaceApp({
             },
           });
         }
-      } else if (parseLibraryHash(fragment)) {
+      } else if (fragment === LIBRARY_HOME || parseLibraryHash(fragment)) {
         setLibraryPlace(parseLibraryHash(fragment));
         if (screenRef.current !== "library") {
           screenRef.current = "library";
@@ -2370,6 +2379,7 @@ export default function WorkspaceApp({
       };
     }
     const [base, id] = hash.split("/");
+    if (hash === LIBRARY_HOME) return screenLook(t("Bibliothek", "Library"), Books);
     const library = parseLibraryHash(hash);
     if (library) {
       const space = boot.spaces.find((sp) => sp.id === library.spaceId);
@@ -2431,7 +2441,7 @@ export default function WorkspaceApp({
         ? `page:${data.page.id}`
         : null
       : screen === "library"
-        ? `library:${libraryPlace?.spaceId}:${libraryPlace?.bookId ?? ""}`
+        ? `library:${libraryPlace?.spaceId ?? ""}:${libraryPlace?.bookId ?? ""}`
         : `${screen}:${collectionId ?? ""}`;
   usePaneScroll(mainScroll, shownPlace, tabs.on ? tabs.entryKey : undefined);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
@@ -2445,6 +2455,10 @@ export default function WorkspaceApp({
   // The library shown (#329) and the library the open page belongs to (its
   // book navigation): only spaces switched to "Als Bibliothek anzeigen".
   const librarySpace = screen === "library" && libraryPlace ? boot.spaces.find((sp) => sp.id === libraryPlace.spaceId && !sp.deleted_at) : undefined;
+  // "Bibliothek" in the main navigation: once a space one sees is a library.
+  const hasLibrary = boot.spaces.some((sp) => sp.library && !sp.deleted_at);
+  // Shelves whose access the person may change ("Wer sieht dieses Regal?").
+  const manageableSpaces = useMemo(() => new Set((boot.managedSpaces || []).map((sp) => sp.id)), [boot.managedSpaces]);
   const pageLibrary = screen === "page" && data && !data.journalDay ? boot.spaces.find((sp) => sp.id === data.page.space_id && sp.library) : undefined;
   const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at), [titledPages]),
     // The tree's levels in one pass: sub pages per parent, top-level pages
@@ -3843,6 +3857,7 @@ export default function WorkspaceApp({
     { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
     { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks") },
     { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
+    ...(hasLibrary ? [{ label: t("Bibliothek öffnen", "Open library"), keywords: t("bibliothek regale bücher wissen", "bibliothek regale bücher library shelves books knowledge"), icon: Books, run: openLibraryHome }] : []),
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
     { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study") },
     // Each deck with something left today (#study's counts, loaded when the
@@ -4242,6 +4257,19 @@ export default function WorkspaceApp({
               <House size={19} />
               {t("Startseite", "Home")}
             </button>
+            {/* The library (#329): only with a space shown as a library. */}
+            {hasLibrary && (
+              <button
+                className={screen === "library" && !libraryPlace ? "selected" : ""}
+                data-open-place=""
+                aria-current={screen === "library" && !libraryPlace ? "page" : undefined}
+                onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace(LIBRARY_HOME, openModeOf(e))) && openLibraryHome()}
+                onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace(LIBRARY_HOME, openModeOf(e))}
+              >
+                <Books size={19} />
+                {t("Bibliothek", "Library")}
+              </button>
+            )}
             <button
               className={screen === "inbox" ? "selected" : ""}
               data-open-place=""
@@ -4838,6 +4866,8 @@ export default function WorkspaceApp({
               />
             ) : screen === "library" && librarySpace ? (
               <span className="library-crumbs">
+                <a href={`#${LIBRARY_HOME}`}>{t("Bibliothek", "Library")}</a>
+                <span className="breadcrumb-divider">/</span>
                 {libraryPlace?.bookId ? (
                   <>
                     <a href={`#${libraryHash(librarySpace.id)}`}>{librarySpace.name}</a>
@@ -5855,7 +5885,21 @@ export default function WorkspaceApp({
               onOpenTrash={() => go("trash")}
             />
           )}
+          {screen === "library" && !libraryPlace && (
+            <LibraryHome
+              spaces={boot.spaces}
+              pages={activePages}
+              userId={boot.user.id}
+              workspaceId={boot.workspace.id}
+              visits={boot.recentVisits || []}
+              clock={clock}
+              manageable={manageableSpaces}
+              workspaceOwner={boot.workspace.role === "owner"}
+              onManageShelf={(space) => setSpaceManager({ space })}
+            />
+          )}
           {screen === "library" &&
+            libraryPlace &&
             (librarySpace ? (
               <LibraryView
                 space={librarySpace}
@@ -5866,6 +5910,13 @@ export default function WorkspaceApp({
                 clock={clock}
                 canEdit={canCreate}
                 onCreate={(parentId) => addPage("document", parentId, librarySpace.id)}
+                userId={boot.user.id}
+                manage={manageableSpaces.has(librarySpace.id)}
+                workspaceOwner={boot.workspace.role === "owner"}
+                onManageShelf={() => setSpaceManager({ space: librarySpace })}
+                onShareBook={(id) =>
+                  void openPage(id).then(() => setShare(true), () => {})
+                }
               />
             ) : (
               <div className="loading-content">{t("Bibliothek nicht verfügbar.", "Library not available.")}</div>
