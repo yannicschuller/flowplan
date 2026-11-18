@@ -21,7 +21,9 @@ async function fixture(page: Page, title: string, html: (upload: string) => stri
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const host = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, kind: "document", title });
   // A tall picture inside the toggle: its laid-out rectangle reaches far down.
-  await page.goto("/#home");
+  // Drawn on the blank tab, not on the start page: the test then opens the
+  // page by its address, and an address changed after the start page's load
+  // event but before the app has hydrated is put back by the router.
   const png = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 480;
