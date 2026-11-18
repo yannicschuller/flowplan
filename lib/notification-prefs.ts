@@ -5,6 +5,7 @@ import { ct } from "./content-locale";
 import type { Identity } from "./types";
 import {
   adminOnlyKinds,
+  inboxFreeKinds,
   incidentThresholds,
   notificationDefaults,
   notificationKinds,
@@ -72,7 +73,9 @@ export async function setNotificationPref(user: Identity, input: unknown) {
   const current = (await notificationPrefs(user))[b.kind];
   const email = b.email ?? current.email;
   const messenger = b.messenger ?? current.messenger;
-  // Push is only sent for notifications that reach the inbox.
+  // Push is only sent for notifications that reach the inbox – except for
+  // the kinds that do without it (a study reminder, inboxFreeKinds).
+  const carried = b.inbox || inboxFreeKinds.includes(b.kind);
   await run(
     `INSERT INTO notification_prefs(user_id,kind,inbox,push,email,messenger,min_severity) VALUES(?,?,?,?,?,?,?)
      ON CONFLICT(user_id,kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email,messenger=excluded.messenger,
@@ -80,11 +83,11 @@ export async function setNotificationPref(user: Identity, input: unknown) {
     user.id,
     b.kind,
     b.inbox ? 1 : 0,
-    b.inbox && b.push ? 1 : 0,
+    carried && b.push ? 1 : 0,
     // The e-mail summary is made of inbox notifications.
-    b.inbox && email ? 1 : 0,
+    carried && email ? 1 : 0,
     // So are the messages to chat apps (lib/messengers.ts).
-    b.inbox && messenger ? 1 : 0,
+    carried && messenger ? 1 : 0,
     b.threshold ?? null,
   );
   return await notificationPrefs(user);

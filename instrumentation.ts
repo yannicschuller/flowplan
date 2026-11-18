@@ -48,6 +48,9 @@ export async function register() {
     startPushWorker();
     const { startReminderWorker } = await import("./lib/date-reminders");
     await startReminderWorker(() => void dispatchPush());
+    // The daily study reminder of flashcards (lib/study-reminders.ts).
+    const { startStudyReminderWorker } = await import("./lib/study-reminders");
+    startStudyReminderWorker(() => void dispatchPush());
     const { startTaskWorker } = await import("./lib/doc-tasks");
     await startTaskWorker(() => void dispatchPush());
     const { startAutomationWorker } = await import("./lib/automations");

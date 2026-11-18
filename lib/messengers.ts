@@ -477,6 +477,7 @@ const kindTitles: Record<NotificationKind, [string, string]> = {
   workflow_ops: ["Workflow", "Workflow"],
   security: ["Sicherheit", "Security"],
   incident: ["Sicherheitsvorfall", "Security incident"],
+  study: ["Lernen", "Study"],
 };
 const excerpt = (text: string, max = 280) => {
   const flat = text.replace(/\s+/g, " ").trim();

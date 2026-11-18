@@ -167,9 +167,11 @@ const RELAY_CATEGORY: Record<NotificationCategory, RelayCategory> = {
 // approval's id (never a secret; the instance acts on the notification's own).
 const approvalData = async (category: NotificationCategory, notificationId: string) =>
   category === NOTIFICATION_CATEGORIES.workflowApproval ? await openApprovalOf(notificationId) : null;
-// The general text of a push notification, in the person's language.
-async function inboxNotice(userId: string) {
+// The general text of a push notification, in the person's language. A
+// study reminder is not in the inbox (lib/study-reminders.ts).
+async function inboxNotice(userId: string, kind?: string | null) {
   const say = translate(await userLocale(userId));
+  if (kind === "study") return say("Deine Lernkarten warten auf dich.", "Your flashcards are waiting for you.");
   return say("Du hast eine neue Benachrichtigung im Posteingang.", "You have a new notification in your inbox.");
 }
 // One message to the apps through Expo's push service (lib/mobile-devices.ts).
@@ -261,7 +263,7 @@ function webPushOptions(keys: { publicKey: string; privateKey: string }): webpus
   };
 }
 const unreadCount = async (userId: string) =>
-  Number((await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", userId))?.n || 0);
+  Number((await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL AND push_only IS NULL", userId))?.n || 0);
 const backoff = (attempts: number) => Math.min(600000, 30000 * 2 ** attempts);
 // Counts a Web Push or Expo answer for the push status (lib/metrics.ts):
 // ok, or the failure by HTTP status (404/410 gone, 403 forbidden, 429
@@ -399,7 +401,7 @@ export async function flushPushQueue(
           await sendExpo({
             to: job.endpoint.slice(EXPO_ENDPOINT.length),
             title: "Flowplan",
-            body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
+            body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id, job.kind)),
             data: { url: notificationUrl(job), notificationId: job.notification_id, ...(approvalId ? { approvalId } : {}) },
             categoryId,
             sound: "default",
@@ -427,7 +429,7 @@ export async function flushPushQueue(
           },
           JSON.stringify({
             title: "Flowplan",
-            body: await inboxNotice(job.user_id),
+            body: await inboxNotice(job.user_id, job.kind),
             url: notificationUrl(job),
             tag: `flowplan-${job.notification_id}`,
           }),
@@ -495,7 +497,7 @@ async function relayAlert(job: RelayJob, instance: string): Promise<RelayMessage
   const plaintext = plaintextJson({
     title: "Flowplan",
     // Behind a journal PIN not entered: only the general notice.
-    body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
+    body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id, job.kind)),
     url: new URL(notificationUrl(job), `${instance}/`).toString(),
     id: job.notification_id,
     category,

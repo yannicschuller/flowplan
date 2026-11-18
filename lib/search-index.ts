@@ -6,6 +6,7 @@ import { all, one, run, sql, transaction } from "./db";
 import { addEntry, clearIndex, entryOrder, foldText, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
 import { personalBoost, personalSignals, titleScore } from "./search-visits";
 import { cellText } from "./cell-text";
+import { clozeFilled } from "./study-cloze";
 import { isGuest, pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
@@ -58,7 +59,13 @@ const splitTitle = (column: string) => {
 // Marks inside a word ("<strong>Pro</strong>jektmappe", "H<sub>2</sub>O")
 // leave it whole; every other tag separates words.
 const INLINE_TAG = /<\/?(?:a|b|i|u|s|em|strong|span|mark|sub|sup|code)(?:\s[^>]*)?>/gi;
+// Clozes of flashcards in Anki's syntax ("{{c1::Zelle::Hinweis}}") count as the
+// words they stand for ("Zelle", lib/study-cloze.ts); the editor's mark is a
+// span and its text a word already.
 export function htmlText(html: string) {
+  return clozeFilled(markupText(html));
+}
+function markupText(html: string) {
   return html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(INLINE_TAG, "")
@@ -86,7 +93,7 @@ function cellWords(value: unknown): string {
       .filter(([key]) => !["id", "fileId", "url"].includes(key))
       .map(([, v]) => cellWords(v))
       .join(" ");
-  return value === true ? "" : String(value);
+  return value === true ? "" : clozeFilled(String(value));
 }
 
 async function indexPage(pageId: string) {
@@ -125,14 +132,14 @@ async function indexRow(pageId: string, rowId: string, fields: Field[]) {
   const values = rest
     .filter((f) => !IGNORED.includes(f.type) && f.type !== "aliases")
     // Formatted text (#126) as the words people read, without "**" or "\\_".
-    .map((f) => (f.type === "id" ? ticketId(f, row.number) : isFormattedText(f, fields) ? toPlain(cells[f.id]) : cellWords(cells[f.id])))
+    .map((f) => (f.type === "id" ? ticketId(f, row.number) : isFormattedText(f, fields) ? clozeFilled(toPlain(cells[f.id])) : cellWords(cells[f.id])))
     .filter(Boolean);
   const content = row.html ?? row.content ?? "";
   await addEntry(
     pageId,
     rowId,
     titleColumn(title || "Ohne Titel", recordAliases(fields, cells)),
-    [...values, content.startsWith("<") ? documentText(content) : content]
+    [...values, content.startsWith("<") ? documentText(content) : clozeFilled(content)]
       .join(" · ")
       .slice(0, 400000),
   );

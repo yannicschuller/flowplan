@@ -183,7 +183,41 @@ export async function studyDue(user: Identity, raw: unknown) {
     };
   });
   out.sort((a, b) => b.review + b.learning + b.new - (a.review + a.learning + a.new) || (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
-  return { day: today.day, zone: clock.zone, decks: out, streak: await streakOf(user, input.workspaceId, today.day) };
+  // The daily reminder (lib/study-reminders.ts), a setting of the person.
+  const reminder = (await one<{ remind_at: string | null }>("SELECT remind_at FROM study_prefs WHERE user_id=? AND page_id=''", user.id))?.remind_at ?? null;
+  return { day: today.day, zone: clock.zone, decks: out, streak: await streakOf(user, input.workspaceId, today.day), reminder };
+}
+
+// What is due in every workspace of the person (the app's summary and
+// widget, the study reminder – lib/study-reminders.ts): the decks of all
+// workspaces with their counts, the totals and the streak across them.
+// `only`: these decks only (the app widget's choice).
+export type DueEverywhere = { day: string; zone: string; decks: (DueDeck & { workspaceId: string })[]; due: number; new: number; streak: number; remindAt: string | null };
+export async function studyDueEverywhere(user: Identity, zone?: string, only?: string[]): Promise<DueEverywhere> {
+  const clock = await clockOf(user, zone);
+  const today = studyClock(Date.now(), clock.zone, clock.dayStart);
+  const workspaces = await all<{ workspace_id: string }>("SELECT workspace_id FROM members WHERE user_id=? ORDER BY workspace_id", user.id);
+  const decks: (DueDeck & { workspaceId: string })[] = [];
+  for (const { workspace_id } of workspaces) {
+    const has = await one(
+      "SELECT 1 FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.kind='database' AND d.settings LIKE ? LIMIT 1",
+      workspace_id,
+      '%"study"%',
+    );
+    if (!has) continue;
+    const due = await studyDue(user, { workspaceId: workspace_id, zone: clock.zone, ...(only?.length ? { pageIds: only.slice(0, 50) } : {}) });
+    decks.push(...due.decks.filter((d) => d.total > 0).map((d) => ({ ...d, workspaceId: workspace_id })));
+  }
+  decks.sort((a, b) => b.review + b.learning + b.new - (a.review + a.learning + a.new) || (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+  return {
+    day: today.day,
+    zone: clock.zone,
+    decks,
+    due: decks.reduce((sum, d) => sum + d.new + d.learning + d.review, 0),
+    new: decks.reduce((sum, d) => sum + d.new, 0),
+    streak: decks.length ? await streakOf(user, null, today.day) : 0,
+    remindAt: (await one<{ remind_at: string | null }>("SELECT remind_at FROM study_prefs WHERE user_id=? AND page_id=''", user.id))?.remind_at ?? null,
+  };
 }
 
 // The decks for MCP (study_decks).
@@ -193,13 +227,14 @@ export async function studyDecks(user: Identity, workspaceId: string, zone?: str
 
 // Consecutive study days with a rating up to today – today counts once
 // studied; studied yesterday but not yet today keeps the streak.
-async function streakOf(user: Identity, workspaceId: string, today: string, pageId?: string) {
+// Without a workspace: across all of the person's workspaces.
+async function streakOf(user: Identity, workspaceId: string | null, today: string, pageId?: string) {
   const days = new Set(
     (
       await all<{ day: string }>(
-        `SELECT DISTINCT day FROM review_log WHERE user_id=? AND workspace_id=? AND undone_at IS NULL AND day>=?${pageId ? " AND page_id=?" : ""}`,
+        `SELECT DISTINCT day FROM review_log WHERE user_id=?${workspaceId ? " AND workspace_id=?" : ""} AND undone_at IS NULL AND day>=?${pageId ? " AND page_id=?" : ""}`,
         user.id,
-        workspaceId,
+        ...(workspaceId ? [workspaceId] : []),
         addDays(today, -800),
         ...(pageId ? [pageId] : []),
       )

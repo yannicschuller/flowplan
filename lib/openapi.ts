@@ -103,7 +103,7 @@ export const commandActionNames = [
   "form.update", "form.submit", "survey.save",
   "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points",
   // Flashcards (docs/specs/flashcards.md, lib/study.ts).
-  "study.settings", "study.queue", "study.review", "study.undo", "study.prefs", "study.due", "study.stats",
+  "study.settings", "study.queue", "study.review", "study.reviews", "study.undo", "study.prefs", "study.reminder", "study.due", "study.stats",
   "recordView.save", "recordView.delete", "git.setup", "git.disable", "git.token",
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "inviteLink.create", "inviteLink.revoke", "member.role", "member.guest",
@@ -190,6 +190,41 @@ export const commandActions: ActionDoc[] = [
       reviewedAt: z.number().int().optional(),
     }),
     result: z.object({}).passthrough(),
+  },
+  {
+    action: "study.reviews",
+    summary: "Send flashcard ratings made offline (up to 500)",
+    description:
+      "Read access is enough, as for study.review. Each rating carries the UUID made when the card was shown: one that exists already is skipped (`duplicate`) – with no time limit, so ratings may wait for days. They are taken in the order of `reviewedAt` (ms): a rating older than the card's last one is put in its place and the card's log replayed (`replayed`; the state is the fold of the log, the fuzz seeded with each review's id). `reviewedAt` is kept no later than five minutes from now; one older than 30 days is marked as an offline rating. A rating of a card that is gone or no longer yours to study is kept for your statistics without changing any state (`orphaned`). Answers `results` (`id`, `status`: ok, replayed, duplicate, orphaned, conflict – the id belongs to someone else) and the `decks` changed.",
+    input: z.object({
+      action: z.literal("study.reviews"),
+      source: z.enum(["web", "app"]).optional(),
+      reviews: z
+        .array(
+          z.object({
+            id: uuid,
+            pageId: uuid,
+            rowId: uuid,
+            sub: z.string().max(40),
+            rating: z.number().int().min(1).max(4),
+            reviewedAt: z.number().int(),
+            zone: z.string().max(100).optional(),
+            durationMs: z.number().int().min(0).optional(),
+            baseReps: z.number().int().min(0).optional(),
+          }),
+        )
+        .min(1)
+        .max(500),
+    }),
+    result: z.object({ results: z.array(z.object({ id: uuid, status: z.enum(["ok", "replayed", "duplicate", "orphaned", "conflict"]) })), decks: z.array(uuid) }),
+  },
+  {
+    action: "study.reminder",
+    summary: "Your daily study reminder: a time or off",
+    description:
+      "`remindAt` 'HH:MM' in `zone` (IANA, else the one you sent last), or null to switch it off. On study days with cards due that you have not studied yet you get one notification of the kind \"study\" (push by default, not in the inbox) that opens #study. After 30 days without studying one notice says the reminders pause. A time already past today starts tomorrow.",
+    input: z.object({ action: z.literal("study.reminder"), remindAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(), zone: z.string().max(100).optional() }),
+    result: z.object({ remindAt: z.string().nullable(), zone: z.string() }),
   },
   {
     action: "study.undo",
@@ -1899,7 +1934,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/command", method: "post", op: { id: "command", tag: "Workspace", summary: "Change something", description: "The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*`, `ai.*`, `emergency.*` (emergency access) and `deadman.*` (inactivity message) are refused for every token (session only). Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429).", write: true, body: { content: "application/json", schema: ref("Command"), required: true }, ok: { schema: ref("CommandResult"), description: "The result of the action" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
   // Pages
   { path: "/api/pages/{pageId}", method: "get", op: { id: "getPage", tag: "Pages", summary: "A page with its content", description: "Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts, and your own quick-search history; not for API tokens).", params: [p("pageId", "Page ID")], ok: { schema: ref("PageData"), description: "The page" }, errors: [401, 403, 404] } },
-  { path: "/api/pages/{pageId}/study", method: "get", op: { id: "studyQueue", tag: "Records", summary: "Your flashcards of a deck", description: `The same as the command study.queue, for read tokens too: counts, limits and your next cards. ${noStore}`, params: [p("pageId", "Database ID"), q("view", "A study view whose filters select the cards"), q("zone", "IANA time zone of the study day"), q("limit", "Cards, 0–50 (default 50)", { type: "integer" }), q("ahead", "1: also learning cards due later today", { type: "string", enum: ["1"] })], ok: { schema: { type: "object", additionalProperties: true }, description: "Counts and cards" }, errors: [400, 401, 403, 404, 429] } },
+  { path: "/api/pages/{pageId}/study", method: "get", op: { id: "studyQueue", tag: "Records", summary: "Your flashcards of a deck", description: `The same as the command study.queue, for read tokens too: counts, limits and your next cards. With \`offline=1\` the whole deck for studying offline instead (every card you may study – up to 5000 –, with content and your state, today's ratings and studied records, \`limits\` and \`baseLimits\` of another day, \`params\`, and per study view with filters the records it selects); a device builds its queue from it and sends its ratings later with study.reviews. ${noStore}`, params: [p("pageId", "Database ID"), q("view", "A study view whose filters select the cards"), q("zone", "IANA time zone of the study day"), q("limit", "Cards, 0–50 (default 50)", { type: "integer" }), q("ahead", "1: also learning cards due later today", { type: "string", enum: ["1"] }), q("offline", "1: the whole deck for studying offline", { type: "string", enum: ["1"] })], ok: { schema: { type: "object", additionalProperties: true }, description: "Counts and cards" }, errors: [400, 401, 403, 404, 429] } },
   { path: "/api/pages/{pageId}/study/export", method: "get", op: { id: "studyExport", tag: "Records", summary: "A deck's cards as CSV or Anki package", description: `One line per card you may study: front, back, hint, extra, tags, type and card (\`sub\`); document sides as Markdown, clozes as {{c1::…}}. With \`state=1\` your own learning state too (state, due, stability, difficulty, reviews, lapses) – never anyone else's. With \`format=apkg\` an Anki package instead (the legacy collection.anki2 every Anki version imports): one note per record (Basic, Basic and reversed, type in the answer, Cloze; multiple choice as Basic with the options on the front), tags, the select "Deck" as sub-decks, pictures and sounds of the database as media; cards as new, without learning state. ${noStore}`, params: [p("pageId", "Database ID"), q("format", "apkg: an Anki package instead of CSV", { type: "string", enum: ["csv", "apkg"] }), q("state", "1: add your learning state (CSV)", { type: "string", enum: ["1"] }), q("zone", "IANA time zone for the due dates"), q("view", "View ID (its filters)")], ok: { content: "text/csv", schema: { type: "string" }, description: "CSV (UTF-8 with BOM), or the .apkg (application/octet-stream)" }, errors: [400, 401, 403, 404, 409] } },
   { path: "/api/study/due", method: "get", op: { id: "studyDue", tag: "Records", summary: "What is due in all your decks", description: `The same as the command study.due, for read tokens too. ${noStore}`, params: [workspace, q("zone", "IANA time zone of the study day")], ok: { schema: { type: "object", additionalProperties: true }, description: "Decks with counts and your streak" }, errors: [400, 401, 403] } },
   { path: "/api/study/stats", method: "get", op: { id: "studyStats", tag: "Records", summary: "Your flashcard statistics", description: `The same as the command study.stats, for read tokens too. ${noStore}`, params: [q("workspace", "Workspace ID (all decks)", { type: "string", format: "uuid" }), q("page", "Deck (database) ID", { type: "string", format: "uuid" }), q("zone", "IANA time zone of the study day")], ok: { schema: { type: "object", additionalProperties: true }, description: "Statistics" }, errors: [400, 401, 403, 404] } },

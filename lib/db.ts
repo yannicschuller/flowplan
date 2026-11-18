@@ -468,9 +468,11 @@ function migrate(d: DatabaseSync) {
     PRIMARY KEY(user_id,kind));
     -- Defaults per kind (lib/notification-kinds.ts), refreshed below.
     CREATE TABLE IF NOT EXISTS notification_defaults(kind TEXT PRIMARY KEY,inbox INTEGER NOT NULL,push INTEGER NOT NULL,email INTEGER NOT NULL);
+    -- A notification for push only (notifications.push_only, added in
+    -- migrateStudyReminders before anything is inserted) passes.
     DROP TRIGGER IF EXISTS notification_inbox_pref;
     CREATE TRIGGER notification_inbox_pref BEFORE INSERT ON notifications
-    WHEN NOT (${notificationOn("inbox", "NEW.user_id", "NEW.kind")})
+    WHEN NOT (${notificationOn("inbox", "NEW.user_id", "NEW.kind")}) AND NEW.push_only IS NOT 1
     BEGIN SELECT RAISE(IGNORE); END;
     DROP TRIGGER IF EXISTS queue_notification_push;
     CREATE TRIGGER queue_notification_push AFTER INSERT ON notifications BEGIN
@@ -1567,6 +1569,7 @@ function migrate(d: DatabaseSync) {
   if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "markup"))
     d.exec("ALTER TABLE notifications ADD COLUMN markup TEXT");
   migrateFlashcards(d);
+  migrateStudyReminders(d);
   migrateServerMetrics(d);
   migrateErrorDetails(d);
   migrateSharedJobState(d);
@@ -1621,6 +1624,26 @@ function migrateFlashcards(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS study_row_document_update AFTER UPDATE OF html ON row_documents WHEN EXISTS(SELECT 1 FROM rows r JOIN databases d ON d.page_id=r.page_id WHERE r.id=NEW.row_id AND instr(d.settings,'"study"')>0) BEGIN INSERT INTO study_dirty SELECT r.page_id,r.id FROM rows r WHERE r.id=NEW.row_id AND NOT EXISTS(SELECT 1 FROM study_dirty WHERE page_id=r.page_id AND row_id=r.id); END;
     CREATE TRIGGER IF NOT EXISTS study_database_insert AFTER INSERT ON databases WHEN instr(NEW.settings,'"study"')>0 BEGIN ${dirty("NEW.page_id", "''")} END;
     CREATE TRIGGER IF NOT EXISTS study_database_settings AFTER UPDATE OF settings ON databases WHEN (instr(NEW.settings,'"study"')>0 OR instr(OLD.settings,'"study"')>0) AND NEW.settings IS NOT OLD.settings BEGIN ${dirty("NEW.page_id", "''")} END;`);
+}
+// Study reminders (docs/specs/flashcards.md §10.3, lib/study-reminders.ts):
+// - notifications.push_only: 1 for a notification that goes to push (and
+//   the other channels a person turned on) but not into the inbox – a
+//   study reminder while its inbox channel is off (the default). The
+//   inbox, its unread count and the desktop app's feed leave such rows
+//   out; the trigger notification_inbox_pref lets them pass.
+// - study_prefs.reminder_paused_at: when the one "Lernerinnerungen
+//   pausiert" notice went out after 30 days without studying; a rating
+//   after it starts the reminders again (remind_at and reminded_day are
+//   there since migrateFlashcards).
+// Nullable columns and an index only – an older version ignores them (it
+// would list a push-only reminder in its inbox, nothing worse) – so the
+// schema number stays.
+function migrateStudyReminders(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "push_only"))
+    d.exec("ALTER TABLE notifications ADD COLUMN push_only INTEGER");
+  if (!(d.prepare("PRAGMA table_info(study_prefs)").all() as { name: string }[]).some((c) => c.name === "reminder_paused_at"))
+    d.exec("ALTER TABLE study_prefs ADD COLUMN reminder_paused_at INTEGER");
+  d.exec("CREATE INDEX IF NOT EXISTS study_prefs_reminders ON study_prefs(remind_at) WHERE page_id='' AND remind_at IS NOT NULL");
 }
 // Server metrics and detailed AI statistics (lib/server-metrics.ts,
 // lib/metrics.ts, Administration → Überwachung → Server and → KI):

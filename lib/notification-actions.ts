@@ -46,7 +46,7 @@ export const notificationActionSchema = z.discriminatedUnion("action", [
 
 const writerOf = (user: Identity): Identity => ({ ...user, apiScope: "write" });
 const nowText = () => new Date().toISOString().replace("T", " ").slice(0, 19);
-const unread = async (user: Identity) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id))?.n || 0);
+const unread = async (user: Identity) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL AND push_only IS NULL", user.id))?.n || 0);
 const gone = () => new HttpError(404, ct("Benachrichtigung nicht gefunden.", "Notification not found."));
 const changed = () => new HttpError(409, ct("Die Aufgabe gibt es so nicht mehr. Bitte in Flowplan öffnen.", "The task no longer exists as it was. Please open it in Flowplan."));
 

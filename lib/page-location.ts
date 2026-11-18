@@ -57,8 +57,9 @@ export function pageLocationHash(target: PageLocation): string {
 }
 // Where a notification leads beyond pages (notifications.link): only
 // in-app hash routes of the settings and the administration ("#admin/…",
-// "#settings/…" with plain path segments) – never another address.
-const notificationLink = /^#(admin|settings)(\/[A-Za-z0-9_-]{1,64}){0,3}$/;
+// "#settings/…" with plain path segments) and the screen "#study" (the
+// study reminder) – never another address.
+const notificationLink = /^(#(admin|settings)(\/[A-Za-z0-9_-]{1,64}){0,3}|#study)$/;
 export const isNotificationLink = (link: unknown): link is string =>
   typeof link === "string" && link.length <= 200 && notificationLink.test(link);
 export function notificationUrl(notification: {

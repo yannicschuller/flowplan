@@ -52,7 +52,8 @@ async function handleGET(req: Request, { params }: { params: Promise<{ action: s
       const update = await updateStatus().catch(() => null);
       return NextResponse.json(await mobileAdminSummary(Date.now(), update), { headers: { "Cache-Control": "no-store" } });
     }
-    return NextResponse.json(await mobileSummary(user, new URL(req.url).searchParams.get("today")), {
+    const query = new URL(req.url).searchParams;
+    return NextResponse.json(await mobileSummary(user, query.get("today"), query.get("zone")), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (e) {

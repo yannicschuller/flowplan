@@ -26,7 +26,20 @@ export type OfflineChanges = {
   changed: string[];
   // Per database page: visible records whose cells or document changed.
   rows: Record<string, string[]>;
+  // Readable decks (flashcards) the person studied in the last 14 days:
+  // stored whole for studying offline (lib/offline-plan.ts planStudy).
+  study: string[];
 };
+export const OFFLINE_STUDY_DAYS = 14;
+async function recentDecks(user: Identity, workspaceId: string, readable: Map<string, Page>, now: number) {
+  const ids = await all<{ page_id: string }>(
+    "SELECT DISTINCT page_id FROM review_log WHERE user_id=? AND workspace_id=? AND undone_at IS NULL AND reviewed_at>=?",
+    user.id,
+    workspaceId,
+    now - OFFLINE_STUDY_DAYS * 86_400_000,
+  );
+  return ids.map((r) => r.page_id).filter((id) => readable.get(id)?.kind === "database").sort();
+}
 
 export function parseSince(value: string | null): number | null {
   if (!value) return null;
@@ -56,7 +69,7 @@ export async function offlineChanges(
   const ids = [...readable.keys()];
   const started = (await one<{ started: number }>("SELECT started FROM offline_log WHERE id=1"))?.started ?? 0;
   if (since === null || since < started || since > now + 60_000)
-    return { now: new Date(now).toISOString(), full: true, pages: ids, changed: ids, rows: {} };
+    return { now: new Date(now).toISOString(), full: true, pages: ids, changed: ids, rows: {}, study: await recentDecks(user, workspaceId, readable, now) };
   const entries = await all<{ page_id: string; row_id: string }>(
     `SELECT c.page_id,c.row_id FROM offline_changes c JOIN pages p ON p.id=c.page_id
      WHERE p.workspace_id=? AND c.at>=?`,
@@ -88,5 +101,6 @@ export async function offlineChanges(
     pages: ids,
     changed: [...changed],
     rows,
+    study: await recentDecks(user, workspaceId, readable, now),
   };
 }

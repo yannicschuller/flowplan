@@ -15,6 +15,7 @@ import {
   planFiles,
   planPages,
   planRecords,
+  planStudy,
 } from "@/lib/offline-plan";
 import type { OfflineChanges } from "@/lib/offline-changes";
 import {
@@ -482,6 +483,17 @@ async function refreshNow({
           progress();
         }
       });
+    }
+
+    // 2b. Flashcards: the decks studied in the last 14 days, whole (an
+    // older server sends no list: nothing changes).
+    if (Array.isArray(changes.study)) {
+      keys = await data.keys();
+      const study = planStudy({ keys, decks: changes.study });
+      for (const key of study.drop) await drop(key);
+      total += study.fetch.length;
+      progress();
+      await inQueue(study.fetch, fetchInto);
     }
 
     // 3. Files: drop the ones no stored page refers to, add the others.

@@ -25,7 +25,7 @@ import { cleanHtml, escaped } from "./document-server";
 import { effectiveFilterGroup, filterCount, matchesFilterGroup } from "./database-filters";
 import { allow } from "./action-limits";
 import { schedule, replay, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
-import { DEFAULT_DAY_START, studyClock, studyDay, studyZone } from "./study-day";
+import { DEFAULT_DAY_START, REMIND_AT, reminderMoment, studyClock, studyDay, studyZone } from "./study-day";
 import { buildQueue, seededRank, sessionOrder, type QueueCard } from "./study-queue";
 import { MAX_CHOICES, deriveCards, foldChoice, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, usesDocument, type CardSide, type DerivedCard } from "./study-content";
 import { clozeHtml } from "./study-cloze";
@@ -400,7 +400,7 @@ export async function studyQueue(user: Identity, raw: unknown) {
   const now = Date.now();
   const clock = await zoneFor(user, input.zone);
   const today = studyClock(now, clock.zone, clock.dayStart);
-  const base = { pageId: deck.page.id, title: deck.page.title, zone: clock.zone, dayStart: clock.dayStart, day: today.day, dayEnd: today.end, now };
+  const base = { pageId: deck.page.id, title: deck.page.title, userId: user.id, zone: clock.zone, dayStart: clock.dayStart, day: today.day, dayEnd: today.end, now };
   await drainStudyCards(deck.page.id);
   if (!deck.settings) return { ...base, configured: false as const };
   const settings = deck.settings;
@@ -440,6 +440,64 @@ export async function studyQueue(user: Identity, raw: unknown) {
     // Tomorrow's reviews (the summary's "Morgen fällig").
     tomorrow: cards.filter((c) => c.memory && c.memory.due >= today.end && c.memory.due < today.end + 86_400_000).length,
     cards: batch.length ? await contentOf(deck, settings, batch, cards, today.day) : [],
+  };
+}
+
+// ---- Offline (§10.4) ----
+
+// At most this many cards go into a deck's offline copy: the ones due
+// soonest first, then the new ones in the order added.
+export const OFFLINE_CARDS = 5000;
+const offlineInput = z.object({ pageId: uuid, zone: zoneInput });
+// A deck for studying without a connection (GET /api/pages/{id}/study
+// ?offline=1, stored by the offline copy for decks studied in the last 14
+// days – lib/offline-plan.ts): every card the person may study with its
+// content and own state, today's ratings, the limits (today's and those
+// of any other day), the parameters, and per study view with filters the
+// records it selects. The device builds its queue from it with the same
+// functions (lib/study-queue.ts, lib/fsrs – lib/study-offline.ts).
+export async function studyOffline(user: Identity, raw: unknown) {
+  const input = offlineInput.parse(raw);
+  if (!allow(`study-queue:${user.id}`, 120, 60_000)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  const deck = await deckOf(user, input.pageId);
+  const now = Date.now();
+  const clock = await zoneFor(user, input.zone);
+  const today = studyClock(now, clock.zone, clock.dayStart);
+  const base = { pageId: deck.page.id, title: deck.page.title, userId: user.id, zone: clock.zone, dayStart: clock.dayStart, day: today.day, dayEnd: today.end, now, offline: true as const };
+  await drainStudyCards(deck.page.id);
+  if (!deck.settings) return { ...base, configured: false as const };
+  const settings = deck.settings;
+  const mine = await effective(user, deck.page.id, settings, today.day);
+  const { cards, blocked } = await studyable(user, deck, settings);
+  const { done, studiedRows } = await todayOf(user.id, deck.page.id, today.day);
+  const views: Record<string, { rows?: string[]; study?: View["study"] }> = {};
+  for (const view of deck.views.filter((v) => v.type === "study")) {
+    const group = effectiveFilterGroup(view);
+    views[view.id] = {
+      ...(view.study ? { study: view.study } : {}),
+      ...(group && filterCount(group) > 0 ? { rows: [...new Set((await studyable(user, deck, settings, view.id)).cards.map((c) => c.rowId))] } : {}),
+    };
+  }
+  const kept = [...cards]
+    .sort((a, b) => (a.memory ? a.memory.due : Infinity) - (b.memory ? b.memory.due : Infinity) || a.position - b.position || (a.rowId < b.rowId ? -1 : a.rowId > b.rowId ? 1 : 0))
+    .slice(0, OFFLINE_CARDS);
+  return {
+    ...base,
+    configured: true as const,
+    blocked,
+    settings,
+    params: mine.params,
+    limits: mine.limits,
+    // The limits of a later study day (without today's "Heute mehr lernen").
+    baseLimits: { new: mine.limits.new - mine.prefs.moreToday.new, review: mine.limits.review - mine.prefs.moreToday.review },
+    prefs: mine.prefs,
+    deckDefaults: mine.deck,
+    done,
+    studiedRows: [...studiedRows],
+    views,
+    total: cards.length,
+    truncated: kept.length < cards.length,
+    cards: kept.length ? await contentOf(deck, settings, kept, cards, today.day) : [],
   };
 }
 
@@ -608,6 +666,138 @@ export async function studyReview(user: Identity, raw: unknown) {
   const overview = await studyQueue(user, { pageId: input.pageId, viewId: input.viewId, zone: input.zone, limit: 0 });
   return { ...overview, review: { id: input.id, rowId: input.rowId, sub: input.sub, memory: next.memory } };
 }
+// Ratings made without a connection (§10.4), sent by the device's own
+// queue (lib/study-offline.ts) once it is back – up to 500 at a time, in
+// any order:
+// - Idempotent by the review's id (the primary key of review_log), with no
+//   time limit: a rating that is there already is skipped ("duplicate").
+// - "The log wins": a card's state is the fold of its log. A rating newer
+//   than the card's last one is scheduled from its state as online; an
+//   older one (two devices, one of them offline) is put in its place and
+//   the card's log replayed (lib/fsrs replay) – deterministic, as the fuzz
+//   is seeded with each review's id. Two ratings of the same card on the
+//   same day both count, as in Anki after a sync.
+// - The device's clock: never later than five minutes from now (no lower
+//   bound – an older rating is ordered, not moved); a rating older than 30
+//   days is accepted but marked source "offline".
+// - A card that is gone or that the person may no longer study: the rating
+//   is kept in the log (statistics), the state is left alone ("orphaned").
+//   A deck that does not exist any more keeps nothing.
+const OFFLINE_AGE = 30 * 86_400_000;
+export const MAX_OFFLINE_REVIEWS = 500;
+const reviewsInput = z.object({
+  reviews: z
+    .array(
+      z.object({
+        id: uuid,
+        pageId: uuid,
+        rowId: uuid,
+        sub: z.string().max(40),
+        rating: z.number().int().min(1).max(4),
+        reviewedAt: z.number().int().positive(),
+        zone: zoneInput,
+        durationMs: z.number().int().min(0).max(3_600_000).optional(),
+        // The card's number of reviews the device knew (informational).
+        baseReps: z.number().int().min(0).optional(),
+      }),
+    )
+    .min(1)
+    .max(MAX_OFFLINE_REVIEWS),
+  // Where the ratings were made (the app or the browser).
+  source: z.enum(["web", "app"]).optional(),
+});
+export type OfflineReviewResult = { id: string; status: "ok" | "replayed" | "duplicate" | "orphaned" | "conflict" };
+export async function studyReviews(user: Identity, raw: unknown) {
+  const input = reviewsInput.parse(raw);
+  if (!allow(`study-reviews:${user.id}`, 30, 60_000)) throw new HttpError(429, "Zu viele Wertungen in kurzer Zeit. Bitte später erneut versuchen.");
+  const now = Date.now();
+  const global = await prefsOf(user.id, "");
+  const dayStart = global?.day_start ?? DEFAULT_DAY_START;
+  const decks = new Map<string, Deck | null>();
+  const deckFor = async (pageId: string) => {
+    if (!decks.has(pageId))
+      decks.set(
+        pageId,
+        await deckOf(user, pageId).catch((error) => {
+          if (error instanceof HttpError) return null;
+          throw error;
+        }),
+      );
+    return decks.get(pageId)!;
+  };
+  const sorted = [...input.reviews].sort((a, b) => a.reviewedAt - b.reviewedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const results: OfflineReviewResult[] = [];
+  const touched = new Set<string>();
+  for (const r of sorted) {
+    const known = await one<{ user_id: string }>("SELECT user_id FROM review_log WHERE id=?", r.id);
+    if (known) {
+      results.push({ id: r.id, status: known.user_id === user.id ? "duplicate" : "conflict" });
+      continue;
+    }
+    const deck = await deckFor(r.pageId);
+    const page = deck?.page ?? (await one<Page>("SELECT * FROM pages WHERE id=?", r.pageId));
+    if (!page || !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, user.id))) {
+      results.push({ id: r.id, status: "orphaned" });
+      continue;
+    }
+    const zone = studyZone(r.zone, global?.time_zone);
+    const clock = { zone, dayStart };
+    const reviewedAt = Math.min(r.reviewedAt, now + 5 * 60_000);
+    const day = studyDay(reviewedAt, zone, dayStart);
+    const settings = deck?.settings;
+    const params = settings ? (await effective(user, page.id, settings, day)).params : { retention: STUDY_DEFAULTS.retention, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 };
+    let usable = !!(deck && settings);
+    if (usable)
+      await requireCard(user, deck!, settings!, r.rowId, r.sub).catch((error) => {
+        if (!(error instanceof HttpError)) throw error;
+        usable = false;
+      });
+    const state = await one<StateRow>(`SELECT * FROM card_states WHERE user_id=? AND row_id=? AND sub=?${sql.forUpdate()}`, user.id, r.rowId, r.sub);
+    const history = (await all<LogRow>("SELECT * FROM review_log WHERE user_id=? AND row_id=? AND sub=? AND undone_at IS NULL", user.id, r.rowId, r.sub)).map((l) => ({
+      id: l.id,
+      rating: Number(l.rating) as StudyRating,
+      reviewedAt: Number(l.reviewed_at),
+      zone: l.zone,
+    }));
+    const later = (h: { id: string; reviewedAt: number }) => h.reviewedAt > reviewedAt || (h.reviewedAt === reviewedAt && h.id > r.id);
+    const replayed = usable && history.some(later);
+    // The state before this rating: the card's now, or the fold of the
+    // ratings before it.
+    const before = replayed ? replay(history.filter((h) => !later(h)), params, dayStart) : state ? memoryOf(state) : null;
+    const next = schedule(before, r.rating as StudyRating, reviewedAt, params, clock, r.id);
+    await run(
+      `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      r.id,
+      user.id,
+      page.workspace_id,
+      page.id,
+      r.rowId,
+      r.sub,
+      r.rating,
+      before ? before.state : 0,
+      reviewedAt,
+      day,
+      zone,
+      next.elapsedDays,
+      next.scheduledDays,
+      r.durationMs === undefined ? null : Math.min(r.durationMs, 60_000),
+      next.memory.stability,
+      next.memory.difficulty,
+      next.memory.due,
+      reviewedAt < now - OFFLINE_AGE ? "offline" : user.apiScope ? "api" : (input.source ?? "web"),
+      now,
+    );
+    if (!usable) {
+      results.push({ id: r.id, status: "orphaned" });
+      continue;
+    }
+    await storeState(user, page, r.rowId, r.sub, replayed ? replay([...history, { id: r.id, rating: r.rating as StudyRating, reviewedAt, zone }], params, dayStart) : next.memory);
+    touched.add(page.id);
+    results.push({ id: r.id, status: replayed ? "replayed" : "ok" });
+  }
+  return { results, decks: [...touched] };
+}
 const undoInput = z.object({ pageId: uuid, reviewId: uuid, zone: zoneInput, viewId: z.string().max(100).optional() });
 // Undoes the person's last rating of a card (§6.4): marked undone, the
 // card's state replayed from the rest of its log. Answers with the card,
@@ -646,6 +836,29 @@ export async function studyUndo(user: Identity, raw: unknown) {
 }
 
 // ---- Settings ----
+
+// The daily study reminder (§10.3, lib/study-reminders.ts): a local time
+// 'HH:MM' or null (off), with the zone it means. Set after today's moment
+// has passed, it starts tomorrow; setting it counts as activity for the
+// pause after 30 days without studying.
+const reminderInput = z.object({ remindAt: z.string().regex(REMIND_AT).nullable(), zone: zoneInput });
+export async function studyReminder(user: Identity, raw: unknown) {
+  const input = reminderInput.parse(raw);
+  const clock = await zoneFor(user, input.zone);
+  const now = Date.now();
+  const day = studyDay(now, clock.zone, clock.dayStart);
+  const passed = !!input.remindAt && now >= reminderMoment(day, input.remindAt, clock.zone, clock.dayStart);
+  await run(
+    `INSERT INTO study_prefs(user_id,page_id,time_zone,remind_at,reminded_day,reminder_paused_at,updated_at) VALUES(?,'',?,?,?,NULL,?)
+     ON CONFLICT(user_id,page_id) DO UPDATE SET time_zone=excluded.time_zone,remind_at=excluded.remind_at,reminded_day=excluded.reminded_day,reminder_paused_at=NULL,updated_at=excluded.updated_at`,
+    user.id,
+    clock.zone,
+    input.remindAt,
+    passed ? day : null,
+    now,
+  );
+  return { remindAt: input.remindAt, zone: clock.zone };
+}
 
 const prefsCommand = studyPrefsInput.extend({
   pageId: uuid,
@@ -879,6 +1092,10 @@ export async function studyCommand(user: Identity, action: string, b: Record<str
       return await studyQueue(user, b);
     case "study.review":
       return await studyReview(user, b);
+    case "study.reviews":
+      return await studyReviews(user, b);
+    case "study.reminder":
+      return await studyReminder(user, b);
     case "study.undo":
       return await studyUndo(user, b);
     case "study.prefs":

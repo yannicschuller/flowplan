@@ -43,7 +43,7 @@ test("customizing the formatting toolbar: hide, reorder, group, reset", async ({
 
     // Hide "Durchgestrichen".
     await row("Durchgestrichen").getByRole("checkbox").uncheck();
-    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["strike", "bulletList", "orderedList", "indent", "outdent"]);
+    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["strike", "cloze", "bulletList", "orderedList", "indent", "outdent"]);
 
     // "Kursiv" up before "Fett", with the keyboard.
     const italicUp = list.getByRole("button", { name: "Kursiv nach oben" });
@@ -113,7 +113,7 @@ test("customizing the formatting toolbar: hide, reorder, group, reset", async ({
     // Reset: the default again, "Durchgestrichen" back.
     await page.goto(`/#settings/appearance`);
     await page.getByRole("button", { name: "Zurücksetzen" }).click();
-    await expect.poll(async () => (await layoutOf(page)).hidden).toEqual(["bulletList", "orderedList", "indent", "outdent"]);
+    await expect.poll(async () => (await layoutOf(page)).hidden).toEqual(["bulletList", "orderedList", "indent", "outdent", "cloze"]);
     await expect.poll(async () => (await layoutOf(page)).order[0]).toBe("undo");
     await page.goto(`/#page=${host.id}`);
     await expect(bar.getByTitle("Durchgestrichen", { exact: true })).toHaveCount(1, { timeout: 30_000 });
@@ -243,7 +243,7 @@ test("admins set a default toolbar for everyone without their own", async ({ pag
     await expect(setting.getByText("Gespeichert")).toBeVisible({ timeout: 20_000 });
 
     // The person without their own layout gets it.
-    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["strike", "bulletList", "orderedList", "indent", "outdent"]);
+    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["strike", "cloze", "bulletList", "orderedList", "indent", "outdent"]);
     await page.goto(`/#settings/appearance`);
     const mine = page.locator("#toolbar-layout");
     await expect(mine.locator(".toolbar-layout-status")).toHaveText("Standard der Instanz", { timeout: 30_000 });
@@ -252,10 +252,10 @@ test("admins set a default toolbar for everyone without their own", async ({ pag
     await mine.getByRole("button", { name: "Anpassen …" }).click();
     await mine.getByRole("list", { name: "Schaltflächen der Formatierungsleiste" }).locator('li[data-entry="italic"]').getByRole("checkbox").uncheck();
     await expect(mine.locator(".toolbar-layout-status")).toHaveText("Angepasst");
-    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["italic", "strike", "bulletList", "orderedList", "indent", "outdent"]);
+    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["italic", "strike", "cloze", "bulletList", "orderedList", "indent", "outdent"]);
     await mine.getByRole("button", { name: "Zurücksetzen" }).click();
     await expect(mine.locator(".toolbar-layout-status")).toHaveText("Standard der Instanz");
-    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["strike", "bulletList", "orderedList", "indent", "outdent"]);
+    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["strike", "cloze", "bulletList", "orderedList", "indent", "outdent"]);
     await page.goto(`/#page=${host.id}`);
     const bar = page.getByRole("toolbar", { name: "Textformatierung" });
     await expect(bar).toBeVisible({ timeout: 30_000 });
@@ -265,7 +265,7 @@ test("admins set a default toolbar for everyone without their own", async ({ pag
     // The admin's Reset: the built-in toolbar again, for everyone.
     await setting.getByRole("button", { name: "Zurücksetzen" }).click();
     await expect(setting.locator(".toolbar-layout-status")).toHaveText("Standard");
-    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["bulletList", "orderedList", "indent", "outdent"]);
+    await expect.poll(async () => (await layoutOf(page)).hidden, { timeout: 20_000 }).toEqual(["bulletList", "orderedList", "indent", "outdent", "cloze"]);
   } finally {
     await admin.request.post(`${origin}/api/command`, { headers: { origin }, data: { action: "admin.settings", settings: { toolbarLayoutDefault: null } } });
     await command({ action: "profile.toolbarLayout", toolbarLayout: null });

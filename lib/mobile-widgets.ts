@@ -1200,6 +1200,27 @@ async function incidentData(ctx: Context) {
   return { title: ct("Instanz", "Instance"), ...(await incidentState(ctx.now)), url: "/#settings=admin" };
 }
 
+// ---- 14. Flashcards due ----
+
+// "Karten fällig" (docs/specs/flashcards.md §10.2): what is left today in
+// all decks of the person's workspaces (or the chosen ones) – the same
+// counts as #study (lib/study-stats.ts) – the next deck first. A tap opens
+// #study; a deck's row opens the deck.
+async function studyData(ctx: Context, config: WidgetConfig<"study">) {
+  const { studyDueEverywhere } = await import("./study-stats");
+  const due = await studyDueEverywhere(ctx.user, ctx.zone, config.pageIds);
+  const open = due.decks.filter((d) => d.new + d.learning + d.review > 0);
+  return {
+    title: ct("Karten fällig", "Cards due"),
+    due: due.due,
+    new: due.new,
+    streak: due.streak,
+    decks: open.slice(0, 5).map((d) => ({ pageId: d.pageId, title: clip(d.title || untitled(), 40), due: d.new + d.learning + d.review, new: d.new, url: url(d.pageId) })),
+    more: Math.max(0, open.length - 5),
+    url: "/#study",
+  };
+}
+
 // ---- Data of many widgets at once ----
 
 const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => Promise<Record<string, unknown>> } = {
@@ -1216,6 +1237,7 @@ const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => 
   meeting: meetingData,
   jobs: jobsData,
   incident: incidentData,
+  study: studyData,
 };
 export async function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = MAX_WIDGET_BYTES) {
   const parsed = widgetConfigs[kind].parse(config ?? {}) as WidgetConfig<K>;
@@ -1372,5 +1394,9 @@ export async function widgetOptions(user: Identity, kind: WidgetKind, query: { p
       return { kind };
     case "incident":
       return { kind, available: await isInstanceAdmin(user) };
+    case "study": {
+      const { studyDueEverywhere } = await import("./study-stats");
+      return { kind, decks: (await studyDueEverywhere(user)).decks.slice(0, 100).map((d) => ({ id: d.pageId, name: clip(d.title || untitled()), icon: d.icon })) };
+    }
   }
 }

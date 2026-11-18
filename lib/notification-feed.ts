@@ -43,12 +43,12 @@ export async function notificationFeed(user: Identity, since: number | null) {
   }>(
     `SELECT n.id,n.kind,n.body,n.page_id,n.row_id,n.thread_id,n.link,n.read_at,n.created_at,
        ${notificationOn("push", "n.user_id", "n.kind")} push
-     FROM notifications n WHERE n.user_id=? ${since === null ? "" : "AND n.created_at>=?"}
+     FROM notifications n WHERE n.user_id=? AND n.push_only IS NULL ${since === null ? "" : "AND n.created_at>=?"}
      ORDER BY n.created_at DESC, n.seq DESC LIMIT ?`,
     ...(since === null ? [user.id, FIRST] : [user.id, toSql(since), LIMIT]),
   );
   const unread = Number(
-    (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id))?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL AND push_only IS NULL", user.id))?.n || 0,
   );
   const locale = contentLocale();
   const pages = new Map<string, Page | null>();

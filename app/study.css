@@ -1016,6 +1016,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Study reminder, ratings waiting offline ---- */
+.study-reminder h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.study-reminder-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.study-reminder-row input[type="time"] {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.study-reminder .muted {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.study-pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+}
+.study-focus-pending {
+  margin: 8px auto 0;
+}
+
 /* ---- Start page widget ---- */
 .home-study-total {
   margin: 2px 0 6px;

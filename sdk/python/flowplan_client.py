@@ -109,6 +109,11 @@ WidgetConfigIncident = TypedDict("WidgetConfigIncident", {
 
 }, total=False)
 
+# Configuration of a `study` widget.
+WidgetConfigStudy = TypedDict("WidgetConfigStudy", {
+    "pageIds": list[str],
+}, total=False)
+
 WidgetActionCaptureNote = TypedDict("WidgetActionCaptureNote", {
     "action": Required[Literal["capture.note"]],
     "targetId": Required[str],
@@ -788,6 +793,30 @@ CommandStudyReviewResult = TypedDict("CommandStudyReviewResult", {
 
 }, total=False)
 
+# Send flashcard ratings made offline (up to 500). Read access is enough, as for study.review. Each rating carries the UUID made when the card was shown: one that exists already is skipped (`duplicate`) – with no time limit, so ratings may wait for days. They are taken in the order of `reviewedAt` (ms): a rating older than the card's last one is put in its place and the card's log replayed (`replayed`; the state is the fold of the log, the fuzz seeded with each review's id). `reviewedAt` is kept no later than five minutes from now; one older than 30 days is marked as an offline rating. A rating of a card that is gone or no longer yours to study is kept for your statistics without changing any state (`orphaned`). Answers `results` (`id`, `status`: ok, replayed, duplicate, orphaned, conflict – the id belongs to someone else) and the `decks` changed.
+CommandStudyReviews = TypedDict("CommandStudyReviews", {
+    "action": Required[Literal["study.reviews"]],
+    "source": Literal["web", "app"],
+    "reviews": Required[list[dict[str, Any]]],
+}, total=False)
+
+CommandStudyReviewsResult = TypedDict("CommandStudyReviewsResult", {
+    "results": Required[list[dict[str, Any]]],
+    "decks": Required[list[str]],
+}, total=False)
+
+# Your daily study reminder: a time or off. `remindAt` 'HH:MM' in `zone` (IANA, else the one you sent last), or null to switch it off. On study days with cards due that you have not studied yet you get one notification of the kind "study" (push by default, not in the inbox) that opens #study. After 30 days without studying one notice says the reminders pause. A time already past today starts tomorrow.
+CommandStudyReminder = TypedDict("CommandStudyReminder", {
+    "action": Required[Literal["study.reminder"]],
+    "remindAt": Required[Optional[str]],
+    "zone": str,
+}, total=False)
+
+CommandStudyReminderResult = TypedDict("CommandStudyReminderResult", {
+    "remindAt": Required[Optional[str]],
+    "zone": Required[str],
+}, total=False)
+
 # Undo your last rating of a card. Only the last rating of that card, within 24 hours. The card's state is computed again from the rest of its log; answers the counts and the card to show again (`card`).
 CommandStudyUndo = TypedDict("CommandStudyUndo", {
     "action": Required[Literal["study.undo"]],
@@ -958,7 +987,7 @@ CommandProfileFormattingToolbarResult = TypedDict("CommandProfileFormattingToolb
     "formattingToolbar": Required[Literal["show", "hide"]],
 }, total=False)
 
-# Choose, order and group the buttons of the fixed formatting toolbar. For the caller, on all devices: `order` lists the toolbar's buttons (undo, redo, imageTools, bold, italic, underline, strike, highlight, comment, color, mediaWidth, superscript, subscript, spoiler, suggest, authors, link, heading, bulletList, orderedList, taskList, taskDue, align, blockUp, blockDown, indent, outdent, outline, inlineMath, addBlock) each at most once, with "|" for a divider between two groups (at most 134 entries); `hidden` lists the buttons not shown. Buttons left out of `order` (for example ones added in a later version) appear at their default place; the blocks of the "/" menu (block:ai, block:text, block:h1, block:h2, block:h3, block:h4, block:quote, block:divider, block:page-break, block:citation, block:bibliography, block:callout, block:toggle, block:code, block:table, block:columns, block:tabs, block:footnote, block:file, block:embed, block:mermaid, block:drawio, block:draw, block:whiteboard, block:meet, block:voice, block:scan, block:math, block:plot, block:fraction, block:metric, block:dashboard, block:mention, block:linked-database, block:synced, block:synced-insert, block:workflow-button) are only in the toolbar where `order` lists them. null restores the default – the instance's default toolbar if an administrator set one, else the built-in one; a layout equal to that default is stored as none. The result is the layout as it now applies and whether it is the caller's own (`custom`).
+# Choose, order and group the buttons of the fixed formatting toolbar. For the caller, on all devices: `order` lists the toolbar's buttons (undo, redo, imageTools, bold, italic, underline, strike, highlight, comment, color, mediaWidth, superscript, subscript, spoiler, cloze, suggest, authors, link, heading, bulletList, orderedList, taskList, taskDue, align, blockUp, blockDown, indent, outdent, outline, inlineMath, addBlock) each at most once, with "|" for a divider between two groups (at most 136 entries); `hidden` lists the buttons not shown. Buttons left out of `order` (for example ones added in a later version) appear at their default place; the blocks of the "/" menu (block:ai, block:text, block:h1, block:h2, block:h3, block:h4, block:quote, block:divider, block:page-break, block:citation, block:bibliography, block:callout, block:toggle, block:code, block:table, block:columns, block:tabs, block:footnote, block:file, block:embed, block:mermaid, block:drawio, block:draw, block:whiteboard, block:meet, block:voice, block:scan, block:math, block:plot, block:fraction, block:metric, block:dashboard, block:mention, block:linked-database, block:synced, block:synced-insert, block:workflow-button) are only in the toolbar where `order` lists them. null restores the default – the instance's default toolbar if an administrator set one, else the built-in one; a layout equal to that default is stored as none. The result is the layout as it now applies and whether it is the caller's own (`custom`).
 CommandProfileToolbarLayout = TypedDict("CommandProfileToolbarLayout", {
     "action": Required[Literal["profile.toolbarLayout"]],
     "toolbarLayout": Required[Optional[dict[str, Any]]],
@@ -1965,7 +1994,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -2098,6 +2127,7 @@ StudyQueueQuery = TypedDict("StudyQueueQuery", {
     "zone": str,  # IANA time zone of the study day
     "limit": int,  # Cards, 0–50 (default 50)
     "ahead": Literal["1"],  # 1: also learning cards due later today
+    "offline": Literal["1"],  # 1: the whole deck for studying offline
 }, total=False)
 
 StudyExportQuery = TypedDict("StudyExportQuery", {
@@ -2442,7 +2472,7 @@ CustomDomainAllowedQuery = TypedDict("CustomDomainAllowedQuery", {
 }, total=False)
 
 WidgetOptionsQuery = TypedDict("WidgetOptionsQuery", {
-    "kind": Required[Literal["capture", "tasks", "calendar", "pinned", "counter", "journal", "time", "mentions", "forms", "focus", "meeting", "jobs", "incident"]],  # Widget kind
+    "kind": Required[Literal["capture", "tasks", "calendar", "pinned", "counter", "journal", "time", "mentions", "forms", "focus", "meeting", "jobs", "incident", "study"]],  # Widget kind
     "pageId": str,  # A database for its views and properties
     "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
 }, total=False)
@@ -2750,7 +2780,7 @@ class FlowplanClient:
         return self._json("GET", "/api/pages/" + _p(page_id), headers=headers)
 
     def study_queue(self, page_id: str, query: Optional["StudyQueueQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Your flashcards of a deck — The same as the command study.queue, for read tokens too: counts, limits and your next cards. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study)"""
+        """Your flashcards of a deck — The same as the command study.queue, for read tokens too: counts, limits and your next cards. With `offline=1` the whole deck for studying offline instead (every card you may study – up to 5000 –, with content and your state, today's ratings and studied records, `limits` and `baseLimits` of another day, `params`, and per study view with filters the records it selects); a device builds its queue from it and sends its ratings later with study.reviews. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/study)"""
         return self._json("GET", "/api/pages/" + _p(page_id) + "/study", query=dict(query) if query else None, headers=headers)
 
     def study_export(self, page_id: str, query: Optional["StudyExportQuery"] = None, headers: Optional[dict[str, str]] = None) -> bytes:

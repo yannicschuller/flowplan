@@ -38,6 +38,7 @@ export const TOOLBAR_BUTTONS = [
   "superscript",
   "subscript",
   "spoiler",
+  "cloze",
   "suggest",
   "authors",
   "link",
@@ -130,6 +131,7 @@ export const GROUPABLE_BUTTONS = [
   "superscript",
   "subscript",
   "spoiler",
+  "cloze",
   "suggest",
   "authors",
   "link",
@@ -172,6 +174,7 @@ export const DEFAULT_TOOLBAR_ORDER: ToolbarEntry[] = [
   "superscript",
   "subscript",
   "spoiler",
+  "cloze",
   "suggest",
   "authors",
   "link",
@@ -197,7 +200,11 @@ export const DEFAULT_TOOLBAR_ORDER: ToolbarEntry[] = [
 // Indent and outdent (#302, what Tab / ⇧Tab do, for touch screens) came
 // later and are hidden by default too: a stored layout without them gets
 // them back at their place, hidden (parsedToolbarLayout).
-export const DEFAULT_HIDDEN: ToolbarItem[] = ["bulletList", "orderedList", "indent", "outdent"];
+//
+// The cloze of flashcards (lib/cloze-mark.ts, ⌘⌥G) came with phase 5 of
+// the flashcards and is hidden by default as well: only people who make
+// cards need it.
+export const DEFAULT_HIDDEN: ToolbarItem[] = ["bulletList", "orderedList", "indent", "outdent", "cloze"];
 export function defaultToolbarLayout(): ToolbarLayout {
   return { order: [...DEFAULT_TOOLBAR_ORDER], hidden: [...DEFAULT_HIDDEN] };
 }

@@ -94,6 +94,9 @@ test("html text strips markup and decodes entities", () => {
     htmlText("<p>A &amp; B</p><script>alert(1)</script><b>C&nbsp;D</b>"),
     "A & B C D",
   );
+  // Clozes of flashcards (docs/specs/flashcards.md §12.4): the words they stand for.
+  assert.equal(htmlText("<p>{{c1::Paris}} liegt an der {{c2::Seine::Fluss}}.</p>"), "Paris liegt an der Seine.");
+  assert.equal(htmlText('<p>Die <span data-cloze="1">Mito</span>chondrien</p>'), "Die Mitochondrien");
 });
 
 test("indexed search finds compound parts, ignores case and diacritics and highlights snippets", async () => {

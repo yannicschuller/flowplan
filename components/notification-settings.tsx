@@ -11,6 +11,7 @@ import {
   incidentThresholds,
   kindsFor,
   notificationDefaults,
+  inboxFreeKinds,
   notificationKinds,
   type IncidentThreshold,
   type NotificationChannels,
@@ -38,6 +39,10 @@ const kindHints: Record<NotificationKind, [string, string]> = {
   incident: [
     "Nur für Administratoren: was die Erkennungsregeln auf der ganzen Instanz finden – Passwort-Raten, neue Adminrechte, Abtasten. Ein Tipp öffnet den Vorfall unter Administration → Sicherheit.",
     "Administrators only: what the detection rules find on the whole instance – password guessing, new admin rights, probing. A tap opens the incident under Administration → Security.",
+  ],
+  study: [
+    "Die tägliche Erinnerung an fällige Lernkarten, zur Uhrzeit, die du unter „Lernen“ einstellst – nur wenn du an dem Tag noch nicht gelernt hast.",
+    "The daily reminder of due flashcards, at the time you set under “Study” – only if you have not studied that day yet.",
   ],
 };
 
@@ -179,11 +184,11 @@ export function NotificationSettings({
                 <Switch
                   label={c.label(kind)}
                   checked={local[kind][c.key]}
-                  disabled={c.key !== "inbox" && !local[kind].inbox}
+                  disabled={c.key !== "inbox" && !local[kind].inbox && !inboxFreeKinds.includes(kind)}
                   onChange={(on) =>
                     change(
                       kind,
-                      c.key === "inbox"
+                      c.key === "inbox" && !inboxFreeKinds.includes(kind)
                         ? { inbox: on, push: on && local[kind].push, email: on && local[kind].email, messenger: on && local[kind].messenger }
                         : { ...local[kind], [c.key]: on },
                     )
