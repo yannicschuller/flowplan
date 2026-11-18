@@ -41,6 +41,38 @@ type Props = {
   onExport: () => void;
   onSaveTemplate: () => void;
 };
+// The menus of the style bar's buttons (arrange, link, tags) open in view:
+// below the bar, or above it where there is more room (the bar can sit low
+// on the board, below the selection), and within the board's right edge –
+// within what is visible of the board when it reaches past the window, as
+// an embedded board does. Hung from the bar's edge, not from the button's
+// row: a wrapped bar would cover a menu of its first row otherwise.
+// Phones keep theirs below the bar at the top (.wb-layout-dock).
+export function fitBarMenu(menu: HTMLElement | null) {
+  const anchor = menu?.offsetParent;
+  const board = menu?.closest(".whiteboard");
+  const bar = menu?.closest(".wb-style-bar");
+  if (!menu || !board || !bar || !(anchor instanceof HTMLElement) || board.classList.contains("wb-layout-dock")) return;
+  const margin = 8,
+    gap = 6;
+  const b = board.getBoundingClientRect(),
+    r = bar.getBoundingClientRect(),
+    a = anchor.getBoundingClientRect();
+  const top = Math.max(b.top, 0) + margin,
+    bottom = Math.min(b.bottom, innerHeight) - margin,
+    right = Math.min(b.right, innerWidth) - margin;
+  const below = bottom - (r.bottom + gap),
+    above = r.top - gap - top;
+  const up = menu.offsetHeight > below && above > below;
+  menu.style.maxHeight = `${Math.max(120, up ? above : below)}px`;
+  menu.style.overflowY = "auto";
+  if (up) {
+    menu.style.top = "auto";
+    menu.style.bottom = `${a.bottom - (r.top - gap)}px`;
+  } else menu.style.top = `${r.bottom + gap - a.top}px`;
+  const left = Math.max(Math.max(b.left, 0) + margin, Math.min(a.left, right - menu.offsetWidth));
+  menu.style.left = `${left - a.left}px`;
+}
 // Buttons that must not take the focus from the text being edited.
 const keep = { onMouseDown: (e: React.MouseEvent) => e.preventDefault() };
 
@@ -128,7 +160,7 @@ export function ItemTools(props: Props) {
             <LinkSimple size={16} />
           </button>
           {open === "link" && (
-            <span className="wb-arrange-menu wb-link-menu" role="dialog" aria-label={t("Link", "Link")}>
+            <span ref={fitBarMenu} className="wb-arrange-menu wb-link-menu" role="dialog" aria-label={t("Link", "Link")}>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -179,7 +211,7 @@ export function ItemTools(props: Props) {
             <Tag size={16} />
           </button>
           {open === "tags" && (
-            <span className="wb-arrange-menu wb-tags-menu" role="dialog" aria-label={t("Schlagwörter", "Tags")}>
+            <span ref={fitBarMenu} className="wb-arrange-menu wb-tags-menu" role="dialog" aria-label={t("Schlagwörter", "Tags")}>
               {tags.length > 0 && (
                 <span className="wb-tags-edit">
                   {tags.map((x) => {

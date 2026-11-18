@@ -13421,7 +13421,11 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   flex-wrap: wrap;
   align-items: center;
   gap: 2px;
-  max-width: min(760px, calc(100% - 24px));
+  /* As wide as its buttons up to the board's width, wherever it is placed:
+     shrink-to-fit would wrap it more the further right it starts, and the
+     bar is placed by its measured size (placeStyleBar). */
+  width: max-content;
+  max-width: min(760px, calc(100% - 16px));
   padding: 5px;
   border-radius: 10px;
   background: var(--bg);
