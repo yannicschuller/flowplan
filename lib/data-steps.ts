@@ -17,6 +17,7 @@ import { isFormattedText } from "./inline-markdown";
 import { isSealed, sealGit, sealWebhookSecret, sealWebhookUrl, SEALED_SECRETS_MIGRATION, type StoredGit } from "./sealed-values";
 import type { Field } from "./types";
 import { RETENTION_DAYS } from "./search-visits";
+import { drainTextLinks, markAllTextLinks } from "./text-links";
 
 type Cells = Record<string, unknown>;
 export type DataStep = { name: string; run: () => Promise<void> };
@@ -33,6 +34,7 @@ export const AI_DETAIL_STEP = "metrics-ai-usage";
 export const WORKFLOW_DYNAMIC_MAIL_STEP = "workflow-dynamic-mail-099";
 export const CARD_STATES_NEW_STEP = "card-states-new-105";
 export const FEATURE_MODULES_STEP = "feature-modules-378";
+export const TEXT_LINKS_STEP = "text-links-107";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -51,7 +53,15 @@ export const dataSteps = (): DataStep[] => [
   { name: WORKFLOW_DYNAMIC_MAIL_STEP, run: keepDynamicMailForExistingWorkflows },
   { name: CARD_STATES_NEW_STEP, run: cardStatesNewCheck },
   { name: FEATURE_MODULES_STEP, run: modulesForExistingAccounts },
+  { name: TEXT_LINKS_STEP, run: textLinksOfAllSources },
 ];
+
+// Schema 107 (#383): the links of every page and record read once
+// (lib/text-links.ts); afterwards the triggers mark what changes.
+async function textLinksOfAllSources() {
+  await markAllTextLinks();
+  await drainTextLinks();
+}
 
 // The AI tokens counted per day and feature before the detailed AI
 // statistics (lib/metrics.ts metrics_ai_usage): copied with an unknown
