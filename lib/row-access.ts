@@ -29,7 +29,7 @@ export async function rowRoleResolver(
   const restricted = new Map<string, RowGrant[]>();
   for (const g of await all<RowGrant & { row_id: string }>(
     `SELECT g.row_id,g.user_id,g.group_id,g.role FROM row_grants g JOIN rows r ON r.id=g.row_id
-     WHERE r.page_id=? AND r.access!='inherit' AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?))`,
+     WHERE r.page_id=? AND r.access<>'inherit' AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?))`,
     page.id,
     user.id,
     user.id,
@@ -129,7 +129,8 @@ export async function hiddenRowIds(user: Identity, page: Page) {
   const resolve = await rowRoleResolver(user, page);
   return new Set(
     (await all<AccessRow>(
-      "SELECT id,access,created_by FROM rows WHERE page_id=? AND access='private'",
+      // (access<>'inherit' as well: the partial index rows_restricted.)
+      "SELECT id,access,created_by FROM rows WHERE page_id=? AND access<>'inherit' AND access='private'",
       page.id,
     ))
       .filter((r) => !resolve(r))

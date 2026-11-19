@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 105;
+export const SCHEMA_VERSION = 106;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1590,6 +1590,17 @@ function migrate(d: DatabaseSync) {
   // schema number stays.
   if (!(d.prepare("PRAGMA table_info(study_prefs)").all() as { name: string }[]).some((c) => c.name === "group_params"))
     d.exec("ALTER TABLE study_prefs ADD COLUMN group_params TEXT");
+  // Schema 106 – indexes for the permission checks and the page tree
+  // (#383): the groups and workspaces of a person (every grant check asks
+  // for the groups, the sidebar for the memberships), the pages below a
+  // page, and the records with their own access (most records inherit, so
+  // this index stays small; the checks of record permissions read only
+  // these). Indexes only – an older version uses them as well – but the
+  // number tells PostgreSQL to add them (lib/db-driver/pg-current.ts).
+  d.exec(`CREATE INDEX IF NOT EXISTS group_members_user ON group_members(user_id);
+    CREATE INDEX IF NOT EXISTS members_user ON members(user_id);
+    CREATE INDEX IF NOT EXISTS pages_parent ON pages(parent_id);
+    CREATE INDEX IF NOT EXISTS rows_restricted ON rows(page_id) WHERE access<>'inherit';`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
