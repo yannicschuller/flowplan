@@ -606,13 +606,14 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
       // Each record carries the viewer's role; hidden ones are left out.
       // The legacy content stays out: the preview shows the record's text
       // (its document, else that content), the record dialog loads it.
-      rows: await mapAsync(await visibleRows(user, p, records), async ({ content: _content, ...r }) => ({
-        ...r,
-        preview: previews.get(r.id) ?? documentPreview(""),
-        ...(r.access !== "inherit" && await canManageRow(user, p, r)
-          ? { grants: await rowGrants(r.id) }
-          : {}),
-      })),
+      rows: await mapAsync(await visibleRows(user, p, records), async ({ content: _content, ...r }) =>
+        // (`r` is a copy of its own already.)
+        Object.assign(r, {
+          preview: previews.get(r.id) ?? documentPreview(""),
+          ...(r.access !== "inherit" && await canManageRow(user, p, r)
+            ? { grants: await rowGrants(r.id) }
+            : {}),
+        })),
       rowTemplates: await rowTemplates(pid),
       // Groups for record permissions.
       groups:
