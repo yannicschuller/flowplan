@@ -464,9 +464,9 @@ export const commandActions: ActionDoc[] = [
   {
     action: "profile.modules",
     summary: "Features the caller switches off for a calmer interface",
-    description: `For the caller, on all devices: \`hidden\` lists the features (${FEATURE_MODULES.join(", ")}) whose entry points the interface leaves out – the kinds of page in "New page", entries of the "/" menu and the formatting toolbar, quick search commands, sidebar places, home widgets and view types. Only the interface: pages, records and views of a hidden kind stay visible and usable, and nothing about permissions or this API changes. null goes back to the instance's default (what new accounts start with, set by the administration). The bootstrap's \`modules\` carries the hidden features that apply, whether they are the caller's own choice and the instance's default.`,
+    description: `For the caller, on all devices: \`hidden\` lists the features (${FEATURE_MODULES.join(", ")}) whose entry points the interface leaves out – the kinds of page in "New page", entries of the "/" menu and the formatting toolbar, quick search commands, sidebar places, home widgets and view types. Only the interface: pages, records and views of a hidden kind stay visible and usable, and nothing about permissions or this API changes. null goes back to the instance's default (what new accounts start with, set by the administration). The bootstrap's \`modules\` carries the hidden features that apply, whether they are the caller's own choice and the instance's default, and \`off\` (only when there are any): features the administration switched off for the whole instance – hidden whatever the choice and refused by the server (403) in commands, routes and MCP tools.`,
     input: z.object({ action: z.literal("profile.modules"), hidden: hiddenModulesSchema.nullable() }),
-    result: z.object({ modules: z.object({ hidden: z.array(z.enum(FEATURE_MODULES)), own: z.boolean(), standard: z.array(z.enum(FEATURE_MODULES)) }) }),
+    result: z.object({ modules: z.object({ hidden: z.array(z.enum(FEATURE_MODULES)), own: z.boolean(), standard: z.array(z.enum(FEATURE_MODULES)), off: z.array(z.enum(FEATURE_MODULES)).optional() }) }),
   },
   {
     action: "releaseNotes.list",

@@ -59,8 +59,13 @@ export const sameModules = (a: readonly FeatureModule[], b: readonly FeatureModu
 
 // What the bootstrap carries: the hidden features that apply, whether they
 // are the person's own choice and the instance's default (what "Standard"
-// goes back to).
-export type FeatureModulesBoot = { hidden: FeatureModule[]; own: boolean; standard: FeatureModule[] };
+// goes back to) – and the features an administrator switched off for the
+// whole instance (#386, lib/instance-modules.ts), hidden whatever the choice.
+export type FeatureModulesBoot = { hidden: FeatureModule[]; own: boolean; standard: FeatureModule[]; off?: FeatureModule[] };
+// What is hidden in the end: the person's (or the default's) and the
+// instance's, in the list's order.
+export const effectiveHidden = (hidden: readonly FeatureModule[], off: readonly FeatureModule[] = []): FeatureModule[] =>
+  off.length ? FEATURE_MODULES.filter((m) => hidden.includes(m) || off.includes(m)) : [...hidden];
 
 // ---- Where a feature has its entry points ----
 

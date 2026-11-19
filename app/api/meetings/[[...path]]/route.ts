@@ -21,6 +21,7 @@
 //
 // Browser sessions and API tokens; tokens need "KI und Transkription" for
 // everything that records, transcribes or asks the AI.
+import { requireModule } from "@/lib/instance-modules";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -154,6 +155,9 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     await checkOrigin(req);
     const path = (await params).path || [];
     const user = await requireUser();
+    // Meetings switched off for the instance (#386): nothing recorded,
+    // transcribed or summarised; the kept audio can still be deleted.
+    if (!(path.length === 3 && path[1] === "audio" && path[2] === "delete")) await requireModule("meetings");
     if (!path.length) return NextResponse.json(await createMeetingFromUpload(user, await uploadInput(req)), { status: 202, ...noStore });
     if (path.length === 1 && path[0] === "settings") {
       const b = await json(req);

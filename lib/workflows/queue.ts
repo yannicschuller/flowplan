@@ -18,6 +18,7 @@ import { backoff, executeStep, LEASE_MS, type StepRow } from "./engine";
 import { dispatchEvents } from "./events";
 import { workflowLimits } from "./limits";
 import { workersPaused } from "../instance-read-only";
+import { moduleOff } from "../instance-modules";
 import { noteWorkflow } from "./monitoring";
 import { inArea } from "../server-metrics";
 
@@ -125,6 +126,10 @@ async function pump() {
     // Not while the instance moves (lib/instance-read-only.ts): the steps
     // stay queued for the new instance.
     if (await workersPaused()) return;
+    // Workflows switched off for the instance (#386, lib/instance-modules.ts):
+    // nothing runs, queued steps and events stay as they are until they are
+    // switched on again (checked on every round, also in cluster mode).
+    if (await moduleOff("workflows")) return;
     // Nothing due: only the timer on what comes later.
     if (await workDue())
       do {
@@ -206,7 +211,7 @@ export function startWorkflowWorker() {
     () =>
       void workersPaused()
         .then(async (paused) => {
-          if (!paused) await sweepLeases();
+          if (!paused && !(await moduleOff("workflows"))) await sweepLeases();
         })
         .catch(() => {}),
     Number(process.env.FLOWPLAN_WORKFLOW_SWEEP_MS) || 60_000,

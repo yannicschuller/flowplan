@@ -51,6 +51,7 @@ import { nameLookup } from "./sources";
 import { leaderDuty } from "../cluster/leader";
 import { fence } from "./prompts";
 import { workersPaused } from "../instance-read-only";
+import { moduleOff } from "../instance-modules";
 
 export type AiCellMode = "compute" | "fill" | "auto";
 export const AI_QUEUE_LIMITS = { perRequest: 1000, perPerson: 5000, attempts: 3 } as const;
@@ -436,29 +437,35 @@ export async function proposeDatabase(user: Identity, workspaceId: string, descr
 // The background job (instrumentation.ts): changed inputs, the queue and the
 // semantic index, one step every few seconds.
 const runtime = globalThis as typeof globalThis & { flowplanAiTimer?: ReturnType<typeof setInterval>; flowplanAiBusy?: boolean };
+// One round; false when it did not run (busy, the instance moving, AI off).
+export async function aiWorkerRound(): Promise<boolean> {
+  if (runtime.flowplanAiBusy || (await workersPaused())) return false;
+  // AI switched off for the instance (#386, lib/instance-modules.ts): the
+  // round pauses – changed inputs, queued cells and the semantic index
+  // stay queued and are worked off once it is on again.
+  if (await moduleOff("ai")) return false;
+  runtime.flowplanAiBusy = true;
+  // CPU per area (lib/server-metrics.ts).
+  const area = enterArea("ai");
+  try {
+    await processAutoDirty();
+    await processAiCellJobs();
+    const { processEmbeddings } = await import("./semantic");
+    await processEmbeddings();
+    await noteWorkerRun("ai");
+  } catch (error) {
+    await noteWorkerRun("ai", redactSecrets(String((error as Error)?.message || error)));
+    console.error("KI-Hintergrundarbeit fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error)));
+  } finally {
+    area();
+    runtime.flowplanAiBusy = false;
+  }
+  return true;
+}
 export function startAiWorker() {
   if (runtime.flowplanAiTimer) return;
-  const tick = () => leaderDuty("ai", round);
-  const round = async () => {
-    // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanAiBusy || (await workersPaused())) return;
-    runtime.flowplanAiBusy = true;
-    // CPU per area (lib/server-metrics.ts).
-    const area = enterArea("ai");
-    try {
-      await processAutoDirty();
-      await processAiCellJobs();
-      const { processEmbeddings } = await import("./semantic");
-      await processEmbeddings();
-      await noteWorkerRun("ai");
-    } catch (error) {
-      await noteWorkerRun("ai", redactSecrets(String((error as Error)?.message || error)));
-      console.error("KI-Hintergrundarbeit fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error)));
-    } finally {
-      area();
-      runtime.flowplanAiBusy = false;
-    }
-  };
+  // Cluster mode: the leader only (lib/cluster/leader.ts).
+  const tick = () => leaderDuty("ai", aiWorkerRound);
   runtime.flowplanAiTimer = setInterval(() => void tick(), 5000);
   runtime.flowplanAiTimer.unref();
 }

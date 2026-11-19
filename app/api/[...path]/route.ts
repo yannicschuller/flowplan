@@ -1,4 +1,5 @@
 import { currentRequestId, serverError } from "@/lib/request-context";
+import { requireModule } from "@/lib/instance-modules";
 import { e2eBuild } from "@/lib/e2e-build";
 import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
 import { CSV_FORMULA } from "@/lib/cell-text";
@@ -515,6 +516,8 @@ async function handleGET(
     // deck – the command study.queue as a read, for read tokens too. With
     // offline=1 the whole deck for the offline copy (lib/offline-plan.ts).
     if (path.length === 3 && path[0] === "pages" && path[2] === "study") {
+      // Flashcards switched off for the instance (#386): no studying.
+      await requireModule("flashcards");
       if (url.searchParams.get("offline") === "1")
         return NextResponse.json(await studyOffline(user, { pageId: path[1], zone: url.searchParams.get("zone") || undefined }), { headers: { "Cache-Control": "no-store" } });
       const limit = url.searchParams.get("limit");
@@ -1547,6 +1550,9 @@ async function handlePOST(
       return NextResponse.json({ ...backup, exports: await runMarkdownExports() });
     }
     // Saving or deleting an own whiteboard template.
+    // Whiteboards switched off for the instance (#386): their templates,
+    // racks and imports are not changed.
+    if (path.length === 3 && path[0] === "whiteboards" && ["templates", "rack-templates", "netbox"].includes(path[2])) await requireModule("whiteboards");
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates") {
       if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
       const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());

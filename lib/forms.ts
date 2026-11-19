@@ -1,4 +1,5 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
+import { requireModule } from "./instance-modules";
 import { z } from "zod";
 import { hiddenRowIds, visibleRows } from "./row-access";
 import { fieldWriteMessage, publicWritable } from "./field-access";
@@ -35,6 +36,9 @@ export async function formSettings(pageId: string) {
     : null;
 }
 export async function getForm(token: string, user: Identity | null) {
+  // Forms switched off for the instance (#386): every form is closed – the
+  // public page, its answers, drafts, suggestions and fonts.
+  await requireModule("forms");
   const f = await one<{
     page_id: string;
     title: string;

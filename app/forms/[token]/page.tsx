@@ -1,4 +1,5 @@
 import { serverT } from "@/lib/i18n-server";
+import { moduleOff } from "@/lib/instance-modules";
 import { PublicLegalFooter } from "@/components/legal-footer-server";
 import { activeUser, HttpError } from "@/lib/auth";
 import { getForm } from "@/lib/forms";
@@ -15,6 +16,17 @@ export default async function FormPage({
 }) {
   const t = await serverT();
   const { token } = await params;
+  // Forms switched off for the instance (#386): closed, with a message.
+  if (await moduleOff("forms"))
+    return (
+      <main className="public-page">
+        <a className="public-brand" href="/">
+          flowplan
+        </a>
+        <h1>{t("Formular", "Form")}</h1>
+        <p>{t("Dieses Formular ist nicht verfügbar: Formulare sind auf dieser Instanz ausgeschaltet.", "This form is not available: forms are switched off on this instance.")}</p>
+      </main>
+    );
   try {
     const form = await getForm(token, await activeUser());
     const survey = form.config.survey?.enabled ? form.config.survey : null;

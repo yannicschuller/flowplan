@@ -1845,7 +1845,7 @@ export type CommandProfileSettingsLevelResult = {
   };
 };
 
-/** Features the caller switches off for a calmer interface. For the caller, on all devices: `hidden` lists the features (flashcards, whiteboards, notebooks, journal, dashboards, workflows, drawio, ai, views, forms, meetings) whose entry points the interface leaves out – the kinds of page in "New page", entries of the "/" menu and the formatting toolbar, quick search commands, sidebar places, home widgets and view types. Only the interface: pages, records and views of a hidden kind stay visible and usable, and nothing about permissions or this API changes. null goes back to the instance's default (what new accounts start with, set by the administration). The bootstrap's `modules` carries the hidden features that apply, whether they are the caller's own choice and the instance's default. */
+/** Features the caller switches off for a calmer interface. For the caller, on all devices: `hidden` lists the features (flashcards, whiteboards, notebooks, journal, dashboards, workflows, drawio, ai, views, forms, meetings) whose entry points the interface leaves out – the kinds of page in "New page", entries of the "/" menu and the formatting toolbar, quick search commands, sidebar places, home widgets and view types. Only the interface: pages, records and views of a hidden kind stay visible and usable, and nothing about permissions or this API changes. null goes back to the instance's default (what new accounts start with, set by the administration). The bootstrap's `modules` carries the hidden features that apply, whether they are the caller's own choice and the instance's default, and `off` (only when there are any): features the administration switched off for the whole instance – hidden whatever the choice and refused by the server (403) in commands, routes and MCP tools. */
 export type CommandProfileModules = {
   action: "profile.modules";
   hidden: ("flashcards" | "whiteboards" | "notebooks" | "journal" | "dashboards" | "workflows" | "drawio" | "ai" | "views" | "forms" | "meetings")[] | null;
@@ -1856,6 +1856,7 @@ export type CommandProfileModulesResult = {
     hidden: ("flashcards" | "whiteboards" | "notebooks" | "journal" | "dashboards" | "workflows" | "drawio" | "ai" | "views" | "forms" | "meetings")[];
     own: boolean;
     standard: ("flashcards" | "whiteboards" | "notebooks" | "journal" | "dashboards" | "workflows" | "drawio" | "ai" | "views" | "forms" | "meetings")[];
+    off?: ("flashcards" | "whiteboards" | "notebooks" | "journal" | "dashboards" | "workflows" | "drawio" | "ai" | "views" | "forms" | "meetings")[];
   };
 };
 

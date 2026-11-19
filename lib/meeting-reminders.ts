@@ -33,6 +33,7 @@ import { reminderTarget } from "./date-reminder-options";
 import { validZone } from "./date-values";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { moduleOff } from "./instance-modules";
 import type { Identity, Page } from "./types";
 
 // Minutes before a timed event (one of the date reminders' offsets).
@@ -176,13 +177,18 @@ export async function processMeetingReminders(now = Date.now()) {
 }
 
 const runtime = globalThis as typeof globalThis & { flowplanMeetingReminderTimer?: ReturnType<typeof setInterval> };
+// One round: the reminders fired, null when it did not run – while the
+// instance moves or meetings are switched off for it (#386).
+export async function meetingReminderRound(now?: number): Promise<number | null> {
+  if ((await workersPaused()) || (await moduleOff("meetings"))) return null;
+  return await processMeetingReminders(now);
+}
 export function startMeetingReminderWorker(onFired: () => void) {
   if (runtime.flowplanMeetingReminderTimer) return;
+  // Cluster mode: the leader only.
   const tick = () => leaderDuty("meeting-reminders", async () => {
-    // Cluster mode: the leader only; nothing while the instance moves.
-    if (await workersPaused()) return;
     try {
-      if (await processMeetingReminders()) onFired();
+      if (await meetingReminderRound()) onFired();
     } catch (error) {
       console.error("Besprechungserinnerungen fehlgeschlagen", error);
     }

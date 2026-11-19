@@ -3,6 +3,7 @@
 // exactly their rights: reads go through requirePage, the journal lock and
 // record access; writes go through command() like an edit in the browser
 // (versions, notifications, webhooks). Read tokens only get read tools.
+import { moduleOff, moduleOffError, modulesOff, toolModule } from "./instance-modules";
 import { randomBytes } from "node:crypto";
 import { isFormattedText } from "./inline-markdown";
 import { aliasList } from "./aliases";
@@ -1312,9 +1313,14 @@ const message = (e: unknown) =>
       ? localizedMessage(e.message, contentLocale())
       : "The request could not be processed.";
 
+// The feature a tool belongs to (#386): switched off for the instance, the
+// tool is left out of the list and refused.
+const moduleOf = (tool: Tool) => toolModule(tool.name) ?? (tool.ai ? "ai" : undefined);
 async function callTool(user: Identity, name: unknown, args: unknown): Promise<ToolResult> {
   const tool = tools.find((t) => t.name === name);
   if (!tool) throw new RpcError(-32602, `Unknown tool: ${String(name)}`);
+  const module = moduleOf(tool);
+  if (module && (await moduleOff(module))) return { isError: true, content: [{ type: "text", text: message(moduleOffError(module)) }] };
   if (!may(user, tool))
     return {
       isError: true,
@@ -1383,10 +1389,11 @@ async function dispatch(user: Identity, method: string, params: Record<string, u
     }
     case "ping":
       return {};
-    case "tools/list":
+    case "tools/list": {
+      const off = await modulesOff();
       return {
         tools: tools
-          .filter((t) => may(user, t))
+          .filter((t) => may(user, t) && !off.includes(moduleOf(t)!))
           .map((t) => ({
             name: t.name,
             title: t.title,
@@ -1395,6 +1402,7 @@ async function dispatch(user: Identity, method: string, params: Record<string, u
             annotations: { title: t.title, readOnlyHint: !t.write, destructiveHint: !!t.destructive, openWorldHint: !!t.openWorld },
           })),
       };
+    }
     case "tools/call":
       return callTool(user, params.name, params.arguments);
     case "resources/list":

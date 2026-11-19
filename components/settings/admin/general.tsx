@@ -18,7 +18,7 @@ import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, InstanceSelect, InstanceSwitch, InstanceText, useDocs } from "./parts";
 import { InstanceToolbarLayout } from "./toolbar-layout-default";
 import { StarterContent } from "./starter-content";
-import { InstanceModules } from "./modules-default";
+import { InstanceModules, InstanceModulesOff } from "./modules-default";
 
 export default function GeneralSection() {
   const t = useT();
@@ -161,7 +161,9 @@ export default function GeneralSection() {
       </SettingGroup>
       {/* What new personal workspaces start with (#381). */}
       <StarterContent />
-      {/* The features new accounts see (#378). */}
+      {/* Features switched off for the instance (#386), then the features
+          new accounts see (#378). */}
+      <InstanceModulesOff />
       <InstanceModules />
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>

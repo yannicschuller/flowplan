@@ -14,6 +14,8 @@ import { useT } from "./i18n";
 import { api, PageIcon, PageSkeleton, reportError } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import { readModeIds } from "@/lib/read-mode";
+import { featureModules } from "@/lib/feature-modules-client";
+import { PAGE_KIND_MODULE } from "@/lib/feature-modules";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import type { Page, Role, User } from "@/lib/types";
 import type { AiStatus } from "@/lib/ai/features";
@@ -176,7 +178,9 @@ export function SplitPane({
   const onError = useCallback((error: unknown) => void reportError(error), []);
   const page = data?.page || pages.find((p) => p.id === pageId);
   const editable =
-    !!data && ["editor", "owner"].includes(data.role) && !data.page.locked && !(data.page.kind === "document" && readModeIds().includes(data.page.id));
+    !!data && ["editor", "owner"].includes(data.role) && !data.page.locked && !(data.page.kind === "document" && readModeIds().includes(data.page.id)) &&
+    // Read-only while its kind is switched off for the instance (#386).
+    !featureModules().off.some((m) => m === (data.page.journal_date ? "journal" : PAGE_KIND_MODULE[data.page.kind]));
   let body: React.ReactNode;
   if (failed) body = <div className="loading-content">{t("Seite nicht verfügbar.", "Page not available.")}</div>;
   else if (!data) body = <PageSkeleton kind={page?.kind === "database" ? "database" : "document"} />;

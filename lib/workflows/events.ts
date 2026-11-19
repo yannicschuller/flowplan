@@ -11,6 +11,7 @@ import { graphOf, startLiveRun, type WorkflowRow } from "./engine";
 import { triggerMatches, type WorkflowEvent } from "./nodes/triggers";
 import { noteWorkflow } from "./monitoring";
 import { wakeAfterCommit } from "./queue";
+import { moduleOff } from "../instance-modules";
 
 const EVENT_LEASE_MS = 2 * 60_000;
 export const PAGE_CHANGED_DEBOUNCE_MS = 2 * 60_000;
@@ -59,6 +60,9 @@ export type EmitInput = {
 // workflow listens. The run that caused it, if any, and its depth go with it.
 export async function emitWorkflowEvent(kind: string, input: EmitInput): Promise<string | null> {
   if (!input.checked && !(await listening(input.workspaceId, [kind], input.scopeId ?? ""))) return null;
+  // Workflows switched off for the instance (#386): nothing is recorded, so
+  // no backlog of runs starts once they are switched on again.
+  if (await moduleOff("workflows")) return null;
   const origin = currentRun();
   const now = Date.now();
   const eventId = id();
