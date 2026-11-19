@@ -66,8 +66,8 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .next/cache
-          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
-          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+          key: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       # The ordinary production build (CI checks the types). The gallery
       # signs up the first account of an empty data directory itself, so
       # it needs no demo sign-in and no e2e switch.

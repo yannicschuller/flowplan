@@ -72,8 +72,8 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: .next/cache
-          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
-          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+          key: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       # The ordinary production build (CI checks the types) instead of the
       # `next dev` in seed.mjs's header: faster pages, no dev overlay. The
       # standalone server gets its static files and public/ next to itself,
