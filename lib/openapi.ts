@@ -1444,6 +1444,19 @@ const widgetSchemas: Record<string, Json> = {
             data: { type: "object", additionalProperties: true, description: `The widget's data: at most ${MAX_ITEMS} items and about ${MAX_WIDGET_BYTES} bytes (\`truncated: true\` when shortened). Pages behind a journal PIN answer \`locked: true\`, end-to-end encrypted ones \`encrypted: true\`, without content.` },
             status: { type: "integer", description: "HTTP status of a widget that failed (403, 404 …)" },
             error: { type: "string" },
+            theme: {
+              type: "object",
+              description:
+                "The colours of the workspace the widget's content belongs to (person-wide widgets: the workspace used last): its accent for light and dark mode and the text colour on it, contrast-checked like the web app; Flowplan's own colours for a workspace without an accent or a person who chose Flowplan's look.",
+              properties: {
+                workspaceId: { type: ["string", "null"] },
+                accent: { type: "string", pattern: "^#[0-9a-f]{6}$" },
+                accentDark: { type: "string", pattern: "^#[0-9a-f]{6}$" },
+                onAccent: { type: "string", pattern: "^#[0-9a-f]{6}$" },
+                onAccentDark: { type: "string", pattern: "^#[0-9a-f]{6}$" },
+              },
+              required: ["workspaceId", "accent", "accentDark", "onAccent", "onAccentDark"],
+            },
           },
           required: ["id", "kind", "ok"],
         },
@@ -2256,7 +2269,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/forms/[token]/fonts/[fontId]/route.ts": "Public forms with their own link token",
   "app/api/forms/[token]/suggestions/route.ts": "Earlier answers while typing in a members-only form; internal to the form page",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
-  "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token: registration with push relay token and encryption key, Live Activity relay tokens; the administrators' widget summary only for instance administrators)",
+  "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token: registration with push relay token and encryption key, Live Activity and widget push relay tokens, notifications on or off per installation (app profiles); the administrators' widget summary only for instance administrators)",
   "app/api/mobile/notifications/route.ts": "Buttons on the mobile apps' push notifications, only with the device token",
   "app/api/calendar-profile/route.ts": "Apple configuration profile with CalDAV accounts: created from the browser's account settings, downloaded once by its link",
   "app/api/contacts/route.ts": "Contacts databases of the browser app: LDAP directory import and sync, vCard import/export, CardDAV accesses and their Apple configuration profile (CardDAV itself is /api/carddav/…, basic auth with such an access)",

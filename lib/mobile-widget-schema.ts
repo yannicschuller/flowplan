@@ -20,6 +20,12 @@ export const widgetKinds = [
   "incident",
   // "Karten fällig" (docs/specs/flashcards.md §10.2): new kinds go at the end.
   "study",
+  // Widgets 2026: next appointment, continue reading, a dashboard's key
+  // figure, a deadline countdown.
+  "event",
+  "reading",
+  "metric",
+  "deadline",
 ] as const;
 export type WidgetKind = (typeof widgetKinds)[number];
 
@@ -86,6 +92,23 @@ export const widgetConfigs = {
   incident: z.object({}),
   // All decks, or the chosen ones.
   study: z.object({ pageIds: z.array(uuid).max(20).optional() }),
+  // Calendars as the "calendar" widget's sources: "<pageId>:<viewId>" (or
+  // a database's id alone: its default view); none: all calendars.
+  event: z.object({
+    calendars: z.array(z.string().regex(/^[0-9a-f-]{36}(:.{1,100})?$/i)).max(10).optional(),
+    within: z.enum(["today", "48h", "week"]).default("48h"),
+    showJoin: z.boolean().default(true),
+    max: z.number().int().min(1).max(3).default(3),
+  }),
+  reading: z.object({ source: z.enum(["recent", "library"]).default("recent"), max: z.number().int().min(1).max(6).default(4) }),
+  // A number tile of a dashboard (its id in dashboards.tiles).
+  metric: z.object({ dashboardId: uuid, widgetId: z.string().min(1).max(40) }),
+  // A record of a database (pageId + rowId) or a document task (pageId,
+  // rowId of a record's document or none, taskKey and index as the tasks
+  // widget's answer names them).
+  deadline: z
+    .object({ pageId: uuid, rowId: uuid.optional(), taskKey: z.string().min(1).max(64).optional(), index: z.number().int().min(0).max(5000).optional() })
+    .refine((c) => !!c.rowId || !!c.taskKey, { message: "rowId or taskKey" }),
 } satisfies Record<WidgetKind, z.ZodType>;
 export type WidgetConfig<K extends WidgetKind> = z.infer<(typeof widgetConfigs)[K]>;
 

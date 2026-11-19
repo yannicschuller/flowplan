@@ -80,6 +80,7 @@ const CODE_ALLOWED: Record<string, string> = {
   "lib/mail.ts": "e-mails: no workspace look",
   "lib/weekly-digest.ts": "e-mails: no workspace look",
   "app/opengraph-image.tsx": "the brand's share image",
+  "lib/mobile-widget-theme.ts": "the app widgets' colours without a workspace look (sent to the app)",
   "app/manifest.ts": "installed app: Flowplan's colours",
 };
 const CODE_ALLOWED_DIRS = ["components/whiteboard/", "lib/whiteboard", "lib/marketplace-official-extra/"];

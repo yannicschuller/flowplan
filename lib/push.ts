@@ -312,8 +312,9 @@ export async function flushPushQueue(
     device_id: string | null;
     relay_token: string | null;
     public_key: string | null;
+    push_enabled: number | null;
   }>(
-    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body,n.kind,n.link,md.id device_id,r.relay_token,r.public_key FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id LEFT JOIN mobile_devices md ON md.push_subscription_id=s.id LEFT JOIN mobile_push_relay r ON r.device_id=md.id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
+    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body,n.kind,n.link,md.id device_id,r.relay_token,r.public_key,md.push_enabled FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id LEFT JOIN mobile_devices md ON md.push_subscription_id=s.id LEFT JOIN mobile_push_relay r ON r.device_id=md.id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
     now,
   );
   const relay = relayConfig();
@@ -321,8 +322,11 @@ export async function flushPushQueue(
   await flushPushTests(send, sendExpo, sendRelay, relay);
   // Live Activities (lib/live-activity-push.ts) – loaded only when some exist.
   const live = relay.enabled && !!(await one("SELECT 1 FROM push_live_queue WHERE available_at<=? LIMIT 1", now));
+  // Widget pushes (lib/widget-push.ts) – likewise.
+  const widgets = relay.enabled && (await (await import("./widget-push")).widgetPushWaiting(now));
   if (!jobs.length) {
     if (live) await (await import("./live-activity-push")).flushLiveActivities(sendRelay, now);
+    if (widgets) await (await import("./widget-push")).flushWidgetPushes(sendRelay, now);
     return;
   }
   const keys = pushKeys();
@@ -339,6 +343,12 @@ export async function flushPushQueue(
         )).changes
       )
         return;
+      // An app profile that is not the active one: summary and widgets
+      // only, no notifications (lib/mobile-devices.ts, `push: false`).
+      if (job.device_id && Number(job.push_enabled) === 0) {
+        await run("DELETE FROM push_deliveries WHERE id=?", job.id);
+        return;
+      }
       const page = job.page_id
         ? (await one<Page>("SELECT * FROM pages WHERE id=?", job.page_id))
         : undefined;
@@ -466,8 +476,8 @@ export async function flushPushQueue(
     await forEachAsync(viaRelay, async ({ job }, i) => await relayOutcome(job, results[i]));
   }
   if (live) await (await import("./live-activity-push")).flushLiveActivities(sendRelay, Date.now());
+  if (widgets) await (await import("./widget-push")).flushWidgetPushes(sendRelay, Date.now());
 }
-
 type RelayJob = {
   id: number;
   subscription_id: string;

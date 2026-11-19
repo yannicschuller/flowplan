@@ -14,8 +14,10 @@ const publicId = (tokenHash: string) => createHash("sha256").update(`session:${t
 
 export async function mySessions(user: Identity, currentToken: string | undefined) {
   const current = currentToken ? hash(currentToken) : "";
-  return (await all<{ token: string; created_at: number | null; last_seen: number | null; expires: number; remember: number; agent: string }>(
-    "SELECT token,created_at,last_seen,expires,remember,agent FROM sessions WHERE user_id=? AND expires>? ORDER BY COALESCE(last_seen,created_at,0) DESC",
+  return (await all<{ token: string; created_at: number | null; last_seen: number | null; expires: number; remember: number; agent: string; widgets_only: number }>(
+    `SELECT token,created_at,last_seen,expires,remember,agent,
+       (EXISTS(SELECT 1 FROM mobile_devices d WHERE d.session_token=sessions.token) AND NOT EXISTS(SELECT 1 FROM mobile_devices d WHERE d.session_token=sessions.token AND d.push_enabled<>0)) widgets_only
+     FROM sessions WHERE user_id=? AND expires>? ORDER BY COALESCE(last_seen,created_at,0) DESC`,
     user.id,
     Date.now(),
   )).map((s) => ({
@@ -26,6 +28,9 @@ export async function mySessions(user: Identity, currentToken: string | undefine
     lastSeen: s.last_seen,
     expires: s.expires,
     remember: !!s.remember,
+    // An app profile that is not the active one: it stays signed in for its
+    // widgets, without notifications (lib/mobile-devices.ts).
+    widgetsOnly: !!Number(s.widgets_only),
   }));
 }
 

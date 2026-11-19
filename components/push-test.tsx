@@ -54,6 +54,11 @@ export function statusText(t: Translate, target: PushTestTarget, report: PushTes
         "Benachrichtigungen sind für dieses Gerät ausgeschaltet. Erlaube sie in der App (Einstellungen → Benachrichtigungen) oder in den Systemeinstellungen.",
         "Notifications are turned off for this device. Allow them in the app (Settings → Notifications) or in the system settings.",
       );
+    case "widgets-only":
+      return t(
+        "Nur Widgets: Dieses Profil ist in der App gerade nicht aktiv. Benachrichtigungen bekommt das aktive Profil; die Widgets dieses Profils bleiben aktuell.",
+        "Widgets only: this profile is not the active one in the app. Notifications go to the active profile; this profile's widgets stay up to date.",
+      );
     case "app-push-off":
       return t("Push für die Apps ist auf dieser Instanz ausgeschaltet (MOBILE_PUSH=off).", "Push to the apps is turned off on this instance (MOBILE_PUSH=off).");
     case "relay-off":

@@ -287,10 +287,20 @@ export default function PushSection() {
         </SettingRow>
         <SettingRow
           label={t("Registrierte Geräte", "Registered devices")}
-          description={t(
-            `${num(status.devices.apps)} App-Installationen: ${num(status.devices.relay)} über das Relay (${num(status.devices.relayOnly)} nur Relay), ${num(status.devices.expo)} mit Expo-Token. ${num(status.devices.web)} Browser mit Web Push.`,
-            `${num(status.devices.apps)} app installations: ${num(status.devices.relay)} through the relay (${num(status.devices.relayOnly)} relay only), ${num(status.devices.expo)} with an Expo token. ${num(status.devices.web)} browsers with Web Push.`,
-          )}
+          description={
+            <>
+              {t(
+                `${num(status.devices.apps)} App-Installationen: ${num(status.devices.relay)} über das Relay (${num(status.devices.relayOnly)} nur Relay), ${num(status.devices.expo)} mit Expo-Token. ${num(status.devices.web)} Browser mit Web Push.`,
+                `${num(status.devices.apps)} app installations: ${num(status.devices.relay)} through the relay (${num(status.devices.relayOnly)} relay only), ${num(status.devices.expo)} with an Expo token. ${num(status.devices.web)} browsers with Web Push.`,
+              )}
+              {status.devices.widgetsOnly || status.devices.widgetPush
+                ? ` ${t(
+                    `${num(status.devices.widgetsOnly)} davon nur Widgets (Profil in der App nicht aktiv, keine Benachrichtigungen), ${num(status.devices.widgetPush)} mit Widget-Push (iPhone).`,
+                    `${num(status.devices.widgetsOnly)} of them widgets only (profile not active in the app, no notifications), ${num(status.devices.widgetPush)} with widget push (iPhone).`,
+                  )}`
+                : null}
+            </>
+          }
         >
           <FixLink href={testLink}>
             <PaperPlaneTilt size={14} aria-hidden /> {t("Testbenachrichtigung", "Test notification")}

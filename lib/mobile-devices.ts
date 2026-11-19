@@ -16,6 +16,15 @@
 // - Widgets and the Live Activity: a device token (fpd_…, only a hash is
 //   stored) lets the app read a short summary in the background – unread
 //   notifications, open tasks, the running timer. It opens nothing else.
+// - Profiles (schema 115): an app with several profiles keeps every
+//   profile's installation registered; only the active one gets
+//   notifications (`push: false` at registration, POST /api/mobile/device
+//   on a switch). The others keep their device token for the summary and
+//   the widgets of that profile.
+// - Widget pushes (iOS 26, lib/widget-push.ts): the relay token of the
+//   app's widget push registration (platform "ios-widgets" at the relay);
+//   when something the widgets show changes, the instance tells iOS to
+//   reload them (no content).
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, lockFor, one, run, transaction } from "./db";
@@ -97,12 +106,37 @@ const registration = z
     // the phone keeps behind Face ID / Touch ID / the fingerprint. Only from
     // the web view (the session cookie): a device token alone never sets it.
     approvalKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/).nullable().optional(),
+    // Version 3 (multi-profile apps): false keeps the installation for the
+    // summary and widgets without notifications (its profile is not the
+    // active one); missing means true, as before.
+    push: z.boolean().optional(),
+    // The widget push registration (iOS 26): missing keeps the one stored
+    // for this installation, null removes it.
+    widgetPush: z.object({ relayToken: relayTokenSchema, relayUrl: z.string().max(300).nullable().optional() }).strict().nullable().optional(),
   })
   .refine((b) => !b.relayToken === !b.publicKey, { message: "relayToken and publicKey belong together" });
 
 const relayAad = relayTokenAad,
   liveAad = liveTokenAad;
 export const openLiveToken = (deviceId: string, kind: LiveActivityKind, sealed: string) => openSecret(sealed, liveAad(deviceId, kind));
+export const widgetTokenAad = (deviceId: string) => `push-widgets:${deviceId}`;
+export const openWidgetToken = (deviceId: string, sealed: string) => openSecret(sealed, widgetTokenAad(deviceId));
+
+// The widget push registration of an installation (null removes it).
+async function storeWidgetToken(deviceId: string, token: string | null) {
+  await run("DELETE FROM mobile_widget_push WHERE device_id=?", deviceId);
+  if (!token) return;
+  // The phone has one widget token for all its profiles: the same token
+  // may stand at several installations (lib/widget-push.ts sends it once).
+  await run(
+    "INSERT INTO mobile_widget_push(device_id,relay_token,token_hash,created_at) VALUES(?,?,?,?)",
+    deviceId,
+    sealSecret(token, widgetTokenAad(deviceId)),
+    hashToken(token),
+    Date.now(),
+  );
+}
+const hasWidgetPush = async (deviceId: string) => !!(await one("SELECT 1 FROM mobile_widget_push WHERE device_id=?", deviceId));
 
 // What the app needs to register with the relay: which relay, and the
 // instance origin it signs as (the "instance" of the relay registration).
@@ -159,6 +193,16 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
       user.id,
       b.installationId,
     );
+    // The widget push registration outlives a renewal unless the app sends
+    // its own (re-sealed for the new entry below).
+    let keptWidgetToken: string | null = null;
+    if (existing && b.widgetPush === undefined) {
+      const stored = await one<{ relay_token: string }>("SELECT relay_token FROM mobile_widget_push WHERE device_id=?", existing.id);
+      if (stored)
+        try {
+          keptWidgetToken = openWidgetToken(existing.id, stored.relay_token);
+        } catch {}
+    }
     if (
       !existing &&
       Number((await one<{ n: number }>("SELECT COUNT(*) n FROM mobile_devices WHERE user_id=?", user.id))?.n || 0) >= MAX_DEVICES
@@ -190,7 +234,7 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
     const token = `fpd_${randomBytes(30).toString("base64url")}`;
     const now = Date.now();
     await run(
-      "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at,approval_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at,approval_key,push_enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
       deviceId,
       user.id,
       b.installationId,
@@ -203,6 +247,7 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
       now,
       now,
       b.approvalKey ?? null,
+      b.push === false ? 0 : 1,
     );
     if (withRelay && subscription) {
       const relayHash = hashToken(b.relayToken!);
@@ -225,9 +270,17 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
         if (value) await storeLiveToken(deviceId, kind, value, labels);
       }
     }
+    // Widget pushes need no notification permission, only the relay.
+    const widgetToken = b.widgetPush === undefined ? keptWidgetToken : b.widgetPush && relay && (!b.widgetPush.relayUrl || strictOrigin(b.widgetPush.relayUrl) === relay.url) ? b.widgetPush.relayToken : null;
+    if (widgetToken) await storeWidgetToken(deviceId, widgetToken);
     return {
       deviceToken: token,
       push: !!subscription,
+      // Whether this installation gets notifications (false: `push: false`,
+      // its profile is not the active one – summary and widgets only).
+      pushEnabled: b.push !== false,
+      // Whether the instance sends widget pushes to it (iOS 26).
+      widgetPush: !!widgetToken,
       // Whether notifications go through the relay, end-to-end encrypted.
       relay: withRelay && !!subscription,
       liveActivities: await liveKinds(deviceId),
@@ -243,21 +296,57 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
 const liveInput = z
   .object({ kind: z.enum(LIVE_ACTIVITY_KINDS), relayToken: relayTokenSchema.nullable(), relayUrl: z.string().max(300).nullable().optional(), labels: z.unknown().optional() })
   .strict();
-export async function setLiveActivityToken(authorization: string | null, input: unknown) {
+// The installation behind "Bearer fpd_…" while its session lives; 401 otherwise.
+async function requireDevice(authorization: string | null) {
   const match = authorization?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   const device = match
-    ? (await one<{ id: string }>(
-        "SELECT d.id FROM mobile_devices d JOIN sessions s ON s.token=d.session_token JOIN users u ON u.id=d.user_id WHERE d.token_hash=? AND s.expires>? AND u.disabled=0",
+    ? (await one<{ id: string; platform: string; push_enabled: number }>(
+        "SELECT d.id,d.platform,d.push_enabled FROM mobile_devices d JOIN sessions s ON s.token=d.session_token JOIN users u ON u.id=d.user_id WHERE d.token_hash=? AND s.expires>? AND u.disabled=0",
         hashToken(match[1]),
         Date.now(),
       ))
     : undefined;
   if (!device) throw new HttpError(401, "Bitte melde dich an.");
+  return device;
+}
+export async function setLiveActivityToken(authorization: string | null, input: unknown) {
+  const device = await requireDevice(authorization);
   const b = liveInput.parse(input);
   const relay = pushRelayInfo();
   if (b.relayToken && (!relay || (b.relayUrl && strictOrigin(b.relayUrl) !== relay.url))) return { ok: false, liveActivities: await liveKinds(device.id), pushRelay: relay };
   await storeLiveToken(device.id, b.kind, b.relayToken, parseLabels(b.labels));
   return { ok: true, liveActivities: await liveKinds(device.id), pushRelay: relay };
+}
+
+// The widget push registration of this installation (iOS 26; platform
+// "ios-widgets" at the relay), sent after the registration whenever WidgetKit
+// hands the app a new token: { relayToken, relayUrl? }; a null relayToken (or
+// DELETE) removes it. A token from another relay is not stored.
+const widgetInput = z.object({ relayToken: relayTokenSchema.nullable(), relayUrl: z.string().max(300).nullable().optional() }).strict();
+export async function setWidgetPushToken(authorization: string | null, input: unknown) {
+  const device = await requireDevice(authorization);
+  const b = widgetInput.parse(input);
+  const relay = pushRelayInfo();
+  if (b.relayToken && (!relay || (b.relayUrl && strictOrigin(b.relayUrl) !== relay.url))) return { ok: false, widgetPush: await hasWidgetPush(device.id), pushRelay: relay };
+  await storeWidgetToken(device.id, b.relayToken);
+  return { ok: true, widgetPush: !!b.relayToken, pushRelay: relay };
+}
+
+// The app switched profiles: `push: false` for the installation of the
+// profile that is no longer active (it keeps summary and widgets),
+// `push: true` for the active one. Nothing else changes.
+const deviceInput = z.object({ push: z.boolean() }).strict();
+export async function setDevicePush(authorization: string | null, input: unknown) {
+  const device = await requireDevice(authorization);
+  const b = deviceInput.parse(input);
+  await run("UPDATE mobile_devices SET push_enabled=? WHERE id=?", b.push ? 1 : 0, device.id);
+  // Notifications that waited for it while it was off stay unsent.
+  if (!b.push)
+    await run(
+      "DELETE FROM push_deliveries WHERE delivered_at IS NULL AND subscription_id IN (SELECT push_subscription_id FROM mobile_devices WHERE id=? AND push_subscription_id IS NOT NULL)",
+      device.id,
+    );
+  return { ok: true, pushEnabled: b.push, widgetPush: await hasWidgetPush(device.id) };
 }
 
 // The person behind a device, with the rights of its session, for work in
@@ -462,8 +551,8 @@ async function runningTimer(user: Identity) {
 
 // The installations of a person, for the profile settings.
 export async function listMobileDevices(user: Identity) {
-  return await all<{ installation_id: string; platform: string; name: string; app_version: string; created_at: number; last_seen_at: number; push: number; relay: number }>(
-    "SELECT installation_id,platform,name,app_version,created_at,last_seen_at,(push_subscription_id IS NOT NULL) push,EXISTS(SELECT 1 FROM mobile_push_relay r WHERE r.device_id=mobile_devices.id) relay FROM mobile_devices WHERE user_id=? ORDER BY last_seen_at DESC",
+  return await all<{ installation_id: string; platform: string; name: string; app_version: string; created_at: number; last_seen_at: number; push: number; relay: number; push_enabled: number; widget_push: number }>(
+    "SELECT installation_id,platform,name,app_version,created_at,last_seen_at,(push_subscription_id IS NOT NULL) push,EXISTS(SELECT 1 FROM mobile_push_relay r WHERE r.device_id=mobile_devices.id) relay,push_enabled,EXISTS(SELECT 1 FROM mobile_widget_push w WHERE w.device_id=mobile_devices.id) widget_push FROM mobile_devices WHERE user_id=? ORDER BY last_seen_at DESC",
     user.id,
   );
 }

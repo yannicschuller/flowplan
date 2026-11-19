@@ -890,7 +890,7 @@ test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per r
   assert.ok(bytes(capped) <= W.MAX_WIDGET_BYTES);
   assert.equal(capped.truncated, true);
   // Every kind answers within the limit for this busy account.
-  const all_ = await widgets(O, W.widgetKinds.filter((k) => k !== "incident" && k !== "counter" && k !== "forms").map((kind) => ({ kind, config: {} })));
+  const all_ = await widgets(O, W.widgetKinds.filter((k) => !["incident", "counter", "forms", "metric", "deadline"].includes(k)).map((kind) => ({ kind, config: {} })));
   for (const w of all_) {
     assert.equal(w.ok, true, `${w.kind}: ${w.error}`);
     assert.ok(bytes(w.data) <= W.MAX_WIDGET_BYTES, `${w.kind}: ${bytes(w.data)}`);
