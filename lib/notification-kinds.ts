@@ -18,10 +18,13 @@ export const notificationKinds = {
   // The daily reminder to study flashcards (lib/study-reminders.ts): push
   // only by default – it is no news to keep in the inbox.
   study: "Lernerinnerungen",
+  // The instance's AI quota (#382, lib/ai/quota.ts): the warning and the
+  // ceiling reached – only for administrators.
+  ai_quota: "KI-Kontingent der Instanz",
 } as const;
 export type NotificationKind = keyof typeof notificationKinds;
 // Kinds only administrators get and see in the settings.
-export const adminOnlyKinds: readonly NotificationKind[] = ["incident"];
+export const adminOnlyKinds: readonly NotificationKind[] = ["incident", "ai_quota"];
 // Kinds whose other channels do not hang on the inbox: a study reminder is
 // pushed without being kept in the inbox (notifications.push_only,
 // lib/study-reminders.ts). For every other kind push, e-mail and chat apps
@@ -50,6 +53,7 @@ export const notificationDefaults: Record<NotificationKind, NotificationChannels
   security: { inbox: true, push: true, email: true, messenger: true },
   incident: { inbox: true, push: true, email: true, messenger: true },
   study: { inbox: false, push: true, email: false, messenger: false },
+  ai_quota: { inbox: true, push: true, email: true, messenger: false },
 };// SQL for "this channel is on for this person and kind": their own setting,
 // else the default (table notification_defaults, filled from the map above).
 // The chat-app column of a person's row may be NULL (rows saved before it

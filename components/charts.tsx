@@ -325,6 +325,7 @@ export function BarChart({
   formatY = (n) => String(n),
   height = 190,
   total = true,
+  limit,
 }: {
   title: string;
   description: string;
@@ -336,13 +337,15 @@ export function BarChart({
   height?: number;
   // Show the column's sum in the tooltip (stacks of 2 or more).
   total?: boolean;
+  // A limit per column as a dashed line (the AI quota per day, #382).
+  limit?: { value: number; label: string } | null;
 }) {
   const t = useT();
   const [box, width] = useWidth<HTMLDivElement>();
   const id = useId();
   const cursor = useCursor(labels.length);
   const sums = labels.map((_, i) => series.reduce((a, s) => a + (s.values[i] || 0), 0));
-  const ticks = niceTicks(Math.max(...sums, 0));
+  const ticks = niceTicks(Math.max(...sums, limit?.value ?? 0, 0));
   const top = ticks[ticks.length - 1];
   const inner = { w: Math.max(10, width - MARGIN.left - MARGIN.right), h: height - MARGIN.top - MARGIN.bottom };
   const slot = inner.w / Math.max(1, labels.length);
@@ -384,6 +387,14 @@ export function BarChart({
               </g>
             ))}
             {i !== null && <rect x={MARGIN.left + slot * i} y={MARGIN.top} width={slot} height={inner.h} className="vz-hover" />}
+            {limit && (
+              <g>
+                <line x1={MARGIN.left} x2={MARGIN.left + inner.w} y1={py(limit.value)} y2={py(limit.value)} className="vz-limit" />
+                <text x={MARGIN.left + inner.w} y={py(limit.value) - 4} textAnchor="end" className="vz-axis vz-limit-label">
+                  {limit.label}
+                </text>
+              </g>
+            )}
             {labels.map((label, k) => {
               let base = 0;
               const parts = series

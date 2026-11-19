@@ -8,6 +8,7 @@
 // (lib/ai/device.ts: its text from the open editor, open tasks by guided
 // generation), the server taking over where the person may use it – in
 // end-to-end encrypted spaces only on the device.
+import { AiQuotaNote } from "./ai-quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, CheckSquare, Copy, Info, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { textLocale } from "@/lib/i18n";
@@ -134,6 +135,7 @@ function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
   };
   return (
     <div className="ai-summary">
+      <AiQuotaNote />
       {ranOn === "device" && (
         <p className="ai-summary-source">
           <DeviceAiChip />

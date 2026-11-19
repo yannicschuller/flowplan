@@ -515,6 +515,9 @@ export async function forgetAiPerson(userId: string) {
     userId,
   );
   await run("DELETE FROM metrics_ai_usage WHERE user_id=?", userId);
+  // The AI quota's counts and rule (#382) likewise.
+  const { forgetQuotaPerson } = await import("./ai/quota");
+  await forgetQuotaPerson(userId);
 }
 
 export function dataDir() {

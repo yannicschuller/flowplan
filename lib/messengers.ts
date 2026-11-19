@@ -478,6 +478,7 @@ const kindTitles: Record<NotificationKind, [string, string]> = {
   security: ["Sicherheit", "Security"],
   incident: ["Sicherheitsvorfall", "Security incident"],
   study: ["Lernen", "Study"],
+  ai_quota: ["KI-Kontingent", "AI quota"],
 };
 const excerpt = (text: string, max = 280) => {
   const flat = text.replace(/\s+/g, " ").trim();

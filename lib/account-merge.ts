@@ -47,6 +47,9 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "scim_users.user_id": "custom",
   // AI counts per person (lib/metrics.ts forgetAiPerson): kept without a person.
   "metrics_ai_usage.user_id": "custom",
+  // AI quota usage (lib/ai/quota.ts forgetQuotaPerson, from forgetAiPerson):
+  // kept in the instance's totals without a person.
+  "ai_quota_usage.user_id": "custom",
   "user_totp.user_id": "custom",
   "recovery_codes.user_id": "custom",
   "e2ee_identities.user_id": "custom",

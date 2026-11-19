@@ -134,6 +134,13 @@ async function provider(user: Identity): Promise<AiResolution> {
   return { ok: false, reason: !mine.ok && mine.reason === "key-unreadable" ? mine.reason : !instance.ok ? instance.reason : "no-provider" };
 }
 
+// Whose provider this person's AI uses (null: none) – the AI quota
+// (lib/ai/quota.ts) applies to the instance's only.
+export async function aiProviderSource(user: Identity): Promise<"instance" | "user" | null> {
+  const resolved = await provider(user);
+  return resolved.ok ? resolved.source : null;
+}
+
 export async function resolveAi(user: Identity, feature: AiFeature | string, options: Options = {}): Promise<AiResolution> {
   const reason = await gate(user, feature, options);
   if (reason) return { ok: false, reason };

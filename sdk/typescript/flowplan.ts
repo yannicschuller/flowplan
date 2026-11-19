@@ -3924,6 +3924,49 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/capture`, { query }, options);
   }
 
+  /** What is left of your AI quota — The AI quota the administration set (#382) for AI through the instance's provider: per period (calendar day, week, month, year in the quota's time zone) your personal limit and the instance's ceiling, what is used and left, and when it resets. In tokens (input and output together) or, with `unit: cost`, in the instance's `currency`. `applies: false`: no quota applies to you (none set, or your AI uses your own provider). `low`: some period passed the warning threshold `warnAt` (per cent); `blocked`: one is used up – AI requests through the instance are refused (429) until it resets. Tokens need the permission “AI and transcription”. Answered with `Cache-Control: no-store`. (GET /api/ai/quota) */
+  async aiQuota(options?: RequestOptions): Promise<{
+    applies: boolean;
+    unit: "tokens" | "cost";
+    currency?: string;
+    warnAt?: number;
+    timeZone?: string;
+    exempt?: boolean;
+    low: boolean;
+    blocked: boolean;
+    periods: ({
+      level: "person" | "instance";
+      period: "day" | "week" | "month" | "year";
+      limit: number;
+      used: number;
+      left: number;
+      /** When the period ends (ms) */
+      resetAt: number;
+    })[];
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    applies: boolean;
+    unit: "tokens" | "cost";
+    currency?: string;
+    warnAt?: number;
+    timeZone?: string;
+    exempt?: boolean;
+    low: boolean;
+    blocked: boolean;
+    periods: ({
+      level: "person" | "instance";
+      period: "day" | "week" | "month" | "year";
+      limit: number;
+      used: number;
+      left: number;
+      /** When the period ends (ms) */
+      resetAt: number;
+    })[];
+    [key: string]: unknown;
+  }>("GET", `/api/ai/quota`, {}, options);
+  }
+
   /** Where quick capture can save — For the desktop app's quick capture: the inbox (null when none is set), every database and document you may add to and the journals you may write in (today's entry), with what the shorthand fills in a database and its record templates. Pages of end-to-end encrypted spaces are never targets (`encryptedExcluded` counts them). `voice`: the instance transcribes voice notes; `suggest`: AI suggestions on the server and/or the device. Answered with `Cache-Control: no-store`. (GET /api/capture/targets) */
   async desktopCaptureTargets(options?: RequestOptions): Promise<{
     inbox: Record<string, unknown> | null;

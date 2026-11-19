@@ -1,8 +1,10 @@
 "use client";
 // Administration → KI: provider, who may use AI and which features exist,
-// the prices for the cost estimate – and the statistics of AI use.
+// the prices for the cost estimate, the quotas (#382) – and the statistics
+// of AI use.
 import { AdminAi } from "../../ai-settings";
 import { useAdmin } from "../admin-context";
+import { AiQuotasSection } from "./ai-quotas";
 import { AiStatisticsSection } from "./ai-statistics";
 
 export default function AdminAiSection() {
@@ -12,6 +14,7 @@ export default function AdminAiSection() {
   return (
     <>
       <AdminAi onError={onError} onChange={load} />
+      <AiQuotasSection />
       <AiStatisticsSection />
     </>
   );

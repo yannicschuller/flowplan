@@ -1,0 +1,115 @@
+/* AI quotas (#382): the bars under Settings → KI, the note in the AI panels,
+   the limits table of Administration → KI and the limit line of the AI
+   statistics. A native <progress> carries the share – no style attribute. */
+.ai-quota-bars {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+.ai-quota-bar {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ai-quota-bar-text {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.ai-quota-bar-text strong {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ai-quota-bar progress {
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+  appearance: none;
+}
+.ai-quota-bar progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--hover);
+}
+.ai-quota-bar progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--blue);
+}
+.ai-quota-bar progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--blue);
+}
+.ai-quota-bar.high progress::-webkit-progress-value {
+  background: #d9822b;
+}
+.ai-quota-bar.high progress::-moz-progress-bar {
+  background: #d9822b;
+}
+.ai-quota-bar.full progress::-webkit-progress-value {
+  background: var(--signal);
+}
+.ai-quota-bar.full progress::-moz-progress-bar {
+  background: var(--signal);
+}
+.ai-quota-bar small,
+.ai-quota-unit,
+.ai-quota-free {
+  font-size: 12px;
+}
+.ai-quota-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.ai-quota-note.full {
+  color: var(--danger, #b42318);
+}
+.ai-quota-note svg {
+  flex: none;
+}
+.ai-quota-limit {
+  width: 100%;
+  min-width: 84px;
+  max-width: 130px;
+  font-variant-numeric: tabular-nums;
+}
+.ai-quota-limits td.primary {
+  min-width: 160px;
+}
+.ai-quota-instance {
+  margin: 0 0 8px;
+}
+.ai-quota-people-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vz-limit {
+  stroke: var(--signal);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.vz-limit-label {
+  fill: var(--signal);
+}
+@media (max-width: 640px) {
+  .ai-quota-limit {
+    max-width: none;
+  }
+}

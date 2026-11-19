@@ -293,25 +293,34 @@ export async function embed(config: AiConfig, texts: string[], signal?: AbortSig
   if (texts.length > MAX_EMBED_TEXTS) throw new AiError(413, "Zu viele Texte auf einmal.");
   const input = texts.map((t) => t.slice(0, MAX_EMBED_CHARS));
   if (!input.length) return [];
-  let vectors: unknown;
-  if (config.kind === "ollama") vectors = (await postJson(config, `${base(config)}/api/embed`, { model, input }, signal))?.embeddings;
-  else if (config.kind === "openai") {
-    const data = (await postJson(config, `${base(config)}/embeddings`, { model, input }, signal))?.data;
-    vectors = Array.isArray(data) ? [...data].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0)).map((d) => d?.embedding) : null;
-  } else {
-    const name = model.replace(/^models\//, "");
-    const data = await postJson(
-      config,
-      `${base(config)}/v1beta/models/${geminiModel(name)}:batchEmbedContents`,
-      { requests: input.map((text) => ({ model: `models/${name}`, content: { parts: [{ text }] } })) },
-      signal,
-    );
-    vectors = Array.isArray(data?.embeddings) ? data.embeddings.map((e: { values?: unknown }) => e?.values) : null;
+  // The instance's provider: the search index counts towards the
+  // instance's AI quota (#382) and stops once it is used up.
+  const tokens = estimateTokens(input.reduce((sum, t) => sum + t.length, 0));
+  const quota = config.trusted ? await (await import("./quota")).requireInstanceQuota({ model, tokensIn: tokens }) : null;
+  try {
+    let vectors: unknown;
+    if (config.kind === "ollama") vectors = (await postJson(config, `${base(config)}/api/embed`, { model, input }, signal))?.embeddings;
+    else if (config.kind === "openai") {
+      const data = (await postJson(config, `${base(config)}/embeddings`, { model, input }, signal))?.data;
+      vectors = Array.isArray(data) ? [...data].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0)).map((d) => d?.embedding) : null;
+    } else {
+      const name = model.replace(/^models\//, "");
+      const data = await postJson(
+        config,
+        `${base(config)}/v1beta/models/${geminiModel(name)}:batchEmbedContents`,
+        { requests: input.map((text) => ({ model: `models/${name}`, content: { parts: [{ text }] } })) },
+        signal,
+      );
+      vectors = Array.isArray(data?.embeddings) ? data.embeddings.map((e: { values?: unknown }) => e?.values) : null;
+    }
+    if (!Array.isArray(vectors) || vectors.length !== input.length || !vectors.every((v) => Array.isArray(v) && v.every((n) => typeof n === "number")))
+      throw new AiError(502, AI_MESSAGES.garbled);
+    noteAiCall({ feature: "embeddings", tokensIn: tokens, tokensOut: 0, answered: true, model, source: config.trusted ? "instance" : "user" });
+    if (config.trusted) await (await import("./quota")).recordQuotaUsage({ kind: "system", model, tokensIn: tokens, tokensOut: 0 });
+    return vectors as number[][];
+  } finally {
+    quota?.();
   }
-  if (!Array.isArray(vectors) || vectors.length !== input.length || !vectors.every((v) => Array.isArray(v) && v.every((n) => typeof n === "number")))
-    throw new AiError(502, AI_MESSAGES.garbled);
-  noteAiCall({ feature: "embeddings", tokensIn: estimateTokens(input.reduce((sum, t) => sum + t.length, 0)), tokensOut: 0, answered: true, model, source: config.trusted ? "instance" : "user" });
-  return vectors as number[][];
 }
 
 export async function listModels(config: AiConfig, signal?: AbortSignal): Promise<string[]> {
