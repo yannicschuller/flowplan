@@ -1,5 +1,9 @@
 import sanitize from "sanitize-html";
 import { cleanHtml, escaped } from "./document-server";
+// Raised whenever buildPreview() makes something else of the same source:
+// previews kept in the database in an older format are made anew
+// (lib/record-previews.ts).
+export const PREVIEW_FORMAT = 1;
 export type DocumentPreview = {
   html: string;
   text: string;

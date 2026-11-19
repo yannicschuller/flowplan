@@ -178,6 +178,7 @@ import {
   snapshotAppearance,
 } from "./page-covers";
 import { documentPreview } from "./document-preview";
+import { recordPreviews } from "./record-previews";
 import {
   moveRow,
   maintainRowOrders,
@@ -240,7 +241,7 @@ import { protectionChanges } from "./share-access";
 import { adminResetTwoFactor } from "./two-factor";
 import { manageShareLink, listShareLinks } from "./share-links";
 import { recordShareCommand, recordShares } from "./record-share";
-import { relatedData, validateDatabaseRelations } from "./related-data";
+import { relatedForView, validateDatabaseRelations } from "./related-data";
 import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
 import { duplicatePageTree } from "./page-tree";
@@ -580,15 +581,12 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
   if (options.presence !== false) await notePresence(pid, user.id);
   if (p.kind === "database") {
     const data = await database(pid);
-    // This database's own rows are already in rows (the client adds them).
-    const relations = await relatedData(user, p, { rootRows: false });
-    relations.related[pid] = [];
-    const documentHtml = new Map(
-      (await all<{ row_id: string; html: string }>(
-        "SELECT d.row_id,d.html FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=?",
-        pid,
-      )).map((d) => [d.row_id, d.html]),
-    );
+    // This database's own rows are already in rows (the client adds them);
+    // of related databases only what the view needs (#383).
+    const relations = await relatedForView(user, p);
+    const records = await rows(pid);
+    // Kept previews of the records' texts (lib/record-previews.ts).
+    const previews = await recordPreviews(pid, records);
     return {
       page: p,
       images: await pageImages(pid),
@@ -606,9 +604,11 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
       readOnlyFields: await readOnlyFieldIds(user, p, data.fields),
       relationPairs: await relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
-      rows: await mapAsync(await visibleRows(user, p, await rows(pid)), async (r) => ({
+      // The legacy content stays out: the preview shows the record's text
+      // (its document, else that content), the record dialog loads it.
+      rows: await mapAsync(await visibleRows(user, p, records), async ({ content: _content, ...r }) => ({
         ...r,
-        preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
+        preview: previews.get(r.id) ?? documentPreview(""),
         ...(r.access !== "inherit" && await canManageRow(user, p, r)
           ? { grants: await rowGrants(r.id) }
           : {}),

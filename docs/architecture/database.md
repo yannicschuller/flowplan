@@ -306,7 +306,8 @@ translator moves the `WHEN` into the function (Postgres' `WHEN` takes no
 subqueries), turns `RAISE(IGNORE)` into `RETURN NULL` (row skipped, as in
 SQLite), `RAISE(ABORT,'…')` into an exception with the same message,
 `IS`/`IS NOT` into `IS [NOT] DISTINCT FROM`, `json_object` into
-`jsonb_build_object`, `instr` into `strpos`, `unixepoch()*1000` into whole
+`jsonb_build_object`, `instr` into `strpos`, `random()` into a random
+integer within ±2^53, `unixepoch()*1000` into whole
 seconds and `julianday('now')` arithmetic into milliseconds (as SQLite has
 them), and adds `ON CONFLICT DO NOTHING` to queue inserts guarded by `NOT
 EXISTS` (READ COMMITTED lets two transactions pass the guard).
@@ -323,6 +324,8 @@ EXISTS` (READ COMMITTED lets two transactions pass the guard).
 | Space Git exports (`space_git_*` end exports on owner/trash/member changes) | 4 | PL/pgSQL |
 | Record numbers (`rows_number_counter`: counter row update, serialises per database) | 1 | PL/pgSQL |
 | Snapshot appearance, page `created_at` (+ `seq` on SQLite), space position, home layouts, document tasks | 6 | PL/pgSQL; `spaces_position_insert` and `pages_created_at` hand-written (no rowid) |
+| Cache versions (`cache_*` → `cache_versions`, schema 109: a new random value per change of what the bootstrap keeps across requests – page roles, page lists, member lists; lib/cache-versions.ts) | 32 | PL/pgSQL (they must catch every writer, also other instances) |
+| Record previews (`row_previews_*` → `row_preview_dirty`, schema 110: records whose text changed; lib/record-previews.ts) | 4 | PL/pgSQL |
 | Object storage queue (`storage_file_*`, only with S3) | 2 | SQLite: calls a JS function; Postgres: a PL/pgSQL trigger fills the queue, the worker polls it every 0.5 s (lib/storage.ts) |
 
 ### Backups, restores, instance moves

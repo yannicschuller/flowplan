@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 109;
+export const SCHEMA_VERSION = 110;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1613,6 +1613,10 @@ function migrate(d: DatabaseSync) {
   // list of a workspace. Triggers move them with every write that can
   // change them, also by an older version or another instance.
   migrateCacheVersions(d);
+  // Schema 110 – the previews of record texts kept (#383,
+  // lib/record-previews.ts) instead of sanitising every record's HTML on
+  // every opening of its database.
+  migrateRecordPreviews(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1687,6 +1691,20 @@ function migrateCacheVersions(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS cache_users_update AFTER UPDATE OF name,email,avatar,disabled ON users
       WHEN NEW.name IS NOT OLD.name OR NEW.email IS NOT OLD.email OR NEW.avatar IS NOT OLD.avatar OR NEW.disabled IS NOT OLD.disabled BEGIN ${bump("'people'")} END;
     CREATE TRIGGER IF NOT EXISTS cache_users_delete AFTER DELETE ON users BEGIN ${bump("'people'")} END;`);
+}
+// Schema 110 – row_previews: a record's preview (lib/document-preview.ts)
+// as JSON, with the format it was made in; row_preview_dirty the records
+// whose text changed since (their record document or legacy content) –
+// marked by the triggers, whatever writes them, and made anew when their
+// database is opened next.
+function migrateRecordPreviews(d: DatabaseSync) {
+  const mark = (row: string) => `INSERT INTO row_preview_dirty(row_id) SELECT ${row} WHERE NOT EXISTS(SELECT 1 FROM row_preview_dirty WHERE row_id=${row});`;
+  d.exec(`CREATE TABLE IF NOT EXISTS row_previews(row_id TEXT PRIMARY KEY REFERENCES rows(id) ON DELETE CASCADE,preview TEXT NOT NULL,format INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS row_preview_dirty(row_id TEXT PRIMARY KEY REFERENCES rows(id) ON DELETE CASCADE);
+    CREATE TRIGGER IF NOT EXISTS row_previews_document_insert AFTER INSERT ON row_documents BEGIN ${mark("NEW.row_id")} END;
+    CREATE TRIGGER IF NOT EXISTS row_previews_document_update AFTER UPDATE OF html ON row_documents WHEN NEW.html IS NOT OLD.html BEGIN ${mark("NEW.row_id")} END;
+    CREATE TRIGGER IF NOT EXISTS row_previews_document_delete AFTER DELETE ON row_documents WHEN EXISTS(SELECT 1 FROM rows WHERE id=OLD.row_id) BEGIN ${mark("OLD.row_id")} END;
+    CREATE TRIGGER IF NOT EXISTS row_previews_content_update AFTER UPDATE OF content ON rows WHEN NEW.content IS NOT OLD.content BEGIN ${mark("NEW.id")} END;`);
 }
 // Flashcards (docs/specs/flashcards.md §3.3, lib/study.ts):
 // - study_cards: the derived index of cards (record × sub: '' the card, 'r'
