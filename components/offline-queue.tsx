@@ -30,7 +30,6 @@ import {
 } from "@/lib/offline-create";
 import { setKick, setPending, setPreview, setUploader } from "@/lib/offline-pending";
 import { cellText } from "@/lib/cell-text";
-import { emptyInk } from "@/lib/ink/model";
 import { endedSession, friendlyError, Modal, sessionEnded } from "./ui";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf, newIdempotencyKey } from "@/lib/idempotency-key";
 import { primePlaceholder } from "./image-placeholder";
@@ -390,6 +389,8 @@ export function useOfflineQueue({
       } else if (change.pageKind === "notebook") {
         for (const [surface, items] of Object.entries(keptInk(change.pageId))) {
           if (!items.length) continue;
+          // The ink model loads with the first notebook to send (keeps it out of the shell).
+          const { emptyInk } = await import("@/lib/ink/model");
           const doc = emptyInk();
           doc.pages[surface] = items;
           await post({ base: 0, doc, knows: ["image"] }, `${key.slice(0, 100)}-ink-${surface}`.slice(0, 128).replace(/[^A-Za-z0-9_-]/g, "-"), `/api/pages/${change.pageId}/ink?surface=${encodeURIComponent(surface)}`);

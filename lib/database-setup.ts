@@ -85,8 +85,8 @@ export const defaultViews = (tr: Translate): View[] => [
 // (records open as a full page), contacts with a profile card
 // (lib/contacts.ts), flashcards (a deck with the view "Lernen",
 // docs/specs/flashcards.md) or only a title.
-export const databaseKinds = ["tasks", "documents", "contacts", "empty", "flashcards"] as const;
-export type DatabaseKind = (typeof databaseKinds)[number];
+export { databaseKinds, type DatabaseKind } from "./database-kinds";
+import type { DatabaseKind } from "./database-kinds";
 // Front (the title), back, tags and the card type (its options read by
 // name, lib/study-schema.ts typeOfOption); the card mapping in settings.study.
 export function flashcardsSetup(tr: Translate) {

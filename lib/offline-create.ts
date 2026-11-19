@@ -16,7 +16,7 @@
 import type { OfflinePageChange, OfflinePageKind, OfflineUploadChange, QueuedChange } from "./offline-queue";
 import type { Field, Page, Row, View } from "./types";
 import type { CatalogTemplate } from "./template-catalog";
-import { databaseKinds, type DatabaseKind } from "./database-setup";
+import { databaseKinds, type DatabaseKind } from "./database-kinds";
 
 // Uploads that wait on the device: up to 25 MB per file and 200 MB in all;
 // bigger files need the connection.
