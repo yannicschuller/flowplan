@@ -1,0 +1,160 @@
+/* ---------- Drawing viewer for DXF and DWG (#384, components/viewer2d) ----------
+   Loaded with the viewer; shares the frame, bar, tools and footer of the
+   3D viewer (app/viewer3d.css). The canvas gets its size from here and
+   paints its own paper (white or dark); the stage behind it matches. */
+.viewer2d-stage,
+.viewer2d-stage[data-paper="light"] {
+  background: #ffffff;
+}
+.viewer2d-stage[data-paper="dark"] {
+  background: #15181e;
+}
+.viewer2d-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Fingers pan and pinch the drawing, not the page. */
+  touch-action: none;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.viewer2d-canvas:active {
+  cursor: grabbing;
+}
+.viewer2d-canvas.is-ready {
+  opacity: 1;
+}
+.viewer2d-canvas.is-measuring {
+  cursor: crosshair;
+}
+.viewer2d-canvas:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+/* The message sits on the paper, not on the theme's background. */
+.viewer2d-stage[data-paper="light"] .viewer3d-message {
+  color: #4b5563;
+}
+.viewer2d-stage[data-paper="dark"] .viewer3d-message {
+  color: #c5cad3;
+}
+.viewer2d-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.viewer2d-layers {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  width: min(300px, calc(100% - 20px));
+  max-height: calc(100% - 20px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 10px 30px #0000002e;
+  overflow: hidden;
+}
+.viewer2d-layers > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.viewer2d-layer-all {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.viewer2d-link {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.viewer2d-link:hover {
+  text-decoration: underline;
+}
+.viewer2d-layers ul {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+/* A row, not the form label of globals.css (a column with a margin). */
+.viewer2d-layers label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0;
+  padding: 2px 14px;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.viewer2d-layers label:hover {
+  background: var(--hover);
+}
+.viewer2d-layers label input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+.viewer2d-swatch {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+.viewer2d-swatch rect {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.viewer2d-layer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer2d-layers small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.viewer2d .viewer3d-measurements small {
+  margin-left: 2px;
+}
+@media (max-width: 600px) {
+  /* A sheet from the bottom on a phone. */
+  .viewer2d-layers {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: 55%;
+  }
+  .viewer2d .viewer3d-measurements small {
+    display: none;
+  }
+}

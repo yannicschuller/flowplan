@@ -45,7 +45,8 @@ test("3D files are recognised by their extension, in any case", () => {
   for (const [name, format] of cases) assert.equal(modelFormatOf(name), format, name);
   assert.equal(isModelName("a.3mf"), true);
   assert.equal(isModelName("a.pdf"), false);
-  assert.deepEqual(MODEL_EXTENSIONS.sort(), [".3mf", ".glb", ".gltf", ".iges", ".igs", ".obj", ".step", ".stl", ".stp"]);
+  // DXF and DWG are drawings (2D, tests/drawing-viewer.test.ts).
+  assert.deepEqual(MODEL_EXTENSIONS.sort(), [".3mf", ".dwg", ".dxf", ".glb", ".gltf", ".iges", ".igs", ".obj", ".step", ".stl", ".stp"]);
   assert.equal(isCadFormat("step"), true);
   assert.equal(isCadFormat("iges"), true);
   assert.equal(isCadFormat("stl"), false);
