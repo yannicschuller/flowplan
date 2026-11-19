@@ -7682,7 +7682,7 @@
   "One message per workspace, at most three. Recipients need no account; they only get your note, nothing from the workspace.": "Un message par espace de travail, trois au maximum. Les destinataires n’ont pas besoin de compte ; ils reçoivent uniquement votre note, rien de l’espace de travail.",
   "One more": "Encore une",
   "One objective, measurable key results and initiatives.": "Un objectif, des résultats clés mesurables et des initiatives.",
-  "One of the spaces you can read. The pages are copied as you see them; what you add later only reaches accounts created after that.": "L’un des espaces que tu peux lire. Les pages sont copiées telles que tu les vois ; ce que tu ajoutes plus tard n’arrive que dans les comptes créés ensuite.",
+  "One of the spaces you can read. The pages are copied as you see them; what you add later only reaches accounts created after that.": "L’un des espaces que vous pouvez lire. Les pages sont copiées telles que vous les voyez ; ce que vous ajoutez plus tard n’arrive que dans les comptes créés ensuite.",
   "One or many": "Un ou plusieurs",
   "One overview in the morning instead of many single reminders.\n\n- **schedule**: daily at 8:00 (time zone Europe/Berlin – adjustable in the trigger)\n- **find records**: due before today and status not “done”\n- **if** there are any: a notification with the count and the list to the chosen person, linked to the database\n\nPick the database, the due date, the status property, the value for “done” and the person when importing.": "",
   "One page per day with a template, mood, habits and calendar – with a PIN if you like.": "Une page par jour avec modèle, humeur, habitudes et calendrier – avec code PIN si vous le souhaitez.",
