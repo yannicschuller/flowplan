@@ -370,7 +370,7 @@ export async function publicFile(token: string, fileId: string) {
       if (fid) referenced.add(fid);
     }
   cleanHtml(html, (tagName, attribs) => {
-    for (const attr of ["src", "href", "data-pdf"]) {
+    for (const attr of ["src", "href", "data-pdf", "data-model"]) {
       const m = /^\/api\/files\/([\w-]+)$/.exec(attribs[attr] || "");
       if (m) referenced.add(m[1]);
     }
@@ -441,7 +441,7 @@ export function publishedHtml(
     // Boards outside the share are not named.
     if (attrs["data-whiteboard"] && !pageIds.has(attrs["data-whiteboard"]))
       hide(attrs, "data-whiteboard");
-    for (const attr of ["src", "href", "data-pdf"]) {
+    for (const attr of ["src", "href", "data-pdf", "data-model"]) {
       const file = /^\/api\/files\/([\w-]+)$/.exec(attrs[attr] || "");
       if (file) {
         if (await served(file[1])) attrs[attr] = `/api/share/${token}/files/${file[1]}`;

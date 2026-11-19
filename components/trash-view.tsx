@@ -3,7 +3,7 @@
 // "Endgültig löschen", "Papierkorb leeren" for everything this person may
 // delete, and how long things stay (Administration → Aufbewahrung, lib/trash.ts).
 import { useCallback, useEffect, useState } from "react";
-import { ArrowCounterClockwise, File as FileIcon, FileAudio, FileImage, FilePdf, FileVideo, Trash } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Cube, File as FileIcon, FileAudio, FileImage, FilePdf, FileVideo, Trash } from "@phosphor-icons/react";
 import type { Bootstrap, Page, Space } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { useT } from "./i18n";
@@ -338,7 +338,9 @@ const fileIcon = (mime: string) =>
         ? FileAudio
         : mime === "application/pdf"
           ? FilePdf
-          : FileIcon;
+          : mime.startsWith("model/")
+            ? Cube
+            : FileIcon;
 
 // Files deleted in the media library (#164, lib/file-trash.ts): not served
 // while here, so no preview – name, type, page and how long they stay.

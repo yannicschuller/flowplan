@@ -138,6 +138,8 @@ const config: NextConfig = {
       "./node_modules/pdfjs-dist/cmaps/*",
       "./node_modules/pdfjs-dist/standard_fonts/*",
       "./node_modules/pdfjs-dist/wasm/*",
+      // The 3D viewer's CAD reader for STEP and IGES (app/occt, #384).
+      "./node_modules/occt-import-js/dist/occt-import-js.wasm",
       // Typst preview of code blocks (app/typst): WebAssembly and fonts.
       "./node_modules/@myriaddreamin/typst-ts-web-compiler/pkg/*.wasm",
       "./node_modules/@myriaddreamin/typst-ts-renderer/pkg/*.wasm",

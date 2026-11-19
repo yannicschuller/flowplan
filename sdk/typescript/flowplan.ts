@@ -2525,7 +2525,7 @@ export type CommandFileDeleteResult = {
 export type CommandFilesDeleteUnused = {
   action: "files.deleteUnused";
   workspaceId: string;
-  kind?: "all" | "image" | "video" | "audio" | "pdf" | "other";
+  kind?: "all" | "image" | "video" | "audio" | "pdf" | "model" | "other";
   query?: string;
 };
 
@@ -3906,7 +3906,7 @@ export class FlowplanClient {
   }
 
   /** Media library — Files of the pages you may read, 60 per call. (GET /api/media) */
-  async media(query: { workspace: string; kind?: "all" | "image" | "video" | "audio" | "pdf" | "other"; q?: string; offset?: number; usage?: "all" | "unused" }, options?: RequestOptions): Promise<Record<string, unknown>> {
+  async media(query: { workspace: string; kind?: "all" | "image" | "video" | "audio" | "pdf" | "model" | "other"; q?: string; offset?: number; usage?: "all" | "unused" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/media`, { query }, options);
   }
 

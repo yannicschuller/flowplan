@@ -2,6 +2,7 @@
 // server can rely on, file names without path or control characters, a
 // type that matches the content, and photos without their location.
 import { HttpError } from "./auth";
+import { modelUploadMime } from "./model-formats";
 
 // Uploads must say how large they are; a body without Content-Length
 // (chunked) would be read into memory before any limit applies.
@@ -44,6 +45,13 @@ export function verifiedMime(claimed: string, data: Buffer) {
   // Anything a browser could run or render as a page is never kept as such.
   if (/html|svg|xml|javascript|ecmascript/.test(type) || !type) return "application/octet-stream";
   return type;
+}
+
+// The type of an upload with its name: 3D and CAD files (#384, by their
+// extension – browsers send no or differing types for them) get their
+// model/* type when the content fits, everything else verifiedMime.
+export function uploadMime(claimed: string, name: string, data: Buffer) {
+  return modelUploadMime(name, data.subarray(0, 512)) ?? verifiedMime(claimed, data);
 }
 
 // Notebook recordings (lib/notebook-audio.ts) take only what MediaRecorder

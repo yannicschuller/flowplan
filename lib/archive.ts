@@ -1291,7 +1291,7 @@ async function importEntries(
             rowMap,
             (source) => data.pages.find((p) => p.id === source)?.database,
           );
-          for (const key of ["href", "src", "data-pdf"])
+          for (const key of ["href", "src", "data-pdf", "data-model"])
             if (attrs[key]) attrs[key] = rewriteUrl(attrs[key]);
           remapBlockAttributes(attrs, pageMap);
           if (attrs["data-mention"] && !members.has(attrs["data-mention"]))

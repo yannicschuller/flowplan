@@ -100,7 +100,7 @@ export async function copyPublication(user: Identity, input: unknown) {
         delete attrs["data-linked-views"];
         delete attrs["data-linked-version"];
       }
-      for (const key of ["src", "href", "data-pdf"]) {
+      for (const key of ["src", "href", "data-pdf", "data-model"]) {
         if (!attrs[key]) continue;
         if (fileIdOf(attrs[key])) {
           const copied = await copyFile(attrs[key]);

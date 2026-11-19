@@ -1,6 +1,6 @@
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
-import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
+import { requireBodySize, sanitizeFileName, stripLocation, uploadMime } from "@/lib/upload-safety";
 import { z } from "zod";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -133,7 +133,7 @@ async function handlePOST(
           const fid = id(),
             path = resolve(dir, fid);
           // The type must match the content; photos lose their location.
-          const mime = verifiedMime(file.type, raw);
+          const mime = uploadMime(file.type, file.name, raw);
           const data = stripLocation(raw, mime);
           writeFileSync(path, data);
           onTransactionRollback(() => unlinkSync(path));
