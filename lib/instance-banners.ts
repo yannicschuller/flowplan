@@ -8,6 +8,7 @@
 // administration sees how many closed and how many followed the link.
 import { z } from "zod";
 import { all, audit, id, one, run, sql } from "./db";
+import { keepUntil } from "./read-memo";
 import { adminUserIds, HttpError } from "./auth";
 import type { Identity } from "./types";
 
@@ -175,6 +176,13 @@ export async function showBannerAgain(user: Identity, bannerId: string) {
 // The banners for this person right now, newest first, at most three.
 export async function bannersFor(user: Identity, now = Date.now()): Promise<Banner[]> {
   if (user.apiScope || user.demo) return [];
+  // A kept bootstrap (lib/kept-answers.ts) ends when a banner starts or ends.
+  const next = await one<{ at: number | null }>(
+    "SELECT MIN(at) at FROM (SELECT starts_at at FROM instance_banners WHERE paused=0 AND starts_at>? UNION ALL SELECT ends_at at FROM instance_banners WHERE paused=0 AND ends_at>?) t",
+    now,
+    now,
+  );
+  if (next?.at != null) keepUntil(Number(next.at));
   return (await all<BannerRow>(
     `SELECT b.* FROM instance_banners b
      WHERE b.paused=0 AND (b.starts_at IS NULL OR b.starts_at<=?) AND (b.ends_at IS NULL OR b.ends_at>?)

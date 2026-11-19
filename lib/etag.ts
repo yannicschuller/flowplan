@@ -10,7 +10,9 @@
 // with the clock), and a counter missing one of them would keep a stale
 // sidebar on every instance of a cluster. Only its page list, the largest
 // part, is named by versions that triggers keep (lib/bootstrap-pages.ts);
-// the rest of it is hashed as here.
+// the rest of it is hashed as here. Before any of this, the route answers
+// an unchanged bootstrap or page refresh from the tag kept with the tables
+// its last answer was read from (lib/kept-answers.ts).
 import { createHash } from "node:crypto";
 
 export function contentTag(body: string) {

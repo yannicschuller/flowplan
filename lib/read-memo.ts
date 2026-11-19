@@ -14,7 +14,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { writeGeneration } from "./db";
 
-type Memo = { generation: number; since: number; values: Map<string, unknown> };
+// `tables`: while set, the tables the SQLite helpers read are collected
+// there (withTrackedReads, lib/kept-answers.ts).
+// `until`: the time (ms) the answer being tracked stays valid (keepUntil()).
+type Memo = { generation: number; since: number; values: Map<string, unknown>; tables?: Set<string>; until?: { at: number } };
 const MAX_AGE = 1000;
 // On globalThis: bundles may hold this module more than once.
 const store = ((globalThis as { flowplanReadMemo?: AsyncLocalStorage<Memo> }).flowplanReadMemo ??= new AsyncLocalStorage<Memo>());
@@ -23,6 +26,25 @@ const store = ((globalThis as { flowplanReadMemo?: AsyncLocalStorage<Memo> }).fl
 export async function withReadMemo<T>(fn: () => T): Promise<T> {
   if (store.getStore()) return await fn();
   return store.run({ generation: -1, since: 0, values: new Map() }, fn);
+}
+
+// Runs fn in a memo of its own that also collects the tables it reads
+// (lib/db.ts) – and names noted with noteNamesRead() – for an answer kept
+// until one of them is written (lib/kept-answers.ts). Values remembered
+// before are not used: what they were read from would be missing.
+export async function withTrackedReads<T>(fn: () => Promise<T>): Promise<{ value: T; tables: Set<string>; until: number }> {
+  const tables = new Set<string>();
+  const until = { at: Infinity };
+  return await store.run({ generation: -1, since: 0, values: new Map(), tables, until }, async () => {
+    const value = await fn();
+    return { value, tables, until: until.at };
+  });
+}
+// Inside withTrackedReads: what is being built is valid only until `at`
+// (ms) – e.g. when someone shown as present drops out of the window.
+export function keepUntil(at: number) {
+  const until = store.getStore()?.until;
+  if (until && at < until.at) until.at = at;
 }
 
 // The remembered value for key, or compute() remembered. The key names the

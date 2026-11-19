@@ -15,8 +15,9 @@
 //
 // The ETag is not a hash of the whole answer: it hashes the rest of the
 // answer and names the kept parts by their versions. An unchanged refresh
-// (the app asks every 10 s, components/workspace-app.tsx) then answers 304
-// without serialising and hashing them again.
+// (components/workspace-app.tsx) then answers 304 without serialising and
+// hashing them again – and while nothing the last answer was read from was
+// written, without building it at all (lib/kept-answers.ts).
 import { all, inTransaction } from "./db";
 import { cacheVersion, VersionedCache } from "./cache-versions";
 import { contentTag, jsonWithTag, tagMatches } from "./etag";

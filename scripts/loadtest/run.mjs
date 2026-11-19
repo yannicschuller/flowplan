@@ -36,6 +36,12 @@ const { values: opt } = parseArgs({
     mix: { type: "string", default: "" },
     kind: { type: "string", default: "mixed" },
     "idle-interval": { type: "string", default: "10" },
+    // poll: the timed refresh every --idle-interval s (the web app without
+    // the live signal); push: the live signal, the bootstrap every 60 s and
+    // the page every 30 s.
+    "idle-mode": { type: "string", default: "poll" },
+    // Every n-th idle tab has the task database open instead of a document (0: none).
+    "idle-db-every": { type: "string", default: "0" },
   },
 });
 const seed = JSON.parse(readFileSync(opt.seed, "utf8"));
@@ -52,7 +58,10 @@ const options = {
   rampMs: SETTLE,
   mix: opt.mix,
   idleMs: Number(opt["idle-interval"]) * 1000,
+  idleMode: opt["idle-mode"],
+  idleDbEvery: Number(opt["idle-db-every"]),
 };
+if (!["poll", "push"].includes(opt["idle-mode"])) throw new Error(`unknown --idle-mode: ${opt["idle-mode"]}`);
 if (!["mixed", "idle"].includes(opt.kind)) throw new Error(`unknown --kind: ${opt.kind}`);
 const editorEvery = Number(opt["editor-share"]) > 0 ? Math.max(1, Math.round(1 / Number(opt["editor-share"]))) : Infinity;
 const coeditors = Number(opt.coeditors);
@@ -204,9 +213,9 @@ function merge(results) {
     }
   return out;
 }
-const READS = new Set(["bootstrap", "page.open", "db.open", "db.query", "search", "editor.open", "idle.bootstrap", "idle.page", "idle.bootstrap.304", "idle.page.304"]);
+const READS = new Set(["bootstrap", "page.open", "db.open", "db.query", "search", "editor.open", "idle.bootstrap", "idle.page", "idle.bootstrap.304", "idle.page.304", "idle.signal.bootstrap", "idle.signal.page", "idle.signal.bootstrap.304", "idle.signal.page.304"]);
 const WRITES = new Set(["row.update", "row.create", "page.create", "comment.create", "doc.sync", "presence"]);
-const NOT_REQUESTS = new Set(["fanout", "fanout.unmatched", "sse.connect"]);
+const NOT_REQUESTS = new Set(["fanout", "fanout.unmatched", "sse.connect", "signal"]);
 const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
 
 // --- Service times (--probe N) ------------------------------------------------
@@ -220,7 +229,7 @@ if (Number(opt.probe) > 0) {
   for (const [name, b] of Object.entries(got)) {
     const s = summarize(b.lat);
     table[name] = { ...s, errors: b.err };
-    console.log(`  ${name.padEnd(16)} median=${Math.round(pct(Float64Array.from(b.lat).sort(), 50))} p90=${Math.round(pct(Float64Array.from(b.lat).sort(), 90))} max=${Math.round(s.max)} errors=${JSON.stringify(b.err)}`);
+    console.log(`  ${name.padEnd(16)} median=${r1(pct(Float64Array.from(b.lat).sort(), 50))} p90=${r1(pct(Float64Array.from(b.lat).sort(), 90))} max=${r1(s.max)} errors=${JSON.stringify(b.err)}`);
   }
   writeFileSync(opt.out, JSON.stringify({ label: opt.label, probe: table, loadavg: loadavg() }, null, 1));
   for (const w of workers) w.postMessage({ type: "stop" });
@@ -336,7 +345,7 @@ for (const vus of steps) {
     // Idle tabs: the server's CPU per tab and the share of refreshes that
     // were a 304.
     const n = (k) => scenarios[k]?.ok || 0;
-    const refreshes = n("idle.bootstrap") + n("idle.bootstrap.304") + n("idle.page") + n("idle.page.304");
+    const refreshes = ["idle.bootstrap", "idle.page", "idle.signal.bootstrap", "idle.signal.page"].reduce((sum, k) => sum + n(k) + n(`${k}.304`), 0);
     step.idle = {
       cpuMsPerTabMinute: (cpuSeconds * 1000 * 60) / elapsed / vus,
       cpuMsPerRefresh: refreshes ? (cpuSeconds * 1000) / refreshes : null,
@@ -344,7 +353,7 @@ for (const vus of steps) {
       page304: n("idle.page") + n("idle.page.304") ? n("idle.page.304") / (n("idle.page") + n("idle.page.304")) : null,
     };
     console.log(
-      `  idle: ${step.idle.cpuMsPerTabMinute.toFixed(1)} ms CPU per tab and minute, ${step.idle.cpuMsPerRefresh?.toFixed(2)} ms per request, 304: bootstrap ${f(step.idle.bootstrap304 * 100)} %, page ${f(step.idle.page304 * 100)} %; p50 bootstrap ${f(scenarios["idle.bootstrap"]?.p50)}/304 ${f(scenarios["idle.bootstrap.304"]?.p50)} ms, page ${f(scenarios["idle.page"]?.p50)}/304 ${f(scenarios["idle.page.304"]?.p50)} ms`,
+      `  idle: ${step.idle.cpuMsPerTabMinute.toFixed(1)} ms CPU per tab and minute, ${step.idle.cpuMsPerRefresh?.toFixed(2)} ms per request, 304: bootstrap ${f(step.idle.bootstrap304 * 100)} %, page ${f(step.idle.page304 * 100)} %; p50 bootstrap ${f(scenarios["idle.bootstrap"]?.p50)}/304 ${r1(scenarios["idle.bootstrap.304"]?.p50) ?? "–"} ms, page ${f(scenarios["idle.page"]?.p50)}/304 ${r1(scenarios["idle.page.304"]?.p50) ?? "–"} ms; signals ${n("signal")}`,
     );
   }
   writeFileSync(opt.out, JSON.stringify(report, (k, v) => (typeof v === "number" ? r1(v) : v), 1));

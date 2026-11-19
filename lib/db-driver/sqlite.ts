@@ -9,7 +9,7 @@
 // the transaction wait for it to end. Calls from inside – found through
 // AsyncLocalStorage, so helpers need no handle passed around – run in it;
 // tx() inside tx() is a savepoint.
-import { db as connection, noteRollback, noteTransaction, sqliteAll, sqliteOne, sqliteRun } from "../db";
+import { db as connection, noteRollback, noteTransaction, noteUnknownWrite, sqliteAll, sqliteOne, sqliteRun } from "../db";
 import { currentTx, dbContext, endScope, type TxScope } from "./context";
 import { sqliteDialect } from "./dialect";
 import type { Db, Param, TxOptions } from "./types";
@@ -48,7 +48,12 @@ export function createSqliteDb(): Db {
     },
     async exec(sql: string) {
       while (held()) await dbContext.sqliteDone;
-      connection().exec(sql);
+      try {
+        connection().exec(sql);
+      } finally {
+        // Its tables are not known: kept answers are computed anew (lib/kept-answers.ts).
+        noteUnknownWrite();
+      }
     },
     async tx<T>(fn: () => Promise<T>, options: TxOptions = {}): Promise<T> {
       const scope = currentTx();

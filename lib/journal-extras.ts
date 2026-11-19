@@ -29,6 +29,7 @@ import { safeFetch } from "./safe-fetch";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, sidebarMode, type SidebarMode } from "./journal-nav";
 import { findAsync, someAsync } from "./each-async";
+import { keepUntil } from "./read-memo";
 import { dropLiveProjections } from "./shared-live";
 
 let cachedSchema: Awaited<ReturnType<typeof documentSchema>> | undefined;
@@ -672,9 +673,13 @@ async function enclosingJournals(page: Page) {
 export async function lockingJournal(user: Identity, page: Page) {
   return (
     (await findAsync(await enclosingJournals(page), 
-      async (journal) =>
-        !!(await settingsRow(journal.id))?.lock_hash &&
-        !(await one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now())),
+      async (journal) => {
+        if (!(await settingsRow(journal.id))?.lock_hash) return false;
+        const unlock = await one<{ until: number }>("SELECT until FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now());
+        // An answer kept for its unchanged refresh ends with the unlock (lib/kept-answers.ts).
+        if (unlock) keepUntil(Number(unlock.until));
+        return !unlock;
+      },
     ))?.id || null
   );
 }

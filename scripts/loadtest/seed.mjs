@@ -31,6 +31,11 @@ const { values: opt } = parseArgs({
     docs: { type: "string", default: "300" },
     records: { type: "string", default: "3000" },
     spaces: { type: "string", default: "6" },
+    // Two related databases (projects, customers) the task database links
+    // to – one relation each – as the database open and its related data
+    // see them in bigger workspaces (#383). Off by default: the numbers
+    // stay comparable with the runs without it.
+    related: { type: "boolean", default: false },
     out: { type: "string", default: "loadtest-seed.json" },
   },
 });
@@ -161,9 +166,31 @@ const views = [
   },
   { id: "board", name: "Board", type: "board", filters: [], sorts: [], groupBy: "status" },
 ];
+// With --related: two more databases with records, and a relation to each
+// from the task database (one linked record per task).
+const related = { project: [], customer: [] };
+if (opt.related) {
+  for (const [key, title, count] of [
+    ["project", "Projekte", Math.max(10, Math.round(N_RECORDS / 25))],
+    ["customer", "Kunden", Math.max(10, Math.round(N_RECORDS / 50))],
+  ]) {
+    const target = await command({ action: "page.create", workspaceId, spaceId: spaceIds[0], title, kind: "database" });
+    const targetFields = [
+      { id: "title", name: "Name", type: "text" },
+      { id: "stage", name: "Phase", type: "select", options: STATUS },
+      { id: "notes", name: "Notizen", type: "text" },
+    ];
+    await command({ action: "database.update", pageId: target.id, version: (await call(`/api/pages/${target.id}`)).database.version, fields: targetFields, views: [views[0]] });
+    await command({ action: "rows.import", pageId: target.id, rows: Array.from({ length: count }, (_, i) => ({ title: `${title} ${i}`, stage: pick(STATUS), notes: sentence() })) });
+    related[key] = (await call(`/api/pages/${target.id}`)).rows.map((r) => r.id);
+    fields.push({ id: key, name: title, type: "relation", relationPage: target.id });
+  }
+  console.log(`related databases: ${related.project.length} projects, ${related.customer.length} customers (${Date.now() - t0} ms)`);
+}
 const version = (await call(`/api/pages/${db.id}`)).database.version;
 await command({ action: "database.update", pageId: db.id, version, fields, views });
 const record = (i) => ({
+  ...(opt.related ? { project: [pick(related.project)], customer: [pick(related.customer)] } : {}),
   title: `${pick(WORDS)} ${pick(WORDS)} #${i}`,
   status: pick(STATUS),
   priority: pick(PRIO),

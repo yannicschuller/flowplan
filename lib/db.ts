@@ -2370,7 +2370,11 @@ export async function reopenDatabase() {
 // starts with an empty cache, and the closed one's statements go with it.
 // On globalThis because bundles may hold this module more than once.
 const STATEMENT_CACHE_SIZE = 500;
-type Cached = { statement: StatementSync; reads: boolean };
+// `tables`: the tables the statement names (what a read depends on),
+// `writes`: what a write changes, with what its triggers and foreign keys
+// change in turn; null: not known (counts as everything). Both worked out
+// once per statement, when first needed (lib/kept-answers.ts).
+type Cached = { statement: StatementSync; reads: boolean; tables?: readonly string[]; writes?: readonly string[] | null };
 function statementCaches() {
   return ((globalThis as { flowplanStatements?: WeakMap<DatabaseSync, Map<string, Cached>> }).flowplanStatements ??= new WeakMap());
 }
@@ -2398,6 +2402,7 @@ function statement(sql: string): Cached {
 // prepared with, see migrate()).
 function forgetStatements(d: DatabaseSync) {
   statementCaches().delete(d);
+  schemaShapes.delete(d);
 }
 // Moves with every write (run(), statements that are not plain reads, a
 // rolled back transaction, a reopened database): what was read before may
@@ -2405,13 +2410,173 @@ function forgetStatements(d: DatabaseSync) {
 export function writeGeneration() {
   return globalDb.flowplanWrites ?? 0;
 }
+
+// ---- Which tables were written when (lib/kept-answers.ts, #383) ----
+//
+// A clock that moves with every write, the clock reading of the last write
+// per table, and of the last write whose tables are not known (a rollback,
+// exec(), a reopened database: everything counts as written). A kept
+// answer read from some tables is still current while none of them was
+// written after it was computed. Only for SQLite, where every write of this
+// process goes through the helpers below; writes of other processes on the
+// same file show in PRAGMA data_version (sqliteDataVersion()).
+type TableClock = { now: number; unknown: number; at: Map<string, number> };
+const tableClock = (): TableClock => ((globalDb as { flowplanTableClock?: TableClock }).flowplanTableClock ??= { now: 0, unknown: 0, at: new Map() });
+function noteTablesWritten(tables: readonly string[] | null | undefined) {
+  const clock = tableClock();
+  clock.now++;
+  if (!tables) clock.unknown = clock.now;
+  else for (const table of tables) clock.at.set(table, clock.now);
+}
+// The clock reading now: take it before reading what is to be kept.
+export function tableClockNow() {
+  return tableClock().now;
+}
+// Whether none of `tables` (nor anything unknown) was written after `stamp`.
+export function tablesUnchangedSince(tables: Iterable<string>, stamp: number) {
+  const clock = tableClock();
+  if (clock.unknown > stamp) return false;
+  for (const table of tables) if ((clock.at.get(table) ?? 0) > stamp) return false;
+  return true;
+}
+// Something not tracked by table changed (in memory, e.g. who has a page
+// open): a name of its own, read with noteNamesRead().
+export function noteNamesWritten(names: readonly string[]) {
+  noteTablesWritten(names);
+}
+export function noteNamesRead(names: readonly string[]) {
+  const into = readTracker();
+  if (into) for (const name of names) into.add(name);
+}
+// The tables read by the code running now, when it is being tracked
+// (lib/read-memo.ts withTrackedReads; the store is on globalThis there).
+const readTracker = () =>
+  (globalThis as { flowplanReadMemo?: { getStore(): { tables?: Set<string> } | undefined } }).flowplanReadMemo?.getStore()?.tables;
+// Writes of other connections to the SQLite file (scripts, the command
+// line): PRAGMA data_version moves when one of them commits.
+const dataVersions = new WeakMap<DatabaseSync, StatementSync>();
+export function sqliteDataVersion(): number {
+  const d = db();
+  let statement = dataVersions.get(d);
+  if (!statement) dataVersions.set(d, (statement = d.prepare("PRAGMA data_version")));
+  return Number((statement.get() as { data_version: number }).data_version);
+}
+
+// The tables of the schema, and per table what a write to it changes as
+// well, transitively: the tables its triggers write, and – for a delete
+// (DELETE, REPLACE) – the tables whose foreign keys point at it with an
+// ON DELETE action (CASCADE, SET NULL, SET DEFAULT); for any write those
+// with an ON UPDATE action. Keyed "d:<table>" (rows deleted) and
+// "w:<table>" (inserted or updated).
+type SchemaShape = { tables: Set<string>; closure: Map<string, string[]> };
+const schemaShapes = new WeakMap<DatabaseSync, SchemaShape>();
+const WRITE_TARGET = /\b(INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+["`[]?([A-Za-z_][A-Za-z0-9_]*)/gi;
+// The tables a statement writes, with "d:" when it may delete rows.
+const writeTargets = (sqlText: string) =>
+  [...sqlText.matchAll(WRITE_TARGET)].map((m) => `${/DELETE|REPLACE/i.test(m[1]) ? "d" : "w"}:${m[2].toLowerCase()}`);
+const NO_ACTION = new Set(["NO ACTION", "RESTRICT"]);
+function schemaShape(d: DatabaseSync): SchemaShape {
+  let shape = schemaShapes.get(d);
+  if (shape) return shape;
+  const tables = new Set(
+    (d.prepare("SELECT lower(name) name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((t) => t.name),
+  );
+  const edges = new Map<string, Set<string>>();
+  const add = (from: string, to: string) => (edges.get(from) ?? edges.set(from, new Set()).get(from)!).add(to);
+  for (const t of d.prepare("SELECT lower(tbl_name) tbl, sql FROM sqlite_master WHERE type='trigger' AND sql IS NOT NULL").all() as { tbl: string; sql: string }[]) {
+    // What the trigger's body writes (after its BEGIN: "AFTER UPDATE OF x ON t" is no write).
+    const begin = t.sql.search(/\bBEGIN\b/i);
+    for (const target of writeTargets(begin >= 0 ? t.sql.slice(begin) : t.sql))
+      if (tables.has(target.slice(2))) {
+        add(`w:${t.tbl}`, target);
+        add(`d:${t.tbl}`, target);
+      }
+  }
+  for (const table of tables)
+    for (const fk of d.prepare(`PRAGMA foreign_key_list("${table}")`).all() as { table: string; on_update: string; on_delete: string }[]) {
+      const parent = fk.table.toLowerCase();
+      if (!NO_ACTION.has(fk.on_delete.toUpperCase())) add(`d:${parent}`, `${fk.on_delete.toUpperCase() === "CASCADE" ? "d" : "w"}:${table}`);
+      if (!NO_ACTION.has(fk.on_update.toUpperCase())) {
+        add(`w:${parent}`, `w:${table}`);
+        add(`d:${parent}`, `w:${table}`);
+      }
+    }
+  const closure = new Map<string, string[]>();
+  for (const table of tables)
+    for (const start of [`w:${table}`, `d:${table}`]) {
+      const seen = new Set([start]);
+      const stack = [start];
+      while (stack.length) for (const next of edges.get(stack.pop()!) ?? []) if (!seen.has(next)) seen.add(next), stack.push(next);
+      closure.set(start, [...new Set([...seen].map((n) => n.slice(2)))]);
+    }
+  schemaShapes.set(d, (shape = { tables, closure }));
+  return shape;
+}
+const IDENTIFIER = /[A-Za-z_][A-Za-z0-9_]*/g;
+// PRAGMA statements that only report (table_info, data_version, …) or
+// tune the connection change no table.
+const QUIET_PRAGMA = /^\s*PRAGMA\s+[\w.]+\s*(\([^)]*\))?\s*;?\s*$/i;
+function statementTables(cached: Cached, sqlText: string): readonly string[] {
+  if (cached.tables) return cached.tables;
+  const { tables } = schemaShape(db());
+  return (cached.tables = [...new Set((sqlText.match(IDENTIFIER) ?? []).map((w) => w.toLowerCase()).filter((w) => tables.has(w)))]);
+}
+function statementWrites(cached: Cached, sqlText: string): readonly string[] | null {
+  if (cached.writes !== undefined) return cached.writes;
+  if (QUIET_PRAGMA.test(sqlText)) return (cached.writes = []);
+  const { tables, closure } = schemaShape(db());
+  const targets = writeTargets(sqlText);
+  if (!targets.length || targets.some((t) => !tables.has(t.slice(2)))) return (cached.writes = null);
+  return (cached.writes = [...new Set(targets.flatMap((t) => closure.get(t) ?? [t.slice(2)]))]);
+}
+// Reads of the statement for the tracking in place, if any.
+function noteStatementRead(cached: Cached, sqlText: string) {
+  const into = readTracker();
+  if (into) for (const table of statementTables(cached, sqlText)) into.add(table);
+}
 // For the Postgres driver: what it writes outdates memoized reads
 // (lib/read-memo.ts) as SQLite writes do.
-export function noteWriteOf(sql: string) {
-  if (!READ_ONLY.test(sql)) noteWrite();
+export function noteWriteOf(sql: string, params: readonly Param[] = []) {
+  if (READ_ONLY.test(sql)) return;
+  noteWrite();
+  noteNotificationInsert(sql, params);
 }
-function noteWrite() {
+// A new notification, whoever inserts it (some thirty places): the
+// recipient's open tabs are told to fetch their notifications
+// (lib/workspace-live.ts registers the hook). Found from the statement –
+// `INSERT INTO notifications(…,user_id,…) VALUES(…)` with the recipient as
+// a parameter; anything else (a SELECT as the source) is not followed and
+// left to the timed refresh.
+const NOTIFICATION_INSERT = /^\s*INSERT\s+INTO\s+notifications\s*\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i;
+const notificationParams = new Map<string, number>();
+export function notificationParamIndex(sqlText: string): number {
+  let index = notificationParams.get(sqlText);
+  if (index !== undefined) return index;
+  index = -1;
+  const m = NOTIFICATION_INSERT.exec(sqlText);
+  if (m) {
+    const column = m[1].split(",").map((c) => c.trim().toLowerCase()).indexOf("user_id");
+    const values = m[2].split(",").map((v) => v.trim());
+    if (column >= 0 && values[column] === "?") index = values.slice(0, column).filter((v) => v === "?").length;
+  }
+  if (notificationParams.size > 500) notificationParams.clear();
+  notificationParams.set(sqlText, index);
+  return index;
+}
+function noteNotificationInsert(sqlText: string, params: readonly Param[]) {
+  if (!/^\s*INSERT\s+INTO\s+notifications\b/i.test(sqlText)) return;
+  const hook = (globalThis as { flowplanNotificationHook?: (userId: string) => void }).flowplanNotificationHook;
+  const index = hook ? notificationParamIndex(sqlText) : -1;
+  const userId = index >= 0 ? params[index] : null;
+  if (hook && typeof userId === "string") hook(userId);
+}
+function noteWrite(tables?: readonly string[] | null) {
   globalDb.flowplanWrites = (globalDb.flowplanWrites ?? 0) + 1;
+  noteTablesWritten(tables);
+}
+// A write whose tables are not known (exec() of the SQLite driver).
+export function noteUnknownWrite() {
+  noteWrite();
 }
 // Schema changes through run() (tests, one-time steps) outdate cached statements.
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
@@ -2430,7 +2595,11 @@ export function sqliteOne<T = Record<string, unknown>>(sql: string, ...params: P
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
   const row = cached.statement.get(...params);
-  if (!cached.reads) noteWrite();
+  noteStatementRead(cached, sql);
+  if (!cached.reads) {
+    noteWrite(statementWrites(cached, sql));
+    noteNotificationInsert(sql, params);
+  }
   if (runtimeMetricsOn) noteStatement(start);
   return row ? (asPlain(row) as T) : undefined;
 }
@@ -2440,7 +2609,11 @@ export function sqliteAll<T = Record<string, unknown>>(sql: string, ...params: P
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
   const rows = cached.statement.all(...params) as T[];
   for (const row of rows) asPlain(row as object);
-  if (!cached.reads) noteWrite();
+  noteStatementRead(cached, sql);
+  if (!cached.reads) {
+    noteWrite(statementWrites(cached, sql));
+    noteNotificationInsert(sql, params);
+  }
   if (runtimeMetricsOn) noteStatement(start);
   return rows;
 }
@@ -2448,11 +2621,13 @@ export function sqliteRun(sql: string, ...params: Param[]) {
   const start = runtimeMetricsOn ? performance.now() : 0;
   if (dbContext.sqliteActive) outsideAsyncTransaction(true);
   let result;
+  const cached = statement(sql);
   try {
-    result = statement(sql).statement.run(...params);
+    result = cached.statement.run(...params);
   } finally {
-    noteWrite();
+    noteWrite(SCHEMA_CHANGE.test(sql) ? null : statementWrites(cached, sql));
   }
+  noteNotificationInsert(sql, params);
   if (SCHEMA_CHANGE.test(sql)) forgetStatements(db());
   if (runtimeMetricsOn) noteStatement(start);
   return result;

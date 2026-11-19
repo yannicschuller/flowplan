@@ -5,8 +5,10 @@ import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
 import { CSV_FORMULA } from "@/lib/cell-text";
 import { jsonWithTag } from "@/lib/etag";
 import { bootstrapResponse } from "@/lib/bootstrap-pages";
+import { keepAnswer, keptNotModified, trackedAnswer } from "@/lib/kept-answers";
 import { linkTargets } from "@/lib/link-targets";
-import { withRequestLocale } from "@/lib/content-locale";
+import { contentLocale, withRequestLocale } from "@/lib/content-locale";
+import { notePresence } from "@/lib/page-presence";
 import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
 import { domainAllowed, domainRobots, domainSettings, domainSitemap, verifyDomain } from "@/lib/custom-domains";
 import { aiAllowedUsers, instanceAiSettings } from "@/lib/ai/settings";
@@ -55,6 +57,7 @@ import { publicFile } from "@/lib/publication";
 import { withShareRequest } from "@/lib/share-access";
 import { requireRow, rowDocumentData } from "@/lib/row-documents";
 import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
+import { watchWorkspace } from "@/lib/workspace-live";
 import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
 import { listApiTokens } from "@/lib/api-tokens";
 import { createWebhook, listWebhooks, testWebhook, updateWebhook, webhookEvents } from "@/lib/webhooks";
@@ -447,9 +450,18 @@ async function handleGET(
       await requireMember(user, wid);
       return NextResponse.json(await listCollections(user, wid), { headers });
     }
-    // With an ETag: the app's 10 s refresh gets 304 while nothing changed.
-    if (path[0] === "bootstrap")
-      return bootstrapResponse(req, await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")));
+    // With an ETag: the app's timed refresh gets 304 while nothing changed –
+    // right away while nothing its last answer was read from was written
+    // since (lib/kept-answers.ts), else after building it.
+    if (path[0] === "bootstrap") {
+      const wid = url.searchParams.get("workspace") || undefined,
+        agent = req.headers.get("user-agent");
+      const key = `bootstrap\n${wid ?? ""}\n${agent ?? ""}\n${contentLocale()}\n${JSON.stringify(user)}`;
+      const unchanged = keptNotModified(key, req.headers.get("if-none-match"));
+      if (unchanged) return unchanged;
+      const tracked = await trackedAnswer(() => bootstrap(user, wid, agent));
+      return keepAnswer(key, tracked, bootstrapResponse(req, tracked.value));
+    }
     // Offline copies on a device: readable pages and what changed since.
     if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -826,19 +838,26 @@ async function handleGET(
       if (draft && "existing" in draft) return NextResponse.json(await pageData(user, draft.existing, { presence: false }), { headers: { "Cache-Control": "no-store" } });
       if (draft) return NextResponse.json(draft.data, { headers: { "Cache-Control": "no-store" } });
     }
-    if (path[0] === "pages" && path[1])
-      return jsonWithTag(
-        req,
-        await withActivity(
-          user,
-          // Offline refreshes (X-Flowplan-Offline) and loading ahead on hover
-          // (X-Flowplan-Prefetch, components/prefetch.ts) do not count as presence.
-          await pageData(user, path[1], {
-            presence: req.headers.get("x-flowplan-offline") !== "1" && req.headers.get("x-flowplan-prefetch") !== "1",
-          }),
-          req.headers.get("x-flowplan-visit") === "1",
-        ),
-      );
+    if (path[0] === "pages" && path[1]) {
+      // Offline refreshes (X-Flowplan-Offline) and loading ahead on hover
+      // (X-Flowplan-Prefetch, components/prefetch.ts) do not count as presence.
+      const presence = req.headers.get("x-flowplan-offline") !== "1" && req.headers.get("x-flowplan-prefetch") !== "1",
+        visit = req.headers.get("x-flowplan-visit") === "1";
+      // The refresh of an open page (no visit): 304 right away while
+      // nothing its last answer was read from changed (lib/kept-answers.ts);
+      // the person stays present on the page as with a full answer.
+      const key = !visit && path.length === 2 ? `page\n${path[1]}\n${presence ? 1 : 0}\n${contentLocale()}\n${JSON.stringify(user)}` : null;
+      if (key) {
+        const unchanged = keptNotModified(key, req.headers.get("if-none-match"));
+        if (unchanged) {
+          if (presence) await notePresence(path[1], user.id);
+          return unchanged;
+        }
+      }
+      const tracked = await trackedAnswer(async () => await withActivity(user, await pageData(user, path[1], { presence }), visit));
+      const response = jsonWithTag(req, tracked.value);
+      return key ? keepAnswer(key, tracked, response) : response;
+    }
     if (path[0] === "settings") {
       const wid = url.searchParams.get("workspace") || "";
       await requireMember(user, wid, "owner");
@@ -1086,6 +1105,58 @@ async function handleGET(
     if (path[0] === "templates") {
       const wid = url.searchParams.get("workspace") || "";
       return NextResponse.json(await listPageTemplates(user, wid));
+    }
+    // The workspace's live signal (lib/workspace-live.ts): what changed –
+    // the tree, the person's notifications, pages they may read – so the
+    // tab asks for just that instead of every 10 s. One stream per browser
+    // and workspace (components/workspace-live.ts shares it between tabs).
+    if (path.length === 1 && path[0] === "live") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      const check = async () => await requireMember(user, wid);
+      await check();
+      const allowed = streamGuard(hash((await cookies()).get(cookieName)?.value || ""), check);
+      const encoder = new TextEncoder();
+      let stop = () => {};
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+          const unwatch = watchWorkspace(user, wid, send);
+          // The instance stops: the browser reconnects to another one.
+          const forget = onShutdown(() => stop());
+          // Session and membership checked again with every keepalive:
+          // whoever loses them stops receiving signals within 30 seconds.
+          const ping = setInterval(async () => {
+            try {
+              if (!(await allowed())) {
+                send(`data: ${JSON.stringify({ type: "revoked" })}\n\n`);
+                return stop();
+              }
+              send(": ping\n\n");
+            } catch {
+              stop();
+            }
+          }, 30_000);
+          stop = () => {
+            clearInterval(ping);
+            unwatch();
+            forget();
+            try {
+              controller.close();
+            } catch {}
+          };
+          req.signal.addEventListener("abort", () => stop());
+        },
+        cancel() {
+          stop();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+        },
+      });
     }
     // Live stream of an open document or record content: changes and cursor
     // moves of the others arrive as they happen (lib/document-live.ts).
