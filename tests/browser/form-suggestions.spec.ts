@@ -79,7 +79,7 @@ test("a text question suggests earlier answers while typing", async ({ page }, i
   await expect(field).toHaveAttribute("aria-autocomplete", "list");
   await field.click();
   await field.pressSequentially("Bu");
-  const list = page.getByRole("listbox", { name: "Frühere Antworten für Artikel" });
+  const list = page.getByRole("listbox", { name: "Vorschläge für Artikel" });
   await expect(list.getByRole("option")).toHaveText(["Buntstifte", "Bunte Wolle"]);
   await expect(field).toHaveAttribute("aria-expanded", "true");
   await shoot(page, "typing");

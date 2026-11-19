@@ -8591,6 +8591,49 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .form-suggest-text strong {
   font-weight: 650;
 }
+/* Why earlier answers are off, next to the switch, with the way to turn
+   the form members-only (#385, components/database-form.tsx). */
+.form-suggest-locked {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+}
+.form-suggest-locked > svg {
+  flex: none;
+  color: var(--blue);
+  width: 18px;
+  height: 18px;
+}
+.form-suggest-locked > p {
+  flex: 1 1 240px;
+  margin: 0;
+}
+/* The fixed suggestion list (#385). */
+.form-suggest-list-design {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.form-suggest-list-design > label {
+  margin: 0;
+  font-size: 13px;
+}
+.form-suggest-list-design > textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+}
+.form-suggest-list-design > p {
+  margin: 0;
+}
 @media (pointer: coarse) {
   .form-suggest-list .fp-select-option {
     min-height: 44px;

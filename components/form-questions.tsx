@@ -13,6 +13,7 @@ import {
   questionStyle,
   SCALE_MAX,
   SCALE_MIN,
+  suggestionList,
   suggestionScope,
 } from "@/lib/form-settings";
 import type { Field, Row, User } from "@/lib/types";
@@ -113,6 +114,7 @@ export default function FormQuestions({
               disabled={disabled}
               placeholder={t("Hier eingeben …", "Type here …")}
               suggest={suggest && suggestionScope(f, config) ? suggest : undefined}
+              options={suggestionList(f, config)}
               onChange={(v) => onChange(f.id, v)}
             />
           ) : f.type === "files" && !upload ? (

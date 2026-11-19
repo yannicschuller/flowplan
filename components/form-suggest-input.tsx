@@ -1,13 +1,16 @@
 "use client";
-// A form's one-line text question (#374). With `suggest` (members-only
-// forms where the author switched suggestions on) it is a combobox: from
-// the second character it lists earlier answers from the server
-// (lib/form-suggestions.ts); ArrowUp/Down choose, Enter takes one, Escape
-// closes, a tap picks. Without it the browser's own form history may offer
+// A form's one-line text question (#374). With `options` (the author's
+// fixed list, #385, any form) or `suggest` (members-only forms where the
+// author switched earlier answers on) it is a combobox: from the first
+// character it lists matching fixed entries, from the second also earlier
+// answers from the server (lib/form-suggestions.ts) – fixed ones first,
+// no duplicates. ArrowUp/Down choose (in an empty field ArrowDown shows the
+// fixed list), Enter takes one, Escape closes, a tap picks. Without it the browser's own form history may offer
 // what was typed on this device before: the field keeps a stable name per
 // question and autocomplete on – nothing is stored by Flowplan.
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useT } from "./i18n";
+import { matchSuggestionList, mergeSuggestions, SUGGESTION_BROWSE } from "@/lib/form-suggestion-list";
 import type { Field } from "@/lib/types";
 
 export type SuggestSource = (fieldId: string, query: string) => Promise<string[]>;
@@ -33,6 +36,7 @@ export function FormSuggestInput({
   disabled,
   placeholder,
   suggest,
+  options,
   onChange,
 }: {
   field: Field;
@@ -40,13 +44,16 @@ export function FormSuggestInput({
   disabled?: boolean;
   placeholder?: string;
   suggest?: SuggestSource;
+  options?: string[];
   onChange: (value: string) => void;
 }) {
   const t = useT();
   const listId = `${useId()}-suggestions`;
   const text = typeof value === "string" ? value : "";
-  const [items, setItems] = useState<string[]>([]),
+  const [earlier, setItems] = useState<string[]>([]),
     [open, setOpen] = useState(false),
+    // ArrowDown in an empty field: the start of the fixed list.
+    [browse, setBrowse] = useState(false),
     [active, setActive] = useState(-1),
     [focused, setFocused] = useState(false);
   // Answers per query, for this question while the page is open.
@@ -79,16 +86,34 @@ export function FormSuggestInput({
       clearTimeout(timer);
     };
   }, [suggest, field.id, query, focused]);
-  const expanded = !!suggest && open && focused && items.length > 0;
+  const combobox = !!suggest || !!options?.length;
+  const items = useMemo(() => {
+    if (!query && !browse) return [];
+    const limit = query ? undefined : SUGGESTION_BROWSE;
+    return mergeSuggestions(matchSuggestionList(options, query, limit), query.length >= MIN_CHARS ? earlier : [], limit);
+  }, [options, query, browse, earlier]);
+  const expanded = combobox && open && focused && items.length > 0;
   const current = active < items.length ? active : -1;
   const pick = (choice: string | undefined) => {
     if (choice === undefined) return;
     onChange(choice);
     setOpen(false);
+    setBrowse(false);
     setActive(-1);
   };
+  // The highlighted option stays in view in a long list.
+  useEffect(() => {
+    if (expanded && current >= 0) document.getElementById(`${listId}-${current}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [expanded, current, listId]);
   const keyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (!suggest || e.nativeEvent.isComposing) return;
+    if (!combobox || e.nativeEvent.isComposing) return;
+    if (e.key === "ArrowDown" && !query && !browse && options?.length) {
+      e.preventDefault();
+      setBrowse(true);
+      setOpen(true);
+      setActive(0);
+      return;
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       if (!items.length) return;
       e.preventDefault();
@@ -104,10 +129,11 @@ export function FormSuggestInput({
       e.preventDefault();
       e.stopPropagation();
       setOpen(false);
+      setBrowse(false);
       setActive(-1);
     }
   };
-  if (!suggest)
+  if (!combobox)
     return (
       <input
         aria-label={field.name}
@@ -140,6 +166,7 @@ export function FormSuggestInput({
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          setBrowse(false);
           setActive(-1);
         }}
         onFocus={() => {
@@ -149,6 +176,7 @@ export function FormSuggestInput({
         onBlur={() => {
           setFocused(false);
           setOpen(false);
+          setBrowse(false);
           setActive(-1);
         }}
         onKeyDown={keyDown}
@@ -156,7 +184,7 @@ export function FormSuggestInput({
       <div
         id={listId}
         role="listbox"
-        aria-label={t(`Frühere Antworten für ${field.name}`, `Earlier answers for ${field.name}`)}
+        aria-label={t(`Vorschläge für ${field.name}`, `Suggestions for ${field.name}`)}
         className="fp-select-list form-suggest-list"
         hidden={!expanded}
         // The focus stays in the field; a press or tap only picks.
@@ -181,7 +209,7 @@ export function FormSuggestInput({
           ))}
       </div>
       <span className="sr-only" role="status" aria-live="polite">
-        {expanded ? t(`${items.length} frühere Antworten`, `${items.length} earlier answers`) : ""}
+        {expanded ? (items.length === 1 ? t("1 Vorschlag", "1 suggestion") : t(`${items.length} Vorschläge`, `${items.length} suggestions`)) : ""}
       </span>
     </div>
   );
