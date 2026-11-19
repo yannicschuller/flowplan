@@ -65,6 +65,9 @@ import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
 import { CollectionView } from "./collection-view";
 import { BookNav, BookNext } from "./book-nav";
+// Built on the device for pages made offline (#370): in the shell, since the
+// connection is gone when such a page opens.
+import { localPageData as buildLocalPage } from "./offline-local-data";
 import { LIBRARY_HOME, libraryHash, parseLibraryHash } from "@/lib/library";
 import { CollectionsNav } from "./collections-nav";
 import type { CollectionDraft } from "./collection-editor";
@@ -1877,27 +1880,10 @@ export default function WorkspaceApp({
   // views and the template's records, an empty board, a notebook with its
   // first sheet and the handwriting kept here.
   const openedLocal = useRef(new Set<string>());
-  // The code that builds such a page is not in the first load (JS budget,
-  // scripts/quality-check.mjs) but fetched in the background a few seconds
-  // later, while the connection is still there: without the offline copy a
-  // page made offline could not open otherwise.
-  useEffect(() => {
-    let idle = 0;
-    const timer = window.setTimeout(() => {
-      const load = () => void import("./offline-local-data").catch(() => {});
-      if ("requestIdleCallback" in window) idle = window.requestIdleCallback(load, { timeout: 5000 });
-      else load();
-    }, 4000);
-    return () => {
-      window.clearTimeout(timer);
-      if (idle && "cancelIdleCallback" in window) window.cancelIdleCallback(idle);
-    };
-  }, []);
   const localPageData = useCallback(async (change: import("@/lib/offline-queue").OfflinePageChange, state: LocalState): Promise<PageData> => {
     const b = bootRef.current;
     const template = change.starterTemplate ? catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[change.starterTemplate] : undefined;
-    const { localPageData: build } = await import("./offline-local-data");
-    return build(change, { ...localPageOf(change, b.user.id, state) }, tr, template) as unknown as PageData;
+    return buildLocalPage(change, { ...localPageOf(change, b.user.id, state) }, tr, template) as unknown as PageData;
   }, []);
   // For "Retry" on a page that failed to open.
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
