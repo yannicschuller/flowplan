@@ -8404,8 +8404,32 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     display: flex;
   }
 }
+/* "Full width" means the window's width, with a small side margin (#391);
+   database pages always use it, like in the app. */
 .public-wide {
-  max-width: 1280px;
+  max-width: none;
+  padding-inline: 40px;
+}
+/* Tables of databases embedded in a shared document leave the reading
+   column and use the window's width (#391). */
+/* 100vw counts a classic scrollbar too: nothing scrolls sideways. */
+body:has(.public-page:not(.public-wide) .public-embed) {
+  overflow-x: clip;
+}
+.public-page:not(.public-wide) .public-embed {
+  width: calc(100vw - 80px);
+  max-width: none;
+  margin-inline: calc(50% - 50vw + 40px);
+  overflow-x: auto;
+}
+@media (max-width: 600px) {
+  .public-wide {
+    padding-inline: 16px;
+  }
+  .public-page:not(.public-wide) .public-embed {
+    width: calc(100vw - 32px);
+    margin-inline: calc(50% - 50vw + 16px);
+  }
 }
 .public-breadcrumb {
   font-size: 13px;

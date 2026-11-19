@@ -297,7 +297,7 @@ async function renderPublishedPage({
     );
   return (
     <main
-      className={publicPageClass({ wide: !!page.full_width, themed: !!theme?.accent, externalLinkIcon: !publication || !!publication.external_link_icon })}
+      className={publicPageClass({ wide: !!page.full_width, database: page.kind === "database", themed: !!theme?.accent, externalLinkIcon: !publication || !!publication.external_link_icon })}
       style={theme?.accent ? ({ "--blue": theme.accent, "--accent-strong": theme.accent } as React.CSSProperties) : undefined}
     >
       {/* The look of the workspace (#196); the publication's own accent above wins. */}
