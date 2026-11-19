@@ -1231,6 +1231,17 @@ const exact: Record<string, string> = {
   "Für diese Seite ist keine Prüfung geplant.": "No review is planned for this page.",
   "Geplante Regeln haben keine Bedingungen.": "Scheduled rules have no conditions.",
   "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.": "Scheduled rules only create records; only scheduled rules create records.",
+  "Geplante Regeln legen nur Datensätze oder Aufgaben an; Datensätze anlegen nur geplante Regeln.": "Scheduled rules only create records or tasks; only scheduled rules create records.",
+  // "Aufgabe erstellen" of the database rules (#380, lib/database-settings.ts, lib/automation-task.ts).
+  "Die Aufgabe braucht einen Text.": "The task needs a text.",
+  "Die Aufgabe verweist auf eine unbekannte Eigenschaft.": "The task refers to an unknown property.",
+  "Geplante Regeln haben keinen auslösenden Eintrag: Ihre Aufgaben kommen in eine Datenbank, ohne Personen oder Verknüpfung des Eintrags.":
+    "Scheduled rules have no triggering record: their tasks go into a database, without people or a link of the record.",
+  "Die Person der Aufgabe ist kein Mitglied des Arbeitsbereichs.": "The task’s person is not a member of the workspace.",
+  "Wähle eine Datenbank für die Aufgabe.": "Choose a database for the task.",
+  "Die Datenbank für die Aufgabe gibt es nicht (mehr).": "The database for the task does not exist (any more).",
+  "In der Datenbank für die Aufgabe darfst du keine Einträge anlegen.": "You may not create records in the database for the task.",
+  "Regeln mit „Aufgabe erstellen“ lassen sich noch nicht im Canvas öffnen.": "Rules with “Create task” cannot be opened in the canvas yet.",
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
   "Kein Dashboard.": "Not a dashboard.",
   "Kein Notizbuch.": "Not a notebook.",
@@ -1841,8 +1852,30 @@ function incidentEnglish(message: string) {
   return `${m[1] ? "Critical security incident" : "Security incident"}: ${rule ? rule.en : m[2]}${m[3] || ""}. Details under Administration → Security.`;
 }
 
-export function englishMessage(message: string) {
+// A rule's task that could not be made (lib/automation-task.ts): the
+// reason is itself a message.
+const taskFailure = /^Regel „(.+?)“: Aufgabe nicht erstellt – (.+)$/s;
+const TASK_REASONS: [RegExp, string][] = [
+  [/^die Person, die die Regel eingerichtet hat, gibt es nicht mehr\.$/, "the person who set up the rule no longer exists."],
+  [/^der Eintrag liegt in einem verschlüsselten Bereich, dort kann der Server nichts schreiben\.$/, "the record is in an encrypted space, the server cannot write there."],
+  [/^die Datenbank liegt in einem verschlüsselten Bereich, dort kann der Server nichts schreiben\.$/, "the database is in an encrypted space, the server cannot write there."],
+  [/^(.+) darf den Eintrag nicht bearbeiten\.$/, "$1 may not edit the record."],
+  [/^(.+) kann den Eintrag nicht öffnen\.$/, "$1 cannot open the record."],
+  [/^die Datenbank für die Aufgabe gibt es nicht mehr\.$/, "the database for the task no longer exists."],
+  [/^(.+) darf in „(.+)“ nichts anlegen\.$/, "$1 may not create anything in “$2”."],
+  [/^„(.+)“ ist gesperrt\.$/, "“$1” is locked."],
+];
+function taskFailureEnglish(message: string): string | null {
+  const m = taskFailure.exec(message);
+  if (!m) return null;
+  const reason = TASK_REASONS.find(([pattern]) => pattern.test(m[2]));
+  return `Rule “${m[1]}”: task not created – ${reason ? m[2].replace(reason[0], reason[1]) : englishMessage(m[2])}`;
+}
+
+export function englishMessage(message: string): string {
   if (exact[message]) return exact[message];
+  const task = taskFailureEnglish(message);
+  if (task) return task;
   const incident = incidentEnglish(message);
   if (incident) return incident;
   for (const [pattern, english] of patterns)

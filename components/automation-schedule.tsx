@@ -2,6 +2,7 @@
 // Scheduled automation rules: when they run ("every Monday at 09:00",
 // "monthly on the 1st", "every 3 days") and the record they create from a
 // record template, with dates relative to the run ("Due: +3 days").
+import type { ReactNode } from "react";
 import { Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -117,12 +118,15 @@ export function CreateActionFields({
   action,
   fields,
   templates,
+  typeSelect,
   onChange,
   onRemove,
 }: {
   action: CreateAction;
   fields: Field[];
   templates: RowTemplateRef[];
+  // The choice of the action's kind (record or task, #380).
+  typeSelect?: ReactNode;
   onChange: (next: CreateAction) => void;
   onRemove?: () => void;
 }) {
@@ -131,7 +135,8 @@ export function CreateActionFields({
   return (
     <div className="automation-create">
       <div className="automation-row">
-        <span>{t("Datensatz anlegen aus", "Create a record from")}</span>
+        {typeSelect}
+        <span className={typeSelect ? "automation-word" : undefined}>{typeSelect ? t("aus", "from") : t("Datensatz anlegen aus", "Create a record from")}</span>
         <Select aria-label={t("Datensatzvorlage", "Record template")} value={action.template} onChange={(e) => onChange({ ...action, template: e.target.value })}>
           <option value="">{t("leerem Datensatz", "an empty record")}</option>
           {templates.map((x) => (

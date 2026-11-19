@@ -2392,6 +2392,18 @@ export type CommandDatabaseSettings = {
         type: "template";
         template: string;
         mode?: "empty" | "append";
+      } | {
+        type: "task";
+        target?: "document" | "database";
+        text?: string;
+        assignee?: string;
+        due?: number | null;
+        heading?: string;
+        database?: string;
+        personField?: string;
+        dueField?: string;
+        values?: Record<string, string>;
+        relation?: string;
       })[];
       createdBy?: string;
       since?: string;

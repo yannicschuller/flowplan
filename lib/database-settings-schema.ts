@@ -69,6 +69,31 @@ export const automationAction = z.discriminatedUnion("type", [
     template: z.string().min(1).max(60),
     mode: z.enum(["empty", "append"]).default("empty"),
   }),
+  // "Aufgabe erstellen" (#380), as the person who set the rule up
+  // (lib/automation-task.ts): a task item in the triggering record's
+  // document ("document", below `heading` if given) or a new record in a
+  // task database ("database"). Once per record and rule; scheduled rules
+  // once per date, into a database only. `text` takes the placeholders of
+  // record templates ("{{Titel}} nachfassen"); `assignee`: "" (nobody), a
+  // member id, "@actor", "@creator" or "field:<id>" (a person property of
+  // the triggering record); `due`: days after the day it runs (null: none).
+  // Into a database: the person goes into `personField`, the due date into
+  // `dueField` (empty: the first person property, the due date property),
+  // `values` sets select properties (priority, status), `relation` is a
+  // relation property of the task database that gets the triggering record.
+  z.object({
+    type: z.literal("task"),
+    target: z.enum(["document", "database"]).default("document"),
+    text: z.string().trim().max(300).default(""),
+    assignee: z.string().max(600).default(""),
+    due: z.number().int().min(-3650).max(3650).nullable().default(null),
+    heading: z.string().trim().max(200).default(""),
+    database: z.string().max(60).default(""),
+    personField: z.string().max(500).default(""),
+    dueField: z.string().max(500).default(""),
+    values: z.record(fid, optionValue).default({}),
+    relation: z.string().max(500).default(""),
+  }),
 ]);
 export const automationSchema = z.object({
   id: z.string().min(1).max(60),
@@ -88,6 +113,7 @@ export const automationSchema = z.object({
 });
 export type Automation = z.infer<typeof automationSchema>;
 export type AutomationAction = z.infer<typeof automationAction>;
+export type TaskAction = Extract<AutomationAction, { type: "task" }>;
 export type ScheduleTrigger = Extract<Automation["trigger"], { type: "schedule" }>;
 
 export const sprintSchema = z.object({

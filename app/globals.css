@@ -29709,7 +29709,12 @@ tr:hover .row-open-mark,
   display: grid;
   gap: 8px;
 }
-.automation-create label.automation-row > span {
+/* A label is a column elsewhere (label { … }); here text and field share a line. */
+.automation-create label.automation-row {
+  flex-direction: row;
+  margin-bottom: 0;
+}
+.automation-create label.automation-row > span:not(.fp-select) {
   flex: 0 1 160px;
 }
 .automation-create input[type="number"] {
@@ -29718,6 +29723,17 @@ tr:hover .row-open-mark,
 .automation-create p {
   margin: 0;
   font-size: 12px;
+}
+.automation-row > .automation-word {
+  flex: none;
+}
+/* "Aufgabe erstellen" (#380): label and field on one line, the field
+   takes the rest; the hint below the number. */
+.automation-task label.automation-row > small {
+  flex-basis: 100%;
+}
+.automation-task > p.error {
+  margin: 0;
 }
 /* "Wiederkehrende Aufgabe": the choice, then the rule as one sentence
    ("alle [1] Wochen · Mo Di … · gerechnet ab [Start ▾]") that wraps as a

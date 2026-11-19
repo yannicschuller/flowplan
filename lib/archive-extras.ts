@@ -143,7 +143,7 @@ export function remapBlockAttributes(attrs: Record<string, string>, pages: Map<s
 export async function importDatabaseSettings(
   pageId: string,
   raw: unknown,
-  ctx: { user: string; fields: Field[]; members: Set<string>; templates: Map<string, string>; person: (value: string) => string },
+  ctx: { user: string; fields: Field[]; members: Set<string>; templates: Map<string, string>; person: (value: string) => string; pages?: Map<string, string> },
 ) {
   if (raw === undefined) return;
   const parsed = settingsSchema.safeParse(raw);
@@ -166,7 +166,14 @@ export async function importDatabaseSettings(
     ...a,
     createdBy: ctx.user,
     since,
-    actions: a.actions.map((action) => {
+    // A task into a database not imported with it is left out (#380).
+    actions: a.actions.filter((action) => action.type !== "task" || action.target !== "database" || ctx.pages?.has(action.database)).map((action) => {
+      if (action.type === "task")
+        return {
+          ...action,
+          assignee: action.assignee.startsWith("field:") || !action.assignee ? action.assignee : String(who(action.assignee)),
+          database: action.target === "database" ? ctx.pages!.get(action.database)! : action.database,
+        };
       if (action.type === "notify" && !action.to.startsWith("field:")) return { ...action, to: String(who(action.to)) };
       if (action.type === "set" && person.has(action.field)) return { ...action, value: who(action.value) };
       if (action.type === "create")
@@ -177,7 +184,7 @@ export async function importDatabaseSettings(
         };
       return action;
     }),
-  }));
+  })).filter((a) => a.actions.length);
   await run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(settings), pageId);
 }
 

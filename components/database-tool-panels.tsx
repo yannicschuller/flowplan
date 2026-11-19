@@ -20,6 +20,7 @@ export default function DatabaseToolPanels({
   editable,
   act,
   templates,
+  databases,
 }: {
   panel: ToolPanel | null;
   setPanel: (panel: ToolPanel | null) => void;
@@ -29,6 +30,7 @@ export default function DatabaseToolPanels({
   editable: boolean;
   act: (b: Record<string, unknown>) => Promise<unknown>;
   templates?: { id: string; name: string; is_default?: number }[];
+  databases?: { id: string; title: string }[];
 }) {
   const t = useT();
   const settings = database.settings || {};
@@ -36,7 +38,7 @@ export default function DatabaseToolPanels({
   return (
     <>
       <Modal open={panel === "automations"} onClose={() => setPanel(null)} title={t(`Automationen · ${page.title}`, `Automations · ${page.title}`)} wide>
-        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} pageId={page.id} />
+        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} pageId={page.id} databases={databases} />
       </Modal>
       <Modal open={panel === "git"} onClose={() => setPanel(null)} title={t("Git-Anbindung", "Git connection")} wide>
         {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id" && !!f.prefix)} editable={editable} act={act} />}
