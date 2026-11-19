@@ -22,9 +22,9 @@ export function PasswordInput({ className = "", ref, ...props }: Props) {
       <button
         type="button"
         className="password-toggle"
-        aria-label={shown ? t("Passwort verbergen", "Hide password") : t("Passwort anzeigen", "Show password")}
+        aria-label={shown ? t("Zeichen verbergen", "Hide characters") : t("Zeichen anzeigen", "Show characters")}
         aria-pressed={shown}
-        title={shown ? t("Passwort verbergen", "Hide password") : t("Passwort anzeigen", "Show password")}
+        title={shown ? t("Zeichen verbergen", "Hide characters") : t("Zeichen anzeigen", "Show characters")}
         // Keeps the caret in the field on a mouse click.
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setShown((s) => !s)}
