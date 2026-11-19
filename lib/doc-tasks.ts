@@ -13,7 +13,7 @@ import { all, id, one, run } from "./db";
 import { htmlState } from "./document-server";
 import { rewriteDocument } from "./document-rewrite";
 import { HttpError } from "./auth";
-import { pageRole, requirePage } from "./permissions";
+import { pageRole, requirePage, workspaceRoles } from "./permissions";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { journalLocked } from "./journal-extras";
 import { notificationOn } from "./notification-kinds";
@@ -275,6 +275,9 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
   const seen = Number((await one<{ tasks_seen_at: number | null }>("SELECT tasks_seen_at FROM users WHERE id=?", user.id))?.tasks_seen_at || 0);
   const allowed = new Map<string, boolean>(),
     hidden = new Map<string, Set<string>>();
+  // The roles of all pages of the workspaces with tasks at once (#383):
+  // pageRole() below answers from them.
+  if (rows.length) for (const w of new Set(rows.map((r) => r.workspace_id))) await workspaceRoles(user, w);
   return (await filterAsync(rows, async (row) => {
       if (!allowed.has(row.page_id)) {
         const page = await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id);

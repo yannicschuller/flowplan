@@ -288,6 +288,7 @@ import {
   requirePage,
   spaceRole,
   pageRole,
+  workspaceRoles,
 } from "./permissions";
 import {
   createPage,
@@ -360,6 +361,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
   const guestHere = !!workspace.guest;
+  // The roles of all pages at once (#383); pageRole() below and in the
+  // parts of the answer takes them from there.
+  await workspaceRoles(user, workspace.id);
   const pages = await filterAsync(await all<Page>(
     // Synced blocks live inside the pages that show them, not in the tree.
     "SELECT * FROM pages WHERE workspace_id=? AND synced=0 ORDER BY position",

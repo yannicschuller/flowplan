@@ -13,7 +13,7 @@
 import { z } from "zod";
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
-import { pageRole, requireMember, spaceRole } from "./permissions";
+import { pageRole, requireMember, spaceRole, workspaceRoles } from "./permissions";
 import type { Identity, Page, Space } from "./types";
 import { filterAsync, forEachAsync, someAsync } from "./each-async";
 
@@ -27,6 +27,7 @@ type Slot = { id: string; position: number | null };
 // spaces of the readable pages when the caller already knows them.
 export async function visibleSpaces(user: Identity, workspaceId: string, pageSpaces?: Set<string>): Promise<Space[]> {
   const spaces = await all<Space>(`SELECT * FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId);
+  if (!pageSpaces) await workspaceRoles(user, workspaceId);
   return await filterAsync(spaces, async (s) => {
     if (await spaceRole(user, s)) return true;
     if (pageSpaces) return pageSpaces.has(s.id);
