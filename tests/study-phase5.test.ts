@@ -195,7 +195,8 @@ test("app summary and widget: due cards across workspaces, within 2 KB", async (
   assert.ok(summary.study!.due >= 3);
   assert.ok(summary.study!.new >= 3);
   assert.equal(summary.study!.streak, 0);
-  assert.equal(W.widgetKinds.at(-1), "study");
+  // Added after the kinds before it (later kinds follow it: lib/mobile-widget-schema.ts).
+  assert.equal(W.widgetKinds.indexOf("study"), 13);
   const ctx = W.widgetContext(learner, undefined, zone);
   const data = (await W.widgetData(ctx, "study", {})) as any;
   assert.equal(data.url, "/#study");

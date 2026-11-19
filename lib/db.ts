@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 108;
+export const SCHEMA_VERSION = 115;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1608,11 +1608,65 @@ function migrate(d: DatabaseSync) {
   // on every page GET. The triggers mark changed sources (also when an
   // older version writes); the data step "text-links-107" marks all once.
   migrateTextLinks(d);
+  // Schema 115 – widget pushes (iOS) and profiles whose app keeps its
+  // registration without notifications (lib/widget-push.ts).
+  migrateWidgetPush(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 115 – widget pushes (lib/widget-push.ts, iOS 26 WidgetKit push
+// through the relay, type "widgets") and app profiles that stay registered
+// while another one is active:
+// - mobile_devices.push_enabled: 0 for an installation whose profile is not
+//   the active one in the app (registered with `push: false`, or switched by
+//   POST /api/mobile/device): it keeps its device token for the summary and
+//   widgets, but gets no notifications (lib/push.ts drops its deliveries).
+// - mobile_widget_push: the relay token of the app's widget push
+//   registration (sealed, bound to the device), with when changes are
+//   waiting (pending_since) and when the last push went (sent_at, the
+//   budget: at most one per device every 5 minutes). Several profiles of
+//   one app share the phone's widget token: one push reaches them all.
+// - widget_push_dirty: what changed since the last round – a person ('u')
+//   or a workspace ('w', for its members) – with the time of the first
+//   change (the debounce). The triggers below only mark (one row per
+//   person or workspace, never updated), and only while some app has a
+//   widget push registration; the push worker expands and sends.
+// An older version would send notifications to `push: false` installations,
+// hence the new number.
+function migrateWidgetPush(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(mobile_devices)").all() as { name: string }[]).some((c) => c.name === "push_enabled"))
+    d.exec("ALTER TABLE mobile_devices ADD COLUMN push_enabled INTEGER NOT NULL DEFAULT 1");
+  const guard = "EXISTS(SELECT 1 FROM mobile_widget_push)";
+  const person = (user: string) =>
+    `INSERT INTO widget_push_dirty(scope,key,at) SELECT 'u',${user},unixepoch()*1000 WHERE ${user} IS NOT NULL AND NOT EXISTS(SELECT 1 FROM widget_push_dirty x WHERE x.scope='u' AND x.key=${user});`;
+  const workspace = (wid: string) =>
+    `INSERT INTO widget_push_dirty(scope,key,at) SELECT 'w',${wid},unixepoch()*1000 WHERE ${wid} IS NOT NULL AND NOT EXISTS(SELECT 1 FROM widget_push_dirty x WHERE x.scope='w' AND x.key=${wid});`;
+  const ofPage = (page: string) =>
+    `INSERT INTO widget_push_dirty(scope,key,at) SELECT 'w',p.workspace_id,unixepoch()*1000 FROM pages p WHERE p.id=${page} AND p.workspace_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM widget_push_dirty x WHERE x.scope='w' AND x.key=p.workspace_id);`;
+  d.exec(`CREATE TABLE IF NOT EXISTS mobile_widget_push(device_id TEXT PRIMARY KEY REFERENCES mobile_devices(id) ON DELETE CASCADE,relay_token TEXT NOT NULL,token_hash TEXT NOT NULL,created_at INTEGER NOT NULL,pending_since INTEGER,sent_at INTEGER);
+    CREATE INDEX IF NOT EXISTS mobile_widget_push_token ON mobile_widget_push(token_hash);
+    CREATE INDEX IF NOT EXISTS mobile_widget_push_pending ON mobile_widget_push(pending_since) WHERE pending_since IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS widget_push_dirty(scope TEXT NOT NULL CHECK(scope IN ('u','w')),key TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(scope,key));
+    CREATE INDEX IF NOT EXISTS widget_push_dirty_at ON widget_push_dirty(at);
+    CREATE TRIGGER IF NOT EXISTS widget_push_notification_insert AFTER INSERT ON notifications WHEN ${guard} BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_notification_read AFTER UPDATE OF read_at ON notifications WHEN ${guard} AND NEW.read_at IS NOT OLD.read_at BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_row_insert AFTER INSERT ON rows WHEN ${guard} BEGIN ${ofPage("NEW.page_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_row_update AFTER UPDATE OF cells,page_id ON rows WHEN ${guard} BEGIN ${ofPage("NEW.page_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_row_delete AFTER DELETE ON rows WHEN ${guard} BEGIN ${ofPage("OLD.page_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_page_insert AFTER INSERT ON pages WHEN ${guard} BEGIN ${workspace("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_page_update AFTER UPDATE OF title,icon,deleted_at,parent_id ON pages WHEN ${guard} BEGIN ${workspace("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_task_insert AFTER INSERT ON doc_tasks WHEN ${guard} BEGIN ${workspace("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_task_update AFTER UPDATE OF checked,text,due,assignee ON doc_tasks WHEN ${guard} BEGIN ${workspace("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_task_delete AFTER DELETE ON doc_tasks WHEN ${guard} BEGIN ${workspace("OLD.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_time_insert AFTER INSERT ON time_entries WHEN ${guard} BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_time_update AFTER UPDATE ON time_entries WHEN ${guard} BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_focus_insert AFTER INSERT ON widget_focus WHEN ${guard} BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_focus_update AFTER UPDATE ON widget_focus WHEN ${guard} BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_review_insert AFTER INSERT ON review_log WHEN ${guard} BEGIN ${person("NEW.user_id")} END;
+    CREATE TRIGGER IF NOT EXISTS widget_push_dashboard_update AFTER UPDATE OF tiles ON dashboards WHEN ${guard} BEGIN ${ofPage("NEW.page_id")} END;`);
 }
 // Schema 108 – text links (lib/text-links.ts): text_links per source (a
 // page's document: page_id, row_id ''; a record's text: page_id '',

@@ -20,6 +20,7 @@ type Session = {
   lastSeen: number | null;
   expires: number;
   remember: boolean;
+  widgetsOnly?: boolean;
 };
 
 async function end(body: { id?: string; others?: boolean }) {
@@ -91,6 +92,14 @@ export function MySessions({ onError }: { onError: (message: string) => void }) 
                   </small>
                 </span>
                 {s.current && <StatusBadge tone="ok">{t("Dieses Gerät", "This device")}</StatusBadge>}
+                {s.widgetsOnly && (
+                  <StatusBadge
+                    tone="off"
+                    title={t("Profil in der App gerade nicht aktiv: Widgets bleiben aktuell, Benachrichtigungen gehen an das aktive Profil.", "Profile not active in the app right now: widgets stay up to date, notifications go to the active profile.")}
+                  >
+                    {t("Nur Widgets", "Widgets only")}
+                  </StatusBadge>
+                )}
                 <button type="button" className="button compact" aria-label={s.current ? t("Auf diesem Gerät abmelden", "Sign out on this device") : t(`${name} abmelden`, `Sign out ${name}`)} onClick={() => void signOut({ id: s.id })}>
                   {t("Abmelden", "Sign out")}
                 </button>

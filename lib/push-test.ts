@@ -35,6 +35,9 @@ export type PushTestStatus =
   | "delivered"
   | "pending"
   | "push-disabled"
+  // An app profile that is not the active one (`push: false`): it shows
+  // widgets, notifications go to the active profile.
+  | "widgets-only"
   | "app-push-off"
   | "relay-off"
   | "relay-unreachable"
@@ -127,8 +130,8 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
       subscription: s.id,
     });
   // App installations, also those without push (permission not given).
-  for (const d of await all<{ id: string; name: string; platform: string; push_subscription_id: string | null }>(
-    `SELECT md.id,md.name,md.platform,s.id push_subscription_id FROM mobile_devices md JOIN sessions se ON se.token=md.session_token
+  for (const d of await all<{ id: string; name: string; platform: string; push_subscription_id: string | null; push_enabled: number }>(
+    `SELECT md.id,md.name,md.platform,s.id push_subscription_id,md.push_enabled FROM mobile_devices md JOIN sessions se ON se.token=md.session_token
      LEFT JOIN push_subscriptions s ON s.id=md.push_subscription_id WHERE md.user_id=? AND se.expires>? ORDER BY md.created_at`,
     user.id,
     now,
@@ -141,8 +144,12 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
       service: null,
       current: false,
       focus: await focusActive(d.id, now),
-      subscription: d.push_subscription_id,
-      ...(d.push_subscription_id ? {} : { status: mobilePush ? ("push-disabled" as const) : ("app-push-off" as const) }),
+      subscription: Number(d.push_enabled) === 0 ? null : d.push_subscription_id,
+      ...(Number(d.push_enabled) === 0
+        ? { status: "widgets-only" as const }
+        : d.push_subscription_id
+          ? {}
+          : { status: mobilePush ? ("push-disabled" as const) : ("app-push-off" as const) }),
     });
 
   for (const target of targets)

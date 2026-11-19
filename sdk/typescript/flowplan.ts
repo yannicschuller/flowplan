@@ -102,6 +102,34 @@ export type WidgetConfigStudy = {
   pageIds?: string[];
 };
 
+/** Configuration of a `event` widget. */
+export type WidgetConfigEvent = {
+  calendars?: string[];
+  within?: "today" | "48h" | "week";
+  showJoin?: boolean;
+  max?: number;
+};
+
+/** Configuration of a `reading` widget. */
+export type WidgetConfigReading = {
+  source?: "recent" | "library";
+  max?: number;
+};
+
+/** Configuration of a `metric` widget. */
+export type WidgetConfigMetric = {
+  dashboardId: string;
+  widgetId: string;
+};
+
+/** Configuration of a `deadline` widget. */
+export type WidgetConfigDeadline = {
+  pageId: string;
+  rowId?: string;
+  taskKey?: string;
+  index?: number;
+};
+
 export type WidgetActionCaptureNote = {
   action: "capture.note";
   targetId: string;
@@ -214,7 +242,7 @@ export type WidgetDataRequest = {
   lang?: string;
   widgets: ({
     id?: string;
-    kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident" | "study";
+    kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident" | "study" | "event" | "reading" | "metric" | "deadline";
     config?: Record<string, unknown>;
   })[];
 };
@@ -227,13 +255,21 @@ export type WidgetDataResponse = {
   widgets: ({
     /** The `id` sent with the widget */
     id: string | null;
-    kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident" | "study";
+    kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident" | "study" | "event" | "reading" | "metric" | "deadline";
     ok: boolean;
     /** The widget's data: at most 10 items and about 2048 bytes (`truncated: true` when shortened). Pages behind a journal PIN answer `locked: true`, end-to-end encrypted ones `encrypted: true`, without content. */
     data?: Record<string, unknown>;
     /** HTTP status of a widget that failed (403, 404 …) */
     status?: number;
     error?: string;
+    /** The colours of the workspace the widget's content belongs to (person-wide widgets: the workspace used last): its accent for light and dark mode and the text colour on it, contrast-checked like the web app; Flowplan's own colours for a workspace without an accent or a person who chose Flowplan's look. */
+    theme?: {
+      workspaceId: string | null;
+      accent: string;
+      accentDark: string;
+      onAccent: string;
+      onAccentDark: string;
+    };
   })[];
 };
 
@@ -4992,7 +5028,7 @@ export class FlowplanClient {
   }
 
   /** What a widget instance can be configured to — The choices for the configuration screen of one widget kind (targets, databases, views, calendars, journals, forms …), only what the person may see; with `pageId` also the views and properties of that database. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/widgets/options) */
-  async widgetOptions(query: { kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident" | "study"; pageId?: string; lang?: string }, options?: RequestOptions): Promise<{
+  async widgetOptions(query: { kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident" | "study" | "event" | "reading" | "metric" | "deadline"; pageId?: string; lang?: string }, options?: RequestOptions): Promise<{
     kind: string;
     [key: string]: unknown;
   }> {

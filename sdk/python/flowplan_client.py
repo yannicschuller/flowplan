@@ -114,6 +114,34 @@ WidgetConfigStudy = TypedDict("WidgetConfigStudy", {
     "pageIds": list[str],
 }, total=False)
 
+# Configuration of a `event` widget.
+WidgetConfigEvent = TypedDict("WidgetConfigEvent", {
+    "calendars": list[str],
+    "within": Literal["today", "48h", "week"],
+    "showJoin": bool,
+    "max": int,
+}, total=False)
+
+# Configuration of a `reading` widget.
+WidgetConfigReading = TypedDict("WidgetConfigReading", {
+    "source": Literal["recent", "library"],
+    "max": int,
+}, total=False)
+
+# Configuration of a `metric` widget.
+WidgetConfigMetric = TypedDict("WidgetConfigMetric", {
+    "dashboardId": Required[str],
+    "widgetId": Required[str],
+}, total=False)
+
+# Configuration of a `deadline` widget.
+WidgetConfigDeadline = TypedDict("WidgetConfigDeadline", {
+    "pageId": Required[str],
+    "rowId": str,
+    "taskKey": str,
+    "index": int,
+}, total=False)
+
 WidgetActionCaptureNote = TypedDict("WidgetActionCaptureNote", {
     "action": Required[Literal["capture.note"]],
     "targetId": Required[str],
@@ -2556,7 +2584,7 @@ CustomDomainAllowedQuery = TypedDict("CustomDomainAllowedQuery", {
 }, total=False)
 
 WidgetOptionsQuery = TypedDict("WidgetOptionsQuery", {
-    "kind": Required[Literal["capture", "tasks", "calendar", "pinned", "counter", "journal", "time", "mentions", "forms", "focus", "meeting", "jobs", "incident", "study"]],  # Widget kind
+    "kind": Required[Literal["capture", "tasks", "calendar", "pinned", "counter", "journal", "time", "mentions", "forms", "focus", "meeting", "jobs", "incident", "study", "event", "reading", "metric", "deadline"]],  # Widget kind
     "pageId": str,  # A database for its views and properties
     "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
 }, total=False)

@@ -174,7 +174,9 @@ export function plaintextJson(message: PushPlaintext) {
 export type RelayCategory = "task" | "comment" | "default";
 export type RelayMessage = {
   to: string;
-  type: "alert" | "background" | "liveactivity";
+  // "widgets" (iOS 26 WidgetKit push): no payload, the widgets reload and
+  // fetch their data themselves (lib/widget-push.ts).
+  type: "alert" | "background" | "liveactivity" | "widgets";
   payload?: string;
   category: RelayCategory | null;
   collapseId: string | null;

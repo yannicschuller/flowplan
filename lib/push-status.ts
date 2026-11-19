@@ -253,6 +253,10 @@ async function devices(now: number) {
     // App installations; of them registered with the relay, with the relay
     // only (no Expo token), and with an Expo token.
     apps: await count("SELECT COUNT(*) n FROM mobile_devices"),
+    // Installations of an inactive app profile (summary and widgets only)
+    // and those the instance sends widget pushes to (iOS).
+    widgetsOnly: await count("SELECT COUNT(*) n FROM mobile_devices WHERE push_enabled=0"),
+    widgetPush: await count("SELECT COUNT(*) n FROM mobile_widget_push"),
     relay: await count("SELECT COUNT(*) n FROM mobile_push_relay"),
     relayOnly: await count(`SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '${RELAY_ENDPOINT}%'`),
     expo: await count(`SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '${EXPO_ENDPOINT}%'`),

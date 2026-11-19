@@ -50,6 +50,7 @@ import { scheduledBackupStatus } from "./scheduled-backup";
 import { stopRunning } from "./time-tracking";
 import { transcriptionEnabled } from "./transcribe";
 import { identityFromDeviceToken } from "./mobile-devices";
+import { widgetThemes } from "./mobile-widget-theme";
 import type { Field, Identity, Page, Row, View } from "./types";
 import {
   dataRequestSchema,
@@ -91,13 +92,13 @@ export function limitWidgets(user: Pick<Identity, "id">, what: keyof typeof LIMI
 
 // ---- Shared helpers ----
 
-const clip = (text: string, max = TITLE) => {
+export const clip = (text: string, max = TITLE) => {
   const clean = text.replace(/\s+/g, " ").trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 };
-const url = (pageId: string, rowId?: string | null) => `/${pageLocationHash({ pageId, ...(rowId ? { rowId } : {}) })}`;
-const untitled = () => ct("Ohne Titel", "Untitled");
-const parse = <T>(text: string | null | undefined, fallback: T): T => {
+export const url = (pageId: string, rowId?: string | null) => `/${pageLocationHash({ pageId, ...(rowId ? { rowId } : {}) })}`;
+export const untitled = () => ct("Ohne Titel", "Untitled");
+export const parse = <T>(text: string | null | undefined, fallback: T): T => {
   try {
     return text ? (JSON.parse(text) as T) : fallback;
   } catch {
@@ -107,7 +108,7 @@ const parse = <T>(text: string | null | undefined, fallback: T): T => {
 function localToday(zone: string) {
   return Temporal.Now.plainDateISO(zone).toString();
 }
-const shift = (date: string, days: number) => Temporal.PlainDate.from(date).add({ days }).toString();
+export const shift = (date: string, days: number) => Temporal.PlainDate.from(date).add({ days }).toString();
 
 export type Context = { user: Identity; today: string; zone: string; now: number };
 export function widgetContext(user: Identity, today?: string, zone?: string, now = Date.now()): Context {
@@ -116,9 +117,9 @@ export function widgetContext(user: Identity, today?: string, zone?: string, now
 }
 
 type SpaceInfo = { encrypted: number; encrypt_titles: number; name: string };
-const spaceInfo = async (spaceId: string) =>
+export const spaceInfo = async (spaceId: string) =>
   await one<SpaceInfo>("SELECT name,COALESCE(encrypted,0) encrypted,COALESCE(encrypt_titles,0) encrypt_titles FROM spaces WHERE id=?", spaceId);
-const workspaceIds = async (user: Identity) =>
+export const workspaceIds = async (user: Identity) =>
   (await all<{ workspace_id: string }>("SELECT workspace_id FROM members WHERE user_id=?", user.id)).map((m) => m.workspace_id);
 
 // What a page is for this person: readable, behind a PIN, encrypted.
@@ -131,21 +132,21 @@ export async function pageAccess(user: Identity, pageId: string | null | undefin
   if (!role) return null;
   return { page, role, locked: await journalLocked(user, page), encrypted: !!(await spaceInfo(page.space_id))?.encrypted };
 }
-async function requireAccess(user: Identity, pageId: string | null | undefined) {
+export async function requireAccess(user: Identity, pageId: string | null | undefined) {
   const access = await pageAccess(user, pageId);
   if (!access) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
   return access;
 }
 // A page only as a status, never with content.
-const status = (a: Access) => (a.encrypted ? { encrypted: true as const } : { locked: true as const });
+export const status = (a: Access) => (a.encrypted ? { encrypted: true as const } : { locked: true as const });
 // The page's title as a heading: none for encrypted pages, and behind a PIN
 // only the journal's own name (the sidebar shows it too).
-const headingOf = (a: Access, max = 40) =>
+export const headingOf = (a: Access, max = 40) =>
   a.encrypted || (a.locked && a.page.kind !== "journal") ? "" : clip(a.page.title || untitled(), max);
 
 // Readable pages across the person's workspaces (for option lists).
 type Listed = Page & { space_name: string; workspace_name: string; encrypted: number };
-async function readablePages(user: Identity, kinds: Page["kind"][], limit = 300) {
+export async function readablePages(user: Identity, kinds: Page["kind"][], limit = 300) {
   const out: (Listed & { pinLocked: boolean })[] = [];
   for (const wid of await workspaceIds(user)) {
     const locked = await lockedPageIds(user, wid);
@@ -166,7 +167,7 @@ async function readablePages(user: Identity, kinds: Page["kind"][], limit = 300)
   }
   return out;
 }
-const listedPage = (p: Listed & { pinLocked: boolean }) => ({
+export const listedPage = (p: Listed & { pinLocked: boolean }) => ({
   id: p.id,
   // Nothing of encrypted spaces; titles stay where the sidebar shows them.
   name: p.encrypted ? "" : clip(p.title || untitled()),
@@ -239,7 +240,7 @@ export async function valueText(field: Field, value: unknown): Promise<string> {
       return typeof value === "object" && !Array.isArray(value) ? "" : cellText(value);
   }
 }
-const rowTitle = (loaded: Pick<Loaded, "fields" | "shown">, row: Row) => {
+export const rowTitle = (loaded: Pick<Loaded, "fields" | "shown">, row: Row) => {
   const first = loaded.fields[0];
   return first && loaded.shown.includes(first) ? clip(cellText(row.cells[first.id])) || untitled() : untitled();
 };
@@ -284,7 +285,7 @@ export function capped<T extends Record<string, unknown>>(data: T, limit = MAX_W
 
 // ---- 1. Quick capture ----
 
-const rank: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
+export const rank: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
 // Where the person may capture to: databases (a record) and documents (a
 // sub page, or a task appended to the page).
 export async function captureTargetList(user: Identity) {
@@ -544,10 +545,10 @@ export type WidgetEvent = {
   calendar: string;
   url: string;
 };
-const zonedDay = (ms: number, zone: string) => Temporal.Instant.fromEpochMilliseconds(ms).toZonedDateTimeISO(zone).toPlainDate().toString();
+export const zonedDay = (ms: number, zone: string) => Temporal.Instant.fromEpochMilliseconds(ms).toZonedDateTimeISO(zone).toPlainDate().toString();
 
 // Entries of one calendar source on the given days (repeating ones too).
-async function sourceEvents(user: Identity, src: { pageId: string; viewId?: string }, days: string[], zone: string, label?: string): Promise<WidgetEvent[]> {
+export async function sourceEvents(user: Identity, src: { pageId: string; viewId?: string }, days: string[], zone: string, label?: string): Promise<WidgetEvent[]> {
   const access = await pageAccess(user, src.pageId);
   if (!access || access.locked || access.encrypted || access.page.kind !== "database") return [];
   let loaded: Loaded;
@@ -606,7 +607,7 @@ async function sourceEvents(user: Identity, src: { pageId: string; viewId?: stri
   }
   return events;
 }
-async function chosenSources(user: Identity, sources: { pageId: string; viewId?: string }[]) {
+export async function chosenSources(user: Identity, sources: { pageId: string; viewId?: string }[]) {
   if (sources.length) return sources.map((s) => ({ ...s, label: undefined as string | undefined }));
   return (await calendarSourceList(user, 20)).map((s) => ({ pageId: s.pageId, viewId: s.viewId, label: s.synced || s.database }));
 }
@@ -1238,6 +1239,11 @@ const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => 
   jobs: jobsData,
   incident: incidentData,
   study: studyData,
+  // lib/mobile-widget-kinds.ts, loaded when used (it builds on this file).
+  event: async (ctx, config) => (await import("./mobile-widget-kinds")).eventData(ctx, config),
+  reading: async (ctx, config) => (await import("./mobile-widget-kinds")).readingData(ctx, config),
+  metric: async (ctx, config) => (await import("./mobile-widget-kinds")).metricData(ctx, config),
+  deadline: async (ctx, config) => (await import("./mobile-widget-kinds")).deadlineData(ctx, config),
 };
 export async function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = MAX_WIDGET_BYTES) {
   const parsed = widgetConfigs[kind].parse(config ?? {}) as WidgetConfig<K>;
@@ -1245,18 +1251,21 @@ export async function widgetData<K extends WidgetKind>(ctx: Context, kind: K, co
 }
 
 // Each widget answers on its own: one that fails (a page gone, no access)
-// does not take the others with it.
+// does not take the others with it. Every answer carries the colours of the
+// workspace its content belongs to (lib/mobile-widget-theme.ts).
 export async function widgetsData(user: Identity, input: unknown, now = Date.now()) {
   const request = dataRequestSchema.parse(input);
   const ctx = widgetContext(user, request.today, request.zone, now);
   const locale = contentLocale();
+  const themeFor = await widgetThemes(user);
   return {
     at: now,
     today: ctx.today,
     zone: ctx.zone,
     widgets: await mapAsync(request.widgets, async (w) => {
+      const theme = await themeFor(w.config);
       try {
-        return { id: w.id ?? null, kind: w.kind, ok: true as const, data: await widgetData(ctx, w.kind, w.config) };
+        return { id: w.id ?? null, kind: w.kind, ok: true as const, data: await widgetData(ctx, w.kind, w.config), theme };
       } catch (error) {
         const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : serverError(error);
         if (status === 500) console.error("Widget", w.kind, error);
@@ -1264,6 +1273,7 @@ export async function widgetsData(user: Identity, input: unknown, now = Date.now
           id: w.id ?? null,
           kind: w.kind,
           ok: false as const,
+          theme,
           status,
           error:
             status === 500
@@ -1398,5 +1408,10 @@ export async function widgetOptions(user: Identity, kind: WidgetKind, query: { p
       const { studyDueEverywhere } = await import("./study-stats");
       return { kind, decks: (await studyDueEverywhere(user)).decks.slice(0, 100).map((d) => ({ id: d.pageId, name: clip(d.title || untitled()), icon: d.icon })) };
     }
+    case "event":
+    case "reading":
+    case "metric":
+    case "deadline":
+      return await (await import("./mobile-widget-kinds")).kindOptions(user, kind, pageId);
   }
 }

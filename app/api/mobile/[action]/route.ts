@@ -10,7 +10,9 @@ import {
   mobileSummary,
   pushRelayInfo,
   registerMobileDevice,
+  setDevicePush,
   setLiveActivityToken,
+  setWidgetPushToken,
   unregisterByDeviceToken,
   unregisterMobileDevice,
 } from "@/lib/mobile-devices";
@@ -28,6 +30,13 @@ export const dynamic = "force-dynamic";
 //                              Live Activity that started or ended on the phone
 //                              { kind: "focus" | "timer", relayToken | null,
 //                                relayUrl?, labels? (the views' texts) }
+// POST /api/mobile/widget-push  with the device token: the relay token of the
+//                              app's widget push registration (iOS 26,
+//                              "ios-widgets" at the relay) { relayToken | null,
+//                              relayUrl? }; DELETE removes it
+// POST /api/mobile/device      with the device token: { push: boolean } – false
+//                              while the app shows another profile (summary and
+//                              widgets only, no notifications)
 // GET  /api/mobile/summary     in the background, with the device token
 // GET  /api/mobile/admin-summary  likewise, for the administrators' widgets
 //                              (lib/mobile-admin.ts): 403 for everyone else
@@ -69,13 +78,16 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     // skip checkOrigin, so the read-only check of a move comes first.
     await refuseWhileReadOnly(req);
     // Browsers never send this header by themselves: no origin check needed.
-    const authorization = (await headers()).get("authorization");
+    const authorization = req.headers.get("authorization");
     if (action === "unregister" && authorization?.startsWith("Bearer fpd_"))
       return NextResponse.json({ ok: await unregisterByDeviceToken(authorization) });
-    if (action === "live-activity") {
+    if (action === "live-activity" || action === "widget-push" || action === "device") {
       const text = await req.text();
       if (text.length > 4_000) throw new HttpError(413, "Anfrage zu groß.");
-      return NextResponse.json(await setLiveActivityToken(authorization, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
+      const body = JSON.parse(text || "{}");
+      const answer =
+        action === "live-activity" ? await setLiveActivityToken(authorization, body) : action === "widget-push" ? await setWidgetPushToken(authorization, body) : await setDevicePush(authorization, body);
+      return NextResponse.json(answer, { headers: { "Cache-Control": "no-store" } });
     }
     await checkOrigin(req);
     const user = await activeUser();
@@ -92,6 +104,19 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     }
     if (action === "unregister") return NextResponse.json(await unregisterMobileDevice(user, body.installationId));
     throw new HttpError(404, "Nicht gefunden");
+  } catch (e) {
+    return failure(e);
+  }
+}
+
+// DELETE /api/mobile/widget-push: the app's widget push registration goes.
+export const DELETE = withRequestLocale(handleDELETE);
+async function handleDELETE(req: Request, { params }: { params: Promise<{ action: string }> }) {
+  try {
+    const { action } = await params;
+    if (action !== "widget-push") throw new HttpError(404, "Nicht gefunden");
+    await refuseWhileReadOnly(req);
+    return NextResponse.json(await setWidgetPushToken(req.headers.get("authorization"), { relayToken: null }), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return failure(e);
   }
