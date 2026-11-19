@@ -81,6 +81,14 @@ const config: NextConfig = {
     ? { distDir: process.env.FLOWPLAN_DIST_DIR }
     : {}),
   turbopack: { root: process.cwd() },
+  // Server chunks for dynamic imports (await import(…) in lib/, the
+  // workers of instrumentation.ts …) leave out what the importing code has
+  // already loaded. Without it, every such import got its own copy of what
+  // it shares with the rest – the core (database, permissions, rate limits,
+  // about 1.2 MB) was in the image dozens of times (with the one API route,
+  // app/api/[...path]/route.ts: 34 copies instead of 77). The browser's
+  // chunks do this by default.
+  experimental: { turbopackServerSideNestedAsyncChunking: true },
   // next/image is not used: no image optimisation on the server, so sharp
   // (and its native builds for glibc and musl, @img/*) stays out.
   images: { unoptimized: true },
@@ -112,10 +120,12 @@ const config: NextConfig = {
     "isomorphic-git",
     "emojibase-data",
   ],
-  // The PDF text worker loads pdf.js and its worker module at runtime.
+  // The PDF text worker loads pdf.js and its worker module at runtime (not
+  // their minified twins or the scripting sandbox; an include here is kept
+  // even where an exclude below matches it).
   outputFileTracingIncludes: {
     "/*": [
-      "./node_modules/pdfjs-dist/legacy/build/*.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/{pdf,pdf.worker}.mjs",
       // Its worker thread (lib/pdf-text.ts), plain JavaScript run as it is.
       "./lib/workers/*.mjs",
       // OCR: worker script, WebAssembly core and bundled language data.
@@ -126,14 +136,15 @@ const config: NextConfig = {
       "./node_modules/tesseract.js-core/tesseract-core-lstm.{js,wasm}",
       "./node_modules/tesseract.js-core/tesseract-core-simd-lstm.{js,wasm}",
       "./node_modules/tesseract.js-core/tesseract-core-relaxedsimd-lstm.{js,wasm}",
-      "./node_modules/@tesseract.js-data/deu/**/*",
-      "./node_modules/@tesseract.js-data/eng/**/*",
-      "./node_modules/@tesseract.js-data/fra/**/*",
-      "./node_modules/@tesseract.js-data/chi_sim/**/*",
+      // The language data lib/ocr.ts copies (4.0.0, not 4.0.0_best_int).
+      "./node_modules/@tesseract.js-data/deu/4.0.0/*",
+      "./node_modules/@tesseract.js-data/eng/4.0.0/*",
+      "./node_modules/@tesseract.js-data/fra/4.0.0/*",
+      "./node_modules/@tesseract.js-data/chi_sim/4.0.0/*",
+      // zlibjs and idb-keyval are only for tesseract.js's browser worker;
+      // in Node.js it unpacks with zlib and caches in files.
       "./node_modules/bmp-js/**/*",
       "./node_modules/wasm-feature-detect/**/*",
-      "./node_modules/zlibjs/**/*",
-      "./node_modules/idb-keyval/**/*",
       // PDF viewer in the browser: fonts, character maps and decoders.
       "./node_modules/pdfjs-dist/cmaps/*",
       "./node_modules/pdfjs-dist/standard_fonts/*",
@@ -181,6 +192,18 @@ const config: NextConfig = {
       "./node_modules/pdfjs-dist/web/**/*",
       "./node_modules/pdfjs-dist/legacy/web/**/*",
       "./node_modules/pdfjs-dist/**/*.map",
+      // pdf.js on the server loads legacy/build/pdf.mjs and its worker
+      // pdf.worker.mjs only: not the minified twins, the scripting sandbox
+      // or the image decoders (the browser's copy comes from the build).
+      "./node_modules/pdfjs-dist/legacy/build/*.min.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.sandbox.mjs",
+      "./node_modules/pdfjs-dist/legacy/image_decoders/**/*",
+      "./node_modules/pdfjs-dist/image_decoders/**/*",
+      // Unused OCR files: the other model of the language data (lib/ocr.ts
+      // reads 4.0.0) and the browser worker's helpers (see above).
+      "./node_modules/@tesseract.js-data/*/4.0.0_best_int/**/*",
+      "./node_modules/zlibjs/**/*",
+      "./node_modules/idb-keyval/**/*",
     ],
   },
   // The documentation is its own site (github.com/yannicschuller/flowplan-docs).

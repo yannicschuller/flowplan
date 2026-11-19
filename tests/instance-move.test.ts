@@ -26,7 +26,7 @@ const { readOnlyRefusal, readOnlyState, MOVE_KEY } = await import("../lib/instan
 const { checkOrigin, HttpError, hash } = await import("../lib/auth");
 const { applyPendingRestore } = await import("../lib/instance-restore-apply");
 const { hashPassword } = await import("../lib/local-auth");
-const route = await import("../app/api/move/[...path]/route");
+const route = await import("../app/api/move/[...path]/handler");
 const { handleCalDav } = await import("../lib/caldav");
 
 async function admin(name = "admin"): Promise<Identity> {

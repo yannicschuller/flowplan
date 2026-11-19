@@ -81,14 +81,14 @@ test("the command endpoint describes every action a token may send", () => {
   assert.ok("429" in (command.responses as Json));
 });
 
-test("every route file under app/api is described or named as outside the token API", () => {
-  const files = walk("app/api").filter((f) => f.endsWith("route.ts"));
-  assert.ok(files.includes("app/api/[...path]/route.ts"));
+test("every route handler under app/api (behind its one catch-all route) is described or named as outside the token API", () => {
+  const files = walk("app/api").filter((f) => f.endsWith("/handler.ts"));
+  assert.ok(files.includes("app/api/[...path]/handler.ts"));
   const specPaths = Object.keys(paths);
   for (const file of files) {
     if (routesOutsideSpec[file]) continue;
-    // The static beginning of the route: app/api/share/[token]/route.ts → /api/share/
-    const url = "/" + file.replace(/\/route\.ts$/, "").replace(/^app\//, "");
+    // The static beginning of the route: app/api/share/[token]/handler.ts → /api/share/
+    const url = "/" + file.replace(/\/handler\.ts$/, "").replace(/^app\//, "");
     const prefix = url.split("/[")[0] + (url.includes("/[") ? "/" : "");
     assert.ok(
       specPaths.some((p) => p === prefix || p.startsWith(prefix)),
@@ -99,7 +99,7 @@ test("every route file under app/api is described or named as outside the token 
 });
 
 test("GET /api/openapi.json answers with the document when public, 401 for visitors otherwise", async () => {
-  const { GET } = await import("../app/api/openapi.json/route");
+  const { GET } = await import("../app/api/openapi.json/handler");
   const request = () => new Request("https://flowplan.example.test/api/openapi.json");
   assert.equal((await GET(request())).status, 401);
   // Access with a session or token: tests/instance-disclosure.test.ts.

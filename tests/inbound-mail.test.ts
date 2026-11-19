@@ -19,7 +19,7 @@ const { createWorkspace, createPage } = await import("../lib/seed");
 const { identityFromToken } = await import("../lib/auth");
 const { command } = await import("../lib/api");
 const inbound = await import("../lib/inbound-mail");
-const { POST } = await import("../app/api/inbound-mail/[token]/route");
+const { POST } = await import("../app/api/inbound-mail/[token]/handler");
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/mail/${name}`, import.meta.url));
 const PNG = Buffer.from(

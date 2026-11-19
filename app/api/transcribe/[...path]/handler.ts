@@ -33,7 +33,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
       const url = new URL(req.url);
       const pageId = uuid.parse(url.searchParams.get("page"));
       // The recording would reach the transcription service as plaintext
-      // (as for short recordings, app/api/[...path]/route.ts).
+      // (as for short recordings, app/api/[...path]/handler.ts).
       await requirePlaintext(await requirePage(user, pageId, true));
       if (Number(req.headers.get("content-length") || 0) > TRANSCRIBE_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
       const bytes = new Uint8Array(await req.arrayBuffer());

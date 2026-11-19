@@ -233,7 +233,7 @@ export async function restartDetail(restartId: string): Promise<RestartDetail> {
     heartbeat: parse<Heartbeat>(r.heartbeat),
   };
 }
-// The route (app/api/admin/monitoring/route.ts ?view=restarts|restart):
+// The route (app/api/admin/monitoring/handler.ts ?view=restarts|restart):
 // administrators in the browser only.
 export async function restartsForAdmin(user: Identity, restartId?: string | null) {
   requireOpsAdmin(user);

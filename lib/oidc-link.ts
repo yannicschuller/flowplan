@@ -1,6 +1,6 @@
 // Which account an OpenID Connect sign-in belongs to, and the first SSO
 // sign-in that waits to be connected to an existing account (#101). The
-// route (app/api/auth/[action]/route.ts) speaks OIDC and sets cookies; the
+// route (app/api/auth/[action]/handler.ts) speaks OIDC and sets cookies; the
 // decisions are here.
 //
 // 1. An account provisioned over SCIM is claimed (lib/scim.ts).

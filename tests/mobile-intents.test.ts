@@ -17,7 +17,7 @@ const { widgetUser } = await import("../lib/mobile-widgets");
 const { intentPages, intentSearch, intentWorkspaces } = await import("../lib/mobile-intents");
 const { focusSilences, setDeviceFocus } = await import("../lib/mobile-focus");
 const { flushPushQueue } = await import("../lib/push");
-const route = await import("../app/api/mobile/intents/[action]/route");
+const route = await import("../app/api/mobile/intents/[action]/handler");
 
 async function account(name: string) {
   const uid = id(),

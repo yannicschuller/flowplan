@@ -1,5 +1,5 @@
 // The workflow actions of POST /api/command (lib/api.ts) and the reads of
-// GET /api/workflows… (app/api/[...path]/route.ts) – the API contract is in
+// GET /api/workflows… (app/api/[...path]/handler.ts) – the API contract is in
 // docs/specs/workflows.md §11.1 ("Vertrag Welle 1").
 import { z } from "zod";
 import { all, audit, one, run } from "../db";

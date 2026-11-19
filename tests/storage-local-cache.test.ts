@@ -41,7 +41,7 @@ const { instanceBackupStream } = await import("../lib/instance-backup");
 const { serveMoveUpload } = await import("../lib/instance-move");
 const sftp = await import("../lib/sftp-backup");
 const { storageOverview } = await import("../lib/storage-overview");
-const healthRoute = await import("../app/api/health/route");
+const healthRoute = await import("../app/api/health/handler");
 import type { Identity } from "../lib/types";
 
 const uid = id();

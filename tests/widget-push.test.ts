@@ -22,7 +22,7 @@ const { flushPushQueue } = await import("../lib/push");
 const devices = await import("../lib/mobile-devices");
 const { flushWidgetPushes, expandWidgetMarks, WIDGET_PUSH_DEBOUNCE_MS, WIDGET_PUSH_INTERVAL_MS } = await import("../lib/widget-push");
 const { mySessions } = await import("../lib/my-sessions");
-const route = await import("../app/api/mobile/[action]/route");
+const route = await import("../app/api/mobile/[action]/handler");
 import type { RelayMessage, RelayResult } from "../lib/push-relay";
 
 const { registerMobileDevice, setWidgetPushToken, setDevicePush, mobileSummary } = devices;

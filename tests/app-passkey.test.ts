@@ -247,7 +247,7 @@ test("the passkey's name and the app's answer", async () => {
 });
 
 test("the route issues the link only to a browser session, and the page validates the callback", () => {
-  const route = readFileSync(new URL("../app/api/auth/[action]/route.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../app/api/auth/[action]/handler.ts", import.meta.url), "utf8");
   const block = route.slice(route.indexOf('"passkey-app-link", "passkey-app-status"].includes(action)'));
   assert.match(block.slice(0, 800), /!user \|\| user\.demo/);
   assert.match(block.slice(0, 800), /user\.apiScope/);

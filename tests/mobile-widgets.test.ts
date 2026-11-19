@@ -19,7 +19,7 @@ const { withContentLocale } = await import("../lib/content-locale");
 const W = await import("../lib/mobile-widgets");
 const { widgetAction } = await import("../lib/mobile-widget-actions");
 const { trackJob, jobProgress } = await import("../lib/background-jobs");
-const route = await import("../app/api/mobile/widgets/[action]/route");
+const route = await import("../app/api/mobile/widgets/[action]/handler");
 
 const NOW = Date.now();
 // Monday 00:00 of this week: just after midnight on a Monday an hour ago is last week.

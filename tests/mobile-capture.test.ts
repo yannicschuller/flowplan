@@ -15,7 +15,7 @@ const { registerMobileDevice } = await import("../lib/mobile-devices");
 const { withContentLocale } = await import("../lib/content-locale");
 const W = await import("../lib/mobile-widgets");
 const C = await import("../lib/mobile-capture");
-const route = await import("../app/api/mobile/capture/[action]/route");
+const route = await import("../app/api/mobile/capture/[action]/handler");
 
 async function account(name: string) {
   const uid = id(),

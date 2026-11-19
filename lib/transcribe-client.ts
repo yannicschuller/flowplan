@@ -1,6 +1,6 @@
 // Browser side of transcription: short recordings in one request, long ones
 // (meetings, up to two hours) in chunks that the server puts together
-// (app/api/transcribe/[...path]/route.ts).
+// (app/api/transcribe/[...path]/handler.ts).
 import { serverMessage } from "./server-message";
 import type { Transcript } from "./transcribe";
 

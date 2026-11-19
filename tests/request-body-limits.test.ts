@@ -10,8 +10,8 @@ import { join } from "node:path";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-request-body-"));
 process.env.APP_URL = "https://flowplan.example.test";
 const { readBodyLimited, readJsonLimited } = await import("../lib/request-body");
-const tickets = await import("../app/api/tickets/[token]/route");
-const auth = await import("../app/api/auth/[action]/route");
+const tickets = await import("../app/api/tickets/[token]/handler");
+const auth = await import("../app/api/auth/[action]/handler");
 
 const CHUNK = 16 * 1024;
 // A 2 MB body in 16 KB chunks; `sent` counts what the server pulled.
@@ -68,10 +68,10 @@ test("a well-formed but unknown ticket link is refused before reading a chunked 
 // The other sign-in actions need the request scope of Next (cookies,
 // headers) to run; their shared body reader is checked in the source.
 test("the sign-in route reads every JSON body with a limit", () => {
-  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/handler.ts"), "utf8");
   assert.match(route, /const body = \(\) =>\s*readJsonLimited\(req, 64_000\)/);
   assert.doesNotMatch(route.slice(route.indexOf("const body = ")), /req\.json\(\)/);
-  for (const file of ["../app/api/tickets/[token]/route.ts", "../app/api/forms/[token]/route.ts", "../app/api/ai/[...path]/route.ts"])
+  for (const file of ["../app/api/tickets/[token]/handler.ts", "../app/api/forms/[token]/handler.ts", "../app/api/ai/[...path]/handler.ts"])
     assert.doesNotMatch(readFileSync(join(import.meta.dirname, file), "utf8"), /req\.(text|json)\(\)/, file);
 });
 

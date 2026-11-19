@@ -1563,7 +1563,7 @@ testen, aktivieren.
 
 Stand des Branches `workflows`. Alle Befehle gehen an `POST /api/command`
 (`command()` in `lib/api.ts` → `lib/workflows/commands.ts`), alle Lesewege an
-`GET /api/…` (`app/api/[...path]/route.ts` → `workflowGet()`). Fehler wie
+`GET /api/…` (`app/api/[...path]/handler.ts` → `workflowGet()`). Fehler wie
 überall: HTTP-Status + `{ error }` (deutscher Text, Übersetzung über
 `lib/i18n-errors.ts`). **Keine Fehler, sondern Antworten** sind ein nicht
 bestandener Prüflauf: `workflow.activate` und `workflow.test` antworten dann

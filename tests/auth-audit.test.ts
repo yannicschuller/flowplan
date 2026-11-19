@@ -18,7 +18,7 @@ const uid = id();
 await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `https://idp|${uid}`, "Sam", "sam@example.test");
 
 test("the desktop hand-off refuses API-token identities (source guard)", () => {
-  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/handler.ts"), "utf8");
   const post = route.slice(route.indexOf('if (action === "desktop") {'));
   assert.match(post.slice(0, 900), /user\.apiScope/, "POST desktop must refuse API tokens");
   const get = route.slice(route.indexOf("App sign-in: the browser opened the hand-off"));
@@ -47,7 +47,7 @@ test("a hand-off carries the browser session's sign-in time into the app session
 });
 
 // Security audit hardening: sessions end where a sign-in method changes.
-const authRoute = () => readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
+const authRoute = () => readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/handler.ts"), "utf8");
 const block = (source: string, marker: string, length: number) => {
   const at = source.indexOf(marker);
   assert.ok(at >= 0, marker);

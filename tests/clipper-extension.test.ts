@@ -131,7 +131,7 @@ test("CORS only for browser-extension origins, never with credentials", () => {
 });
 
 test("the route answers preflights and refuses cookies", async () => {
-  const { OPTIONS, GET, POST } = await import("../app/api/clipper/[action]/route");
+  const { OPTIONS, GET, POST } = await import("../app/api/clipper/[action]/handler");
   const origin = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
   const preflight = OPTIONS(new Request("https://flowplan.example.test/api/clipper/save", { method: "OPTIONS", headers: { origin } }));
   assert.equal(preflight.status, 204);

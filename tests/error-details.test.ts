@@ -256,12 +256,12 @@ test("the person sees the request id of a server error", () => {
   assert.equal(describeError({ kind: "server" }, t).detail, undefined);
   const ui = readFileSync(join(import.meta.dirname, "../components/ui.tsx"), "utf8");
   assert.match(ui, /withRequestId\(tr\("Auf dem Server ist etwas schiefgelaufen/);
-  const catchAll = readFileSync(join(import.meta.dirname, "../app/api/[...path]/route.ts"), "utf8");
+  const catchAll = readFileSync(join(import.meta.dirname, "../app/api/[...path]/handler.ts"), "utf8");
   assert.match(catchAll, /requestId = status >= 500 \? currentRequestId\(\)/);
 });
 
 test("the admin API: administrators only, writes with an origin check", () => {
-  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/handler.ts"), "utf8");
   assert.match(route, /const admin = async \(\) => requireOpsAdmin\(await requireUser\(\)\)/);
   const get = route.slice(route.indexOf("export const GET"), route.indexOf("const postSchema"));
   assert.ok(get.indexOf("await admin()") < get.indexOf('view") === "errors"'));
@@ -270,7 +270,7 @@ test("the admin API: administrators only, writes with an origin check", () => {
   assert.ok(post.indexOf("await admin()") < post.indexOf("clearErrorDetails()"));
   // Every route handler's catch notes the exception (no bare `: 500`).
   const missing: string[] = [];
-  for (const file of ["app/api/[...path]/route.ts", "app/api/ai/[...path]/route.ts", "app/api/admin/monitoring/route.ts", "app/api/share/[token]/route.ts"]) {
+  for (const file of ["app/api/[...path]/handler.ts", "app/api/ai/[...path]/handler.ts", "app/api/admin/monitoring/handler.ts", "app/api/share/[token]/handler.ts"]) {
     const text = readFileSync(join(import.meta.dirname, "..", file), "utf8");
     if (/instanceof HttpError \? e\.status : 500\b/.test(text)) missing.push(file);
   }
@@ -278,7 +278,7 @@ test("the admin API: administrators only, writes with an origin check", () => {
 });
 
 test("the test endpoint exists only in the browser specs' build", () => {
-  const catchAll = readFileSync(join(import.meta.dirname, "../app/api/[...path]/route.ts"), "utf8");
+  const catchAll = readFileSync(join(import.meta.dirname, "../app/api/[...path]/handler.ts"), "utf8");
   assert.match(catchAll, /if \(e2eBuild\) \{\n\s+const kind = e2eFailure\(/);
   const failure = readFileSync(join(import.meta.dirname, "../lib/e2e-failure.ts"), "utf8");
   assert.match(failure, /!demoSignInAllowed\(\)\) return null/);

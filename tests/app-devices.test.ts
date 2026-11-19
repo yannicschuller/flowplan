@@ -114,7 +114,7 @@ test("the page finds the app's device key in the bridge (lib/native-app.ts)", ()
 });
 
 test("the sign-in routes bind the app lifetime to the proof, not the user agent", () => {
-  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/handler.ts"), "utf8");
   assert.match(route, /redeemDesktopCode[\s\S]{0,600}provesApp\(\{ via: "handoff" \}\)/);
   for (const action of ["register", "password", "totp-login", "passkey"]) {
     const start = route.indexOf(`if (action === "${action}")`, route.indexOf("handlePOST"));

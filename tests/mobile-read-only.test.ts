@@ -17,11 +17,11 @@ const { bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { registerMobileDevice } = await import("../lib/mobile-devices");
 const { MOVE_KEY } = await import("../lib/instance-read-only");
-const capture = await import("../app/api/mobile/capture/[action]/route");
-const widgets = await import("../app/api/mobile/widgets/[action]/route");
-const intents = await import("../app/api/mobile/intents/[action]/route");
-const notifications = await import("../app/api/mobile/notifications/route");
-const mobile = await import("../app/api/mobile/[action]/route");
+const capture = await import("../app/api/mobile/capture/[action]/handler");
+const widgets = await import("../app/api/mobile/widgets/[action]/handler");
+const intents = await import("../app/api/mobile/intents/[action]/handler");
+const notifications = await import("../app/api/mobile/notifications/handler");
+const mobile = await import("../app/api/mobile/[action]/handler");
 
 const uid = id(),
   session = id();

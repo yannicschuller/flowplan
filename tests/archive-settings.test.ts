@@ -191,7 +191,7 @@ test("the JSON export carries the look and the link rules; its import checks the
   assert.deepEqual(await workspaceLinkRules(old), []);
 });
 
-// What GET /api/export returns (app/api/[...path]/route.ts): the workspace
+// What GET /api/export returns (app/api/[...path]/handler.ts): the workspace
 // part as there, one document page.
 async function jsonExport(workspaceId: string) {
   return JSON.parse(

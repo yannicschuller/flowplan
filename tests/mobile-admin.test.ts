@@ -51,7 +51,7 @@ test("only devices of instance administrators, checked against the session every
 });
 
 test("the route refuses everyone but administrators' devices", () => {
-  const route = readFileSync(join(import.meta.dirname, "../app/api/mobile/[action]/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/mobile/[action]/handler.ts"), "utf8");
   assert.match(route, /identityFromDeviceToken[\s\S]*if \(action === "admin-summary"\) \{\s*\/\/[^\n]*\n\s*if \(!isInstanceAdmin\(user\)\) throw new HttpError\(403/);
 });
 
