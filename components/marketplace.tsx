@@ -335,7 +335,10 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
           : n.code === "study-never"
             ? t("Lernstände und Wiederholungen kommen nie mit: Wer den Stapel übernimmt, beginnt mit neuen Karten.", "Learning progress and reviews are never included: whoever takes over the deck starts with new cards.")
             : n.code === "people-cleared"
-              ? t(`${n.count} Angaben zu Personen (Personen-Eigenschaften, Erwähnungen) bleiben hier.`, `${n.count} details about people (person properties, mentions) stay here.`)
+              ? t(
+                  `${n.count} Angaben zu Personen bleiben hier: Erwähnungen werden zu „@Person“, Aufgaben verlieren ihre Zuweisung (das Fälligkeitsdatum bleibt), Personen-Eigenschaften und E-Mail-Adressen von Mitgliedern kommen nicht mit.`,
+                  `${n.count} details about people stay here: mentions become “@Person”, tasks lose who they are assigned to (the due date stays), person properties and members’ e-mail addresses are not included.`,
+                )
               : t("Zugangsdaten, Läufe und Webhook-Adressen kommen nie mit.", "Credentials, runs and webhook addresses are never included.");
   return (
     <Modal open onClose={onClose} title={t("Im Marketplace veröffentlichen", "Publish to the marketplace")} subtitle={kindLabel(source.kind, t)} sheet className="marketplace-dialog">

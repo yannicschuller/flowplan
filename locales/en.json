@@ -329,7 +329,7 @@
   "{0} declined the role as trusted contact.": "{0} declined the role as trusted contact.",
   "{0} denied your request for emergency access.": "{0} denied your request for emergency access.",
   "{0} detail(s) are set by the person importing it.": "{0} detail(s) are set by the person importing it.",
-  "{0} details about people (person properties, mentions) stay here.": "{0} details about people (person properties, mentions) stay here.",
+  "{0} details about people stay here: mentions become “@Person”, tasks lose who they are assigned to (the due date stays), person properties and members’ e-mail addresses are not included.": "{0} details about people stay here: mentions become “@Person”, tasks lose who they are assigned to (the due date stays), person properties and members’ e-mail addresses are not included.",
   "{0} devices overlap or stick out": "{0} devices overlap or stick out",
   "{0} devices unused for over a month": "{0} devices unused for over a month",
   "{0} different accounts from one address in {1} minutes": "{0} different accounts from one address in {1} minutes",

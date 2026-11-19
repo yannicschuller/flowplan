@@ -99,7 +99,7 @@ test("what is about people: records without their authors, person values, mentio
   assert.ok(!text.includes("Anna") && !text.includes("anna@example.org"));
   assert.deepEqual(Object.keys(content.rows![0]).sort(), ["cells", "content", "id", "position"]);
   assert.deepEqual(content.rows![0].cells, { title: "Hallo" });
-  assert.equal(content.rows![0].content, "<p>Frag  morgen.</p>");
+  assert.equal(content.rows![0].content, "<p>Frag @Person morgen.</p>");
   assert.deepEqual(content.rowTemplates![0].cells, { title: "x" });
   assert.deepEqual(content.meta!.properties!.map((p) => (p as { name: string }).name), ["Stand"]);
   assert.ok(cleared >= 6);

@@ -329,7 +329,7 @@
   "{0} declined the role as trusted contact.": "{0} a refusé le rôle de personne de confiance.",
   "{0} denied your request for emergency access.": "{0} a refusé votre demande d’accès d’urgence.",
   "{0} detail(s) are set by the person importing it.": "{0} information(s) sont définies par la personne qui l’importe.",
-  "{0} details about people (person properties, mentions) stay here.": "{0} informations sur des personnes (propriétés de type personne, mentions) restent ici.",
+  "{0} details about people stay here: mentions become “@Person”, tasks lose who they are assigned to (the due date stays), person properties and members’ e-mail addresses are not included.": "{0} informations sur des personnes restent ici : les mentions deviennent « @Person », les tâches perdent leur attribution (la date d’échéance reste), les propriétés de type personne et les adresses e-mail des membres ne sont pas incluses.",
   "{0} devices overlap or stick out": "{0} équipements se chevauchent ou dépassent",
   "{0} devices unused for over a month": "{0} appareils inutilisés depuis plus d’un mois",
   "{0} different accounts from one address in {1} minutes": "{0} comptes différents depuis une adresse en {1} minutes",

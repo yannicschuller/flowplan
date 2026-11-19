@@ -329,7 +329,7 @@
   "{0} declined the role as trusted contact.": "{0} 拒绝了担任受信任联系人。",
   "{0} denied your request for emergency access.": "{0} 拒绝了你的紧急访问申请。",
   "{0} detail(s) are set by the person importing it.": "{0} 项信息由导入者设定。",
-  "{0} details about people (person properties, mentions) stay here.": "{0} 条有关人员的信息（人员属性、提及）留在这里。",
+  "{0} details about people stay here: mentions become “@Person”, tasks lose who they are assigned to (the due date stays), person properties and members’ e-mail addresses are not included.": "{0} 条有关人员的信息留在这里：提及会变成“@Person”，任务不再有负责人（截止日期保留），人员属性和成员的电子邮件地址不会包含在内。",
   "{0} devices overlap or stick out": "{0} 台设备重叠或超出机柜",
   "{0} devices unused for over a month": "{0} 台设备超过一个月未使用",
   "{0} different accounts from one address in {1} minutes": "{0} 个不同的账户在 {1} 分钟内从同一地址登录",

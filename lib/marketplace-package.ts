@@ -7,7 +7,7 @@
 //                    payload, license?, author?, marketplace?}  (≤ 64 KB)
 //   payload/…       the kind's own exchange format, unchanged:
 //                     document, database  payload/template.zip  (flowplan-template-1, lib/template-exchange.ts)
-//                                         database: without what is about people (lib/marketplace-public-template.ts);
+//                                         without what is about people (lib/marketplace-public-template.ts);
 //                                         a flashcard deck + payload/study-meta.json (numbers and sample cards
 //                                           for the marketplace's preview, lib/marketplace-study-meta.ts)
 //                     workflow            payload/workflow.json (flowplan.workflow, lib/workflows/portable.ts)
@@ -24,6 +24,7 @@
 // ZIP safety (yauzl refuses absolute and ../ paths; budgets and the
 // compression ratio stop zip bombs), the envelope and the kind's schema are
 // checked again here, and the import of each kind validates once more.
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { HttpError } from "./auth";
 import { all, audit } from "./db";
@@ -45,7 +46,7 @@ import { packageMinVersion } from "./marketplace-config";
 import { referenceGaps, workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
 import { MAX_PACKAGE_BYTES, packageFileName, packageTitle } from "./marketplace-handover";
 import { STUDY_META_PATH, studyMetaBytes, templateStudyMeta } from "./marketplace-study-meta";
-import { publicDatabaseContent } from "./marketplace-public-template";
+import { peopleCleaner, publicTemplateContent, type People } from "./marketplace-public-template";
 import type { Identity } from "./types";
 
 export const MARKETPLACE_FORMAT = "flowplan-marketplace-1";
@@ -159,11 +160,9 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
       if (template.workspace_id !== wid || (template.created_by !== user.id && role !== "owner"))
         throw fail("Nur der Ersteller oder ein Besitzer darf die Vorlage veröffentlichen.", 403);
       const exported = await exportTemplate(user, wid, template.id);
-      if (template.kind !== "database")
-        return { kind: template.kind as MarketplaceKind, title: template.name, category: template.category || "other", path: "payload/template.zip", entries: [["payload/template.zip", exported.zip]], notes: [] };
-      const pub = await publicDatabaseZip(exported.zip, wid);
+      const pub = await publicTemplateZip(exported.zip, wid);
       return {
-        kind: "database",
+        kind: template.kind as MarketplaceKind,
         title: template.name,
         category: template.category || "other",
         path: "payload/template.zip",
@@ -176,7 +175,8 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
       if (page.workspace_id !== wid) throw fail("Workflow muss im Arbeitsbereich liegen.");
       const role = await pageRole(user, page);
       if (role !== "editor" && role !== "owner") throw fail("Nur wer den Workflow bearbeiten darf, kann ihn veröffentlichen.", 403);
-      const data = publicWorkflow(await exportWorkflow(user, page.id));
+      const pub = publicWorkflowExport(await exportWorkflow(user, page.id), await workspacePeople(wid));
+      const data = pub.data;
       const references = Object.keys(data.references).length;
       const graph = parseGraph(data.graph);
       return {
@@ -188,19 +188,26 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
           ["payload/workflow.json", Buffer.from(JSON.stringify(data, null, 2))],
           [WORKFLOW_META_PATH, workflowMetaBytes(workflowMeta(graph, referenceGaps(data, graph)))],
         ],
-        notes: [{ code: "secrets-never" }, ...(references ? [{ code: "references-cleared" as const, count: references }] : [])],
+        notes: [
+          { code: "secrets-never" },
+          ...(references ? [{ code: "references-cleared" as const, count: references }] : []),
+          ...(pub.cleared ? [{ code: "people-cleared" as const, count: pub.cleared }] : []),
+        ],
       };
     }
     case "whiteboard": {
       const board = await exportBoardTemplate(user, wid, source.id);
-      const data = { format: BOARD_TEMPLATE_FORMAT, version: 1, name: board.name, items: board.items };
+      // Texts of notes and shapes: no ids, addresses or mentions of members.
+      const cleaner = peopleCleaner(await workspacePeople(wid));
+      const items = cleaner.walk(board.items);
+      const data = { format: BOARD_TEMPLATE_FORMAT, version: 1, name: board.name, items };
       return {
         kind: "whiteboard",
         title: board.name,
         category: "other",
         path: "payload/whiteboard.json",
         entries: [["payload/whiteboard.json", Buffer.from(JSON.stringify(data))]],
-        notes: board.dropped ? [{ code: "images-dropped", count: board.dropped }] : [],
+        notes: [...(board.dropped ? [{ code: "images-dropped" as const, count: board.dropped }] : []), ...(cleaner.cleared() ? [{ code: "people-cleared" as const, count: cleaner.cleared() }] : [])],
       };
     }
     case "appearance": {
@@ -236,16 +243,21 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
   }
 }
 
-// A database template for the marketplace: its content without what is
-// about the workspace's people (lib/marketplace-public-template.ts), and for
-// a flashcard deck the preview's study-meta.json (no learning states – they
-// never are in a template).
-async function publicDatabaseZip(zip: Buffer, workspaceId: string) {
+// The members of a workspace (guests too): what a package leaves out.
+async function workspacePeople(workspaceId: string): Promise<People> {
+  const members = await all<{ id: string; email: string }>("SELECT u.id,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?", workspaceId);
+  return { ids: new Set(members.map((m) => m.id.toLowerCase())), emails: new Set(members.map((m) => (m.email || "").toLowerCase()).filter(Boolean)) };
+}
+
+// A page template (document, notebook, database) for the marketplace: its
+// content without what is about the workspace's people
+// (lib/marketplace-public-template.ts), and for a flashcard deck the
+// preview's study-meta.json (no learning states – they never are in a
+// template).
+async function publicTemplateZip(zip: Buffer, workspaceId: string) {
   const inner = await readZip(zip, { foreign: true, maxEntries: 202 });
   const manifest = JSON.parse(inner.get("template.json")!.toString("utf8")) as { payload: string; kind: string; files?: unknown };
-  const members = await all<{ id: string; email: string }>("SELECT u.id,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?", workspaceId);
-  const people = { ids: new Set(members.map((m) => m.id)), emails: new Set(members.map((m) => (m.email || "").toLowerCase()).filter(Boolean)) };
-  const stripped = publicDatabaseContent(JSON.parse(manifest.payload), people);
+  const stripped = publicTemplateContent(JSON.parse(manifest.payload), await workspacePeople(workspaceId));
   const next = { ...manifest, payload: JSON.stringify(stripped.content) };
   inner.set("template.json", Buffer.from(JSON.stringify(next)));
   const meta = templateStudyMeta(next);
@@ -262,6 +274,24 @@ export function publicWorkflow(data: WorkflowExport): WorkflowExport {
   const { source: _source, ...rest } = data;
   void _source;
   return { ...rest, references };
+}
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+// A workflow as it is published: publicWorkflow, and no id or address of a
+// member either. A person it names (a recipient, an approver …) keeps its
+// place under a new random id – still a person reference without a name,
+// so the import asks for someone or clears it, as for a person of another
+// instance; addresses and mentions of members in texts go
+// (lib/marketplace-public-template.ts). `cleared` counts the latter.
+export function publicWorkflowExport(data: WorkflowExport, people: People): { data: WorkflowExport; cleared: number } {
+  const base = publicWorkflow(data);
+  const renamed = new Map<string, string>();
+  for (const [id, ref] of Object.entries(base.references)) if (ref.kind === "person" || people.ids.has(id.toLowerCase())) renamed.set(id.toLowerCase(), randomUUID());
+  const rename = (s: string) => s.replace(UUID, (m) => renamed.get(m.toLowerCase()) ?? m);
+  const cleaner = peopleCleaner(people);
+  const graph = cleaner.walk(JSON.parse(rename(JSON.stringify(base.graph ?? null))));
+  const references = Object.fromEntries(Object.entries(base.references).map(([id, ref]) => [renamed.get(id.toLowerCase()) ?? id, ref.kind === "person" ? { ...ref, title: "" } : cleaner.walk(ref)]));
+  return { data: { ...base, ...(typeof base.title === "string" ? { title: cleaner.clean(base.title) } : {}), graph, references: references as WorkflowExport["references"] }, cleared: cleaner.cleared() };
 }
 
 export async function packageDraft(user: Identity, source: PackageSource) {
