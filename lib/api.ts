@@ -146,7 +146,7 @@ import {
   visibleFields,
 } from "./field-access";
 import { cellText } from "./cell-text";
-import { scheduleRow, cascadeTimeline, linkTimeline } from "./row-schedule";
+import { scheduleRow, cascadeTimeline, linkTimeline, restoreTimeline, unlinkTimeline } from "./row-schedule";
 import { recordDocumentAuthors } from "./document-authors";
 import { importBibliography, removeFromBibliography } from "./citations-server";
 import { rewriteFormulaReferences } from "./formula";
@@ -2703,6 +2703,12 @@ async function runCommand(
       case "timeline.link":
         result = await linkTimeline(user, pid(), b);
         break;
+      case "timeline.unlink":
+        result = await unlinkTimeline(user, pid(), b);
+        break;
+      case "timeline.restore":
+        result = await restoreTimeline(user, pid(), b);
+        break;
       // The workspace's bibliography (citations).
       case "citation.import":
         result = await importBibliography(user, b);
@@ -4264,6 +4270,8 @@ export const editActions = new Set([
   "row.schedule",
   "timeline.cascade",
   "timeline.link",
+  "timeline.unlink",
+  "timeline.restore",
   "row.move",
   "rows.bulk",
   "rows.transfer",

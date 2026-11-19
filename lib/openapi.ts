@@ -90,7 +90,7 @@ export const commandActionNames = [
   "row.create", "row.update", "row.delete", "row.move", "row.schedule", "row.access", "row.appearance",
   "row.recurrence", "row.repeat", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
   "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge",
-  "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
+  "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "timeline.unlink", "timeline.restore",
   "citation.import", "citation.remove", "whiteboard.sync", "whiteboard.toRecords", "dashboard.save",
   "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "notebook.attach", "notebook.detach",
   "notebook.pictures", "notebook.stickers", "notebook.sticker.save", "notebook.sticker.rename", "notebook.sticker.delete", "notebook.sticker.insert", "notebook.templates", "notebook.template.update", "notebook.template.delete",

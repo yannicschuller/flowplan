@@ -1,25 +1,37 @@
 "use client";
 // The published timeline (#390): the app's layout read-only – the same
 // window and zoom the view stores, the two-row axis, weekends, today's
-// line, dependency arrows and the critical path. Readers scroll and zoom;
-// nothing is saved. The server (components/public-views.tsx) hands over
-// only public properties.
+// line, dependency arrows (drawn as the view chooses, #395), the critical
+// path, the hierarchy with summary bars, groups and bar colours (#394).
+// Readers scroll, zoom, open and close parents and groups; nothing is
+// saved. The server (components/public-views.tsx) hands over only public
+// properties.
 import { useLayoutEffect, useRef, useState } from "react";
+import { ArrowsInLineVertical, ArrowsOutLineVertical } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { dataRange, outsideLabel, type LinkType, type SavedRange, type Scale } from "@/lib/timeline-scale";
+import { anchoredLinks, descendants, groupRange, summaryRanges, timelineOutline, type OutlineLine } from "@/lib/timeline-tree";
 import {
   barPlacement,
   BarText,
+  besideLabel,
+  DEFAULT_ARROWS,
   frameStyle,
-  measureArrows,
+  measureLinks,
+  measureObstacles,
+  OffscreenChip,
+  OutlineToggle,
   TimelineArrows,
   TimelineAxis,
   timelineKey,
   TimelineNavigation,
   TimelineZoom,
+  useOutline,
   useTimelineFrame,
   VisibleRange,
-  type TimelineArrow,
+  type ArrowObstacle,
+  type ArrowSettings,
+  type MeasuredLink,
 } from "./timeline-frame";
 
 export type PublicTimelineEntry = {
@@ -35,6 +47,17 @@ export type PublicTimelineEntry = {
   milestone?: boolean;
   // Public properties shown beside the title.
   detail?: string;
+  // The parent record (hierarchy), the group's key, the bar's colour.
+  parent?: string;
+  group?: string;
+  color?: string;
+};
+const motion = () => {
+  try {
+    return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
 };
 export function PublicTimelineGrid({
   id,
@@ -48,6 +71,10 @@ export function PublicTimelineGrid({
   weekends,
   today,
   tag,
+  groups,
+  arrows = DEFAULT_ARROWS,
+  milestoneOnly = false,
+  summaryBaseline = false,
 }: {
   id: string;
   entries: PublicTimelineEntry[];
@@ -60,6 +87,10 @@ export function PublicTimelineGrid({
   weekends: boolean;
   today: number;
   tag: string;
+  groups?: { key: string; label: string }[];
+  arrows?: ArrowSettings;
+  milestoneOnly?: boolean;
+  summaryBaseline?: boolean;
 }) {
   const t = useT();
   const frame = useTimelineFrame({
@@ -70,19 +101,140 @@ export function PublicTimelineGrid({
     today,
   });
   const grid = useRef<HTMLDivElement>(null);
-  const [arrows, setArrows] = useState<TimelineArrow[]>([]);
+  const [measured, setMeasured] = useState<{ links: MeasuredLink[]; obstacles: ArrowObstacle[] }>({ links: [], obstacles: [] });
+  const [, setTick] = useState(0);
+  const [hoverLine, setHoverLine] = useState<string | null>(null),
+    [hoverLink, setHoverLink] = useState<string | null>(null);
   const criticalSet = new Set(critical);
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const input = entries.map((e) => ({ id: e.id, parent: e.parent, group: e.group }));
+  const outlineOf = (collapsed: ReadonlySet<string>) => timelineOutline(input, { groups, collapsed });
+  const state = useOutline({
+    grid,
+    motion,
+    lines: (collapsed) => outlineOf(collapsed).lines.map((l) => l.id),
+    onFrame: () => setTick((n) => n + 1),
+  });
+  const outline = outlineOf(state.collapsed);
+  const outlined = !!groups || entries.some((e) => e.parent);
+  const rangeOf = (rid: string) => {
+    const e = byId.get(rid);
+    return e && e.start !== undefined && e.end !== undefined ? { start: e.start, end: e.end } : null;
+  };
+  const summaries = summaryRanges(outline.childrenOf, rangeOf);
+  const members = new Map<string, string[]>();
+  for (const e of entries) if (e.group !== undefined) members.set(e.group, [...(members.get(e.group) || []), e.id]);
+  const lineLinks = anchoredLinks(links, outline.anchor).map((l) => ({
+    key: `${l.line.from}>${l.line.to}`,
+    from: l.line.from,
+    to: l.line.to,
+    conflict: false,
+    critical: criticalSet.has(l.from) && criticalSet.has(l.to),
+  }));
   useLayoutEffect(() => {
     const root = grid.current;
     if (!root) return;
-    const next = measureArrows(root, links, linkType, criticalSet, new Set(), (el, origin) => {
+    const box = (el: HTMLElement, origin: DOMRect) => {
       const r = el.getBoundingClientRect();
       return { x: r.left - origin.left, y: r.top - origin.top };
-    });
-    setArrows((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next));
+    };
+    const next = measureLinks(root, lineLinks, box);
+    const obstacles = next.length && arrows.overlap === "transparent" ? measureObstacles(root, box) : [];
+    setMeasured((previous) =>
+      JSON.stringify(previous.links) === JSON.stringify(next) && JSON.stringify(previous.obstacles) === JSON.stringify(obstacles)
+        ? previous
+        : { links: next, obstacles },
+    );
   });
   const period = { start: frame.window.start, end: frame.window.end, dayWidth: frame.dayWidth },
     width = (period.end - period.start) * period.dayWidth;
+  const highlight = hoverLine
+    ? hoverLine.startsWith("group:")
+      ? groupRange(members.get(hoverLine.slice(6)) || [], rangeOf)
+      : summaries.get(hoverLine) || rangeOf(hoverLine)
+    : null;
+  const hovered = hoverLink ? lineLinks.find((l) => l.key === hoverLink) : undefined;
+  const hover = (lineId: string) => ({
+    onPointerEnter: () => setHoverLine(lineId),
+    onPointerLeave: () => setHoverLine((h) => (h === lineId ? null : h)),
+  });
+  const todayLine = today >= period.start && today < period.end && (
+    <span className="timeline-today" aria-hidden="true" style={{ left: (today - period.start) * period.dayWidth }} />
+  );
+  function lane(line: OutlineLine, entry: PublicTimelineEntry | undefined) {
+    const lineHover = !!hovered && (hovered.from === line.id || hovered.to === line.id);
+    const summary = line.type === "group" ? groupRange(members.get(line.key) || [], rangeOf) : summaries.get(line.id);
+    const name = entry ? entry.title : line.type === "group" ? line.label : "";
+    if (summary) {
+      const box = barPlacement(summary, false, period, true).box;
+      const own = entry ? rangeOf(entry.id) : null;
+      const baseline = summaryBaseline && own && (own.start !== summary.start || own.end !== summary.end) ? barPlacement(own, false, period, true).box : null;
+      const count = line.type === "group" ? line.count : descendants(outline.childrenOf, line.id).length;
+      return (
+        <div className="timeline-lane">
+          {todayLine}
+          {baseline && <span className="timeline-baseline" aria-hidden="true" style={{ left: baseline.left, width: baseline.width }} />}
+          {box ? (
+            <div
+              className={`timeline-range summary label-${besideLabel(box, width)}${box.clippedStart ? " clipped-start" : ""}${box.clippedEnd ? " clipped-end" : ""}${lineHover ? " link-hover" : ""}`}
+              style={{ left: box.left, width: box.width, "--bar-left": `${box.left}px` } as React.CSSProperties}
+              {...hover(line.id)}
+            >
+              {entry ? (
+                <a
+                  className="timeline-range-body"
+                  href={entry.href}
+                  aria-label={t(`${name}: ${count} Untereinträge`, `${name}: ${count} sub-records`)}
+                />
+              ) : (
+                <span className="timeline-range-body" role="img" aria-label={t(`${name}: ${count} Einträge`, `${name}: ${count} records`)} />
+              )}
+              <span className="timeline-range-label" aria-hidden="true">
+                <BarText name={name} detail={entry?.detail} />
+              </span>
+            </div>
+          ) : (
+            <OffscreenChip frame={frame} tag={tag} range={summary} label={t("Zum Zeitraum springen", "Jump to the period")} text={t("Zum Zeitraum springen", "Jump to the period")} />
+          )}
+          {box && <OffscreenChip frame={frame} tag={tag} range={summary} label={t(`Zu ${name} springen`, `Jump to ${name}`)} />}
+        </div>
+      );
+    }
+    if (!entry) return <div className="timeline-lane">{todayLine}</div>;
+    const own = rangeOf(entry.id);
+    const placed = own ? barPlacement(own, !!entry.milestone, period, milestoneOnly) : null;
+    const bar = placed?.box,
+      milestone = !!placed?.milestone;
+    const outside = bar ? (milestone ? besideLabel(bar, width) : outsideLabel(bar, entry.title, width)) : null;
+    return (
+      <div className="timeline-lane">
+        {todayLine}
+        {bar ? (
+          <div
+            className={`timeline-range${criticalSet.has(entry.id) ? " critical" : ""}${entry.color ? ` colored opt-${entry.color}` : ""}${lineHover ? " link-hover" : ""}${outside ? ` label-${outside}` : ""}${bar.clippedStart ? " clipped-start" : ""}${bar.clippedEnd ? " clipped-end" : ""}${milestone ? " milestone" : ""}`}
+            style={{ left: bar.left, width: bar.width, "--bar-left": `${bar.left}px` } as React.CSSProperties}
+            title={entry.label}
+            {...hover(line.id)}
+          >
+            <a className="timeline-range-body" href={entry.href} aria-label={`${entry.title}: ${entry.label}`}>
+              {!outside && <BarText name={entry.title} detail={entry.detail} />}
+            </a>
+            {outside && (
+              <span className="timeline-range-label" aria-hidden="true">
+                <BarText name={entry.title} detail={entry.detail} />
+              </span>
+            )}
+          </div>
+        ) : own ? (
+          <OffscreenChip frame={frame} tag={tag} range={own} label={t("Zum Zeitraum springen", "Jump to the period")} text={t("Zum Zeitraum springen", "Jump to the period")} />
+        ) : (
+          <span className="timeline-unscheduled">{t("Ohne Zeitraum", "Without a period")}</span>
+        )}
+        {bar && own && <OffscreenChip frame={frame} tag={tag} range={own} label={t(`Zu ${entry.title} springen`, `Jump to ${entry.title}`)} />}
+      </div>
+    );
+  }
+  const collapsible = outline.lines.some((l) => l.type === "group" || l.children > 0);
   return (
     <div className="public-timeline-app" onKeyDown={(event) => timelineKey(event, frame)}>
       <div className="timeline-controls">
@@ -91,60 +243,76 @@ export function PublicTimelineGrid({
         <TimelineZoom frame={frame} t={t} />
       </div>
       <div className="timeline-scroll" tabIndex={0} ref={frame.scrollRef} aria-label={t("Zeitleiste horizontal scrollen", "Scroll the timeline horizontally")}>
-        <div className="timeline-grid" ref={grid} style={frameStyle(frame, weekends)}>
+        <div className={`timeline-grid arrows-${arrows.overlap}`} ref={grid} style={frameStyle(frame, weekends)}>
           <div className="timeline-heading">
-            <strong>{t("Eintrag", "Record")}</strong>
-            <TimelineAxis frame={frame} tag={tag} t={t} />
+            <strong>
+              <span>{t("Eintrag", "Record")}</span>
+              {collapsible && (
+                <span className="timeline-outline-all">
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={t("Alle aufklappen", "Expand all")}
+                    title={t("Alle aufklappen", "Expand all")}
+                    disabled={!state.collapsed.size}
+                    onClick={() => state.set([])}
+                  >
+                    <ArrowsOutLineVertical size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={t("Alle zuklappen", "Collapse all")}
+                    title={t("Alle zuklappen", "Collapse all")}
+                    onClick={() => state.set([...outline.childrenOf.keys(), ...outline.lines.filter((l) => l.type === "group").map((l) => l.id)])}
+                  >
+                    <ArrowsInLineVertical size={15} />
+                  </button>
+                </span>
+              )}
+            </strong>
+            <TimelineAxis frame={frame} tag={tag} t={t} highlight={highlight} />
           </div>
-          <TimelineArrows id={`public-${id}`} arrows={arrows} />
-          {entries.map((entry) => {
-            const placed =
-              entry.start !== undefined && entry.end !== undefined
-                ? barPlacement({ start: entry.start, end: entry.end }, !!entry.milestone, period)
-                : null;
-            const bar = placed?.box,
-              milestone = !!placed?.milestone;
-            const outside = bar
-              ? milestone
-                ? width - bar.left - bar.width >= 120 || bar.left < 120
-                  ? "right"
-                  : "left"
-                : outsideLabel(bar, entry.title, width)
-              : null;
+          <TimelineArrows
+            id={`public-${id}`}
+            frame={frame}
+            links={measured.links}
+            obstacles={measured.obstacles}
+            type={linkType}
+            settings={arrows}
+            focus={hoverLine}
+            hovered={hoverLink}
+            onHover={setHoverLink}
+          />
+          {outline.lines.map((line) => {
+            const entry = line.type === "row" ? byId.get(line.id) : undefined;
+            const toggle = (line.type === "group" || line.children > 0) && (
+              <OutlineToggle name={line.type === "group" ? line.label : entry!.title} collapsed={line.collapsed} onToggle={() => state.toggle(line.id)} t={t} />
+            );
+            const indent = { "--timeline-depth": line.depth } as React.CSSProperties;
             return (
-              <div className="timeline-entry" key={entry.id} data-row-id={entry.id}>
-                <div className="timeline-entry-label">
-                  <a className="timeline-name" href={entry.href} title={entry.title}>
-                    {entry.title}
-                  </a>
-                </div>
-                <div className="timeline-lane">
-                  {today >= period.start && today < period.end && (
-                    <span className="timeline-today" aria-hidden="true" style={{ left: (today - period.start) * period.dayWidth }} />
-                  )}
-                  {bar ? (
-                    <div
-                      className={`timeline-range${criticalSet.has(entry.id) ? " critical" : ""}${outside ? ` label-${outside}` : ""}${bar.clippedStart ? " clipped-start" : ""}${bar.clippedEnd ? " clipped-end" : ""}${milestone ? " milestone" : ""}`}
-                      style={{ left: bar.left, width: bar.width, "--bar-left": `${bar.left}px` } as React.CSSProperties}
-                      title={entry.label}
-                    >
-                      <a className="timeline-range-body" href={entry.href} aria-label={`${entry.title}: ${entry.label}`}>
-                        {!outside && <BarText name={entry.title} detail={entry.detail} />}
-                      </a>
-                      {outside && (
-                        <span className="timeline-range-label" aria-hidden="true">
-                          <BarText name={entry.title} detail={entry.detail} />
-                        </span>
-                      )}
-                    </div>
-                  ) : entry.start !== undefined ? (
-                    <button type="button" className="timeline-unscheduled" onClick={() => frame.goTo(entry.start! - 2)}>
-                      {t("Zum Zeitraum springen", "Jump to the period")}
-                    </button>
+              <div
+                className={`timeline-entry${line.type === "group" ? " timeline-group" : ""}${line.type === "row" && line.children ? " is-parent" : ""}`}
+                key={line.id}
+                data-line-id={line.id}
+                data-row-id={entry?.id}
+              >
+                <div className={`timeline-entry-label${outlined ? " timeline-outline" : ""}`} style={outlined ? indent : undefined}>
+                  {outlined && (toggle || <span className="timeline-outline-spacer" aria-hidden="true" />)}
+                  {line.type === "group" ? (
+                    <>
+                      <strong className="timeline-group-name" title={line.label}>
+                        {line.label}
+                      </strong>
+                      <span className="timeline-group-count">{line.count}</span>
+                    </>
                   ) : (
-                    <span className="timeline-unscheduled">{t("Ohne Zeitraum", "Without a period")}</span>
+                    <a className="timeline-name" href={entry!.href} title={entry!.title} {...hover(line.id)}>
+                      {entry!.title}
+                    </a>
                   )}
                 </div>
+                {lane(line, entry)}
               </div>
             );
           })}

@@ -234,7 +234,7 @@ export async function PublicTimeline({
 }) {
   const t = await serverT();
   const tag = localeTag(await requestLocale());
-  const { rows, ...data } = publicTimelineData(pageId, records, fields, view);
+  const { rows, ...data } = publicTimelineData(pageId, records, fields, view, t);
   return (
     <section className="public-timeline timeline-view" aria-label={t("Timeline", "Timeline")}>
       <PublicTimelineGrid
