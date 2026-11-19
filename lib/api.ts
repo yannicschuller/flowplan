@@ -586,7 +586,7 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
     const relations = await relatedForView(user, p);
     const records = await rows(pid);
     // Kept previews of the records' texts (lib/record-previews.ts).
-    const previews = await recordPreviews(pid, records);
+    const { previews } = await recordPreviews(pid, records);
     return {
       page: p,
       images: await pageImages(pid),
@@ -604,9 +604,9 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
       readOnlyFields: await readOnlyFieldIds(user, p, data.fields),
       relationPairs: await relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
-      // The legacy content stays out: the preview shows the record's text
-      // (its document, else that content), the record dialog loads it.
-      rows: await mapAsync(await visibleRows(user, p, records), async ({ content: _content, ...r }) =>
+      // `content` stays: saving a record document keeps the text there as
+      // well, and API callers (and the browser specs) read it.
+      rows: await mapAsync(await visibleRows(user, p, records), async (r) =>
         // (`r` is a copy of its own already.)
         Object.assign(r, {
           preview: previews.get(r.id) ?? documentPreview(""),

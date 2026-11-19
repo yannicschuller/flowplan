@@ -19,7 +19,8 @@ const EMPTY = "";
 // The preview of every record of the database that has a text (`records`:
 // its records as read, with their legacy content); records without one get
 // the preview of an empty text from documentPreview("").
-export async function recordPreviews(databaseId: string, records: readonly { id: string; content?: string | null }[]): Promise<Map<string, DocumentPreview>> {
+// `documents`: the records that have a record document.
+export async function recordPreviews(databaseId: string, records: readonly { id: string; content?: string | null }[]): Promise<{ previews: Map<string, DocumentPreview>; documents: Set<string> }> {
   const previews = new Map<string, DocumentPreview>();
   for (const p of await all<{ row_id: string; preview: string }>(
     `SELECT p.row_id,p.preview FROM row_previews p JOIN rows r ON r.id=p.row_id
@@ -53,5 +54,5 @@ export async function recordPreviews(databaseId: string, records: readonly { id:
       }
     });
   }
-  return previews;
+  return { previews, documents };
 }

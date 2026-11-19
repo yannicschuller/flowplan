@@ -2,7 +2,7 @@
 // lib/record-previews.ts): opening a database shows the same preview as
 // one made from the text (record document, else legacy content), keeps it,
 // makes it anew after any change of the text – also one written past the
-// app (triggers) – and no longer sends the legacy content.
+// app (triggers).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -40,7 +40,7 @@ async function check(label: string) {
   const data = await open();
   for (const row of data.rows) {
     assert.deepEqual(row.preview, await expected(row.id), `${label}: ${row.cells.title}`);
-    assert.ok(!("content" in row), `${label}: no legacy content`);
+    assert.ok("content" in row, `${label}: the content stays`);
   }
   return data;
 }
