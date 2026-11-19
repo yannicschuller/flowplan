@@ -1877,6 +1877,22 @@ export default function WorkspaceApp({
   // views and the template's records, an empty board, a notebook with its
   // first sheet and the handwriting kept here.
   const openedLocal = useRef(new Set<string>());
+  // The code that builds such a page is not in the first load (JS budget,
+  // scripts/quality-check.mjs) but fetched in the background a few seconds
+  // later, while the connection is still there: without the offline copy a
+  // page made offline could not open otherwise.
+  useEffect(() => {
+    let idle = 0;
+    const timer = window.setTimeout(() => {
+      const load = () => void import("./offline-local-data").catch(() => {});
+      if ("requestIdleCallback" in window) idle = window.requestIdleCallback(load, { timeout: 5000 });
+      else load();
+    }, 4000);
+    return () => {
+      window.clearTimeout(timer);
+      if (idle && "cancelIdleCallback" in window) window.cancelIdleCallback(idle);
+    };
+  }, []);
   const localPageData = useCallback(async (change: import("@/lib/offline-queue").OfflinePageChange, state: LocalState): Promise<PageData> => {
     const b = bootRef.current;
     const template = change.starterTemplate ? catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[change.starterTemplate] : undefined;
