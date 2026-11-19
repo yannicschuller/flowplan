@@ -616,7 +616,14 @@ export type View = {
     size: "small" | "medium" | "large";
   };
   timeline?: {
-    scale: "week" | "month" | "quarter" | "year";
+    scale: "day" | "week" | "twoWeeks" | "month" | "quarter" | "year" | "fiveYears";
+    range?: "fit" | {
+      from: string;
+      to: string;
+    };
+    dayWidth?: number;
+    milestoneField?: string;
+    labelFields?: string[];
     showWeekends: boolean;
     dependencyField?: string;
     dependencyType?: "fs" | "ss" | "ff" | "sf";
@@ -2820,7 +2827,14 @@ export type CommandDatabaseUpdate = {
       size: "small" | "medium" | "large";
     };
     timeline?: {
-      scale: "week" | "month" | "quarter" | "year";
+      scale: "day" | "week" | "twoWeeks" | "month" | "quarter" | "year" | "fiveYears";
+      range?: "fit" | {
+        from: string;
+        to: string;
+      };
+      dayWidth?: number;
+      milestoneField?: string;
+      labelFields?: string[];
       showWeekends: boolean;
       dependencyField?: string;
       dependencyType?: "fs" | "ss" | "ff" | "sf";

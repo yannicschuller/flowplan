@@ -195,6 +195,18 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
       ],
     },
     {
+      // The timeline view of a database while it has the focus
+      // (components/timeline-frame.tsx, #390).
+      title: t("Timeline", "Timeline"),
+      items: [
+        { label: t("Zu heute springen", "Jump to today"), keys: ["T"] },
+        { label: t("Alles einpassen", "Fit everything"), keys: ["F"] },
+        { label: t("Vergrößern / verkleinern", "Zoom in / out"), keys: ["+", "−"] },
+        { label: t("Zoomen um den Mauszeiger", "Zoom around the pointer"), keys: [mac ? t("⌘ + Mausrad", "⌘ + mouse wheel") : t("Ctrl + Mausrad", "Ctrl + mouse wheel"), t("Zwei Finger", "Two fingers")] },
+        { label: t("Eintrag um einen Tag verschieben (Umschalt: Ende, Strg: Beginn)", "Move the record by a day (Shift: end, Ctrl: start)"), keys: [k("Alt+ArrowLeft"), k("Alt+ArrowRight")] },
+      ],
+    },
+    {
       // components/frame-tabs.tsx (#279). ⌘/Ctrl+W, Ctrl+Tab and ⌘/Ctrl+1…9
       // belong to the browser's own tabs: only in the desktop app.
       title: t("Tabs", "Tabs"),
