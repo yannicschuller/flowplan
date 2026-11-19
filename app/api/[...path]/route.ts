@@ -171,6 +171,7 @@ import { workflowGet } from "@/lib/workflows/commands";
 import { workflowPost } from "@/lib/workflows/rest";
 import { withReadMemo } from "@/lib/read-memo";
 import { inviteLinksEnabled, inviteLinksForcedOff, listInviteLinks } from "@/lib/invite-links";
+import { starterSpaceChoices, starterSpaceStatus } from "@/lib/starter-content";
 import { emergencyForcedOff, emergencyContent, emergencyExport, emergencyKeys, emergencyLog, emergencyOverview, emergencyPage } from "@/lib/emergency-access";
 import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
 import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
@@ -1261,6 +1262,10 @@ async function handleGET(
         metrics: await instanceMetrics(),
         usage: await workspaceUsage(),
         settings: await instanceSettings(),
+        // Starter content for new accounts (#381): the spaces this
+        // administrator may choose, and how the chosen one stands.
+        starterSpaces: await starterSpaceChoices(user),
+        starter: await starterSpaceStatus(),
         // FLOWPLAN_MARKETPLACE_URL's origin; null: "off" or unusable.
         marketplaceOrigin: marketplaceOrigin(),
         // How long sessions last, and what the environment would give (#133).

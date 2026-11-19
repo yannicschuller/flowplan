@@ -771,7 +771,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "SlidersHorizontal",
     title: { de: "Instanz", en: "Instance" },
     description: { de: "Name, öffentliche Demo, Version und Aktualisierung der Instanz.", en: "Name, public demo, version and update of the instance." },
-    keywords: { de: "instanz name demo version update aktualisieren commit admin-gruppe formatierungsleiste", en: "instance name demo version update commit admin group formatting toolbar" },
+    keywords: { de: "instanz name demo version update aktualisieren commit admin-gruppe formatierungsleiste startinhalt onboarding", en: "instance name demo version update commit admin group formatting toolbar starter content onboarding" },
     entries: [
       { title: { de: "Name der Instanz", en: "Instance name" }, anchor: "instance" },
       { title: { de: "Öffentliche Demo", en: "Public demo" }, anchor: "instance" },
@@ -789,6 +789,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         title: { de: "Standard-Formatierungsleiste", en: "Default formatting toolbar" },
         keywords: { de: "symbolleiste toolbar leiste schaltflächen reihenfolge gruppen trennlinie blöcke standard alle personen", en: "toolbar bar buttons order groups divider blocks default everyone" },
         anchor: "toolbar-layout-default",
+      },
+      {
+        title: { de: "Startinhalt für neue Konten", en: "Starter content for new accounts" },
+        keywords: { de: "onboarding vorlage startseiten willkommensseite neue konten bereich kopieren", en: "onboarding template starter pages welcome page new accounts space copy" },
+        anchor: "starter",
       },
     ],
   },

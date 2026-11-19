@@ -72,7 +72,68 @@ export async function createPage(
   if (kind === "workflow") await createWorkflowRecord(pid, workspace, user);
   return pid;
 }
-export async function createWorkspace(user: string, name: string, examples = false) {
+// The built-in first page of a personal workspace ("Willkommen bei Flowplan").
+export async function seedWelcome(wid: string, sid: string, user: string) {
+  const home = await createPage(wid, sid, user, ct("Willkommen bei Flowplan", "Welcome to Flowplan"));
+  await run("UPDATE pages SET icon=? WHERE id=?", "hand", home);
+  await run(
+    "UPDATE documents SET html=? WHERE page_id=?",
+    ct(
+      '<h2>Ein guter Ort für große Ideen.</h2><p>Hier kommen Wissen, Projekte und Menschen zusammen. Halte Gedanken fest, plane die nächsten Schritte und bringe gemeinsam mit deinem Team Dinge voran.</p><blockquote><p>Dein Arbeitsbereich. So flexibel wie deine Ideen.</p></blockquote><h2>Mach es zu deinem Flowplan</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Eine erste Seite schreiben</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Ein Projekt mit deinem Team planen</p></div></li></ul><h2>Alles an seinem Platz</h2><p>Nutze Seiten für Notizen und Dokumente. Datenbanken lassen sich als Tabelle, Board, Kalender, Galerie, Liste oder Timeline anzeigen.</p>',
+      '<h2>A good place for big ideas.</h2><p>Knowledge, projects and people come together here. Capture thoughts, plan the next steps and move things forward with your team.</p><blockquote><p>Your workspace. As flexible as your ideas.</p></blockquote><h2>Make it your Flowplan</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Write a first page</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Plan a project with your team</p></div></li></ul><h2>Everything in its place</h2><p>Use pages for notes and documents. Databases can be shown as a table, board, calendar, gallery, list or timeline.</p>',
+    ),
+    home,
+  );
+  return home;
+}
+// The built-in examples: a product roadmap and a team handbook.
+export async function seedExamples(wid: string, sid: string, user: string) {
+  const project = await createPage(wid, sid, user, ct("Produkt-Roadmap", "Product roadmap"), "database");
+  await run("UPDATE pages SET icon=? WHERE id=?", "rocket", project);
+  const titles = [
+    ct("Onboarding vereinfachen", "Simplify onboarding"),
+    ct("Designsystem dokumentieren", "Document the design system"),
+    ct("Mobile Navigation optimieren", "Improve mobile navigation"),
+    ct("Feedback aus Nutzertests", "Feedback from user tests"),
+    ct("Release vorbereiten", "Prepare the release"),
+    ct("Dokumentation überarbeiten", "Revise the documentation"),
+  ];
+  const [status, priority] = [defaultFields()[1].options!, defaultFields()[2].options!];
+  await forEachAsync(titles, async (title, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() + i * 2 - 2);
+    await run(
+      "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
+      id(),
+      project,
+      JSON.stringify({
+        title,
+        status: i === 4 ? status[2] : i % 2 ? status[0] : status[1],
+        priority: priority[i % 3],
+        date: date.toISOString().slice(0, 10),
+        assignee: user,
+        tags: [i % 2 ? ct("Produkt", "Product") : "Design"],
+      }),
+      i,
+      user,
+      user,
+    );
+  });
+  const notes = await createPage(wid, sid, user, ct("Team-Handbuch", "Team handbook"));
+  await run("UPDATE pages SET icon=? WHERE id=?", "book", notes);
+  await run(
+    "UPDATE documents SET html=? WHERE page_id=?",
+    ct(
+      "<h2>So arbeiten wir zusammen</h2><p>Wir halten Entscheidungen schriftlich fest, teilen Wissen offen und schaffen Raum für konzentrierte Arbeit.</p><h3>Unser Wochenrhythmus</h3><ul><li>Montag: Prioritäten und Planung</li><li>Mittwoch: Offene Fragen und Feedback</li><li>Freitag: Rückblick auf die Woche</li></ul>",
+      "<h2>How we work together</h2><p>We write decisions down, share knowledge openly and make room for focused work.</p><h3>Our weekly rhythm</h3><ul><li>Monday: priorities and planning</li><li>Wednesday: open questions and feedback</li><li>Friday: looking back on the week</li></ul>",
+    ),
+    notes,
+  );
+  await createPage(wid, sid, user, ct("Meeting-Notizen", "Meeting notes"), "document", notes);
+}
+// welcome: false leaves the space empty, for starter content an
+// administrator chose instead (lib/starter-content.ts).
+export async function createWorkspace(user: string, name: string, examples = false, welcome = true) {
   return await transaction(async () => {
     const wid = id(),
       sid = id();
@@ -90,64 +151,18 @@ export async function createWorkspace(user: string, name: string, examples = fal
       "Teamspace",
       user,
     );
-    const home = await createPage(wid, sid, user, ct("Willkommen bei Flowplan", "Welcome to Flowplan"));
-    await run("UPDATE pages SET icon=? WHERE id=?", "hand", home);
-    await run(
-      "UPDATE documents SET html=? WHERE page_id=?",
-      ct(
-        '<h2>Ein guter Ort für große Ideen.</h2><p>Hier kommen Wissen, Projekte und Menschen zusammen. Halte Gedanken fest, plane die nächsten Schritte und bringe gemeinsam mit deinem Team Dinge voran.</p><blockquote><p>Dein Arbeitsbereich. So flexibel wie deine Ideen.</p></blockquote><h2>Mach es zu deinem Flowplan</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Eine erste Seite schreiben</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Ein Projekt mit deinem Team planen</p></div></li></ul><h2>Alles an seinem Platz</h2><p>Nutze Seiten für Notizen und Dokumente. Datenbanken lassen sich als Tabelle, Board, Kalender, Galerie, Liste oder Timeline anzeigen.</p>',
-        '<h2>A good place for big ideas.</h2><p>Knowledge, projects and people come together here. Capture thoughts, plan the next steps and move things forward with your team.</p><blockquote><p>Your workspace. As flexible as your ideas.</p></blockquote><h2>Make it your Flowplan</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Write a first page</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Plan a project with your team</p></div></li></ul><h2>Everything in its place</h2><p>Use pages for notes and documents. Databases can be shown as a table, board, calendar, gallery, list or timeline.</p>',
-      ),
-      home,
-    );
-    if (examples) {
-      const project = await createPage(wid, sid, user, ct("Produkt-Roadmap", "Product roadmap"), "database");
-      await run("UPDATE pages SET icon=? WHERE id=?", "rocket", project);
-      const titles = [
-        ct("Onboarding vereinfachen", "Simplify onboarding"),
-        ct("Designsystem dokumentieren", "Document the design system"),
-        ct("Mobile Navigation optimieren", "Improve mobile navigation"),
-        ct("Feedback aus Nutzertests", "Feedback from user tests"),
-        ct("Release vorbereiten", "Prepare the release"),
-        ct("Dokumentation überarbeiten", "Revise the documentation"),
-      ];
-      const [status, priority] = [defaultFields()[1].options!, defaultFields()[2].options!];
-      await forEachAsync(titles, async (title, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() + i * 2 - 2);
-        await run(
-          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
-          id(),
-          project,
-          JSON.stringify({
-            title,
-            status: i === 4 ? status[2] : i % 2 ? status[0] : status[1],
-            priority: priority[i % 3],
-            date: date.toISOString().slice(0, 10),
-            assignee: user,
-            tags: [i % 2 ? ct("Produkt", "Product") : "Design"],
-          }),
-          i,
-          user,
-          user,
-        );
-      });
-      const notes = await createPage(wid, sid, user, ct("Team-Handbuch", "Team handbook"));
-      await run("UPDATE pages SET icon=? WHERE id=?", "book", notes);
-      await run(
-        "UPDATE documents SET html=? WHERE page_id=?",
-        ct(
-          "<h2>So arbeiten wir zusammen</h2><p>Wir halten Entscheidungen schriftlich fest, teilen Wissen offen und schaffen Raum für konzentrierte Arbeit.</p><h3>Unser Wochenrhythmus</h3><ul><li>Montag: Prioritäten und Planung</li><li>Mittwoch: Offene Fragen und Feedback</li><li>Freitag: Rückblick auf die Woche</li></ul>",
-          "<h2>How we work together</h2><p>We write decisions down, share knowledge openly and make room for focused work.</p><h3>Our weekly rhythm</h3><ul><li>Monday: priorities and planning</li><li>Wednesday: open questions and feedback</li><li>Friday: looking back on the week</li></ul>",
-        ),
-        notes,
-      );
-      await createPage(wid, sid, user, ct("Meeting-Notizen", "Meeting notes"), "document", notes);
-    }
+    if (welcome) await seedWelcome(wid, sid, user);
+    if (examples) await seedExamples(wid, sid, user);
     return wid;
   });
 }
+// The personal workspace of an account without any (first sign-in, also
+// through SSO, LDAP or SCIM): the built-in pages, or the starter content an
+// administrator chose (lib/starter-content.ts). Accounts with a workspace
+// stay as they are.
 export async function ensureWorkspace(user: string) {
-  if (!(await all("SELECT workspace_id FROM members WHERE user_id=?", user)).length)
-    await createWorkspace(user, ct("Mein Arbeitsbereich", "My workspace"), true);
+  if ((await all("SELECT workspace_id FROM members WHERE user_id=?", user)).length) return;
+  // Loaded on use: starter-content.ts builds on page-tree.ts, which builds on this file.
+  const { createPersonalWorkspace } = await import("./starter-content");
+  await createPersonalWorkspace(user, ct("Mein Arbeitsbereich", "My workspace"));
 }
