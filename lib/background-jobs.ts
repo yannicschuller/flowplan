@@ -171,7 +171,7 @@ export async function launchJob<T>(
 }
 
 // An error as the job's row keeps it, and back: what the route makes of it
-// (app/api/[...path]/route.ts error()) stays the same – the status and text
+// (app/api/[...path]/handler.ts error()) stays the same – the status and text
 // of an HttpError, the messages of invalid input, a 500 for anything else.
 type StoredError =
   | { kind: "http"; status: number; message: string }

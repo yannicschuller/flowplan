@@ -18,7 +18,7 @@ const { exportArchive, importArchive, readZip } = await import("../lib/archive")
 const theme = await import("../lib/workspace-theme");
 const fonts = await import("../lib/workspace-fonts");
 const catalogue = await import("../lib/theme-fonts");
-const shareFontRoute = await import("../app/api/share/[token]/fonts/[fontId]/route");
+const shareFontRoute = await import("../app/api/share/[token]/fonts/[fontId]/handler");
 
 async function account(name: string, extra: Partial<Identity> = {}) {
   const uid = id();

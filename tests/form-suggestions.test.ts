@@ -1,5 +1,5 @@
 // Earlier answers as suggestions in forms (#374, lib/form-suggestions.ts,
-// app/api/forms/[token]/suggestions/route.ts): ranking, the privacy rules
+// app/api/forms/[token]/suggestions/handler.ts): ranking, the privacy rules
 // (members-only forms that record who answered, record and property
 // permissions, own vs. all) and the rate limit.
 import { test } from "node:test";
@@ -18,7 +18,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { formSettings, saveFormSubmission } = await import("../lib/forms");
 const { rankSuggestions, SUGGESTION_REQUESTS_PER_MINUTE } = await import("../lib/form-suggestions");
 const { formConfigSchema, suggestionScope } = await import("../lib/form-settings");
-const route = await import("../app/api/forms/[token]/suggestions/route");
+const route = await import("../app/api/forms/[token]/suggestions/handler");
 
 test("suggestions: prefix matches first, then by frequency and recency, distinct and capped", () => {
   // Newest first.

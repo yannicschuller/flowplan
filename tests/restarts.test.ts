@@ -301,7 +301,7 @@ test("administrators only, never with an API token", async () => {
   assert.equal(((await history.restartsForAdmin(admin)) as Awaited<ReturnType<typeof history.restartHistory>>).restarts.length, 1);
   assert.equal(((await history.restartsForAdmin(admin, rowId)) as Awaited<ReturnType<typeof history.restartDetail>>).logLines.length, 1);
   await assert.rejects(history.restartsForAdmin(admin, ""), /Ungültige Eingabe/);
-  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/handler.ts"), "utf8");
   const get = route.slice(route.indexOf("export const GET"), route.indexOf("const postSchema"));
   assert.ok(get.indexOf("await admin()") >= 0 && get.indexOf("await admin()") < get.indexOf("restartsForAdmin("), "the route checks the person first");
 });

@@ -11,7 +11,7 @@ search), `components/settings/registry.tsx` (icons and components),
 `components/settings-ui.tsx` (building blocks), `components/settings/user/*`
 and `components/settings/admin/*` (one file per section),
 `components/settings/user-context.tsx` / `admin-context.tsx` (shared data),
-`lib/admin-summary.ts` + `app/api/admin/summary/route.ts` (tile facts),
+`lib/admin-summary.ts` + `app/api/admin/summary/handler.ts` (tile facts),
 `app/globals.css` ("Settings shell" block). Tests:
 `tests/settings-sections.test.ts`, `tests/admin-summary.test.ts`, the browser
 specs that open settings (they use the addresses below), `npm run quality`

@@ -22,8 +22,8 @@ const { handleMcpMessage } = await import("../lib/mcp");
 const { identityFromApiToken } = await import("../lib/api-tokens");
 const { createScimToken, handleScim } = await import("../lib/scim");
 const { securityAction } = await import("../lib/security-admin");
-const mcpRoute = await import("../app/api/mcp/route");
-const clipperRoute = await import("../app/api/clipper/[action]/route");
+const mcpRoute = await import("../app/api/mcp/handler");
+const clipperRoute = await import("../app/api/clipper/[action]/handler");
 
 const uid = id();
 await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ana", "ana@example.test");

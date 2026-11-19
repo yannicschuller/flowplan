@@ -215,7 +215,7 @@ test("FLOWPLAN_METRICS=off locks the switch", async () => {
   try {
     assert.deepEqual(await metrics.metricsSetting(), { enabled: false, locked: true });
     assert.equal(await metrics.refreshMetricsEnabled(), false);
-    assert.match(readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/route.ts"), "utf8"), /\(await metricsSetting\(\)\)\.locked/);
+    assert.match(readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/handler.ts"), "utf8"), /\(await metricsSetting\(\)\)\.locked/);
   } finally {
     delete process.env.FLOWPLAN_METRICS;
     await metrics.refreshMetricsEnabled();
@@ -267,7 +267,7 @@ test("the dashboard: administrators in the browser only, all parts present", asy
   assert.deepEqual(Object.keys(d.queues).sort(), ["aiFields", "aiIndex", "mail", "push", "s3", "search", "webhooksGivenUp", "webhooksRetrying"]);
   // Numbers and codes only – no texts for the browser to show as they are.
   assert.equal(typeof (await monitoringOverview()).kpis.signinsToday, "number");
-  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/handler.ts"), "utf8");
   assert.match(route, /requireOpsAdmin\(await requireUser\(\)\)/);
   assert.match(route, /checkOrigin\(req\)/);
 });

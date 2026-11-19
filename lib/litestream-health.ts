@@ -473,7 +473,7 @@ export async function restartForRepair(actorId: string, kill: () => void = () =>
 
 export const litestreamActions = ["litestream.rebuild", "litestream.cancel", "litestream.restart"] as const;
 export type LitestreamAction = (typeof litestreamActions)[number];
-// The buttons of the warning (app/api/admin/monitoring/route.ts):
+// The buttons of the warning (app/api/admin/monitoring/handler.ts):
 // administrators in the browser only, each step in the activity log.
 export async function litestreamAdminAction(user: Identity, action: LitestreamAction, options: { now?: number; kill?: () => void } = {}) {
   requireOpsAdmin(user);

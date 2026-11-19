@@ -2,7 +2,7 @@
 // (components/settings/admin/tiles.ts formats them): one small object per
 // section, only from data the server already keeps. Numbers and states, no
 // texts – the browser words them in its language. Administrators only, never
-// with an API token (app/api/admin/summary/route.ts).
+// with an API token (app/api/admin/summary/handler.ts).
 import { all, one } from "./db";
 import { buildInfo } from "./build-info";
 import { instanceMetrics, workspaceUsage } from "./instance-ops";

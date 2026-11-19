@@ -18,7 +18,7 @@ const { createApiToken } = await import("../lib/api-tokens");
 const { registerMobileDevice } = await import("../lib/mobile-devices");
 const I = await import("../lib/idempotency");
 const K = await import("../lib/idempotency-key");
-const widgets = await import("../app/api/mobile/widgets/[action]/route");
+const widgets = await import("../app/api/mobile/widgets/[action]/handler");
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 async function account(name: string) {

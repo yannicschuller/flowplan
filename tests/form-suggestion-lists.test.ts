@@ -24,7 +24,7 @@ const {
   SUGGESTION_LIST_MAX,
   SUGGESTION_LIST_ITEM_MAX,
 } = await import("../lib/form-suggestion-list");
-const route = await import("../app/api/forms/[token]/suggestions/route");
+const route = await import("../app/api/forms/[token]/suggestions/handler");
 
 test("lists are trimmed, without empty lines and duplicates, the first spelling kept", () => {
   assert.deepEqual(cleanSuggestionList(["  Berlin ", "", "   ", "berlin", "Bad   Homburg", "BERLIN", "Hamburg"]), ["Berlin", "Bad Homburg", "Hamburg"]);

@@ -318,7 +318,7 @@ test("the button: administrators only, a backup and the marker, audited; cancel;
 });
 
 test("the route forwards the actions to lib, administrators in the browser only", () => {
-  const route = readFileSync("app/api/admin/monitoring/route.ts", "utf8");
+  const route = readFileSync("app/api/admin/monitoring/handler.ts", "utf8");
   assert.match(route, /z\.object\(\{ action: z\.enum\(litestreamActions\) \}\)/);
   assert.match(route, /litestreamAdminAction\(user, body\.action\)/);
   assert.match(route, /requireOpsAdmin\(await requireUser\(\)\)/);

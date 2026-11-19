@@ -87,9 +87,9 @@ test("liveness answers without the database; readiness checks it and turns 503 w
   const { readinessRequires } = await import("../lib/cluster/health");
   assert.deepEqual([...readinessRequires({})].sort(), ["database", "objectStorage", "redis"]);
   assert.deepEqual([...readinessRequires({ FLOWPLAN_READY_REQUIRE: "database, objectStorage" })], ["database", "objectStorage"]);
-  const live = await (await import("../app/api/health/live/route")).GET();
+  const live = await (await import("../app/api/health/live/handler")).GET();
   assert.equal(live.status, 200);
-  const { GET: ready } = await import("../app/api/health/ready/route");
+  const { GET: ready } = await import("../app/api/health/ready/handler");
   const answer = await ready(new Request("http://localhost/api/health/ready"));
   assert.equal(answer.status, 200);
   // The opening steps (schema, data steps) are done before it counts as ready.

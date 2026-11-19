@@ -18,8 +18,8 @@ const { run, id } = await import("../lib/db");
 const { hash, cookieName } = await import("../lib/auth");
 const { createApiToken } = await import("../lib/api-tokens");
 const { disclosedVersion, apiDocsAllowed } = await import("../lib/instance-disclosure");
-const openapiRoute = await import("../app/api/openapi.json/route");
-const healthRoute = await import("../app/api/health/route");
+const openapiRoute = await import("../app/api/openapi.json/handler");
+const healthRoute = await import("../app/api/health/handler");
 
 async function account(name: string, groups: string[] = []) {
   const uid = id();

@@ -34,12 +34,15 @@ function languageDir(languages: Language[]) {
   mkdirSync(dir, { recursive: true });
   // Bundlers rewrite require.resolve, so the packages are found through the
   // app's node_modules (the same layout in development and standalone).
+  // Not traced from here (the tracing would take the packages' folders
+  // whole, the unused 4.0.0_best_int models too): next.config.ts lists
+  // the files.
   for (const lang of languages) {
     const target = join(dir, `${lang}.traineddata.gz`);
     if (existsSync(target)) continue;
     copyFileSync(
       join(
-        process.cwd(),
+        /*turbopackIgnore: true*/ process.cwd(),
         "node_modules",
         "@tesseract.js-data",
         lang,

@@ -1,5 +1,5 @@
 // Administration → Überwachung: everything the monitoring dashboard shows,
-// in one answer (app/api/admin/monitoring/route.ts), polled every few
+// in one answer (app/api/admin/monitoring/handler.ts), polled every few
 // seconds while the page is open. Health of the parts of the instance,
 // the live numbers, the charts (requests, people, sign-ins, refusals,
 // storage, deliveries, AI tokens), the queues and recent events.

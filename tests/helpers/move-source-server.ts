@@ -17,7 +17,7 @@ const { createWorkspace } = await import("../../lib/seed");
 const { command, bootstrap } = await import("../../lib/api");
 const move = await import("../../lib/instance-move");
 const { readOnlyState } = await import("../../lib/instance-read-only");
-const route = await import("../../app/api/move/[...path]/route");
+const route = await import("../../app/api/move/[...path]/handler");
 
 const uid = id();
 await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `source:${uid}`, "Quelle", `${uid}@example.test`);

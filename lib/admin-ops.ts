@@ -4,7 +4,7 @@
 // queue, failing webhooks, the last run and error of background workers, an
 // export of the activity log, health alerts to a webhook of the operator and
 // a scheduled maintenance notice shown to everyone. Administrators only;
-// API tokens never reach any of it (app/api/admin/operations/route.ts).
+// API tokens never reach any of it (app/api/admin/operations/handler.ts).
 import { createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, audit, one, run } from "./db";

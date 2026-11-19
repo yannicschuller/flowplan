@@ -4,7 +4,7 @@
 // On the OLD instance (source): "Umzug vorbereiten" creates a one-time move
 // token (shown once, stored as a hash, valid 24 hours, revocable, after a
 // step-up re-authentication). With it, and only for these endpoints
-// (app/api/move/[...path]/route.ts), the new instance reads a consistent
+// (app/api/move/[...path]/handler.ts), the new instance reads a consistent
 // database snapshot, every upload, the instance's key files and a report of
 // its configuration (names and keyed hashes, never values); it may switch
 // the source to read-only for the final copy and mark it as moved.

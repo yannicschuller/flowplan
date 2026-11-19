@@ -136,7 +136,7 @@ test("the owner's reset of a PIN nobody knows needs a fresh confirmation", async
 });
 
 test("the reset route confirms the step before it removes the PIN", () => {
-  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
+  const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/handler.ts"), "utf8");
   const start = route.indexOf('if (action === "journal-pin-reset") {');
   assert.ok(start > 0);
   const block = route.slice(start, start + 600);

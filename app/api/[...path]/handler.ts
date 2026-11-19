@@ -1,0 +1,2181 @@
+import { currentRequestId, serverError } from "@/lib/request-context";
+import { requireModule } from "@/lib/instance-modules";
+import { e2eBuild } from "@/lib/e2e-build";
+import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
+import { CSV_FORMULA } from "@/lib/cell-text";
+import { jsonWithTag } from "@/lib/etag";
+import { bootstrapResponse } from "@/lib/bootstrap-pages";
+import { linkTargets } from "@/lib/link-targets";
+import { withRequestLocale } from "@/lib/content-locale";
+import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
+import { domainAllowed, domainRobots, domainSettings, domainSitemap, verifyDomain } from "@/lib/custom-domains";
+import { aiAllowedUsers, instanceAiSettings } from "@/lib/ai/settings";
+import { teamThread } from "@/lib/service-desk";
+import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
+import { recordTime, timeReport } from "@/lib/time-tracking";
+import { sprintCharts } from "@/lib/sprints";
+import { gitConfig, gitLinks } from "@/lib/git-integration";
+import { crossRecords, recordViews } from "@/lib/cross-records";
+import { hasCalDavAccess } from "@/lib/caldav";
+import { withMeetingNotes } from "@/lib/meeting-notes";
+import { transferTargets } from "@/lib/row-transfer";
+import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
+import { requireBodySize, sanitizeFileName, stripLocation, uploadMime } from "@/lib/upload-safety";
+import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
+import { notebookPeers, sheetTrash } from "@/lib/notebook-organize";
+import { storageOverview } from "@/lib/storage-overview";
+import { offlineChanges, parseSince } from "@/lib/offline-changes";
+import { offlineAssets } from "@/lib/offline-assets-server";
+import { notificationFeed } from "@/lib/notification-feed";
+import { avatarFor } from "@/lib/avatars";
+import { mediaLibrary } from "@/lib/media-library";
+import { resolveEmbed } from "@/lib/oembed";
+import { instanceSettings } from "@/lib/instance-settings";
+import { pendingRestore } from "@/lib/instance-backup";
+import { linkedDatabaseData } from "@/lib/linked-databases";
+import { editorLeft, editorPresence } from "@/lib/editor-presence";
+import { marketplaceOrigin, requireMarketplace } from "@/lib/marketplace-config";
+import { buildPackage, importPackage, packageDraft, packagePreview, readPackage, MARKETPLACE_KINDS } from "@/lib/marketplace-package";
+import { checkPackage, requireMarketplaceCheck } from "@/lib/marketplace-check";
+import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
+import { imageMimes } from "@/lib/page-appearance";
+import { after } from "next/server";
+import { cookies } from "next/headers";
+import {
+  pushKeys,
+  subscribePush,
+  unsubscribePush,
+  dispatchPush,
+} from "@/lib/push";
+import { sendTestPush } from "@/lib/push-test";
+import { listPageTemplates } from "@/lib/page-templates";
+import { fileResponse } from "@/lib/file-response";
+import { MAX_PLACEHOLDER_IDS, placeholderForUpload, placeholdersFor, storePlaceholder } from "@/lib/image-placeholders";
+import { publicFile } from "@/lib/publication";
+import { withShareRequest } from "@/lib/share-access";
+import { requireRow, rowDocumentData } from "@/lib/row-documents";
+import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
+import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
+import { listApiTokens } from "@/lib/api-tokens";
+import { createWebhook, listWebhooks, testWebhook, updateWebhook, webhookEvents } from "@/lib/webhooks";
+import { listSsoMappings, ssoSources } from "@/lib/sso-mappings";
+import { mailStatus, sendTestMail } from "@/lib/mail";
+import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
+import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
+import { recordActivity, userActivity } from "@/lib/user-activity";
+import { pageShares } from "@/lib/page-share";
+import { documentLog, encryptedArchive, identityOf, isEncryptedPage, requirePlaintext, requirePlaintextSpace, spaceKeys } from "@/lib/e2ee-server";
+import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
+import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space-git-export";
+import { libraryOverview, searchLibrary, spaceLibrary } from "@/lib/library-server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { storeUpload } from "@/lib/page-upload";
+import { claimFileId } from "@/lib/client-ids";
+import { createTemplate, libraryFile } from "@/lib/notebook-library";
+import { FONT_LIMITS, fontResponse, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
+import {
+  requireUser,
+  checkOrigin,
+  HttpError,
+  adminGroup,
+  adminUserIds,
+  cookieName,
+  rememberPolicy,
+  hash,
+  inviteToken,
+} from "@/lib/auth";
+import { bootstrap, pageData, command, rows, database } from "@/lib/api";
+import { idempotencyHook, withIdempotency } from "@/lib/idempotency";
+import {
+  requirePage,
+  requireMember,
+  requireAdmin,
+  pageRole,
+} from "@/lib/permissions";
+import { one, all, run, id, audit, sql } from "@/lib/db";
+import type { Page } from "@/lib/types";
+import { searchWorkspace, recentlyVisited } from "@/lib/search-index";
+import { recordSearchVisit } from "@/lib/search-visits";
+import { COLLECTION_RESULTS, COLLECTION_RESULTS_MAX, listCollections, previewQuery, runCollection } from "@/lib/collections";
+import { tagListing } from "@/lib/page-properties-server";
+import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
+import { importZip } from "@/lib/zip-import";
+import { noteGettingStarted } from "@/lib/getting-started";
+import { importWhiteboardFile } from "@/lib/whiteboard-import-server";
+import { documentAuthors } from "@/lib/document-authors";
+import { bibliography, bibliographyForDoi, resolveDoi } from "@/lib/citations-server";
+import { transaction } from "@/lib/db";
+import { BOARD_IMPORT_LIMITS } from "@/lib/whiteboard-import";
+import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
+import { captureTargets } from "@/lib/capture";
+import { captureUndo, capturePreview, desktopCaptureSave, desktopCaptureTargets } from "@/lib/desktop-capture";
+import { MAX_CAPTURE_FILES } from "@/lib/mobile-capture";
+import { listInboundAddresses } from "@/lib/inbound-mail";
+import { endMySessions, mySessions } from "@/lib/my-sessions";
+import { sessionSettings } from "@/lib/session-policy";
+import { mySecurity } from "@/lib/my-security";
+import { pageToRecordPlan } from "@/lib/page-to-record";
+import { recordToPagePlan } from "@/lib/record-to-page";
+import { importTracker } from "@/lib/tracker-import";
+import { trackJob } from "@/lib/background-jobs";
+import { recordBacklinks } from "@/lib/relation-backlinks";
+import { recordContext } from "@/lib/record-context";
+import { hiddenFileIds } from "@/lib/row-files";
+import { pagePreview } from "@/lib/page-preview";
+import { blockPreview, searchBlocks } from "@/lib/block-links";
+import { withActivity } from "@/lib/page-activity";
+import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
+import { canAddPersonalTask, personalTaskPage } from "@/lib/personal-tasks";
+import { homeAction, homeData, homeOptions } from "@/lib/home-widgets";
+import { localAccountInfo, localLoginEnabled } from "@/lib/local-auth";
+import { listSyncedBlocks } from "@/lib/synced-blocks";
+import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
+import { clipArticle } from "@/lib/web-clip";
+import { downloadImage, searchImages } from "@/lib/image-search";
+import { GIF_MAX_BYTES, gifProvider, searchGifs } from "@/lib/gif-search";
+import { deleteBoardTemplate, listBoardTemplates, saveBoardTemplate } from "@/lib/whiteboard-user-templates";
+import { deleteRackTemplate, listRackTemplates, netboxImport, saveRackTemplate } from "@/lib/whiteboard-rack-server";
+import { whiteboardRowCards } from "@/lib/whiteboard-cards";
+import { transcribe } from "@/lib/transcribe";
+import { requireTokenAi } from "@/lib/ai/token-access";
+import { journalDate } from "@/lib/journal";
+import { dayOrDraft, emptyJournalDays, journalDraftPage } from "@/lib/journal-days";
+import {
+  calendarEvents,
+  databaseEvents,
+  journalReview,
+  requireUnlocked,
+  lockedPageIds,
+} from "@/lib/journal-extras";
+import { journalDayCompleted } from "@/lib/journal-completed";
+import { existingAiSummary, existingSummary } from "@/lib/journal-summary";
+import { wholeMonth } from "@/lib/journal-nav";
+import { visibleRows } from "@/lib/row-access";
+import { readableDatabase } from "@/lib/field-access";
+import { listRowTrash } from "@/lib/row-trash";
+import { trashCounts, trashDays } from "@/lib/trash";
+import { listFileTrash } from "@/lib/file-trash";
+import { ARCHIVE_LIMIT, jsonExportWorkspace } from "@/lib/archive";
+import { buildInfo } from "@/lib/build-info";
+import { plainHttpInstance } from "@/lib/instance-https";
+import { updateStatus } from "@/lib/update-check";
+import { enforceUserStorage, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
+import { exportTemplate, importTemplate } from "@/lib/template-exchange";
+import {
+  enforceQuota,
+  instanceMetrics,
+  workspaceUsage,
+} from "@/lib/instance-ops";
+import { filterAsync, mapAsync } from "../../../lib/each-async";
+import { onShutdown } from "@/lib/cluster/runtime";
+import { workflowGet } from "@/lib/workflows/commands";
+import { workflowPost } from "@/lib/workflows/rest";
+import { withReadMemo } from "@/lib/read-memo";
+import { inviteLinksEnabled, inviteLinksForcedOff, listInviteLinks } from "@/lib/invite-links";
+import { starterSpaceChoices, starterSpaceStatus } from "@/lib/starter-content";
+import { emergencyForcedOff, emergencyContent, emergencyExport, emergencyKeys, emergencyLog, emergencyOverview, emergencyPage } from "@/lib/emergency-access";
+import { emergencyDenied, emergencyDenyPage } from "@/lib/emergency-deny-page";
+import { deadmanForcedOff, deadmanOverview } from "@/lib/dead-man-switch";
+import { deadmanHere, deadmanHerePage } from "@/lib/dead-man-page";
+import { ssoGroupReports } from "@/lib/sso-group-report";
+import { studyAnkiExport, studyExport, studyOffline, studyQueue } from "@/lib/study";
+import { studyDue, studyStats } from "@/lib/study-stats";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+function error(e: unknown) {
+  if (e instanceof z.ZodError)
+    return NextResponse.json(
+      { error: "Ungültige Eingabe.", details: e.issues.map((i) => i.message) },
+      { status: 400 },
+    );
+  if (!(e instanceof HttpError)) console.error(e);
+  const status = e instanceof HttpError ? e.status : serverError(e);
+  // The request id (also in X-Request-Id) for a person to quote (lib/error-details.ts).
+  const requestId = status >= 500 ? currentRequestId() : undefined;
+  return NextResponse.json(
+    {
+      error:
+        e instanceof HttpError
+          ? e.message
+          : "Die Anfrage konnte nicht verarbeitet werden.",
+      ...(requestId ? { requestId } : {}),
+    },
+    { status },
+  );
+}
+export const GET = withRequestLocale(handleGET);
+async function handleGET(
+  req: Request,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  // The browser specs' failing endpoint (lib/e2e-failure.ts); `e2eBuild` is
+  // the constant `false` in every other build.
+  if (e2eBuild) {
+    const kind = e2eFailure((await params).path, new URL(req.url));
+    if (kind === "uncaught") failForE2e();
+    if (kind === "caught")
+      try {
+        failForE2e();
+      } catch (e) {
+        return error(e);
+      }
+  }
+  try {
+    const { path } = await params;
+    const url = new URL(req.url);
+    // Block extensions on published pages (lib/plugins.ts): only those the
+    // owners allowed there.
+    if (path.length === 4 && path[0] === "share" && path[2] === "plugins")
+      return NextResponse.json(await withShareRequest(req, async () => await publicPlugin(path[1], z.uuid().parse(path[3]))), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    // Custom domains (lib/custom-domains.ts): Caddy's on-demand TLS asks
+    // whether a certificate may be requested – 200 only for verified domains.
+    if (path.length === 2 && path[0] === "domains" && path[1] === "allowed") {
+      const allowed = await domainAllowed(url.searchParams.get("domain") || "");
+      return new Response(allowed ? "ok" : "unknown", {
+        status: allowed ? 200 : 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
+    // robots.txt and sitemap.xml of a custom domain (the proxy rewrites them
+    // here); the Host decides, other hosts get nothing.
+    if (path.length === 2 && path[0] === "domains" && (path[1] === "sitemap" || path[1] === "robots")) {
+      const host = req.headers.get("host") || "";
+      const body = path[1] === "sitemap" ? (await domainSitemap(host)) : (await domainRobots(host));
+      if (body === null) throw new HttpError(404, "Nicht gefunden.");
+      return new Response(body, {
+        headers: {
+          "Content-Type": path[1] === "sitemap" ? "application/xml; charset=utf-8" : "text/plain; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
+    }
+    // Keep public asset authorization identical when the catch-all handles the URL.
+    if (path.length === 4 && path[0] === "share" && path[2] === "files")
+      return await fileResponse(req, await withShareRequest(req, async () => await publicFile(path[1], path[3])));
+    // Calendar subscriptions: the secret link is the authorization.
+    if (path.length === 2 && path[0] === "calendar" && path[1].endsWith(".ics"))
+      return new Response(await calendarFeed(path[1].slice(0, -4)), {
+        headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+          "Cache-Control": "private, no-store",
+          "Content-Disposition": 'inline; filename="flowplan.ics"',
+        },
+      });
+    // Denying a request for emergency access from the e-mail (#281,
+    // lib/emergency-access.ts): the signed link is the authorization; this
+    // page only asks, the button below sends the denial.
+    if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") return await emergencyDenyPage(url.searchParams.get("token") || "");
+    // "Ich bin da" from a warning about the inactivity message (#282,
+    // lib/dead-man-switch.ts): the signed link is the authorization; this
+    // page only asks, its button checks in.
+    if (path.length === 2 && path[0] === "deadman" && path[1] === "here") return await deadmanHerePage(url.searchParams.get("token") || "");
+    const user = await requireUser();
+    if (path.length === 1 && path[0] === "tokens")
+      return NextResponse.json(await listApiTokens(user));
+    // Workflows (#168, lib/workflows/commands.ts): list, state, runs, versions, catalogue, administration.
+    if (path[0] === "workflows" || path[0] === "workflow-runs" || path[0] === "workflow-approvals" || (path[0] === "admin" && path[1] === "workflows")) {
+      const answer = await withReadMemo(async () => await workflowGet(user, path, url));
+      if (answer !== undefined) return NextResponse.json(answer, { headers: { "Cache-Control": "no-store" } });
+    }
+    // An import started with background=1 (#163): running with its
+    // progress, done with the preview or result, failed with the error as the
+    // import would have answered it.
+    if (path.length === 3 && path[0] === "import" && path[1] === "source" && path[2] === "job") {
+      const { jobOutcome } = await import("@/lib/background-jobs");
+      const outcome = await jobOutcome(user, z.uuid().parse(url.searchParams.get("id")));
+      if (!outcome) throw new HttpError(410, "Der Import wurde unterbrochen, zum Beispiel durch einen Neustart des Servers. Bitte starte ihn erneut.");
+      const headers = { "Cache-Control": "no-store" };
+      if (outcome.status === "running") return NextResponse.json(outcome, { headers });
+      if (outcome.status === "done") return NextResponse.json({ status: "done", result: outcome.value }, { headers });
+      const failed = error(outcome.error);
+      return NextResponse.json({ status: "failed", code: failed.status, ...(await failed.json()) }, { headers });
+    }
+    // Choices for the start page's widget settings (lib/home-widgets.ts).
+    if (path.length === 2 && path[0] === "home" && path[1] === "options")
+      return NextResponse.json(
+        await homeOptions(user, { workspaceId: url.searchParams.get("workspace"), kind: url.searchParams.get("kind"), pageId: url.searchParams.get("page") }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // Block extensions of a workspace (settings) or of a page's workspace (editor).
+    if (path.length === 1 && path[0] === "plugins")
+      return NextResponse.json(
+        url.searchParams.get("page")
+          ? (await pluginsForPage(user, z.uuid().parse(url.searchParams.get("page"))))
+          : (await listPlugins(user, z.uuid().parse(url.searchParams.get("workspace")))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // A frame's database query: the reader's own rights, granted databases only.
+    if (path.length === 3 && path[0] === "plugins" && path[2] === "query")
+      return NextResponse.json(
+        await queryPluginDatabase(user, {
+          pluginId: path[1],
+          pageId: url.searchParams.get("page"),
+          databaseId: url.searchParams.get("database"),
+          limit: url.searchParams.get("limit") || undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // The custom domain and look of a publication.
+    if (path.length === 1 && path[0] === "domains")
+      return NextResponse.json(await domainSettings(user, z.uuid().parse(url.searchParams.get("page"))), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    if (path.length === 1 && path[0] === "webhooks")
+      return NextResponse.json({
+        webhooks: await listWebhooks(user, z.uuid().parse(url.searchParams.get("workspace"))),
+        events: webhookEvents,
+      });
+    if (path.length === 1 && path[0] === "calendar-feed")
+      return NextResponse.json({
+        active: await hasCalendarFeed(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          z.string().max(100).parse(url.searchParams.get("view")),
+        ),
+        caldav: await hasCalDavAccess(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(100).parse(url.searchParams.get("view"))),
+      });
+    if (path.length === 2 && path[0] === "admin" && path[1] === "audit.csv") {
+      requireAdmin(user);
+      const cell = (v: unknown) => {
+        const text = String(v ?? "");
+        // Spreadsheet programs must not run formulas from the log.
+        const safe = CSV_FORMULA.test(text) ? `'${text}` : text;
+        return `"${safe.replace(/"/g, '""')}"`;
+      };
+      const rowsCsv = await all<Record<string, unknown>>(
+        "SELECT a.created_at,u.name,u.email,a.action,a.resource_id,a.detail FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100000",
+      );
+      const csv = [
+        ["Zeitpunkt", "Person", "E-Mail", "Aktion", "Ressource", "Details"].map(cell).join(";"),
+        ...rowsCsv.map((r) =>
+          [r.created_at, r.name, r.email, r.action, r.resource_id, r.detail].map(cell).join(";"),
+        ),
+      ].join("\r\n");
+      return new Response("\ufeff" + csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="flowplan-aktivitaet-${new Date().toISOString().slice(0, 10)}.csv"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    if (path.length === 2 && path[0] === "threads" && path[1] === "mentions")
+      return NextResponse.json(
+        await inlineMentionCandidates(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          url.searchParams.get("row")
+            ? z.uuid().parse(url.searchParams.get("row"))
+            : undefined,
+          url.searchParams.get("q") || "",
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    if (path.length === 1 && path[0] === "threads")
+      return NextResponse.json(
+        await inlineThreads(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          url.searchParams.get("row")
+            ? z.uuid().parse(url.searchParams.get("row"))
+            : undefined,
+          true,
+          url.searchParams.get("thread")
+            ? z.uuid().parse(url.searchParams.get("thread"))
+            : undefined,
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // What "Empty trash" would delete for this person, and the trash period (#123).
+    if (path.length === 2 && path[0] === "trash" && path[1] === "summary") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json({ ...(await trashCounts(user, wid)), days: await trashDays() });
+    }
+    // Files in the trash this person may restore or delete (#164).
+    if (path.length === 2 && path[0] === "trash" && path[1] === "files") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(await listFileTrash(user, wid), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "trash" && path[1] === "rows") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      await requireMember(user, wid);
+      return NextResponse.json(await listRowTrash(user, wid));
+    }
+    // The newest notifications in short, for the desktop app (no push in
+    // Electron, lib/notification-feed.ts).
+    if (path.length === 1 && path[0] === "notifications")
+      return NextResponse.json(await notificationFeed(user, parseSince(url.searchParams.get("since"))), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    // Tags and property definitions of pages (#70); /api/tags/<id> also
+    // lists the readable pages with that tag.
+    if (path[0] === "tags" && path.length <= 2)
+      return NextResponse.json(
+        await tagListing(
+          user,
+          z.uuid().parse(url.searchParams.get("workspace")),
+          path[1] ? z.uuid().parse(path[1]) : undefined,
+          url.searchParams.get("sameName") === "1",
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // Collections (#86, lib/collections.ts): the list, a collection's
+    // current results (as this person may read them) and the results of a
+    // query not saved yet. `tz` is the reader's time zone for "today".
+    if (path[0] === "collections" && path.length <= 2) {
+      const timeZone = url.searchParams.get("tz") || undefined;
+      const headers = { "Cache-Control": "no-store" };
+      if (path[1] === "preview")
+        return NextResponse.json(
+          await previewQuery(user, z.uuid().parse(url.searchParams.get("workspace")), z.string().max(1000).parse(url.searchParams.get("q") || ""), { timeZone }),
+          { headers },
+        );
+      // Paged (#270): `offset` where to start, `limit` how many (default 500).
+      if (path[1])
+        return NextResponse.json(
+          await runCollection(user, z.uuid().parse(path[1]), {
+            timeZone,
+            offset: z.coerce.number().int().min(0).catch(0).parse(url.searchParams.get("offset") ?? 0),
+            limit: z.coerce.number().int().min(1).max(COLLECTION_RESULTS_MAX).catch(COLLECTION_RESULTS).parse(url.searchParams.get("limit") ?? COLLECTION_RESULTS),
+          }),
+          { headers },
+        );
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      await requireMember(user, wid);
+      return NextResponse.json(await listCollections(user, wid), { headers });
+    }
+    // With an ETag: the app's 10 s refresh gets 304 while nothing changed.
+    if (path[0] === "bootstrap")
+      return bootstrapResponse(req, await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")));
+    // Offline copies on a device: readable pages and what changed since.
+    if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(
+        await offlineChanges(user, wid, parseSince(url.searchParams.get("since"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // The app's own files for the offline copy (#47): every file of the
+    // client build, so parts never opened online load offline as well.
+    if (path.length === 2 && path[0] === "offline" && path[1] === "assets")
+      return NextResponse.json(offlineAssets(), { headers: { "Cache-Control": "no-store" } });
+    // Openly licensed images (Openverse) for boards and documents.
+    if (path.length === 2 && path[0] === "images" && path[1] === "search") {
+      if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+      return NextResponse.json(
+        { results: await searchImages(url.searchParams.get("q") || "", Number(url.searchParams.get("page") || 1)) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // GIFs for boards (GIPHY or Tenor, only with a key; lib/gif-search.ts).
+    if (path.length === 2 && path[0] === "images" && path[1] === "gifs") {
+      const q = url.searchParams.get("q");
+      if (q === null) return NextResponse.json({ enabled: !user.demo && !!gifProvider() }, { headers: { "Cache-Control": "no-store" } });
+      if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+      return NextResponse.json({ results: await searchGifs(q) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Own whiteboard templates of the board's workspace.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates")
+      return NextResponse.json({ templates: await listBoardTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
+    // Own devices of the workspace for racks on boards (#90).
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "rack-templates")
+      return NextResponse.json({ templates: await listRackTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
+    // Live data of database records shown as cards on a whiteboard.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cards") {
+      await requirePage(user, z.uuid().parse(path[1]));
+      const refs = (url.searchParams.get("rows") || "")
+        .split(",")
+        .filter(Boolean)
+        .slice(0, 200)
+        .map((ref) => {
+          const [pageId, rowId] = ref.split(":");
+          return { pageId: z.uuid().parse(pageId), rowId: z.uuid().parse(rowId) };
+        });
+      return NextResponse.json({ cards: await whiteboardRowCards(user, refs) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Links between pages as a graph; texts naming a page without a link.
+    if (path.length === 1 && path[0] === "graph") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      await requireMember(user, wid);
+      // Journal days: hidden, one dot per month or each day.
+      const days = z.enum(["hide", "month", "show"]).catch("hide").parse(url.searchParams.get("days") || "hide");
+      return NextResponse.json(await pageGraph(user, wid, { days }), { headers: { "Cache-Control": "no-store" } });
+    }
+    // The page overview of a notebook (lib/notebook-organize.ts): pages for
+    // its pickers, or its deleted sheets.
+    if (path.length === 3 && path[0] === "pages" && path[2] === "notebook") {
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
+      if (page.kind !== "notebook") throw new HttpError(400, "Kein Notizbuch.");
+      const part = z.enum(["peers", "trash"]).parse(url.searchParams.get("part"));
+      return NextResponse.json(part === "peers" ? await notebookPeers(user, page) : { trash: await sheetTrash(page) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Flashcards (lib/study.ts): the person's own counts and next cards of a
+    // deck – the command study.queue as a read, for read tokens too. With
+    // offline=1 the whole deck for the offline copy (lib/offline-plan.ts).
+    if (path.length === 3 && path[0] === "pages" && path[2] === "study") {
+      // Flashcards switched off for the instance (#386): no studying.
+      await requireModule("flashcards");
+      if (url.searchParams.get("offline") === "1")
+        return NextResponse.json(await studyOffline(user, { pageId: path[1], zone: url.searchParams.get("zone") || undefined }), { headers: { "Cache-Control": "no-store" } });
+      const limit = url.searchParams.get("limit");
+      return NextResponse.json(
+        await studyQueue(user, {
+          pageId: path[1],
+          viewId: url.searchParams.get("view") || undefined,
+          zone: url.searchParams.get("zone") || undefined,
+          limit: limit === null ? undefined : Number(limit),
+          ahead: url.searchParams.get("ahead") === "1" || undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // A deck's cards as CSV, with the person's own learning state on
+    // request – or (format=apkg) as an Anki package, without it.
+    if (path.length === 4 && path[0] === "pages" && path[2] === "study" && path[3] === "export") {
+      if (url.searchParams.get("format") === "apkg") {
+        const out = await studyAnkiExport(user, { pageId: path[1], zone: url.searchParams.get("zone") || undefined, viewId: url.searchParams.get("view") || undefined });
+        return new Response(new Uint8Array(out.bytes), {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(out.name)}`,
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+      const out = await studyExport(user, {
+        pageId: path[1],
+        state: url.searchParams.get("state") === "1",
+        zone: url.searchParams.get("zone") || undefined,
+        viewId: url.searchParams.get("view") || undefined,
+      });
+      return new Response(out.csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(out.name)}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    // All decks of a workspace: what is due, and the statistics.
+    if (path.length === 2 && path[0] === "study" && (path[1] === "due" || path[1] === "stats")) {
+      const zone = url.searchParams.get("zone") || undefined;
+      const workspaceId = url.searchParams.get("workspace") || undefined;
+      return NextResponse.json(
+        path[1] === "due" ? await studyDue(user, { workspaceId, zone }) : await studyStats(user, { workspaceId, pageId: url.searchParams.get("page") || undefined, zone }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
+      return NextResponse.json({ mentions: await unlinkedMentions(user, page) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "unlinked") {
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
+      const rowId = z.uuid().parse(path[3]);
+      await requireRow(user, page.id, rowId);
+      return NextResponse.json({ mentions: await unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // The person's own sessions (devices).
+    if (path.length === 1 && path[0] === "sessions")
+      return NextResponse.json(
+        { sessions: await mySessions(user, (await cookies()).get(cookieName)?.value), rememberAvailable: !!(await rememberPolicy()) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // Settings → Sicherheitscheck: one's own account, shares and sign-ins.
+    if (path.length === 1 && path[0] === "security")
+      return NextResponse.json(await mySecurity(user, (await cookies()).get(cookieName)?.value), { headers: { "Cache-Control": "no-store" } });
+    // Who has access to exactly this page (the share dialog).
+    if (path.length === 3 && path[0] === "pages" && path[2] === "shares")
+      return NextResponse.json(await pageShares(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
+    // What moving a page into a database would change (confirmation).
+    if (path.length === 3 && path[0] === "pages" && path[2] === "to-record") {
+      const plan = await pageToRecordPlan(user, z.uuid().parse(path[1]));
+      const { page, ...rest } = plan;
+      return NextResponse.json({ ...rest, title: page.title }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // What turning a record into a page would change (confirmation).
+    if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "to-page") {
+      const plan = await recordToPagePlan(user, z.uuid().parse(path[1]), z.uuid().parse(path[3]));
+      return NextResponse.json(
+        {
+          title: plan.title,
+          properties: plan.properties.map(({ name, text }) => ({ name, text })),
+          comments: plan.comments,
+          versions: plan.versions,
+          restricted: plan.restricted,
+          relations: plan.relations,
+          targets: plan.targets,
+          target: plan.target,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // E-mail inbound addresses of a workspace (owners, lib/inbound-mail.ts).
+    if (path.length === 1 && path[0] === "inbound-mail")
+      return NextResponse.json(await listInboundAddresses(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
+    // Quick capture of the desktop app: targets with what the shorthand can
+    // fill there (lib/desktop-capture.ts).
+    if (path.length === 2 && path[0] === "capture" && path[1] === "targets")
+      return NextResponse.json(await desktopCaptureTargets(user), { headers: { "Cache-Control": "no-store" } });
+    // Databases to capture into, and the person's default.
+    if (path.length === 1 && path[0] === "capture") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(await captureTargets(user, wid), { headers: { "Cache-Control": "no-store" } });
+    }
+    // Synced blocks that can be inserted into another page.
+    if (path.length === 1 && path[0] === "synced") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      await requireMember(user, wid);
+      return NextResponse.json({ blocks: await listSyncedBlocks(user, wid) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Tasks in documents assigned to the person ("Meine Aufgaben").
+    if (path.length === 1 && path[0] === "tasks") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      await requireMember(user, wid);
+      const done = url.searchParams.get("done") === "1";
+      return NextResponse.json(
+        {
+          tasks: await myTasks(user, wid, done),
+          others: await otherWorkspaceTasks(user, wid, done),
+          // The own task page ("Aufgabe hinzufügen", #208): its id once made,
+          // and whether the person may add tasks here (not guests, readers).
+          personal: { pageId: (await personalTaskPage(user, wid))?.id ?? null, canAdd: await canAddPersonalTask(user, wid) },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // Journal: review of a period, appointments of a day.
+    if (path.length === 3 && path[0] === "journals" && path[2] === "review") {
+      const journal = await requirePage(user, z.uuid().parse(path[1]));
+      if (journal.kind !== "journal") throw new HttpError(400, "Kein Journal.");
+      await requireUnlocked(user, journal);
+      const from = journalDate.parse(url.searchParams.get("from"));
+      const to = journalDate.parse(url.searchParams.get("to"));
+      // A whole month: its summary page, when there is one (lib/journal-summary.ts).
+      const month = wholeMonth(from, to);
+      return NextResponse.json(
+        {
+          ...(await journalReview(journal, from, to)),
+          ...(month ? { summaryId: await existingSummary(user, journal, month) } : {}),
+          // The period's AI summary page, when one was saved (#170).
+          aiSummaryId: await existingAiSummary(user, journal, from, to),
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // "Leere Tage entfernen": the preview of what would go to the trash.
+    if (path.length === 3 && path[0] === "journals" && path[2] === "empty") {
+      const journal = await requirePage(user, z.uuid().parse(path[1]), true);
+      await requireUnlocked(user, journal);
+      return NextResponse.json(
+        { days: await emptyJournalDays(journal, journalDate.parse(url.searchParams.get("today"))) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // "An diesem Tag erledigt" (#169): records that became done on the day
+    // (lib/journal-completed.ts), for a stored day and for today's draft.
+    if (path.length === 3 && path[0] === "journals" && path[2] === "completed") {
+      const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
+      // mine=1 "Nur meine", mine=0 "Alle"; without it the reader's choice
+      // for the journal, "Nur meine" when they never chose.
+      const mineParam = url.searchParams.get("mine");
+      const mine = mineParam === null ? undefined : !["0", "false"].includes(mineParam);
+      return NextResponse.json(await journalDayCompleted(user, z.uuid().parse(path[1]), zone, mine), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path.length === 3 && path[0] === "journals" && path[2] === "events") {
+      // A draft day (not stored yet) shows the appointments of its date too.
+      const draft = await dayOrDraft(user, z.uuid().parse(path[1]));
+      if (draft) {
+        await requireUnlocked(user, draft.journal);
+        const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
+        const events = await databaseEvents(user, draft.journal.workspace_id, draft.date, zone);
+        let calendarError = "";
+        try {
+          if (!user.demo) events.push(...await calendarEvents(draft.journal.id, draft.date, zone));
+        } catch (e) {
+          calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
+        }
+        events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
+        return NextResponse.json({ events, calendarError }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const day = await requirePage(user, z.uuid().parse(path[1]));
+      if (!day.journal_date || !day.parent_id) throw new HttpError(400, "Kein Journaltag.");
+      await requireUnlocked(user, day);
+      const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
+      const events = await databaseEvents(user, day.workspace_id, day.journal_date, zone);
+      let calendarError = "";
+      try {
+        if (!user.demo) events.push(...await calendarEvents(day.parent_id, day.journal_date, zone));
+      } catch (e) {
+        calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
+      }
+      events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
+      return NextResponse.json({ events: await withMeetingNotes(user, day, events), calendarError }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // A pasted block link: title and start of the block (#88).
+    if (path[0] === "pages" && path[1] && path[2] === "blocks" && path[3] && !path[4]) {
+      const row = url.searchParams.get("row");
+      return NextResponse.json(await blockPreview(user, z.uuid().parse(path[1]), path[3], row ? z.uuid().parse(row) : null), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // Headings and blocks of other pages for "@" (#88).
+    if (path[0] === "blocks" && !path[1]) {
+      const wid = url.searchParams.get("workspace") || "";
+      await requireMember(user, wid);
+      const exclude = url.searchParams.get("exclude");
+      return NextResponse.json(await searchBlocks(user, wid, url.searchParams.get("q") || "", exclude && /^[0-9a-f-]{36}$/i.test(exclude) ? exclude : null), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The icons of link targets (#96): pages and records one may read.
+    if (path[0] === "link-targets" && !path[1])
+      return NextResponse.json(
+        { targets: await linkTargets(user, (url.searchParams.get("ids") || "").split(",").filter(Boolean)) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    if (path[0] === "pages" && path[1] && path[2] === "preview")
+      return NextResponse.json(await pagePreview(user, z.uuid().parse(path[1])), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    if (path[0] === "pages" && path[2] === "linked" && path[3])
+      return NextResponse.json(await linkedDatabaseData(user, path[1], path[3]));
+    // Embeddings inside a record document.
+    if (
+      path[0] === "pages" &&
+      path[2] === "rows" &&
+      path[3] &&
+      path[4] === "linked" &&
+      path[5]
+    )
+      return NextResponse.json(
+        await linkedDatabaseData(user, path[1], path[5], z.uuid().parse(path[3])),
+      );
+    if (
+      path[0] === "pages" &&
+      path[2] === "snapshots" &&
+      path[3] &&
+      path[4] === "changes"
+    )
+      return NextResponse.json(
+        await snapshotChanges(
+          user,
+          z.uuid().parse(path[1]),
+          z.uuid().parse(path[3]),
+          url.searchParams.get("against")
+            ? z.uuid().parse(url.searchParams.get("against"))
+            : undefined,
+        ),
+      );
+    if (
+      path[0] === "pages" &&
+      path[2] === "rows" &&
+      path[4] === "snapshots" &&
+      path[5] &&
+      path[6] === "changes"
+    )
+      return NextResponse.json(
+        await rowSnapshotChanges(
+          user,
+          z.uuid().parse(path[1]),
+          z.uuid().parse(path[3]),
+          z.uuid().parse(path[5]),
+          url.searchParams.get("against")
+            ? z.uuid().parse(url.searchParams.get("against"))
+            : undefined,
+        ),
+      );
+    // The record view's surroundings in one request (lib/record-context.ts).
+    if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "context")
+      return NextResponse.json(await recordContext(user, z.uuid().parse(path[1]), z.uuid().parse(path[3])), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    if (
+      path[0] === "pages" &&
+      path[2] === "rows" &&
+      path[3] &&
+      path[4] === "backlinks"
+    )
+      return NextResponse.json(
+        await recordBacklinks(
+          user,
+          z.uuid().parse(path[1]),
+          z.uuid().parse(path[3]),
+        ),
+      );
+    if (path[0] === "pages" && path[2] === "rows" && path[3]) {
+      const data = await rowDocumentData(user, path[1], path[3]);
+      // Opening a record (dialog or full page, X-Flowplan-Visit) counts for
+      // the person's own quick search (#243); reloads and prefetches do not.
+      if (req.headers.get("x-flowplan-visit") === "1") await recordSearchVisit(user, path[1], path[3]);
+      return jsonWithTag(req, data);
+    }
+    // Opening a page (header X-Flowplan-Visit) records the visit: read
+    // receipts and changes since then. Reloads and embeds do not.
+    // Today's journal day while it is a draft (lib/journal-days.ts).
+    if (path[0] === "pages" && path[1] && path.length === 2 && z.uuid().safeParse(path[1]).success && !(await one("SELECT 1 FROM pages WHERE id=?", path[1]))) {
+      const draft = await journalDraftPage(user, path[1]);
+      if (draft && "existing" in draft) return NextResponse.json(await pageData(user, draft.existing, { presence: false }), { headers: { "Cache-Control": "no-store" } });
+      if (draft) return NextResponse.json(draft.data, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "pages" && path[1])
+      return jsonWithTag(
+        req,
+        await withActivity(
+          user,
+          // Offline refreshes (X-Flowplan-Offline) and loading ahead on hover
+          // (X-Flowplan-Prefetch, components/prefetch.ts) do not count as presence.
+          await pageData(user, path[1], {
+            presence: req.headers.get("x-flowplan-offline") !== "1" && req.headers.get("x-flowplan-prefetch") !== "1",
+          }),
+          req.headers.get("x-flowplan-visit") === "1",
+        ),
+      );
+    if (path[0] === "settings") {
+      const wid = url.searchParams.get("workspace") || "";
+      await requireMember(user, wid, "owner");
+      return NextResponse.json({
+        // With who invited, when, the pages waiting for them and the link.
+        invites: await (async () => {
+          type Invite = { id: string; email: string; role: string; guest: number; created_at: number | null; token: string; inviter: string | null; pages: string | null };
+          for (const open of await all<{ id: string }>("SELECT id FROM invites WHERE workspace_id=? AND token IS NULL", wid))
+            await run("UPDATE invites SET token=? WHERE id=?", inviteToken(), open.id);
+          return (await all<Invite>(
+          `SELECT i.id,i.email,i.role,i.guest,i.created_at,i.token,u.name inviter,
+             (SELECT ${sql.jsonGroupArray("p.title")} FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=i.workspace_id AND lower(g.email)=lower(i.email) AND p.deleted_at IS NULL) pages
+           FROM invites i LEFT JOIN users u ON u.id=i.created_by WHERE i.workspace_id=? ORDER BY i.created_at DESC`,
+          wid,
+        )).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] }));
+        })(),
+        // Invitation links for several people (#320, lib/invite-links.ts).
+        inviteLinks: await listInviteLinks(wid),
+        inviteLinksEnabled: await inviteLinksEnabled(),
+        groups: await all("SELECT * FROM groups WHERE workspace_id=?", wid),
+        groupMembers: await all(
+          "SELECT gm.* FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.workspace_id=?",
+          wid,
+        ),
+        grants: await all(
+          "SELECT g.resource_id,g.user_id,g.group_id,g.role FROM grants g WHERE g.workspace_id=?",
+          wid,
+        ),
+        // SSO groups mapped to membership and groups, and what they granted.
+        sso: !!process.env.OIDC_ISSUER,
+        ssoMappings: await listSsoMappings(wid),
+        ssoSources: await ssoSources(wid),
+      });
+    }
+    // The quick search with nothing typed (#243): the person's own
+    // recently visited pages and records.
+    if (path[0] === "search" && path[1] === "recent" && path.length === 2) {
+      const wid = url.searchParams.get("workspace") || "";
+      await requireMember(user, wid);
+      return NextResponse.json(
+        await recentlyVisited(user, wid, {
+          kind: z
+            .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
+            .catch("all")
+            .parse(url.searchParams.get("kind") || "all"),
+          spaceId: url.searchParams.get("space") ? z.uuid().parse(url.searchParams.get("space")) : undefined,
+          limit: z.coerce.number().int().min(1).max(50).catch(20).parse(url.searchParams.get("limit") || 20),
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "search") {
+      const wid = url.searchParams.get("workspace") || "";
+      await requireMember(user, wid);
+      return NextResponse.json(
+        await searchWorkspace(user, wid, url.searchParams.get("q") || "", {
+          kind: z
+            .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
+            .catch("all")
+            .parse(url.searchParams.get("kind") || "all"),
+          spaceId: url.searchParams.get("space")
+            ? z.uuid().parse(url.searchParams.get("space"))
+            : undefined,
+          // "Ohne Journaltage"
+          excludeDays: url.searchParams.get("days") === "0",
+          // For created:today and the like (#86).
+          timeZone: url.searchParams.get("tz") || undefined,
+          // Best match (default), last change or creation (#243).
+          sort: z.enum(["relevance", "edited", "created"]).catch("relevance").parse(url.searchParams.get("sort") || "relevance"),
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // Link previews and players for pasted URLs (server-side, SSRF-safe).
+    if (path[0] === "embed") {
+      // Link cards make the server load foreign pages; anonymous demo
+      // guests must not use it as a fetch service (players work without).
+      if (user.demo)
+        throw new HttpError(
+          403,
+          "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.",
+        );
+      const raw = z
+        .string()
+        .min(8)
+        .max(2000)
+        .parse(url.searchParams.get("url"));
+      return NextResponse.json(await resolveEmbed(raw), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The workspace's bibliography for citations.
+    if (path.length === 1 && path[0] === "citations")
+      return NextResponse.json(
+        { items: await bibliography(user, z.uuid().parse(url.searchParams.get("workspace"))) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // Who wrote what: the people behind the editor sessions of a document.
+    if (path.length === 1 && path[0] === "document-authors") {
+      const row = url.searchParams.get("row");
+      return NextResponse.json(
+        await documentAuthors(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // Dashboards: one number from a database, and the databases to choose from.
+    if (path[0] === "dashboard-metric") {
+      const query = metricSchema.parse(Object.fromEntries(url.searchParams));
+      return NextResponse.json(await computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "time-entries") {
+      // Time worked on a record (time tracking property).
+      const page = await requirePage(user, z.uuid().parse(url.searchParams.get("page")));
+      return NextResponse.json(
+        await recordTime(user, page, z.uuid().parse(url.searchParams.get("row")), z.string().max(500).parse(url.searchParams.get("field"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "transfer-targets")
+      return NextResponse.json(await transferTargets(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
+    if (path[0] === "records") {
+      // Records across all databases (My tasks → records).
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      let filter: unknown = {};
+      try {
+        filter = JSON.parse(url.searchParams.get("filter") || "{}");
+      } catch {
+        throw new HttpError(400, "Ungültiger Filter.");
+      }
+      return NextResponse.json(
+        { ...(await crossRecords(user, wid, filter)), views: await recordViews(user, wid) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // The workspace's library (#329): the shelves (library spaces) with
+    // their books and "continue reading"; its search grouped by level.
+    if (path.length === 1 && path[0] === "library")
+      return NextResponse.json(await libraryOverview(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
+    if (path.length === 2 && path[0] === "library" && path[1] === "search")
+      return NextResponse.json(
+        await searchLibrary(user, z.uuid().parse(url.searchParams.get("workspace")), url.searchParams.get("q") || "", {
+          timeZone: url.searchParams.get("tz") || undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // A space as a library (#329): books, chapters and pages one may see.
+    if (path.length === 3 && path[0] === "spaces" && path[2] === "library")
+      return NextResponse.json(await spaceLibrary(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
+    // Git export of a space: only its owner sees the settings (no token).
+    if (path.length === 3 && path[0] === "spaces" && path[2] === "git-export")
+      return NextResponse.json(await spaceGitStatus(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
+    if (path[0] === "git-config")
+      return NextResponse.json(await gitConfig(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
+    if (path[0] === "git-links")
+      return NextResponse.json(await gitLinks(user, z.uuid().parse(url.searchParams.get("page")), z.uuid().parse(url.searchParams.get("row"))), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    if (path[0] === "sprint-charts") {
+      return NextResponse.json(
+        await sprintCharts(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(60).parse(url.searchParams.get("sprint"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "time-report") {
+      const weeks = Math.min(26, Math.max(1, Number(url.searchParams.get("weeks")) || 8));
+      return NextResponse.json(await timeReport(user, z.uuid().parse(url.searchParams.get("page")), weeks), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "ticket-refs" || path[0] === "ticket-ref") {
+      // Ticket numbers (WEB-123) in the workspace of a page.
+      const page = await requirePage(user, z.uuid().parse(url.searchParams.get("page")));
+      if (path[0] === "ticket-refs")
+        return NextResponse.json(await readablePrefixes(user, page.workspace_id), { headers: { "Cache-Control": "no-store" } });
+      const found = await resolveTicket(user, page.workspace_id, z.string().max(30).parse(url.searchParams.get("key")));
+      if (!found) throw new HttpError(404, "Eintrag nicht gefunden.");
+      return NextResponse.json(found, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "ticket-thread") {
+      // The customer conversation of a record (service desk).
+      const pageId = z.uuid().parse(url.searchParams.get("page")),
+        rowId = z.uuid().parse(url.searchParams.get("row"));
+      return NextResponse.json(await teamThread(user, pageId, rowId), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "dashboard-sources") {
+      // The workspace of the page the dashboard is on.
+      const wid = (await requirePage(user, z.uuid().parse(url.searchParams.get("page")))).workspace_id;
+      await requireMember(user, wid);
+      return NextResponse.json(await metricSources(user, wid), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "media") {
+      const wid = url.searchParams.get("workspace") || "";
+      return NextResponse.json(
+        await mediaLibrary(user, wid, {
+          kind: z
+            .enum(["all", "image", "video", "audio", "pdf", "model", "other"])
+            .catch("all")
+            .parse(url.searchParams.get("kind") || "all"),
+          query: url.searchParams.get("q") || "",
+          offset: Number(url.searchParams.get("offset") || 0) || 0,
+          usage: z.enum(["all", "unused"]).catch("all").parse(url.searchParams.get("usage") || "all"),
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "push") {
+      const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
+      return NextResponse.json({
+        publicKey: pushKeys().publicKey,
+        subscribed: !!(await one(
+          "SELECT id FROM push_subscriptions WHERE session_token=? AND user_id=?",
+          sessionToken,
+          user.id,
+        )),
+      });
+    }
+    // The marketplace (lib/marketplace-package.ts): what a package of this
+    // template, workflow, whiteboard template, look or link rules would
+    // carry – for the publish dialog; permission-checked like building it.
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "draft") {
+      await requireMarketplace();
+      return NextResponse.json(
+        await packageDraft(user, {
+          kind: z.enum(MARKETPLACE_KINDS).parse(url.searchParams.get("kind")),
+          workspaceId: z.uuid().parse(url.searchParams.get("workspace")),
+          id: url.searchParams.get("id") || null,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "templates" && path[1] && path[2] === "export") {
+      const exported = await exportTemplate(
+        user,
+        z.uuid().parse(url.searchParams.get("workspace")),
+        z.uuid().parse(path[1]),
+      );
+      return new NextResponse(new Uint8Array(exported.zip), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(
+            exported.name.replace(/[\\/:*?"<>|]/g, "_"),
+          )}.flowplan-template.zip`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    if (path[0] === "templates") {
+      const wid = url.searchParams.get("workspace") || "";
+      return NextResponse.json(await listPageTemplates(user, wid));
+    }
+    // Live stream of an open document or record content: changes and cursor
+    // moves of the others arrive as they happen (lib/document-live.ts).
+    if (path.length === 2 && path[0] === "documents" && path[1] === "live") {
+      const pageId = z.uuid().parse(url.searchParams.get("page"));
+      const rowId = url.searchParams.get("row")
+        ? z.uuid().parse(url.searchParams.get("row"))
+        : null;
+      const generation = z.string().min(1).max(100).parse(url.searchParams.get("generation"));
+      const clientId = z.uuid().parse(url.searchParams.get("client"));
+      const check = async () => {
+        if (rowId) await requireRow(user, pageId, rowId);
+        else {
+          const page = await requirePage(user, pageId);
+          if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+          await requireUnlocked(user, page);
+        }
+      };
+      await check();
+      const session = hash((await cookies()).get(cookieName)?.value || "");
+      const allowed = streamGuard(session, check);
+      const encoder = new TextEncoder();
+      let stop = () => {};
+      // The tab closed the channel: its cursor goes with it, also when its
+      // own departure request is lost (lib/editor-presence.ts, editorLeft).
+      let gone = false;
+      const left = () => {
+        if (gone) return;
+        gone = true;
+        void editorLeft(session, clientId)
+          .then((key) => key && publishPresence(key, clientId))
+          .catch(() => {});
+      };
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+          const unwatch = watchDocument(documentKey(pageId, rowId, generation), clientId, send);
+          // The instance stops: the browser reconnects to another one.
+          const forget = onShutdown(() => stop());
+          // Every keepalive checks session and read access again: whoever
+          // loses access stops receiving changes within 15 seconds.
+          const ping = setInterval(async () => {
+            try {
+              if (!(await allowed())) {
+                send(`data: ${JSON.stringify({ type: "revoked" })}\n\n`);
+                return stop();
+              }
+              send(": ping\n\n");
+            } catch {
+              stop();
+            }
+          }, 15_000);
+          stop = () => {
+            clearInterval(ping);
+            unwatch();
+            forget();
+            try {
+              controller.close();
+            } catch {}
+          };
+          req.signal.addEventListener("abort", () => {
+            stop();
+            left();
+          });
+        },
+        cancel() {
+          stop();
+          left();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      // Notebooks share the channel: presenting and following (components/notebook).
+      if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
+      await requireUnlocked(user, page);
+      const boardAllowed = streamGuard(
+        hash((await cookies()).get(cookieName)?.value || ""),
+        async () => await requireUnlocked(user, await requirePage(user, page.id)),
+      );
+      if (!(req.headers.get("accept") || "").includes("text/event-stream"))
+        return NextResponse.json(boardCursors(page.id, user.id), {
+          headers: { "Cache-Control": "no-store" },
+        });
+      // Live stream of the other cursors on this board.
+      const encoder = new TextEncoder();
+      let stop = () => {};
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+          const unwatch = watchBoard(page.id, user.id, send);
+          // The instance stops: the browser reconnects to another one.
+          const forget = onShutdown(() => stop());
+          const ping = setInterval(async () => {
+            try {
+              if (!(await boardAllowed())) return stop();
+              send(": ping\n\n");
+            } catch {
+              stop();
+            }
+          }, 15_000);
+          stop = () => {
+            clearInterval(ping);
+            unwatch();
+            forget();
+            try {
+              controller.close();
+            } catch {}
+          };
+          req.signal.addEventListener("abort", () => stop());
+        },
+        cancel() {
+          stop();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+    // Who is here right now (Administration → Users, refreshed while open).
+    if (path.length === 2 && path[0] === "admin" && path[1] === "activity")
+      return NextResponse.json({ now: Date.now(), users: await userActivity(user) }, { headers: { "Cache-Control": "no-store" } });
+    if (path.length === 2 && path[0] === "admin" && path[1] === "storage") {
+      requireAdmin(user);
+      return NextResponse.json(await storageOverview(), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path.length === 2 && path[0] === "admin" && path[1] === "export-pages") {
+      requireAdmin(user);
+      return NextResponse.json({ pages: await exportablePages(user) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "admin") {
+      requireAdmin(user);
+      return NextResponse.json({
+        build: buildInfo(),
+        update: await updateStatus(),
+        plainHttp: plainHttpInstance(),
+        userUsage: await usersUsage(),
+        users: await all(
+          "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,update_notes,settings_level,modules,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
+        ),
+        mail: await mailStatus(),
+        backup: await scheduledBackupStatus(),
+        markdownExport: await markdownExportStatus(),
+        spaceGitExport: await spaceGitOverview(),
+        encryption: await encryptionOverview(),
+        // With the people who own each workspace (owner role; usually one).
+        workspaces: (await all<{ id: string; name: string; members: number; pages: number; owners: string }>(
+          `SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NULL) pages,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NOT NULL) days,(SELECT ${sql.jsonGroupArray(sql.jsonObject("'id'", "u.id", "'name'", "u.name", "'email'", "u.email"))} FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY lower(w.name)`,
+        )).map((w) => ({ ...w, owners: JSON.parse(w.owners || "[]") as { id: string; name: string; email: string | null }[] })),
+        sessions: (await one(
+          "SELECT count(*) count FROM sessions WHERE expires>?",
+          Date.now(),
+        ))?.count,
+        userSessions: Object.fromEntries(
+          (await all<{ id: string; n: number }>("SELECT user_id id, count(*) n FROM sessions WHERE expires>? GROUP BY user_id", Date.now())).map((r) => [r.id, Number(r.n)]),
+        ),
+        audit: await all(
+          "SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100",
+        ),
+        adminGroup: adminGroup(),
+        oidcConfigured: !!process.env.OIDC_ISSUER,
+        // SSO group mappings of every workspace, with the groups to pick from.
+        ssoMappings: await listSsoMappings(),
+        workspaceGroups: await all("SELECT id,workspace_id,name FROM groups ORDER BY name"),
+        metrics: await instanceMetrics(),
+        usage: await workspaceUsage(),
+        settings: await instanceSettings(),
+        // Starter content for new accounts (#381): the spaces this
+        // administrator may choose, and how the chosen one stands.
+        starterSpaces: await starterSpaceChoices(user),
+        starter: await starterSpaceStatus(),
+        // FLOWPLAN_MARKETPLACE_URL's origin; null: "off" or unusable.
+        marketplaceOrigin: marketplaceOrigin(),
+        // How long sessions last, and what the environment would give (#133).
+        sessionPolicy: await sessionSettings(),
+        localAccounts: await localAccountInfo(),
+        // Connected SSO identities of every account (#101).
+        identities: await all<{ user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }>(
+          "SELECT user_id,id,issuer,email,created_at,last_used_at FROM user_identities ORDER BY created_at",
+        ),
+        ldapAccounts: (await all<{ user_id: string }>("SELECT user_id FROM ldap_accounts")).map((r) => r.user_id),
+        // Groups the SSO provider sent at each account's latest sign-in (#289).
+        ssoGroups: await ssoGroupReports(user),
+        // Administrators of every kind of sign-in (SSO groups included).
+        adminIds: await adminUserIds(),
+        localLogin: localLoginEnabled(),
+        emergencyForcedOff: emergencyForcedOff(),
+        // FLOWPLAN_INVITE_LINKS=off (#320): the switch cannot turn them on.
+        inviteLinksForcedOff: inviteLinksForcedOff(),
+        deadManForcedOff: deadmanForcedOff(),
+        restorePending: pendingRestore(),
+        // Who may use AI when the administration chose "selected people".
+        aiPolicy: { access: (await instanceAiSettings()).access, enabled: (await instanceAiSettings()).enabled, allowed: await aiAllowedUsers() },
+      });
+    }
+    // End-to-end encrypted spaces (lib/e2ee-server.ts): my wrapped key
+    // pair, a space's sealed keys, a document's encrypted log and the
+    // encrypted archive of a space. Ciphertext only.
+    if (path[0] === "e2ee") {
+      if (path.length === 2 && path[1] === "identity") return NextResponse.json({ identity: await identityOf(user.id) });
+      if (path.length === 3 && path[1] === "spaces") return NextResponse.json(await spaceKeys(user, z.uuid().parse(path[2])));
+      if (path.length === 4 && path[1] === "spaces" && path[3] === "archive")
+        return NextResponse.json(await encryptedArchive(user, z.uuid().parse(path[2])), {
+          headers: { "Content-Disposition": 'attachment; filename="flowplan-encrypted-archive.json"', "Cache-Control": "private, no-store" },
+        });
+      if (path.length === 4 && path[1] === "pages" && path[3] === "log") {
+        const after = z.coerce.number().int().min(0).parse(url.searchParams.get("after") || "0");
+        return NextResponse.json(await documentLog(user, z.uuid().parse(path[2]), after));
+      }
+      throw new HttpError(404, "Nicht gefunden.");
+    }
+    // Emergency access (#281): the overview of the settings and, for a
+    // contact whose access is granted, the holder's content to read and
+    // export. In the browser only, never with an API token.
+    if (path[0] === "emergency") {
+      if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+      const headers = { "Cache-Control": "private, no-store" };
+      if (path.length === 1) return NextResponse.json(await emergencyOverview(user), { headers });
+      if (path.length === 3 && path[2] === "content") return NextResponse.json(await emergencyContent(user, path[1]), { headers });
+      if (path.length === 3 && path[2] === "keys") return NextResponse.json(await emergencyKeys(user, path[1]), { headers });
+      if (path.length === 4 && path[2] === "pages") return NextResponse.json(await emergencyPage(user, path[1], path[3]), { headers });
+      if (path.length === 5 && path[2] === "pages" && path[4] === "log") {
+        const after = z.coerce.number().int().min(0).parse(url.searchParams.get("after") || "0");
+        return NextResponse.json(await emergencyLog(user, path[1], path[3], after), { headers });
+      }
+      if (path.length === 3 && path[2] === "export") {
+        const result = await emergencyExport(user, path[1], z.uuid().parse(url.searchParams.get("space")));
+        const name = encodeURIComponent(result.name).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+        return new Response(new Uint8Array(result.bytes), {
+          headers: {
+            ...headers,
+            "Content-Type": result.mime,
+            "Content-Disposition": `attachment; filename="flowplan.zip"; filename*=UTF-8''${name}`,
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
+      throw new HttpError(404, "Nicht gefunden.");
+    }
+    // The inactivity message (#282): the overview for the settings, in the
+    // browser only.
+    if (path.length === 1 && path[0] === "deadman") {
+      if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+      return NextResponse.json(await deadmanOverview(user), { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (path.length === 2 && path[0] === "avatars") {
+      const picture = await avatarFor(user, z.uuid().parse(path[1]));
+      if (!picture) throw new HttpError(404, "Kein Profilbild.");
+      return new Response(Buffer.from(picture.data), {
+        headers: {
+          "Content-Type": picture.mime,
+          // The URL carries the version, so it can be cached for long.
+          "Cache-Control": "private, max-age=604800, immutable",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+    // Image placeholders (size and ThumbHash) of files and profile pictures
+    // this person may see: ?ids=<file id>,avatar:<user id>,…
+    if (path.length === 2 && path[0] === "files" && path[1] === "placeholders") {
+      const ids = (url.searchParams.get("ids") || "").split(",").filter(Boolean);
+      if (ids.length > MAX_PLACEHOLDER_IDS) throw new HttpError(400, "Ungültige Eingabe.");
+      return NextResponse.json({ placeholders: await placeholdersFor(user, ids) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    // A face uploaded for a workspace's look (#196): for its members and guests.
+    if (path.length === 2 && path[0] === "workspace-fonts") return fontResponse(await workspaceFontFile(path[1], { user }));
+    // Pictures of own stickers and paper templates of notebooks.
+    if (path.length === 2 && path[0] === "notebook-library") {
+      const asset = await libraryFile(user, path[1]);
+      return new Response(new Uint8Array(asset.data), {
+        headers: {
+          "Content-Type": /^image\/(png|jpeg|gif|webp)$/.test(asset.mime) ? asset.mime : "application/octet-stream",
+          "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,
+          "Cache-Control": "private, max-age=3600",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
+          "Cross-Origin-Resource-Policy": "same-origin",
+        },
+      });
+    }
+    if (path[0] === "files" && path[1]) {
+      const file = await one<{
+        id: string;
+        page_id: string;
+        name: string;
+        mime: string;
+      }>("SELECT * FROM files WHERE id=?", path[1]);
+      if (!file) throw new HttpError(404, "Datei fehlt.");
+      const owner = await requirePage(user, file.page_id);
+      await requireUnlocked(user, owner);
+      // A file used only by a record hidden from this person stays hidden.
+      if ((await hiddenFileIds(user, owner)).has(file.id)) throw new HttpError(404, "Datei fehlt.");
+      return await fileResponse(req, file);
+    }
+    if (path[0] === "export") {
+      const wid = url.searchParams.get("workspace") || "";
+      await requireMember(user, wid);
+      // Readable pages outside the trash, no journal behind a PIN, and only
+      // the records this person may see.
+      const locked = await lockedPageIds(user, wid);
+      const pages = await filterAsync(await all<Page>(
+        "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL",
+        wid,
+      ), async (p) => !locked.has(p.id) && await pageRole(user, p));
+      return NextResponse.json(
+        {
+          format: "flowplan-1",
+          exportedAt: new Date().toISOString(),
+          // Name, icon, look and link rules (lib/archive.ts).
+          workspace: await jsonExportWorkspace(wid),
+          pages: await mapAsync(pages, async (p) => ({
+            ...p,
+            data:
+              p.kind === "database"
+                ? { database: await readableDatabase(user, p, await database(p.id)), rows: await visibleRows(user, p, await rows(p.id)) }
+                : (await one("SELECT html FROM documents WHERE page_id=?", p.id)),
+          })),
+        },
+        {
+          headers: {
+            "Content-Disposition":
+              'attachment; filename="flowplan-export.json"',
+          },
+        },
+      );
+    }
+    throw new HttpError(404, "Nicht gefunden.");
+  } catch (e) {
+    return error(e);
+  }
+}
+// Idempotency-Key (lib/idempotency.ts): /api/command reserves the key in
+// the action's transaction; every other change around its handler. Reads
+// with a body, cursors and presence go without one.
+const readsWithBody = new Set(["home/data", "presence", "clip", "transcribe", "capture/preview", "activity"]);
+export const POST = withRequestLocale(
+  withIdempotency(handlePOST, {
+    skip: (req) => {
+      const path = new URL(req.url).pathname.replace(/^\/api\//, "");
+      return readsWithBody.has(path) || /^whiteboards\/[^/]+\/cursor$/.test(path);
+    },
+    atomic: (req) => new URL(req.url).pathname === "/api/command",
+    check: checkOrigin,
+  }),
+);
+async function handlePOST(
+  req: Request,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  try {
+    await checkOrigin(req);
+    const { path } = await params;
+    // ZIP imports may be as large as content archives. File uploads must
+    // state their size, so the limit holds before anything is read. A raw
+    // upload to /api/import/source is checked against the person's import
+    // limit below (lib/importers/upload.ts).
+    const rawImport =
+      path.length === 2 && path[0] === "import" && path[1] === "source" && !req.headers.get("content-type")?.startsWith("multipart/form-data");
+    const maxBody = rawImport
+      ? Number.MAX_SAFE_INTEGER
+      : path[0] === "import" || path[1] === "import" || path[2] === "import-markdown" || (path[0] === "marketplace" && path[1] === "check")
+        ? ARCHIVE_LIMIT + 1_000_000
+        : path[0] === "capture" && path[1] === "save"
+          ? 100 * 1024 * 1024 + 1_000_000
+          : 12_000_000;
+    if (req.headers.get("content-type")?.startsWith("multipart/form-data"))
+      requireBodySize(req, maxBody, "Anfrage zu groß.");
+    else if (Number(req.headers.get("content-length") || 0) > maxBody)
+      throw new HttpError(413, "Anfrage zu groß.");
+    // The denial from the e-mail's confirmation page (#281): no sign-in,
+    // the signed link decides.
+    if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") {
+      const form = await req.formData();
+      return await emergencyDenied(String(form.get("token") || ""));
+    }
+    if (path.length === 2 && path[0] === "deadman" && path[1] === "here") {
+      const form = await req.formData();
+      return await deadmanHere(String(form.get("token") || ""));
+    }
+    const user = await requireUser();
+    // Every POST here changes something; read tokens only read (the
+    // Markdown export has a route of its own).
+    // The start page: data of its widgets (reads, but with the layout in
+    // the body) and what its widgets do (lib/home-widgets.ts).
+    if (path.length === 2 && path[0] === "home" && path[1] === "data")
+      return NextResponse.json(await homeData(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
+    // The open app reports that it is open and how long it has been idle.
+    if (path.length === 1 && path[0] === "activity")
+      return NextResponse.json(await recordActivity(user, await req.json().catch(() => null)), { headers: { "Cache-Control": "no-store" } });
+    // The import check of a marketplace package (lib/marketplace-check.ts):
+    // reads it like the import and imports it in a transaction that is rolled
+    // back. Tokens need the permission "Marketplace-Prüfung" – read tokens
+    // too, since nothing is kept. Never a real import.
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "check") {
+      await requireMarketplace();
+      requireMarketplaceCheck(user);
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 25 * 1024 * 1024) throw new HttpError(413, "Die Vorlage darf höchstens 25 MB groß sein.");
+      return NextResponse.json(
+        await checkPackage(user, Buffer.from(await file.arrayBuffer()), { workspaceId: data.get("workspaceId") || null, dryRun: data.get("dryRun") !== "0" }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+    // Workflows (#168, lib/workflows/rest.ts): the commands as REST routes.
+    if (path[0] === "workflows" || path[0] === "workflow-runs" || path[0] === "workflow-approvals") {
+      const answer = await workflowPost(user, path, await req.json().catch(() => ({})));
+      if (answer !== undefined) return NextResponse.json(answer, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path.length === 2 && path[0] === "home" && path[1] === "action")
+      return NextResponse.json(await homeAction(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
+    // Block extensions: the manifest is fetched and checked (lib/plugins.ts).
+    if (path.length === 1 && path[0] === "plugins")
+      return NextResponse.json(await registerPlugin(user, await req.json()));
+    // Custom domains: checks the DNS TXT record (the only proof accepted).
+    if (path.length === 2 && path[0] === "domains" && path[1] === "verify")
+      return NextResponse.json(await verifyDomain(user, await req.json()));
+    // Owners register webhooks, also with a write API token (n8n trigger).
+    if (path.length === 1 && path[0] === "webhooks")
+      return NextResponse.json(await createWebhook(user, await req.json()));
+    // Changing a webhook (format, templates, …) and its test message.
+    if (path.length === 2 && path[0] === "webhooks" && path[1] === "update")
+      return NextResponse.json(await updateWebhook(user, await req.json()));
+    if (path.length === 2 && path[0] === "webhooks" && path[1] === "test")
+      return NextResponse.json(await testWebhook(user, await req.json()));
+    if (path.length === 2 && path[0] === "admin" && path[1] === "mail-test") {
+      requireAdmin(user);
+      const to = z.email().parse((await req.json()).to);
+      await sendTestMail(to);
+      return NextResponse.json({ ok: true });
+    }
+    // The pages of the scheduled Markdown export (lib/scheduled-markdown-export.ts).
+    if (path.length === 2 && path[0] === "admin" && path[1] === "markdown-export") {
+      requireAdmin(user);
+      return NextResponse.json(await setMarkdownExport(user, (await req.json().catch(() => ({}))).pageIds));
+    }
+    // Uploads the objects in the bucket that are not yet encrypted again.
+    if (path.length === 2 && path[0] === "admin" && path[1] === "encrypt-existing") {
+      requireAdmin(user);
+      return NextResponse.json(await encryptExisting(user));
+    }
+    // "Run now" in the Git export settings of a space.
+    if (path.length === 4 && path[0] === "spaces" && path[2] === "git-export" && path[3] === "run")
+      return NextResponse.json(await trackJob(user, "git", "Git", () => runSpaceGitExport(user, z.uuid().parse(path[1]))));
+    if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
+      requireAdmin(user);
+      const backup = await runScheduledBackup();
+      return NextResponse.json({ ...backup, exports: await runMarkdownExports() });
+    }
+    // Saving or deleting an own whiteboard template.
+    // Whiteboards switched off for the instance (#386): their templates,
+    // racks and imports are not changed.
+    if (path.length === 3 && path[0] === "whiteboards" && ["templates", "rack-templates", "netbox"].includes(path[2])) await requireModule("whiteboards");
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());
+      return NextResponse.json(
+        body.action === "save" ? (await saveBoardTemplate(user, path[1], body)) : (await deleteBoardTemplate(user, path[1], body.templateId)),
+      );
+    }
+    // Own devices of the rack library: save or delete (#90).
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "rack-templates") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());
+      return NextResponse.json(
+        body.action === "save" ? (await saveRackTemplate(user, path[1], body)) : (await deleteRackTemplate(user, path[1], body.templateId)),
+      );
+    }
+    // Racks from NetBox: address and token are used for this request only.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "netbox") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      return NextResponse.json(await netboxImport(user, path[1], await req.json()), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
+      if (Number(req.headers.get("content-length") || 0) > 512)
+        throw new HttpError(413, "Cursoranfrage zu groß.");
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
+      // A notebook's presenter: the sheet shown and since when (follow mode).
+      if (page.kind === "notebook") await requireUnlocked(user, page);
+      const body = z
+        .object({
+          x: z.number().finite().min(-1e7).max(1e7),
+          y: z.number().finite().min(-1e7).max(1e7),
+          laser: z.boolean().optional(),
+          sheet: z.string().regex(/^[\w-]{1,40}$/).optional(),
+          present: z.number().int().min(0).max(1e14).optional(),
+          mark: z.boolean().optional(),
+          view: z
+            .object({
+              x: z.number().finite().min(-1e7).max(1e7),
+              y: z.number().finite().min(-1e7).max(1e7),
+              w: z.number().finite().min(1).max(1e6),
+              h: z.number().finite().min(1).max(1e6),
+            })
+            .optional(),
+        })
+        .nullable()
+        .parse(await req.json());
+      moveCursor(page.id, user, body);
+      return new Response(null, { status: 204 });
+    }
+    if (path.length === 1 && path[0] === "presence") {
+      if (Number(req.headers.get("content-length") || 0) > 4096)
+        throw new HttpError(413, "Cursoranfrage zu groß.");
+      const reader = req.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      if (reader)
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 4096) {
+            await reader.cancel();
+            throw new HttpError(413, "Cursoranfrage zu groß.");
+          }
+          chunks.push(value);
+        }
+      let data: unknown;
+      try {
+        data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        throw new HttpError(400, "Ungültige Cursoranfrage.");
+      }
+      const presence = await editorPresence(
+        user,
+        hash((await cookies()).get(cookieName)?.value || ""),
+        data,
+      );
+      // A moved cursor reaches the others right away.
+      if (presence.changed)
+        publishPresence(presence.key, presence.clientId);
+      return NextResponse.json(
+        { peers: presence.peers },
+        {
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+    // An image from the image search, stored like an upload.
+    if (path.length === 2 && path[0] === "images" && path[1] === "import") {
+      if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z
+        .object({ pageId: z.uuid(), url: z.string().max(2000), credit: z.string().max(500).optional(), gif: z.boolean().optional() })
+        .parse(await req.json());
+      const p = await requirePage(user, body.pageId, true);
+      if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
+      await requirePlaintext(p);
+      const maxUpload = await maxUploadMbFor(user);
+      const image = await downloadImage(body.url, Math.min(maxUpload * 1024 * 1024, body.gif ? GIF_MAX_BYTES : 15 * 1024 * 1024));
+      const fid = id();
+      const name = `${(body.credit || "Bild").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80)}.${image.ext}`;
+      await storeUpload(user, p, { id: fid, name, mime: image.type, content: image.data });
+      const placeholder = await placeholderForUpload(fid, image.type, p.id, image.data);
+      return NextResponse.json({ id: fid, url: `/api/files/${fid}`, name, mime: image.type, ...(placeholder ? { placeholder } : {}) });
+    }
+    // Voice notes: the recording goes to the local Whisper service.
+    if (path.length === 1 && path[0] === "transcribe") {
+      if (user.demo) throw new HttpError(403, "Hier nicht verfügbar.");
+      // API tokens only with "KI und Transkription" (#199).
+      await requireTokenAi(user);
+      const data = await req.formData();
+      // The recording would reach the transcription service as plaintext.
+      await requirePlaintext(await requirePage(user, z.uuid().parse(data.get("pageId")), true));
+      const file = data.get("file");
+      if (!(file instanceof Blob) || !file.type.startsWith("audio/"))
+        throw new HttpError(400, "Keine Aufnahme.");
+      return NextResponse.json(await transcribe(file, file instanceof File ? file.name : undefined));
+    }
+    // Web clipper: the readable text of an article (server-side, SSRF-safe).
+    if (path.length === 1 && path[0] === "clip") {
+      if (user.demo)
+        throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+      const body = z.object({ url: z.string().max(2000) }).parse(await req.json());
+      return NextResponse.json(await clipArticle(body.url));
+    }
+    // Quick capture of the desktop app (lib/desktop-capture.ts): the
+    // shorthand as chips, saving (JSON, or multipart with up to 10 "file"),
+    // and taking a capture back.
+    if (path.length === 2 && path[0] === "capture") {
+      if (path[1] === "preview") {
+        const text = await req.text();
+        if (text.length > 100_000) throw new HttpError(413, "Anfrage zu groß.");
+        return NextResponse.json(await capturePreview(user, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
+      }
+      if (path[1] === "undo") return NextResponse.json(await captureUndo(user, await req.json()));
+      if (path[1] === "save") {
+        if (!(req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
+          const text = await req.text();
+          if (text.length > 150_000) throw new HttpError(413, "Anfrage zu groß.");
+          const saved = await desktopCaptureSave(user, JSON.parse(text || "{}"));
+          after(dispatchPush);
+          return NextResponse.json(saved);
+        }
+        requireBodySize(req, Math.min(100 * 1024 * 1024, (await maxUploadMbFor(user)) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
+        const form = await req.formData();
+        const files = [];
+        for (const file of form.getAll("file"))
+          if (file instanceof File) files.push({ name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) });
+        const fields = Object.fromEntries([...form.entries()].filter(([key, value]) => key !== "file" && typeof value === "string"));
+        const saved = await desktopCaptureSave(user, fields, files);
+        after(dispatchPush);
+        return NextResponse.json(saved);
+      }
+    }
+    if (path[0] === "command") {
+      const text = await req.text();
+      if (text.length > 10_000_000)
+        throw new HttpError(413, "Anfrage zu groß.");
+      const result = await command(user, JSON.parse(text), false, idempotencyHook());
+      after(dispatchPush);
+      return NextResponse.json(result);
+    }
+    if (path[0] === "push") {
+      const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
+      const text = await req.text();
+      if (text.length > 10000) throw new HttpError(413, "Anfrage zu groß.");
+      const body = JSON.parse(text);
+      const result =
+        body.action === "unsubscribe"
+          ? (await unsubscribePush(user, body.endpoint))
+          : body.action === "test"
+            ? // Waits (≤ 10 s) for the outcome per device (lib/push-test.ts).
+              await sendTestPush(user, sessionToken)
+            : body.action === "subscribe"
+              ? (await subscribePush(user, sessionToken, body.subscription))
+              : (() => {
+                  throw new HttpError(400, "Unbekannte Push-Aktion.");
+                })();
+      after(dispatchPush);
+      return NextResponse.json(result);
+    }
+    // The marketplace: a package built here (publish dialog: the details and
+    // up to four pictures) or one read and imported – from the marketplace's
+    // hand-over or a file; `preview=1` only answers what it would create.
+    // Nothing here ever contacts the marketplace.
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "package") {
+      await requireMarketplace();
+      const data = await req.formData();
+      const previews: Buffer[] = [];
+      for (const entry of data.getAll("preview")) {
+        if (!(entry instanceof File)) continue;
+        if (entry.size > 1024 * 1024) throw new HttpError(413, "Ein Vorschaubild ist größer als 1 MB.");
+        previews.push(Buffer.from(await entry.arrayBuffer()));
+      }
+      let meta: unknown;
+      try {
+        meta = JSON.parse(String(data.get("meta") || "{}"));
+      } catch {
+        throw new HttpError(400, "Ungültige Angaben.");
+      }
+      const built = await buildPackage(
+        user,
+        {
+          kind: z.enum(MARKETPLACE_KINDS).parse(data.get("kind")),
+          workspaceId: z.uuid().parse(data.get("workspaceId")),
+          id: data.get("id") ? String(data.get("id")) : null,
+        },
+        meta,
+        previews,
+      );
+      return new NextResponse(new Uint8Array(built.bytes), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(built.name)}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    if (path.length === 2 && path[0] === "marketplace" && path[1] === "import") {
+      await requireMarketplace();
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 25 * 1024 * 1024) throw new HttpError(413, "Die Vorlage darf höchstens 25 MB groß sein.");
+      const pkg = await readPackage(Buffer.from(await file.arrayBuffer()));
+      if (data.get("preview") === "1") return NextResponse.json(packagePreview(pkg), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(
+        await importPackage(user, pkg, {
+          workspaceId: data.get("workspaceId"),
+          spaceId: data.get("spaceId") || null,
+          parentId: data.get("parentId") || null,
+          private: data.get("private") === "true",
+        }),
+      );
+    }
+    if (path[0] === "templates" && path[1] === "import") {
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > ARCHIVE_LIMIT)
+        throw new HttpError(413, "Vorlage darf maximal 100 MB groß sein.");
+      return NextResponse.json(
+        await importTemplate(
+          user,
+          z.uuid().parse(data.get("workspaceId")),
+          Buffer.from(await file.arrayBuffer()),
+          data.get("private") === "true" ? "private" : "workspace",
+          // The space the template belongs to (#136); without it the workspace.
+          data.get("spaceId") ? z.uuid().parse(data.get("spaceId")) : null,
+        ),
+      );
+    }
+    if (path[0] === "import" && path[1] === "tracker") {
+      // Jira (CSV) or Trello (JSON) into a new database.
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 30 * 1024 * 1024) throw new HttpError(413, "Die Datei darf maximal 30 MB groß sein.");
+      await requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
+      const text = await file.text();
+      const kind = /\.json$/i.test(file.name) || text.trimStart().startsWith("{") ? "trello" : "jira";
+      return NextResponse.json(
+        await trackJob(user, "import", file.name, async () =>
+          await importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
+        ),
+      );
+    }
+    // Markdown files (one, several or a ZIP) as records of a database.
+    if (path.length === 3 && path[0] === "pages" && path[2] === "import-markdown") {
+      const data = await req.formData();
+      const files = data.getAll("file").filter((f): f is File => f instanceof File);
+      if (!files.length) throw new HttpError(400, "Datei fehlt.");
+      if (files.reduce((sum, f) => sum + f.size, 0) > ARCHIVE_LIMIT)
+        throw new HttpError(413, "Die Dateien dürfen zusammen maximal 100 MB groß sein.");
+      const entries = new Map<string, Buffer>();
+      for (const file of files)
+        for (const [name, bytes] of await markdownEntries(file.name, Buffer.from(await file.arrayBuffer())))
+          entries.set(entries.has(name) ? `${entries.size}-${name}` : name, bytes);
+      const records = async () =>
+        await importMarkdownRecords(user, z.uuid().parse(path[1]), entries, {
+          dryRun: data.get("dryRun") === "1",
+          createMissing: data.get("createMissing") === "1",
+          updateExisting: data.get("updateExisting") === "1",
+        });
+      return NextResponse.json(data.get("dryRun") === "1" ? (await records()) : await trackJob(user, "import", files[0].name, records));
+    }
+    // AFFiNE, Confluence, Evernote, Google Docs, GoodNotes (PDF), Microsoft
+    // Word and Obsidian (lib/importers):
+    // dryRun=1 answers with a preview (counts and warnings) only. The file
+    // comes as a form (up to 100 MB, held in memory) or as the raw request
+    // body with the fields in the query (up to the import limit, streamed
+    // to disk; lib/importers/upload.ts). A raw preview keeps the upload and
+    // answers with its id: the import then names it as "upload" instead of
+    // sending the file again, "discard=1" drops it.
+    if (path.length === 2 && path[0] === "import" && path[1] === "source") {
+      const { importFromSource } = await import("@/lib/importers");
+      const upload = await import("@/lib/importers/upload");
+      const limitMb = await upload.importLimitFor(user);
+      let fields: { get(name: string): unknown };
+      let file: { name: string; bytes: Buffer } | { name: string; path: string };
+      let kept: string | null = null;
+      if (!rawImport) {
+        const data = await req.formData();
+        const form = data.get("file");
+        if (!(form instanceof File)) throw new HttpError(400, "Datei fehlt.");
+        if (form.size > Math.min(ARCHIVE_LIMIT, upload.importLimitBytes(limitMb)))
+          throw form.size > upload.importLimitBytes(limitMb)
+            ? upload.importTooLarge(limitMb)
+            : new HttpError(413, "Als Formular darf die Datei höchstens 100 MB groß sein; größere Dateien als Anfragekörper senden.");
+        fields = data;
+        file = { name: form.name, bytes: Buffer.from(await form.arrayBuffer()) };
+      } else {
+        const query = new URL(req.url).searchParams;
+        fields = query;
+        const name = (query.get("name") || "import").slice(0, 300);
+        const earlier = query.get("upload");
+        if (earlier && query.get("discard") === "1") {
+          upload.discardImportUpload(user.id, earlier);
+          return NextResponse.json({ ok: true });
+        }
+        // Cluster mode: the preview may have run on another instance.
+        if (earlier) file = { name, path: await upload.importUploadFile(user.id, earlier) };
+        else {
+          // Rights before a large body is read.
+          const { requireSpace } = await import("@/lib/importers/write");
+          await requireSpace(user, z.uuid().parse(query.get("workspaceId")), z.uuid().parse(query.get("spaceId")));
+          // The size must be stated (a body without it would pass proxy.ts).
+          requireBodySize(req, Number.MAX_SAFE_INTEGER, "Anfrage zu groß.");
+          if (Number(req.headers.get("content-length")) > upload.importLimitBytes(limitMb)) throw upload.importTooLarge(limitMb);
+          if (!req.body) throw new HttpError(400, "Datei fehlt.");
+          const saved = await upload.saveImportUpload(user.id, req.body, upload.importLimitBytes(limitMb), () => upload.importTooLarge(limitMb));
+          file = { name, path: saved.path };
+          kept = saved.id;
+        }
+        kept = earlier || kept;
+      }
+      const dryRun = fields.get("dryRun") === "1";
+      const importWorkspace = () => z.uuid().parse(fields.get("workspaceId"));
+      const imported = () =>
+        importFromSource(
+          user,
+          importWorkspace(),
+          z.uuid().parse(fields.get("spaceId")),
+          file,
+          {
+            source: z.enum(["auto", "affine", "anki", "confluence", "evernote", "gdocs", "goodnotes", "obsidian", "word"]).catch("auto").parse(fields.get("source") || "auto"),
+            mode: fields.get("mode") === "database" ? "database" : "pages",
+            dryRun,
+            // AFFiNE (#167): "0" keeps documents linked from one other
+            // document at the top.
+            nestLinked: fields.get("nestLinked") !== "0",
+            // Anki (lib/importers/anki.ts): the mapping of the wizard and the
+            // person's time zone for the learning state.
+            anki: fields.get("anki") || undefined,
+            zone: typeof fields.get("zone") === "string" ? (fields.get("zone") as string) : undefined,
+          },
+        ).then(async (result) => {
+          // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
+          if (!dryRun) await noteGettingStarted(user.id, importWorkspace(), "import").catch(() => {});
+          return result;
+        });
+      // background=1 (the import page, #163): a large file takes longer than
+      // a reverse proxy waits (504). The answer is the job's id at once; the
+      // work runs after it, the page asks GET /api/import/source/job for
+      // progress and outcome.
+      if (fields.get("background") === "1") {
+        const { launchJob, runningJob } = await import("@/lib/background-jobs");
+        if (await runningJob(user, "import")) {
+          if (kept && !fields.get("upload")) upload.discardImportUpload(user.id, kept);
+          throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+        }
+        const keptId = kept;
+        const job = await launchJob(
+          user,
+          "import",
+          file.name,
+          async () => {
+            let keep = false;
+            try {
+              const result = await imported();
+              keep = dryRun && !!keptId;
+              return keep ? { ...result, upload: keptId } : result;
+            } finally {
+              if (keptId && !keep) upload.discardImportUpload(user.id, keptId);
+            }
+          },
+          (task) => after(task),
+        );
+        return NextResponse.json({ job }, { status: 202 });
+      }
+      let keep = false;
+      try {
+        const result = dryRun ? await imported() : await trackJob(user, "import", file.name, imported);
+        // After a preview the upload waits for the import.
+        keep = dryRun && !!kept;
+        return NextResponse.json(keep ? { ...result, upload: kept } : result);
+      } finally {
+        if (kept && !keep) upload.discardImportUpload(user.id, kept);
+      }
+    }
+    // Notion through its API: "list" the pages and databases the token
+    // sees, "import" the chosen ones as a background job (#163), its state
+    // at GET /api/import/source/job. The token comes in the body and stays
+    // in this request (or the job's memory): never stored or logged.
+    if (path.length === 2 && path[0] === "import" && path[1] === "notion") {
+      const body = z
+        .object({
+          action: z.enum(["list", "import"]),
+          workspaceId: z.uuid(),
+          spaceId: z.uuid(),
+          token: z.string().max(300),
+          items: z.array(z.object({ id: z.string().regex(/^[0-9a-f-]{32,36}$/i), kind: z.enum(["page", "database"]) })).max(200).optional(),
+        })
+        .parse(await req.json());
+      const { importNotion, listNotion } = await import("@/lib/importers/notion-import");
+      if (body.action === "list") return NextResponse.json(await listNotion(user, body.workspaceId, body.spaceId, body.token), { headers: { "Cache-Control": "no-store" } });
+      const { requireSpace } = await import("@/lib/importers/write");
+      await requireSpace(user, body.workspaceId, body.spaceId);
+      const { launchJob, runningJob } = await import("@/lib/background-jobs");
+      if (await runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+      const job = await launchJob(user, "import", "Notion", () => importNotion(user, body.workspaceId, body.spaceId, body.token, body.items || []), (task) => after(task));
+      return NextResponse.json({ job }, { status: 202 });
+    }
+    // BookStack through its API (#329): "list" the shelves and books the
+    // token sees, "preview" (counts, nothing downloaded) and "import" the
+    // chosen ones – both as a background job unless background is false,
+    // its state at GET /api/import/source/job. The token comes in the body
+    // and stays in this request (or the job's memory): never stored or
+    // logged.
+    if (path.length === 2 && path[0] === "import" && path[1] === "bookstack") {
+      const body = z
+        .object({
+          action: z.enum(["list", "preview", "import"]),
+          workspaceId: z.uuid(),
+          spaceId: z.uuid(),
+          url: z.string().max(500),
+          tokenId: z.string().max(200),
+          tokenSecret: z.string().max(200),
+          shelves: z.array(z.number().int().positive()).max(5000).optional(),
+          books: z.array(z.number().int().positive()).max(20000).optional(),
+          background: z.boolean().optional(),
+        })
+        .parse(await req.json());
+      const { importBookStack, listBookStackFor } = await import("@/lib/importers/bookstack-import");
+      const input = { url: body.url, tokenId: body.tokenId, tokenSecret: body.tokenSecret, shelves: body.shelves, books: body.books };
+      if (body.action === "list") return NextResponse.json(await listBookStackFor(user, body.workspaceId, body.spaceId, input), { headers: { "Cache-Control": "no-store" } });
+      const { requireSpace } = await import("@/lib/importers/write");
+      await requireSpace(user, body.workspaceId, body.spaceId);
+      const dryRun = body.action === "preview";
+      const work = () =>
+        (dryRun ? importBookStack(user, body.workspaceId, body.spaceId, input, { dryRun: true }) : importBookStack(user, body.workspaceId, body.spaceId, input)).then(async (result) => {
+          // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
+          if (!dryRun) await noteGettingStarted(user.id, body.workspaceId, "import").catch(() => {});
+          return result;
+        });
+      const { launchJob, runningJob } = await import("@/lib/background-jobs");
+      if (await runningJob(user, "import")) throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+      if (body.background === false) return NextResponse.json(dryRun ? await work() : await trackJob(user, "import", "BookStack", work));
+      const job = await launchJob(user, "import", "BookStack", work, (task) => after(task));
+      return NextResponse.json({ job }, { status: 202 });
+    }
+    if (path[0] === "import" && path[1] === "zip") {
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > ARCHIVE_LIMIT)
+        throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
+      await requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const workspaceId = z.uuid().parse(data.get("workspaceId"));
+      const result = await trackJob(user, "import", file.name, () => importZip(user, workspaceId, z.uuid().parse(data.get("spaceId")), bytes));
+      // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
+      await noteGettingStarted(user.id, workspaceId, "import").catch(() => {});
+      return NextResponse.json(result);
+    }
+    // A DOI as a citation: metadata via DOI content negotiation (cached),
+    // then into the workspace's bibliography.
+    if (path.length === 2 && path[0] === "citations" && path[1] === "doi") {
+      // The server would fetch for anonymous demo guests.
+      if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z.object({ workspaceId: z.uuid(), doi: z.string().min(4).max(400) }).parse(await req.json());
+      await requireMember(user, body.workspaceId, "editor");
+      const data = await resolveDoi(body.doi);
+      return NextResponse.json({ item: await transaction(async () => await bibliographyForDoi(user, body.workspaceId, data), user) });
+    }
+    // Excalidraw and draw.io files: onto a board (pageId) or as a new one.
+    if (path.length === 2 && path[0] === "whiteboards" && path[1] === "import") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > BOARD_IMPORT_LIMITS.bytes)
+        throw new HttpError(413, "Die Datei ist zu groß (höchstens 20 MB).");
+      for (const key of ["pageId", "parentId"]) {
+        const value = data.get(key);
+        if (typeof value === "string" && value) await requirePlaintext(await one<Page>("SELECT * FROM pages WHERE id=?", value));
+      }
+      if (typeof data.get("spaceId") === "string" && data.get("spaceId")) await requirePlaintextSpace({ id: String(data.get("spaceId")) });
+      const fields = Object.fromEntries(
+        ["pageId", "workspaceId", "spaceId", "parentId"]
+          .map((key) => [key, data.get(key)])
+          .filter(([, value]) => typeof value === "string" && value),
+      );
+      return NextResponse.json(
+        await importWhiteboardFile(user, file.name, Buffer.from(await file.arrayBuffer()), fields),
+      );
+    }
+    // Signs out one of the person's devices, or all others.
+    if (path.length === 2 && path[0] === "sessions" && path[1] === "end") {
+      const jar = await cookies();
+      const result = await endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
+      if (result.current) jar.delete(cookieName);
+      return NextResponse.json(result);
+    }
+    // A face for the workspace's look (owners; lib/workspace-fonts.ts).
+    if (path.length === 1 && path[0] === "workspace-fonts") {
+      if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
+      requireBodySize(req, FONT_LIMITS.bytes + 100_000, "Höchstens 5 MB pro Schrift.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const workspaceId = z.uuid().parse(data.get("workspaceId"));
+      return NextResponse.json(await transaction(async () => await uploadWorkspaceFont(user, workspaceId, { name: data.get("name"), file: { name: file.name, bytes } }), user));
+    }
+    // A new own paper template of notebooks (lib/notebook-library.ts).
+    if (path.length === 1 && path[0] === "notebook-library") {
+      if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
+      requireBodySize(req, 21 * 1024 * 1024, "Maximal 20 MB pro Vorlage.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      const bytes = Buffer.from(await file.arrayBuffer());
+      return NextResponse.json(
+        await transaction(
+          async () =>
+            await createTemplate(user, {
+              pageId: data.get("pageId"),
+              name: data.get("name"),
+              fit: data.get("fit"),
+              pdfPage: data.get("pdfPage"),
+              file: { name: file.name, type: file.type, bytes },
+            }),
+          user,
+        ),
+      );
+    }
+    if (path[0] === "upload") {
+      const data = await req.formData();
+      const pageId = z.string().uuid().parse(data.get("pageId"));
+      const p = await requirePage(user, pageId, true);
+      if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      // Pages of encrypted spaces take only files the browser encrypted
+      // (lib/e2ee.ts encryptFile): no name, no type, no content to inspect.
+      const encrypted = await isEncryptedPage(p);
+      if (encrypted && data.get("purpose") !== "e2ee")
+        throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
+      const maxUpload = await maxUploadMbFor(user);
+      if (file.size > maxUpload * 1024 * 1024)
+        throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
+      await enforceQuota(p.workspace_id, file.size);
+      await enforceUserStorage(user, file.size);
+      if (
+        data.get("purpose") === "cover" &&
+        !imageMimes.includes(file.type as (typeof imageMimes)[number])
+      )
+        throw new HttpError(
+          400,
+          "Bitte PNG, JPEG, GIF, WebP oder AVIF verwenden.",
+        );
+      // Uploaded later of a picture or file added offline (#370): the
+      // document refers to it by the id the device chose; sent again, the
+      // stored file answers (lib/client-ids.ts).
+      const claimed = data.get("fileId") !== null ? await claimFileId(user, p.id, data.get("fileId")) : null;
+      if (claimed?.existing)
+        return NextResponse.json({ id: claimed.id, url: `/api/files/${claimed.id}`, name: claimed.existing.name, mime: claimed.existing.mime });
+      const fid = claimed?.id ?? id();
+      // The type must match the content; photos lose their location.
+      const raw = Buffer.from(await file.arrayBuffer());
+      if (encrypted && raw.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
+      const mime = encrypted ? "application/octet-stream" : uploadMime(file.type, file.name, raw);
+      const content = encrypted ? raw : stripLocation(raw, mime);
+      const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
+      // Checked again with the insert (parallel uploads, lib/page-upload.ts).
+      await storeUpload(user, p, { id: fid, name, mime, content });
+      // The size and blurred picture shown while the image loads; encrypted
+      // files are never looked into.
+      let placeholder = null;
+      if (encrypted) await storePlaceholder(fid, null);
+      else placeholder = await placeholderForUpload(fid, mime, pageId, content);
+      return NextResponse.json({
+        id: fid,
+        url: `/api/files/${fid}`,
+        name,
+        mime,
+        ...(placeholder ? { placeholder } : {}),
+      });
+    }
+    throw new HttpError(404, "Nicht gefunden.");
+  } catch (e) {
+    return error(e);
+  }
+}
+
+export const HEAD = GET;
+
+// Long-lived streams: whether the session is still valid, the account
+// active and the resource still readable. Used on every keepalive.
+function streamGuard(sessionToken: string, check: () => unknown) {
+  return async () => {
+    const session = await one<{ ok: number }>(
+      "SELECT 1 ok FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
+      sessionToken,
+      Date.now(),
+    );
+    if (!session) return false;
+    try {
+      await check();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}

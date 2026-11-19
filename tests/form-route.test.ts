@@ -1,4 +1,4 @@
-// The form endpoint (app/api/forms/[token]/route.ts) called as Next.js
+// The form endpoint (app/api/forms/[token]/handler.ts) called as Next.js
 // does: read-only API tokens change nothing, and every uploaded file is
 // charged to a storage bound.
 import { test } from "node:test";
@@ -17,7 +17,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { createApiToken } = await import("../lib/api-tokens");
 const { formSettings } = await import("../lib/forms");
 const { setUserLimits, userBytes } = await import("../lib/user-limits");
-const route = await import("../app/api/forms/[token]/route");
+const route = await import("../app/api/forms/[token]/handler");
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 async function account(name: string) {
