@@ -12,7 +12,8 @@ import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "./i18n";
 import { api, PageIcon, PageSkeleton, reportError } from "./ui";
-import DatabaseView, { type DatabaseData } from "./database-view";
+import type { DatabaseData } from "./database-view";
+import { ViewSkeleton } from "./skeleton";
 import { readModeIds } from "@/lib/read-mode";
 import { featureModules } from "@/lib/feature-modules-client";
 import { PAGE_KIND_MODULE } from "@/lib/feature-modules";
@@ -21,6 +22,7 @@ import type { Page, Role, User } from "@/lib/types";
 import type { AiStatus } from "@/lib/ai/features";
 
 const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false, loading: () => <PageSkeleton compact /> });
+const DatabaseView = dynamic(() => loadView(() => import("./database-view")), { ssr: false, loading: () => <ViewSkeleton /> });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard")), { ssr: false, loading: () => <PageSkeleton compact /> });

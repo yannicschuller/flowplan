@@ -59,10 +59,26 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // The budgets move down to about 3 % above (the workflow's stays).
 // Then KaTeX and mathjs loading with the first formula or calculation: a
 // document 1447.4 KB, its budget 1490 KB.
+// 2026-11-19, after trimming the shell again (each step a commit of its
+// own with its measurement): the icons keep only the weights the app draws
+// (scripts/icon-weights-loader.cjs: regular, bold, fill, duotone; thin and
+// light were a third of every icon, -75 KB); the database view with its
+// toolbar, tools and records loads with the first database, started with
+// the page's data and on hover (-121 KB on every other page); an embedded
+// whiteboard loads its renderer with the first board (-43 KB in a
+// document); the root page's sign-in and second-factor screen load only
+// for visitors (components/sign-in-entry.tsx, -15 KB). Measured: document
+// 1227.8, database 883.9, workflow 998.2, home 764.7, settings 777.7,
+// settings section 854.1, administration 785.3, monitoring 812.8, push
+// 793.7 KB (before: 1497.8, 977.4, 1214.2, 977.4, 993.5, 1065.8, 1001.3,
+// 1029.6, 1010.1). The offline copy still holds every chunk; what stays in
+// the shell for offline use (components/offline-local-data.ts, the new-page
+// dialog and the built-in templates) stayed. The budgets are about 3 %
+// above.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1500 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1265 },
   // The signed-in pages were raised on 2026-11-19 by 7-15 KB (under 1.5 %):
   // offline creation (#370: the queue of new pages and uploads, the "not yet
   // synced" marks), the library (#329), passkeys from the apps and the
@@ -84,7 +100,7 @@ const PAGES = [
   // viewer (#384) and public timeline load on demand. Measured: database/
   // home 976.0, workflow 1212.5, settings 992.0, settings section 1064.2,
   // administration 999.8, monitoring 1028.0, push 1008.5 KB.
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 980 },
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 910 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
@@ -94,19 +110,19 @@ const PAGES = [
   // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
   // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
   // the margin the other pages have).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1217, ready: ".react-flow__node, .wf-list-node" },
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1028, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
-  { path: "/#home", name: "home", signedIn: true, jsKb: 980, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 997, ready: ".settings-tile" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1069, ready: ".settings-detail .setting-group" },
-  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1005, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  { path: "/#home", name: "home", signedIn: true, jsKb: 788, ready: ".home-grid" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 801, ready: ".settings-tile" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 880, ready: ".settings-detail .setting-group" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 809, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1033, ready: ".mon-health" },
+  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 837, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1013, ready: "#relay" },
+  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 818, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 255, lcpMs: 2500 };
 const LOCALE = "de-DE";

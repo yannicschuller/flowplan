@@ -1,18 +1,23 @@
 "use client";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "../i18n";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import * as Y from "yjs";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import { useEditorEditable } from "../editor-editable";
 import type { NodeViewProps } from "@tiptap/react";
 import { ArrowSquareOut, PresentationChart } from "@phosphor-icons/react";
 import { WhiteboardEmbed } from "@/lib/document-schema";
-import { WhiteboardStatic, type PageRef } from "./render";
+import type { PageRef } from "./render";
+import { loadView } from "../view-fallback";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 import { PageIcon } from "../ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
 
+// The board's renderer (shapes, racks, timelines … about 55 KB) loads with
+// the first embedded board, not with every document.
+const loadStatic = () => import("./render").then((m) => ({ default: m.WhiteboardStatic }));
+const WhiteboardStatic = lazy(() => loadView(loadStatic));
 type Board = { title: string; icon: string; items: WhiteboardItem[] };
 function decode(state: string): WhiteboardItem[] {
   const doc = new Y.Doc();
@@ -86,6 +91,9 @@ export function WhiteboardEmbedView({
 }) {
   const t = useT();
   const { board, error } = useBoard(pageId);
+  // Fetched alongside the board's data.
+  useEffect(() => void loadStatic().catch(() => {}), []);
+  const loading = <div className="sk whiteboard-embed-loading" style={{ height }} />;
   return (
     <div className="whiteboard-embed" data-embedded-board={pageId}>
       <div className="whiteboard-embed-head">
@@ -102,14 +110,16 @@ export function WhiteboardEmbedView({
         <p className="muted whiteboard-embed-error">{error}</p>
       ) : board ? (
         board.items.length ? (
-          <WhiteboardStatic items={board.items} pages={pages} height={height} />
+          <Suspense fallback={loading}>
+            <WhiteboardStatic items={board.items} pages={pages} height={height} />
+          </Suspense>
         ) : (
           <p className="muted whiteboard-embed-error">
             {t("Dieses Whiteboard ist noch leer.", "This whiteboard is still empty.")}
           </p>
         )
       ) : (
-        <div className="sk whiteboard-embed-loading" style={{ height }} />
+        loading
       )}
     </div>
   );
