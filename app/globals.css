@@ -718,7 +718,9 @@ kbd,
 .page-nav-title:hover {
   background: none;
 }
-.page-nav-title > span {
+/* The title shortens itself; an emoji icon keeps its whole glyph (Apple's
+   emoji are drawn a little larger than their box and were clipped). */
+.page-nav-title > span:not(.page-emoji) {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -815,7 +817,7 @@ kbd,
   font-size: 13px;
   color: var(--secondary);
 }
-.favorite-nav span {
+.favorite-nav span:not(.page-emoji) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -18507,7 +18509,7 @@ label.task-due {
 .visited-list button:hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
 }
-.visited-list span {
+.visited-list span:not(.page-emoji) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
