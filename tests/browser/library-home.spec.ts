@@ -53,8 +53,9 @@ test("the library: shelves side by side, continue reading, who can see a shelf",
   page.on("pageerror", (e) => errors.push(e.message));
   const tag = `${info.project.name}${Date.now()}`;
   const f = await setup(page, tag);
-  // Read a chapter first: "Weiterlesen" picks it up.
-  await page.goto(`/#page=${f.chapter}`);
+  // Read a page first: "Weiterlesen" picks it up (a chapter is an
+  // overview, its pages are read).
+  await page.goto(`/#page=${f.deep}`);
   await expect(page.getByRole("navigation", { name: "Im Buch" })).toBeVisible();
 
   await page.goto("/#home");
@@ -82,9 +83,9 @@ test("the library: shelves side by side, continue reading, who can see a shelf",
   if (mobile) expect(b!.y).toBeGreaterThan(a!.y + a!.height - 1);
   else expect(Math.abs(a!.y - b!.y)).toBeLessThan(2);
 
-  // Continue reading: the chapter read before, with its place in the book.
+  // Continue reading: the page read before, with its place in the book.
   const reading = page.getByRole("region", { name: "Weiterlesen" });
-  const resume = reading.getByRole("link", { name: new RegExp(`Anleitung ${tag}.*Kapitel ${tag}.*Seite 2 von 3`) });
+  const resume = reading.getByRole("link", { name: new RegExp(`Anleitung ${tag}.*Seite ${tag}.*Seite 1 von 1`) });
   await expect(resume).toBeVisible();
   await shot(page, "light-home", mobile);
 
@@ -109,10 +110,11 @@ test("the library: shelves side by side, continue reading, who can see a shelf",
   await expect(page.getByRole("dialog", { name: "Seite teilen" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // Resume reading from the start: the book's page was opened last now.
+  // The book's own page was opened last now (to share it): its description,
+  // which leads to the book's overview.
   await page.goto("/#library");
-  await page.getByRole("region", { name: "Weiterlesen" }).getByRole("link", { name: new RegExp(`Anleitung ${tag}.*Seite 1 von 3`) }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.guide}`));
+  await page.getByRole("region", { name: "Weiterlesen" }).getByRole("link", { name: new RegExp(`Anleitung ${tag}.*Beschreibung`) }).click();
+  await expect(page).toHaveURL(new RegExp(`#library/${f.team}/${f.guide}$`));
 
   if (shots) {
     await page.emulateMedia({ colorScheme: "dark" });
@@ -174,14 +176,14 @@ test("the library search: grouped by level, folding, keyboard, the right level",
   await expect(hit.locator("mark")).toHaveText(`Kalib${tag}`);
   await expect(group("Bücher")).toHaveCount(0);
 
-  // Each level opens where it belongs: a book its contents, a chapter itself.
+  // Each level opens where it belongs: a book and a chapter their overview.
   await search.fill(tag);
   await results.getByRole("link", { name: new RegExp(`^Anleitung ${tag}`) }).click();
   await expect(page).toHaveURL(new RegExp(`#library/${f.team}/${f.guide}$`));
   await page.goto("/#library");
   await page.getByRole("searchbox", { name: "In allen Regalen suchen" }).fill(tag);
   await results.getByRole("link", { name: new RegExp(`^Kapitel ${tag}`) }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.chapter}`));
+  await expect(page).toHaveURL(new RegExp(`#library/${f.team}/${f.guide}/${f.chapter}$`));
   await page.goto("/#library");
   await page.getByRole("searchbox", { name: "In allen Regalen suchen" }).fill(tag);
   await results.getByRole("link", { name: new RegExp(`^Notizen ${tag}`) }).click();

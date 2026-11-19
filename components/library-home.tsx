@@ -16,7 +16,7 @@ import { relativeTime } from "./home/format";
 import { BookCard, Snippet, WhoCanSee } from "./library-view";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { pageLocationHash } from "@/lib/page-location";
-import { libraryHash, libraryShelves, readingNow, type LibraryShelf } from "@/lib/library";
+import { bookNavigation, libraryHash, libraryShelves, readingNow, type LibraryShelf } from "@/lib/library";
 import type { Page, Space } from "@/lib/types";
 
 type T = ReturnType<typeof useT>;
@@ -226,7 +226,8 @@ function ContinueReading({ pages, shelfIds, visits, workspaceId, clock }: { page
       <ul>
         {list.map((r) => {
           const book = byId.get(r.book.id)!,
-            page = byId.get(r.page.id)!;
+            page = byId.get(r.page.id)!,
+            place = bookNavigation(pages, r.spaceId, page.id);
           return (
             <li key={r.book.id}>
               <a href={pageLocationHash({ pageId: page.id })} data-prefetch-page={page.id}>
@@ -239,7 +240,8 @@ function ContinueReading({ pages, shelfIds, visits, workspaceId, clock }: { page
                     {page.id === book.id ? t("Anfang", "Beginning") : untitled(t, page.title)}
                   </span>
                   <span className="library-reading-meta">
-                    {t(`Seite ${r.position} von ${r.total}`, `Page ${r.position} of ${r.total}`)}
+                    {/* The place as the book navigation counts it: the pages read in the editor. */}
+                    {place?.position ? t(`Seite ${place.position} von ${place.total}`, `Page ${place.position} of ${place.total}`) : t("Beschreibung", "Description")}
                     {Number.isFinite(r.seenAt) && ` · ${relativeTime(new Date(r.seenAt).toISOString(), clock, locale)}`}
                   </span>
                 </span>
@@ -260,9 +262,16 @@ type Group = (typeof GROUPS)[number];
 const groupTitle = (t: T, group: Group) =>
   group === "shelves" ? t("Regale", "Shelves") : group === "books" ? t("Bücher", "Books") : group === "chapters" ? t("Kapitel", "Chapters") : t("Seiten und Inhalte", "Pages and content");
 // Where a hit leads: a shelf to its books, a book to its contents, a
-// chapter or page to reading it (a record opens in its database).
+// chapter to its overview (a document; path: shelf, book), a page to
+// reading it (a record opens in its database).
 const hitHref = (group: Group, hit: Hit) =>
-  group === "shelves" ? `#${libraryHash(hit.id)}` : group === "books" ? `#${libraryHash(hit.spaceId, hit.id)}` : pageLocationHash({ pageId: hit.id, rowId: hit.rowId });
+  group === "shelves"
+    ? `#${libraryHash(hit.id)}`
+    : group === "books"
+      ? `#${libraryHash(hit.spaceId, hit.id)}`
+      : group === "chapters" && hit.kind === "document" && hit.path.length
+        ? `#${libraryHash(hit.spaceId, hit.path[hit.path.length - 1].id, hit.id)}`
+        : pageLocationHash({ pageId: hit.id, rowId: hit.rowId });
 const NAV = "[data-library-nav]";
 
 function LibrarySearchBox({ workspaceId, query, onQuery }: { workspaceId: string; query: string; onQuery: (query: string) => void }) {

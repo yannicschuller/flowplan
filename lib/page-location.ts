@@ -15,15 +15,18 @@ export type PageLocation = {
   // Not with a record.
   viewId?: string;
   study?: boolean;
+  // A book or chapter of a library opened in the editor to change its own
+  // text ("&edit=1"), not as its overview (#329, lib/library.ts). Only alone.
+  edit?: boolean;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parsePageLocation(hash: string): PageLocation | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   if (
-    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block", "full", "view", "study"].includes(key))
+    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block", "full", "view", "study", "edit"].includes(key))
   )
     return null;
-  if (["page", "row", "thread", "item", "block", "full", "view", "study"].some((key) => params.getAll(key).length > 1))
+  if (["page", "row", "thread", "item", "block", "full", "view", "study", "edit"].some((key) => params.getAll(key).length > 1))
     return null;
   const pageId = params.get("page"),
     rowId = params.get("row"),
@@ -32,7 +35,8 @@ export function parsePageLocation(hash: string): PageLocation | null {
     blockId = params.get("block"),
     full = params.get("full"),
     viewId = params.get("view"),
-    study = params.get("study");
+    study = params.get("study"),
+    edit = params.get("edit");
   if (
     !pageId ||
     !uuid.test(pageId) ||
@@ -42,7 +46,8 @@ export function parsePageLocation(hash: string): PageLocation | null {
     (threadId !== null && !uuid.test(threadId)) ||
     (full !== null && (full !== "1" || rowId === null)) ||
     (viewId !== null && (!/^[\w-]{1,64}$/.test(viewId) || rowId !== null)) ||
-    (study !== null && (study !== "1" || viewId === null))
+    (study !== null && (study !== "1" || viewId === null)) ||
+    (edit !== null && (edit !== "1" || [rowId, threadId, itemId, blockId, viewId].some((v) => v !== null)))
   )
     return null;
   return {
@@ -54,6 +59,7 @@ export function parsePageLocation(hash: string): PageLocation | null {
     ...(full ? { full: true } : {}),
     ...(viewId ? { viewId } : {}),
     ...(study ? { study: true } : {}),
+    ...(edit ? { edit: true } : {}),
   };
 }
 export function pageLocationHash(target: PageLocation): string {
@@ -67,6 +73,7 @@ export function pageLocationHash(target: PageLocation): string {
     params.set("view", target.viewId);
     if (target.study) params.set("study", "1");
   }
+  if (target.edit && [...params].length === 1) params.set("edit", "1");
   const hash = `#${params}`;
   return parsePageLocation(hash) ? hash : "#inbox";
 }

@@ -340,3 +340,14 @@
     padding-right: calc(64px + var(--safe-right, 0px));
   }
 }
+
+/* Beside phones the box keeps its top edge (#329): centred, it moved up
+   and down by half of every line that came or went while typing – the
+   "Ähnliche Einträge" hint, a message, a kind's options. The library's own
+   dialog (components/library-create-dialog.tsx) does the same. */
+@media (min-width: 601px) {
+  .modal.np-dialog,
+  .modal.library-create {
+    margin-block: max(16px, 12dvh) auto;
+  }
+}

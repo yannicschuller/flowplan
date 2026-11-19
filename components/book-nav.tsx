@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import { Books, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { bookNavigation, libraryHash } from "@/lib/library";
+import { bookNavigation, libraryHash, opensAsOverview } from "@/lib/library";
 import { pageLocationHash } from "@/lib/page-location";
 import type { Page, Space } from "@/lib/types";
 
@@ -30,12 +30,15 @@ export function BookNav({ space, pages, pageId }: { space: Space; pages: Page[];
             {title(nav.book)}
           </a>
         </li>
-        {above.slice(1).map((p) => (
+        {above.slice(1).map((p, i) => (
           <li key={p.id}>
-            <a href={pageLocationHash({ pageId: p.id })}>{title(p)}</a>
+            {/* A chapter leads to its overview. */}
+            <a href={!i && opensAsOverview(p, 1) ? `#${libraryHash(space.id, nav.book.id, p.id)}` : pageLocationHash({ pageId: p.id })}>{title(p)}</a>
           </li>
         ))}
       </ol>
+      {/* A book's or chapter's own text in the editor: no place in the reading order. */}
+      {nav.position > 0 && (
       <span className="book-nav-steps">
         <span className="book-nav-position">{t(`Seite ${nav.position} von ${nav.total}`, `Page ${nav.position} of ${nav.total}`)}</span>
         {nav.previous ? (
@@ -57,6 +60,7 @@ export function BookNav({ space, pages, pageId }: { space: Space; pages: Page[];
           </span>
         )}
       </span>
+      )}
     </nav>
   );
 }
@@ -65,7 +69,7 @@ export function BookNav({ space, pages, pageId }: { space: Space; pages: Page[];
 export function BookNext({ space, pages, pageId }: { space: Space; pages: Page[]; pageId: string }) {
   const t = useT();
   const nav = useMemo(() => bookNavigation(pages, space.id, pageId), [pages, space.id, pageId]);
-  if (!nav || (!nav.next && !nav.previous)) return null;
+  if (!nav || !nav.position || (!nav.next && !nav.previous)) return null;
   const title = (p: Page) => p.title || t("Ohne Titel", "Untitled");
   return (
     <nav className="book-next" aria-label={t("Weiterlesen", "Continue reading")}>

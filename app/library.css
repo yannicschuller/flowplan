@@ -775,3 +775,108 @@ span.book-nav-step {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- A book's and a chapter's overview (#329 follow-up) ---- */
+.library-overview-cover {
+  display: block;
+  height: 120px;
+  margin: 0 0 -24px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--hover);
+}
+.library-overview-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.library-overview-cover + .library-title-icon {
+  position: relative;
+  margin-left: 16px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+/* Its own text, read-only, above the contents. */
+.library-intro {
+  margin: -4px 0 22px;
+  padding: 14px 18px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.document-editor.library-intro-text {
+  min-height: 0;
+  max-height: 420px;
+  padding: 0;
+  overflow: auto;
+}
+.library-intro-text > :first-child {
+  margin-top: 0;
+}
+.library-intro-text > :last-child {
+  margin-bottom: 0;
+}
+.library-intro-edit,
+.library-intro-empty .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--secondary);
+  font-size: 13px;
+  text-decoration: none;
+}
+.library-intro-edit {
+  margin-top: 10px;
+}
+.library-intro-edit:hover,
+.library-intro-empty .text-button:hover {
+  color: var(--text);
+}
+.library-intro-empty {
+  margin: -8px 0 18px;
+}
+/* A chapter's pages: the contents' list without the chapter's indent. */
+.library-pages.library-chapter-pages {
+  margin: 0;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+/* The library's own small dialog (components/library-create-dialog.tsx). */
+.modal.library-create {
+  width: min(420px, calc(100% - 32px));
+}
+.library-create-form {
+  display: grid;
+  gap: 14px;
+}
+.library-create-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.library-create-field {
+  display: grid;
+  gap: 6px;
+}
+.library-create-field input {
+  font-size: 15px;
+  padding: 10px 12px;
+}
+.library-create-form .modal-actions {
+  margin-top: 4px;
+}
+@media (max-width: 600px) {
+  .modal.modal-sheet.library-create {
+    width: 100%;
+  }
+  .library-create-field input {
+    font-size: 16px;
+  }
+}

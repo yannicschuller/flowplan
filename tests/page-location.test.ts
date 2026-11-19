@@ -173,3 +173,14 @@ test("a link to a view starts its study session (#340): view and study only toge
   ])
     assert.equal(parsePageLocation(hash), null, hash);
 });
+
+test("a library's book or chapter opened in the editor (#329): edit only alone", () => {
+  const pageId = "11111111-1111-4111-8111-111111111111";
+  const rowId = "22222222-2222-4222-8222-222222222222";
+  assert.deepEqual(parsePageLocation(`#page=${pageId}&edit=1`), { pageId, edit: true });
+  assert.equal(pageLocationHash({ pageId, edit: true }), `#page=${pageId}&edit=1`);
+  // With a record, block or view it is a link into the page: no edit.
+  assert.equal(pageLocationHash({ pageId, rowId, edit: true }), `#page=${pageId}&row=${rowId}`);
+  for (const bad of [`#page=${pageId}&edit=0`, `#page=${pageId}&edit=1&row=${rowId}`, `#page=${pageId}&edit=1&block=b1`, `#page=${pageId}&edit=1&edit=1`])
+    assert.equal(parsePageLocation(bad), null, bad);
+});

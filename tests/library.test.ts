@@ -13,7 +13,7 @@ const { id, run, one } = await import("../lib/db");
 const { command, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { spaceLibrary } = await import("../lib/library-server");
-const { bookNavigation, bookOf, continueReading, libraryBooks, libraryHash, parseLibraryHash } = await import("../lib/library");
+const { bookNavigation, bookOf, continueReading, firstPage, libraryBooks, libraryHash, overviewHash, parseLibraryHash } = await import("../lib/library");
 const { isSidebarKey, pruneSidebarKeys } = await import("../lib/sidebar-folds");
 const { stepOf } = await import("../lib/history-nav");
 
@@ -77,8 +77,9 @@ test("journal days stay out of the library", () => {
   assert.equal(bookNavigation([page("day", null, 1, { journal_date: "2026-11-01" })], S, "day"), null);
 });
 
-test("previous and next follow the reading order within the book", () => {
-  const order = ["manual", "install", "a", "b", "b1", "use"];
+test("previous and next follow the reading order: the pages, not the book's and chapters' overviews", () => {
+  // manual and its chapters install and use are documents: directories.
+  const order = ["a", "b", "b1"];
   order.forEach((pageId, i) => {
     const nav = bookNavigation(tree, S, pageId)!;
     assert.equal(nav.book.id, "manual");
@@ -89,13 +90,43 @@ test("previous and next follow the reading order within the book", () => {
   });
   // The way down: book › chapter › page › sub-page.
   assert.deepEqual(bookNavigation(tree, S, "b1")!.path.map((p) => p.id), ["manual", "install", "b", "b1"]);
-  // A book of its own page only, a page of another space, a trashed page.
-  const notes = bookNavigation(tree, S, "notes")!;
-  assert.equal(notes.previous, null);
-  assert.equal(notes.next, null);
+  // A book's or chapter's own text in the editor: the way, no place.
+  for (const pageId of ["manual", "install", "use", "notes"]) {
+    const nav = bookNavigation(tree, S, pageId)!;
+    assert.equal(nav.position, 0, pageId);
+    assert.equal(nav.previous, null);
+    assert.equal(nav.next, null);
+  }
+  assert.deepEqual(bookNavigation(tree, S, "install")!.path.map((p) => p.id), ["manual", "install"]);
+  // A book or chapter of another kind is read as a page.
+  const mixed = [page("db", null, 1, { kind: "database" }), page("board", "db", 1, { kind: "whiteboard" }), page("p", "board", 1)];
+  assert.deepEqual(["db", "board", "p"].map((id) => bookNavigation(mixed, S, id)!.position), [1, 2, 3]);
   assert.equal(bookNavigation(tree, S, "elsewhere"), null);
   assert.equal(bookNavigation(tree, S, "gone"), null);
   assert.equal(bookOf(tree, S, "b1")?.id, "manual");
+});
+
+test("what opens as overview and what in the editor; where reading starts", () => {
+  const spaces = [{ id: S, library: 1 }];
+  // Books and chapters (documents) open as their overview.
+  assert.equal(overviewHash(tree, spaces, "manual"), libraryHash(S, "manual"));
+  assert.equal(overviewHash(tree, spaces, "notes"), libraryHash(S, "notes"));
+  assert.equal(overviewHash(tree, spaces, "install"), libraryHash(S, "manual", "install"));
+  assert.equal(overviewHash(tree, spaces, "use"), libraryHash(S, "manual", "use"));
+  // Pages further down, other kinds, trashed pages, other spaces: the page itself.
+  for (const id of ["a", "b", "b1", "gone", "elsewhere", "unknown"]) assert.equal(overviewHash(tree, spaces, id), null, id);
+  assert.equal(overviewHash([page("db", null, 1, { kind: "database" })], spaces, "db"), null);
+  assert.equal(overviewHash([page("db", null, 1), page("board", "db", 1, { kind: "whiteboard" })], spaces, "board"), null);
+  // Not a library (or switched off, or in the trash): unchanged.
+  assert.equal(overviewHash(tree, [{ id: S, library: 0 }], "manual"), null);
+  assert.equal(overviewHash(tree, [{ id: S, library: 1, deleted_at: "2026-11-01" }], "manual"), null);
+  assert.equal(overviewHash(tree, [], "manual"), null);
+  // "Lesen beginnen": the first page of the book or chapter.
+  assert.equal(firstPage(tree, S, "manual")?.id, "a");
+  assert.equal(firstPage(tree, S, "install")?.id, "a");
+  assert.equal(firstPage(tree, S, "use"), null);
+  assert.equal(firstPage(tree, S, "notes"), null);
+  assert.equal(firstPage(tree, S, "unknown"), null);
 });
 
 test("a parent cycle does not hang", () => {
@@ -112,16 +143,21 @@ test("Weiterlesen: the page of the book visited last", () => {
     { pageId: "elsewhere", seenAt: 90 },
   ];
   assert.equal(continueReading(tree, S, "manual", visits)?.id, "b1");
-  assert.equal(continueReading(tree, S, "notes", visits)?.id, "notes");
-  assert.equal(continueReading(tree, S, "manual", []), null);
+  // A book's own text edited is not reading.
+  assert.equal(continueReading(tree, S, "notes", visits), null);
+  assert.equal(continueReading(tree, S, "manual", [{ pageId: "install", seenAt: 99 }]), null);  assert.equal(continueReading(tree, S, "manual", []), null);
   assert.equal(continueReading(tree, S, "unknown", visits), null);
 });
 
 test("addresses: #library/<space>[/<book>], history steps and the sidebar key", () => {
   const book = "33333333-3333-4333-8333-333333333333";
-  assert.deepEqual(parseLibraryHash(libraryHash(S)), { spaceId: S, bookId: null });
-  assert.deepEqual(parseLibraryHash(libraryHash(S, book)), { spaceId: S, bookId: book });
-  for (const bad of ["library", "library/x", `library/${S}/x`, `library/${S}/${book}/${book}`, `collection/${S}`])
+  const chapter = "44444444-4444-4444-8444-444444444444";
+  assert.deepEqual(parseLibraryHash(libraryHash(S)), { spaceId: S, bookId: null, chapterId: null });
+  assert.deepEqual(parseLibraryHash(libraryHash(S, book)), { spaceId: S, bookId: book, chapterId: null });
+  assert.deepEqual(parseLibraryHash(libraryHash(S, book, chapter)), { spaceId: S, bookId: book, chapterId: chapter });
+  assert.equal(libraryHash(S, null, chapter), `library/${S}`);
+  assert.equal(stepOf(`#library/${S}/${book}/${chapter}`), `library/${S}/${book}/${chapter}`);
+  for (const bad of ["library", "library/x", `library/${S}/x`, `library/${S}/${book}/x`, `library/${S}/${book}/${chapter}/${book}`, `collection/${S}`])
     assert.equal(parseLibraryHash(bad), null, bad);
   assert.equal(stepOf(`#library/${S.toUpperCase()}/${book}`), `library/${S}/${book}`);
   assert.equal(stepOf(`#library/${S}/nope`), null);
@@ -178,6 +214,28 @@ test("space.update stores the library setting, keeps it when not sent and refuse
   // The bootstrap carries it to the sidebar.
   await update(f.owner, { library: true });
   assert.equal((await bootstrap(f.owner, f.wid)).spaces.find((s) => s.id === f.sid)?.library, 1);
+});
+
+test("a new book, chapter and page from the library land at the end of their level", async () => {
+  const f = await fixture();
+  const create = async (title: string, parentId: string | null) =>
+    (await act(f.owner, { action: "page.create", workspaceId: f.wid, spaceId: f.sid, parentId, title, kind: "document" })).id as string;
+  const pages = async () => (await bootstrap(f.owner, f.wid)).pages;
+  // "Neues Buch": a page at the top of the space, after the others.
+  const book = await create("Second book", null);
+  // "Neues Kapitel": below the book; "Neue Seite": below the chapter.
+  const chapter = await create("Getting started", f.guide);
+  const pageId = await create("First steps", f.setup);
+  const books = libraryBooks(await pages(), f.sid);
+  assert.deepEqual(books.map((b) => b.page.id), [f.guide, book]);
+  assert.deepEqual(books[0].chapters.map((c) => c.page.id), [f.setup, f.internal, chapter]);
+  assert.deepEqual(books[0].chapters[0].pages.map((e) => e.page.id), [f.linux, pageId]);
+  // The new book and chapter open as overviews, the page in the editor.
+  await act(f.owner, { action: "space.update", spaceId: f.sid, name: "Handbook", private: true, library: true });
+  const boot = await bootstrap(f.owner, f.wid);
+  assert.equal(overviewHash(boot.pages, boot.spaces, book), libraryHash(f.sid, book));
+  assert.equal(overviewHash(boot.pages, boot.spaces, chapter), libraryHash(f.sid, f.guide, chapter));
+  assert.equal(overviewHash(boot.pages, boot.spaces, pageId), null);
 });
 
 test("the server's library lists only pages the person may read", async () => {

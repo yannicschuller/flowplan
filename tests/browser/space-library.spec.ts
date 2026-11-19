@@ -106,27 +106,31 @@ test("a space switched to a library: books, contents, reading with previous and 
   await expect(page.getByRole("button", { name: "Neues Kapitel" })).toBeVisible();
   await shot(page, "book", mobile);
 
-  // Reading: the book's own page first, then its pages in order.
+  // Reading: the book and its chapters are overviews, reading starts with
+  // the first page (#329 follow-up); Einrichtung is a chapter without pages.
   await page.getByRole("link", { name: "Lesen beginnen" }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.install}`));
+  await expect(page).toHaveURL(new RegExp(`#page=${f.requirements}`));
   const nav = page.getByRole("navigation", { name: "Im Buch" });
   await expect(nav).toBeVisible();
-  if (!mobile) await expect(nav).toContainText("Seite 1 von 5");
+  if (!mobile) await expect(nav).toContainText("Seite 1 von 2");
   await expect(nav.getByRole("link", { name: /Vorherige Seite/ })).toHaveCount(0);
-  await nav.getByRole("link", { name: "Nächste Seite: Vorbereitung" }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.prepare}`));
-  await nav.getByRole("link", { name: "Nächste Seite: Systemvoraussetzungen" }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.requirements}`));
   // book › chapter above the page.
   await expect(nav.getByRole("link", { name: "Installation", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Vorbereitung", exact: true })).toBeVisible();
+  await nav.getByRole("link", { name: `Nächste Seite: Download ${tag}` }).click();
+  await expect(page).toHaveURL(new RegExp(`#page=${f.download}`));
   await shot(page, "page", mobile);
-  await nav.getByRole("link", { name: "Vorherige Seite: Vorbereitung" }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.prepare}`));
+  await nav.getByRole("link", { name: "Vorherige Seite: Systemvoraussetzungen" }).click();
+  await expect(page).toHaveURL(new RegExp(`#page=${f.requirements}`));
   // At the end of the page: on to the next one by name.
   const next = page.getByRole("navigation", { name: "Weiterlesen" });
-  await next.getByRole("link", { name: /Weiter.*Systemvoraussetzungen/ }).click();
-  await expect(page).toHaveURL(new RegExp(`#page=${f.requirements}`));
+  await next.getByRole("link", { name: new RegExp(`Weiter.*Download ${tag}`) }).click();
+  await expect(page).toHaveURL(new RegExp(`#page=${f.download}`));
+  // The chapter in the way: its overview with its pages.
+  await nav.getByRole("link", { name: "Vorbereitung", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#library/${f.spaceId}/${f.install}/${f.prepare}$`));
+  await expect(page.getByRole("heading", { name: "Vorbereitung", level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Seiten des Kapitels" }).getByRole("link")).toHaveText(["Systemvoraussetzungen", `Download ${tag}`]);
   // The sidebar's tree stays folded while reading in the library.
   await openNavigation(page, mobile);
   await expect(section.getByRole("treeitem", { name: /Installation/ })).toHaveCount(0);
@@ -134,7 +138,7 @@ test("a space switched to a library: books, contents, reading with previous and 
 
   // Back to the contents: "Weiterlesen" leads to the page read last.
   await page.goto(`/#library/${f.spaceId}/${f.install}`);
-  await expect(page.getByRole("link", { name: "Weiterlesen: Systemvoraussetzungen" })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Weiterlesen: Download ${tag}` })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -161,7 +165,7 @@ test("the library's search stays in the space; a new book comes from the overvie
 
   // "Neues Buch": a page at the top of the space.
   await page.getByRole("button", { name: "Neues Buch" }).click();
-  const create = page.getByRole("dialog");
+  const create = page.getByRole("dialog", { name: "Neues Buch" });
   await expect(create).toBeVisible();
   await page.keyboard.press("Escape");
 
