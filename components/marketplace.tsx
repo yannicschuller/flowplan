@@ -332,7 +332,11 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
         ? t(`${n.count} Verweise auf Seiten, Personen oder Zugänge dieses Arbeitsbereichs werden beim Import neu zugeordnet oder geleert. Namen von Personen und die Adresse dieser Instanz kommen nicht mit.`, `${n.count} references to pages, people or credentials of this workspace are matched again or cleared on import. Names of people and the address of this instance are not included.`)
         : n.code === "fonts"
           ? t(`Enthält ${n.count} hochgeladene Schriften – veröffentliche nur Schriften, deren Lizenz das erlaubt.`, `Contains ${n.count} uploaded typefaces – only publish typefaces whose licence allows it.`)
-          : t("Zugangsdaten, Läufe und Webhook-Adressen kommen nie mit.", "Credentials, runs and webhook addresses are never included.");
+          : n.code === "study-never"
+            ? t("Lernstände und Wiederholungen kommen nie mit: Wer den Stapel übernimmt, beginnt mit neuen Karten.", "Learning progress and reviews are never included: whoever takes over the deck starts with new cards.")
+            : n.code === "people-cleared"
+              ? t(`${n.count} Angaben zu Personen (Personen-Eigenschaften, Erwähnungen) bleiben hier.`, `${n.count} details about people (person properties, mentions) stay here.`)
+              : t("Zugangsdaten, Läufe und Webhook-Adressen kommen nie mit.", "Credentials, runs and webhook addresses are never included.");
   return (
     <Modal open onClose={onClose} title={t("Im Marketplace veröffentlichen", "Publish to the marketplace")} subtitle={kindLabel(source.kind, t)} sheet className="marketplace-dialog">
       {loadError ? (
@@ -572,6 +576,7 @@ type Preview = {
     fields?: number;
     views?: number;
     rows?: number;
+    cards?: number;
     items?: number;
     dropped?: number;
     accent?: string | null;
@@ -797,6 +802,8 @@ function ImportDialog({
       ? c.files
         ? t(`Eine Dokumentvorlage „${c.name}“ mit ${c.files} Anhängen in der Vorlagengalerie.`, `A document template “${c.name}” with ${c.files} attachments in the template gallery.`)
         : t(`Eine Dokumentvorlage „${c.name}“ in der Vorlagengalerie.`, `A document template “${c.name}” in the template gallery.`)
+      : preview.kind === "database" && c.cards !== undefined
+        ? t(`Ein Lernkarten-Stapel „${c.name}“ mit ${c.cards} Karten aus ${c.rows} Einträgen – alle neu für dich, ohne Lernstände.`, `A flashcard deck “${c.name}” with ${c.cards} cards from ${c.rows} records – all new for you, without learning progress.`)
       : preview.kind === "database"
         ? t(`Eine Datenbankvorlage „${c.name}“ mit ${c.fields} Eigenschaften, ${c.views} Ansichten und ${c.rows} Beispieleinträgen.`, `A database template “${c.name}” with ${c.fields} properties, ${c.views} views and ${c.rows} sample records.`)
         : preview.kind === "whiteboard"

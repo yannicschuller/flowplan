@@ -32,6 +32,8 @@ const browser = await launch();
 const ctx = await context(browser, { who: "mia" });
 const page = await ctx.newPage();
 await cmd(page, { action: "profile.onboarded" });
+// The team signs up itself (without e-mail an invitation alone opens no sign-up).
+await cmd(page, { action: "admin.settings", settings: { allowSignup: true } });
 let boot = await get(page, "bootstrap");
 const wid = boot.workspace.id;
 const sid = boot.spaces[0].id;

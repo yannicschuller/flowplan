@@ -7,6 +7,9 @@
 //                    payload, license?, author?, marketplace?}  (≤ 64 KB)
 //   payload/…       the kind's own exchange format, unchanged:
 //                     document, database  payload/template.zip  (flowplan-template-1, lib/template-exchange.ts)
+//                                         database: without what is about people (lib/marketplace-public-template.ts);
+//                                         a flashcard deck + payload/study-meta.json (numbers and sample cards
+//                                           for the marketplace's preview, lib/marketplace-study-meta.ts)
 //                     workflow            payload/workflow.json (flowplan.workflow, lib/workflows/portable.ts)
 //                                         + payload/workflow-meta.json (names, symbols and gaps for the
 //                                           marketplace's viewer, lib/marketplace-workflow-meta.ts)
@@ -23,7 +26,7 @@
 // checked again here, and the import of each kind validates once more.
 import { z } from "zod";
 import { HttpError } from "./auth";
-import { audit } from "./db";
+import { all, audit } from "./db";
 import { isGuest, pageRole, requireMember } from "./permissions";
 import { readZip, writeZip } from "./archive";
 import { templateCategoryIds } from "./template-categories";
@@ -41,6 +44,8 @@ import { AUTO_LINK_LIMITS, autoLinkRuleSchema, ruleProblems } from "./auto-link"
 import { packageMinVersion } from "./marketplace-config";
 import { referenceGaps, workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
 import { MAX_PACKAGE_BYTES, packageFileName, packageTitle } from "./marketplace-handover";
+import { STUDY_META_PATH, studyMetaBytes, templateStudyMeta } from "./marketplace-study-meta";
+import { publicDatabaseContent } from "./marketplace-public-template";
 import type { Identity } from "./types";
 
 export const MARKETPLACE_FORMAT = "flowplan-marketplace-1";
@@ -137,7 +142,7 @@ function checkPreviews(previews: Buffer[]) {
 
 export type PackageSource = { kind: MarketplaceKind; workspaceId: string; id?: string | null };
 // What the publish dialog shows before building: defaults and what stays here.
-export type PackageNote = { code: "images-dropped" | "references-cleared" | "fonts" | "secrets-never"; count?: number };
+export type PackageNote = { code: "images-dropped" | "references-cleared" | "fonts" | "secrets-never" | "people-cleared" | "study-never"; count?: number };
 type Payload = { kind: MarketplaceKind; title: string; category: string; path: string; entries: [string, Buffer][]; notes: PackageNote[] };
 
 // Guests never publish; each kind checks its own permission.
@@ -154,7 +159,17 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
       if (template.workspace_id !== wid || (template.created_by !== user.id && role !== "owner"))
         throw fail("Nur der Ersteller oder ein Besitzer darf die Vorlage veröffentlichen.", 403);
       const exported = await exportTemplate(user, wid, template.id);
-      return { kind: template.kind as MarketplaceKind, title: template.name, category: template.category || "other", path: "payload/template.zip", entries: [["payload/template.zip", exported.zip]], notes: [] };
+      if (template.kind !== "database")
+        return { kind: template.kind as MarketplaceKind, title: template.name, category: template.category || "other", path: "payload/template.zip", entries: [["payload/template.zip", exported.zip]], notes: [] };
+      const pub = await publicDatabaseZip(exported.zip, wid);
+      return {
+        kind: "database",
+        title: template.name,
+        category: template.category || "other",
+        path: "payload/template.zip",
+        entries: [["payload/template.zip", pub.zip], ...pub.study],
+        notes: [...(pub.study.length ? [{ code: "study-never" as const }] : []), ...(pub.cleared ? [{ code: "people-cleared" as const, count: pub.cleared }] : [])],
+      };
     }
     case "workflow": {
       const page = await requireWorkflow(user, z.uuid().parse(source.id));
@@ -221,6 +236,22 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
   }
 }
 
+// A database template for the marketplace: its content without what is
+// about the workspace's people (lib/marketplace-public-template.ts), and for
+// a flashcard deck the preview's study-meta.json (no learning states – they
+// never are in a template).
+async function publicDatabaseZip(zip: Buffer, workspaceId: string) {
+  const inner = await readZip(zip, { foreign: true, maxEntries: 202 });
+  const manifest = JSON.parse(inner.get("template.json")!.toString("utf8")) as { payload: string; kind: string; files?: unknown };
+  const members = await all<{ id: string; email: string }>("SELECT u.id,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?", workspaceId);
+  const people = { ids: new Set(members.map((m) => m.id)), emails: new Set(members.map((m) => (m.email || "").toLowerCase()).filter(Boolean)) };
+  const stripped = publicDatabaseContent(JSON.parse(manifest.payload), people);
+  const next = { ...manifest, payload: JSON.stringify(stripped.content) };
+  inner.set("template.json", Buffer.from(JSON.stringify(next)));
+  const meta = templateStudyMeta(next);
+  return { zip: await writeZip(inner), cleared: stripped.cleared, study: meta ? ([[STUDY_META_PATH, studyMetaBytes(meta)]] as [string, Buffer][]) : [] };
+}
+
 // A workflow export without what identifies this instance or its people:
 // no source (instance address, workspace), no names of people; ids stay so
 // an import can match by title where one is left.
@@ -282,7 +313,7 @@ export async function buildPackage(user: Identity, source: PackageSource, rawMet
 
 export type LookFont = { id: string; name: string; data: Buffer };
 export type ParsedPayload =
-  | { kind: "document" | "database"; zip: Buffer; name: string; files: number; fields?: number; views?: number; rows?: number }
+  | { kind: "document" | "database"; zip: Buffer; name: string; files: number; fields?: number; views?: number; rows?: number; cards?: number }
   | { kind: "workflow"; data: WorkflowExport; gaps: { id: string; kind: string; label: string; optional?: boolean }[]; gapNodes?: string[] }
   | { kind: "whiteboard"; name: string; items: unknown[]; dropped: number }
   | { kind: "appearance"; theme: z.infer<typeof workspaceThemeSchema>; fonts: LookFont[] }
@@ -353,12 +384,15 @@ async function parsePayload(manifest: PackageManifest, bytes: Buffer, entries: M
       if (!content || typeof content !== "object") throw fail("Vorlageninhalt ist beschädigt.");
       if (manifest.kind === "document" && typeof content.html !== "string") throw fail("Vorlageninhalt ist ungültig.");
       if (manifest.kind === "database" && (!Array.isArray(content.database?.fields) || !Array.isArray(content.database?.views))) throw fail("Vorlageninhalt ist ungültig.");
+      // A flashcard deck: its cards, all new for whoever takes it over.
+      const deck = manifest.kind === "database" ? templateStudyMeta(t) : null;
       return {
         kind: manifest.kind,
         zip: bytes,
         name: t.name.trim().slice(0, 200),
         files: Array.isArray(t.files) ? t.files.length : 0,
         ...(manifest.kind === "database" ? { fields: content.database!.fields!.length, views: content.database!.views!.length, rows: Array.isArray(content.rows) ? content.rows.length : 0 } : {}),
+        ...(deck ? { cards: deck.cards } : {}),
       };
     }
     case "workflow": {
@@ -490,7 +524,7 @@ export function packagePreview(pkg: ParsedPackage) {
     switch (p.kind) {
       case "document":
       case "database":
-        return { name: p.name, files: p.files, fields: p.fields, views: p.views, rows: p.rows };
+        return { name: p.name, files: p.files, fields: p.fields, views: p.views, rows: p.rows, cards: p.cards };
       case "workflow":
         return { name: p.data.title || m.title, workflow: { ...workflowSummary(p.data), gaps: p.gaps.map((g) => g.label) } };
       case "whiteboard":

@@ -2320,7 +2320,7 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
 
 **Offen**
 
-- Kartenvorschau auf der Marketplace-Seite (`payload/study-meta.json`) und
+- Kartenvorschau auf der Marketplace-Seite (`payload/study-meta.json`) – gebaut in #345 (§26);
   eine eigene Kategorie „Lernen“ (Vertragsänderung, §8.4) – später.
 
 ---
@@ -2593,3 +2593,64 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   Tag.“, Linie „Karten pro Tag“ über 70–95 % mit Markierung „jetzt“ und
   „empfohlen“ (`LineChart` `marks`), Tabelle; „Zeit pro Tag (Minuten,
   optional)“ mit „Neu berechnen“ (nur die Simulation im Worker).
+
+---
+
+## 26. Entscheidungen bei #345 (Stapel im Marketplace, Kartenvorschau)
+
+**Was ein veröffentlichter Stapel mitnimmt (Entscheidung des Maintainers)**
+
+- Eigenschaften, Ansichten, Kartenzuordnung (`settings.study`, Kartentypen),
+  Einträge mit ihren Dokumenten, Bildern und Masken (`data-occlusion`).
+- **Nie**: Lernstände (FSRS, `card_states`, `review_log` – gehörten nie in
+  eine Vorlage, ein Test hält das fest) und **Personenbezogenes**: wer
+  einen Eintrag angelegt oder geändert hat, wann, Ticketnummer, Zugriff
+  (die Einträge tragen nur `id`, `cells`, `content`, `position`), Werte von
+  Personen-Eigenschaften (`person`, `created_by`, `updated_by` und die
+  Zeitstempel), Erwähnungen in Dokumenten (`<span data-mention>` fällt
+  ganz weg), Kommentar-Anker, Seiteneigenschaften vom Typ Person, und
+  jede andere Zeichenkette, die genau die Id oder E-Mail-Adresse eines
+  Mitglieds des Arbeitsbereichs ist (Filter, Formulare …).
+  `lib/marketplace-public-template.ts`, beim Bau jedes **Datenbank**-Pakets
+  (nicht nur Stapel – die Werte nützen in einer anderen Instanz nichts).
+  Der Dialog nennt es („N Angaben zu Personen … bleiben hier“, „Lernstände
+  und Wiederholungen kommen nie mit …“).
+- Installieren: wie jede Datenbankvorlage – neue Einträge (neue Ids, die
+  importierende Person als Ersteller), Bilder als neue Dateien; jede Karte
+  ist neu (kein `card_states`), Test `tests/marketplace-study.test.ts`.
+- Grenzen: die bestehenden (Paket 25 MB, Anhänge 10 MB je Datei).
+
+**Vertrag (gemeinsam mit flowplan-marketplace und flowplan-admin)**
+
+- Zusätzlich, nicht ersetzend: `kind` bleibt `database`, die Vorlage bleibt
+  `payload/template.zip` (`flowplan-template-1`). Neu ist nur
+  `payload/study-meta.json` (`flowplan.study-meta`, Version 1) neben ihr:
+  Anzahl Einträge und Karten, Karten je Typ, `reverse` und bis zu fünf
+  Beispielkarten (je Typ zuerst eine; bei Bildverdeckung eine mit
+  mitgeliefertem Bild) als **reiner Text** in „Runs“ (`{text, gap?}`; eine
+  Lücke vorne versteckt, hinten aufgedeckt), Antwortoptionen bei Multiple
+  Choice (sortiert), Masken als Anteile (0–1, `asked` für die gefragte) und
+  das Bild als Verweis auf einen Anhang der Vorlage (`files/<id>` in
+  `template.zip`, nur PNG/JPEG/WebP; SVG aus `public/` wie bei den
+  eingebauten Stapeln geht nicht mit – die Masken schon). ≤ 64 KB.
+  `lib/marketplace-study-meta.ts`; offizielle Stapel bekommen sie auch.
+- Kompatibilität: ältere Flowplan-Versionen lesen die Datei nicht und
+  installieren den Stapel aus `template.zip` wie bisher (ab 0.10.0 mit
+  Zuordnung und Lernen-Ansicht; davor lehnt der Import die Ansicht `study`
+  mit „Vorlageninhalt ist ungültig.“ ab – klarer Fehler; der Marketplace
+  warnt zusätzlich über `minVersion`). Ältere Marketplaces behalten die
+  Datei als Teil der Nutzlast und zeigen nur keine Vorschau; Pakete ohne
+  die Datei (ältere Flowplans) zeigen dort keine Kartenvorschau.
+- Marketplace: prüft und bereinigt die Datei (Schema, Längen, unsichtbare
+  Zeichen, Masken im Bild, Bild = Anhang der Vorlage und wirklich PNG/
+  JPEG/WebP ≤ 2 MB), zeigt die Karten auf der Vorlagenseite und in der
+  Einreichungsvorschau (React-Text, SVG-Formen, keine Stil-Attribute),
+  Bilder über `/api/templates/<slug>/cards/<n>`; Admin-API: `study` im
+  Detail einer Einreichung, Bild über `…/submissions/<id>/cards/<n>`;
+  flowplan-admin zeigt die Karten in der Prüfung.
+- Import-Dialog in Flowplan: „Ein Lernkarten-Stapel „…“ mit N Karten aus M
+  Einträgen – alle neu für dich, ohne Lernstände.“ (`creates.cards`).
+
+**Offen**
+
+- Eigene Kategorie „Lernen“ (weiter Schlagwort „Lernkarten“).

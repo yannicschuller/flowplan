@@ -11,6 +11,7 @@
 set -eu
 cd "$(dirname "$0")/../.."
 node scripts/readme-media/seed.mjs
+node scripts/readme-media/study.mjs
 node scripts/readme-media/screenshots.mjs
 python3 scripts/readme-media/optimise.py
 node scripts/readme-media/hero.mjs

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MEDIA_DIR/shots/*.png -> .github/assets/readme/screenshot-*.png
+"""MEDIA_DIR/shots/*.png -> .github/assets/readme/screenshot-*.png (and study-*.webp)
 
 Scales the desktop shots to 1600 px, puts the two phone shots side by side
 on one 16:10 canvas, and quantises everything to 256 colours (Pillow; UI
@@ -40,3 +40,15 @@ for scheme in ("light", "dark"):
         canvas.paste(p, (x, 50), mask)
         x += p.width + gap
     save(canvas, OUT / f"screenshot-phone-{scheme}.png")
+
+# Flashcards (study.mjs + screenshots.mjs): light only, as WebP like the
+# other single pictures of the README (1600 px wide).
+for name in ("study-focus", "study-overview", "study-occlusion"):
+    path = DIR / f"{name}-light.png"
+    if not path.exists():
+        continue
+    img = Image.open(path).convert("RGB")
+    img = img.resize((WIDTH, round(img.height * WIDTH / img.width)), Image.Resampling.LANCZOS)
+    out = OUT / f"{name}.webp"
+    img.save(out, "WEBP", quality=82, method=6)
+    print(out.name, out.stat().st_size // 1024, "KB")

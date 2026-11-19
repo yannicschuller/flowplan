@@ -1,6 +1,7 @@
 // README screenshots: document, database, whiteboard and phone, each in
-// light and dark, as PNGs in MEDIA_DIR/shots (then optimise.sh copies them
-// to .github/assets/readme/). Needs the content from seed.mjs.
+// light and dark, and the flashcard pictures (light only), as PNGs in
+// MEDIA_DIR/shots (then optimise.py copies them to .github/assets/readme/).
+// Needs the content from seed.mjs (and study.mjs for the flashcards).
 //
 //   MEDIA_URL=http://127.0.0.1:3583 node scripts/readme-media/screenshots.mjs [only]
 import { readFileSync, mkdirSync } from "node:fs";
@@ -8,6 +9,21 @@ import { join } from "node:path";
 import { launch, context, open, DIR, sleep } from "./lib.mjs";
 
 const ids = JSON.parse(readFileSync(join(DIR, "ids.json"), "utf8"));
+// The flashcard decks of study.mjs (optional: without them no study shots).
+const decks = (() => {
+  try {
+    return JSON.parse(readFileSync(join(DIR, "study-ids.json"), "utf8"));
+  } catch {
+    return null;
+  }
+})();
+// Focus mode of a deck's first study view, its first card shown.
+const focus = async (page, pageId) => {
+  await open(page, ids.db);
+  await page.evaluate((h) => (location.hash = h), `#page=${pageId}&view=study&study=1`);
+  await page.getByRole("button", { name: /Show answer/ }).first().waitFor();
+  await sleep(1500);
+};
 const out = join(DIR, "shots");
 mkdirSync(out, { recursive: true });
 const only = process.argv[2];
@@ -55,12 +71,35 @@ const shots = {
     await page.locator(".ProseMirror").first().waitFor();
     await sleep(2500);
   },
+  // Flashcards (light only, like the other single README pictures): a cloze
+  // card answered in focus mode, the #study overview, image occlusion.
+  ...(decks
+    ? {
+        async "study-focus"(page) {
+          await focus(page, decks.cells);
+        },
+        async "study-overview"(page) {
+          await open(page, ids.db);
+          await page.evaluate(() => (location.hash = "#study"));
+          await page.getByText("Cell biology").first().waitFor();
+          await sleep(2500);
+        },
+        async "study-occlusion"(page) {
+          // Answered: the asked planet uncovered and named, the others still masked.
+          await focus(page, decks.planets);
+          await page.keyboard.press("Space");
+          await page.getByRole("button", { name: /Good/ }).first().waitFor();
+          await sleep(1200);
+        },
+      }
+    : {}),
 };
+const lightOnly = (name) => name.startsWith("study-");
 
 const browser = await launch();
 for (const [name, run] of Object.entries(shots)) {
   if (only && only !== name) continue;
-  for (const scheme of ["light", "dark"]) {
+  for (const scheme of lightOnly(name) ? ["light"] : ["light", "dark"]) {
     const phone = name.startsWith("phone");
     const ctx = await context(browser, {
       who: "mia",

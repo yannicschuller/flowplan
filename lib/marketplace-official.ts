@@ -14,8 +14,8 @@
 // description. Licence CC0-1.0.
 // Flashcard decks (a card mapping in `settings.study`) bring it along and
 // carry the tag "Lernkarten" in the category "knowledge" or "personal" – no
-// category of their own (docs/specs/flashcards.md §8.4: no change of the
-// contract with the marketplace).
+// category of their own –, plus payload/study-meta.json with the numbers and
+// a few sample cards for the marketplace's preview (lib/marketplace-study-meta.ts).
 // Workflows keep their gaps as "$ask:<gap>" tokens plus a `gaps` list
 // (labels); the import clears what is still open and lists it
 // (lib/marketplace-package.ts). Next to it payload/workflow-meta.json
@@ -38,6 +38,7 @@ import { BOARD_TEMPLATE_FORMAT, cleanTemplateItems, portableTemplateItems } from
 import { LINK_RULES_FORMAT, LOOK_FORMAT, MARKETPLACE_FORMAT, type MarketplaceKind } from "./marketplace-package";
 import { packageMinVersion } from "./marketplace-config";
 import { workflowMeta, workflowMetaBytes, WORKFLOW_META_PATH } from "./marketplace-workflow-meta";
+import { STUDY_META_PATH, studyMetaBytes, templateStudyMeta } from "./marketplace-study-meta";
 import { templateCategoryLabels, type TemplateCategory } from "./template-categories";
 import { extraOfficial, type ExtraItem } from "./marketplace-official-extra";
 
@@ -117,8 +118,9 @@ async function envelope(m: Meta, version: string, previews: Map<string, Buffer>)
   return { file: `${file}.flowplan-template`, kind: m.kind, id: m.id, title: m.title, bytes };
 }
 
-// A catalog template as flowplan-template-1 (what "Als Vorlage speichern" would write).
-async function catalogPayload(key: string, t: CatalogTemplate) {
+// A catalog template as flowplan-template-1 (what "Als Vorlage speichern" would write),
+// a flashcard deck with the preview's payload/study-meta.json next to it.
+async function catalogPayload(key: string, t: CatalogTemplate): Promise<[string, Buffer][]> {
   const study = t.settings?.study;
   const content =
     t.kind === "document"
@@ -130,7 +132,8 @@ async function catalogPayload(key: string, t: CatalogTemplate) {
           icon: t.icon,
         };
   const manifest = { format: TEMPLATE_FORMAT, name: t.name, kind: t.kind, category: t.category, payload: JSON.stringify(content), files: [] };
-  return await stableZip([["template.json", Buffer.from(JSON.stringify(manifest))]]);
+  const meta = templateStudyMeta(manifest);
+  return [["payload/template.zip", await stableZip([["template.json", Buffer.from(JSON.stringify(manifest))]])], ...(meta ? ([[STUDY_META_PATH, studyMetaBytes(meta)]] as [string, Buffer][]) : [])];
 }
 
 const boardCategory: Record<GalleryCategory, Exclude<TemplateCategory, "">> = { retro: "meetings", meetings: "meetings", planning: "planning", strategy: "planning", ideas: "other", diagrams: "knowledge" };
@@ -161,7 +164,7 @@ async function extraEntries(x: ExtraItem): Promise<{ payload: string; entries: [
         x.kind === "document"
           ? { kind: "document", name: x.title.de, category: x.category, description: x.summary.de, icon: x.icon, html: x.html }
           : { kind: "database", name: x.title.de, category: x.category, description: x.summary.de, icon: x.icon, fields: x.fields, views: x.views, rows: x.rows };
-      return { payload: "payload/template.zip", entries: [["payload/template.zip", await catalogPayload(key, t)]] };
+      return { payload: "payload/template.zip", entries: await catalogPayload(key, t) };
     }
     case "whiteboard": {
       const items = portableTemplateItems(cleanTemplateItems(x.items)).items;
@@ -205,7 +208,7 @@ export async function officialPackages(version: string, previews: Map<string, Bu
           category: t.category,
           tags: ["Flowplan", deLabels[t.category], t.kind === "database" ? "Datenbank" : "Dokument", ...(t.settings?.study ? [FLASHCARD_TAG] : [])],
           payload: "payload/template.zip",
-          entries: [["payload/template.zip", await catalogPayload(key, t)]],
+          entries: await catalogPayload(key, t),
         },
         version,
         previews,

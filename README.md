@@ -309,6 +309,19 @@ Table, board, calendar, timeline, gallery, list, feed, chart, form and sprint vi
 
 Turn any database into a deck: Flowplan plans the reviews with [FSRS](https://github.com/open-spaced-repetition), the algorithm Anki uses, and every person keeps their own learning state.
 
+<p align="center"><img src=".github/assets/readme/study-focus.webp" alt="Focus mode of the deck Cell biology: a cloze card – “[…] break down waste with digestive enzymes.” – with the counts of new, learning and due cards and a Show answer button" width="100%"></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/readme/study-overview.webp" alt="The study overview: a 22-day streak, today's 19 cards across three decks with a Study button each, and statistics of all decks"></td>
+    <td width="50%"><img src=".github/assets/readme/study-occlusion.webp" alt="Image occlusion: four planets covered by masks, the asked one uncovered as Earth after showing the answer, with the rating buttons below"></td>
+  </tr>
+  <tr>
+    <td><b>Every deck at a glance</b> – what is due today, your streak and true retention.</td>
+    <td><b>Image occlusion</b> – cover parts of a picture and learn them one by one.</td>
+  </tr>
+</table>
+
 - **Card types** – front and back (also reversed), cloze in text and documents, type the answer, multiple choice and image occlusion with a mask editor
 - **Focus mode** – keys or swipes, undo, limits per deck, a study overview across all decks, a widget for the home page and the apps
 - **Statistics** – streak, heatmap, forecast and true retention; studied cards show up in the journal
