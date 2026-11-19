@@ -131,7 +131,11 @@ const info = async (user: Identity, c: Row & { owner_name: string | null }, owne
 export async function listCollections(user: Identity, workspaceId: string): Promise<CollectionInfo[]> {
   const role = await memberRole(user, workspaceId);
   if (!role) return [];
-  await run("DELETE FROM collections WHERE deleted_at IS NOT NULL AND deleted_at<?", Date.now() - COLLECTION_TRASH_DAYS * 86_400_000);
+  // Purged only when there is something to purge: a write on every
+  // bootstrap would drop what the request remembered (lib/read-memo.ts).
+  const expired = Date.now() - COLLECTION_TRASH_DAYS * 86_400_000;
+  if (await one("SELECT 1 FROM collections WHERE deleted_at IS NOT NULL AND deleted_at<? LIMIT 1", expired))
+    await run("DELETE FROM collections WHERE deleted_at IS NOT NULL AND deleted_at<?", expired);
   const guest = await isGuest(user, workspaceId);
   const owner = role === "owner" && !guest;
   return await mapAsync(await all<Row & { owner_name: string | null }>(

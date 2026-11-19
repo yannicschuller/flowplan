@@ -37,6 +37,8 @@ const NOW_EXACT_MS = "(extract(epoch from statement_timestamp())*1000)::bigint";
 export function triggerSql(sql: string): string {
   return (
     sql
+      // A random integer (cache_versions, lib/db.ts): within ±2^53.
+      .replace(/\brandom\(\)/gi, "(floor((random()*2-1)*9007199254740990))::bigint")
       .replace(/CAST\(\s*\(\s*julianday\('now'\)\s*-\s*2440587\.5\s*\)\s*\*\s*86400000\s+AS\s+INTEGER\s*\)/gi, NOW_EXACT_MS)
       .replace(/\bunixepoch\(\)\s*\*\s*1000/gi, NOW_MS)
       .replace(/\binstr\s*\(/gi, "strpos(")

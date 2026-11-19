@@ -49,6 +49,10 @@ export async function memoized<T>(key: string, compute: () => T): Promise<T> {
   return value;
 }
 
+// Whether a memo is in place (a request or command).
+export function inReadMemo() {
+  return !!store.getStore();
+}
 // The value remembered under key, or undefined – never computes.
 export function peekMemo<T>(key: string): T | undefined {
   return current()?.values.get(key) as T | undefined;

@@ -55,10 +55,12 @@ class AccessContext {
     );
     return new AccessContext(user, device, rules, await allAiBlocks(), (await userAiSettings(user.id)).scope);
   }
-  private async workspace(id: string) {
+  // `known`: the workspace's stored pages the caller has already (the
+  // bootstrap's, without synced blocks – those are read when asked for).
+  private async workspace(id: string, known?: readonly PageLite[]) {
     let entry = this.workspaces.get(id);
     if (entry) return entry;
-    for (const p of await all<PageLite>("SELECT id,workspace_id,space_id,parent_id,deleted_at,kind FROM pages WHERE workspace_id=?", id)) this.pages.set(p.id, p);
+    for (const p of known ?? await all<PageLite>("SELECT id,workspace_id,space_id,parent_id,deleted_at,kind FROM pages WHERE workspace_id=?", id)) this.pages.set(p.id, p);
     entry = {
       spaces: new Map(
         (await all<{ id: string; deleted_at: string | null; encrypted: number }>("SELECT id,deleted_at,encrypted FROM spaces WHERE workspace_id=?", id)).map((s) => [
@@ -92,6 +94,9 @@ class AccessContext {
   }
   markVisible(ids: Iterable<string>) {
     for (const id of ids) this.roles.set(id, true);
+  }
+  async knownPages(workspaceId: string, pages: readonly PageLite[]) {
+    await this.workspace(workspaceId, pages);
   }
   // Why a page is not readable for the AI, or null when it is.
   async pageVerdict(id: string): Promise<"missing" | "hidden" | "trash" | "pin" | "blocked" | "excluded" | null> {
@@ -176,9 +181,12 @@ export async function requireAiRead(user: Identity, pageId: string, rowId?: stri
 
 // Pages of a workspace the person sees but the AI may not read (bootstrap:
 // the interface shows "KI hat keinen Zugriff" and disables AI buttons).
-export async function aiExcludedPages(user: Identity, visiblePages: { id: string }[]): Promise<string[]> {
+// `stored`: the stored pages of the workspace (synced blocks may be left
+// out), when the caller has them already.
+export async function aiExcludedPages(user: Identity, visiblePages: { id: string }[], stored?: { workspaceId: string; pages: readonly PageLite[] }): Promise<string[]> {
   if (!visiblePages.length) return [];
   const context = await AccessContext.create(user);
+  if (stored) await context.knownPages(stored.workspaceId, stored.pages);
   context.markVisible(visiblePages.map((p) => p.id));
   return (await filterAsync(visiblePages, async (p) => (await context.pageVerdict(p.id)) !== null)).map((p) => p.id);
 }

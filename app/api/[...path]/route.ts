@@ -3,6 +3,7 @@ import { e2eBuild } from "@/lib/e2e-build";
 import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
 import { CSV_FORMULA } from "@/lib/cell-text";
 import { jsonWithTag } from "@/lib/etag";
+import { bootstrapResponse } from "@/lib/bootstrap-pages";
 import { linkTargets } from "@/lib/link-targets";
 import { withRequestLocale } from "@/lib/content-locale";
 import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
@@ -447,7 +448,7 @@ async function handleGET(
     }
     // With an ETag: the app's 10 s refresh gets 304 while nothing changed.
     if (path[0] === "bootstrap")
-      return jsonWithTag(req, await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")));
+      return bootstrapResponse(req, await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")));
     // Offline copies on a device: readable pages and what changed since.
     if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));

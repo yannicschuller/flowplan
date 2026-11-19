@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 108;
+export const SCHEMA_VERSION = 109;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1608,6 +1608,11 @@ function migrate(d: DatabaseSync) {
   // on every page GET. The triggers mark changed sources (also when an
   // older version writes); the data step "text-links-107" marks all once.
   migrateTextLinks(d);
+  // Schema 109 – version counters for what the bootstrap caches across
+  // requests (#383, lib/cache-versions.ts): the roles of pages and the page
+  // list of a workspace. Triggers move them with every write that can
+  // change them, also by an older version or another instance.
+  migrateCacheVersions(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1634,6 +1639,54 @@ function migrateTextLinks(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS text_links_row_document_insert AFTER INSERT ON row_documents BEGIN ${mark("''", "NEW.row_id")} END;
     CREATE TRIGGER IF NOT EXISTS text_links_row_document_update AFTER UPDATE OF html ON row_documents WHEN NEW.html IS NOT OLD.html BEGIN ${mark("''", "NEW.row_id")} END;
     CREATE TRIGGER IF NOT EXISTS text_links_row_document_delete AFTER DELETE ON row_documents BEGIN ${mark("''", "OLD.row_id")} END;`);
+}
+// Schema 109 – cache_versions (lib/cache-versions.ts): a version per name,
+// set to a new random value by the triggers below with every change – not
+// a count, so a rolled back transaction or a restored backup never brings
+// back a value that stood for another state.
+// - "roles": everything pageRole() reads (lib/permissions.ts): the place
+//   of pages (workspace, space, parent, record), grants, memberships,
+//   guests, groups, spaces (owner, visibility, trash), the access of
+//   records and their grants, the record trash. Records that inherit their
+//   database's access do not count (pageRole() gives them the database's
+//   role, whatever else changes), unless the record trash knows them.
+// - "pages:<workspace>": any change of a page of that workspace.
+// - "people": what the member lists show of accounts (name, address,
+//   avatar, disabled); memberships themselves move "roles".
+// A missing row counts as 0.
+function migrateCacheVersions(d: DatabaseSync) {
+  const bump = (name: string) =>
+    `INSERT INTO cache_versions(name,version) SELECT ${name},0 WHERE NOT EXISTS(SELECT 1 FROM cache_versions WHERE name=${name}); UPDATE cache_versions SET version=(random() % 9007199254740991) WHERE name=${name};`;
+  const roles = bump("'roles'");
+  const pages = (workspace: string) => bump(`'pages:'||COALESCE(${workspace},'')`);
+  const always = (name: string, table: string) =>
+    ["INSERT", "UPDATE", "DELETE"]
+      .map((event) => `CREATE TRIGGER IF NOT EXISTS cache_${name}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN ${roles} END;`)
+      .join("\n    ");
+  d.exec(`CREATE TABLE IF NOT EXISTS cache_versions(name TEXT PRIMARY KEY,version INTEGER NOT NULL DEFAULT 0);
+    CREATE TRIGGER IF NOT EXISTS cache_pages_insert AFTER INSERT ON pages BEGIN ${roles} ${pages("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_pages_delete AFTER DELETE ON pages BEGIN ${roles} ${pages("OLD.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_pages_update AFTER UPDATE ON pages BEGIN ${pages("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_pages_moved AFTER UPDATE OF workspace_id ON pages WHEN NEW.workspace_id IS NOT OLD.workspace_id BEGIN ${pages("OLD.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_pages_place AFTER UPDATE OF workspace_id,space_id,parent_id,parent_row_id ON pages
+      WHEN NEW.workspace_id IS NOT OLD.workspace_id OR NEW.space_id IS NOT OLD.space_id OR NEW.parent_id IS NOT OLD.parent_id OR NEW.parent_row_id IS NOT OLD.parent_row_id BEGIN ${roles} END;
+    ${always("grants", "grants")}
+    ${always("members", "members")}
+    ${always("guests", "workspace_guests")}
+    ${always("group_members", "group_members")}
+    ${always("row_grants", "row_grants")}
+    ${always("row_trash", "row_trash")}
+    CREATE TRIGGER IF NOT EXISTS cache_spaces_insert AFTER INSERT ON spaces BEGIN ${roles} END;
+    CREATE TRIGGER IF NOT EXISTS cache_spaces_delete AFTER DELETE ON spaces BEGIN ${roles} END;
+    CREATE TRIGGER IF NOT EXISTS cache_spaces_update AFTER UPDATE OF workspace_id,visibility,owner_id,deleted_at ON spaces
+      WHEN NEW.workspace_id IS NOT OLD.workspace_id OR NEW.visibility IS NOT OLD.visibility OR NEW.owner_id IS NOT OLD.owner_id OR NEW.deleted_at IS NOT OLD.deleted_at BEGIN ${roles} END;
+    CREATE TRIGGER IF NOT EXISTS cache_rows_insert AFTER INSERT ON rows WHEN COALESCE(NEW.access,'inherit')<>'inherit' OR EXISTS(SELECT 1 FROM row_trash WHERE id=NEW.id) BEGIN ${roles} END;
+    CREATE TRIGGER IF NOT EXISTS cache_rows_delete AFTER DELETE ON rows WHEN COALESCE(OLD.access,'inherit')<>'inherit' OR EXISTS(SELECT 1 FROM row_trash WHERE id=OLD.id) BEGIN ${roles} END;
+    CREATE TRIGGER IF NOT EXISTS cache_rows_update AFTER UPDATE OF access,created_by,page_id ON rows
+      WHEN NEW.access IS NOT OLD.access OR NEW.page_id IS NOT OLD.page_id OR (COALESCE(NEW.access,'inherit')<>'inherit' AND NEW.created_by IS NOT OLD.created_by) BEGIN ${roles} END;
+    CREATE TRIGGER IF NOT EXISTS cache_users_update AFTER UPDATE OF name,email,avatar,disabled ON users
+      WHEN NEW.name IS NOT OLD.name OR NEW.email IS NOT OLD.email OR NEW.avatar IS NOT OLD.avatar OR NEW.disabled IS NOT OLD.disabled BEGIN ${bump("'people'")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_users_delete AFTER DELETE ON users BEGIN ${bump("'people'")} END;`);
 }
 // Flashcards (docs/specs/flashcards.md §3.3, lib/study.ts):
 // - study_cards: the derived index of cards (record × sub: '' the card, 'r'

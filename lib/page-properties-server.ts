@@ -188,7 +188,10 @@ export async function visibleScopes(user: Identity, workspaceId: string): Promis
 // The definitions and the tags of the visible pages for the bootstrap.
 // Guests learn only the tags and properties used on pages shared with them.
 export async function workspaceTaxonomy(user: Identity, workspaceId: string, visiblePages: Pick<Page, "id" | "space_id">[]): Promise<WorkspaceTaxonomy> {
-  const visible = await filterAsync(visiblePages, async (p) => !(await isEncryptedPage(p)));
+  // Asked once per space, not per page (#383).
+  const encrypted = new Set<string>();
+  for (const space of new Set(visiblePages.map((p) => p.space_id))) if (await isEncryptedPage({ space_id: space })) encrypted.add(space);
+  const visible = visiblePages.filter((p) => !encrypted.has(p.space_id));
   const ids = new Set(visible.map((p) => p.id));
   const links: Record<string, string[]> = {};
   for (const link of await all<{ page_id: string; tag_id: string }>(

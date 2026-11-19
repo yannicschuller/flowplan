@@ -1,6 +1,7 @@
-import { all, one } from "./db";
+import { all, inTransaction, one } from "./db";
+import { cacheVersion, VersionedCache } from "./cache-versions";
 import { HttpError } from "./auth";
-import { memoized, peekMemo } from "./read-memo";
+import { inReadMemo, memoized, peekMemo } from "./read-memo";
 import type { Identity, Page, Role, Space } from "./types";
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 // The lookups below are remembered within a request or command until the
@@ -79,7 +80,7 @@ export async function spaceRole(user: Identity, space: Space): Promise<Role | nu
 export async function pageRole(user: Identity, page: Page): Promise<Role | null> {
   // Known from the roles of all pages of the workspace (workspaceRoles()),
   // when they were computed in this request for the page as it is stored.
-  const known = knownRole(user, page);
+  const known = knownRole(user, page) ?? knownRole(user, page, await keptRoles(user, page.workspace_id));
   if (known !== undefined) return known;
   const space = await spaceRow(page.space_id as string);
   if (!space || space.deleted_at) return null;
@@ -156,18 +157,40 @@ type RecordRow = { id: string; page_id: string; access: string; created_by: stri
 type RecordGrant = { row_id: string; user_id: string; group_id: string; role: "viewer" | "editor" };
 const rolesKey = (workspace: string, user: string) => `roles:${workspace}:${user}`;
 
-function knownRole(user: Identity, page: Page): Role | null | undefined {
-  const roles = peekMemo<WorkspaceRoles>(rolesKey(page.workspace_id, user.id));
+function knownRole(user: Identity, page: Page, roles = peekMemo<WorkspaceRoles>(rolesKey(page.workspace_id, user.id))): Role | null | undefined {
   const entry = roles?.get(page.id);
   if (!entry) return undefined;
   if (entry.parent !== (page.parent_id ?? null) || entry.space !== (page.space_id ?? null) || entry.row !== (page.parent_row_id ?? null)) return undefined;
   return entry.role;
 }
 
-// Remembered within a request until the next write (lib/read-memo.ts);
-// from then on pageRole() answers from it.
+// Remembered within a request until the next write (lib/read-memo.ts)
+// and across requests while the version "roles" stays
+// (lib/cache-versions.ts); pageRole() answers from either.
+const keptAcross = ((globalThis as { flowplanRoles?: VersionedCache<WorkspaceRoles> }).flowplanRoles ??= new VersionedCache<WorkspaceRoles>(500));
 export async function workspaceRoles(user: Identity, workspace: string): Promise<WorkspaceRoles> {
-  return await memoized(rolesKey(workspace, user.id), async () => await computeWorkspaceRoles(user, workspace));
+  return await memoized(rolesKey(workspace, user.id), async () => {
+    if (inTransaction()) return await computeWorkspaceRoles(user, workspace);
+    const version = await cacheVersion("roles");
+    const key = `${workspace}:${user.id}`;
+    const kept = keptAcross.get(key, version);
+    if (kept) return kept;
+    const roles = await computeWorkspaceRoles(user, workspace);
+    keptAcross.set(key, version, roles);
+    return roles;
+  });
+}
+// The roles kept from an earlier request, when still current; never
+// computed here (one page is cheaper to check on its own).
+async function keptRoles(user: Identity, workspace: string): Promise<WorkspaceRoles | undefined> {
+  // Only within a request (a read memo in place): elsewhere the version
+  // would be read again for every page.
+  if (inTransaction() || !keptAcross.size || !inReadMemo()) return undefined;
+  const version = await cacheVersion("roles");
+  const kept = keptAcross.get(`${workspace}:${user.id}`, version);
+  // For the rest of the request as if computed in it.
+  if (kept) await memoized(rolesKey(workspace, user.id), () => kept);
+  return kept;
 }
 
 async function computeWorkspaceRoles(user: Identity, workspace: string): Promise<WorkspaceRoles> {
