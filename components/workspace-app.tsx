@@ -347,6 +347,7 @@ import { fullWidthPagesOf, showsFullWidth } from "@/lib/page-width-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
 import { visiblePoll } from "@/lib/visible-poll";
+import { LIVE_REFRESH_MS, POLL_REFRESH_MS, PRESENCE_REFRESH_MS, useWorkspaceSignals } from "./use-workspace-signals";
 import { WhatsNew } from "./whats-new";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
@@ -1187,10 +1188,23 @@ export default function WorkspaceApp({
   const refreshCount = useRef(0),
     bootShown = useRef(0),
     dataShown = useRef(0);
-  const refresh = useCallback(async () => {
+  // `only`: what the workspace's live signal says changed (lib/workspace-live.ts)
+  // – the bootstrap (tree, notifications) or the open page; by default both.
+  const refresh = useCallback(async (only: { boot?: boolean; page?: boolean } = {}) => {
     if (navigationPending.current) return;
     const version = navigationVersion.current;
     const count = ++refreshCount.current;
+    if (only.boot === false) {
+      if (only.page === false || !currentId.current || screenRef.current !== "page" || dataRef.current?.page.id !== currentId.current) return;
+      if (dataRef.current.draft?.local || dataRef.current.offlineNew) return;
+      const pid = currentId.current;
+      const p = await apiIfChanged<PageData>(`/api/pages/${pid}`);
+      if (pid === currentId.current && version === navigationVersion.current && !navigationPending.current && count >= dataShown.current) {
+        dataShown.current = count;
+        setData(p);
+      }
+      return;
+    }
     let result: Bootstrap;
     try {
       // Unchanged (304): the same object, setBoot changes nothing.
@@ -1236,6 +1250,7 @@ export default function WorkspaceApp({
     // page made offline until the queue created it (#370).
     if (dataRef.current?.draft?.local && dataRef.current.page.id === currentId.current) return;
     if (dataRef.current?.offlineNew && dataRef.current.page.id === currentId.current && localWaiting(currentId.current)) return;
+    if (only.page === false && dataRef.current?.page.id === currentId.current) return;
     if (currentId.current && screenRef.current === "page") {
       const pid = currentId.current;
       // A page shown for the first time (e.g. opened by its link) counts
@@ -2287,6 +2302,10 @@ export default function WorkspaceApp({
       .then(() => checkOfflineOwner(boot.user.id))
       .catch(() => undefined);
   }, [boot.user.id]);
+  // The workspace's live signal (#383, components/workspace-live.ts): what
+  // changed is fetched when it changes; the timed refresh below is then
+  // only a safety net.
+  const live = useWorkspaceSignals(boot.user.id, boot.workspace.id, currentId, refresh);
   useEffect(() => {
     let polling = false;
     // Paused while the tab is hidden, made up for when it is shown (#383).
@@ -2298,8 +2317,22 @@ export default function WorkspaceApp({
         .finally(() => {
           polling = false;
         });
-    }, 10000);
-  }, [refresh]);
+    }, live ? LIVE_REFRESH_MS : POLL_REFRESH_MS);
+  }, [refresh, live]);
+  // With the signal, the open page in between: the person stays present on it.
+  useEffect(() => {
+    if (!live) return;
+    let polling = false;
+    return visiblePoll(() => {
+      if (polling) return;
+      polling = true;
+      void refresh({ boot: false })
+        .catch(() => {})
+        .finally(() => {
+          polling = false;
+        });
+    }, PRESENCE_REFRESH_MS);
+  }, [refresh, live]);
   // A page whose kind is switched off for the instance (#386,
   // lib/instance-modules.ts) opens read-only with a notice.
   const offModule = data ? (data.page.journal_date ? "journal" : PAGE_KIND_MODULE[data.page.kind]) : undefined,

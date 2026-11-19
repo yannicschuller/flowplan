@@ -5,6 +5,7 @@
 // the editors connected to it; in cluster mode every signal also goes to
 // the other instances (lib/cluster/bus.ts), whose hubs deliver it to theirs.
 import { onBus, publish } from "./cluster/bus";
+import { pagesChanged } from "./workspace-live";
 
 type Listener = { clientId: string; send: (event: string) => void };
 
@@ -100,6 +101,8 @@ export function publishPresence(key: string, from?: string) {
 // database): open editors fetch the current state right away.
 export function documentChanged(pageId: string, rowId?: string | null, except?: string) {
   signal({ k: "changed", pageId, rowId, except });
+  // Tabs that show the page (or the record's database) without its editor.
+  pagesChanged([pageId]);
 }
 function changedHere(pageId: string, rowId?: string | null, except?: string) {
   const prefix = `${pageId}:${rowId || ""}:`;

@@ -32,6 +32,7 @@ import { performance, type EventLoopUtilization } from "node:perf_hooks";
 import { all, one, run, sqliteCacheBytes } from "./db";
 import { activeRecently, diskUsage } from "./metrics";
 import { liveHubCounts } from "./document-live";
+import { workspaceLiveCount } from "./workspace-live";
 import { clusterMode, instanceId } from "./cluster/config";
 
 const MINUTE = 60_000,
@@ -247,7 +248,8 @@ export function sampleNow(now = Date.now(), take = true): ServerSample {
     external: mem.external,
     arrayBuffers: mem.arrayBuffers,
     documents: hub.documents,
-    connections: hub.connections,
+    // Editors, guests and the workspace signal streams (lib/workspace-live.ts).
+    connections: hub.connections + workspaceLiveCount(),
     streams: s.streams,
     elu: Number.isFinite(usage.utilization) ? usage.utilization : 0,
     diskTotal: disk?.total ?? null,

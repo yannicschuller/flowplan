@@ -582,7 +582,7 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
     pid,
   );
   // Who else has the page open (lib/page-presence.ts: in memory, #383).
-  const present = await pagePresence(pid);
+  const present = await pagePresence(pid, Date.now(), user.id);
   if (options.presence !== false) await notePresence(pid, user.id);
   if (p.kind === "database") {
     const data = await database(pid);
@@ -848,7 +848,25 @@ export async function command(
   } finally {
     area?.();
     if (action) noteCommand(action, performance.now() - started, failed);
+    if (action && !failed) signalCommand(user, action, input);
   }
+}
+// What a command changed, for the workspace's live signal
+// (lib/workspace-live.ts): its page – tabs that have it open fetch it
+// again – and, for the notification commands, the person's notifications.
+// Changes of the tree and the permissions are found by their versions.
+// Typing and drawing (LIVE_ACTIONS) have their own channels – but for
+// a record's text. Tabs fetch a page at most every 5 s (components/
+// use-workspace-signals.ts), so typing does not refetch it per keystroke.
+function signalCommand(user: Identity, action: string, input: unknown) {
+  // A record's text shows in its database too (previews, feeds); a
+  // document's own text reaches its editors live.
+  if ((LIVE_ACTIONS.has(action) && action !== "row.document.sync") || action === "presence") return;
+  // Text comment threads reach the open editors themselves (threadsChanged).
+  if (action.startsWith("thread.")) return;
+  const pageId = (input as { pageId?: unknown }).pageId;
+  if (typeof pageId === "string") pagesChanged([pageId]);
+  if (action.startsWith("notification.")) notificationsChanged([user.id]);
 }
 const LIVE_ACTIONS = new Set(["document.sync", "row.document.sync", "whiteboard.sync", "e2ee.append"]);
 async function runCommand(
@@ -4367,6 +4385,7 @@ import { deleteWebhook, emitWebhook, mentionWebhook } from "./webhooks";
 import { addSsoMapping, deleteSsoMapping } from "./sso-mappings";
 import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate, threadsChanged } from "./document-live";
+import { notificationsChanged, pagesChanged } from "./workspace-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { setRowRepeat } from "./repeat-records";

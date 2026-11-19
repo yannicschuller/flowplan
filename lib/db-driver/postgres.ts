@@ -277,7 +277,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
   }
   async function query(sql: string, params: Param[]) {
     const s = statement(sql);
-    noteWriteOf(sql);
+    noteWriteOf(sql, params);
     // A schema change (ALTER/CREATE/DROP) outdates what was prepared before
     // (`SELECT *` keeps its columns): later statements are prepared anew.
     if (SCHEMA_CHANGE.test(sql)) prepared.clear();

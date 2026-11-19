@@ -43,9 +43,14 @@ own dependencies. Nothing to install.
     others is reported as `fanout`.
   - **idle tabs** (`--kind idle`: every VU is one) do what a signed-in tab
     does while nobody touches it (`components/workspace-app.tsx`): every
-    `--idle-interval` s (10) the bootstrap and the open page, each with the
-    ETag of the last answer, so most answers are a 304. Per step it prints
-    the server's CPU per tab and minute, per request and the 304 share.
+    `--idle-interval` s (10) the bootstrap and the open page (a document;
+    with `--idle-db-every n` every n-th tab has the task database open),
+    each with the ETag of the last answer, so most answers are a 304. With
+    `--idle-mode push` they do what the app does with the workspace's live
+    signal (`/api/live`, `components/use-workspace-signals.ts`): the stream
+    open, the bootstrap or the page only when a signal names it, the
+    bootstrap every 60 s and the page every 30 s. Per step it prints the server's CPU per tab and minute, per
+    request, the 304 share and the signals received.
   - `--heavy backup|import|both` runs large jobs alongside: the workspace
     export (`/api/backup`) and a `rows.import` of `--import-rows` records
     (which the search index then picks up), every `--heavy-interval` s.
@@ -95,7 +100,9 @@ both above this). Profile the server with `serve.mjs --cpu-prof`; the
 `.cpuprofile` is written to `<work>/profiles` when the server stops.
 
 Seeder options: `--users` (400), `--docs` (300), `--records` (3000),
-`--spaces` (6).
+`--spaces` (6), `--related` (two more databases, projects and customers,
+that every task links to – the related data of a database open). The
+larger seed of #383: `--docs 2000 --records 5000 --related`.
 
 ## Cluster mode (PostgreSQL, several instances)
 

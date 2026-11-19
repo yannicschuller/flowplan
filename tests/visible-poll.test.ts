@@ -64,7 +64,8 @@ test("polls while visible, pauses while hidden and catches up when shown", () =>
 
 test("the workspace refresh and the editor's check skip hidden tabs", () => {
   const app = readFileSync(new URL("../components/workspace-app.tsx", import.meta.url), "utf8");
-  assert.match(app, /return visiblePoll\(\(\) => \{[\s\S]*?refresh\(\)[\s\S]*?\}, 10000\);/);
+  // Every 10 s without the live signal, every 60 s with it (#383, components/use-workspace-signals.ts).
+  assert.match(app, /return visiblePoll\(\(\) => \{[\s\S]*?refresh\(\)[\s\S]*?\}, live \? LIVE_REFRESH_MS : POLL_REFRESH_MS\);/);
   const editor = readFileSync(new URL("../components/editor.tsx", import.meta.url), "utf8");
   // Only the check: saves of a hidden tab still go out.
   const check = editor.slice(editor.indexOf("// A hidden tab does not check (#383)"));

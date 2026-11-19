@@ -434,6 +434,9 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
 test("calendar conflicts preserve drafts, remote edits cancel gestures and locked readers can navigate locally", async ({
   page,
 }, info) => {
+  // Conflicts with a version the tab has not seen yet: without the live
+  // signal (#383), which would fetch the remote edit before the save.
+  await page.route("**/api/live?*", (route) => route.abort());
   const f = await fixture(
     page,
     `Calendar conflicts ${info.project.name} ${Date.now()}`,
@@ -614,6 +617,8 @@ test("background refresh waits for a slow request and resumes after failure", as
   page,
 }) => {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  // The timed refresh every 10 s, as without the live signal (#383).
+  await page.route("**/api/live?*", (route) => route.abort());
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const time = new Date("2026-09-23T08:00:00Z");
   await page.clock.install({ time });

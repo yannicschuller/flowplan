@@ -83,3 +83,9 @@ test("cluster mode: the table as well, at most every 15 s", async () => {
     else process.env.FLOWPLAN_CLUSTER = saved;
   }
 });
+
+test("a tab with the live signal still asks for its page within the presence window", async () => {
+  // components/use-workspace-signals.ts: the bootstrap every 60 s, the page every 30 s.
+  const { PRESENCE_REFRESH_MS } = await import("../components/use-workspace-signals");
+  assert.ok(PRESENCE_REFRESH_MS < PRESENT_MS, "the person stays present between refreshes");
+});

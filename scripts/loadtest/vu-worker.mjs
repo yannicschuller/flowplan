@@ -14,8 +14,13 @@
 //   the update arriving at the others (fan-out) can be measured;
 // - "idle" users are a signed-in tab nobody touches
 //   (components/workspace-app.tsx): every 10 s the bootstrap and the open
-//   page, each with the ETag of the last answer (If-None-Match), so most
-//   answers are a 304.
+//   page (a document, every --idle-db-share-th one the task database), each
+//   with the ETag of the last answer (If-None-Match), so most answers are a
+//   304. With --idle-mode push they do what the app does with the
+//   workspace's live signal (/api/live, components/use-workspace-signals.ts):
+//   the stream open, the bootstrap or the page only when a signal names it,
+//   the bootstrap every 60 s as the safety net and the page every 30 s
+//   (it keeps the tab present on the page).
 import { parentPort, workerData } from "node:worker_threads";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
@@ -331,13 +336,65 @@ async function conditional(vu, name, path) {
 }
 async function idleLoop(vu) {
   vu.tags = new Map();
+  const push = options.idleMode === "push";
+  const interval = push ? 60_000 : options.idleMs;
   // Spread over the whole interval: tabs do not refresh in step.
-  await sleep(Math.random() * options.idleMs);
-  const pageId = pick(seed.docIds);
+  await sleep(Math.random() * (push ? options.idleMs : interval));
+  const pageId = options.idleDbEvery > 0 && vu.id % options.idleDbEvery === 0 ? seed.databaseId : pick(seed.docIds);
+  const bootPath = `/api/bootstrap?workspace=${seed.workspaceId}`,
+    pagePath = `/api/pages/${pageId}`;
+  if (push) void workspaceSignals(vu, pageId, bootPath, pagePath);
+  // Push: the page every 30 s (presence), the bootstrap every second time.
+  for (let round = 0; vu.alive; round++) {
+    if (!push || round % 2 === 0) await conditional(vu, "idle.bootstrap", bootPath);
+    await conditional(vu, "idle.page", pagePath);
+    await sleep(push ? interval / 2 : interval);
+  }
+}
+// The workspace's live signal of an idle tab: what a signal names is
+// fetched (counted as idle.signal.*), like components/use-workspace-signals.ts.
+async function workspaceSignals(vu, pageId, bootPath, pagePath) {
   while (vu.alive) {
-    await conditional(vu, "idle.bootstrap", `/api/bootstrap?workspace=${seed.workspaceId}`);
-    await conditional(vu, "idle.page", `/api/pages/${pageId}`);
-    await sleep(options.idleMs);
+    const controller = new AbortController();
+    vu.abortLive = () => controller.abort();
+    try {
+      const response = await fetch(`${origin}/api/live?workspace=${seed.workspaceId}`, {
+        headers: { origin, cookie: vu.user.cookie, accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        record("sse.connect", 0, classify(response.status));
+        await sleep(2000);
+        continue;
+      }
+      record("sse.connect", 0);
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        let end;
+        while ((end = buffer.indexOf("\n\n")) >= 0) {
+          const event = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (!event.startsWith("data: ")) continue;
+          let message;
+          try {
+            message = JSON.parse(event.slice(6));
+          } catch {
+            continue;
+          }
+          if (message.type !== "changed") continue;
+          record("signal", 0);
+          if (message.parts.includes("tree") || message.parts.includes("notifications")) await conditional(vu, "idle.signal.bootstrap", bootPath);
+          if (message.parts.includes("pages") && message.pages?.includes(pageId)) await conditional(vu, "idle.signal.page", pagePath);
+        }
+      }
+      if (vu.alive) record("sse.connect", 0, "closed");
+    } catch {
+      if (!vu.alive) return;
+      record("sse.connect", 0, "network");
+      await sleep(1000);
+    }
   }
 }
 

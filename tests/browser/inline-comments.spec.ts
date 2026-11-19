@@ -632,13 +632,17 @@ test("document thread links switch workspaces and enforce current permissions wi
     await expect(f.other.locator(".workspace-switch")).toContainText(
       f.boot.workspace.name,
     );
-    await f.other.waitForResponse(
+    // A change in that workspace makes the tab refresh it (the live
+    // signal, #383; without it the timed refresh every 10 s).
+    const refreshed = f.other.waitForResponse(
       (response) =>
         response
           .url()
           .includes(`/api/bootstrap?workspace=${f.boot.workspace.id}`),
       { timeout: 15000 },
     );
+    await f.command({ action: "page.create", workspaceId: f.boot.workspace.id, spaceId: f.area.id, title: "Refresh" });
+    await refreshed;
     await expect(f.other).toHaveURL(`${origin}/${target}`);
     await f.other.reload();
     await expect(f.other.locator(".inline-comment-message")).toContainText(
