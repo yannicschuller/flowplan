@@ -95,6 +95,9 @@ export function automationToGraph(a: Automation, databaseId: string, fields: Fie
         label: `Notify ${i + 1}`,
         config: { to: [action.to], title: "", message: action.message, link: "trigger", channels: ["inbox"], kind: "automation", ruleName: a.name },
       });
+    // "Aufgabe erstellen" (#380) is no node: lib/automation-task.ts runs it
+    // after the graph (lib/workflows/inline.ts).
+    else if (action.type === "task") return;
     else if (action.type === "template")
       link({ ...at, type: "action.record.template", label: `Template ${i + 1}`, config: { record: "", database: databaseId, template: action.template, mode: action.mode } });
     else {

@@ -2,7 +2,8 @@
 import { z } from "zod";
 import { one, run } from "./db";
 import { HttpError } from "./auth";
-import { settingsSchema, type Automation, type DatabaseSettings } from "./database-settings-schema";
+import { settingsSchema, type Automation, type DatabaseSettings, type TaskAction } from "./database-settings-schema";
+import { requirePage } from "./permissions";
 import { validZone } from "./date-values";
 import { validateCellPatch } from "./database-operations";
 import type { Field, Identity, Page } from "./types";
@@ -61,8 +62,9 @@ export async function updateDatabaseSettings(user: Identity, page: Page, fields:
       if (a.conditions.length) throw new HttpError(400, "Geplante Regeln haben keine Bedingungen.");
     }
     for (const action of a.actions)
-      if ((action.type === "create") !== scheduled)
-        throw new HttpError(400, "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.");
+      if (action.type === "task") await checkTaskAction(user, page, fields, action, scheduled);
+      else if ((action.type === "create") !== scheduled)
+        throw new HttpError(400, "Geplante Regeln legen nur Datensätze oder Aufgaben an; Datensätze anlegen nur geplante Regeln.");
       else if (action.type === "template") {
         if (!(await one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId)))
           throw new HttpError(400, "Datensatzvorlage nicht gefunden.");
@@ -95,6 +97,40 @@ export async function updateDatabaseSettings(user: Identity, page: Page, fields:
   }
   await storeSettings(pageId, next);
   return next;
+}
+// "Aufgabe erstellen" (#380, lib/automation-task.ts): what the rule names
+// exists and fits, and the person saving it – the one it will act for –
+// may create records in the task database.
+async function checkTaskAction(user: Identity, page: Page, fields: Field[], action: TaskAction, scheduled: boolean) {
+  if (!action.text) throw new HttpError(400, "Die Aufgabe braucht einen Text.");
+  const unknown = () => new HttpError(400, "Die Aufgabe verweist auf eine unbekannte Eigenschaft.");
+  const who = action.assignee;
+  if (scheduled && (action.target === "document" || who === "@creator" || who.startsWith("field:") || action.relation))
+    throw new HttpError(400, "Geplante Regeln haben keinen auslösenden Eintrag: Ihre Aufgaben kommen in eine Datenbank, ohne Personen oder Verknüpfung des Eintrags.");
+  if (who.startsWith("field:")) {
+    if (fields.find((f) => f.id === who.slice(6))?.type !== "person") throw unknown();
+  } else if (who && !who.startsWith("@")) {
+    if (!(await one("SELECT 1 FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id=? AND COALESCE(u.disabled,0)=0", page.workspace_id, who)))
+      throw new HttpError(400, "Die Person der Aufgabe ist kein Mitglied des Arbeitsbereichs.");
+  } else if (who && who !== "@actor" && who !== "@creator") throw unknown();
+  if (action.target === "document") return;
+  if (!action.database) throw new HttpError(400, "Wähle eine Datenbank für die Aufgabe.");
+  const target = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", action.database);
+  if (!target || target.kind !== "database" || target.workspace_id !== page.workspace_id) throw new HttpError(400, "Die Datenbank für die Aufgabe gibt es nicht (mehr).");
+  try {
+    await requirePage(user, target.id, true);
+  } catch {
+    throw new HttpError(403, "In der Datenbank für die Aufgabe darfst du keine Einträge anlegen.");
+  }
+  const taskFields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", target.id))?.fields || "[]") as Field[];
+  const typed = (fieldId: string, types: string[]) => !fieldId || types.includes(taskFields.find((f) => f.id === fieldId)?.type || "");
+  if (!typed(action.personField, ["person"]) || !typed(action.dueField, ["date"])) throw unknown();
+  if (action.relation && !taskFields.some((f) => f.id === action.relation && f.type === "relation" && f.relationPage === page.id)) throw unknown();
+  for (const [fieldId, value] of Object.entries(action.values)) {
+    const field = taskFields.find((f) => f.id === fieldId);
+    if (!field || !["select", "multiselect"].includes(field.type)) throw unknown();
+    if (value && !(field.options || []).includes(value)) throw new HttpError(400, "Eine Regel setzt einen Wert, der nicht zur Eigenschaft passt.");
+  }
 }
 // Who a rule acts for and since when: kept while the rule stays the same
 // (switching it on or off included), otherwise the person saving it takes

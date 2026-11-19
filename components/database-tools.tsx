@@ -26,6 +26,7 @@ export function DatabaseTools({
   act,
   onTemplates,
   templates,
+  databases,
 }: {
   page: Page;
   database: Database;
@@ -35,6 +36,8 @@ export function DatabaseTools({
   onTemplates: () => void;
   // Record templates, for scheduled automation rules.
   templates?: { id: string; name: string; is_default?: number }[];
+  // The workspace's databases, for rules that create tasks in one (#380).
+  databases?: { id: string; title: string }[];
 }) {
   const t = useT();
   const [panel, setPanelState] = useState<ToolPanel | null>(null);
@@ -86,6 +89,7 @@ export function DatabaseTools({
           editable={editable}
           act={act}
           templates={templates}
+          databases={databases}
         />
       )}
     </>

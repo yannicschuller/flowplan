@@ -11,6 +11,7 @@ import { browserZone } from "@/lib/date-values";
 import { conditionTimeZone } from "@/lib/database-filters";
 import type { Field, User } from "@/lib/types";
 import { ScheduleFields, CreateActionFields, scheduleLabel, scheduledTrigger, createAction, type RowTemplateRef } from "./automation-schedule";
+import { TaskActionFields, taskAction, taskLabel, taskProblems, type DatabaseRef } from "./automation-task";
 
 type Props = {
   fields: Field[];
@@ -22,6 +23,8 @@ type Props = {
   templates?: RowTemplateRef[];
   // The database page: "Open in canvas" makes a workflow page next to it.
   pageId?: string;
+  // The workspace's databases, for "Aufgabe erstellen" into one (#380).
+  databases?: DatabaseRef[];
 };
 type Condition = Automation["conditions"][number];
 const newId = () => crypto.randomUUID().slice(0, 12);
@@ -45,7 +48,7 @@ const openPage = (id: string) => {
   window.location.hash = `page=${id}`;
 };
 
-export function DatabaseAutomations({ fields, settings, members, editable, save, templates = [], pageId }: Props) {
+export function DatabaseAutomations({ fields, settings, members, editable, save, templates = [], pageId, databases = [] }: Props) {
   const t = useT();
   const rules = settings.automations || [];
   const [draft, setDraft] = useState<Automation | null>(null);
@@ -143,6 +146,8 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
         settings={settings}
         members={members}
         templates={templates}
+        databases={databases}
+        pageId={pageId}
         busy={busy}
         onCancel={() => setDraft(null)}
         onSave={async (rule) => {
@@ -155,8 +160,8 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
     <div className="automations">
       <p className="muted">
         {t(
-          "Regeln erledigen wiederkehrende Handgriffe: Wenn etwas passiert und eine Bedingung zutrifft, setzt Flowplan Eigenschaften, benachrichtigt jemanden oder wendet eine Datensatzvorlage an.",
-          "Rules take care of recurring steps: when something happens and a condition holds, Flowplan sets properties, notifies someone or applies a record template.",
+          "Regeln erledigen wiederkehrende Handgriffe: Wenn etwas passiert und eine Bedingung zutrifft, setzt Flowplan Eigenschaften, benachrichtigt jemanden, wendet eine Datensatzvorlage an oder erstellt eine Aufgabe.",
+          "Rules take care of recurring steps: when something happens and a condition holds, Flowplan sets properties, notifies someone, applies a record template or creates a task.",
         )}
       </p>
       {rules.length > 0 && (
@@ -166,7 +171,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
               {rule.workflow ? <FlowArrow aria-hidden /> : <Lightning weight={rule.enabled ? "fill" : "regular"} aria-hidden />}
               <div>
                 <strong>{rule.name || t("Regel", "Rule")}</strong>
-                <span>{describe(rule, fields, members, templates, t)}</span>
+                <span>{describe(rule, fields, members, templates, databases, t)}</span>
               </div>
               {/* Replaced by a workflow when that was activated (docs/specs/workflows.md §2): only the link. */}
               {rule.workflow ? (
@@ -193,8 +198,12 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
                       type="button"
                       className="icon-button"
                       aria-label={t(`„${rule.name || "Regel"}“ im Canvas öffnen und erweitern`, `Open “${rule.name || "Rule"}” in the canvas and extend it`)}
-                      title={t("Im Canvas öffnen", "Open in canvas")}
-                      disabled={busy}
+                      title={
+                        rule.actions.some((a) => a.type === "task")
+                          ? t("Regeln mit „Aufgabe erstellen“ lassen sich noch nicht im Canvas öffnen.", "Rules with “Create task” cannot be opened in the canvas yet.")
+                          : t("Im Canvas öffnen", "Open in canvas")
+                      }
+                      disabled={busy || rule.actions.some((a) => a.type === "task")}
                       onClick={async () => {
                         setBusy(true);
                         try {
@@ -243,7 +252,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
 }
 
 // "When Status changes to Done → set Closed on = today"
-function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | "name">[], templates: RowTemplateRef[], t: (de: string, en: string) => string) {
+function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | "name">[], templates: RowTemplateRef[], databases: DatabaseRef[], t: (de: string, en: string) => string) {
   const name = (id: string) => fields.find((f) => f.id === id)?.name || "?";
   const tr = rule.trigger;
   const when =
@@ -260,7 +269,9 @@ function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | 
             : t(`${name(tr.field)} ändert sich`, `${name(tr.field)} changes`);
   const then = rule.actions
     .map((a) =>
-      a.type === "create"
+      a.type === "task"
+        ? taskLabel(a, databases, t)
+        : a.type === "create"
         ? t("Datensatz anlegen", "create a record") +
           Object.entries(a.dates)
             .map(([id, days]) => ` · ${name(id)} ${days >= 0 ? "+" : "−"}${Math.abs(days)} ${t("Tage", "days")}`)
@@ -302,6 +313,8 @@ function AutomationEditor({
   settings,
   members,
   templates,
+  databases,
+  pageId,
   busy,
   onSave,
   onCancel,
@@ -311,13 +324,54 @@ function AutomationEditor({
   settings: DatabaseSettings;
   members: Pick<User, "id" | "name">[];
   templates: RowTemplateRef[];
+  databases: DatabaseRef[];
+  pageId?: string;
   busy: boolean;
   onSave: (rule: Automation) => void;
   onCancel: () => void;
 }) {
   const t = useT();
   const [r, setR] = useState(rule);
+  // Shown once saving was tried: what is still missing.
+  const [tried, setTried] = useState(false);
   const trigger = r.trigger;
+  const scheduled = trigger.type === "schedule";
+  const problems = [...new Set(r.actions.flatMap((a) => (a.type === "task" ? taskProblems(a, t) : [])))];
+  const removeAction = (i: number) => (r.actions.length > 1 ? () => setR({ ...r, actions: r.actions.filter((_, j) => j !== i) }) : undefined);
+  // The kind of an action ("Dann …"); scheduled rules create records or tasks.
+  const actionSelect = (i: number, a: AutomationAction) => (
+    <Select
+      aria-label={t("Aktion", "Action")}
+      value={a.type}
+      onChange={(e) =>
+        setAction(
+          i,
+          e.target.value === "task"
+            ? taskAction(fields, scheduled, t)
+            : e.target.value === "create"
+              ? createAction(templates, fields, settings)
+              : e.target.value === "set"
+                ? { type: "set", field: (fields.find(settable) || fields[0]).id, value: startValue(fields.find(settable)) }
+                : e.target.value === "template"
+                  ? templateAction(templates)
+                  : { type: "notify", to: "@creator", message: "" },
+        )
+      }
+    >
+      {scheduled ? (
+        <option value="create">{t("Datensatz anlegen", "Create record")}</option>
+      ) : (
+        <>
+          <option value="set">{t("Eigenschaft setzen", "Set property")}</option>
+          <option value="notify">{t("Benachrichtigen", "Notify")}</option>
+          <option value="template" disabled={!templates.length}>
+            {t("Vorlage anwenden", "Apply template")}
+          </option>
+        </>
+      )}
+      <option value="task">{t("Aufgabe erstellen", "Create task")}</option>
+    </Select>
+  );
   const triggerField = "field" in trigger ? fields.find((f) => f.id === trigger.field) : undefined;
   const watchable = fields.filter((f) => !["created_at", "updated_at", "created_by", "updated_by", "id", "formula", "rollup"].includes(f.type));
   const setAction = (i: number, a: AutomationAction) => setR({ ...r, actions: r.actions.map((x, j) => (j === i ? a : x)) });
@@ -331,7 +385,8 @@ function AutomationEditor({
       className="automation-editor"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave(r);
+        setTried(true);
+        if (!problems.length) onSave(r);
       }}
     >
       <label>
@@ -346,12 +401,18 @@ function AutomationEditor({
           onChange={(e) => {
             const type = e.target.value as Automation["trigger"]["type"];
             const firstDate = fields.find((f) => f.type === "date")?.id || fields[0].id;
-            // Scheduled rules create records; the other rules do not.
+            // Scheduled rules create records or tasks (into a database); the
+            // other rules create no records.
+            const kept = r.actions.filter((a) => a.type === "task" && a.target === "database" && !a.assignee.startsWith("field:") && a.assignee !== "@creator");
             const actions =
-              type === "schedule"
-                ? [createAction(templates, fields, settings)]
-                : trigger.type === "schedule"
-                  ? [{ type: "notify" as const, to: "@creator", message: "" }]
+              type === "schedule" && trigger.type !== "schedule"
+                ? kept.length
+                  ? kept.map((a) => ({ ...a, relation: "" }))
+                  : [createAction(templates, fields, settings)]
+                : type !== "schedule" && trigger.type === "schedule"
+                  ? r.actions.filter((a) => a.type === "task").length
+                    ? r.actions.filter((a) => a.type === "task")
+                    : [{ type: "notify" as const, to: "@creator", message: "" }]
                   : r.actions;
             setR({
               ...r,
@@ -444,37 +505,32 @@ function AutomationEditor({
       <fieldset>
         <legend>{t("Dann", "Then")}</legend>
         {r.actions.map((a, i) =>
-          a.type === "create" ? (
+          a.type === "task" ? (
+            <TaskActionFields
+              key={i}
+              action={a}
+              fields={fields}
+              members={members}
+              databases={databases}
+              pageId={pageId}
+              scheduled={scheduled}
+              typeSelect={actionSelect(i, a)}
+              onChange={(next) => setAction(i, next)}
+              onRemove={removeAction(i)}
+            />
+          ) : a.type === "create" ? (
             <CreateActionFields
               key={i}
               action={a}
               fields={fields}
               templates={templates}
+              typeSelect={actionSelect(i, a)}
               onChange={(next) => setAction(i, next)}
-              onRemove={r.actions.length > 1 ? () => setR({ ...r, actions: r.actions.filter((_, j) => j !== i) }) : undefined}
+              onRemove={removeAction(i)}
             />
           ) : (
           <div className="automation-row" key={i}>
-            <Select
-              aria-label={t("Aktion", "Action")}
-              value={a.type}
-              onChange={(e) =>
-                setAction(
-                  i,
-                  e.target.value === "set"
-                    ? { type: "set", field: (fields.find(settable) || fields[0]).id, value: startValue(fields.find(settable)) }
-                    : e.target.value === "template"
-                      ? templateAction(templates)
-                      : { type: "notify", to: "@creator", message: "" },
-                )
-              }
-            >
-              <option value="set">{t("Eigenschaft setzen", "Set property")}</option>
-              <option value="notify">{t("Benachrichtigen", "Notify")}</option>
-              <option value="template" disabled={!templates.length}>
-                {t("Vorlage anwenden", "Apply template")}
-              </option>
-            </Select>
+            {actionSelect(i, a)}
             {a.type === "template" ? (
               <>
                 <Select aria-label={t("Datensatzvorlage", "Record template")} value={a.template} onChange={(e) => setAction(i, { ...a, template: e.target.value })}>
@@ -563,6 +619,13 @@ function AutomationEditor({
           </button>
         )}
       </fieldset>
+      {tried && problems.length > 0 && (
+        <div className="error" role="alert">
+          {problems.map((p) => (
+            <p key={p}>{p}</p>
+          ))}
+        </div>
+      )}
       <div className="modal-actions">
         <button type="button" className="button" onClick={onCancel}>
           {t("Abbrechen", "Cancel")}

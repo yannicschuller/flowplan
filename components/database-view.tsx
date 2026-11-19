@@ -3425,6 +3425,7 @@ export default function DatabaseView({
                 act={act}
                 onTemplates={() => setManageTemplates(true)}
                 templates={data.rowTemplates}
+                databases={pages.filter((p) => p.kind === "database" && !p.deleted_at && p.workspace_id === page.workspace_id).map((p) => ({ id: p.id, title: p.title }))}
               />
             </>
           )}

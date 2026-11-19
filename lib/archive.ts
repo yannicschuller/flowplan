@@ -1488,7 +1488,7 @@ async function importEntries(
               user.id,
             );
           }
-          await importDatabaseSettings(pid, d.settings, { user: user.id, fields: d.fields, members, templates: templateIds, person });
+          await importDatabaseSettings(pid, d.settings, { user: user.id, fields: d.fields, members, templates: templateIds, person, pages: pageMap });
           await importDatabaseHistory(pid, d, { user: user.id, rows: rowMap, fields: d.fields });
           // Tag-backed properties use this workspace's tags (#79).
           await reconcileTagFields(user, pid);

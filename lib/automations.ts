@@ -4,7 +4,7 @@
 // pass (their own changes do not trigger further automations, so rules
 // cannot loop). Overdue rules are checked by a background tick.
 import { assertContactWritable } from "./contacts";
-import { all, id, one, run, transaction, nowText } from "./db";
+import { all, id, inSavepoint, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -25,6 +25,7 @@ import { recordWorkflowEvents } from "./workflows/hooks";
 import { queueIssuePush } from "./issue-sync-queue";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { reportTaskFailure, runTaskActions } from "./automation-task";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -240,6 +241,16 @@ export async function processScheduledAutomations(now = Date.now()) {
       for (const rid of await runScheduledRule(a, page, who, slot, counter)) {
         await runAutomations({ page, rowId: rid, actor: who, event: "created" });
         created++;
+      }
+      // "Aufgabe erstellen" into a task database (lib/automation-task.ts):
+      // a failure costs only this date, its creator sees why in the inbox.
+      if (a.actions.some((x) => x.type === "task")) {
+        const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page_id))!.fields) as Field[];
+        try {
+          created += await inSavepoint(async () => await runTaskActions({ rule: a, page, fields, rowId: null, actor: who, day: slot.date, zone: a.trigger.type === "schedule" ? a.trigger.timeZone : undefined }));
+        } catch (error) {
+          await reportTaskFailure(page, who.id, error);
+        }
       }
     }
   }

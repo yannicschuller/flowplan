@@ -745,6 +745,8 @@ export async function workflowFromRule(user: Identity, raw: unknown) {
   const rule = settings.automations?.find((a) => a.id === b.automationId);
   if (!rule) throw new HttpError(404, "Regel nicht gefunden.");
   if (rule.workflow) throw new HttpError(409, "Diese Regel ist schon als Workflow erweitert.");
+  // "Aufgabe erstellen" of a rule (#380) has no node of the canvas yet.
+  if (rule.actions.some((a) => a.type === "task")) throw new HttpError(409, "Regeln mit „Aufgabe erstellen“ lassen sich noch nicht im Canvas öffnen.");
   const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db.id))!.fields);
   const graph = automationToGraph(rule, db.id, fields);
   if (rule.trigger.type !== "schedule" && b.timeZone) graph.settings.timeZone = b.timeZone;

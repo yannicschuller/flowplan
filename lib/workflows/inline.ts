@@ -28,6 +28,7 @@ import { recordEventKinds } from "./hooks";
 import { workflowListeners } from "./events";
 import { startInlineRun } from "./engine";
 import type { RenderScope } from "./placeholders";
+import { runTaskActions } from "../automation-task";
 
 type Cells = Record<string, unknown>;
 export type RecordEvent = "created" | "form" | "updated" | "overdue";
@@ -158,6 +159,8 @@ export async function runRuleAutomations(input: { page: Page; rowId: string; act
   const batch = await batchFor(input.page, input.rowId);
   if (!batch) return 0;
   let fired = 0;
+  // Rules with "Aufgabe erstellen" that fired: their tasks after the batch.
+  const tasks: Automation[] = [];
   const record = { id: batch.rowId, database: { id: input.page.id }, fields: batch.cells };
   for (const a of automations) {
     if (!ruleTriggered(a, input.event, input.before ?? null, batch.row.cells, batch.fields)) continue;
@@ -191,8 +194,13 @@ export async function runRuleAutomations(input: { page: Page; rowId: string; act
       throw error instanceof InlineFailure ? error.error : error;
     }
     if (passed) fired++;
+    if (passed && a.actions.some((x) => x.type === "task")) tasks.push(a);
   }
   await flush(batch, input.actor);
+  // The tasks (lib/automation-task.ts) after the values and templates: a
+  // template for an empty document still finds it empty, the task's text
+  // sees the values just set.
+  for (const a of tasks) await runTaskActions({ rule: a, page: input.page, fields: batch.fields, rowId: batch.rowId, actor: input.actor });
   return fired;
 }
 
