@@ -57,12 +57,17 @@ export async function duplicatePageTree(user: Identity, root: Page) {
 }
 // All roots share one reference map, so links and relations between roots also copy.
 // The caller owns the destination and SQL transaction; every source is read-checked.
+// `owner` is who the copy belongs to in the destination (the copier unless
+// someone else's starter content is copied, lib/starter-content.ts): pages,
+// records, files and tags are made by them, while every source is still
+// read-checked as `user`.
 export async function duplicatePages(
   user: Identity,
   tree: Page[],
   workspaceId: string,
   spaceId: string,
   root?: Page,
+  owner: Identity = user,
 ) {
   // Pages below records hidden from the copier stay out with their records (#231).
   const hiddenBelow = await hiddenRecordPageIds(user, tree);
@@ -86,13 +91,13 @@ export async function duplicatePages(
       await createPage(
         workspaceId,
         spaceId,
-        user.id,
+        owner.id,
         p.id === root?.id ? `${p.title} ${ct("(Kopie)", "(copy)")}` : p.title,
         p.kind,
       ),
     );
     // Tags and property values (lib/page-properties-server.ts).
-    await copyPageMeta(user, p.id, { id: pageIds.get(p.id)!, workspace_id: workspaceId, space_id: spaceId });
+    await copyPageMeta(owner, p.id, { id: pageIds.get(p.id)!, workspace_id: workspaceId, space_id: spaceId });
     if (p.journal_date)
       await run(
         "UPDATE pages SET journal_date=? WHERE id=?",
@@ -208,12 +213,12 @@ export async function duplicatePages(
           f.name,
           f.mime,
           f.size,
-          user.id,
+          owner.id,
         );
       }
       if (p.kind === "workflow") {
         // The draft as a draft, never active (lib/workflows/store.ts).
-        await copyWorkflow(p.id, target, workspaceId, user.id);
+        await copyWorkflow(p.id, target, workspaceId, owner.id);
       } else if (p.kind === "whiteboard") {
         await copyWhiteboard(p.id, target, pageIds, rewrite);
       } else if (p.kind === "dashboard") {
@@ -222,7 +227,7 @@ export async function duplicatePages(
         await run("UPDATE documents SET html=(SELECT html FROM documents WHERE page_id=?) WHERE page_id=?", p.id, target);
       } else if (p.kind === "notebook") {
         // Sheets, paper and ink; PDF backgrounds point to the copied files.
-        await copyNotebook(p.id, target, fileIds, user.id);
+        await copyNotebook(p.id, target, fileIds, owner.id);
       } else if (p.kind === "document" || p.kind === "journal") {
         const source = await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
@@ -236,7 +241,7 @@ export async function duplicatePages(
           target,
         );
         // Drawing blocks keep their ids: the copy gets their ink.
-        await copyPageInk(p.id, target, undefined, user.id, fileIds);
+        await copyPageInk(p.id, target, undefined, owner.id, fileIds);
       } else {
         const source = (await one<{
           fields: string;
@@ -283,8 +288,8 @@ export async function duplicatePages(
             target,
             rewriteCells(r.cells, fields),
             r.position,
-            user.id,
-            user.id,
+            owner.id,
+            owner.id,
             rewriteHtml(r.content || ""),
             rewrite(r.icon || ""),
             rewrite(r.cover || ""),
@@ -314,10 +319,10 @@ export async function duplicatePages(
             rewriteCells(JSON.stringify(await readableTemplateCells(user, p, t.cells)), fields),
             rewriteHtml(t.html),
             t.is_default,
-            user.id,
+            owner.id,
           );
         // Copied into another workspace: tag-backed properties use its tags (#79).
-        if (workspaceId !== p.workspace_id) await reconcileTagFields(user, target);
+        if (workspaceId !== p.workspace_id) await reconcileTagFields(owner, target);
         const form = await one<{
           config: string;
           internal: number;

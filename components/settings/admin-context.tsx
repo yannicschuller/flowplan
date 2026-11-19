@@ -7,6 +7,7 @@ import type { BuildInfo } from "@/lib/build-info";
 import type { UpdateStatus } from "@/lib/update-check";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
+import type { starterSpaceStatus } from "@/lib/starter-content";
 import type { SsoGroupReport } from "@/lib/sso-group-report";
 import type { sessionSettings } from "@/lib/session-policy";
 type SessionSettings = Awaited<ReturnType<typeof sessionSettings>>;
@@ -66,6 +67,9 @@ export type AdminData = {
   };
   usage: { id: string; bytes: number; quotaMb: number | null; effectiveQuotaMb: number }[];
   settings: InstanceSettings;
+  // Starter content for new accounts (#381, lib/starter-content.ts).
+  starterSpaces?: { id: string; name: string; workspace: string }[];
+  starter?: Awaited<ReturnType<typeof starterSpaceStatus>>;
   // Effective session lifetimes (lib/session-policy.ts).
   sessionPolicy?: SessionSettings;
   localLogin?: boolean;

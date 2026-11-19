@@ -91,6 +91,14 @@ export const instanceSettingsSchema = z.object({
   // formatting toolbar of everyone without a layout of their own (null =
   // the built-in one).
   toolbarLayoutDefault: z.unknown().transform(storedToolbarLayout),
+  // "Startinhalt für neue Konten" (#381, lib/starter-content.ts): the space
+  // whose pages every new personal workspace gets a copy of (null = the
+  // built-in welcome page and examples), the administrator who chose it
+  // (set by the server, the pages are read as them) and whether the
+  // built-in welcome page stays in front of them.
+  starterSpace: z.string().uuid().nullable().default(null),
+  starterBy: z.string().max(200).nullable().default(null),
+  starterKeepWelcome: z.boolean().default(true),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -125,6 +133,9 @@ const defaults: InstanceSettings = {
   deadManSwitch: true,
   inviteLinks: true,
   toolbarLayoutDefault: null,
+  starterSpace: null,
+  starterBy: null,
+  starterKeepWelcome: true,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

@@ -186,6 +186,7 @@ import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
+import { starterSettingsInput } from "./starter-content";
 import { marketplaceConfig } from "./marketplace-config";
 import { incidentThreshold, notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
@@ -944,7 +945,9 @@ async function runCommand(
         const previous = await instanceSettings();
         const before = previous.emergencyAccess;
         const deadmanBefore = previous.deadManSwitch;
-        result = await saveInstanceSettings(b.settings);
+        // Starter content (#381): only a space this administrator may read,
+        // recorded as chosen by them.
+        result = await saveInstanceSettings(await starterSettingsInput(user, b.settings));
         const saved = result as Awaited<ReturnType<typeof instanceSettings>>;
         // Who may get in, and how: sign-up for anyone, demo accounts,
         // invitation links (#320) and the two-factor requirement – a
@@ -960,6 +963,8 @@ async function runCommand(
         // The inactivity message (#282) likewise.
         const deadman = saved.deadManSwitch;
         if (deadmanBefore !== deadman) await audit(user.id, "admin.deadman", "instance", deadman ? "on" : "off");
+        // Starter content for new accounts (#381): which space, if any.
+        if (previous.starterSpace !== saved.starterSpace) await audit(user.id, "admin.starter", saved.starterSpace || "instance", saved.starterSpace ? "on" : "off");
         break;
       }
       // AI (lib/ai): administration, own settings, what the AI may read.

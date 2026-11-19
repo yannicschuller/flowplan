@@ -5,6 +5,8 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Starter content for new accounts (lib/starter-content.ts, #381).
+  "Ein Ende-zu-Ende-verschlüsselter Bereich kann kein Startinhalt sein.": "An end-to-end encrypted space cannot be starter content.",
   // The restart history (lib/restarts/history.ts).
   "Dieser Neustart ist nicht (mehr) gespeichert.": "This restart is not (or no longer) saved.",
   // The stuck Litestream replica (lib/litestream-health.ts).
