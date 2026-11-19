@@ -1117,7 +1117,13 @@ kbd,
 .recent-card:hover {
   background: var(--bg);
   box-shadow: 0 4px 15px #202b4010;
-  transform: translateY(-2px);
+}
+/* Lifts only under a mouse (#377): iOS keeps :hover under the finger, and
+   a card that moves when touched is not how native apps behave. */
+@media (hover: hover) and (pointer: fine) {
+  .recent-card:hover {
+    transform: translateY(-2px);
+  }
 }
 .recent-illustration {
   height: 108px;
@@ -11247,8 +11253,11 @@ details[data-heading] > summary {
   background: var(--blue);
   border-color: var(--blue);
 }
-.document-block-pick:active {
-  transform: scale(0.9);
+/* Pressed with a mouse only (#377): under a finger nothing moves. */
+@media (hover: hover) and (pointer: fine) {
+  .document-block-pick:active {
+    transform: scale(0.9);
+  }
 }
 .document-block-picked {
   position: absolute;
@@ -11956,7 +11965,11 @@ img.inline-comment-mark {
 }
 .reaction-picker button:hover {
   background: var(--hover);
-  transform: scale(1.18);
+}
+@media (hover: hover) and (pointer: fine) {
+  .reaction-picker button:hover {
+    transform: scale(1.18);
+  }
 }
 @keyframes reaction-pop {
   from {
@@ -12776,8 +12789,14 @@ a {
     box-shadow 0.14s ease,
     opacity 0.14s ease;
 }
-button:active:not(:disabled) {
-  scale: 0.98;
+/* A pressed button gives a little under the mouse. Not by touch (#377):
+   iOS applies :active while a finger rests on a button or swipes over it,
+   and the slight shrink moved wide ones – sidebar pages, the home page's
+   rows and cards, table rows – sideways, unlike native apps. */
+@media (hover: hover) and (pointer: fine) {
+  button:active:not(:disabled) {
+    scale: 0.98;
+  }
 }
 input,
 textarea {
@@ -12861,7 +12880,8 @@ textarea {
 .record-layout {
   animation: fade-in var(--motion-base) ease both;
 }
-/* Cards lift slightly under the pointer. */
+/* Cards lift slightly under the pointer – a mouse pointer (#377): a
+   finger's sticky :hover would move them. */
 .record-card,
 .recent-card {
   transition:
@@ -12871,8 +12891,13 @@ textarea {
 }
 .record-card:hover,
 .recent-card:hover {
-  translate: 0 -1px;
   box-shadow: 0 6px 16px #1724390f;
+}
+@media (hover: hover) and (pointer: fine) {
+  .record-card:hover,
+  .recent-card:hover {
+    translate: 0 -1px;
+  }
 }
 /* Collapse arrows turn smoothly. */
 .group-toggle svg,
@@ -16785,8 +16810,10 @@ pre,
   margin: 0 auto;
   transition: transform 0.5s var(--ease-spring, ease);
 }
-.login-card:hover .login-mark .brand-mark {
-  transform: rotate(-4deg) translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .login-card:hover .login-mark .brand-mark {
+    transform: rotate(-4deg) translateY(-2px);
+  }
 }
 /* The serif speaks only at entrances: sign-in and the home greeting. */
 .login-card h1,
@@ -17065,7 +17092,11 @@ th[data-field-drop] {
 .journal-today:not(:disabled):hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
   box-shadow: 0 10px 28px -12px #1d1a1433;
-  translate: 0 -1px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .journal-today:not(:disabled):hover {
+    translate: 0 -1px;
+  }
 }
 .journal-today-date {
   display: grid;
@@ -17365,7 +17396,11 @@ li[data-journal-since] > label::after {
 }
 .journal-memory:hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
-  translate: 0 -1px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .journal-memory:hover {
+    translate: 0 -1px;
+  }
 }
 .journal-memory img {
   width: 56px;
@@ -17603,7 +17638,11 @@ li[data-journal-since] > label::after {
 }
 .journal-scale button:not(:disabled):hover {
   background: var(--hover);
-  transform: translateY(-1px);
+}
+@media (hover: hover) and (pointer: fine) {
+  .journal-scale button:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
 }
 .journal-scale button[aria-pressed="true"] {
   background: var(--bg);
@@ -18722,8 +18761,10 @@ label.task-due {
     top 0.15s linear,
     scale 0.15s ease;
 }
-.wb-cursor-edge:hover {
-  scale: 1.06;
+@media (hover: hover) and (pointer: fine) {
+  .wb-cursor-edge:hover {
+    scale: 1.06;
+  }
 }
 .wb-cursor-edge i {
   font-style: normal;
@@ -19637,8 +19678,10 @@ h3 .block-reactions {
   box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--blue) 70%, transparent);
   transition: transform 0.15s var(--ease-out);
 }
-.voice-recorder .voice-start:hover {
-  transform: scale(1.05);
+@media (hover: hover) and (pointer: fine) {
+  .voice-recorder .voice-start:hover {
+    transform: scale(1.05);
+  }
 }
 .voice-live {
   width: 22px;
@@ -20896,7 +20939,11 @@ h3 .block-reactions {
 }
 .text-menu-reactions button:hover {
   background: var(--hover);
-  transform: scale(1.15);
+}
+@media (hover: hover) and (pointer: fine) {
+  .text-menu-reactions button:hover {
+    transform: scale(1.15);
+  }
 }
 .text-menu-reactions button.active {
   background: var(--blue-light);
@@ -30276,7 +30323,10 @@ tr:hover .row-open-mark,
   .app-shell:not(.keyboard-open, .focus-mode) .main-scroll::after {
     height: 0;
   }
-  .mobile-scrim {
+  /* Hovered too: iOS keeps :hover on the touched scrim, and the rule above
+     (inset: 0 for .mobile-scrim:hover) would stretch it over the bar. */
+  .mobile-scrim,
+  .mobile-scrim:hover {
     bottom: var(--tab-bar-space);
   }
   /* The document toolbar sits on the bar; with the keyboard open the bar is
