@@ -62,7 +62,7 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1490 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1500 },
   // The signed-in pages were raised on 2026-11-19 by 7-15 KB (under 1.5 %):
   // offline creation (#370: the queue of new pages and uploads, the "not yet
   // synced" marks), the library (#329), passkeys from the apps and the
@@ -71,7 +71,14 @@ const PAGES = [
   // (loaded on demand; the offline copy holds every chunk). Measured:
   // database/home 958.5, workflow 1194.5, settings 974.6, settings section
   // 1046.7, administration 982.2, monitoring 1010.4, push 990.9 KB.
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 962 },
+  // Raised again the same day: the builder of pages made offline
+  // (components/offline-local-data.ts) has to be in the shell – loaded on
+  // demand its chunk is missing once the connection is gone
+  // (offline-create.spec) – and the features switch (#378) reads in every
+  // view. Measured: document 1494.5, database/home 970.0, workflow 1206.0,
+  // settings 985.9, settings section 1058.0, administration 993.7,
+  // monitoring 1021.9, push 1002.4 KB.
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 975 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
@@ -81,19 +88,19 @@ const PAGES = [
   // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
   // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
   // the margin the other pages have).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1200, ready: ".react-flow__node, .wf-list-node" },
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1212, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
-  { path: "/#home", name: "home", signedIn: true, jsKb: 962, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 978, ready: ".settings-tile" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1052, ready: ".settings-detail .setting-group" },
-  { path: "/#admin", name: "administration", signedIn: true, jsKb: 987, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  { path: "/#home", name: "home", signedIn: true, jsKb: 975, ready: ".home-grid" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 992, ready: ".settings-tile" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1064, ready: ".settings-detail .setting-group" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1000, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1015, ready: ".mon-health" },
+  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1028, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 995, ready: "#relay" },
+  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1008, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 255, lcpMs: 2500 };
 const LOCALE = "de-DE";
