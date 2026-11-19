@@ -21,8 +21,7 @@ import { LAYOUT_COOKIE, parseLayout } from "@/lib/layout-cookie";
 import { sourceUrl } from "@/lib/about";
 import { maintenanceNotice } from "@/lib/admin-ops";
 import { instanceSettings } from "@/lib/instance-settings";
-import Login from "@/components/login";
-import { TwoFactorRequired } from "@/components/two-factor";
+import { SecondFactorRequired, SignIn as Login } from "@/components/sign-in-entry";
 import { loginOptions } from "@/lib/local-auth";
 import { marketplaceConfig } from "@/lib/marketplace-config";
 import { MarketplaceSignInReceiver } from "@/components/marketplace-signin-receiver";
@@ -55,7 +54,7 @@ export default async function Home({
       </>
     );
   // The instance requires a second factor this account does not have yet.
-  if (user.twoFactorSetup) return <TwoFactorRequired name={user.name} instanceName={(await instanceSettings()).name} />;
+  if (user.twoFactorSetup) return <SecondFactorRequired name={user.name} instanceName={(await instanceSettings()).name} />;
   const locale = await requestLocale();
   await rememberLocale(user.id, locale);
   await withContentLocale(locale, async () => await ensureWorkspace(user.id));
