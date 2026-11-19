@@ -26,6 +26,8 @@ import { mapAsync } from "@/lib/each-async";
 import { InlineText } from "./inline-text";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { SharedInteractions } from "./shared-interactions";
+import { PublicThemeToggle } from "./public-theme-toggle";
+import { truncateTitle } from "@/lib/public-nav";
 import type { Field, Row } from "@/lib/types";
 
 const empty = (value: unknown) =>
@@ -87,12 +89,15 @@ export async function renderPublicRecord(scope: RecordScope) {
   return (
     <main className={`public-page public-record ${page.full_width ? "public-wide" : ""}`}>
       <WorkspaceThemeStyle look={await workspaceLook(page.workspace_id)} fontUrl={(id) => `/api/share/${token}/fonts/${id}`} />
-      <a href="/" className="public-brand">
-        flowplan{" "}
-        <span className="muted">
-          / {scope.publication ? t("Veröffentlichter Eintrag", "Published record") : t("Geteilter Eintrag", "Shared record")}
-        </span>
-      </a>
+      <header className="public-header">
+        <a href="/" className="public-brand">
+          flowplan{" "}
+          <span className="muted">
+            / {scope.publication ? t("Veröffentlichter Eintrag", "Published record") : t("Geteilter Eintrag", "Shared record")}
+          </span>
+        </a>
+        <PublicThemeToggle />
+      </header>
       {scope.publication && (
         <div className="publication-meta">
           <span className="muted">
@@ -103,8 +108,8 @@ export async function renderPublicRecord(scope: RecordScope) {
       )}
       {/* The path starts at the shared record (its sub-pages follow it). */}
       <nav className="public-breadcrumb" aria-label={t("Pfad", "Path")}>
-        <a href={`/share/${token}`} aria-current="page">
-          {title}
+        <a href={`/share/${token}`} aria-current="page" className="public-breadcrumb-current" title={title}>
+          {truncateTitle(title)}
         </a>
       </nav>
       {row.cover && (coverColor || coverUrl) && (

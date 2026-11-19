@@ -13,10 +13,11 @@ export default async function Page({
   searchParams: Promise<{ row?: string; view?: string; month?: string; cards?: string }>;
 }) {
   const { token } = await params;
-  const { row, view, month, cards } = await searchParams;
+  const query = await searchParams;
+  const { row, view, month, cards } = query;
   return (
     <>
-      <PublishedPage token={token} customHost={await requestCustomHost(token)} rowId={row} viewId={view} month={month} cards={cards} />
+      <PublishedPage token={token} customHost={await requestCustomHost(token)} rowId={row} viewId={view} month={month} cards={cards} query={query} />
       <PublicLegalFooter />
     </>
   );
