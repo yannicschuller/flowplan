@@ -2227,6 +2227,12 @@ function noteWrite() {
 // Schema changes through run() (tests, one-time steps) outdate cached statements.
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 
+// node:sqlite returns each row as a fresh object without a prototype; it
+// gets Object's prototype in place (#383), as the copy `{ ...row }` did
+// before at more than twice the cost: plain objects for the rest of the code
+// (React's serialisation to the client, deepStrictEqual, hasOwnProperty),
+// still one object per row and call, owned by the caller.
+const asPlain = (row: object) => Object.setPrototypeOf(row, Object.prototype) as object;
 // The synchronous SQLite statements behind the asynchronous SQLite driver
 // (lib/db-driver/sqlite.ts) – only for it and SQLite-only code (the
 // migrations, the file checks). Everything else uses one/all/run below.
@@ -2237,13 +2243,14 @@ export function sqliteOne<T = Record<string, unknown>>(sql: string, ...params: P
   const row = cached.statement.get(...params);
   if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
-  return row ? ({ ...row } as T) : undefined;
+  return row ? (asPlain(row) as T) : undefined;
 }
 export function sqliteAll<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
-  const rows = cached.statement.all(...params).map((row) => ({ ...row })) as T[];
+  const rows = cached.statement.all(...params) as T[];
+  for (const row of rows) asPlain(row as object);
   if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return rows;
