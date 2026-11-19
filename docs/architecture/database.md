@@ -1546,12 +1546,23 @@ for several pods that can come and go at any time:
   reader goes through `localUpload`/`readUpload`/`uploadSource`
   (`ensureLocal` underneath; `tests/cluster-storage.test.ts` fails on a
   direct read of the uploads folder); whole-instance copies (instance
-  backup, SFTP mirror, move) list the files table and fetch what is
-  missing. The cache is pruned above `FLOWPLAN_CACHE_MAX_MB` (least
-  recently used first; the chart sets 70 % of the `emptyDir` limit). A
-  stopping instance awaits its uploads under way and drains the due queue.
-  The single container is unchanged (local folder first, queue in the
-  background).
+  backup, SFTP mirror, move) list the local files plus those confirmed in
+  the bucket and read the missing ones from a temporary download
+  (`withUploadFile`/`openUpload`), without filling the cache. The cache is
+  pruned above `FLOWPLAN_CACHE_MAX_MB` (least recently used first; the
+  chart sets 70 % of the `emptyDir` limit). A stopping instance awaits its
+  uploads under way and drains the due queue. The single container is
+  unchanged (local folder first, queue in the background) unless
+  `S3_LOCAL_CACHE` is set (#389): then it uses the same cache. Only a file
+  confirmed in the bucket is removed – a `storage_sealed` row, no job in
+  `storage_queue`, and a HEAD whose `Content-Length` is the local size
+  (plus the encryption overhead when it went up sealed); a 404 queues the
+  file again. The order of use is a `Map` stamp per read, written as the
+  file's mtime by the round (at the start, 30 s after an upload, every five
+  minutes; at most 200 bucket checks per round); files used or written in
+  the last ten minutes and files a whole-instance copy reads stay. The
+  background restore of missing files (`hydrate`) does not run with a
+  cache.
 - **Uploads in several requests** (lib/staging.ts): transcription chunks,
   meeting pieces with their live and transcript state, notebook recordings
   (chunks named by offset; a retry from inside a chunk cuts it there) and

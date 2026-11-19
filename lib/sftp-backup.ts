@@ -37,8 +37,7 @@ import {
   type SftpLogin,
   type SftpSession,
 } from "./sftp";
-import { localUploadNames } from "./storage";
-import { clusterMode } from "./cluster/config";
+import { localCacheMode, localUploadNames, withUploadFile } from "./storage";
 
 const SETTING = "sftpBackup";
 const LAST = "sftpBackup";
@@ -234,8 +233,11 @@ export async function trustSftpHostKey(actor: string, fingerprint: unknown) {
 // missing here (an uploads folder not mounted, a lost volume).
 async function mirrorUploads(session: SftpSession, folder: string, now: number, oldest: number | null) {
   const local = resolve(dataDir(), "uploads");
-  // Cluster mode: the folder is only a cache – every file, fetched first.
-  const mine = clusterMode() ? await localUploadNames() : existsSync(local) ? readdirSync(local).filter((n) => UPLOAD.test(n)) : [];
+  // Cache mode (cluster, S3_LOCAL_CACHE): the folder holds only part of the
+  // files – the ones confirmed in the bucket count as here; those the target
+  // lacks are read from the bucket below, without filling the cache.
+  const cached = localCacheMode();
+  const mine = cached ? await localUploadNames() : existsSync(local) ? readdirSync(local).filter((n) => UPLOAD.test(n)) : [];
   const listed = new Set((await all<{ id: string }>("SELECT id FROM files")).map((r) => String(r.id)));
   if (!mine.length && listed.size)
     return { files: 0, removed: 0, purged: 0, error: "Dateien nicht gespiegelt: Der Ordner uploads fehlt oder ist leer, obwohl die Datenbank Dateien verzeichnet." };
@@ -261,7 +263,7 @@ async function mirrorUploads(session: SftpSession, folder: string, now: number, 
   for (const name of mine) {
     if (theirs.delete(name)) continue;
     const path = resolve(local, name);
-    if (!statSync(path).isFile()) continue;
+    if (!cached && !statSync(path).isFile()) continue;
     // Deleted here before and back now (e.g. restored): moved back.
     const copy = back.get(name);
     if (copy) {
@@ -275,8 +277,12 @@ async function mirrorUploads(session: SftpSession, folder: string, now: number, 
       }
     }
     const part = remotePath(remoteDir, `${name}.part`);
-    if (encrypted) await pipeline(createReadStream(path), sealStream(), session.sftp.createWriteStream(part));
-    else await sftpUpload(session.sftp, path, part);
+    const send = async (source: string) => {
+      if (encrypted) await pipeline(createReadStream(source), sealStream(), session.sftp.createWriteStream(part));
+      else await sftpUpload(session.sftp, source, part);
+      return true;
+    };
+    if (!(cached ? await withUploadFile(name, send) : await send(path))) continue;
     await sftpReplace(session.sftp, part, remotePath(remoteDir, name));
     files++;
   }

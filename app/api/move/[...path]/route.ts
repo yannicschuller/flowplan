@@ -12,7 +12,8 @@
 //   POST finish              the move is done: banner, token used up
 import { serverError } from "@/lib/request-context";
 import { HttpError } from "@/lib/auth";
-import { authorizeMove, envReport, finishSource, freezeSource, moveManifest, movePath, serveMoveFile, snapshotPath } from "@/lib/instance-move";
+import { authorizeMove, envReport, finishSource, freezeSource, moveManifest, movePath, serveMoveFile, serveMoveUpload, snapshotPath } from "@/lib/instance-move";
+import { localCacheMode } from "@/lib/storage";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ path: st
     }
     if (path.length === 2 && (path[0] === "file" || path[0] === "extra")) {
       await authorizeMove(req, "file");
+      if (path[0] === "file" && localCacheMode()) {
+        const served = await serveMoveUpload(path[1], req.headers.get("range"));
+        if (!served) throw new HttpError(404, "Datei nicht gefunden.");
+        return served;
+      }
       const file = movePath(path[0], path[1]);
       if (!file) throw new HttpError(404, "Datei nicht gefunden.");
       return serveMoveFile(file, req.headers.get("range"));
