@@ -147,35 +147,41 @@ export function requireAdmin(user: Identity) {
 // the ordinary – a parent, a space or a database in another workspace, a
 // record in the trash or moved away – is left to pageRole() itself.
 //
-// Each entry keeps what of the page went into it (parent, space, record),
-// so pageRole() takes the answer from here only for a page with exactly
-// these – a page changed in memory is checked on its own.
-export type RoleEntry = { role: Role | null; parent: string | null; space: string | null; row: string | null };
-export type WorkspaceRoles = ReadonlyMap<string, RoleEntry>;
-type PageLink = { id: string; workspace_id: string; space_id: string | null; parent_id: string | null; parent_row_id: string | null };
+// `links` keeps what of each page went into its role (parent, space,
+// record; shared by everyone's roles of the workspace), so pageRole() takes
+// the answer from here only for a page with exactly these – a page changed
+// in memory is checked on its own.
+type PageLink = Readonly<{ id: string; workspace_id: string; space_id: string | null; parent_id: string | null; parent_row_id: string | null }>;
+export type WorkspaceRoles = { readonly roles: ReadonlyMap<string, Role | null>; readonly links: ReadonlyMap<string, PageLink> };
 type RecordRow = { id: string; page_id: string; access: string; created_by: string | null };
 type RecordGrant = { row_id: string; user_id: string; group_id: string; role: "viewer" | "editor" };
 const rolesKey = (workspace: string, user: string) => `roles:${workspace}:${user}`;
 
-function knownRole(user: Identity, page: Page, roles = peekMemo<WorkspaceRoles>(rolesKey(page.workspace_id, user.id))): Role | null | undefined {
-  const entry = roles?.get(page.id);
-  if (!entry) return undefined;
-  if (entry.parent !== (page.parent_id ?? null) || entry.space !== (page.space_id ?? null) || entry.row !== (page.parent_row_id ?? null)) return undefined;
-  return entry.role;
+function knownRole(user: Identity, page: Page, known = peekMemo<WorkspaceRoles>(rolesKey(page.workspace_id, user.id))): Role | null | undefined {
+  const link = known?.links.get(page.id);
+  if (!link || !known!.roles.has(page.id)) return undefined;
+  if ((link.parent_id ?? null) !== (page.parent_id ?? null) || (link.space_id ?? null) !== (page.space_id ?? null) || (link.parent_row_id ?? null) !== (page.parent_row_id ?? null)) return undefined;
+  return known!.roles.get(page.id)!;
 }
 
 // Remembered within a request until the next write (lib/read-memo.ts)
 // and across requests while the version "roles" stays
 // (lib/cache-versions.ts); pageRole() answers from either.
-const keptAcross = ((globalThis as { flowplanRoles?: VersionedCache<WorkspaceRoles> }).flowplanRoles ??= new VersionedCache<WorkspaceRoles>(500));
+const kept = globalThis as { flowplanRoles?: VersionedCache<WorkspaceRoles>; flowplanPageLinks?: VersionedCache<ReadonlyMap<string, PageLink>> };
+const keptAcross = (kept.flowplanRoles ??= new VersionedCache<WorkspaceRoles>(500));
+const keptLinks = (kept.flowplanPageLinks ??= new VersionedCache<ReadonlyMap<string, PageLink>>(50));
+const pageLinks = async (workspace: string) =>
+  new Map((await all<PageLink>("SELECT id,workspace_id,space_id,parent_id,parent_row_id FROM pages WHERE workspace_id=?", workspace)).map((p) => [p.id, Object.freeze(p)]));
 export async function workspaceRoles(user: Identity, workspace: string): Promise<WorkspaceRoles> {
   return await memoized(rolesKey(workspace, user.id), async () => {
-    if (inTransaction()) return await computeWorkspaceRoles(user, workspace);
+    if (inTransaction()) return await computeWorkspaceRoles(user, workspace, await pageLinks(workspace));
     const version = await cacheVersion("roles");
     const key = `${workspace}:${user.id}`;
     const kept = keptAcross.get(key, version);
     if (kept) return kept;
-    const roles = await computeWorkspaceRoles(user, workspace);
+    let links = keptLinks.get(workspace, version);
+    if (!links) keptLinks.set(workspace, version, (links = await pageLinks(workspace)));
+    const roles = await computeWorkspaceRoles(user, workspace, links);
     keptAcross.set(key, version, roles);
     return roles;
   });
@@ -193,14 +199,14 @@ async function keptRoles(user: Identity, workspace: string): Promise<WorkspaceRo
   return kept;
 }
 
-async function computeWorkspaceRoles(user: Identity, workspace: string): Promise<WorkspaceRoles> {
-  const pages = await all<PageLink>("SELECT id,workspace_id,space_id,parent_id,parent_row_id FROM pages WHERE workspace_id=?", workspace);
-  const out = new Map<string, RoleEntry>();
-  const entry = (p: PageLink, role: Role | null): RoleEntry => ({ role, parent: p.parent_id ?? null, space: p.space_id ?? null, row: p.parent_row_id ?? null });
+// `links`: every page of the workspace with its place (pageLinks()).
+async function computeWorkspaceRoles(user: Identity, workspace: string, links: ReadonlyMap<string, PageLink>): Promise<WorkspaceRoles> {
+  const pages = [...links.values()];
+  const out = new Map<string, Role | null>();
   const membership = await memberRole(user, workspace);
   if (!membership) {
-    for (const p of pages) out.set(p.id, entry(p, null));
-    return out;
+    for (const p of pages) out.set(p.id, null);
+    return { roles: out, links };
   }
   const guest = await isGuest(user, workspace);
   const spaces = new Map((await all<Space>("SELECT * FROM spaces WHERE workspace_id=?", workspace)).map((s) => [s.id, s]));
@@ -234,7 +240,7 @@ async function computeWorkspaceRoles(user: Identity, workspace: string): Promise
   }
   // Loaded when needed, as in pageRole() (an import cycle at start-up).
   const { combine } = await import("./row-access");
-  const byId = new Map(pages.map((p) => [p.id, p]));
+  const byId = links;
   const capped = (granted: Role) => (rank[granted] < rank[membership] ? granted : membership);
   const ofSpace = (space: Space): Role | null => {
     if (space.deleted_at) return null;
@@ -286,7 +292,7 @@ async function computeWorkspaceRoles(user: Identity, workspace: string): Promise
   }
   for (const p of pages) {
     const role = roleOf(p);
-    out.set(p.id, entry(p, role === undefined ? await pageRole(user, p as unknown as Page) : role));
+    out.set(p.id, role === undefined ? await pageRole(user, p as unknown as Page) : role);
   }
-  return out;
+  return { roles: out, links };
 }

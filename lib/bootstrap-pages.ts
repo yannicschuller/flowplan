@@ -121,10 +121,11 @@ export function bootstrapResponse(req: Request, answer: Record<string, unknown>)
   const headers = new Headers({ "Cache-Control": "no-store", ETag: etag });
   if (tagMatches(req.headers.get("if-none-match"), etag)) return new Response(null, { status: 304, headers });
   headers.set("Content-Type", "application/json");
-  // A part's JSON is kept with it.
+  // The members' JSON is kept with them (one list per workspace); a page
+  // list's is not – one per person would hold the whole tree per person.
   const json = parts.map((part) => {
-    const kept = lists[part].get(tags[part]!.key, tags[part]!.version);
     const value = answer[part];
+    const kept = part === "members" ? lists.members.get(tags[part]!.key, tags[part]!.version) : undefined;
     return `${JSON.stringify(part)}:${kept && kept.list === value ? (kept.json ??= JSON.stringify(value)) : JSON.stringify(value)}`;
   });
   return new Response(`{${json.join(",")}${restJson === "{}" ? "" : `,${restJson.slice(1)}`}`, { status: 200, headers });

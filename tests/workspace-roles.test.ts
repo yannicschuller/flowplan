@@ -172,10 +172,10 @@ async function same(w: World, label: string) {
   let compared = 0;
   for (const person of w.people) {
     const bulk = await workspaceRoles(person, w.workspace);
-    assert.equal(bulk.size, pages.length, label);
+    assert.equal(bulk.roles.size, pages.length, label);
     for (const page of pages) {
       const expected = await pageRole(person, page);
-      assert.equal(bulk.has(page.id) ? bulk.get(page.id)!.role : "missing", expected, `${label}: ${person.name} on ${page.title} (${page.id})`);
+      assert.equal(bulk.roles.has(page.id) ? bulk.roles.get(page.id) : "missing", expected, `${label}: ${person.name} on ${page.title} (${page.id})`);
       compared++;
     }
   }
@@ -189,7 +189,7 @@ test("workspaceRoles() equals pageRole() for every page and person of generated 
     const w = await world(seed);
     compared += await same(w, `seed ${seed}`);
     for (const person of w.people)
-      for (const e of (await workspaceRoles(person, w.workspace)).values()) seen[e.role || "none"]++;
+      for (const role of (await workspaceRoles(person, w.workspace)).roles.values()) seen[role || "none"]++;
   }
   // The fixtures reach every outcome.
   assert.ok(compared > 3000, String(compared));
@@ -279,7 +279,7 @@ test("within a request pageRole() answers from the bulk roles, but checks a chan
   const expected = { stored: await pageRole(person, page), moved: await pageRole(person, elsewhere) };
   await withReadMemo(async () => {
     const roles = await workspaceRoles(person, w.workspace);
-    assert.equal(roles.get(page.id)?.role, expected.stored);
+    assert.equal(roles.roles.get(page.id), expected.stored);
     assert.equal(await pageRole(person, page), expected.stored);
     assert.equal(await pageRole(person, elsewhere), expected.moved);
     // A write in between: the remembered roles are gone with it.
