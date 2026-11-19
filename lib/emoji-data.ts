@@ -22,8 +22,14 @@ export type EmojiEntry = {
   group: number | undefined;
   order: number;
   tones: number[];
+  // The shortcodes (":rocket:" without the colons): GitHub's, for German
+  // the German CLDR ones as well (#388).
+  shortcodes: string[];
+  // A skin tone variant: the hexcode of the emoji without a tone.
+  parent?: string;
   search: string;
 };
+type Shortcodes = Record<string, string | string[]>;
 const normalize = (value: string) =>
   value
     .toLocaleLowerCase("de")
@@ -33,12 +39,14 @@ export const emojiGroups = messages.groups;
 
 // The entries of `primary` (the names shown), searchable by its names and
 // tags and by those of `english` as well.
-export function buildEmojiEntries(primary: Entry[], english: Entry[]): EmojiEntry[] {
+export function buildEmojiEntries(primary: Entry[], english: Entry[], shortcodeSets: Shortcodes[] = []): EmojiEntry[] {
+  const codesOf = (hexcode: string) => shortcodeSets.flatMap((set) => set[hexcode] ?? []);
   const englishByCode = new Map(english.flatMap((e) => [e, ...(e.skins || [])]).map((e) => [e.hexcode, e]));
   return primary
     .flatMap((parent) =>
       [parent, ...(parent.skins || [])].map((entry) => {
         const en = englishByCode.get(entry.hexcode);
+        const shortcodes = codesOf(entry.hexcode);
         return {
           emoji: entry.emoji,
           label: entry.label,
@@ -48,7 +56,9 @@ export function buildEmojiEntries(primary: Entry[], english: Entry[]): EmojiEntr
           group: entry.group ?? parent.group,
           order: entry.order ?? 99999,
           tones: Array.isArray(entry.tone) ? entry.tone : entry.tone ? [entry.tone] : [],
-          search: normalize([entry.label, parent.label, ...(parent.tags || []), en?.label || "", ...(en?.tags || []), entry.emoji].join(" ")),
+          shortcodes,
+          ...(entry === parent ? {} : { parent: parent.hexcode }),
+          search: normalize([entry.label, parent.label, ...(parent.tags || []), en?.label || "", ...(en?.tags || []), ...shortcodes, entry.emoji].join(" ")),
         };
       }),
     )
@@ -62,10 +72,16 @@ export function loadEmojiEntries(locale: string): Promise<EmojiEntry[]> {
   let entries = loaded.get(key);
   if (!entries) {
     entries = (async () => {
-      const english = ((await import("emojibase-data/en/data.json")).default as unknown) as Entry[];
-      if (key !== "de") return buildEmojiEntries(english, english);
-      const german = ((await import("emojibase-data/de/data.json")).default as unknown) as Entry[];
-      return buildEmojiEntries(german, english);
+      const [english, github] = await Promise.all([
+        import("emojibase-data/en/data.json").then((m) => (m.default as unknown) as Entry[]),
+        import("emojibase-data/en/shortcodes/github.json").then((m) => (m.default as unknown) as Shortcodes),
+      ]);
+      if (key !== "de") return buildEmojiEntries(english, english, [github]);
+      const [german, cldr] = await Promise.all([
+        import("emojibase-data/de/data.json").then((m) => (m.default as unknown) as Entry[]),
+        import("emojibase-data/de/shortcodes/cldr.json").then((m) => (m.default as unknown) as Shortcodes),
+      ]);
+      return buildEmojiEntries(german, english, [github, cldr]);
     })();
     entries.catch(() => loaded.delete(key));
     loaded.set(key, entries);

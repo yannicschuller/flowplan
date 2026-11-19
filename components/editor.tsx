@@ -144,6 +144,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { Extension } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
+import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 import { AlignMenu, HeadingMenu, ToolbarGroupMenu, type ToolbarGroupEntry } from "./format-menus";
 import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
@@ -783,6 +784,8 @@ export default function DocumentEditor({
   const openFootnote = useRef((_target: FootnoteEdit) => {});
   // The menu of a task's states (#201): right click or long press on its box.
   const [statusMenu, setStatusMenu] = useState<TaskStatusTarget | null>(null);
+  // Emoji suggestions after ":" (#388).
+  const emojiSuggest = useEmojiSuggest();
   const slashState = useRef(slash);
   slashState.current = slash;
   const slashActiveRef = useRef(slashActive);
@@ -873,6 +876,7 @@ export default function DocumentEditor({
         TicketRefs.configure({ pageId }),
         // The workspace's automatic links (#202) while typing and pasting.
         AutoLinkRules,
+        emojiSuggest.extension,
         Suggestion,
         SuggestChanges.configure({
           enabled: () => suggestingRef.current,
@@ -1111,6 +1115,11 @@ export default function DocumentEditor({
         },
         handleKeyDown: (_view, event) => {
           lastKey.current = event.key;
+          // The emoji row after ":" (#388) takes its keys first.
+          if (emojiSuggest.controller.keyDown(_view, event)) {
+            event.preventDefault();
+            return true;
+          }
           // ⌘J / Ctrl+J: the writing assistant for the selection or line.
           if (
             (event.metaKey || event.ctrlKey) &&
@@ -3699,6 +3708,7 @@ export default function DocumentEditor({
           }
         />
       )}
+      <EmojiSuggest suggest={emojiSuggest} />
       {!embedded && (
         <TextMenu
           editor={editor}
