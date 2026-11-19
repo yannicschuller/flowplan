@@ -3,7 +3,7 @@ import { lockedPageIds } from "./journal-extras";
 import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { all, one, run, sql, transaction } from "./db";
-import { addEntry, clearIndex, entryOrder, foldText, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
+import { addEntry, clearIndex, entryId, entryIdIn, entryOrder, foldText, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
 import { personalBoost, personalSignals, titleScore } from "./search-visits";
 import { cellText } from "./cell-text";
 import { clozeFilled } from "./study-cloze";
@@ -35,8 +35,10 @@ export const SEARCH_LIMIT = 50;
 // never holds up requests for more than one batch.
 const BATCH = 100;
 // What a search (or another reader of the index) refreshes itself before
-// it runs; the rest is left to the background drain it starts.
-const INLINE_LIMIT = 1000;
+// it runs; the rest is left to the background drain it starts. Two
+// batches: what a few edits leave behind, without a request paying for an
+// import (#383).
+const INLINE_LIMIT = 200;
 const IGNORED: Field["type"][] = [
   "relation",
   "person",
@@ -477,20 +479,39 @@ export async function searchWorkspace(
     const day = page.journal_date || null;
     if (day && options.excludeDays) return;
     if (day && days.length >= SEARCH_LIMIT) return;
-    (day ? days : results).push({
+    const result: SearchResult = {
       id: page.id,
       ...(rowId ? { rowId } : {}),
       ...(key ? { pageTitle: page.title } : {}),
       title: key ? title : page.title,
-      // Records their own icon (#96); empty: the client's record symbol.
-      icon: type === "row" && rowId ? (await one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", rowId))?.icon || "" : page.icon,
+      // Records their own icon (#96, filled in by withIcons); empty: the
+      // client's record symbol.
+      icon: type === "row" && rowId ? "" : page.icon,
       space_id: page.space_id,
       kind: type,
       snippet,
       ...(alias ? { alias } : {}),
       ...(day ? { journalDate: day } : {}),
       ...(isoTime(updatedAt ?? page.updated_at) ? { updatedAt: isoTime(updatedAt ?? page.updated_at) } : {}),
-    });
+    };
+    (day ? days : results).push(result);
+    // Records their own icon, filled in below (one query for all, #383).
+    if (type === "row" && rowId) icons.set(result, rowId);
+    return result;
+  };
+  const icons = new Map<SearchResult, string>();
+  // The icons of the records among the results: one query (#383).
+  const withIcons = async (out: SearchResult[]) => {
+    const wanted = out.filter((r) => icons.has(r));
+    if (!wanted.length) return out;
+    const found = new Map(
+      (await all<{ id: string; icon: string | null }>(
+        `SELECT id,icon FROM rows WHERE id IN ${sql.jsonValues()}`,
+        JSON.stringify([...new Set(wanted.map((r) => icons.get(r)!))]),
+      )).map((r) => [r.id, r.icon || ""]),
+    );
+    for (const r of wanted) r.icon = found.get(icons.get(r)!) || "";
+    return out;
   };
   const scope =
     "p.workspace_id=? AND p.deleted_at IS NULL" +
@@ -526,7 +547,7 @@ export async function searchWorkspace(
         await push(page, r.rowId, r.title || "Ohne Titel", "", r.updatedAt);
       }
     }
-    return finish();
+    return await withIcons(finish());
   }
   // Trigram matching finds parts of compound words and ignores case and
   // diacritics; shorter queries fall back to a title/body scan.
@@ -550,14 +571,17 @@ export async function searchWorkspace(
   const dated = sort === "edited" ? "hit_updated DESC," : sort === "created" ? "hit_created DESC," : "";
   const times = "COALESCE(r.updated_at,p.updated_at) hit_updated,COALESCE(r.created_at,p.created_at) hit_created";
   const rowJoin = "LEFT JOIN rows r ON r.id=s.row_id AND r.page_id=s.page_id";
-  const candidates = (await all<
-    Page & { row_id: string; hit_title: string; snippet: string; hit_rank: number | null; hit_updated: string | null }
-  >(
+  // The candidates without their pages' columns and without snippets
+  // (#383): the index entry (hit_entry) is enough to rank and check them;
+  // the pages come in batches as the loop reaches them, the snippets only
+  // for the hits that are returned.
+  const entry = entryId();
+  const candidates = await all<Candidate>(
     short
-      ? `SELECT p.*,s.row_id,s.title hit_title,'' snippet,NULL hit_rank,${times} FROM search_index s JOIN pages p ON p.id=s.page_id ${rowJoin}
+      ? `SELECT s.page_id id,s.row_id,s.title hit_title,NULL hit_rank,${entry} hit_entry,${times} FROM search_index s JOIN pages p ON p.id=s.page_id ${rowJoin}
          WHERE ${scope} AND (${titleLike} OR ${anyLike("s.body")})
          ORDER BY ${dated}(CASE WHEN ${titleLike} THEN 1 ELSE 0 END) DESC,p.updated_at DESC${entryOrder()} LIMIT 1000`
-      : `SELECT p.*,s.row_id,s.title hit_title,${snip.sql} snippet,${match.rank} hit_rank,${times}
+      : `SELECT s.page_id id,s.row_id,s.title hit_title,${match.rank} hit_rank,${entry} hit_entry,${times}
          FROM search_index s JOIN pages p ON p.id=s.page_id ${rowJoin}
          WHERE ${match.where} AND ${scope}
          ORDER BY ${dated}hit_rank,p.updated_at DESC${entryOrder()} LIMIT 1000`,
@@ -566,23 +590,48 @@ export async function searchWorkspace(
           const like = spellings.map((v) => `%${v.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
           return [...scopeArgs, ...like, ...like, ...like];
         })()
-      : [...snip.args, ...match.rankArgs, ...match.whereArgs, ...scopeArgs]),
-  )).map((hit) => (short ? hit : { ...hit, snippet: snip.finish(hit.snippet) }));
+      : [...match.rankArgs, ...match.whereArgs, ...scopeArgs]),
+  );
   if (sort === "relevance") await rankHits(user, candidates, query);
-  for (const hit of candidates) {
-    if (!matchesKind(hit, hit.row_id) || !(await allowed(hit))) continue;
-    await push(
-      hit,
-      hit.row_id,
-      hit.hit_title,
-      hit.snippet.includes(MARK_START) ? hit.snippet : "",
-      hit.hit_updated,
-    );
+  const pages = new Map<string, Page>();
+  const snippets = new Map<SearchResult, string | number>();
+  for (let i = 0; i < candidates.length; i++) {
+    if (i % PAGE_BATCH === 0) {
+      const ids = [...new Set(candidates.slice(i, i + PAGE_BATCH).map((c) => c.id))].filter((id) => !pages.has(id));
+      if (ids.length)
+        for (const page of await all<Page>(`SELECT * FROM pages WHERE id IN ${sql.jsonValues()}`, JSON.stringify(ids))) pages.set(page.id, page);
+    }
+    const hit = candidates[i],
+      page = pages.get(hit.id);
+    if (!page || !matchesKind(page, hit.row_id) || !(await allowed(page))) continue;
+    const result = await push(page, hit.row_id, hit.hit_title, "", hit.hit_updated);
+    if (result && !short) snippets.set(result, hit.hit_entry);
     if (done()) break;
   }
-  return finish();
+  const out = finish();
+  // The snippets of the hits returned, from their index entries.
+  const wanted = out.filter((r) => snippets.has(r));
+  if (wanted.length) {
+    const text = new Map(
+      (await all<{ hit_entry: string | number; snippet: string }>(
+        `SELECT ${entry} hit_entry,${snip.sql} snippet FROM search_index s WHERE ${match.where} AND ${entryIdIn()}`,
+        ...snip.args,
+        ...match.whereArgs,
+        JSON.stringify(wanted.map((r) => snippets.get(r))),
+      )).map((r) => [String(r.hit_entry), snip.finish(r.snippet)]),
+    );
+    for (const r of wanted) {
+      const value = text.get(String(snippets.get(r))) ?? "";
+      r.snippet = value.includes(MARK_START) ? value : "";
+    }
+  }
+  return await withIcons(out);
 }
 
+// A candidate of the text search: its index entry, page id (`id`) and times.
+type Candidate = { id: string; row_id: string; hit_title: string; hit_rank: number | null; hit_entry: string | number; hit_updated: string | null };
+// Pages loaded at once as the loop reaches the candidates.
+const PAGE_BATCH = 100;
 // The best match first (#243): where the query stands in the title (exact,
 // start of the title or a word, inside it – lib/search-visits.ts
 // titleScore), the text relevance relative to the best hit (BM25 of
@@ -595,7 +644,7 @@ export async function searchWorkspace(
 // exact or prefix title matches, and an exact title without visits stays
 // near the top. Sorted in place, stable (equal scores keep the index's
 // order: BM25, then the last change).
-async function rankHits(user: Identity, hits: (Page & { row_id: string; hit_title: string; hit_rank: number | null })[], query: string) {
+async function rankHits(user: Identity, hits: Candidate[], query: string) {
   if (!hits.length) return;
   const signals = await personalSignals(user, hits.map((h) => h.id));
   const folded = foldText(query);
