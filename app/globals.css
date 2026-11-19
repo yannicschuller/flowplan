@@ -9971,6 +9971,99 @@ tr.order-drop-after > td {
   outline: 2px solid var(--accent, #3479ef);
   outline-offset: 2px;
 }
+/* The page's existing images in the cover dialog (#396): pictures to
+   pick, unused ones with a mark and "Entfernen". */
+.cover-images {
+  border: 0;
+  padding: 0;
+  margin: 4px 0 18px;
+  min-width: 0;
+}
+.cover-images legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.cover-image-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 12px 10px;
+  max-height: 292px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cover-image-list:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 7px;
+}
+.cover-image {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cover-image-pick {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 0;
+  min-width: 0;
+  text-align: left;
+}
+.cover-image-pick img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.cover-image-pick[aria-pressed="true"] img {
+  outline: 2px solid var(--accent, #3479ef);
+  outline-offset: 2px;
+}
+.cover-image-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 400;
+}
+.cover-image-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 6px;
+}
+.cover-image-unused {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+.cover-image-remove {
+  gap: 4px;
+  padding: 4px 2px;
+  min-height: 28px;
+}
+.cover-image-notice {
+  margin: -8px 0 16px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+@media (pointer: coarse) {
+  .cover-image-remove {
+    min-height: 36px;
+  }
+}
 /* The file field as a button (components/cover-picker.tsx): the input
    is visually hidden, its label looks like a secondary button, the chosen
    file's name beside it. */

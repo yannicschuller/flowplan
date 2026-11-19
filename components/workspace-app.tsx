@@ -43,7 +43,6 @@ import {
   type PageLocation,
 } from "@/lib/page-location";
 import { SpaceAppearance, SpaceIcon } from "./space-appearance";
-import { CoverPicker } from "./cover-picker";
 import { SpaceExportDialog } from "./space-export";
 import type { OnboardingStep } from "./onboarding";
 import { FindInPage } from "./find-in-page";
@@ -413,6 +412,8 @@ const Admin = dynamic(() => loadView(() => import("./admin")), { ssr: false, loa
 // renderer), the Ask panel, the AI summary, the space manager.
 const Presentation = dynamic(() => loadView(() => import("./presentation").then((m) => ({ default: m.Presentation }))), { ssr: false });
 const AskPanel = dynamic(() => loadView(() => import("./ai-ask").then((m) => ({ default: m.AskPanel }))), { ssr: false });
+// The cover dialog with its existing images (#396): loaded when opened.
+const CoverPicker = dynamic(() => loadView(() => import("./cover-picker").then((m) => ({ default: m.CoverPicker }))), { ssr: false });
 const AiSummaryPanel = dynamic(() => loadView(() => import("./ai-summary").then((m) => ({ default: m.AiSummaryPanel }))), { ssr: false });
 const SpaceManager = dynamic(() => loadView(() => import("./space-manager").then((m) => ({ default: m.SpaceManager }))), { ssr: false });
 // Mounted with its first opening and kept (closing animation).
@@ -7408,6 +7409,7 @@ export default function WorkspaceApp({
           key={data.page.id}
           page={data.page}
           images={data.images || []}
+          removeImage={(fileId) => mutate({ action: "file.delete", fileIds: [fileId], unusedOnly: true })}
           onClose={() => setCoverPicker(false)}
           onSave={async (appearance, base) =>
             !!(await mutate({

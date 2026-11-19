@@ -316,3 +316,65 @@ test("only people who may edit the page delete files; private files stay invisib
   await assert.rejects(act(viewer, { action: "file.restore", fileId: mine }), { status: 403 });
   await act(editor, { action: "file.restore", fileId: mine });
 });
+
+test("a replaced cover is unused in the cover dialog's list and goes to the trash; one in use stays (#396)", async () => {
+  const doc = await page("Cover-Wechsel");
+  const a = await file(doc, "cover-a.png"),
+    b = await file(doc, "cover-b.png"),
+    elsewhere = await file(await page("Andere Seite"), "fremd.png");
+  const setCover = async (fid: string) => {
+    const current = (await one<{ cover: string; cover_position: number }>("SELECT cover,cover_position FROM pages WHERE id=?", doc))!;
+    await act(owner, {
+      action: "page.update",
+      pageId: doc,
+      coverBase: { cover: current.cover, coverPosition: current.cover_position ?? 50 },
+      patch: { cover: `/api/files/${fid}`, cover_position: 50 },
+    });
+  };
+  await setCover(a);
+  await setCover(b);
+  // The page's images only (GET /api/media?page=…), usage across the workspace.
+  const ofPage = await mediaLibrary(owner, wid, { pageId: doc, kind: "image" });
+  assert.deepEqual(new Set(ofPage.items.map((i) => i.id)), new Set([a, b]));
+  const usage = new Map(ofPage.items.map((i) => [i.id, i]));
+  assert.equal(usage.get(a)?.unused, true);
+  assert.equal(usage.get(a)?.canDelete, true);
+  assert.equal(usage.get(b)?.unused, false);
+  assert.ok(!ofPage.items.some((i) => i.id === elsewhere));
+
+  // The dialog's "Entfernen" (file.delete with unusedOnly): refused for the
+  // current cover, all or none, with nothing moved.
+  await assert.rejects(act(owner, { action: "file.delete", fileIds: [b], unusedOnly: true }), { status: 409 });
+  await assert.rejects(act(owner, { action: "file.delete", fileIds: [a, b], unusedOnly: true }), { status: 409 });
+  for (const fid of [a, b]) assert.ok(await one("SELECT 1 FROM files WHERE id=? AND deleted_at IS NULL", fid));
+  // The same rights as the media library: viewers never.
+  await assert.rejects(act(viewer, { action: "file.delete", fileIds: [a], unusedOnly: true }), { status: 403 });
+
+  assert.deepEqual(await act(editor, { action: "file.delete", fileIds: [a], unusedOnly: true }), { ok: true, files: 1 });
+  assert.ok(await one("SELECT 1 FROM files WHERE id=? AND deleted_at IS NOT NULL", a));
+  assert.ok(await one("SELECT 1 FROM files WHERE id=? AND deleted_at IS NULL", b));
+  assert.equal((await one<{ cover: string }>("SELECT cover FROM pages WHERE id=?", doc))!.cover, `/api/files/${b}`);
+  assert.deepEqual((await mediaLibrary(owner, wid, { pageId: doc, kind: "image" })).items.map((i) => i.id), [b]);
+  assert.ok((await listFileTrash(owner, wid)).some((f) => f.id === a));
+  // Restored from the trash, unchanged and unused again.
+  await act(owner, { action: "file.restore", fileId: a });
+  assert.equal((await mediaLibrary(owner, wid, { pageId: doc })).items.find((i) => i.id === a)?.unused, true);
+
+  // In use again meanwhile (e.g. set as cover on another device): refused.
+  await setCover(a);
+  await assert.rejects(act(owner, { action: "file.delete", fileIds: [a], unusedOnly: true }), { status: 409 });
+  // Used anywhere else in the workspace counts too.
+  await run("UPDATE documents SET html=? WHERE page_id=?", `<p><img src="/api/files/${b}"></p>`, doc);
+  await assert.rejects(act(owner, { action: "file.delete", fileIds: [b], unusedOnly: true }), { status: 409 });
+});
+
+test("end-to-end encrypted spaces: never marked unused, never removed as unused (#396)", async () => {
+  const space = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Tresor" })) as { id: string }).id;
+  const doc = await page("Verschlüsselt", "document", owner, space);
+  const fid = await file(doc, "alt.png");
+  await run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
+  // Not in the media library (lockedPageIds): the cover dialog offers nothing.
+  assert.ok(!(await mediaLibrary(owner, wid, { pageId: doc })).items.some((i) => i.id === fid));
+  await assert.rejects(act(owner, { action: "file.delete", fileIds: [fid], unusedOnly: true }), { status: 409 });
+  assert.ok(await one("SELECT 1 FROM files WHERE id=? AND deleted_at IS NULL", fid));
+});

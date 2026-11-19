@@ -21,6 +21,7 @@ import { pageRole, requireMember } from "./permissions";
 import { journalLocked, lockedPageIds } from "./journal-extras";
 import { hiddenFileIds, hiddenRowFileIds } from "./row-files";
 import { mayDeleteFiles, mediaEntries } from "./media-library";
+import { usedFileIds } from "./file-usage";
 import type { Identity, Page } from "./types";
 
 const uuid = z.string().uuid();
@@ -52,13 +53,30 @@ async function trash(user: Identity, file: FileRow) {
   await audit(user.id, "file.trashed", file.id, file.name);
 }
 
-// file.delete: files into the trash, all or none.
+// Refuses when any of the files is still used (lib/file-usage.ts), the
+// media library's "Nicht verwendet" turned around. Files of end-to-end
+// encrypted spaces count as used: their content is not readable here.
+async function requireUnused(found: { file: FileRow; page: Page }[]) {
+  const byWorkspace = new Map<string, string[]>();
+  for (const { file, page } of found) {
+    const space = page.space_id ? await one<{ encrypted: number | null }>("SELECT encrypted FROM spaces WHERE id=?", page.space_id) : undefined;
+    if (space?.encrypted) throw new HttpError(409, "Diese Datei wird noch verwendet.");
+    byWorkspace.set(page.workspace_id, [...(byWorkspace.get(page.workspace_id) || []), file.id]);
+  }
+  for (const [workspaceId, ids] of byWorkspace)
+    if ((await usedFileIds(workspaceId, ids)).size) throw new HttpError(409, "Diese Datei wird noch verwendet.");
+}
+
+// file.delete: files into the trash, all or none. With `unusedOnly` (the
+// cover dialog's "Entfernen", #396) only while nothing refers to them.
 export async function trashFiles(user: Identity, input: Record<string, unknown>) {
   const ids = [...new Set(z.array(uuid).min(1).max(MAX_FILES_PER_DELETE).parse(input.fileIds))];
+  const unusedOnly = z.boolean().optional().parse(input.unusedOnly) === true;
   return await transaction(async () => {
     const found = [];
     for (const fid of ids) found.push(await visibleFile(user, fid, false));
     for (const { page } of found) await requireDeletable(user, page);
+    if (unusedOnly) await requireUnused(found);
     for (const { file } of found) await trash(user, file);
     return { ok: true, files: found.length };
   });

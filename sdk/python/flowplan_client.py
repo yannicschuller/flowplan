@@ -1557,6 +1557,7 @@ CommandPagePurgeResult = TypedDict("CommandPagePurgeResult", {
 CommandFileDelete = TypedDict("CommandFileDelete", {
     "action": Required[Literal["file.delete"]],
     "fileIds": Required[list[str]],
+    "unusedOnly": bool,  # Only while no current content of the workspace refers to the files (as `usage=unused` of `GET /api/media`); otherwise 409 and nothing is moved. Files of end-to-end encrypted spaces always count as used.
 }, total=False)
 
 CommandFileDeleteResult = TypedDict("CommandFileDeleteResult", {
@@ -2212,6 +2213,7 @@ MediaQuery = TypedDict("MediaQuery", {
     "workspace": Required[str],  # Workspace ID
     "kind": Literal["all", "image", "video", "audio", "pdf", "model", "other"],  # Only this kind
     "q": str,  # Name contains
+    "page": str,  # Only the files of this page (usage still counts the whole workspace)
     "offset": int,  # Paging offset
     "usage": Literal["all", "unused"],  # `unused`: only files no current content refers to
 }, total=False)

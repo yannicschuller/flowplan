@@ -6650,6 +6650,7 @@ export default function DatabaseView({
           page={{ ...page, cover: selected.cover || "", cover_position: 50 }}
           images={data.images || []}
           positioned={false}
+          removeImage={(fileId) => mutate({ action: "file.delete", fileIds: [fileId], unusedOnly: true })}
           onClose={() => setRowCoverPicker(false)}
           onSave={async (appearance) =>
             !!(await act({

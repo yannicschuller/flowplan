@@ -2569,6 +2569,8 @@ export type CommandPagePurgeResult = {
 export type CommandFileDelete = {
   action: "file.delete";
   fileIds: string[];
+  /** Only while no current content of the workspace refers to the files (as `usage=unused` of `GET /api/media`); otherwise 409 and nothing is moved. Files of end-to-end encrypted spaces always count as used. */
+  unusedOnly?: boolean;
 };
 
 export type CommandFileDeleteResult = {
@@ -3969,7 +3971,7 @@ export class FlowplanClient {
   }
 
   /** Media library — Files of the pages you may read, 60 per call. (GET /api/media) */
-  async media(query: { workspace: string; kind?: "all" | "image" | "video" | "audio" | "pdf" | "model" | "other"; q?: string; offset?: number; usage?: "all" | "unused" }, options?: RequestOptions): Promise<Record<string, unknown>> {
+  async media(query: { workspace: string; kind?: "all" | "image" | "video" | "audio" | "pdf" | "model" | "other"; q?: string; page?: string; offset?: number; usage?: "all" | "unused" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/media`, { query }, options);
   }
 

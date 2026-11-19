@@ -1055,6 +1055,8 @@ async function handleGET(
             .catch("all")
             .parse(url.searchParams.get("kind") || "all"),
           query: url.searchParams.get("q") || "",
+          // Only the files of one page (the cover dialog, #396).
+          pageId: url.searchParams.get("page") ? z.uuid().parse(url.searchParams.get("page")) : undefined,
           offset: Number(url.searchParams.get("offset") || 0) || 0,
           usage: z.enum(["all", "unused"]).catch("all").parse(url.searchParams.get("usage") || "all"),
         }),

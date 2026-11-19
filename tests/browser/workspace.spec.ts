@@ -3413,8 +3413,9 @@ test("page covers upload, position, publish, reject stale drafts and revoke unus
       .getByRole("button", { name: "Cover ändern", exact: true })
       .click();
     await dialog
-      .getByLabel("Vorhandenes Bild", { exact: true })
-      .selectOption(image!);
+      .getByRole("list", { name: "Vorhandene Bilder", exact: true })
+      .getByRole("button", { name: /^Landscape/ })
+      .click();
     await dialog
       .getByRole("button", { name: "Speichern", exact: true })
       .click();

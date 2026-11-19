@@ -62,15 +62,18 @@ export async function mayDeleteFiles(user: Identity, page: Page) {
 type Entry = MediaItem & { page: Page };
 // Every file of the workspace this person may see (readable page outside
 // the trash, no journal behind a PIN, not of a hidden record, not in the
-// trash), newest first, with whether it is used and may be deleted.
+// trash), newest first, with whether it is used and may be deleted. With
+// `pageId` only the files of that page (the cover dialog's existing
+// images, #396); usage is still judged against the whole workspace.
 export async function mediaEntries(
   user: Identity,
   workspaceId: string,
-  options: { kind?: MediaKind; query?: string } = {},
+  options: { kind?: MediaKind; query?: string; pageId?: string } = {},
 ): Promise<Entry[]> {
   await requireMember(user, workspaceId);
   const kind = options.kind || "all",
-    query = (options.query || "").trim().slice(0, 200);
+    query = (options.query || "").trim().slice(0, 200),
+    pageId = options.pageId || "";
   const rows = await all<
     Page & {
       file_id: string;
@@ -85,9 +88,11 @@ export async function mediaEntries(
      FROM files f JOIN pages p ON p.id=f.page_id LEFT JOIN spaces s ON s.id=p.space_id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL AND f.deleted_at IS NULL
      ${kind === "all" ? "" : `AND ${kindSql[kind]}`}
+     ${pageId ? "AND p.id=?" : ""}
      ${query ? `AND ${sql.instr("lower(f.name)", "lower(?)")}>0` : ""}
      ORDER BY f.created_at DESC,f.seq DESC LIMIT 5000`,
     workspaceId,
+    ...(pageId ? [pageId] : []),
     ...(query ? [query] : []),
   );
   const readable = new Map<string, boolean>(),
@@ -132,7 +137,7 @@ export async function mediaEntries(
 export async function mediaLibrary(
   user: Identity,
   workspaceId: string,
-  options: { kind?: MediaKind; query?: string; offset?: number; usage?: MediaUsage } = {},
+  options: { kind?: MediaKind; query?: string; pageId?: string; offset?: number; usage?: MediaUsage } = {},
 ) {
   const offset = Math.max(0, Math.floor(options.offset || 0));
   const entries = await mediaEntries(user, workspaceId, options);

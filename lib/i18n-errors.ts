@@ -486,6 +486,7 @@ const exact: Record<string, string> = {
   "Die NetBox-Daten sind zu umfangreich. Bitte weniger Racks auf einmal übernehmen.": "The NetBox data is too large. Please import fewer racks at a time.",
   "Kein Profilbild.": "No profile picture.",
   "Datei fehlt.": "File missing.",
+  "Diese Datei wird noch verwendet.": "This file is still in use.",
   "Anfrage zu groß.": "Request too large.",
   "Eigenschaft fehlt.": "Property missing.",
   "Unbekannte Einstellung.": "Unknown setting.",
