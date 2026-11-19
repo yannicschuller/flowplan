@@ -140,6 +140,9 @@ const config: NextConfig = {
       "./node_modules/pdfjs-dist/wasm/*",
       // The 3D viewer's CAD reader for STEP and IGES (app/occt, #384).
       "./node_modules/occt-import-js/dist/occt-import-js.wasm",
+      // The drawing viewer's DWG reader (app/libredwg, LibreDWG, GPL-3.0).
+      "./node_modules/@mlightcad/libredwg-web/dist/libredwg-web.js",
+      "./node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.{js,wasm}",
       // Typst preview of code blocks (app/typst): WebAssembly and fonts.
       "./node_modules/@myriaddreamin/typst-ts-web-compiler/pkg/*.wasm",
       "./node_modules/@myriaddreamin/typst-ts-renderer/pkg/*.wasm",

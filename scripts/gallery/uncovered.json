@@ -56,6 +56,7 @@
     "components/sign-in-methods.tsx",
     "components/study/ai-cards.tsx",
     "components/version-changes.tsx",
+    "components/viewer2d/dialog.tsx",
     "components/viewer3d/dialog.tsx",
     "components/whiteboard/ai-panel.tsx",
     "components/whiteboard/crop-dialog.tsx",

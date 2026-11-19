@@ -5,13 +5,16 @@
 // viewer (components/viewer3d/dialog.tsx, with three.js) only when a model
 // is opened – nothing of it is in the workspace's shell. Links to such files
 // (documents, record attachments, the media library) open it instead of
-// downloading; in text being edited only with ⌘/Ctrl.
+// downloading; in text being edited only with ⌘/Ctrl. DXF and DWG
+// drawings open the drawing viewer (components/viewer2d/dialog.tsx) the
+// same way – a chunk of its own, with nothing of three.js.
 import { Suspense, lazy, useEffect, useState } from "react";
 import { loadView } from "@/components/view-fallback";
-import { modelFormatOf, type ModelFormat } from "@/lib/model-formats";
+import { isDrawingFormat, modelFormatOf, type ModelFormat } from "@/lib/model-formats";
 import { fileLink } from "./pdf-viewer";
 
 const ModelViewerDialog = lazy(() => loadView(() => import("./viewer3d/dialog")));
+const DrawingViewerDialog = lazy(() => loadView(() => import("./viewer2d/dialog")));
 const EVENT = "flowplan:model";
 
 export function openModel(src: string, title: string) {
@@ -49,6 +52,13 @@ export function ModelViewerHost() {
     return () => window.removeEventListener(EVENT, show);
   }, []);
   if (!open) return null;
+  const format = open.format;
+  if (isDrawingFormat(format))
+    return (
+      <Suspense fallback={null}>
+        <DrawingViewerDialog key={open.n} src={open.src} title={open.title} format={format} onClose={() => setOpen(null)} />
+      </Suspense>
+    );
   return (
     <Suspense fallback={null}>
       <ModelViewerDialog key={open.n} src={open.src} title={open.title} format={open.format} onClose={() => setOpen(null)} />

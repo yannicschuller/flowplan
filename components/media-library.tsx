@@ -3,10 +3,11 @@ import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { PdfThumbnail } from "./pdf-viewer";
-import { isModelName } from "@/lib/model-formats";
+import { isDrawingFormat, isModelName, modelFormatOf } from "@/lib/model-formats";
 import { Modal } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import {
+  Blueprint,
   Cube,
   File as FileIcon,
   FileAudio,
@@ -23,7 +24,8 @@ const kinds: [MediaKind, string, string][] = [
   ["video", "Videos", "Videos"],
   ["audio", "Audio", "Audio"],
   ["pdf", "PDF", "PDF"],
-  ["model", "3D", "3D"],
+  // 3D models and 2D drawings (DXF, DWG) alike: the kind is "model".
+  ["model", "3D/CAD", "3D/CAD"],
   ["other", "Sonstige", "Other"],
 ];
 const size = (bytes: number) =>
@@ -257,6 +259,8 @@ export function MediaLibrary({
                 <FileAudio size={36} />
               ) : item.kind === "pdf" ? (
                 <PdfThumbnail src={item.url} width={180} />
+              ) : isDrawingFormat(modelFormatOf(item.name)) ? (
+                <Blueprint size={36} weight="duotone" />
               ) : item.kind === "model" || isModelName(item.name) ? (
                 <Cube size={36} weight="duotone" />
               ) : (
