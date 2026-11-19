@@ -3707,11 +3707,70 @@ tr:hover .row-open,
   margin-top: 5px;
 }
 .timeline-controls {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 14px 0;
+  gap: 6px 8px;
+  padding: 10px 0;
+}
+/* The names of scale and period are for screen readers and the tooltip
+   (the menus show their values); the header keeps to one line. */
+.timeline-control-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.timeline-controls > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.timeline-controls .icon-button.active {
+  background: var(--hover);
+  color: var(--text);
+}
+/* The settings (components/database-timeline.tsx, #390): a card below
+   the header line, in the flow. */
+.timeline-settings {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: start;
+  gap: 10px 16px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.timeline-settings > :is(.button, .timeline-label-fields) {
+  justify-self: start;
+}
+.timeline-settings > label:not(.checkbox-label) {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.timeline-settings input[type="date"],
+.timeline-settings :is(select, .fp-select) {
+  max-width: none;
+  width: 100%;
+}
+.timeline-label-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+}
+.timeline-label-fields legend {
+  padding: 0 0 4px;
+  color: var(--secondary);
 }
 .timeline-controls label {
   margin: 0;
@@ -3725,6 +3784,29 @@ tr:hover .row-open,
   margin-right: auto;
   font-size: 13px;
 }
+.timeline-controls > .icon-button > span {
+  font-size: 20px;
+  line-height: 1;
+}
+/* Zoom (components/timeline-frame.tsx, #390): − slider + Einpassen. */
+.timeline-zoom,
+.timeline-range-fields {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.timeline-range-fields {
+  gap: 8px;
+}
+.timeline-zoom-slider input[type="range"] {
+  width: 100%;
+  max-width: none;
+  accent-color: var(--blue);
+}
+.timeline-zoom .icon-button > span {
+  font-size: 18px;
+  line-height: 1;
+}
 .timeline-help {
   font-size: 12px;
   margin: 0 0 12px;
@@ -3734,6 +3816,9 @@ tr:hover .row-open,
   max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 7px;
+  /* Two fingers zoom the timeline, not the page (timeline-frame.tsx). */
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
 }
 .timeline-grid {
   position: relative;
@@ -3826,7 +3911,7 @@ tr:hover .row-open,
   grid-template-columns: var(--timeline-label) var(--timeline-width);
 }
 .timeline-heading {
-  height: 36px;
+  height: 46px;
   background: var(--surface);
   color: var(--secondary);
   font-size: 11px;
@@ -3842,12 +3927,38 @@ tr:hover .row-open,
   position: relative;
   overflow: hidden;
 }
-.timeline-axis span {
+/* Two rows that follow the zoom: month / day, month / ISO week,
+   quarter / month, year / month. Only the visible part is built. */
+.timeline-axis > span {
   position: absolute;
-  top: 9px;
   white-space: nowrap;
   font-size: 10px;
-  padding-left: 4px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.timeline-axis-top {
+  top: 0;
+  height: 23px;
+  border-left: 1px solid var(--border);
+}
+.timeline-axis-top > span {
+  position: absolute;
+  top: 5px;
+  padding-left: 5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.timeline-axis-bottom {
+  top: 23px;
+  height: 23px;
+  padding: 5px 0 0 4px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  text-overflow: clip;
+}
+.timeline-axis-bottom.is-today {
+  color: var(--blue);
+  font-weight: 700;
 }
 .timeline-entry {
   min-height: 48px;
@@ -3885,9 +3996,9 @@ tr:hover .row-open,
     repeating-linear-gradient(
       to right,
       transparent 0,
-      transparent calc(var(--timeline-day) - 1px),
-      var(--border) calc(var(--timeline-day) - 1px),
-      var(--border) var(--timeline-day)
+      transparent calc(var(--timeline-line, var(--timeline-day)) - 1px),
+      var(--border) calc(var(--timeline-line, var(--timeline-day)) - 1px),
+      var(--border) var(--timeline-line, var(--timeline-day))
     ),
     linear-gradient(
       to right,
@@ -3900,7 +4011,7 @@ tr:hover .row-open,
     auto,
     calc(var(--timeline-day) * 7) 100%;
   background-position:
-    0 0,
+    var(--timeline-line-offset, 0) 0,
     var(--timeline-week-offset) 0;
 }
 .timeline-today {
@@ -3918,6 +4029,50 @@ tr:hover .row-open,
   border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 5px;
 }
+.timeline-range-detail {
+  color: var(--secondary);
+}
+/* A milestone (one day, or marked by the view's checkbox property): a
+   diamond with the title beside it. */
+.timeline-range.milestone {
+  top: 15px;
+  height: 18px;
+  background: none;
+  border: 0;
+}
+.timeline-range.milestone::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  rotate: 45deg;
+  border-radius: 2px;
+  background: var(--blue);
+  pointer-events: none;
+}
+.timeline-range.milestone.critical::before {
+  background: #d9480f;
+}
+.timeline-range.milestone .timeline-range-body {
+  position: relative;
+  padding: 0;
+}
+.timeline-range.milestone.label-right .timeline-range-label {
+  left: calc(100% + 6px);
+}
+.timeline-range.milestone .timeline-link-handle {
+  right: -9px;
+}
+/* A bar that goes on beyond the window: open, dashed edge. */
+.timeline-range.clipped-start {
+  border-left-style: dashed;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.timeline-range.clipped-end {
+  border-right-style: dashed;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .timeline-range.is-dragging {
   outline: 2px solid var(--blue);
   z-index: 1;
@@ -3927,7 +4082,9 @@ tr:hover .row-open,
   height: 100%;
   min-width: 0;
   display: block;
-  padding: 3px 13px;
+  /* The title follows the left edge of the lanes while the bar's start is
+     scrolled away (--timeline-scroll: components/timeline-frame.tsx). */
+  padding: 3px 13px 3px clamp(13px, calc(13px + var(--timeline-scroll, 0px) - var(--bar-left, 0px)), calc(100% - 13px));
   color: var(--text);
   overflow: hidden;
   white-space: nowrap;
@@ -4018,6 +4175,7 @@ tr:hover .row-open,
     --timeline-label: 140px;
     width: calc(140px + var(--timeline-width));
   }
+
   .timeline-controls strong {
     order: -1;
     flex-basis: 100%;
@@ -4917,37 +5075,6 @@ td:hover .link-cell-edit,
   opacity: 0.8;
   border: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
 }
-.public-timeline-rows {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 6px;
-}
-.public-timeline-rows li {
-  display: grid;
-  grid-template-columns: minmax(90px, 200px) 1fr auto;
-  gap: 10px;
-  align-items: center;
-}
-.public-timeline-rows a {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.public-timeline-track {
-  position: relative;
-  height: 18px;
-  background: var(--surface);
-  border-radius: 4px;
-}
-.public-timeline-bar {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  border-radius: 4px;
-  background: var(--blue);
-}
 .public-bars {
   display: grid;
   gap: 6px;
@@ -4991,10 +5118,6 @@ td:hover .link-cell-edit,
   }
   .public-calendar-entry {
     font-size: 10px;
-  }
-  .public-timeline-rows li {
-    grid-template-columns: 1fr;
-    gap: 2px;
   }
 }
 .public-views {
@@ -39888,4 +40011,20 @@ a.favorite-nav.selected {
 /* The browser's own reveal button (Edge) would sit next to ours. */
 .password-field > input::-ms-reveal {
   display: none;
+}
+/* The published timeline (components/public-timeline.tsx): links instead
+   of buttons, otherwise the app's layout. */
+.public-timeline-app a.timeline-name,
+.public-timeline-app a.timeline-range-body {
+  color: var(--text);
+  text-decoration: none;
+}
+.public-timeline-app a.timeline-range-body {
+  line-height: 20px;
+}
+.public-timeline-app a.timeline-name {
+  padding: 0 5px;
+}
+.public-timeline-app a:is(.timeline-name, .timeline-range-body):hover {
+  text-decoration: underline;
 }

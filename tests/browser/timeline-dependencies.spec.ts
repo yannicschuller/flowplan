@@ -1,4 +1,11 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
+
+// The timeline's settings card (#390): opened when it is closed.
+async function settings(scope: Page | Locator) {
+  const button = scope.getByRole("button", { name: "Timeline-Einstellungen", exact: true }).first();
+  if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
+  return scope.getByRole("group", { name: "Timeline-Einstellungen", exact: true });
+}
 
 test("timeline dependencies draw arrows, flag conflicts and move successors", async ({
   page,
@@ -69,7 +76,7 @@ test("timeline dependencies draw arrows, flag conflicts and move successors", as
   await page.goto(`/#page=${p.id}`);
   await expect(page.locator(".timeline-view")).toBeVisible();
   await expect(page.locator(".timeline-dependencies")).toHaveCount(0);
-  const select = page.getByLabel("Timeline: Abhängigkeiten", { exact: true });
+  const select = (await settings(page)).getByLabel("Timeline: Abhängigkeiten", { exact: true });
   await select.selectOption({ label: "Nach" });
   await expect
     .poll(
@@ -143,7 +150,7 @@ test("timeline dependencies draw arrows, flag conflicts and move successors", as
     cells: { end: day(25) },
   });
   await page.reload();
-  await page
+  await (await settings(page))
     .getByLabel("Timeline: Art der Abhängigkeit", { exact: true })
     .selectOption({ label: "Ende → Ende" });
   await expect
@@ -188,7 +195,7 @@ test("timeline dependencies draw arrows, flag conflicts and move successors", as
       exact: true,
     }),
   ).toHaveCount(0);
-  await select.selectOption({ label: "Keine" });
+  await (await settings(page)).getByLabel("Timeline: Abhängigkeiten", { exact: true }).selectOption({ label: "Keine" });
   await expect
     .poll(
       async () => (await read()).database.views[0].timeline?.dependencyField,

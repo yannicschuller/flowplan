@@ -160,11 +160,12 @@ test("published databases show calendar, timeline and chart views", async ({
     visitor.getByRole("heading", { name: "Umsetzung" }),
   ).toBeVisible();
 
-  await visitor.goto(`${origin}/share/${token}?view=timeline&month=${month}`);
+  // The app's timeline, read-only (#390): title links and bars.
+  await visitor.goto(`${origin}/share/${token}?view=timeline`);
   const timeline = visitor.getByRole("region", { name: "Timeline" });
-  await expect(timeline.getByRole("link", { name: "Umsetzung" })).toBeVisible();
-  await expect(timeline).toContainText(`${month}-12 – ${month}-14`);
-  await expect(timeline.locator(".public-timeline-bar").first()).toBeVisible();
+  await expect(timeline.getByRole("link", { name: "Umsetzung", exact: true })).toBeVisible();
+  await expect(timeline.getByRole("link", { name: `Umsetzung: ${month}-12 – ${month}-14`, exact: true })).toBeVisible();
+  await expect(timeline.locator(".timeline-axis")).toBeVisible();
 
   await views.getByRole("link", { name: "Diagramm" }).click();
   const table = visitor.locator(".public-chart-table tbody tr");

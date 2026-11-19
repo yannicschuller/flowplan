@@ -55,6 +55,7 @@
     "components/settings/user/tags.tsx",
     "components/sign-in-methods.tsx",
     "components/study/ai-cards.tsx",
+    "components/timeline-frame.tsx",
     "components/version-changes.tsx",
     "components/viewer2d/dialog.tsx",
     "components/viewer3d/dialog.tsx",

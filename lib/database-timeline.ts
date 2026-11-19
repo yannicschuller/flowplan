@@ -1,8 +1,28 @@
 import { tr } from "./locale-tag";
 import { z } from "zod";
 import type { Field, Row, View } from "./types";
+import { clipRange, periodBounds, SCALE_DAY_WIDTH } from "./timeline-scale";
+export { clipRange };
+const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const timelineSchema = z.object({
-  scale: z.enum(["week", "month", "quarter", "year"]),
+  // Zoom presets (#390); day, two weeks and five years since 0.10.2.
+  scale: z.enum(["day", "week", "twoWeeks", "month", "quarter", "year", "fiveYears"]),
+  // The window (#390): a saved range or "fit" (all shown records). Without
+  // it the grid starts with today's period and grows while scrolling.
+  range: z
+    .union([
+      z.literal("fit"),
+      z.object({ from: dateKey, to: dateKey }).refine((r) => r.from <= r.to, "Das Ende darf nicht vor dem Beginn liegen."),
+    ])
+    .optional(),
+  // Zoom in pixels per day; without it the scale's preset (or, with a
+  // range, the zoom that fits it).
+  dayWidth: z.number().min(0.5).max(120).optional(),
+  // A checkbox property that turns records into milestones (◆); records
+  // of one day are milestones anyway.
+  milestoneField: z.string().max(200).optional(),
+  // Properties shown in muted text after a bar's title.
+  labelFields: z.array(z.string().max(200)).max(4).optional(),
   showWeekends: z.boolean(),
   // Self-relation whose values are the predecessors of a row.
   dependencyField: z.string().max(200).optional(),
@@ -162,55 +182,9 @@ export function schedulePatch(
       : {}),
   };
 }
-function epoch(year: number, month: number, date: number) {
-  const d = new Date(0);
-  d.setUTCFullYear(year, month, date);
-  d.setUTCHours(0, 0, 0, 0);
-  return d.getTime() / DAY;
-}
 export function timelinePeriod(anchor: string, scale: TimelineConfig["scale"]) {
-  const day = dateDay(anchor) ?? dateDay(todayKey())!,
-    d = new Date(day * DAY),
-    year = d.getUTCFullYear(),
-    month = d.getUTCMonth();
-  let start: number, end: number;
-  if (scale === "week") {
-    start = day - ((d.getUTCDay() + 6) % 7);
-    end = start + 7;
-  } else if (scale === "month") {
-    start = epoch(year, month, 1);
-    end = epoch(year, month + 1, 1);
-  } else if (scale === "quarter") {
-    start = epoch(year, Math.floor(month / 3) * 3, 1);
-    end = epoch(year, Math.floor(month / 3) * 3 + 3, 1);
-  } else {
-    start = epoch(year, 0, 1);
-    end = epoch(year + 1, 0, 1);
-  }
-  start = Math.max(dateDay("0001-01-01")!, start);
-  end = Math.min(dateDay("9999-12-31")! + 1, end);
-  return {
-    start,
-    end,
-    days: end - start,
-    dayWidth: { week: 80, month: 32, quarter: 14, year: 5 }[scale],
-  };
-}
-export function clipRange(
-  start: number,
-  end: number,
-  period: { start: number; end: number; dayWidth: number },
-) {
-  const a = Math.max(start, period.start),
-    b = Math.min(end + 1, period.end);
-  return b > a
-    ? {
-        left: (a - period.start) * period.dayWidth,
-        width: (b - a) * period.dayWidth,
-        clippedStart: start < period.start,
-        clippedEnd: end >= period.end,
-      }
-    : null;
+  const { start, end } = periodBounds(dateDay(anchor) ?? dateDay(todayKey())!, scale);
+  return { start, end, days: end - start, dayWidth: SCALE_DAY_WIDTH[scale] };
 }
 
 export function dependencyFields(fields: Field[], pageId: string) {

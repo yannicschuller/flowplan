@@ -445,13 +445,10 @@ async function renderPublishedPage({
         />
       ) : d && !record && activeView?.type === "timeline" ? (
         <PublicTimeline
+          pageId={page.id}
           records={records}
           fields={d.fields}
           view={activeView}
-          month={month}
-          monthLink={(m) =>
-            `${href(page.id)}?view=${encodeURIComponent(activeView.id)}&month=${m}`
-          }
           recordLink={(r) => rowHref(r.id)}
         />
       ) : d && !record && activeView?.type === "feed" ? (

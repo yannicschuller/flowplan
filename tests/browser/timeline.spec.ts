@@ -1,5 +1,12 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
 
+// The timeline's settings card (#390): opened when it is closed.
+async function settings(scope: Page | Locator) {
+  const button = scope.getByRole("button", { name: "Timeline-Einstellungen", exact: true }).first();
+  if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
+  return scope.getByRole("group", { name: "Timeline-Einstellungen", exact: true });
+}
+
 // The view's search: the "Suchen" chip turns into the field (and folds back
 // when it is left empty).
 async function databaseSearch(page: Page) {
@@ -159,13 +166,10 @@ test("timeline scales persist, mouse and touch shift and resize ranges, keyboard
       name: "Timeline",
       exact: true,
     });
-    await timeline
+    // "Gehe zu" puts the day at the left edge of the lanes (#390).
+    await (await settings(timeline))
       .getByLabel("Timeline: Datum", { exact: true })
       .fill("2026-09-21");
-    if (mobile)
-      await timeline
-        .locator(".timeline-scroll")
-        .evaluate((el) => (el.scrollLeft = 652));
     const row = timeline.locator(`[data-row-id="${f.a.id}"]`),
       body = row.locator(".timeline-range-body");
     await expect(body).toHaveAttribute(
@@ -263,7 +267,7 @@ test("timeline scales persist, mouse and touch shift and resize ranges, keyboard
         .poll(async () => (await f.read()).database.views[0].timeline.scale)
         .toBe(scale);
     }
-    await timeline
+    await (await settings(timeline))
       .getByRole("checkbox", { name: "Wochenenden markieren", exact: true })
       .uncheck();
     await expect
@@ -274,34 +278,33 @@ test("timeline scales persist, mouse and touch shift and resize ranges, keyboard
     await page.reload();
     await expect(timeline.getByLabel("Timeline: Maßstab")).toHaveValue("month");
     await expect(
-      timeline.getByRole("checkbox", {
+      (await settings(timeline)).getByRole("checkbox", {
         name: "Wochenenden markieren",
         exact: true,
       }),
     ).not.toBeChecked();
-    await timeline
+    await (await settings(timeline))
       .getByLabel("Timeline: Datum", { exact: true })
       .fill("2026-09-21");
+    // › moves on by 80 % of the visible lanes, ‹ back again.
+    const lanes = await timeline.locator(".timeline-scroll").evaluate((el) => el.clientWidth - parseFloat(getComputedStyle(el.firstElementChild!).getPropertyValue("--timeline-label")));
     await timeline
       .getByRole("button", { name: "Timeline: nächster Zeitraum", exact: true })
       .click();
+    const ahead = new Date(Date.parse("2026-09-21") + Math.floor((Math.round(lanes * 0.8) / 32) + 0.01) * 86400000).toISOString().slice(0, 10);
     await expect(
-      timeline.getByLabel("Timeline: Datum", { exact: true }),
-    ).toHaveValue("2026-10-01");
-    await row
-      .getByRole("button", { name: "Zum Zeitraum springen", exact: true })
+      (await settings(timeline)).getByLabel("Timeline: Datum", { exact: true }),
+    ).toHaveValue(ahead);
+    await timeline
+      .getByRole("button", { name: "Timeline: vorheriger Zeitraum", exact: true })
       .click();
     await expect(
-      timeline.getByLabel("Timeline: Datum", { exact: true }),
-    ).toHaveValue("2026-09-23");
+      (await settings(timeline)).getByLabel("Timeline: Datum", { exact: true }),
+    ).toHaveValue("2026-09-21");
     await (await databaseSearch(page))
       .fill("Ohne Termin");
     await expect(timeline.locator(".timeline-entry")).toHaveCount(1);
     await (await databaseSearch(page)).fill("");
-    if (mobile)
-      await timeline
-        .locator(".timeline-scroll")
-        .evaluate((el) => (el.scrollLeft = 652));
     await page.screenshot({
       path: `test-results/${info.project.name}-timeline.png`,
       fullPage: true,
@@ -367,13 +370,9 @@ test("timeline conflicts retain date drafts, remote changes cancel active gestur
       .getByRole("button", { name: "Abbrechen", exact: true })
       .click();
     await page.reload();
-    await timeline
+    await (await settings(timeline))
       .getByLabel("Timeline: Datum", { exact: true })
       .fill("2026-09-21");
-    if (info.project.name === "mobile")
-      await timeline
-        .locator(".timeline-scroll")
-        .evaluate((el) => (el.scrollLeft = 710));
     const bar = timeline.locator(
         `[data-row-id="${f.a.id}"] .timeline-range-body`,
       ),

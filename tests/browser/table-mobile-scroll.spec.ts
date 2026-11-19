@@ -150,14 +150,15 @@ test("a swipe on a timeline bar scrolls the timeline instead of moving the bar",
   });
   await page.goto(`/#page=${id}`);
   const timeline = page.getByRole("region", { name: "Timeline", exact: true });
+  await timeline.getByRole("button", { name: "Timeline-Einstellungen", exact: true }).click();
   await timeline.getByLabel("Timeline: Datum", { exact: true }).fill("2026-09-23");
+  await timeline.getByRole("button", { name: "Timeline-Einstellungen", exact: true }).click();
   const bar = timeline.locator(`[data-row-id="${row.id}"] .timeline-range-body`);
   await bar.scrollIntoViewIfNeeded();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const scroller = timeline.locator(".timeline-scroll");
-  // From the start of the period shown.
+  // From the date gone to (the grid goes on to both sides, #390).
   await page.waitForTimeout(500);
-  await scroller.evaluate((el) => (el.scrollLeft = 0));
   const before = await scroller.evaluate((el) => el.scrollLeft);
   const box = (await bar.boundingBox())!;
   const y = box.y + box.height / 2;

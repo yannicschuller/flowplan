@@ -12,7 +12,9 @@ import {
   chartSeries,
   defaultChart,
 } from "@/lib/database-chart";
-import { scheduleFields } from "@/lib/database-timeline";
+import { dateDay, scheduleFields } from "@/lib/database-timeline";
+import { publicTimelineData } from "@/lib/public-timeline";
+import { PublicTimelineGrid } from "./public-timeline-lazy";
 import {
   occurrenceDates,
   parseRecurrence,
@@ -213,70 +215,40 @@ export async function PublicCalendar({
   );
 }
 
+// The app's timeline, read-only (#390): the window and zoom the view
+// stores, its sorting, dependency arrows and critical path when the
+// dependency property is public. Records without a bar in the window stay
+// as empty rows.
 export async function PublicTimeline({
+  pageId,
   records,
   fields,
   view,
-  month,
-  monthLink,
   recordLink,
 }: {
+  pageId: string;
   records: Row[];
   fields: Field[];
   view: View;
-  month: string;
-  monthLink: (month: string) => string;
   recordLink: (row: Row) => string;
 }) {
   const t = await serverT();
-  const first = Temporal.PlainDate.from(`${month}-01`);
-  const last = first.add({ months: 1 }).subtract({ days: 1 });
-  const total = last.day;
-  const entries = spans(
-    records,
-    fields,
-    view,
-    first.toString(),
-    last.toString(),
-  );
-  const offset = (date: string) =>
-    Math.min(
-      total,
-      Math.max(0, first.until(Temporal.PlainDate.from(date)).days),
-    );
+  const tag = localeTag(await requestLocale());
+  const { rows, ...data } = publicTimelineData(pageId, records, fields, view);
   return (
-    <section className="public-timeline" aria-label={t("Timeline", "Timeline")}>
-      <MonthNav month={month} link={monthLink} />
-      {!entries.length && (
-        <p className="muted">{t("Keine Einträge in diesem Monat.", "No records in this month.")}</p>
-      )}
-      <ol className="public-timeline-rows">
-        {entries.map((e) => {
-          const left = offset(e.start),
-            right = offset(
-              Temporal.PlainDate.from(e.end).add({ days: 1 }).toString(),
-            );
-          return (
-            <li key={`${e.row.id}:${e.start}`}>
-              <a href={recordLink(e.row)}>{title(e.row, fields, t("Ohne Titel", "Untitled"))}</a>
-              <span className="public-timeline-track">
-                <span
-                  className="public-timeline-bar"
-                  style={{
-                    left: `${(left / total) * 100}%`,
-                    width: `${(Math.max(right - left, 1) / total) * 100}%`,
-                  }}
-                  title={`${e.start}${e.end !== e.start ? ` – ${e.end}` : ""}`}
-                />
-              </span>
-              <small className="muted">
-                {e.start}
-                {e.end !== e.start ? ` – ${e.end}` : ""}
-              </small>
-            </li>
-          );
-        })}
-      </ol>
+    <section className="public-timeline timeline-view" aria-label={t("Timeline", "Timeline")}>
+      <PublicTimelineGrid
+        id={view.id}
+        entries={rows.map(({ row, ...range }) => ({
+          id: row.id,
+          title: title(row, fields, t("Ohne Titel", "Untitled")),
+          href: recordLink(row),
+          ...range,
+        }))}
+        {...data}
+        today={dateDay(Temporal.Now.plainDateISO("UTC").toString())!}
+        tag={tag}
+      />
     </section>
   );
 }

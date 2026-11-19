@@ -9,24 +9,16 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  ArrowLineRight,
-  CalendarBlank,
-  CaretLeft,
-  CaretRight,
-  Warning,
-} from "@phosphor-icons/react";
+import { ArrowLineRight, CalendarBlank, Info, SlidersHorizontal, Warning } from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import { cellText } from "@/lib/database";
 import {
-  clipRange,
   dateDay,
   dayKey,
   defaultTimeline,
   rowRange,
   scheduleFields,
   schedulePatch,
-  timelinePeriod,
   timelineDependencies,
   dependencyFields,
   criticalPath,
@@ -42,6 +34,24 @@ import {
 import type { Field, Row, View } from "@/lib/types";
 import { dragCursor } from "./pointer-drag";
 import { glide, layoutPosition, motionAllowed, prefersReducedMotion, type Point } from "@/lib/motion";
+import { dataRange, keyDay, outsideLabel, SCALE_DAY_WIDTH, scaleOf, type SavedRange } from "@/lib/timeline-scale";
+import {
+  barPlacement,
+  BarText,
+  GoToDate,
+  scaleOptions,
+  ZoomSlider,
+  measureArrows,
+  TimelineArrows,
+  TimelineAxis,
+  timelineKey,
+  TimelineNavigation,
+  TimelineZoom,
+  useTimelineFrame,
+  VisibleRange,
+  frameStyle,
+  type TimelineArrow,
+} from "./timeline-frame";
 // Touch: how long a finger rests on a bar before it moves it, and how far
 // it may wander meanwhile (further, it is a swipe that scrolls).
 const TOUCH_HOLD_MS = 350;
@@ -54,7 +64,7 @@ type Drag = {
   days: number;
   pointer: number;
 };
-type Arrow = { key: string; d: string; conflict: boolean; critical?: boolean; fresh?: boolean };
+type Arrow = TimelineArrow;
 // Drawing a dependency from the end of a bar onto another one.
 type Linking = { from: string; pointer: number; x1: number; y1: number; x2: number; y2: number };
 export default function DatabaseTimeline({
@@ -85,7 +95,7 @@ export default function DatabaseTimeline({
   onView: (patch: Partial<View>) => Promise<unknown>;
 }) {
   const t = useT();
-  const [anchor, setAnchor] = useState(todayKey),
+  const [localRange, setLocalRange] = useState<{ value: SavedRange | undefined } | null>(null),
     [localScale, setLocalScale] = useState<TimelineConfig["scale"]>(),
     [localWeekends, setLocalWeekends] = useState<boolean>(),
     [busy, setBusy] = useState(false),
@@ -98,6 +108,12 @@ export default function DatabaseTimeline({
       end: string;
     } | null>(null);
   const [arrows, setArrows] = useState<Arrow[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false),
+    [helpOpen, setHelpOpen] = useState(false);
+  // The settings open below the header line and push the grid down (no
+  // layer over the bars, so dragging is never in its way); the button or
+  // Escape closes them.
+  const settingsButton = useRef<HTMLButtonElement>(null);
   const [linking, setLinking] = useState<Linking | null>(null);
   // A dropped bar (and the successors moving with it) stays where it was
   // let go until the saved dates arrive, instead of jumping back first.
@@ -115,10 +131,42 @@ export default function DatabaseTimeline({
   const config = view.timeline || defaultTimeline,
     scale = localScale || config.scale,
     weekends = localWeekends ?? config.showWeekends,
-    period = timelinePeriod(anchor, scale),
-    width = period.days * period.dayWidth,
+    range = localRange ? localRange.value : config.range,
     { start, end, invalidEnd } = scheduleFields(fields, view),
-    canEdit = editable && !!start && !invalidEnd;
+    canEdit = editable && !!start && !invalidEnd,
+    today = dateDay(todayKey())!;
+  // The grid spans the saved range, all records or today's period and the
+  // records; the zoom is continuous (components/timeline-frame.tsx, #390).
+  const frame = useTimelineFrame({
+    range,
+    dayWidth: config.dayWidth,
+    scale,
+    data: dataRange(rows.map((r) => rowRange(r, start, end))),
+    today,
+    storageId: `${pageId}:${view.id}`,
+    onZoom: viewEditable ? (dayWidth) => void saveZoom(dayWidth) : undefined,
+  });
+  const period = { start: frame.window.start, end: frame.window.end, dayWidth: frame.dayWidth },
+    width = (period.end - period.start) * period.dayWidth;
+  const milestoneField = fields.find((f) => f.id === config.milestoneField && f.type === "checkbox"),
+    labelFields = (config.labelFields || []).map((id) => fields.find((f) => f.id === id)).filter((f): f is Field => !!f);
+  const detail = (row: Row) =>
+    labelFields
+      .map((f) => cellText(row.cells[f.id]))
+      .filter(Boolean)
+      .join(" · ");
+  const helpText = [
+    canEdit
+      ? end
+        ? t("Balken verschieben, an den Rändern verlängern oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag; zusätzlich Umschalt ändert das Ende, Strg den Beginn.", "Move bars, stretch them at the edges or plan via the calendar icon. Alt + arrow key moves by one day; adding Shift changes the end, Ctrl the start.")
+        : t("Balken verschieben oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag. Für längere Zeiträume in den Ansichtseinstellungen ein separates Enddatumsfeld auswählen.", "Move bars or plan via the calendar icon. Alt + arrow key moves by one day. For longer periods choose a separate end date field in the view settings.")
+      : t("Einträge öffnen oder den angezeigten Zeitraum ändern.", "Open records or change the period shown."),
+    canEdit ? t("Auf Touchscreens einen Balken kurz halten, dann ziehen.", "On touch screens, hold a bar briefly, then drag it.") : "",
+    t("Strg/⌘ + Mausrad oder zwei Finger zoomen; T springt zu heute, F passt ein.", "Ctrl/⌘ + mouse wheel or two fingers zoom; T jumps to today, F fits."),
+    t("Vorhandene Uhrzeiten bleiben erhalten.", "Existing times are kept."),
+  ]
+    .filter(Boolean)
+    .join(" ");
   const relations = dependencyFields(fields, pageId),
     dependencyField = relations.find((f) => f.id === config.dependencyField),
     dependencyType = config.dependencyType || "fs",
@@ -176,43 +224,13 @@ export default function DatabaseTimeline({
   // Arrows follow the rendered bars, including clipping and active drags.
   useLayoutEffect(() => {
     const root = grid.current;
-    const next: Arrow[] = [];
-    if (root && links.length) {
-      const origin = root.getBoundingClientRect();
-      // Layout positions, not screen boxes: a bar gliding to its new place
-      // must not pull its arrows along the old way.
-      const bar = (id: string) => {
-        const el = root.querySelector<HTMLElement>(
-          `[data-row-id="${CSS.escape(id)}"] .timeline-range`,
-        );
-        if (!el) return undefined;
-        const at = layoutPosition(el, root, origin);
-        return { left: at.x, right: at.x + el.offsetWidth, top: at.y, height: el.offsetHeight };
-      };
-      for (const link of links) {
-        const a = bar(link.from),
-          b = bar(link.to);
-        if (!a || !b) continue;
-        // Arrows leave and enter the linked ends of both bars.
-        const fromEnd = dependencyType === "fs" || dependencyType === "ff",
-          toStart = dependencyType === "fs" || dependencyType === "ss";
-        const x1 = fromEnd ? a.right : a.left,
-          y1 = a.top + a.height / 2,
-          x2 = toStart ? b.left : b.right,
-          y2 = b.top + b.height / 2,
-          bend = Math.max(12, Math.min(40, Math.abs(x2 - x1) / 2)),
-          out = fromEnd ? bend : -bend,
-          into = toStart ? -bend : bend;
-        const key = `${link.from}>${link.to}`;
-        next.push({
-          key,
-          ...(arrowFresh(key) ? { fresh: true } : {}),
-          d: `M ${x1} ${y1} C ${x1 + out} ${y1}, ${x2 + into} ${y2}, ${x2 + (toStart ? -6 : 6)} ${y2}`,
-          conflict: link.shift > 0 || cyclic.has(link.to),
-          critical: critical.has(link.from) && critical.has(link.to),
-        });
-      }
-    }
+    // Layout positions, not screen boxes: a bar gliding to its new place
+    // must not pull its arrows along the old way.
+    const next: Arrow[] = root
+      ? measureArrows(root, links, dependencyType, critical, cyclic, (el, origin) => layoutPosition(el, root, origin)).map((a) =>
+          arrowFresh(a.key) ? { ...a, fresh: true } : a,
+        )
+      : [];
     // The first arrows seen once the records are there are known, not
     // fresh: rows often arrive after the first render (an empty timeline
     // first), and existing dependencies must not draw in then.
@@ -245,7 +263,7 @@ export default function DatabaseTimeline({
       const key = id(el);
       if (key) at.set(key, layoutPosition(el, root, origin));
     }
-    const period = `${scale}:${anchor}:${weekends}`,
+    const period = `${frame.window.start}:${frame.dayWidth}:${weekends}`,
       previous = barPositions.current;
     barPositions.current = { period, at };
     if (!previous || previous.period !== period || bars.length > 150) return;
@@ -341,17 +359,40 @@ export default function DatabaseTimeline({
   async function configure(patch: Partial<TimelineConfig>) {
     if (patch.scale) setLocalScale(patch.scale);
     if (patch.showWeekends !== undefined) setLocalWeekends(patch.showWeekends);
+    if ("range" in patch) setLocalRange({ value: patch.range });
     if (viewEditable) {
       setBusy(true);
       try {
         await onView({ timeline: { ...config, ...patch } });
+      } catch (e) {
+        setError((e as Error).message);
       } finally {
         setLocalScale(undefined);
         setLocalWeekends(undefined);
+        setLocalRange(null);
         setBusy(false);
       }
     }
   }
+  // A zoom chosen with the buttons, the slider, the wheel or the fingers
+  // (debounced by the frame); a failed save keeps the zoom on screen.
+  async function saveZoom(dayWidth: number) {
+    if (config.dayWidth === dayWidth) return;
+    try {
+      await onView({ timeline: { ...config, dayWidth } });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  // A new window: the zoom that fits it, from its start.
+  function chooseRange(next: SavedRange | undefined) {
+    frame.reset(next ? undefined : SCALE_DAY_WIDTH[scale]);
+    void configure({ range: next, dayWidth: undefined });
+  }
+  const shownScale = scaleOf(frame.dayWidth),
+    rangeMode = range === "fit" ? "fit" : range ? "custom" : "auto",
+    rangeFrom = typeof range === "object" ? range.from : "",
+    rangeTo = typeof range === "object" ? range.to : "";
   // While a bar is dragged by touch, the finger does not scroll the page.
   useEffect(() => {
     const root = grid.current;
@@ -412,6 +453,7 @@ export default function DatabaseTimeline({
         y: event.clientY,
         timer: window.setTimeout(() => {
           held.current = null;
+          if (frame.pinching()) return;
           try {
             target.setPointerCapture(pointer);
           } catch {
@@ -514,182 +556,89 @@ export default function DatabaseTimeline({
     });
   }
   return (
-    <section className="timeline-view" aria-label={t("Timeline", "Timeline")}>
+    <section className="timeline-view" aria-label={t("Timeline", "Timeline")} onKeyDown={(event) => timelineKey(event, frame)}>
+      {/* One header line (#390): ‹ Heute ›, what is visible, scale, period,
+          zoom; everything else in the settings. */}
       <div className="timeline-controls">
-        <button
-          className="icon-button"
-          aria-label={t("Timeline: vorheriger Zeitraum", "Timeline: previous period")}
-          disabled={period.start <= dateDay("0001-01-01")!}
-          onClick={() => setAnchor(dayKey(period.start - 1))}
-        >
-          <CaretLeft />
-        </button>
-        <button
-          className="button compact"
-          onClick={() => setAnchor(todayKey())}
-        >
-          {t("Heute", "Today")}
-        </button>
-        <button
-          className="icon-button"
-          aria-label={t("Timeline: nächster Zeitraum", "Timeline: next period")}
-          disabled={period.end > dateDay("9999-12-31")!}
-          onClick={() => setAnchor(dayKey(period.end))}
-        >
-          <CaretRight />
-        </button>
-        <strong>
-          {label(period.start, {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}{" "}
-          –{" "}
-          {label(period.end - 1, {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}
-        </strong>
-        <label>
-          {t("Zeitraum", "Period")}
-          <input
-            aria-label={t("Timeline: Datum", "Timeline: date")}
-            type="date"
-            min="0001-01-01"
-            max="9999-12-31"
-            value={anchor}
-            onChange={(event) => {
-              if (dateDay(event.target.value) !== null)
-                setAnchor(event.target.value);
-            }}
-          />
-        </label>
-        <label>
-          {t("Maßstab", "Scale")}
+        <TimelineNavigation frame={frame} t={t} />
+        <VisibleRange frame={frame} tag={LOCALE_TAG} />
+        <label title={t("Maßstab", "Scale")}>
+          <span className="timeline-control-name">{t("Maßstab", "Scale")}</span>
           <Select
             aria-label={t("Timeline: Maßstab", "Timeline: scale")}
-            value={scale}
+            value={shownScale || ""}
             disabled={busy}
-            onChange={(event) =>
-              void configure({
-                scale: event.target.value as TimelineConfig["scale"],
-              })
-            }
+            onChange={(event) => {
+              const next = event.target.value as TimelineConfig["scale"];
+              if (!next) return;
+              frame.reset(SCALE_DAY_WIDTH[next]);
+              // With a range the zoom would fit it otherwise.
+              void configure({ scale: next, dayWidth: range ? SCALE_DAY_WIDTH[next] : undefined });
+            }}
           >
-            <option value="week">{t("Woche", "Week")}</option>
-            <option value="month">{t("Monat", "Month")}</option>
-            <option value="quarter">{t("Quartal", "Quarter")}</option>
-            <option value="year">{t("Jahr", "Year")}</option>
-          </Select>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={weekends}
-            disabled={busy}
-            onChange={(event) =>
-              void configure({ showWeekends: event.target.checked })
-            }
-          />
-          {t("Wochenenden markieren", "Mark weekends")}
-        </label>
-        <label>
-          {t("Abhängigkeiten", "Dependencies")}
-          <Select
-            aria-label={t("Timeline: Abhängigkeiten", "Timeline: dependencies")}
-            value={dependencyField?.id || ""}
-            disabled={busy || !viewEditable || !relations.length}
-            title={
-              relations.length
-                ? undefined
-                : t("Dafür eine Relation auf diese Datenbank anlegen.", "Create a relation to this database for that.")
-            }
-            onChange={(event) => void configureDependencies(event.target.value)}
-          >
-            <option value="">
-              {relations.length ? t("Keine", "None||dependency") : t("Keine Selbstrelation", "No self-relation")}
-            </option>
-            {relations.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
+            {!shownScale && <option value="">{t("Eigener Zoom", "Custom zoom")}</option>}
+            {scaleOptions(t).map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
               </option>
             ))}
           </Select>
         </label>
-        {!dependencyField && viewEditable && onSchema && (
-          <button
-            className="button compact"
+        <label title={t("Zeitraum", "Period")}>
+          <span className="timeline-control-name">{t("Zeitraum", "Period")}</span>
+          <Select
+            aria-label={t("Timeline: Zeitraum", "Timeline: period")}
+            value={rangeMode}
             disabled={busy}
-            title={t("Legt eine Eigenschaft an, in der jeder Eintrag die Einträge nennt, auf die er wartet.", "Adds a property in which each record names the records it waits for.")}
-            onClick={async () => {
-              setBusy(true);
-              setError("");
-              try {
-                const field: Field = {
-                  id: crypto.randomUUID(),
-                  name: t("Abhängigkeiten", "Dependencies"),
-                  type: "relation",
-                  relationPage: pageId,
-                };
-                await onSchema([...fields, field], { timeline: { ...config, dependencyField: field.id } });
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy(false);
+            onChange={(event) => {
+              const mode = event.target.value;
+              if (mode === "auto") chooseRange(undefined);
+              else if (mode === "fit") chooseRange("fit");
+              else {
+                // From what is visible now.
+                const a = Math.floor(frame.leftDay()),
+                  b = Math.max(a, Math.floor(a + frame.lane.width / frame.dayWidth) - 1);
+                chooseRange({ from: dayKey(a), to: dayKey(b) });
               }
             }}
           >
-            {t("Abhängigkeiten einrichten", "Set up dependencies")}
-          </button>
-        )}
-        {dependencyField && (
-          <>
-          <label>
-            {t("Verknüpfung", "Link")}
-            <Select
-              aria-label={t("Timeline: Art der Abhängigkeit", "Timeline: kind of dependency")}
-              value={dependencyType}
-              disabled={busy || !viewEditable}
-              onChange={(event) =>
-                void configure({
-                  dependencyType: event.target.value as DependencyType,
-                })
-              }
-            >
-              {dependencyTypes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label()}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label
-            className="checkbox-label"
-            title={t("Wird ein Eintrag verschoben, rücken alle Einträge, die auf ihn warten, um dieselben Tage mit.", "When a record moves, every record waiting for it moves by the same number of days.")}
-          >
+            <option value="auto">{t("Fortlaufend", "Continuous")}</option>
+            <option value="fit">{t("Alle Einträge", "All records")}</option>
+            <option value="custom">{t("Von – bis", "From – to")}</option>
+          </Select>
+        </label>
+        {rangeMode === "custom" && (
+          <span className="timeline-range-fields">
             <input
-              type="checkbox"
-              checked={moveSuccessors}
-              disabled={busy || !viewEditable}
-              onChange={(event) => void configure({ moveSuccessors: event.target.checked })}
+              aria-label={t("Timeline: von", "Timeline: from")}
+              title={t("Von", "From")}
+              type="date"
+              min="0001-01-01"
+              max={rangeTo || "9999-12-31"}
+              value={rangeFrom}
+              disabled={busy}
+              onChange={(event) => {
+                const from = event.target.value;
+                if (keyDay(from) !== null) chooseRange({ from, to: rangeTo && rangeTo >= from ? rangeTo : from });
+              }}
             />
-            {t("Nachfolger mitverschieben", "Move successors along")}
-          </label>
-          <label
-            className="checkbox-label"
-            title={t("Einträge ohne Puffer: Verzögert sich einer, verschiebt sich das Ende des ganzen Plans.", "Records without slack: if one is delayed, the end of the whole plan moves.")}
-          >
+            <span aria-hidden="true">–</span>
             <input
-              type="checkbox"
-              checked={!!config.criticalPath}
-              disabled={busy || !viewEditable}
-              onChange={(event) => void configure({ criticalPath: event.target.checked })}
+              aria-label={t("Timeline: bis", "Timeline: to")}
+              title={t("Bis", "To")}
+              type="date"
+              min={rangeFrom || "0001-01-01"}
+              max="9999-12-31"
+              value={rangeTo}
+              disabled={busy}
+              onChange={(event) => {
+                const to = event.target.value;
+                if (keyDay(to) !== null) chooseRange({ from: rangeFrom && rangeFrom <= to ? rangeFrom : to, to });
+              }}
             />
-            {t("Kritischen Pfad hervorheben", "Highlight critical path")}
-          </label>
-          </>
+          </span>
         )}
+        <TimelineZoom frame={frame} t={t} />
         {canEdit && !cyclic.size && links.some((l) => l.shift > 0) && (
           <button
             className="button compact"
@@ -713,6 +662,195 @@ export default function DatabaseTimeline({
             {t("Alle Konflikte nachziehen", "Resolve all conflicts")}
           </button>
         )}
+        {start && !invalidEnd && (
+          <button
+            className={`icon-button${helpOpen ? " active" : ""}`}
+            aria-label={t("Hilfe zur Timeline", "Timeline help")}
+            title={helpText}
+            aria-expanded={helpOpen}
+            aria-controls={`${view.id}-timeline-help`}
+            onClick={() => setHelpOpen((open) => !open)}
+          >
+            <Info size={17} />
+          </button>
+        )}
+        <button
+          ref={settingsButton}
+          className={`icon-button${settingsOpen ? " active" : ""}`}
+          aria-label={t("Timeline-Einstellungen", "Timeline settings")}
+          title={t("Timeline-Einstellungen", "Timeline settings")}
+          aria-expanded={settingsOpen}
+          aria-controls={`${view.id}-timeline-settings`}
+          onClick={() => setSettingsOpen((open) => !open)}
+        >
+          <SlidersHorizontal size={17} />
+        </button>
+        {settingsOpen && (
+          <div
+            id={`${view.id}-timeline-settings`}
+            className="timeline-settings"
+            role="group"
+            aria-label={t("Timeline-Einstellungen", "Timeline settings")}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.stopPropagation();
+              setSettingsOpen(false);
+              settingsButton.current?.focus();
+            }}
+          >
+            <ZoomSlider frame={frame} t={t} />
+            <GoToDate frame={frame} t={t} />
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={weekends}
+                disabled={busy}
+                onChange={(event) => void configure({ showWeekends: event.target.checked })}
+              />
+              {t("Wochenenden markieren", "Mark weekends")}
+            </label>
+            <label>
+              {t("Meilensteine", "Milestones")}
+              <Select
+                aria-label={t("Timeline: Meilensteine", "Timeline: milestones")}
+                value={milestoneField?.id || ""}
+                disabled={busy || !viewEditable}
+                title={t("Eintägige Einträge sind immer Meilensteine (◆).", "Records of one day are always milestones (◆).")}
+                onChange={(event) => void configure({ milestoneField: event.target.value || undefined })}
+              >
+                <option value="">{t("Nur eintägige Einträge", "Only one-day records")}</option>
+                {fields
+                  .filter((f) => f.type === "checkbox")
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+              </Select>
+            </label>
+            <fieldset className="timeline-label-fields">
+              <legend>{t("Neben dem Titel zeigen", "Show beside the title")}</legend>
+              {fields
+                .filter((f, i) => i > 0 && f.id !== start?.id && f.id !== end?.id && f.type !== "relation")
+                .map((f) => {
+                  const chosen = labelFields.some((l) => l.id === f.id);
+                  return (
+                    <label key={f.id} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={chosen}
+                        disabled={busy || !viewEditable || (!chosen && labelFields.length >= 4)}
+                        onChange={(event) =>
+                          void configure({
+                            labelFields: event.target.checked
+                              ? [...labelFields.map((l) => l.id), f.id]
+                              : labelFields.map((l) => l.id).filter((id) => id !== f.id),
+                          })
+                        }
+                      />
+                      {f.name}
+                    </label>
+                  );
+                })}
+            </fieldset>
+            <label>
+              {t("Abhängigkeiten", "Dependencies")}
+              <Select
+                aria-label={t("Timeline: Abhängigkeiten", "Timeline: dependencies")}
+                value={dependencyField?.id || ""}
+                disabled={busy || !viewEditable || !relations.length}
+                title={
+                  relations.length
+                    ? undefined
+                    : t("Dafür eine Relation auf diese Datenbank anlegen.", "Create a relation to this database for that.")
+                }
+                onChange={(event) => void configureDependencies(event.target.value)}
+              >
+                <option value="">
+                  {relations.length ? t("Keine", "None||dependency") : t("Keine Selbstrelation", "No self-relation")}
+                </option>
+                {relations.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            {!dependencyField && viewEditable && onSchema && (
+              <button
+                className="button compact"
+                disabled={busy}
+                title={t("Legt eine Eigenschaft an, in der jeder Eintrag die Einträge nennt, auf die er wartet.", "Adds a property in which each record names the records it waits for.")}
+                onClick={async () => {
+                  setBusy(true);
+                  setError("");
+                  try {
+                    const field: Field = {
+                      id: crypto.randomUUID(),
+                      name: t("Abhängigkeiten", "Dependencies"),
+                      type: "relation",
+                      relationPage: pageId,
+                    };
+                    await onSchema([...fields, field], { timeline: { ...config, dependencyField: field.id } });
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {t("Abhängigkeiten einrichten", "Set up dependencies")}
+              </button>
+            )}
+            {dependencyField && (
+              <>
+                <label>
+                  {t("Verknüpfung", "Link")}
+                  <Select
+                    aria-label={t("Timeline: Art der Abhängigkeit", "Timeline: kind of dependency")}
+                    value={dependencyType}
+                    disabled={busy || !viewEditable}
+                    onChange={(event) =>
+                      void configure({
+                        dependencyType: event.target.value as DependencyType,
+                      })
+                    }
+                  >
+                    {dependencyTypes.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label()}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label
+                  className="checkbox-label"
+                  title={t("Wird ein Eintrag verschoben, rücken alle Einträge, die auf ihn warten, um dieselben Tage mit.", "When a record moves, every record waiting for it moves by the same number of days.")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={moveSuccessors}
+                    disabled={busy || !viewEditable}
+                    onChange={(event) => void configure({ moveSuccessors: event.target.checked })}
+                  />
+                  {t("Nachfolger mitverschieben", "Move successors along")}
+                </label>
+                <label
+                  className="checkbox-label"
+                  title={t("Einträge ohne Puffer: Verzögert sich einer, verschiebt sich das Ende des ganzen Plans.", "Records without slack: if one is delayed, the end of the whole plan moves.")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!config.criticalPath}
+                    disabled={busy || !viewEditable}
+                    onChange={(event) => void configure({ criticalPath: event.target.checked })}
+                  />
+                  {t("Kritischen Pfad hervorheben", "Highlight critical path")}
+                </label>
+              </>
+            )}
+          </div>
+        )}
       </div>
       {!start || invalidEnd ? (
         <p className="timeline-notice">
@@ -720,19 +858,11 @@ export default function DatabaseTimeline({
         </p>
       ) : (
         <>
-          <p className="muted timeline-help">
-            {canEdit
-              ? end
-                ? t("Balken verschieben, an den Rändern verlängern oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag; zusätzlich Umschalt ändert das Ende, Strg den Beginn.", "Move bars, stretch them at the edges or plan via the calendar icon. Alt + arrow key moves by one day; adding Shift changes the end, Ctrl the start.")
-                : t("Balken verschieben oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag. Für längere Zeiträume in den Ansichtseinstellungen ein separates Enddatumsfeld auswählen.", "Move bars or plan via the calendar icon. Alt + arrow key moves by one day. For longer periods choose a separate end date field in the view settings.")
-              : t("Einträge öffnen oder den angezeigten Zeitraum ändern.", "Open records or change the period shown.")}{" "}
-            {canEdit && (
-              <span className="timeline-touch-help">
-                {t("Auf Touchscreens einen Balken kurz halten, dann ziehen.", "On touch screens, hold a bar briefly, then drag it.")}{" "}
-              </span>
-            )}
-            {t("Vorhandene Uhrzeiten bleiben erhalten.", "Existing times are kept.")}
-          </p>
+          {helpOpen && (
+            <p className="muted timeline-help" id={`${view.id}-timeline-help`}>
+              {helpText}
+            </p>
+          )}
           {dragConflicts.length > 0 && (
             <p className="timeline-drag-warning" role="status">
               <Warning size={15} weight="fill" />{" "}
@@ -749,100 +879,27 @@ export default function DatabaseTimeline({
           <div
             className="timeline-scroll"
             tabIndex={0}
+            ref={frame.scrollRef}
             aria-label={t("Zeitleiste horizontal scrollen", "Scroll the timeline horizontally")}
           >
-            <div
-              className="timeline-grid"
-              ref={grid}
-              style={
-                {
-                  "--timeline-width": `${width}px`,
-                  "--timeline-day": `${period.dayWidth}px`,
-                  "--timeline-week-offset": `${-((new Date(period.start * DAY).getUTCDay() + 6) % 7) * period.dayWidth}px`,
-                  "--timeline-weekend-color": weekends
-                    ? "color-mix(in srgb, var(--muted) 7%, transparent)"
-                    : "transparent",
-                } as React.CSSProperties
-              }
-            >
+            <div className="timeline-grid" ref={grid} style={frameStyle(frame, weekends)}>
               <div className="timeline-heading">
                 <strong>{t("Eintrag", "Record")}</strong>
-                <div className="timeline-axis">
-                  {Array.from({ length: period.days }, (_, i) => {
-                    const day = period.start + i,
-                      d = new Date(day * DAY);
-                    return (
-                      <span
-                        key={day}
-                        style={{
-                          left: i * period.dayWidth,
-                          width: Math.max(period.dayWidth, 60),
-                        }}
-                      >
-                        {scale === "week" || scale === "month"
-                          ? label(day, { day: "numeric" })
-                          : scale === "quarter"
-                            ? d.getUTCDay() === 1
-                              ? label(day)
-                              : ""
-                            : d.getUTCDate() === 1
-                              ? label(day, { month: "short" })
-                              : ""}
-                      </span>
-                    );
-                  })}
-                </div>
+                <TimelineAxis frame={frame} tag={LOCALE_TAG} t={t} />
               </div>
-              {(arrows.length > 0 || linking) && (
-                <svg className="timeline-dependencies" aria-hidden="true">
-                  <defs>
-                    {(["ok", "conflict"] as const).map((kind) => (
-                      <marker
-                        key={kind}
-                        id={`timeline-arrow-${view.id}-${kind}`}
-                        className={kind}
-                        viewBox="0 0 8 8"
-                        refX="2"
-                        refY="4"
-                        markerWidth="8"
-                        markerHeight="8"
-                        orient="auto"
-                      >
-                        <path d="M0 0 L8 4 L0 8 z" />
-                      </marker>
-                    ))}
-                  </defs>
-                  {arrows.map((arrow) => (
-                    <path
-                      key={arrow.key}
-                      d={arrow.d}
-                      pathLength={arrow.fresh && !arrow.conflict ? 1 : undefined}
-                      className={
-                        [arrow.conflict ? "conflict" : arrow.critical ? "critical" : "", arrow.fresh ? "is-new" : ""]
-                          .filter(Boolean)
-                          .join(" ") || undefined
-                      }
-                      markerEnd={`url(#timeline-arrow-${view.id}-${arrow.conflict ? "conflict" : "ok"})`}
-                    />
-                  ))}
-                  {linking && (
-                    <path
-                      className="linking"
-                      d={`M ${linking.x1} ${linking.y1} L ${linking.x2} ${linking.y2}`}
-                      markerEnd={`url(#timeline-arrow-${view.id}-ok)`}
-                    />
-                  )}
-                </svg>
-              )}
+              <TimelineArrows id={view.id} arrows={arrows} linking={linking} />
               {rows.map((row) => {
                 const effective = preview.changed.get(row.id) || row;
                 const range = rowRange(effective, start, end),
-                  bar = range && clipRange(range.start, range.end, period),
+                  placed = range && barPlacement(range, !!milestoneField && effective.cells[milestoneField.id] === true, period),
+                  bar = placed?.box,
+                  milestone = !!placed?.milestone,
                   name = title(row),
+                  more = detail(row),
                   // A bar too short for its title (a day in the month
                   // scale showed "O…") has it beside it instead: right of
                   // the bar, or left where the period ends (#346).
-                  outside = bar ? outsideLabel(bar, name, width) : null;
+                  outside = bar ? (milestone ? (width - bar.left - bar.width >= 120 || bar.left < 120 ? "right" : "left") : outsideLabel(bar, name, width)) : null;
                 const incoming = links.filter((l) => l.to === row.id),
                   shift = Math.max(0, ...incoming.map((l) => l.shift)),
                   loop = cyclic.has(row.id),
@@ -921,22 +978,13 @@ export default function DatabaseTimeline({
                       )}
                     </div>
                     <div className="timeline-lane">
-                      {dateDay(todayKey())! >= period.start &&
-                        dateDay(todayKey())! < period.end && (
-                          <span
-                            className="timeline-today"
-                            aria-hidden="true"
-                            style={{
-                              left:
-                                (dateDay(todayKey())! - period.start) *
-                                period.dayWidth,
-                            }}
-                          />
-                        )}
+                      {today >= period.start && today < period.end && (
+                        <span className="timeline-today" aria-hidden="true" style={{ left: (today - period.start) * period.dayWidth }} />
+                      )}
                       {bar ? (
                         <div
-                          className={`timeline-range${preview.changed.has(row.id) || drag?.row.id === row.id ? " is-dragging" : ""}${critical.has(row.id) ? " critical" : ""}${linking && linking.from !== row.id ? " link-target" : ""}${outside ? ` label-${outside}` : ""}`}
-                          style={{ left: bar.left, width: bar.width }}
+                          className={`timeline-range${preview.changed.has(row.id) || drag?.row.id === row.id ? " is-dragging" : ""}${critical.has(row.id) ? " critical" : ""}${linking && linking.from !== row.id ? " link-target" : ""}${outside ? ` label-${outside}` : ""}${bar.clippedStart ? " clipped-start" : ""}${bar.clippedEnd ? " clipped-end" : ""}${milestone ? " milestone" : ""}`}
+                          style={{ left: bar.left, width: bar.width, "--bar-left": `${bar.left}px` } as React.CSSProperties}
                           title={`${label(range!.start, { day: "numeric", month: "short", year: "numeric" })} – ${label(range!.end, { day: "numeric", month: "short", year: "numeric" })}`}
                         >
                           <button
@@ -979,18 +1027,19 @@ export default function DatabaseTimeline({
                               }
                             }}
                           >
-                            {!outside && name}
+                            {!outside && <BarText name={name} detail={more} />}
                           </button>
                           {outside && (
                             <span
                               className="timeline-range-label"
                               aria-hidden="true"
                             >
-                              {name}
+                              <BarText name={name} detail={more} />
                             </span>
                           )}
                           {canEdit &&
                             end &&
+                            !milestone &&
                             bar.width >= 28 &&
                             (["resize-start", "resize-end"] as const).map(
                               (operation) =>
@@ -1044,7 +1093,7 @@ export default function DatabaseTimeline({
                           className="timeline-unscheduled"
                           disabled={!range && !canEdit}
                           onClick={() =>
-                            range ? setAnchor(dayKey(range.start)) : edit(row)
+                            range ? frame.goTo(range.start - 2) : edit(row)
                           }
                         >
                           {range
@@ -1153,17 +1202,4 @@ export default function DatabaseTimeline({
       )}
     </section>
   );
-}
-// Where a bar's title goes: inside when it fits, else beside the bar where
-// there is room for it (estimated at 11 px text, about 6.3 px a letter).
-function outsideLabel(
-  bar: { left: number; width: number },
-  name: string,
-  lane: number,
-): "right" | "left" | null {
-  const text = Math.min(name.length * 6.3, 220);
-  if (bar.width >= text + 26) return null;
-  if (lane - bar.left - bar.width >= text + 16) return "right";
-  if (bar.left >= text + 16) return "left";
-  return null;
 }
