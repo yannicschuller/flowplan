@@ -47,7 +47,7 @@ async function openNewPage(page: Page, mobile: boolean) {
 // The sidebar's places: the row of symbols, on phones the "Mehr" sheet.
 async function sidebarTools(page: Page, mobile: boolean) {
   if (mobile) {
-    await page.locator("aside.sidebar .sidebar-more").tap();
+    await page.locator("aside.sidebar .sidebar-more").click();
     return page.getByRole("dialog", { name: "Mehr" });
   }
   return page.locator("aside.sidebar .sidebar-tools");
@@ -55,10 +55,20 @@ async function sidebarTools(page: Page, mobile: boolean) {
 async function openDrawer(page: Page, mobile: boolean) {
   if (!mobile) return;
   const menu = page.locator(".mobile-tab-bar").getByRole("button", { name: /Navigation öffnen|Menü/ });
-  if (!(await page.locator("aside.sidebar .sidebar-more").isVisible())) await menu.tap();
-  await expect(page.locator("aside.sidebar .sidebar-more")).toBeVisible();
+  await menu.click();
+  await expect(page.locator("aside.sidebar .sidebar-more")).toBeInViewport();
 }
-const shot = (page: Page, name: string) => (process.env.MOD378_SHOTS ? page.screenshot({ path: join(process.env.MOD378_SHOTS, name) }) : Promise.resolve());
+// Screenshots for the review (MOD378_SHOTS: a folder), light and dark.
+async function shot(page: Page, name: string) {
+  const dir = process.env.MOD378_SHOTS;
+  if (!dir) return;
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(dir, `${name}-${scheme}.png`) });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+}
 
 test("switched-off flashcards and whiteboards leave new page, slash menu and sidebar; someone else's whiteboard still opens", async ({ page, browser }, info) => {
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
@@ -89,7 +99,7 @@ test("switched-off flashcards and whiteboards leave new page, slash menu and sid
     await expect.poll(() => modulesOf(page)).toEqual(expect.objectContaining({ hidden: ["flashcards", "whiteboards"], own: true }));
     await expect(card.getByRole("switch", { name: "Whiteboards" })).not.toBeChecked();
     await card.scrollIntoViewIfNeeded();
-    await shot(page, `mod378-settings-${mobile ? 390 : 1440}-${(await page.evaluate(() => document.documentElement.classList.contains("dark"))) ? "dark" : "light"}.png`);
+    await shot(page, `mod378-settings-${mobile ? 390 : 1440}`);
 
     // "Neue Seite": no whiteboard tile, no flashcard database.
     await page.goto("/");
@@ -100,7 +110,7 @@ test("switched-off flashcards and whiteboards leave new page, slash menu and sid
     await dialog.getByRole("radio", { name: "Datenbank" }).click();
     await expect(dialog.getByRole("radio", { name: "Aufgaben" })).toBeVisible();
     await expect(dialog.getByRole("radio", { name: "Lernkarten" })).toHaveCount(0);
-    await shot(page, `mod378-new-page-${mobile ? 390 : 1440}.png`);
+    await shot(page, `mod378-new-page-${mobile ? 390 : 1440}`);
     await dialog.getByRole("button", { name: "Abbrechen" }).click();
 
     // The sidebar: no "Lernen".
@@ -115,14 +125,17 @@ test("switched-off flashcards and whiteboards leave new page, slash menu and sid
     const editor = page.getByLabel("Dokumentinhalt", { exact: true });
     await editor.click();
     const menu = page.locator(".slash-menu");
-    await page.keyboard.type("/whiteboard");
+    // The whole menu: the other media blocks are there, these two are not.
+    await page.keyboard.type("/");
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("option", { name: /Besprechung/ }).first()).toBeAttached();
+    await expect(menu.getByRole("option", { name: /Tabelle/ }).first()).toBeAttached();
     await expect(menu.getByRole("option", { name: /Whiteboard/ })).toHaveCount(0);
-    for (let i = 0; i < "whiteboard".length; i++) await page.keyboard.press("Backspace");
-    await page.keyboard.type("lücke");
     await expect(menu.getByRole("option", { name: /Lücke/ })).toHaveCount(0);
-    for (let i = 0; i < "lücke".length; i++) await page.keyboard.press("Backspace");
-    await page.keyboard.type("tabelle");
-    await expect(menu.getByRole("option", { name: /Tabelle/ }).first()).toBeVisible();
+    await shot(page, `mod378-slash-${mobile ? 390 : 1440}`);
+    // Typed, no match either: the menu closes on a query without hits.
+    await page.keyboard.type("whiteb");
+    await expect(menu.getByRole("option", { name: /Whiteboard/ })).toHaveCount(0);
     await page.keyboard.press("Escape");
 
     // Olga's whiteboard: in the tree and it opens as always.
@@ -152,12 +165,15 @@ test("the administration's default reaches new accounts, and can be applied to e
       .poll(async () => (await (await adminPage.request.get("/api/admin")).json()).settings.modulesDefault)
       .toEqual(["whiteboards", "ai"]);
     await card.scrollIntoViewIfNeeded();
-    await shot(adminPage, "mod378-admin-1440-light.png");
+    await shot(adminPage, "mod378-admin-1440");
 
     // A new account follows it.
     const fresh = account("Neu Konto");
     const freshContext = await signedIn(browser, fresh.token, false);
     const freshPage = await freshContext.newPage();
+    // The first visit makes the account's workspace.
+    await freshPage.goto(`${origin}/`);
+    await expect(freshPage.getByRole("button", { name: /Neue Seite/ }).first()).toBeVisible({ timeout: 30_000 });
     const freshBoot = await (await freshPage.request.get(`${origin}/api/bootstrap`)).json();
     expect(freshBoot.modules).toEqual({ hidden: ["whiteboards", "ai"], own: false, standard: ["whiteboards", "ai"] });
     await freshPage.goto(`${origin}/`);

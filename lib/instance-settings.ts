@@ -3,7 +3,8 @@ import { all, run } from "./db";
 import { HttpError } from "./auth";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { settingsLevelSchema } from "./settings-level";
-import { hiddenModulesOf, hiddenModulesSchema } from "./feature-modules";
+import { hiddenModulesOf } from "./feature-modules";
+import { hiddenModulesSchema } from "./feature-modules-schema";
 import { isDefaultToolbarLayout, parsedToolbarLayout, toolbarLayoutSchema, type ToolbarLayout } from "./toolbar-layout";
 
 // The instance's default formatting toolbar, as stored: read leniently

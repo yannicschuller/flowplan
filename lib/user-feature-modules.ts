@@ -5,7 +5,8 @@
 import { z } from "zod";
 import { HttpError } from "./auth";
 import { one, run } from "./db";
-import { hiddenModulesOf, hiddenModulesSchema, type FeatureModule, type FeatureModulesBoot } from "./feature-modules";
+import { hiddenModulesOf, type FeatureModule, type FeatureModulesBoot } from "./feature-modules";
+import { hiddenModulesSchema } from "./feature-modules-schema";
 import { instanceSettings } from "./instance-settings";
 import type { Identity } from "./types";
 

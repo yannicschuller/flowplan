@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type { PageKind, View } from "./types";
 import type { HomeWidgetKind } from "./home-layout-schema";
 
@@ -38,11 +37,7 @@ export type FeatureModule = (typeof FEATURE_MODULES)[number];
 const known = new Set<string>(FEATURE_MODULES);
 export const isFeatureModule = (value: unknown): value is FeatureModule => typeof value === "string" && known.has(value);
 
-// What the server accepts: known features, each once.
-export const hiddenModulesSchema = z
-  .array(z.enum(FEATURE_MODULES))
-  .max(FEATURE_MODULES.length)
-  .refine((list) => new Set(list).size === list.length, "A feature may be listed only once.");
+// What the server accepts: lib/feature-modules-schema.ts.
 
 // A stored or sent value read leniently: a JSON string or an array; unknown
 // entries (a feature a later version dropped) are left out, the order is

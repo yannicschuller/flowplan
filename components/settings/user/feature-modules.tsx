@@ -68,7 +68,6 @@ export function FeatureModulesSettings() {
       )}
     >
       <SettingRow
-        anchor="modules"
         label={state.own ? t("Deine Auswahl", "Your choice") : t("Standard der Instanz", "Instance default")}
         description={
           state.own

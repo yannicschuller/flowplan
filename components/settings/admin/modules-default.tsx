@@ -73,7 +73,6 @@ export function InstanceModules() {
     >
       <ModuleSwitches hidden={hidden} onChange={change} disabled={!settings} />
       <SettingRow
-        anchor="modules-default"
         label={t("Allen bestehenden Konten zuweisen", "Apply to all existing accounts")}
         description={
           applied === null
