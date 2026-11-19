@@ -1,33 +1,23 @@
 "use client";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/server-message";
-import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { CommentComposer, CommentBody } from "./comment-composer";
 import type { CommentNode } from "@/lib/comment-content";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/core";
 import type { Transaction } from "@tiptap/pm/state";
-import {
-  ChatCircle,
-  Check,
-  ArrowCounterClockwise,
-  Smiley,
-  PencilSimple,
-  Trash,
-  X,
-  Link,
-  Plus,
-} from "@phosphor-icons/react";
+import { ChatCircle, X, Plus } from "@phosphor-icons/react";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { leaveTo } from "@/lib/history-nav";
-import { api, Avatar, Modal } from "./ui";
+import { api, Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { readCommentDrafts, saveCommentDrafts } from "@/lib/comment-drafts";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { CommentQuote } from "./comment-quote";
 import { BLOCK_MOVE_META } from "@/lib/document-blocks";
+import { prefersReducedMotion } from "@/lib/motion";
 import {
   editorCommentBinding,
   relocatedCommentAnchors,
@@ -36,11 +26,56 @@ import {
 } from "@/lib/inline-comment-plugin";
 import { commentRange } from "@/lib/comment-positions";
 import { liveOpenFor, THREADS_EVENT, threadsKey } from "@/lib/live-state";
+import { useCommentMargin } from "@/lib/comment-margin-pref-client";
+import { COMMENT_MARGIN_MIN_ROOM } from "@/lib/comment-margin-pref";
+import { loadView } from "./view-fallback";
+import type { ThreadEditing, ThreadReply } from "./inline-comment-thread";
 import type {
   InlineThread,
   CommentAnchor,
   InlineMessage,
 } from "@/lib/inline-comment-types";
+
+// A thread, the new comment's form and the margin load with the first one
+// shown, not with the document (#387).
+const InlineCommentThread = dynamic(() => loadView(() => import("./inline-comment-thread")), { ssr: false });
+const InlineCommentDraft = dynamic(
+  () => loadView(() => import("./inline-comment-thread").then((m) => ({ default: m.InlineCommentDraft }))),
+  { ssr: false },
+);
+const CommentMargin = dynamic(() => loadView(() => import("./comment-margin")), { ssr: false });
+
+// Whether the page has room for the margin beside its text (#387): the
+// page layout's width without side panels (the page comments, the AI
+// summary), measured again when the window or a panel changes. Never in a
+// dialog (a record opened as a dialog) – there the panel stays.
+function useMarginRoom(editor: Editor | null) {
+  const [room, setRoom] = useState(false);
+  useLayoutEffect(() => {
+    const dom = editor && !editor.isDestroyed ? editor.view.dom : null;
+    const layout = dom?.closest<HTMLElement>(".page-layout");
+    if (!dom || !layout || dom.closest(".modal") || typeof ResizeObserver === "undefined") {
+      setRoom(false);
+      return;
+    }
+    const measure = () => {
+      let width = layout.clientWidth;
+      for (const child of layout.children) if (!child.contains(dom)) width -= (child as HTMLElement).offsetWidth;
+      setRoom(width >= COMMENT_MARGIN_MIN_ROOM);
+    };
+    measure();
+    const resized = new ResizeObserver(measure);
+    resized.observe(layout);
+    // A side panel opening or closing beside the page.
+    const panels = new MutationObserver(measure);
+    panels.observe(layout, { childList: true });
+    return () => {
+      resized.disconnect();
+      panels.disconnect();
+    };
+  }, [editor]);
+  return room;
+}
 
 export function InlineComments({
   editor,
@@ -48,19 +83,26 @@ export function InlineComments({
   rowId,
   generation,
   userId,
+  onMargin,
 }: {
   editor: Editor | null;
   pageId: string;
   rowId?: string;
   generation: string;
   userId: string;
+  // Whether the margin with open text comments is shown beside the text
+  // (the editor makes room for it and the table of contents gives way).
+  onMargin?: (shown: boolean) => void;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
   const panel = useRef<HTMLElement | null>(null);
   const linkedThread = useRef<string | null>(null);
   const scrolledThread = useRef<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  // A highlight clicked while the panel is used: the panel's thread comes
+  // into view (it opens below the document, often out of sight).
+  const panelReveal = useRef<string | null>(null);
+  const [reveal, setReveal] = useState<{ id: string; n: number } | null>(null);
   const [loadedActive, setLoadedActive] = useState<string | null | undefined>(
     undefined,
   );
@@ -78,16 +120,15 @@ export function InlineComments({
   const [bodyContent, setBodyContent] = useState<CommentNode | null>(
     () => readCommentDrafts(draftKey).content || null,
   );
-  const [replyDrafts, setReplyDrafts] = useState<
-    Record<string, { id: string; body: string; content?: CommentNode | null }>
-  >(() => readCommentDrafts(draftKey).replies);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, ThreadReply>>(
+    () => readCommentDrafts(draftKey).replies,
+  );
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
   useEffect(() => {
     setDraftStorageFailed(
       !saveCommentDrafts(draftKey, body, replyDrafts, bodyContent),
     );
   }, [draftKey, body, replyDrafts, bodyContent]);
-  const reply = active ? replyDrafts[active]?.body || "" : "";
   function setReply(value: string, content?: CommentNode | null) {
     if (active)
       setReplyDrafts((prev) => ({
@@ -99,17 +140,17 @@ export function InlineComments({
         },
       }));
   }
-  const [editing, setEditing] = useState<{
-      message: InlineMessage;
-      body: string;
-      content?: CommentNode | null;
-    } | null>(null),
+  const [editing, setEditing] = useState<ThreadEditing | null>(null),
     [reaction, setReaction] = useState<string | null>(null),
     [deleting, setDeleting] = useState<InlineMessage | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [hint, setHint] = useState(false),
     [revision, setRevision] = useState(0);
+  // Text comments in the margin (#387): the person's setting and the room.
+  const marginPref = useCommentMargin();
+  const room = useMarginRoom(editor);
+  const marginMode = marginPref && room;
   const mounted = useRef(true),
     inflight = useRef<AbortController | null>(null);
   const refresh = useCallback(
@@ -174,9 +215,19 @@ export function InlineComments({
       window.removeEventListener(THREADS_EVENT, signal);
     };
   }, [refresh, pageId, rowId]);
+  // The passages: in the margin the active one (or the new comment's
+  // passage) is highlighted more strongly while its card is open; in the
+  // panel while the panel shows its thread.
   useEffect(() => {
-    if (editor) setCommentHighlights(editor, threads, open ? active : null);
-  }, [editor, threads, active, open]);
+    if (!editor) return;
+    if (marginMode && draft)
+      setCommentHighlights(
+        editor,
+        [...threads, { id: draft.threadId, anchor: draft.anchor, resolved: 0 } as InlineThread],
+        draft.threadId,
+      );
+    else setCommentHighlights(editor, threads, marginMode || open ? active : null);
+  }, [editor, threads, active, open, marginMode, draft]);
   useEffect(() => {
     const navigate = () => {
       const target = parsePageLocation(location.hash);
@@ -202,18 +253,71 @@ export function InlineComments({
     window.addEventListener("hashchange", navigate);
     return () => window.removeEventListener("hashchange", navigate);
   }, [pageId, rowId]);
+  function range(t: InlineThread) {
+    const binding = editor && editorCommentBinding(editor);
+    return binding ? commentRange(binding, t.anchor, generation) : null;
+  }
+  // The open threads beside the text, in the order of their passages.
+  const marginThreads: InlineThread[] = [];
+  const positions = new Map<string, number>();
+  if (marginMode)
+    for (const thread of threads) {
+      if (thread.resolved) continue;
+      const r = range(thread);
+      if (!r) continue;
+      positions.set(thread.id, r.from);
+      marginThreads.push(thread);
+    }
+  marginThreads.sort((a, b) => positions.get(a.id)! - positions.get(b.id)!);
+  const inMargin = (id: string | null) => !!id && positions.has(id);
+  const marginDraft = (() => {
+    if (!marginMode || !draft) return null;
+    const binding = editor && editorCommentBinding(editor);
+    const from = binding ? commentRange(binding, draft.anchor, generation)?.from : undefined;
+    // A passage that cannot be placed: the form stays in the panel.
+    if (from === undefined) return null;
+    return { id: draft.threadId, index: marginThreads.filter((t) => positions.get(t.id)! < from).length };
+  })();
+  const draftInPanel = !!draft && !marginDraft;
+  useEffect(() => {
+    if (draftInPanel) setOpen(true);
+  }, [draftInPanel]);
+  const marginShown = marginThreads.length > 0 || !!marginDraft;
+  const onMarginRef = useRef(onMargin);
+  onMarginRef.current = onMargin;
+  useEffect(() => {
+    onMarginRef.current?.(marginShown);
+  }, [marginShown]);
+  useEffect(() => () => onMarginRef.current?.(false), []);
+  const marginIds = marginThreads.map((thread) => thread.id).join(",");
+  // A link to a thread (notifications, "Copy comment link"): its card in
+  // the margin, or the panel scrolled to it.
   useEffect(() => {
     if (
-      open &&
-      active &&
-      linkedThread.current === active &&
-      loadedActive === active &&
-      scrolledThread.current !== active
-    ) {
-      panel.current?.scrollIntoView({ block: "start" });
+      !active ||
+      linkedThread.current !== active ||
+      loadedActive !== active ||
+      scrolledThread.current === active
+    )
+      return;
+    if (marginMode && marginIds.split(",").includes(active)) {
+      scrolledThread.current = active;
+      setOpen(false);
+      setReveal((r) => ({ id: active, n: (r?.n || 0) + 1 }));
+    } else if (!open) setOpen(true);
+    else if (panel.current) {
+      panel.current.scrollIntoView({ block: "start" });
       scrolledThread.current = active;
     }
-  }, [open, active, loadedActive]);
+  }, [open, active, loadedActive, marginMode, marginIds]);
+  // A highlight clicked while the panel is used: its thread into view.
+  useEffect(() => {
+    if (!open || !active || panelReveal.current !== active || !panel.current) return;
+    panelReveal.current = null;
+    const box = panel.current.getBoundingClientRect();
+    if (box.top < 0 || box.top > window.innerHeight - 160)
+      panel.current.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  }, [open, active]);
   // The X and the panel button close the whole panel: list, thread and
   // new comment (its text stays as a draft, lib/comment-drafts.ts).
   function close() {
@@ -236,7 +340,8 @@ export function InlineComments({
   }
   // A new comment on the selection; `blockFallback` (shortcut, toolbar and
   // text menu) takes the current block when nothing is selected, the
-  // panel's "New" asks for a selection instead.
+  // panel's "New" asks for a selection instead. With the margin the form
+  // opens beside the passage.
   function begin(blockFallback = true) {
     if (!editor) return;
     setHint(false);
@@ -255,8 +360,9 @@ export function InlineComments({
         threadId: crypto.randomUUID(),
         messageId: crypto.randomUUID(),
       });
-      setOpen(true);
+      if (!marginMode) setOpen(true);
       setActive(null);
+      setEditing(null);
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -268,7 +374,14 @@ export function InlineComments({
   // here at once and on the server (thread.reanchor).
   function relocate(transaction: Transaction) {
     if (!editor) return;
-    const moved = relocatedCommentAnchors(editor, transaction, generation);
+    let moved = relocatedCommentAnchors(editor, transaction, generation);
+    // The new comment's passage (highlighted in the margin) moves along
+    // with its form; it has no thread on the server yet.
+    const own = draft && moved.find((m) => m.id === draft.threadId);
+    if (own && draft) {
+      setDraft({ ...draft, anchor: { ...own.anchor, quote: draft.anchor.quote } });
+      moved = moved.filter((m) => m !== own);
+    }
     if (!moved.length) {
       // Highlights left by the structural change come back.
       if (transaction.docChanged && transaction.getMeta(BLOCK_MOVE_META))
@@ -304,15 +417,22 @@ export function InlineComments({
   relocateRef.current = relocate;
   const beginRef = useRef(begin);
   beginRef.current = begin;
+  const showRef = useRef((id: string) => void id);
+  showRef.current = (id: string) => {
+    // The new comment's own highlight.
+    if (draft && id === draft.threadId) return;
+    setActive(id);
+    setDraft(null);
+    setHint(false);
+    setEditing(null);
+    if (marginMode && inMargin(id)) return;
+    setOpen(true);
+    panelReveal.current = id;
+  };
   useEffect(() => {
     if (!editor) return;
     const create = () => beginRef.current(true),
-      show = (event: Event) => {
-        setActive((event as CustomEvent<string>).detail);
-        setOpen(true);
-        setDraft(null);
-        setHint(false);
-      },
+      show = (event: Event) => showRef.current((event as CustomEvent<string>).detail),
       update = ({ transaction }: { transaction: Transaction }) => {
         setRevision((n) => n + 1);
         relocateRef.current(transaction);
@@ -349,15 +469,13 @@ export function InlineComments({
       setBusy(false);
     }
   }
+  // From the panel's list: a thread with a card in the margin opens there.
   function navigate(id: string) {
     setActive(id);
     setDraft(null);
     setEditing(null);
     setError("");
-  }
-  function range(t: InlineThread) {
-    const binding = editor && editorCommentBinding(editor);
-    return binding ? commentRange(binding, t.anchor, generation) : null;
+    if (inMargin(id)) setReveal((r) => ({ id, n: (r?.n || 0) + 1 }));
   }
   function goToText(t: InlineThread) {
     const r = range(t);
@@ -370,6 +488,96 @@ export function InlineComments({
       chain.scrollIntoView().run();
     }
   }
+  async function submitDraft() {
+    if (!draft || busy || !body.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await flushOpenDocuments();
+      if (
+        await act("thread.create", {
+          ...draft,
+          body,
+          content: bodyContent,
+        })
+      ) {
+        setActive(draft.threadId);
+        setDraft(null);
+        setBody("");
+        setBodyContent(null);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const errorLine = error && (
+    <p className="inline-comment-error" role="alert">
+      {error}
+    </p>
+  );
+  const renderDraft = (compact: boolean) =>
+    draft && (
+      <InlineCommentDraft
+        quote={draft.anchor.quote}
+        pageId={pageId}
+        rowId={rowId}
+        body={body}
+        content={bodyContent}
+        busy={busy}
+        compact={compact}
+        onChange={(text, content) => {
+          setBody(text);
+          setBodyContent(content);
+        }}
+        onSubmit={() => void submitDraft()}
+        onCancel={() => setDraft(null)}
+      />
+    );
+  const renderThread = (shown: InlineThread, compact: boolean) => (
+    <InlineCommentThread
+      thread={shown}
+      pageId={pageId}
+      rowId={rowId}
+      userId={userId}
+      busy={busy}
+      act={async (action, data) => {
+        const ok = await act(action, data);
+        // A resolved thread leaves the margin; its card closes.
+        if (ok && compact && action === "thread.resolve" && data.resolved) setActive(null);
+        return ok;
+      }}
+      editing={editing}
+      setEditing={setEditing}
+      reply={replyDrafts[shown.id]}
+      onReply={setReply}
+      onReplySent={() =>
+        setReplyDrafts((prev) => ({
+          ...prev,
+          [shown.id]: { id: crypto.randomUUID(), body: "" },
+        }))
+      }
+      onReact={setReaction}
+      onDelete={setDeleting}
+      onError={setError}
+      passage={!!range(shown)}
+      onGoToText={() => goToText(shown)}
+      onBack={
+        compact
+          ? undefined
+          : () => {
+              setActive(null);
+              setEditing(null);
+            }
+      }
+      compact={compact}
+    />
+  );
+  // The panel shows the threads without a card: resolved ones, those whose
+  // passage is gone, all of them below the document.
+  const panelThread = thread && !inMargin(thread.id) ? thread : undefined;
+  const marginActive = inMargin(active);
   // revision updates the availability of anchors when remote text changes.
   void revision;
   return (
@@ -424,305 +632,19 @@ export function InlineComments({
               {t("Dein Entwurf bleibt im geöffneten Editor. Der Browser konnte ihn für einen Seitenwechsel nicht sichern.", "Your draft stays in the open editor. The browser could not keep it for a page change.")}
             </p>
           )}
-          {error && (
-            <p className="inline-comment-error" role="alert">
-              {error}
-            </p>
-          )}
-          {draft && (
-            <form
-              className="inline-comment-new"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (busy || !body.trim()) return;
-                setBusy(true);
-                setError("");
-                try {
-                  await flushOpenDocuments();
-                  if (
-                    await act("thread.create", {
-                      ...draft,
-                      body,
-                      content: bodyContent,
-                    })
-                  ) {
-                    setActive(draft.threadId);
-                    setDraft(null);
-                    setBody("");
-                    setBodyContent(null);
-                  }
-                } catch (err) {
-                  setError((err as Error).message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <blockquote>
-                <CommentQuote quote={draft.anchor.quote} />
-              </blockquote>
-              <CommentComposer
-                label={t("Kommentar zur Textstelle", "Comment on the passage")}
-                pageId={pageId}
-                rowId={rowId}
-                body={body}
-                content={bodyContent}
-                autoFocus
-                disabled={busy}
-                onChange={(text, content) => {
-                  setBody(text);
-                  setBodyContent(content);
-                }}
-              />
-              <div className="inline-comment-actions">
-                <button
-                  className="button primary"
-                  disabled={busy || !body.trim()}
-                >
-                  {t("Kommentar senden", "Send comment")}
-                </button>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={busy}
-                  onClick={() => setDraft(null)}
-                >
-                  {t("Abbrechen", "Cancel")}
-                </button>
-              </div>
-              <p className="muted">
-                {t("Die markierte Textstelle wird beim Speichern erneut geprüft. Bei Änderungen bleibt dein Entwurf erhalten.", "The marked passage is checked again when saving. If it changed, your draft is kept.")}
-              </p>
-            </form>
-          )}
+          {/* With the margin, the open card shows its own errors. */}
+          {!(marginMode && (marginDraft || marginActive)) && errorLine}
+          {draftInPanel && renderDraft(false)}
           {active && !thread ? (
             <p role="status">
               {loadedActive === active
                 ? t("Dieser Kommentar ist nicht mehr verfügbar oder gehört zu einer anderen Seite.", "This comment is no longer available or belongs to another page.")
                 : t("Thread wird geladen …", "Loading thread …")}
             </p>
-          ) : thread && !thread.complete ? (
+          ) : panelThread && !panelThread.complete ? (
             <p role="status">{t("Thread wird geladen …", "Loading thread …")}</p>
-          ) : thread ? (
-            <>
-              <button
-                className="text-button"
-                onClick={() => {
-                  setActive(null);
-                  setEditing(null);
-                }}
-              >
-                {t("← Alle Textkommentare", "← All text comments")}
-              </button>
-              <blockquote>
-                <CommentQuote quote={thread.anchor.quote} />
-              </blockquote>
-              <div className="inline-comment-actions">
-                <button
-                  className="text-button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(
-                        `${location.origin}/${pageLocationHash({ pageId, rowId, threadId: thread.id })}`,
-                      );
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2500);
-                    } catch {
-                      setError(
-                        t("Der Link konnte nicht kopiert werden. Bitte erlaube den Zugriff auf die Zwischenablage.", "The link could not be copied. Please allow access to the clipboard."),
-                      );
-                    }
-                  }}
-                >
-                  <Link /> {copied ? t("Link kopiert", "Link copied") : t("Kommentarlink kopieren", "Copy comment link")}
-                </button>
-                <button
-                  className="text-button"
-                  disabled={!range(thread)}
-                  onClick={() => goToText(thread)}
-                >
-                  {t("Zur Textstelle", "Go to passage")}
-                </button>
-                {!range(thread) && (
-                  <span className="muted">{t("Textstelle nicht mehr verfügbar", "Passage no longer available")}</span>
-                )}
-                {thread.canResolve && (
-                  <button
-                    className="button compact"
-                    disabled={busy}
-                    onClick={() =>
-                      void act("thread.resolve", {
-                        version: thread.version,
-                        resolved: !thread.resolved,
-                      })
-                    }
-                  >
-                    {thread.resolved ? <ArrowCounterClockwise /> : <Check />}
-                    {thread.resolved ? t("Wieder öffnen", "Reopen") : t("Thread erledigen", "Resolve thread")}
-                  </button>
-                )}
-              </div>
-              {thread.messages.map((m) => (
-                <article className="inline-comment-message" key={m.id}>
-                  <Avatar name={m.name} small />
-                  <div>
-                    <strong>{m.name}</strong>
-                    <small>
-                      {new Date(
-                        m.created_at.replace(" ", "T") + "Z",
-                      ).toLocaleString(LOCALE_TAG)}
-                      {m.edited_at && !m.deleted ? t(" · bearbeitet", " · edited") : ""}
-                      {m.author_id === null ? t(" · importiert", " · imported") : ""}
-                    </small>
-                    {editing?.message.id === m.id ? (
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          if (busy || !editing.body.trim()) return;
-                          if (
-                            await act("thread.edit", {
-                              messageId: m.id,
-                              version: editing.message.version,
-                              body: editing.body,
-                              content: editing.content,
-                            })
-                          )
-                            setEditing(null);
-                        }}
-                      >
-                        <CommentComposer
-                          key={m.id}
-                          label={t("Kommentartext bearbeiten", "Edit comment text")}
-                          pageId={pageId}
-                          rowId={rowId}
-                          body={editing.body}
-                          content={editing.content}
-                          disabled={busy}
-                          autoFocus
-                          onChange={(body, content) =>
-                            setEditing({ ...editing, body, content })
-                          }
-                        />
-                        <button
-                          className="button"
-                          disabled={busy || !editing.body.trim()}
-                        >
-                          {t("Änderung speichern", "Save change")}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => setEditing(null)}
-                        >
-                          {t("Bearbeitung abbrechen", "Cancel editing")}
-                        </button>
-                      </form>
-                    ) : m.deleted ? (
-                      <p>{t("Kommentar gelöscht", "Comment deleted")}</p>
-                    ) : (
-                      <CommentBody content={m.content} body={m.body} />
-                    )}
-                    {!m.deleted && (
-                      <div className="inline-comment-actions">
-                        {m.reactions.map((r) => (
-                          <button
-                            className="reaction-button"
-                            aria-pressed={r.mine}
-                            title={r.names.join(", ")}
-                            aria-label={t(`${r.emoji} ${r.count} Reaktionen`, `${r.emoji} ${r.count} reactions`)}
-                            key={r.emoji}
-                            disabled={busy}
-                            onClick={() =>
-                              void act("thread.react", {
-                                messageId: m.id,
-                                emoji: r.emoji,
-                                active: !r.mine,
-                              })
-                            }
-                          >
-                            {r.emoji} {r.count}
-                          </button>
-                        ))}
-                        <button
-                          className="icon-button"
-                          aria-label={t("Emoji-Reaktion hinzufügen", "Add emoji reaction")}
-                          disabled={busy}
-                          onClick={() => setReaction(m.id)}
-                        >
-                          <Smiley />
-                        </button>
-                        {m.author_id === userId && (
-                          <>
-                            <button
-                              className="icon-button"
-                              aria-label={t("Kommentar bearbeiten", "Edit comment")}
-                              disabled={busy}
-                              onClick={() =>
-                                setEditing({
-                                  message: m,
-                                  body: m.body,
-                                  content: m.content,
-                                })
-                              }
-                            >
-                              <PencilSimple />
-                            </button>
-                            <button
-                              className="icon-button"
-                              aria-label={t("Kommentar löschen", "Delete comment")}
-                              disabled={busy}
-                              onClick={() => setDeleting(m)}
-                            >
-                              <Trash />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </article>
-              ))}
-              {thread.resolved ? (
-                <p className="muted">{t("Dieser Thread ist erledigt.", "This thread is resolved.")}</p>
-              ) : (
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (busy || !reply.trim()) return;
-                    if (
-                      await act("thread.reply", {
-                        messageId: replyDrafts[thread.id]?.id,
-                        body: reply,
-                        content: replyDrafts[thread.id]?.content,
-                      })
-                    ) {
-                      setReply("");
-                      setReplyDrafts((prev) => ({
-                        ...prev,
-                        [thread.id]: { id: crypto.randomUUID(), body: "" },
-                      }));
-                    }
-                  }}
-                >
-                  <CommentComposer
-                    key={thread.id}
-                    label={t("Antwort", "Reply||noun")}
-                    pageId={pageId}
-                    rowId={rowId}
-                    body={reply}
-                    content={replyDrafts[thread.id]?.content}
-                    disabled={busy}
-                    onChange={setReply}
-                  />
-                  <button
-                    className="button primary"
-                    disabled={busy || !reply.trim()}
-                  >
-                    {t("Antwort senden", "Send reply")}
-                  </button>
-                </form>
-              )}
-            </>
+          ) : panelThread ? (
+            renderThread(panelThread, false)
           ) : (
             <>
               <label>
@@ -746,6 +668,7 @@ export function InlineComments({
                   <button
                     className="inline-thread-link"
                     key={thread.id}
+                    aria-current={thread.id === active ? "true" : undefined}
                     onClick={() => navigate(thread.id)}
                   >
                     <blockquote>
@@ -769,6 +692,37 @@ export function InlineComments({
             </>
           )}
         </section>
+      )}
+      {editor && marginShown && (
+        <CommentMargin
+          editor={editor}
+          threads={marginThreads}
+          active={marginActive ? active : null}
+          draft={marginDraft}
+          reveal={reveal}
+          onActivate={(id) => {
+            setActive(id);
+            setEditing(null);
+            setError("");
+            if (id) setDraft(null);
+          }}
+          renderDraft={() => (
+            <>
+              {errorLine}
+              {renderDraft(true)}
+            </>
+          )}
+          renderThread={(shown) =>
+            shown.complete ? (
+              <>
+                {errorLine}
+                {renderThread(shown, true)}
+              </>
+            ) : (
+              <p role="status">{t("Thread wird geladen …", "Loading thread …")}</p>
+            )
+          }
+        />
       )}
       <Modal
         open={!!reaction}

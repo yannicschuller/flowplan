@@ -27,6 +27,9 @@ async function fixture(page: Page, browser: Browser) {
     expect(r.ok(), await r.text()).toBe(true);
     return r.json();
   };
+  // These specs use the panel below the document; the margin beside it
+  // (#387) is tested in comment-margin.spec.ts.
+  await command({ action: "profile.commentMargin", commentMargin: false });
   const area = await command({
     action: "space.create",
     workspaceId: boot.workspace.id,
@@ -85,6 +88,7 @@ async function fixture(page: Page, browser: Browser) {
     uid,
     "viewer",
   );
+  db.prepare("UPDATE users SET comment_margin=0 WHERE id=?").run(uid);
   // The reader follows both pages: new comments reach followers, not the
   // whole workspace (lib/comment-recipients.ts).
   for (const followed of [doc.id, database.id])

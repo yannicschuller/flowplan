@@ -16,6 +16,7 @@ import { formattingToolbarSchema } from "./toolbar-pref";
 import { TOOLBAR_BLOCKS, TOOLBAR_BUTTONS, TOOLBAR_DIVIDER, TOOLBAR_ORDER_MAX, toolbarLayoutSchema } from "./toolbar-layout";
 import { motionPrefSchema } from "./motion-pref";
 import { fullWidthPagesSchema } from "./page-width-pref";
+import { commentMarginSchema } from "./comment-margin-pref";
 import { startScreenSchema } from "./start-screen";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { settingsLevelSchema } from "./settings-level";
@@ -74,7 +75,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -433,6 +434,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: true shows pages and records opened as a page at the full width of the main area, as if each had its own full-width switch on. The pages' own full_width stays as stored and still applies for everyone else. Off by default.",
     input: z.object({ action: z.literal("profile.fullWidthPages"), fullWidthPages: fullWidthPagesSchema }),
     result: z.object({ fullWidthPages: fullWidthPagesSchema }),
+  },
+  {
+    action: "profile.commentMargin",
+    summary: "Show open text comments in the margin or below the document",
+    description: "For the caller, on all devices: true (the default) shows open text comments on wide screens as cards in a margin beside their passage; false keeps them in the panel below the document. Narrow screens and phones always use the panel.",
+    input: z.object({ action: z.literal("profile.commentMargin"), commentMargin: commentMarginSchema }),
+    result: z.object({ commentMargin: commentMarginSchema }),
   },
   {
     action: "profile.startScreen",

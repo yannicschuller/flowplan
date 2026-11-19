@@ -44,6 +44,7 @@ import { FeatureModulesSettings } from "./feature-modules";
 import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
+import { commentMargin, setCommentMarginLocal, useCommentMargin } from "@/lib/comment-margin-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import type { StartScreen } from "@/lib/start-screen";
 import { setStartScreenLocal, startScreen as startScreenNow, useStartScreen } from "@/lib/start-screen-client";
@@ -157,6 +158,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.fullWidthPages", fullWidthPages: on });
       } catch (e) {
         setFullWidthPagesLocal(before);
+        throw e;
+      }
+    });
+  };
+  const margin = useCommentMargin();
+  const [marginStatus, runMargin] = useSaveState();
+  const chooseMargin = (on: boolean) => {
+    const before = commentMargin();
+    setCommentMarginLocal(on);
+    void runMargin(async () => {
+      try {
+        await mutate({ action: "profile.commentMargin", commentMargin: on });
+      } catch (e) {
+        setCommentMarginLocal(before);
         throw e;
       }
     });
@@ -424,6 +439,28 @@ export default function AppearanceSection() {
         >
           <SaveState status={wideStatus} />
           <Switch checked={allWide} label={t("Seiten in voller Breite anzeigen", "Show pages at full width")} onChange={chooseWide} />
+        </SettingRow>
+        <SettingRow
+          anchor="comment-margin"
+          label={t("Textkommentare", "Text comments")}
+          description={t(
+            "Auf breiten Bildschirmen stehen offene Textkommentare als Karten am Rand neben ihrer Textstelle. Auf schmalen Bildschirmen und Handys stehen sie immer unter dem Dokument. Gilt auf allen Geräten.",
+            "On wide screens open text comments appear as cards in the margin beside their passage. On narrow screens and phones they are always below the document. Applies on all devices.",
+          )}
+        >
+          <SaveState status={marginStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Textkommentare", "Text comments")}>
+            {(
+              [
+                [true, t("Am Rand", "In the margin")],
+                [false, t("Unter dem Dokument", "Below the document")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={String(value)} data-active={margin === value}>
+                <input type="radio" name="comment-margin" checked={margin === value} onChange={() => chooseMargin(value)} /> {label}
+              </label>
+            ))}
+          </div>
         </SettingRow>
         <SettingRow
           anchor="quote-shortcut"

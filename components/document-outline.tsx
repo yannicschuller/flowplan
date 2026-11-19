@@ -4,7 +4,8 @@
 // Open or closed is remembered in this browser for all documents. Shared and
 // published pages have it too (PublicOutline), from the rendered headings.
 // When the text column is too narrow for text and list side by side (a
-// narrow window, "KI fragen" docked beside the page, comments open, phones)
+// narrow window, "KI fragen" docked beside the page, comments open, phones,
+// open text comments in the margin)
 // the list gives way: its button opens it as a popover that closes again
 // on a heading, Escape or a click elsewhere (useOutline).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -69,12 +70,14 @@ export function useOutlineNarrow(anchor: HTMLElement | null) {
 // Open beside the text (remembered) or, where it gives way, as a popover
 // (not remembered: it closes after a jump). The anchor is any element in
 // the page – the editor's wrapper –, the button the toggle the popover
-// hangs on.
-export function useOutline() {
+// hangs on. `giveWay`: the list gives way whatever the width – open text
+// comments in the margin (#387, components/inline-comments.tsx) take the
+// room beside the text.
+export function useOutline(giveWay = false) {
   const [open, setOpen] = useOutlineOpen();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [button, setButton] = useState<HTMLButtonElement | null>(null);
-  const narrow = useOutlineNarrow(anchor);
+  const narrow = useOutlineNarrow(anchor) || giveWay;
   const [popover, setPopover] = useState(false);
   useEffect(() => {
     if (!narrow) setPopover(false);

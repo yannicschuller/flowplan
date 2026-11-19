@@ -476,7 +476,10 @@ export default function DocumentEditor({
   const uploadRef = useRef<HTMLInputElement>(null);
   // The table of contents: beside the text, or a popover where the text
   // column is too narrow for both (components/document-outline.tsx).
-  const outline = useOutline();
+  // Open text comments in the margin beside the text (#387): the table of
+  // contents gives way to them (components/inline-comments.tsx).
+  const [commentMargin, setCommentMargin] = useState(false);
+  const outline = useOutline(commentMargin && !embedded);
   const [, setTick] = useState(0);
   // The toolbar and menus follow the selection and the stored marks: at
   // most once per frame, however many transactions a keystroke brings
@@ -2938,7 +2941,7 @@ export default function DocumentEditor({
   return (
     <div
       ref={embedded ? undefined : outline.anchorRef}
-      className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}`}
+      className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}${!embedded && commentMargin ? " with-comment-margin" : ""}`}
       onFocus={rowId ? () => setFocusInside(true) : undefined}
       onBlur={
         rowId
@@ -3636,6 +3639,7 @@ export default function DocumentEditor({
         rowId={rowId}
         generation={generation}
         userId={userId}
+        onMargin={setCommentMargin}
       />
       )}
       <input

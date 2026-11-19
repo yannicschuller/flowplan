@@ -1376,6 +1376,12 @@ function migrate(d: DatabaseSync) {
   // stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "full_width_pages"))
     d.exec("ALTER TABLE users ADD COLUMN full_width_pages INTEGER");
+  // "Textkommentare: am Rand / unter dem Dokument" per person (#387,
+  // lib/comment-margin-pref.ts): users.comment_margin, NULL = the default
+  // (the margin), 0 or 1. An older version ignores the column, so the
+  // schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "comment_margin"))
+    d.exec("ALTER TABLE users ADD COLUMN comment_margin INTEGER");
   // "Beim Öffnen auf dem Handy" per person (lib/start-screen.ts):
   // users.start_screen, NULL = the default ('home') or 'capture'. An older
   // version ignores the column, so the schema number stays.

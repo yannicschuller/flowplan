@@ -24,6 +24,8 @@ test("page, guest and text comments share one list with filters", async ({
     expect(response.ok(), await response.text()).toBe(true);
     return response.json();
   };
+  // The panel below the document (the margin, #387, has its own spec).
+  await command({ action: "profile.commentMargin", commentMargin: false });
   const p = await command({
     action: "page.create",
     workspaceId: boot.workspace.id,
