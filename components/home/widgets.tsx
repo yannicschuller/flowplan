@@ -24,6 +24,8 @@ import {
   Play,
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
+import { moduleShownIn, QUICK_ACTION_MODULE } from "@/lib/feature-modules";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 import { WidgetSkeleton } from "../skeleton";
 import { PageIcon } from "../ui";
 import { Sparkline } from "../sparkline";
@@ -389,6 +391,7 @@ function QuickWidget({ widget, config }: Props<"quick">) {
   const t = useT();
   const env = useEnv();
   const disabled = env.clock === null || !env.canCreate;
+  const hiddenModules = useHiddenModules();
   const actions = {
     page: { icon: FileText, tone: "blue", title: t("Eine Idee festhalten", "Capture an idea"), text: t("Eine leere Seite voller Möglichkeiten", "A blank page full of possibilities"), run: () => env.addPage() },
     capture: { icon: Tray, tone: "green", title: t("Schnell erfassen", "Quick capture"), text: t("Jetzt notieren, später sortieren", "Note it now, sort it later"), run: () => env.openCapture() },
@@ -400,7 +403,7 @@ function QuickWidget({ widget, config }: Props<"quick">) {
     <div className="quick-section">
       <h2 id={`home-widget-${widget.id}`}>{widgetName(widget, t)}</h2>
       <div className="quick-actions">
-        {config.actions.map((key) => {
+        {config.actions.filter((key) => moduleShownIn(hiddenModules, QUICK_ACTION_MODULE[key])).map((key) => {
           const a = actions[key];
           return (
             <button key={key} type="button" disabled={disabled} onClick={a.run}>

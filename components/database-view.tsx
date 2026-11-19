@@ -121,6 +121,8 @@ import {
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
 import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { moduleShownIn, VIEW_MODULE } from "@/lib/feature-modules";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 import type { AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { DuplicateHint, RelatedPages } from "./related-pages";
@@ -435,6 +437,9 @@ export default function DatabaseView({
   const aiBlockedHint = useAiBlockedHint();
   // Record backlinks, unlinked mentions and related pages (#191).
   const discoveryPanels = useDiscoveryPanelsShown();
+  // View types of switched-off features are not offered (#378); views that
+  // exist keep showing.
+  const hiddenModules = useHiddenModules();
   const [aiSummary, setAiSummary] = useState<AiSummaryTarget | null>(null);
   const [aiSummaryUsed, setAiSummaryUsed] = useState(false);
   useEffect(() => {
@@ -3332,7 +3337,10 @@ export default function DatabaseView({
             className="icon-button"
             title={t("Ansicht hinzufügen", "Add view")}
             onClick={() => {
-              setViewName(t(...viewTypeNames[viewType]));
+              // A type switched off meanwhile (#378): back to the table.
+              const type = moduleShownIn(hiddenModules, VIEW_MODULE[viewType]) ? viewType : "table";
+              setViewType(type);
+              setViewName(t(...viewTypeNames[type]));
               setNewView(true);
             }}
           >
@@ -5923,7 +5931,7 @@ export default function DatabaseView({
           <fieldset className="view-type-picker">
             <legend>{t("Darstellung", "Display")}</legend>
             <div role="radiogroup" aria-label={t("Darstellung", "Display")} className="view-type-grid">
-              {(Object.keys(viewIcons) as View["type"][]).map((type) => {
+              {(Object.keys(viewIcons) as View["type"][]).filter((type) => moduleShownIn(hiddenModules, VIEW_MODULE[type])).map((type) => {
                 const Icon = viewIcons[type];
                 return (
                   <label key={type} className="view-type-card" data-active={viewType === type}>

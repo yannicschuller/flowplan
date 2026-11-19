@@ -24,6 +24,8 @@ import {
 } from "@phosphor-icons/react";
 import { safeCollisionPadding } from "../safe-area";
 import { useT } from "../i18n";
+import { HOME_WIDGET_MODULE, moduleShownIn, QUICK_ACTION_MODULE } from "@/lib/feature-modules";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 import { api, Modal } from "../ui";
 import { Select } from "../select";
 import { useCaptureTargets } from "../capture-target";
@@ -457,6 +459,8 @@ function Gallery({ widgets, isAdmin, onAdd, onClose }: { widgets: HomeWidget[]; 
   const t = useT();
   const full = widgets.length >= MAX_HOME_WIDGETS;
   const groups: WidgetGroup[] = ["overview", "plan", "write", "tools"];
+  // Widgets of a switched-off feature are not offered (#378).
+  const hiddenModules = useHiddenModules();
   return (
     <Modal open wide title={t("Widget hinzufügen", "Add widget")} onClose={onClose} className="home-gallery">
       {full && <p className="muted">{t(`Höchstens ${MAX_HOME_WIDGETS} Widgets – entferne zuerst eines.`, `At most ${MAX_HOME_WIDGETS} widgets – remove one first.`)}</p>}
@@ -465,7 +469,7 @@ function Gallery({ widgets, isAdmin, onAdd, onClose }: { widgets: HomeWidget[]; 
           <h3>{t(groupNames[group].de, groupNames[group].en)}</h3>
           <div className="home-gallery-grid">
             {homeWidgetKinds
-              .filter((kind) => widgetMeta[kind].group === group && (!widgetMeta[kind].adminOnly || isAdmin))
+              .filter((kind) => widgetMeta[kind].group === group && (!widgetMeta[kind].adminOnly || isAdmin) && moduleShownIn(hiddenModules, HOME_WIDGET_MODULE[kind]))
               .map((kind) => {
                 const meta = widgetMeta[kind];
                 const taken = !!meta.single && widgets.some((w) => w.kind === kind);
@@ -576,6 +580,7 @@ function ViewPicker({ workspaceId, pageId, viewId, onChange, children }: { works
 
 function WidgetSettings({ widget, workspaceId, pages, spaces, onClose, onSave }: { widget: HomeWidget; workspaceId: string; pages: Page[]; spaces: Space[]; onClose: () => void; onSave: (widget: HomeWidget) => void }) {
   const t = useT();
+  const hiddenModules = useHiddenModules();
   const [config, setConfig] = useState<Record<string, unknown>>({ ...widget.config });
   const [size, setSize] = useState<WidgetSize>(widget.size);
   const [error, setError] = useState("");
@@ -629,7 +634,7 @@ function WidgetSettings({ widget, workspaceId, pages, spaces, onClose, onSave }:
       fields = (
         <fieldset className="home-choice">
           <legend>{t("Schnellstarts", "Quick starts")}</legend>
-          {all.map(([key, label]) => (
+          {all.filter(([key]) => moduleShownIn(hiddenModules, QUICK_ACTION_MODULE[key]) || (c.actions as string[]).includes(key)).map(([key, label]) => (
             <Toggle
               key={key}
               label={label}

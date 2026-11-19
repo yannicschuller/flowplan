@@ -333,6 +333,8 @@ import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
 import { setToolbarLayoutFromServer } from "@/lib/toolbar-layout-client";
 import { setSettingsLevelFromServer } from "@/lib/settings-level-client";
+import { primeFeatureModules, setFeatureModulesFromServer, useHiddenModules } from "@/lib/feature-modules-client";
+import { moduleShownIn, PAGE_KIND_MODULE, type FeatureModule } from "@/lib/feature-modules";
 import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
@@ -468,6 +470,8 @@ type CommandAction = {
   keywords: string;
   icon: import("@phosphor-icons/react").Icon;
   run: () => void;
+  // The feature it belongs to: left out while that is switched off (#378).
+  module?: FeatureModule;
 };
 // One row of the command palette: a search hit, a recently viewed page or a
 // command. The id names the option for aria-activedescendant.
@@ -714,6 +718,15 @@ export default function WorkspaceApp({
   useEffect(() => setToolbarLayoutFromServer(boot.toolbarLayout, boot.toolbarLayoutDefault, boot.toolbarLayoutCustom), [boot.toolbarLayout, boot.toolbarLayoutDefault, boot.toolbarLayoutCustom]);
   // The settings level (#294): Settings shows what is up to it.
   useEffect(() => setSettingsLevelFromServer(boot.settingsLevel), [boot.settingsLevel]);
+  // Switched-off features (#378, lib/feature-modules.ts): taken from the
+  // first bootstrap before anything renders, later ones in the effect. The
+  // entry points ask `featureShown`; with the AI off its status is left out of
+  // the interface (the AI settings still see it in `boot`).
+  primeFeatureModules(boot.modules);
+  useEffect(() => setFeatureModulesFromServer(boot.modules), [boot.modules]);
+  const hiddenModules = useHiddenModules();
+  const featureShown = (module: FeatureModule | undefined) => moduleShownIn(hiddenModules, module);
+  const uiAi = featureShown("ai") ? boot.ai : undefined;
   // "Animationen" (#260, lib/motion-pref.ts): data-motion on <html>, which
   // menus and dialogs outside the app's root follow; the root carries it
   // too, so the server-rendered first paint has it. Gone when the app is left.
@@ -755,7 +768,7 @@ export default function WorkspaceApp({
   );
   // "Mit KI zusammenfassen" in the page menu: on the server, or in the apps
   // on Apple devices on the device – there also in encrypted spaces.
-  const summaryRoute = useAiRoute("summarize", data?.page.id, { status: boot.ai || null, encrypted: !!data?.encrypted });
+  const summaryRoute = useAiRoute("summarize", data?.page.id, { status: uiAi || null, encrypted: !!data?.encrypted });
   const [treeDrop, setTreeDrop] = useState<{
     id: string;
     // "records": records from a database dropped onto another database.
@@ -1463,7 +1476,7 @@ export default function WorkspaceApp({
   }, []);
   // The PDF viewer (outside the workspace's tree) asks whether to offer
   // "Lernkarten erstellen": answered at once on the event's detail.
-  const flashcardsUsable = aiUsable(boot.ai, "flashcards") && !boot.workspace.guest;
+  const flashcardsUsable = aiUsable(uiAi, "flashcards") && !boot.workspace.guest;
   useEffect(() => {
     const probe = (event: Event) => {
       const detail = (event as CustomEvent<{ available?: boolean }>).detail;
@@ -2390,7 +2403,7 @@ export default function WorkspaceApp({
         break;
       case "ask":
         // Closed: opens. Open: focus moves into it, or – from inside – it closes.
-        if (!aiUsable(boot.ai, "ask")) break;
+        if (!aiUsable(uiAi, "ask")) break;
         if (askRef.current && document.querySelector(".ask-panel")?.contains(document.activeElement)) setAsk(null);
         else openAsk("");
         break;
@@ -2405,7 +2418,7 @@ export default function WorkspaceApp({
         startPresentation();
         break;
       case "journalToday":
-        openLastJournalToday();
+        if (featureShown("journal")) openLastJournalToday();
         break;
       case "foldAll":
       case "unfoldAll":
@@ -2418,7 +2431,7 @@ export default function WorkspaceApp({
         goForward();
         break;
       case "study":
-        go("study");
+        if (featureShown("flashcards")) go("study");
         break;
     }
   };
@@ -3911,18 +3924,19 @@ export default function WorkspaceApp({
     { label: t("Neue Seite", "New page"), keywords: t("dokument anlegen erstellen notiz", "dokument anlegen erstellen notiz document new create note page"), icon: FileText, run: () => addPage() },
     { label: t("Erfassen", "Capture"), keywords: t("eingang inbox notiz schnell erfassen", "eingang inbox notiz schnell erfassen inbox note quick capture"), icon: Tray, run: () => setCapture(true) },
     { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
-    { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
-    { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
+    { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard"), module: PAGE_KIND_MODULE.whiteboard },
+    { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal"), module: PAGE_KIND_MODULE.journal },
     // "Journal: Heute" – with several journals one per journal, the last used first.
     ...journalsByUse().map((journal, _, list) => ({
       label: list.length > 1 ? t(`Journal: Heute – ${journal.title || "Ohne Titel"}`, `Journal: Today – ${journal.title || "Untitled"}`) : t("Journal: Heute", "Journal: Today"),
       keywords: `${t("tagebuch tag heute eintrag", "tagebuch tag heute diary day today entry journal")} ${journal.title}`,
       icon: CalendarCheck,
       run: () => void openJournalToday(journal.id),
+      module: "journal" as const,
     })),
-    { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook") },
-    ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow") }]),
-    { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
+    { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook"), module: PAGE_KIND_MODULE.notebook },
+    ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow"), module: PAGE_KIND_MODULE.workflow }]),
+    { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard"), module: PAGE_KIND_MODULE.dashboard },
     { label: t("Auf der Seite suchen", "Find on page"), keywords: t("finden text treffer strg f", "finden text treffer strg f find text match ctrl f"), icon: MagnifyingGlass, run: () => setFind((f) => ({ open: true, key: f.key + 1 })) },
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Compass, run: () => { setOnboardingStep(undefined); setOnboarding(true); } },
     // The checklist after the introduction, hidden earlier (lib/getting-started.ts).
@@ -3949,12 +3963,12 @@ export default function WorkspaceApp({
     { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
     ...(hasLibrary ? [{ label: t("Bibliothek öffnen", "Open library"), keywords: t("bibliothek regale bücher wissen", "bibliothek regale bücher library shelves books knowledge"), icon: Books, run: openLibraryHome }] : []),
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
-    { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study") },
+    { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study"), module: "flashcards" },
     // Each deck with something left today (#study's counts, loaded when the
     // palette opens).
-    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || "Ohne Titel"}`, `Study: ${d.title || "Untitled"}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }) })),
+    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || "Ohne Titel"}`, `Study: ${d.title || "Untitled"}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const })),
     // From the open page (a deck: into it), else from pasted text or a file.
-    ...(aiUsable(boot.ai, "flashcards") && !boot.workspace.guest
+    ...(aiUsable(uiAi, "flashcards") && !boot.workspace.guest && featureShown("flashcards")
       ? [
           {
             label: t("Lernkarten mit KI erstellen", "Create flashcards with AI"),
@@ -4050,7 +4064,7 @@ export default function WorkspaceApp({
         ]
       : []),
   ];
-  const canAsk = aiUsable(boot.ai, "ask");
+  const canAsk = aiUsable(uiAi, "ask");
   if (canAsk)
     commandActions.unshift({
       label: t("KI fragen …", "Ask AI …"),
@@ -4063,6 +4077,7 @@ export default function WorkspaceApp({
   const shownActions =
     query.startsWith(">") || commandQuery.length >= 2
       ? commandActions
+          .filter((a) => featureShown(a.module))
           .filter((a) => !commandQuery || normalizeCommand(`${a.label} ${a.keywords}`).includes(commandQuery))
           .slice(0, query.startsWith(">") ? 20 : 4)
       : [];
@@ -4163,7 +4178,9 @@ export default function WorkspaceApp({
   const sidebarTools: SidebarTool[] = [
     { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => setTemplates(true) },
     { id: "media", label: t("Medien", "Media"), icon: Images, selected: screen === "media", onSelect: () => go("media") },
-    { id: "study", label: t("Lernen", "Study"), title: t("Lernkarten: fällige Karten", "Flashcards: due cards") + hint("study"), icon: Cards, selected: screen === "study", onSelect: () => go("study") },
+    ...(featureShown("flashcards") || screen === "study"
+      ? [{ id: "study", label: t("Lernen", "Study"), title: t("Lernkarten: fällige Karten", "Flashcards: due cards") + hint("study"), icon: Cards, selected: screen === "study", onSelect: () => go("study") }]
+      : []),
     { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
     { id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") },
     { id: "trash", label: t("Papierkorb", "Trash"), icon: Trash, selected: screen === "trash", onSelect: () => go("trash") },
@@ -4201,7 +4218,7 @@ export default function WorkspaceApp({
   ];
   const signOutItem: SidebarAccountItem = { id: "sign-out", label: t("Abmelden", "Sign out"), icon: SignOut, onSelect: () => void signOut() };
   return (
-    <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
+    <AiProvider status={uiAi || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
     <div
       data-motion={motionAttribute(motion)}
@@ -5691,7 +5708,7 @@ export default function WorkspaceApp({
                         members={boot.members}
                         pages={activePages}
                         editable={editable}
-                        ai={boot.ai}
+                        ai={uiAi}
                         favoriteRows={boot.favoriteRows}
                         mutate={mutate}
                         onError={notifyError}
@@ -6323,7 +6340,7 @@ export default function WorkspaceApp({
                     demo={!!boot.user.demo}
                     pages={activePages}
                     members={boot.members}
-                    ai={boot.ai}
+                    ai={uiAi}
                     transcription={!!boot.instance?.transcription}
                     onOpenMain={() => tabs.move(1, tabs.side!.active, 0, Number.MAX_SAFE_INTEGER)}
                     onOpenPage={(id) => tabs.openPlace(`page=${id}`, "here", 1) || void openPage(id)}
@@ -6410,7 +6427,7 @@ export default function WorkspaceApp({
       <KeyboardShortcuts
         open={shortcuts}
         onClose={() => setShortcuts(false)}
-        ai={!!boot.ai?.features.write.ok}
+        ai={!!uiAi?.features.write.ok}
         overrides={boot.shortcuts || {}}
         onSave={async (bindings: KeymapOverrides) => {
           const result = await api<{ bindings: KeymapOverrides }>("/api/command", { action: "shortcuts.save", bindings });
@@ -6833,7 +6850,7 @@ export default function WorkspaceApp({
           pinned={askPinned}
           onPinned={setAskPinned}
           workspaceId={boot.workspace.id}
-          ai={boot.ai}
+          ai={uiAi}
           spaces={boot.spaces}
           currentPage={
             screen === "page" && data
@@ -6856,7 +6873,7 @@ export default function WorkspaceApp({
       <NewPageDialog
         open={create}
         onClose={() => setCreate(false)}
-        boot={boot}
+        boot={{ workspace: boot.workspace, spaces: boot.spaces, ai: uiAi }}
         title={newTitle}
         onTitle={setNewTitle}
         kind={newKind}

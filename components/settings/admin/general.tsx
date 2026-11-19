@@ -2,7 +2,8 @@
 // Administration → Instanz: the instance's name and public demo, the running
 // version and whether a newer one is out, what "Neuigkeiten nach
 // Updates" new accounts start with (#223), the default formatting
-// toolbar (#292) and the starter content of new accounts (#381). The other instance settings live
+// toolbar (#292), the starter content of new accounts (#381) and the
+// features new accounts see (#378). The other instance settings live
 // where they belong: registration and two-factor under Anmeldung & SSO,
 // limits under Grenzen & Aufbewahrung, backups under Speicher & Sicherung,
 // the notice under Wartung & Hinweise, extensions and domains under
@@ -17,6 +18,7 @@ import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, InstanceSelect, InstanceSwitch, InstanceText, useDocs } from "./parts";
 import { InstanceToolbarLayout } from "./toolbar-layout-default";
 import { StarterContent } from "./starter-content";
+import { InstanceModules } from "./modules-default";
 
 export default function GeneralSection() {
   const t = useT();
@@ -159,6 +161,8 @@ export default function GeneralSection() {
       </SettingGroup>
       {/* What new personal workspaces start with (#381). */}
       <StarterContent />
+      {/* The features new accounts see (#378). */}
+      <InstanceModules />
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>
           <FixLink href="#admin/signin">{t("Anmeldung & SSO", "Sign-in & SSO")}</FixLink>

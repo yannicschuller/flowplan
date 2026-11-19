@@ -19,6 +19,8 @@ import { fullWidthPagesSchema } from "./page-width-pref";
 import { startScreenSchema } from "./start-screen";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { settingsLevelSchema } from "./settings-level";
+import { FEATURE_MODULES } from "./feature-modules";
+import { hiddenModulesSchema } from "./feature-modules-schema";
 import { releaseNoteItemSchema } from "./release-notes";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
@@ -72,7 +74,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -458,6 +460,13 @@ export const commandActions: ActionDoc[] = [
       "For the caller, on all devices: which settings Settings shows – those of the level and below (beginner ⊂ normal ⊂ expert); the settings search finds all of them. Without a level of their own a person follows the instance's default (normal unless the administration chose another). The bootstrap's settingsLevel carries the level and whether it is the caller's own.",
     input: z.object({ action: z.literal("profile.settingsLevel"), level: settingsLevelSchema }),
     result: z.object({ settingsLevel: z.object({ level: settingsLevelSchema, own: z.boolean() }) }),
+  },
+  {
+    action: "profile.modules",
+    summary: "Features the caller switches off for a calmer interface",
+    description: `For the caller, on all devices: \`hidden\` lists the features (${FEATURE_MODULES.join(", ")}) whose entry points the interface leaves out – the kinds of page in "New page", entries of the "/" menu and the formatting toolbar, quick search commands, sidebar places, home widgets and view types. Only the interface: pages, records and views of a hidden kind stay visible and usable, and nothing about permissions or this API changes. null goes back to the instance's default (what new accounts start with, set by the administration). The bootstrap's \`modules\` carries the hidden features that apply, whether they are the caller's own choice and the instance's default.`,
+    input: z.object({ action: z.literal("profile.modules"), hidden: hiddenModulesSchema.nullable() }),
+    result: z.object({ modules: z.object({ hidden: z.array(z.enum(FEATURE_MODULES)), own: z.boolean(), standard: z.array(z.enum(FEATURE_MODULES)) }) }),
   },
   {
     action: "releaseNotes.list",

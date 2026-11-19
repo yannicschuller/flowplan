@@ -108,6 +108,8 @@ import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import { showsFormattingToolbar } from "@/lib/toolbar-pref";
 import { useToolbarLayout } from "@/lib/toolbar-layout-client";
+import { moduleShownIn, SLASH_MODULE } from "@/lib/feature-modules";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
@@ -528,6 +530,7 @@ export default function DocumentEditor({
   // Tasks and summary from a meeting transcript (components/ai-actions.tsx).
   const aiActions = useAiAvailability("actions", pageId);
   const aiWorkspace = useAi().workspaceId;
+  const hiddenModules = useHiddenModules();
   const [transcriptActions, setTranscriptActions] = useState<AiActionsRequest | null>(null);
   const aiBlockedHint = useAiBlockedHint();
   const aiWriteRef = useRef(aiWrite);
@@ -1848,8 +1851,10 @@ export default function DocumentEditor({
   };
   // Every block of the "/" menu, with a stable id (remembered as recently
   // used) and its section. Second levels (the callout kinds) are reached
-  // by choosing the entry or found directly when typing.
-  const commands: SlashItem[] = [
+  // by choosing the entry or found directly when typing. Entries of a
+  // switched-off feature (#378, lib/feature-modules.ts) are left out – and
+  // with them their toolbar buttons; blocks already in the page stay.
+  const allCommands: SlashItem[] = [
     ...(aiWrite !== "hidden" && !embedded
       ? [
           {
@@ -2436,6 +2441,7 @@ export default function DocumentEditor({
           .run(),
     })),
   ];
+  const commands = allCommands.filter((command) => moduleShownIn(hiddenModules, SLASH_MODULE[command.id]));
   // The sections shown: a second level alone, or recents and groups
   // (filtered by the typed query). Arrow keys move over the flat list.
   const slashParent = slash?.sub ? commands.find((command) => command.id === slash.sub) || null : null;
@@ -3341,7 +3347,9 @@ export default function DocumentEditor({
                     ? !!editor && selectedMediaWidth !== null
                     : item === "taskDue"
                       ? !!editor?.isActive("taskItem")
-                      : true;
+                      : item === "cloze"
+                        ? !hiddenModules.includes("flashcards")
+                        : true;
               // A group: one button opening a menu of its buttons.
               const chain = () => editor?.chain().focus();
               const grouped: Record<GroupableButton, Omit<ToolbarGroupEntry, "key">> = {

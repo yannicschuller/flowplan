@@ -6,6 +6,7 @@ import { useState } from "react";
 import { NotePencil } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 
 export type NoteEvent = {
   title: string;
@@ -23,13 +24,15 @@ export function MeetingNoteButton({ dayId, event, editable, onError }: { dayId: 
   const t = useT();
   const [noteId, setNoteId] = useState(event.noteId || "");
   const [busy, setBusy] = useState(false);
+  const meetings = !useHiddenModules().includes("meetings");
   if (noteId)
     return (
       <a className="text-button meeting-note-link" href={`/#page=${noteId}`}>
         <NotePencil size={14} aria-hidden="true" /> {t("Notiz öffnen", "Open note")}
       </a>
     );
-  if (!editable) return null;
+  // Meetings switched off (#378): no new note; one that exists still opens.
+  if (!editable || !meetings) return null;
   const create = async () => {
     setBusy(true);
     try {

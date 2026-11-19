@@ -1388,6 +1388,13 @@ function migrate(d: DatabaseSync) {
   // number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "settings_level"))
     d.exec("ALTER TABLE users ADD COLUMN settings_level TEXT");
+  // Switched-off features per person (#378, lib/feature-modules.ts):
+  // users.modules, NULL = the instance's default, or the hidden features as
+  // JSON. Accounts from before get "[]" once (lib/data-steps.ts). Only the
+  // interface reads it – an older version ignores the column – so the
+  // schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "modules"))
+    d.exec("ALTER TABLE users ADD COLUMN modules TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

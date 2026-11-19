@@ -147,6 +147,15 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       },
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look", level: "normal" },
       {
+        title: { de: "Funktionen", en: "Features" },
+        keywords: {
+          de: "funktionen module ausblenden einblenden aufgeräumt übersichtlich lernkarten whiteboards notizbücher journal dashboards workflows draw.io ki ansichten board kalender zeitleiste galerie diagramm formulare besprechungen",
+          en: "features modules hide show clean tidy flashcards whiteboards notebooks journal dashboards workflows draw.io ai views board calendar timeline gallery chart forms meetings",
+        },
+        anchor: "modules",
+        level: "normal",
+      },
+      {
         title: { de: "Seitensymbol", en: "Page icon" },
         keywords: { de: "symbol icon emoji titel neben über klein groß cover kopf", en: "icon emoji title next to inline above small large cover header" },
         anchor: "page-icon",
@@ -794,6 +803,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         title: { de: "Startinhalt für neue Konten", en: "Starter content for new accounts" },
         keywords: { de: "onboarding vorlage startseiten willkommensseite neue konten bereich kopieren", en: "onboarding template starter pages welcome page new accounts space copy" },
         anchor: "starter",
+      },
+      {
+        title: { de: "Funktionen für neue Konten", en: "Features for new accounts" },
+        keywords: { de: "funktionen module ausblenden standard neue konten alle konten zuweisen lernkarten whiteboards ki", en: "features modules hide default new accounts apply all accounts flashcards whiteboards ai" },
+        anchor: "modules-default",
       },
     ],
   },

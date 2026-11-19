@@ -32,6 +32,7 @@ export const SETTINGS_LEVEL_STEP = "settings-level-294";
 export const AI_DETAIL_STEP = "metrics-ai-usage";
 export const WORKFLOW_DYNAMIC_MAIL_STEP = "workflow-dynamic-mail-099";
 export const CARD_STATES_NEW_STEP = "card-states-new-105";
+export const FEATURE_MODULES_STEP = "feature-modules-378";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -49,6 +50,7 @@ export const dataSteps = (): DataStep[] => [
   { name: AI_DETAIL_STEP, run: aiDetailFromTotals },
   { name: WORKFLOW_DYNAMIC_MAIL_STEP, run: keepDynamicMailForExistingWorkflows },
   { name: CARD_STATES_NEW_STEP, run: cardStatesNewCheck },
+  { name: FEATURE_MODULES_STEP, run: modulesForExistingAccounts },
 ];
 
 // The AI tokens counted per day and feature before the detailed AI
@@ -364,6 +366,14 @@ async function searchVisitsFromPageVisits() {
 // account yet when this runs.
 async function settingsLevelForExistingAccounts() {
   await run("UPDATE users SET settings_level='expert' WHERE settings_level IS NULL");
+}
+
+// #378 – switched-off features (lib/feature-modules.ts): every account from
+// before keeps all of them, whatever default an administrator chooses later;
+// accounts created afterwards follow the instance's default. On a new
+// database there is no account yet when this runs.
+async function modulesForExistingAccounts() {
+  await run("UPDATE users SET modules='[]' WHERE modules IS NULL");
 }
 
 // 0.10.0 – e-mail from workflows to outside addresses that come from a
