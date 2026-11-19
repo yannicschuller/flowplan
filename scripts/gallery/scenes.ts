@@ -252,6 +252,22 @@ const pages: Scene[] = [
   { id: "graph", group: "Pages", title: "Graph", path: "#graph" },
   { id: "trash", group: "Pages", title: "Trash", path: "#trash" },
   { id: "media", group: "Pages", title: "Media library", path: "#media" },
+  // A space shown as a library (#329): "Neues Buch" asks for a name only.
+  {
+    id: "library-new-book",
+    group: "Pages",
+    title: "Library: new book",
+    covers: ["components/library-create-dialog.tsx"],
+    steps: async (page, ctx) => {
+      const name = `Handbuch ${ctx.variant.id}`;
+      const spaceId = (await ctx.command({ action: "space.create", workspaceId: ctx.ids.workspaceId, name })).id as string;
+      await ctx.command({ action: "space.update", spaceId, name, private: false, library: true });
+      await ctx.command({ action: "page.create", workspaceId: ctx.ids.workspaceId, spaceId, title: "Installation" });
+      await ctx.open(`#library/${spaceId}`);
+      await button(page, "Neues Buch").click();
+      await waitDialog(page, "Neues Buch");
+    },
+  },
   { id: "tags", group: "Pages", title: "Tags", path: "#tags" },
   { id: "settings-home", group: "Pages", title: "Settings landing page", path: "#settings" },
   { id: "admin-home", group: "Pages", title: "Administration landing page", path: "#admin" },

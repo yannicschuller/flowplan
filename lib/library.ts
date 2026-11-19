@@ -109,35 +109,80 @@ function topOf<P extends LibraryPage>(index: Map<string, P[]>, pageId: string): 
   return byId.get(id) || null;
 }
 
+// What opens as what (#329 follow-up, "books are like shelves"): a book
+// (level 0) and a chapter (level 1) that are documents open as their
+// overview – the table of contents with their own text above it; the
+// editor comes with the pages below. Books and chapters of another kind (a
+// database as a chapter) open as themselves, as every page further down.
+export const opensAsOverview = (page: Pick<LibraryPage, "kind">, level: number) => level <= 1 && page.kind === "document";
+
+// The pages read one after the other below `root` (a book at level 0 or a
+// chapter at level 1): depth first, the overviews left out.
+function readingOrder<P extends LibraryPage>(index: Map<string, P[]>, root: P, level: number): P[] {
+  const own = opensAsOverview(root, level) ? [] : [root];
+  if (level) return [...own, ...walk(index, root.id)];
+  return [...own, ...(index.get(root.id) || []).flatMap((chapter) => readingOrder(index, chapter, 1))];
+}
+
 // Reading a page of a library: the way from the book down to it (book,
 // chapter, …, the page) and the previous and next page of the book in
-// reading order – the book's own page first, then its pages depth first.
-// null when the page is not in the library (another space, a journal day).
+// reading order – the pages that open in the editor, depth first. A book
+// or chapter opened to edit its text has the way but no place in it
+// (position 0). null when the page is not in the library (another space,
+// a journal day).
 export function bookNavigation<P extends LibraryPage>(pages: readonly P[], spaceId: string, pageId: string) {
   const index = childrenOf(pages, spaceId);
   const book = topOf(index, pageId);
   if (!book) return null;
-  const order = [book, ...walk(index, book.id)];
-  const at = order.findIndex((p) => p.id === pageId);
-  if (at < 0) return null;
-  const byId = new Map(order.map((p) => [p.id, p]));
+  const byId = new Map([book, ...walk(index, book.id)].map((p) => [p.id, p]));
+  if (!byId.has(pageId)) return null;
   const path: P[] = [];
   for (let p: P | undefined = byId.get(pageId); p && path.length < MAX_DEPTH; p = p.parent_id ? byId.get(p.parent_id) : undefined) {
     path.unshift(p);
     if (p.id === book.id) break;
   }
+  const order = readingOrder(index, book, 0);
+  const at = order.findIndex((p) => p.id === pageId);
   return {
     book,
     path,
     position: at + 1,
     total: order.length,
     previous: at > 0 ? order[at - 1] : null,
-    next: at < order.length - 1 ? order[at + 1] : null,
+    next: at >= 0 && at < order.length - 1 ? order[at + 1] : null,
   };
 }
 
+// "Lesen beginnen": the first page to read in a book or one of its
+// chapters, null when it has none yet.
+export function firstPage<P extends LibraryPage>(pages: readonly P[], spaceId: string, rootId: string): P | null {
+  const index = childrenOf(pages, spaceId);
+  const root = [...index.values()].flat().find((p) => p.id === rootId);
+  if (!root) return null;
+  return readingOrder(index, root, topOf(index, rootId)?.id === rootId ? 0 : 1)[0] ?? null;
+}
+
+// The overview a page of a library opens as (#library/<space>/<book>, a
+// chapter's #library/<space>/<book>/<chapter>), null when it opens as
+// itself: not in a space shown as a library, a page further down, not a
+// document.
+export function overviewHash(
+  pages: readonly LibraryPage[],
+  spaces: readonly { id: string; library?: number | boolean | null; deleted_at?: string | null }[],
+  pageId: string,
+): string | null {
+  const page = pages.find((p) => p.id === pageId);
+  if (!page || !spaces.some((s) => s.id === page.space_id && s.library && !s.deleted_at)) return null;
+  const book = topOf(childrenOf(pages, page.space_id), pageId);
+  if (!book) return null;
+  const level = book.id === pageId ? 0 : page.parent_id === book.id ? 1 : 2;
+  if (!opensAsOverview(page, level)) return null;
+  return level ? libraryHash(page.space_id, book.id, pageId) : libraryHash(page.space_id, pageId);
+}
+
 // "Weiterlesen": the page of the book visited last (the bootstrap's recent
-// visits), null when none of the book's pages was opened yet.
+// visits), null when none of the book's pages was opened yet. Only pages
+// read in the editor count, not a book's or chapter's text edited.
 export function continueReading<P extends LibraryPage>(
   pages: readonly P[],
   spaceId: string,
@@ -145,9 +190,9 @@ export function continueReading<P extends LibraryPage>(
   visits: readonly { pageId: string; seenAt: number }[],
 ): P | null {
   const index = childrenOf(pages, spaceId);
-  const book = pages.find((p) => p.id === bookId && p.space_id === spaceId && !p.deleted_at);
+  const book = (index.get("") || []).find((p) => p.id === bookId);
   if (!book) return null;
-  const inBook = new Map([book, ...walk(index, book.id)].map((p) => [p.id, p]));
+  const inBook = new Map(readingOrder(index, book, 0).map((p) => [p.id, p]));
   let best: { page: P; seenAt: number } | null = null;
   for (const v of visits) {
     const page = inBook.get(v.pageId);
@@ -255,13 +300,14 @@ export function readingNow<P extends LibraryPage>(
 }
 
 // The library's start (#library) – all shelves – and the address of a
-// shelf and of a book's table of contents
-// (#library/<space>, #library/<space>/<book>).
+// shelf, of a book's overview and of a chapter's (#library/<space>,
+// #library/<space>/<book>, #library/<space>/<book>/<chapter>).
 export const LIBRARY_HOME = "library";
-export const libraryHash = (spaceId: string, bookId?: string | null) => `library/${spaceId}${bookId ? `/${bookId}` : ""}`;
+export const libraryHash = (spaceId: string, bookId?: string | null, chapterId?: string | null) =>
+  `library/${spaceId}${bookId ? `/${bookId}${chapterId ? `/${chapterId}` : ""}` : ""}`;
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const HASH = new RegExp(`^library/(${UUID})(?:/(${UUID}))?$`, "i");
-export function parseLibraryHash(fragment: string): { spaceId: string; bookId: string | null } | null {
+const HASH = new RegExp(`^library/(${UUID})(?:/(${UUID})(?:/(${UUID}))?)?$`, "i");
+export function parseLibraryHash(fragment: string): { spaceId: string; bookId: string | null; chapterId: string | null } | null {
   const m = HASH.exec(fragment);
-  return m ? { spaceId: m[1].toLowerCase(), bookId: m[2]?.toLowerCase() ?? null } : null;
+  return m ? { spaceId: m[1].toLowerCase(), bookId: m[2]?.toLowerCase() ?? null, chapterId: m[3]?.toLowerCase() ?? null } : null;
 }

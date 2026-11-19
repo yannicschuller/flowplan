@@ -68,7 +68,7 @@ import { BookNav, BookNext } from "./book-nav";
 // Built on the device for pages made offline (#370): in the shell, since the
 // connection is gone when such a page opens.
 import { localPageData as buildLocalPage } from "./offline-local-data";
-import { LIBRARY_HOME, libraryHash, parseLibraryHash } from "@/lib/library";
+import { LIBRARY_HOME, libraryHash, overviewHash, parseLibraryHash } from "@/lib/library";
 import { CollectionsNav } from "./collections-nav";
 import type { CollectionDraft } from "./collection-editor";
 import type { CollectionInfo } from "@/lib/collections";
@@ -1018,7 +1018,7 @@ export default function WorkspaceApp({
     [collectionDraft, setCollectionDraft] = useState<CollectionDraft | null>(null);
   // The library shown (#329): its space and the book opened, if any; null
   // on the library's start (#library).
-  const [libraryPlace, setLibraryPlace] = useState<{ spaceId: string; bookId: string | null } | null>(null);
+  const [libraryPlace, setLibraryPlace] = useState<ReturnType<typeof parseLibraryHash>>(null);
   // The element that opened the quick search gets the focus back when it
   // closes (the search button, a tree item or the editor).
   const searchOpener = useRef<HTMLElement | null>(null),
@@ -1893,6 +1893,15 @@ export default function WorkspaceApp({
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
     async (id: string, target?: PageLocation, keepNav = false) => {
+      // A book or chapter of a library opens as its overview (#329); its
+      // own text in the editor with "&edit=1" or a link into it.
+      const overview = !target || Object.keys(target).length === 1 ? overviewHash(bootRef.current.pages, bootRef.current.spaces, id) : null;
+      if (overview) {
+        // Come by its address: that entry gives way, Back skips it.
+        if (location.hash === pageLocationHash({ pageId: id })) location.replace(`#${overview}`);
+        else location.hash = overview;
+        return;
+      }
       const version = ++navigationVersion.current;
       navigationPending.current = true;
       screenRef.current = "page";
@@ -2493,7 +2502,7 @@ export default function WorkspaceApp({
     const library = parseLibraryHash(hash);
     if (library) {
       const space = boot.spaces.find((sp) => sp.id === library.spaceId);
-      const book = library.bookId ? titledPages.find((p) => p.id === library.bookId) : undefined;
+      const book = library.bookId ? titledPages.find((p) => p.id === (library.chapterId || library.bookId)) : undefined;
       const name = book ? book.title || t("Ohne Titel", "Untitled") : space?.name;
       return { title: name || kept?.title || t("Bibliothek", "Library"), detail: book ? space?.name : undefined, icon: <Books size={16} />, remember: name ? { title: name } : undefined };
     }
@@ -2551,7 +2560,7 @@ export default function WorkspaceApp({
         ? `page:${data.page.id}`
         : null
       : screen === "library"
-        ? `library:${libraryPlace?.spaceId ?? ""}:${libraryPlace?.bookId ?? ""}`
+        ? `library:${libraryPlace?.spaceId ?? ""}:${libraryPlace?.bookId ?? ""}:${libraryPlace?.chapterId ?? ""}`
         : `${screen}:${collectionId ?? ""}`;
   usePaneScroll(mainScroll, shownPlace, tabs.on ? tabs.entryKey : undefined);
   // Encrypted titles are decrypted here, in the browser, once unlocked.
@@ -2833,6 +2842,31 @@ export default function WorkspaceApp({
     );
     setNewTitle("");
     setCreate(true);
+  }
+  // A book, chapter or page from a library's own small dialog (#329,
+  // components/library-view.tsx): a document with the given name; the
+  // library then shows where it goes. Titles of an encrypted space are
+  // encrypted here as in "Neue Seite"; offline it needs the connection.
+  async function createLibraryPage(sid: string, parentId: string | null, title: string): Promise<string | null> {
+    if (deviceOffline()) {
+      showNotice(offlineNoteText());
+      return null;
+    }
+    const encrypted = !!(boot.spaces.find((s) => s.id === sid) as { encrypt_titles?: number } | undefined)?.encrypt_titles;
+    if (encrypted && !e2eeState.unlocked) {
+      setE2eeDialog("unlock");
+      return null;
+    }
+    const result = await act({ action: "page.create", workspaceId: boot.workspace.id, spaceId: sid, parentId, title: encrypted ? ENCRYPTED_TITLE : title, kind: "document" });
+    const id = result?.id ? String(result.id) : null;
+    if (id && encrypted)
+      try {
+        await openSpace(sid);
+        await act({ action: "e2ee.title", pageId: id, cipher: await encryptTitle(sid, id, title) });
+      } catch (error) {
+        notifyError(error);
+      }
+    return id;
   }
   // A template chosen for the "New page" dialog (#213): a name typed there
   // before stays; otherwise the template's name goes into the field,
@@ -4989,7 +5023,15 @@ export default function WorkspaceApp({
                   <>
                     <a href={`#${libraryHash(librarySpace.id)}`}>{librarySpace.name}</a>
                     <span className="breadcrumb-divider">/</span>
-                    <span>{titledPages.find((p) => p.id === libraryPlace.bookId)?.title || t("Buch", "Book")}</span>
+                    {libraryPlace.chapterId ? (
+                      <>
+                        <a href={`#${libraryHash(librarySpace.id, libraryPlace.bookId)}`}>{titledPages.find((p) => p.id === libraryPlace.bookId)?.title || t("Buch", "Book")}</a>
+                        <span className="breadcrumb-divider">/</span>
+                        <span>{titledPages.find((p) => p.id === libraryPlace.chapterId)?.title || t("Kapitel", "Chapter")}</span>
+                      </>
+                    ) : (
+                      <span>{titledPages.find((p) => p.id === libraryPlace.bookId)?.title || t("Buch", "Book")}</span>
+                    )}
                   </>
                 ) : (
                   <span>{librarySpace.name}</span>
@@ -6074,17 +6116,18 @@ export default function WorkspaceApp({
                 space={librarySpace}
                 pages={activePages}
                 bookId={libraryPlace?.bookId ?? null}
+                chapterId={libraryPlace?.chapterId ?? null}
                 workspaceId={boot.workspace.id}
                 visits={boot.recentVisits || []}
                 clock={clock}
                 canEdit={canCreate}
-                onCreate={(parentId) => addPage("document", parentId, librarySpace.id)}
+                onCreate={(parentId, title) => createLibraryPage(librarySpace.id, parentId, title)}
                 userId={boot.user.id}
                 manage={manageableSpaces.has(librarySpace.id)}
                 workspaceOwner={boot.workspace.role === "owner"}
                 onManageShelf={() => setSpaceManager({ space: librarySpace })}
                 onShareBook={(id) =>
-                  void openPage(id).then(() => setShare(true), () => {})
+                  void openPage(id, { pageId: id, edit: true }).then(() => setShare(true), () => {})
                 }
               />
             ) : (

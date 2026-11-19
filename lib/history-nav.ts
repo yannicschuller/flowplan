@@ -41,15 +41,15 @@ export function stepOf(fragment: string): string | null {
   if (!hash) return "home";
   if (hash.startsWith("page=")) {
     const target = parsePageLocation(hash);
-    return target ? pageLocationHash({ pageId: target.pageId, rowId: target.rowId, full: target.full }).slice(1) : null;
+    return target ? pageLocationHash({ pageId: target.pageId, rowId: target.rowId, full: target.full, edit: target.edit }).slice(1) : null;
   }
   const settings = parseSettingsHash(hash);
   if (settings) return settingsHash(settings).slice(1);
   if (SCREENS.includes(hash)) return hash;
   const [base, id, ...rest] = hash.split("/");
   if ((base === "tags" || base === "collection") && id && UUID.test(id) && !rest.length) return `${base}/${id.toLowerCase()}`;
-  // A library and a book's table of contents (#329, lib/library.ts).
-  if (base === "library" && id && UUID.test(id) && rest.length <= 1 && rest.every((r) => UUID.test(r))) return [base, id, ...rest].join("/").toLowerCase();
+  // A library, a book's and a chapter's overview (#329, lib/library.ts).
+  if (base === "library" && id && UUID.test(id) && rest.length <= 2 && rest.every((r) => UUID.test(r))) return [base, id, ...rest].join("/").toLowerCase();
   return null;
 }
 

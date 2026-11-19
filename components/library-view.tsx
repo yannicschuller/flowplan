@@ -1,9 +1,12 @@
 "use client";
-// A space shown as a library (#329, #library/<space>[/<book>]): the books
-// – the space's top-level pages – as cards, and a book's table of contents
-// with its chapters (sub-pages) and their pages. Everything comes from the
-// pages the person may see (the bootstrap's, lib/library.ts); the search
-// is the workspace's, limited to the space. Loaded when a library opens.
+// A space as a library (#329, #library/<space>[/<book>[/<chapter>]]): the
+// books – the space's top-level pages – as cards; a book's overview with
+// its own text, its chapters (sub-pages) and their pages; a chapter's
+// overview with its text and its pages. Books and chapters are directories
+// ("books are like shelves"), the editor comes with the pages
+// (lib/library.ts opensAsOverview). Everything comes from the pages the
+// person may see (the bootstrap's); the search is the workspace's, limited
+// to the space. Loaded when a library opens.
 import { useEffect, useId, useMemo, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ArrowLeft, BookOpen, Books, CaretRight, GearSix, MagnifyingGlass, PencilSimple, Plus, UsersThree } from "@phosphor-icons/react";
@@ -11,25 +14,44 @@ import { useLocale, useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { CoverFrame } from "./cover-frame";
 import { SpaceIcon } from "./space-appearance";
+import { ReadOnlyDocument } from "./read-only-document";
+import { LibraryCreateDialog, type LibraryCreate } from "./library-create-dialog";
 import { relativeTime } from "./home/format";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { imageFileId } from "@/lib/page-appearance";
 import { pageLocationHash } from "@/lib/page-location";
 import { settingsHash } from "@/lib/settings-sections";
-import { LIBRARY_HOME, continueReading, libraryBooks, libraryHash, type LibraryBook, type LibraryEntry } from "@/lib/library";
+import {
+  LIBRARY_HOME,
+  continueReading,
+  firstPage,
+  libraryBooks,
+  libraryHash,
+  opensAsOverview,
+  type LibraryBook,
+  type LibraryChapter,
+  type LibraryEntry,
+} from "@/lib/library";
 import type { Page, Space } from "@/lib/types";
 
 type Hit = { id: string; rowId?: string; title: string; pageTitle?: string; icon: string; kind: string; snippet: string };
 type T = ReturnType<typeof useT>;
 
 const pageHref = (id: string) => pageLocationHash({ pageId: id });
+// A book's or chapter's own text in the editor.
+const editHref = (id: string) => pageLocationHash({ pageId: id, edit: true });
 const untitled = (t: T, title: string) => title || t("Ohne Titel", "Untitled");
 const pagesLabel = (t: T, n: number) => (n === 1 ? t("1 Seite", "1 page") : t(`${n} Seiten`, `${n} pages`));
+// Where a chapter of the contents leads: its overview, or the page itself
+// when it is not a document (a database as a chapter).
+const chapterHref = (spaceId: string, bookId: string, chapter: LibraryChapter<Page>) =>
+  opensAsOverview(chapter.page, 1) ? `#${libraryHash(spaceId, bookId, chapter.page.id)}` : pageHref(chapter.page.id);
 
 export default function LibraryView({
   space,
   pages,
   bookId,
+  chapterId = null,
   workspaceId,
   visits,
   clock,
@@ -45,12 +67,14 @@ export default function LibraryView({
   // The workspace's live pages the person may see (titles decrypted).
   pages: Page[];
   bookId: string | null;
+  chapterId?: string | null;
   workspaceId: string;
   visits: { pageId: string; seenAt: number }[];
   clock: number | null;
   canEdit: boolean;
-  // "Neues Buch" (parent null) and "Neues Kapitel" / a page in a chapter.
-  onCreate: (parentId: string | null) => void;
+  // A book (parent null), a chapter (parent: the book) or a page (parent:
+  // its chapter), a document with this name; its id, null when it failed.
+  onCreate: (parentId: string | null, title: string) => Promise<string | null>;
   userId?: string;
   // May change who sees the shelf (space and workspace owners).
   manage?: boolean;
@@ -62,23 +86,41 @@ export default function LibraryView({
   const t = useT();
   const books = useMemo(() => libraryBooks(pages, space.id), [pages, space.id]);
   const book = bookId ? books.find((b) => b.page.id === bookId) : undefined;
+  const chapter = book && chapterId ? book.chapters.find((c) => c.page.id === chapterId) : undefined;
   const [query, setQuery] = useState("");
+  const [create, setCreate] = useState<LibraryCreate | null>(null);
   // A new book or chapter shows the search no more.
-  useEffect(() => setQuery(""), [bookId]);
+  useEffect(() => setQuery(""), [bookId, chapterId]);
+  // Created: a book or chapter shows its overview, a page opens to write.
+  const created = async (parentId: string | null, title: string) => {
+    const kind = create?.kind;
+    const id = await onCreate(parentId, title);
+    if (!id) return null;
+    setCreate(null);
+    location.hash =
+      kind === "book" ? libraryHash(space.id, id) : kind === "chapter" && book ? libraryHash(space.id, book.page.id, id) : pageLocationHash({ pageId: id }).slice(1);
+    return id;
+  };
+  const newPageIn = (c: LibraryChapter<Page>): LibraryCreate => ({ kind: "page", parentId: c.page.id, place: untitled(t, c.page.title) });
+  // Chapters a page can go into from the book's overview: those that are directories.
+  const chapterChoices = book ? book.chapters.filter((c) => opensAsOverview(c.page, 1)).map((c) => ({ id: c.page.id, title: c.page.title })) : [];
+  const missing = (bookId && !book) || (chapterId && !chapter);
   return (
     <div className="utility-content library-view">
-      {bookId && !book ? (
+      {missing ? (
         <div className="empty-state">
           <Books size={38} />
-          <h3>{t("Buch nicht gefunden", "Book not found")}</h3>
+          <h3>{chapterId && book ? t("Kapitel nicht gefunden", "Chapter not found") : t("Buch nicht gefunden", "Book not found")}</h3>
           <p>{t("Es wurde verschoben, gelöscht oder ist nicht mehr mit dir geteilt.", "It was moved, deleted or is no longer shared with you.")}</p>
-          <a className="button" href={`#${libraryHash(space.id)}`}>
-            {t("Zur Bibliothek", "To the library")}
+          <a className="button" href={`#${book ? libraryHash(space.id, book.page.id) : libraryHash(space.id)}`}>
+            {book ? t("Zum Buch", "To the book") : t("Zur Bibliothek", "To the library")}
           </a>
         </div>
       ) : (
         <>
-          {book ? (
+          {book && chapter ? (
+            <ChapterHeader book={book} chapter={chapter} space={space} pages={pages} />
+          ) : book ? (
             <BookHeader
               book={book}
               space={space}
@@ -104,23 +146,42 @@ export default function LibraryView({
               {manage && onManageShelf && <WhoCanSee space={space} workspaceOwner={workspaceOwner} onManage={onManageShelf} />}
             </div>
           )}
+          {book && (chapter ? opensAsOverview(chapter.page, 1) : opensAsOverview(book.page, 0)) && (
+            <OwnText page={chapter ? chapter.page : book.page} chapter={!!chapter} canEdit={canEdit} />
+          )}
           <div className="library-toolbar">
             <LibrarySearch spaceName={space.name} query={query} onQuery={setQuery} />
             {canEdit && !book && (
-              <button type="button" className="button primary compact" onClick={() => onCreate(null)}>
+              <button type="button" className="button primary compact" onClick={() => setCreate({ kind: "book" })}>
                 <Plus size={15} aria-hidden /> {t("Neues Buch", "New book")}
               </button>
             )}
-            {canEdit && book && (
-              <button type="button" className="button compact" onClick={() => onCreate(book.page.id)}>
+            {canEdit && book && !chapter && (
+              <button
+                type="button"
+                className={`button compact${chapterChoices.length ? "" : " primary"}`}
+                onClick={() => setCreate({ kind: "chapter", parentId: book.page.id, bookTitle: untitled(t, book.page.title) })}
+              >
                 <Plus size={15} aria-hidden /> {t("Neues Kapitel", "New chapter")}
+              </button>
+            )}
+            {canEdit && book && !chapter && chapterChoices.length > 0 && (
+              <button type="button" className="button primary compact" onClick={() => setCreate({ kind: "page", parentId: "", chapters: chapterChoices })}>
+                <Plus size={15} aria-hidden /> {t("Neue Seite", "New page")}
+              </button>
+            )}
+            {canEdit && chapter && opensAsOverview(chapter.page, 1) && (
+              <button type="button" className="button primary compact" onClick={() => setCreate(newPageIn(chapter))}>
+                <Plus size={15} aria-hidden /> {t("Neue Seite", "New page")}
               </button>
             )}
           </div>
           {query.trim() ? (
             <SearchResults workspaceId={workspaceId} spaceId={space.id} query={query} />
+          ) : book && chapter ? (
+            <ChapterPages chapter={chapter} />
           ) : book ? (
-            <Contents book={book} canEdit={canEdit} onCreate={onCreate} />
+            <Contents book={book} spaceId={space.id} canEdit={canEdit} onAdd={(c) => setCreate(newPageIn(c))} />
           ) : books.length ? (
             <ul className="library-books" aria-label={t("Bücher", "Books")}>
               {books.map((b) => (
@@ -143,6 +204,7 @@ export default function LibraryView({
           )}
         </>
       )}
+      <LibraryCreateDialog create={create} shelf={space.name} onClose={() => setCreate(null)} onCreate={created} />
     </div>
   );
 }
@@ -191,33 +253,39 @@ function BookHeader({
   const t = useT();
   const locale = useLocale();
   const resume = useMemo(() => continueReading(pages, space.id, book.page.id, visits), [pages, space.id, book.page.id, visits]);
+  const start = useMemo(() => firstPage(pages, space.id, book.page.id), [pages, space.id, book.page.id]);
+  const cover = book.page.cover || "";
   return (
     <div className="utility-title library-title library-book-header">
       <a className="text-button library-back" href={`#${libraryHash(space.id)}`}>
         <ArrowLeft size={14} aria-hidden /> {t(`Bibliothek ${space.name}`, `Library ${space.name}`)}
       </a>
+      {cover && <CoverFrame className="library-overview-cover" cover={cover} image={!!imageFileId(cover)} />}
       <span className="library-title-icon" aria-hidden>
         <PageIcon name={shownPageIcon(book.page.icon, book.page.kind)} size={34} />
       </span>
       <h1>{untitled(t, book.page.title)}</h1>
       <p>
         {pagesLabel(t, book.pages)}
+        {book.chapters.length > 0 && ` · ${book.chapters.length === 1 ? t("1 Kapitel", "1 chapter") : t(`${book.chapters.length} Kapitel`, `${book.chapters.length} chapters`)}`}
         {book.updatedAt && ` · ${t(`Bearbeitet ${relativeTime(book.updatedAt, clock, locale)}`, `Edited ${relativeTime(book.updatedAt, clock, locale)}`)}`}
       </p>
       <div className="library-read">
-        {resume && resume.id !== book.page.id ? (
+        {resume && start && resume.id !== start.id ? (
           <>
             <a className="button primary compact" href={pageHref(resume.id)}>
               <BookOpen size={15} aria-hidden /> {t(`Weiterlesen: ${untitled(t, resume.title)}`, `Continue reading: ${untitled(t, resume.title)}`)}
             </a>
-            <a className="button compact" href={pageHref(book.page.id)}>
+            <a className="button compact" href={pageHref(start.id)}>
               {t("Von vorn beginnen", "Start from the beginning")}
             </a>
           </>
         ) : (
-          <a className="button primary compact" href={pageHref(book.page.id)}>
-            <BookOpen size={15} aria-hidden /> {t("Lesen beginnen", "Start reading")}
-          </a>
+          start && (
+            <a className="button primary compact" href={pageHref(start.id)}>
+              <BookOpen size={15} aria-hidden /> {t("Lesen beginnen", "Start reading")}
+            </a>
+          )
         )}
         {onShare && (
           <button type="button" className="button compact" onClick={onShare}>
@@ -229,8 +297,101 @@ function BookHeader({
   );
 }
 
+function ChapterHeader({ book, chapter, space, pages }: { book: LibraryBook<Page>; chapter: LibraryChapter<Page>; space: Space; pages: Page[] }) {
+  const t = useT();
+  const start = useMemo(() => firstPage(pages, space.id, chapter.page.id), [pages, space.id, chapter.page.id]);
+  const number = book.chapters.indexOf(chapter) + 1;
+  return (
+    <div className="utility-title library-title library-book-header">
+      <a className="text-button library-back" href={`#${libraryHash(space.id, book.page.id)}`}>
+        <ArrowLeft size={14} aria-hidden /> {untitled(t, book.page.title)}
+      </a>
+      <span className="library-title-icon" aria-hidden>
+        <PageIcon name={shownPageIcon(chapter.page.icon, chapter.page.kind)} size={34} />
+      </span>
+      <h1>{untitled(t, chapter.page.title)}</h1>
+      <p>
+        {t(`Kapitel ${number}`, `Chapter ${number}`)}
+        {" · "}
+        {pagesLabel(t, chapter.below)}
+      </p>
+      {start && (
+        <div className="library-read">
+          <a className="button primary compact" href={pageHref(start.id)}>
+            <BookOpen size={15} aria-hidden /> {t("Lesen beginnen", "Start reading")}
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// What makes a text worth showing: words, or a picture, table, diagram …
+function hasContent(html: string) {
+  if (!html.trim()) return false;
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  return !!body.textContent?.trim() || !!body.querySelector("img, table, figure, iframe, video, audio, [data-mermaid], [data-drawio], [data-math]");
+}
+// Texts fetched in this visit, by page: back on an overview the last one
+// shows at once while the current one loads.
+const texts = new Map<string, { html: string; encrypted: boolean }>();
+
+// A book's or chapter's own text (written before, or a BookStack book's
+// description) read-only above the contents, with "Beschreibung
+// bearbeiten" opening it in the editor (#page=…&edit=1). Without text,
+// "Beschreibung hinzufügen" for those who may write.
+function OwnText({ page, chapter, canEdit }: { page: Page; chapter: boolean; canEdit: boolean }) {
+  const t = useT();
+  const key = page.id;
+  const [text, setText] = useState(() => texts.get(key) ?? null);
+  // The kept one at once, the current one (edited meanwhile?) after it.
+  useEffect(() => {
+    setText(texts.get(key) ?? null);
+    const controller = new AbortController();
+    fetch(`/api/pages/${key}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { html?: string; encrypted?: unknown } | null) => {
+        if (!data) return;
+        const value = { html: typeof data.html === "string" ? data.html : "", encrypted: !!data.encrypted };
+        texts.set(key, value);
+        setText(value);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [key]);
+  if (!text) return null;
+  const label = chapter ? t("Über dieses Kapitel", "About this chapter") : t("Über dieses Buch", "About this book");
+  // Encrypted text is read in the editor (the keys are there).
+  if (text.encrypted)
+    return (
+      <p className="library-intro-empty">
+        <a className="text-button" href={editHref(page.id)}>
+          <PencilSimple size={14} aria-hidden /> {t("Beschreibung öffnen", "Open the description")}
+        </a>
+      </p>
+    );
+  if (!hasContent(text.html))
+    return canEdit ? (
+      <p className="library-intro-empty">
+        <a className="text-button" href={editHref(page.id)}>
+          <PencilSimple size={14} aria-hidden /> {t("Beschreibung hinzufügen", "Add a description")}
+        </a>
+      </p>
+    ) : null;
+  return (
+    <section className="library-intro" aria-label={label}>
+      <ReadOnlyDocument html={text.html} pageId={page.id} title={page.title} className="library-intro-text" />
+      {canEdit && (
+        <a className="text-button library-intro-edit" href={editHref(page.id)}>
+          <PencilSimple size={14} aria-hidden /> {t("Beschreibung bearbeiten", "Edit description")}
+        </a>
+      )}
+    </section>
+  );
+}
+
 // The table of contents: chapters with their pages, each chapter folds.
-function Contents({ book, canEdit, onCreate }: { book: LibraryBook<Page>; canEdit: boolean; onCreate: (parentId: string | null) => void }) {
+function Contents({ book, spaceId, canEdit, onAdd }: { book: LibraryBook<Page>; spaceId: string; canEdit: boolean; onAdd: (chapter: LibraryChapter<Page>) => void }) {
   const t = useT();
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const baseId = useId();
@@ -239,7 +400,7 @@ function Contents({ book, canEdit, onCreate }: { book: LibraryBook<Page>; canEdi
       <div className="empty-state library-empty">
         <BookOpen size={34} />
         <h3>{t("Noch keine Kapitel", "No chapters yet")}</h3>
-        <p>{t("Die Unterseiten des Buchs sind seine Kapitel.", "The book's sub-pages are its chapters.")}</p>
+        <p>{t("Kapitel ordnen die Seiten des Buchs – lege das erste an.", "Chapters hold the book's pages – create the first one.")}</p>
       </div>
     );
   return (
@@ -276,18 +437,18 @@ function Contents({ book, canEdit, onCreate }: { book: LibraryBook<Page>; canEdi
                 <span className="library-chapter-number" aria-hidden>
                   {i + 1}
                 </span>
-                <a className="library-chapter-link" href={pageHref(chapter.page.id)} data-prefetch-page={chapter.page.id}>
+                <a className="library-chapter-link" href={chapterHref(spaceId, book.page.id, chapter)} data-prefetch-page={chapter.page.id}>
                   <PageIcon name={shownPageIcon(chapter.page.icon, chapter.page.kind)} size={16} />
                   <span>{untitled(t, chapter.page.title)}</span>
                 </a>
-                {chapter.below > 0 && <span className="library-count">{pagesLabel(t, chapter.below)}</span>}
+                <span className="library-count">{pagesLabel(t, chapter.below)}</span>
                 {canEdit && (
                   <button
                     type="button"
                     className="icon-button library-add"
                     title={t(`Seite in ${untitled(t, chapter.page.title)} hinzufügen`, `Add page in ${untitled(t, chapter.page.title)}`)}
                     aria-label={t(`Seite in ${untitled(t, chapter.page.title)} hinzufügen`, `Add page in ${untitled(t, chapter.page.title)}`)}
-                    onClick={() => onCreate(chapter.page.id)}
+                    onClick={() => onAdd(chapter)}
                   >
                     <Plus size={14} />
                   </button>
@@ -304,6 +465,29 @@ function Contents({ book, canEdit, onCreate }: { book: LibraryBook<Page>; canEdi
           );
         })}
       </ol>
+    </nav>
+  );
+}
+
+// A chapter's pages, as in the book's contents.
+function ChapterPages({ chapter }: { chapter: LibraryChapter<Page> }) {
+  const t = useT();
+  if (!chapter.pages.length)
+    return (
+      <div className="empty-state library-empty">
+        <BookOpen size={34} />
+        <h3>{t("Noch keine Seiten", "No pages yet")}</h3>
+        <p>{t("Die Seiten des Kapitels erscheinen hier.", "The chapter's pages appear here.")}</p>
+      </div>
+    );
+  return (
+    <nav aria-label={t("Seiten des Kapitels", "Pages of the chapter")}>
+      <h2 className="library-contents-heading">{t("Seiten", "Pages")}</h2>
+      <ul className="library-pages library-chapter-pages">
+        {chapter.pages.map((entry) => (
+          <ContentsPage key={entry.page.id} entry={entry} />
+        ))}
+      </ul>
     </nav>
   );
 }
