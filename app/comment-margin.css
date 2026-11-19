@@ -1,0 +1,154 @@
+/* Text comments in the margin (#387, components/comment-margin.tsx): while
+   a document has open text comments and the page has room (lib/comment-
+   margin-pref.ts), the editor keeps a column free on the right of its text
+   and the page grows by that much, so the text keeps its width where there
+   is space. The table of contents gives way (its button opens a popover).
+   The cards are placed by script with --card-top (CSSOM), the margin's
+   height below the document with --margin-extent. */
+.editor-wrapper.with-comment-margin {
+  --comment-margin-room: 296px;
+  padding-right: var(--comment-margin-room);
+}
+.page-content:not(.full-width):not(.database-page):has(.editor-wrapper.with-comment-margin) {
+  max-width: calc(820px + var(--comment-margin-room, 296px));
+}
+.record-page:not(.record-page-wide):has(.editor-wrapper.with-comment-margin) {
+  max-width: calc(900px + var(--comment-margin-room, 296px));
+}
+.page-content:has(.editor-wrapper.with-comment-margin) {
+  --comment-margin-room: 296px;
+}
+/* The outline's button keeps its place just right of the text; the cards
+   start beyond it. */
+.comment-margin {
+  position: relative;
+  width: 244px;
+  height: var(--margin-extent, 0px);
+  margin-left: calc(100% + 48px);
+}
+.comment-margin-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  translate: 0 var(--card-top, 0px);
+  visibility: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.comment-margin-card[data-placed]:not([data-hidden]) {
+  visibility: visible;
+  transition: translate var(--motion-base, 0.2s) var(--ease-standard, ease);
+}
+.comment-margin-card:not(.active):hover {
+  border-color: #dab234;
+}
+.comment-margin-card.active {
+  z-index: 2;
+  padding: 10px 12px 12px;
+  border-color: #dab234;
+  box-shadow: var(--shadow);
+}
+.comment-margin-summary {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: inherit;
+  color: var(--text);
+  font-size: inherit;
+  text-align: left;
+}
+.comment-margin-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.comment-margin-author strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comment-margin-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.comment-margin-replies {
+  color: var(--muted);
+  font-size: 12px;
+}
+.comment-margin-collapse {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+/* The thread inside the open card: tighter than in the panel. */
+.comment-margin-card > .inline-comment-actions:first-of-type {
+  min-height: 26px;
+  padding-right: 28px;
+  gap: 6px;
+}
+.comment-margin-card .inline-comment-message {
+  gap: 8px;
+  padding: 10px 0;
+}
+.comment-margin-card .inline-comment-message p {
+  margin: 4px 0;
+}
+.comment-margin-card .inline-comment-actions .button.compact {
+  font-size: 12.5px;
+}
+.comment-margin-card .comment-composer {
+  margin: 8px 0;
+}
+.comment-margin-card .inline-comment-new {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.comment-margin-card .inline-comment-error {
+  margin: 0 28px 8px 0;
+}
+.comment-margin-card form > .button {
+  margin-top: 2px;
+}
+/* The passage of the open card, more strongly than the others. */
+.editor-wrapper.with-comment-margin .inline-comment-active {
+  background: #f8d664cc;
+  border-bottom-color: #c3961c;
+}
+.editor-wrapper.with-comment-margin img.inline-comment-active {
+  outline-color: #c3961c;
+}
+/* A thread opened from a highlight below the document scrolls into view
+   with some room above it (the toolbar, the window's top). */
+.inline-comment-panel {
+  scroll-margin-top: 72px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .comment-margin-card[data-placed]:not([data-hidden]) {
+    transition: none;
+  }
+}
+@media print {
+  .comment-margin {
+    display: none;
+  }
+  .editor-wrapper.with-comment-margin {
+    padding-right: 0;
+  }
+}

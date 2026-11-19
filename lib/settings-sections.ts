@@ -180,6 +180,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         level: "normal",
       },
       {
+        title: { de: "Textkommentare", en: "Text comments" },
+        keywords: { de: "kommentare rand randspalte seitenrand neben dem text unter dem dokument textstelle karten", en: "comments margin side column next to the text below the document passage cards" },
+        anchor: "comment-margin",
+        level: "normal",
+      },
+      {
         title: { de: "Formatierungsleiste", en: "Formatting toolbar" },
         keywords: { de: "symbolleiste toolbar leiste ausblenden fokusmodus formatieren", en: "toolbar bar hide focus mode formatting" },
         anchor: "formatting-toolbar",
