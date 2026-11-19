@@ -43,6 +43,7 @@ import type { Field, Page, Row, View } from "@/lib/types";
 import {
   guestFields,
   sharedContent,
+  publicFieldIds,
   publicFieldsOf,
 } from "@/lib/shared-content";
 import { fileIdOf, fileUrls } from "@/lib/file-cells";
@@ -61,6 +62,9 @@ import { mapAsync } from "../lib/each-async";
 import { recordScope } from "@/lib/record-share";
 import { renderPublicRecord } from "./public-record";
 import { publicPageClass } from "@/lib/public-page-class";
+import { recordCrumb, recordHref, viewHref, viewScrollKey, viewStateOf, type ViewState } from "@/lib/public-nav";
+import { PublicThemeToggle } from "./public-theme-toggle";
+import { PublicBackLink, PublicViewMemory } from "./public-view-memory";
 import { sharedStudyCards } from "@/lib/shared-study";
 import { PublicStudy } from "./public-study";
 import { activeUser } from "@/lib/auth";
@@ -88,6 +92,9 @@ type PublishedPageProps = {
   month?: string;
   // The part of a deck's cards shown by its study view (1, 2, …).
   cards?: string;
+  // The address's query: the view's state that a record opened from it
+  // keeps for "← Back to …" (#393, lib/public-nav.ts).
+  query?: Record<string, string | string[] | undefined>;
 };
 // A link with an end date or a password (lib/share-access.ts): after its end
 // a short note, without the unlock cookie the password form. Everything
@@ -150,6 +157,7 @@ async function renderPublishedPage({
   viewId,
   month: monthParam,
   cards: cardsParam,
+  query,
 }: PublishedPageProps) {
   const t = await serverT();
   let context;
@@ -186,6 +194,9 @@ async function renderPublishedPage({
     publicViews.find((v) => v.id === viewId) ||
     publicViews[0] ||
     (d?.views[0] && { ...d.views[0], type: "table" });
+  // The view's state (#393): records opened from the view keep it in their
+  // address, and their page links back to it.
+  const viewState: ViewState = { ...viewStateOf({ view: viewId, month: monthParam, cards: cardsParam, ...query }), view: activeView?.id };
   const ranks = rowOrderRanks(activeView?.rowOrder);
   const allRecords = d ? (await rows(page.id)) : [];
   const records =
@@ -259,6 +270,14 @@ async function renderPublishedPage({
       : "";
   const href = (id: string) =>
     customHost ? `/${id === root.id ? "" : id}` : `/share/${token}${id === root.id ? "" : "/" + id}`;
+  const rowHref = (rowId: string) => recordHref(href(page.id), rowId, viewState);
+  // A record opened from one of the views (its address names it, #393):
+  // "← Back to <view>" with the same month, scale and scroll position.
+  const fromView = record && d && viewId && activeView?.id === viewId ? activeView : undefined;
+  const viewKey = viewScrollKey(page.id, viewState);
+  // The record's title as the path's last item, unless visitors may not read it.
+  const crumb = record && d ? recordCrumb(record.cells, d.fields, publicFieldIds(d.fields)) : null;
+  const crumbFull = record && d && crumb ? recordCrumb(record.cells, d.fields, publicFieldIds(d.fields), Infinity) : null;
   // The look an owner chose for the publication (logo, accent, footer).
   const theme = publication ? (await renderedTheme(token, root.id)) : null;
   // Blocks of block extensions their owners did not allow on published
@@ -302,17 +321,20 @@ async function renderPublishedPage({
     >
       {/* The look of the workspace (#196); the publication's own accent above wins. */}
       <WorkspaceThemeStyle look={await workspaceLook(root.workspace_id)} fontUrl={(id) => `/api/share/${token}/fonts/${id}`} />
-      {theme?.logo ? (
-        <a href={href(root.id)} className="public-brand public-logo">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={theme.logo} alt={root.title} />
-        </a>
-      ) : (
-        <a href="/" className="public-brand">
-          {customHost ? root.title : "flowplan"}{" "}
-          {!customHost && <span className="muted">/ {t("Geteilte Seite", "Shared page")}</span>}
-        </a>
-      )}
+      <header className="public-header">
+        {theme?.logo ? (
+          <a href={href(root.id)} className="public-brand public-logo">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={theme.logo} alt={root.title} />
+          </a>
+        ) : (
+          <a href="/" className="public-brand">
+            {customHost ? root.title : "flowplan"}{" "}
+            {!customHost && <span className="muted">/ {t("Geteilte Seite", "Shared page")}</span>}
+          </a>
+        )}
+        <PublicThemeToggle />
+      </header>
       {publication && (
         <div className="publication-meta">
           <span className="muted">
@@ -323,8 +345,13 @@ async function renderPublishedPage({
           {!!publication.allow_copy && !customHost && <PublicationCopy token={token} />}
         </div>
       )}
+      {fromView && (
+        <PublicBackLink href={viewHref(href(page.id), viewState)} storageKey={viewKey}>
+          <span aria-hidden="true">←</span> {t(`Zurück zu ${fromView.name}`, `Back to ${fromView.name}`)}
+        </PublicBackLink>
+      )}
       {(page.id !== root.id || record) && (
-        <nav className="public-breadcrumb">
+        <nav className="public-breadcrumb" aria-label={t("Pfad", "Path")}>
           <a href={href(root.id)}>{root.title}</a>
           {page.id !== root.id && (
             <>
@@ -332,7 +359,14 @@ async function renderPublishedPage({
               / <a href={href(page.id)}>{page.title}</a>
             </>
           )}
-          {record && ` / ${t("Eintrag", "Record")}`}
+          {record && (
+            <>
+              {" / "}
+              <span className="public-breadcrumb-current" aria-current="page" title={crumbFull || undefined}>
+                {crumb || t("Eintrag", "Record")}
+              </span>
+            </>
+          )}
         </nav>
       )}
       {page.cover && (
@@ -404,7 +438,7 @@ async function renderPublishedPage({
           monthLink={(m) =>
             `${href(page.id)}?view=${encodeURIComponent(activeView.id)}&month=${m}`
           }
-          recordLink={(r) => `${href(page.id)}?row=${r.id}`}
+          recordLink={(r) => rowHref(r.id)}
           editable={context.role === "editor" && !page.locked}
           token={token}
           pageId={page.id}
@@ -418,7 +452,7 @@ async function renderPublishedPage({
           monthLink={(m) =>
             `${href(page.id)}?view=${encodeURIComponent(activeView.id)}&month=${m}`
           }
-          recordLink={(r) => `${href(page.id)}?row=${r.id}`}
+          recordLink={(r) => rowHref(r.id)}
         />
       ) : d && !record && activeView?.type === "feed" ? (
         <div className="public-feed">
@@ -429,7 +463,7 @@ async function renderPublishedPage({
             return (
               <article key={r.id} className="public-feed-entry">
                 <h2>
-                  <a href={`${href(page.id)}?row=${r.id}`}>
+                  <a href={rowHref(r.id)}>
                     {cellText(r.cells[d.fields[0]?.id]) || t("Ohne Titel", "Untitled")}
                   </a>
                 </h2>
@@ -464,7 +498,7 @@ async function renderPublishedPage({
           fields={d.fields}
           view={activeView}
           visible={visible || []}
-          link={(r) => `${href(page.id)}?row=${r.id}`}
+          link={(r) => rowHref(r.id)}
         />
       ) : d && !record && activeView?.type === "gallery" ? (
         <div className="gallery gallery-size-medium public-gallery">
@@ -476,7 +510,7 @@ async function renderPublishedPage({
               <a
                 key={r.id}
                 className="record-card"
-                href={`${href(page.id)}?row=${r.id}`}
+                href={rowHref(r.id)}
               >
                 {image && (
                   <span className="gallery-cover">
@@ -505,7 +539,7 @@ async function renderPublishedPage({
             <a
               key={r.id}
               className="record-list-item"
-              href={`${href(page.id)}?row=${r.id}`}
+              href={rowHref(r.id)}
             >
               <span>{cellText(r.cells[d.fields[0]?.id]) || t("Ohne Titel", "Untitled")}</span>
               <span>
@@ -537,7 +571,7 @@ async function renderPublishedPage({
                   {visible?.map((f) => (
                     <td key={f.id}>
                       {f.id === "title" ? (
-                        <a href={`${href(page.id)}?row=${r.id}`}>
+                        <a href={rowHref(r.id)}>
                           {cellText(r.cells[f.id]) || t("Ohne Titel", "Untitled")}
                         </a>
                       ) : (
@@ -613,6 +647,7 @@ async function renderPublishedPage({
           ))}
         </nav>
       )}
+      {d && !record && <PublicViewMemory storageKey={viewKey} />}
       <SharedInteractions
         key={`${page.id}:${rowId || ""}`}
         token={token}

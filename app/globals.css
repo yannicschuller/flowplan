@@ -8439,6 +8439,43 @@ body:has(.public-page:not(.public-wide) .public-embed) {
 .public-breadcrumb a {
   color: inherit;
 }
+/* Shared and published pages (#393): the brand with the light/dark button,
+   "← Back to <view>" above the path, and the record's title as the path's
+   last item, cut off with an ellipsis. */
+.public-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 50px;
+}
+.public-header .public-brand {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.public-theme-toggle {
+  border-radius: 8px;
+}
+.public-theme-toggle:hover {
+  background: var(--hover);
+}
+.public-back {
+  display: inline-block;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.public-back + .public-breadcrumb {
+  margin-top: 6px;
+}
+.public-breadcrumb-current {
+  display: inline-block;
+  max-width: min(40ch, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
 .public-cover {
   height: 150px;
   border-radius: 12px;
