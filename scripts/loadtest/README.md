@@ -41,12 +41,19 @@ own dependencies. Nothing to install.
     cursor updates (`/api/presence`). `--coeditors` editors share a
     document; the time from one editor's save to the update arriving at the
     others is reported as `fanout`.
+  - **idle tabs** (`--kind idle`: every VU is one) do what a signed-in tab
+    does while nobody touches it (`components/workspace-app.tsx`): every
+    `--idle-interval` s (10) the bootstrap and the open page, each with the
+    ETag of the last answer, so most answers are a 304. Per step it prints
+    the server's CPU per tab and minute, per request and the 304 share.
   - `--heavy backup|import|both` runs large jobs alongside: the workspace
     export (`/api/backup`) and a `rows.import` of `--import-rows` records
     (which the search index then picks up), every `--heavy-interval` s.
 - `run.mjs --probe N` sends every request type N times one after the other
   on an idle instance: the service time (what one request costs the server
-  without queueing). Run it before the ramp.
+  without queueing), and the bootstrap, a document and the database again
+  with the ETag of their answer (`bootstrap.304`, `page.open.304`,
+  `db.open.304`: what an unchanged refresh costs). Run it before the ramp.
 
 Per step: requests per second, latency p50/p95/p99 for reads and writes
 and per scenario, errors (5xx, 429, timeouts, network; 409 conflicts on

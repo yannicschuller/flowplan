@@ -1,6 +1,7 @@
-import { all, one } from "./db";
+import { all, inTransaction, one } from "./db";
+import { cacheVersion, VersionedCache } from "./cache-versions";
 import { HttpError } from "./auth";
-import { memoized, primeMemo } from "./read-memo";
+import { inReadMemo, memoized, peekMemo } from "./read-memo";
 import type { Identity, Page, Role, Space } from "./types";
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 // The lookups below are remembered within a request or command until the
@@ -65,27 +66,6 @@ async function grantRole(user: Identity, kind: "page" | "space", resource: strin
     return grants.sort((a, b) => rank[b.role] - rank[a.role])[0]?.role || null;
   });
 }
-// Many pages checked at once (a library of a thousand pages, #329): the
-// person's page grants of the workspace in one query, remembered under the
-// keys grantRole() and pageRow() use, so pageRole() asks no more per page.
-// `pages` and `spaces` are stored rows (SELECT *), not changed afterwards.
-// Inside a read memo only (an API request, a command); elsewhere a no-op.
-export async function primePageAccess(user: Identity, workspace: string, pages: readonly Page[], spaces: readonly Space[] = []) {
-  if (!pages.length && !spaces.length) return;
-  const grants = await all<{ resource_id: string; role: Role }>(
-    "SELECT resource_id,role FROM grants WHERE resource_kind='page' AND workspace_id=? AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
-    workspace,
-    user.id,
-    user.id,
-  );
-  const best = new Map<string, Role>();
-  for (const g of grants) if (!best.has(g.resource_id) || rank[g.role] > rank[best.get(g.resource_id)!]) best.set(g.resource_id, g.role);
-  primeMemo([
-    ...pages.map((p) => [`page:${p.id}`, p] as [string, unknown]),
-    ...pages.map((p) => [`grant:page:${workspace}:${p.id}:${user.id}`, best.get(p.id) || null] as [string, unknown]),
-    ...spaces.map((s) => [`space:${s.id}`, s] as [string, unknown]),
-  ]);
-}
 export async function spaceRole(user: Identity, space: Space): Promise<Role | null> {
   if (space.deleted_at) return null;
   const membership = await memberRole(user, space.workspace_id);
@@ -98,6 +78,10 @@ export async function spaceRole(user: Identity, space: Space): Promise<Role | nu
     : null;
 }
 export async function pageRole(user: Identity, page: Page): Promise<Role | null> {
+  // Known from the roles of all pages of the workspace (workspaceRoles()),
+  // when they were computed in this request for the page as it is stored.
+  const known = knownRole(user, page) ?? knownRole(user, page, await keptRoles(user, page.workspace_id));
+  if (known !== undefined) return known;
   const space = await spaceRow(page.space_id as string);
   if (!space || space.deleted_at) return null;
   const membership = await memberRole(user, page.workspace_id);
@@ -150,4 +134,165 @@ export async function requirePage(
 export function requireAdmin(user: Identity) {
   if (!user.isAdmin)
     throw new HttpError(403, "Administrator-Gruppe erforderlich.");
+}
+
+// ---- The roles of all pages of a workspace at once (#383) ----
+//
+// What pageRole() answers for every page of a workspace (trash, synced
+// blocks and all), for one person, in a handful of statements instead of
+// a few per page: the person's grants on pages and spaces, the spaces, the
+// pages' parents (resolved in memory) and, for pages below records, those
+// records with their grants for the person. Must equal pageRole() for
+// every page (tests/workspace-roles.test.ts compares them); anything out of
+// the ordinary – a parent, a space or a database in another workspace, a
+// record in the trash or moved away – is left to pageRole() itself.
+//
+// `links` keeps what of each page went into its role (parent, space,
+// record; shared by everyone's roles of the workspace), so pageRole() takes
+// the answer from here only for a page with exactly these – a page changed
+// in memory is checked on its own.
+type PageLink = Readonly<{ id: string; workspace_id: string; space_id: string | null; parent_id: string | null; parent_row_id: string | null }>;
+export type WorkspaceRoles = { readonly roles: ReadonlyMap<string, Role | null>; readonly links: ReadonlyMap<string, PageLink> };
+type RecordRow = { id: string; page_id: string; access: string; created_by: string | null };
+type RecordGrant = { row_id: string; user_id: string; group_id: string; role: "viewer" | "editor" };
+const rolesKey = (workspace: string, user: string) => `roles:${workspace}:${user}`;
+
+function knownRole(user: Identity, page: Page, known = peekMemo<WorkspaceRoles>(rolesKey(page.workspace_id, user.id))): Role | null | undefined {
+  const link = known?.links.get(page.id);
+  if (!link || !known!.roles.has(page.id)) return undefined;
+  if ((link.parent_id ?? null) !== (page.parent_id ?? null) || (link.space_id ?? null) !== (page.space_id ?? null) || (link.parent_row_id ?? null) !== (page.parent_row_id ?? null)) return undefined;
+  return known!.roles.get(page.id)!;
+}
+
+// Remembered within a request until the next write (lib/read-memo.ts)
+// and across requests while the version "roles" stays
+// (lib/cache-versions.ts); pageRole() answers from either.
+const kept = globalThis as { flowplanRoles?: VersionedCache<WorkspaceRoles>; flowplanPageLinks?: VersionedCache<ReadonlyMap<string, PageLink>> };
+const keptAcross = (kept.flowplanRoles ??= new VersionedCache<WorkspaceRoles>(500));
+const keptLinks = (kept.flowplanPageLinks ??= new VersionedCache<ReadonlyMap<string, PageLink>>(50));
+const pageLinks = async (workspace: string) =>
+  new Map((await all<PageLink>("SELECT id,workspace_id,space_id,parent_id,parent_row_id FROM pages WHERE workspace_id=?", workspace)).map((p) => [p.id, Object.freeze(p)]));
+export async function workspaceRoles(user: Identity, workspace: string): Promise<WorkspaceRoles> {
+  return await memoized(rolesKey(workspace, user.id), async () => {
+    if (inTransaction()) return await computeWorkspaceRoles(user, workspace, await pageLinks(workspace));
+    const version = await cacheVersion("roles");
+    const key = `${workspace}:${user.id}`;
+    const kept = keptAcross.get(key, version);
+    if (kept) return kept;
+    let links = keptLinks.get(workspace, version);
+    if (!links) keptLinks.set(workspace, version, (links = await pageLinks(workspace)));
+    const roles = await computeWorkspaceRoles(user, workspace, links);
+    keptAcross.set(key, version, roles);
+    return roles;
+  });
+}
+// The roles kept from an earlier request, when still current; never
+// computed here (one page is cheaper to check on its own).
+async function keptRoles(user: Identity, workspace: string): Promise<WorkspaceRoles | undefined> {
+  // Only within a request (a read memo in place): elsewhere the version
+  // would be read again for every page.
+  if (inTransaction() || !keptAcross.size || !inReadMemo()) return undefined;
+  const version = await cacheVersion("roles");
+  const kept = keptAcross.get(`${workspace}:${user.id}`, version);
+  // For the rest of the request as if computed in it.
+  if (kept) await memoized(rolesKey(workspace, user.id), () => kept);
+  return kept;
+}
+
+// `links`: every page of the workspace with its place (pageLinks()).
+async function computeWorkspaceRoles(user: Identity, workspace: string, links: ReadonlyMap<string, PageLink>): Promise<WorkspaceRoles> {
+  const pages = [...links.values()];
+  const out = new Map<string, Role | null>();
+  const membership = await memberRole(user, workspace);
+  if (!membership) {
+    for (const p of pages) out.set(p.id, null);
+    return { roles: out, links };
+  }
+  const guest = await isGuest(user, workspace);
+  const spaces = new Map((await all<Space>("SELECT * FROM spaces WHERE workspace_id=?", workspace)).map((s) => [s.id, s]));
+  const pageGrant = new Map<string, Role>(),
+    spaceGrant = new Map<string, Role>();
+  for (const g of await all<{ resource_id: string; resource_kind: string; role: Role }>(
+    "SELECT resource_id,resource_kind,role FROM grants WHERE workspace_id=? AND resource_kind IN ('page','space') AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
+    workspace,
+    user.id,
+    user.id,
+  )) {
+    const best = g.resource_kind === "page" ? pageGrant : spaceGrant;
+    const had = best.get(g.resource_id);
+    if (!had || rank[g.role] > rank[had]) best.set(g.resource_id, g.role);
+  }
+  // The records pages sit below, with the person's grants on those with
+  // their own access (as lib/row-access.ts restrictedGrants() reads them).
+  const records = new Map<string, RecordRow>(),
+    recordGrants = new Map<string, RecordGrant[]>();
+  if (pages.some((p) => p.parent_row_id)) {
+    const below = "SELECT parent_row_id FROM pages WHERE workspace_id=? AND parent_row_id IS NOT NULL";
+    for (const r of await all<RecordRow>(`SELECT id,page_id,access,created_by FROM rows WHERE id IN (${below})`, workspace)) records.set(r.id, r);
+    for (const g of await all<RecordGrant>(
+      `SELECT g.row_id,g.user_id,g.group_id,g.role FROM row_grants g JOIN rows r ON r.id=g.row_id
+       WHERE r.access<>'inherit' AND r.id IN (${below}) AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?))`,
+      workspace,
+      user.id,
+      user.id,
+    ))
+      recordGrants.set(g.row_id, [...(recordGrants.get(g.row_id) || []), g]);
+  }
+  // Loaded when needed, as in pageRole() (an import cycle at start-up).
+  const { combine } = await import("./row-access");
+  const byId = links;
+  const capped = (granted: Role) => (rank[granted] < rank[membership] ? granted : membership);
+  const ofSpace = (space: Space): Role | null => {
+    if (space.deleted_at) return null;
+    if (space.owner_id === user.id) return membership;
+    const granted = spaceGrant.get(space.id);
+    if (granted) return capped(granted);
+    return space.visibility === "team" && !guest ? membership : null;
+  };
+  // undefined: not decided here – pageRole() decides.
+  const decided = new Map<string, Role | null | undefined>();
+  const busy = new Set<string>();
+  const roleOf = (p: PageLink): Role | null | undefined => {
+    if (decided.has(p.id)) return decided.get(p.id);
+    if (busy.has(p.id)) return undefined;
+    busy.add(p.id);
+    const role = decide(p);
+    busy.delete(p.id);
+    decided.set(p.id, role);
+    return role;
+  };
+  // The steps of pageRole(), on the rows above.
+  function decide(p: PageLink): Role | null | undefined {
+    if (!p.space_id) return null;
+    const space = spaces.get(p.space_id);
+    if (!space) return undefined;
+    if (space.deleted_at) return null;
+    const direct = pageGrant.get(p.id);
+    if (direct) return capped(direct);
+    const seen = new Set<string>();
+    let current = p;
+    while (current.parent_id) {
+      if (seen.has(current.id)) return null;
+      seen.add(current.id);
+      const parent = byId.get(current.parent_id);
+      if (!parent) return undefined;
+      // Below a record: the record's role (lib/row-access.ts
+      // subPageRecordRole()); one in the trash or moved away is left to it.
+      if (current.parent_row_id) {
+        const row = records.get(current.parent_row_id);
+        if (!row || row.page_id !== parent.id) return undefined;
+        const role = roleOf(parent);
+        return role === undefined ? undefined : combine(user, role, row, recordGrants.get(row.id) || []);
+      }
+      current = parent;
+      const inherited = pageGrant.get(current.id);
+      if (inherited) return capped(inherited);
+    }
+    return ofSpace(space);
+  }
+  for (const p of pages) {
+    const role = roleOf(p);
+    out.set(p.id, role === undefined ? await pageRole(user, p as unknown as Page) : role);
+  }
+  return { roles: out, links };
 }

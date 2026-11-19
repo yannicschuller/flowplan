@@ -8,7 +8,9 @@
 // Not from version counters: bootstrap alone reads some forty sources
 // (pages, grants, members, settings, notifications, due tasks that change
 // with the clock), and a counter missing one of them would keep a stale
-// sidebar on every instance of a cluster.
+// sidebar on every instance of a cluster. Only its page list, the largest
+// part, is named by versions that triggers keep (lib/bootstrap-pages.ts);
+// the rest of it is hashed as here.
 import { createHash } from "node:crypto";
 
 export function contentTag(body: string) {

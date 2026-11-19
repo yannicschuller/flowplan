@@ -49,6 +49,15 @@ export async function memoized<T>(key: string, compute: () => T): Promise<T> {
   return value;
 }
 
+// Whether a memo is in place (a request or command).
+export function inReadMemo() {
+  return !!store.getStore();
+}
+// The value remembered under key, or undefined – never computes.
+export function peekMemo<T>(key: string): T | undefined {
+  return current()?.values.get(key) as T | undefined;
+}
+
 // Remembers values looked up in bulk (one query for many pages) under the
 // keys memoized() would use for them one by one – the same lifetime, so a
 // write drops them as well. Keys already remembered keep their value.

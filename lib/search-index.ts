@@ -7,7 +7,7 @@ import { addEntry, clearIndex, entryId, entryIdIn, entryOrder, foldText, refresh
 import { personalBoost, personalSignals, titleScore } from "./search-visits";
 import { cellText } from "./cell-text";
 import { clozeFilled } from "./study-cloze";
-import { isGuest, pageRole } from "./permissions";
+import { isGuest, pageRole, workspaceRoles } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
 import { isFormattedText, toPlain } from "./inline-markdown";
@@ -407,6 +407,8 @@ export async function searchWorkspace(
   const locked = await lockedPageIds(user, workspaceId);
   // Workflow pages are not for guests (#168).
   const guest = await isGuest(user, workspaceId);
+  // The roles of all pages at once (#383): pageRole() answers from them.
+  await workspaceRoles(user, workspaceId);
   const allowed = async (page: Page) => {
     if (!roles.has(page.id))
       roles.set(page.id, !locked.has(page.id) && !(guest && page.kind === "workflow") && !!(await pageRole(user, page)));
@@ -678,6 +680,7 @@ export async function recentlyVisited(
   if (kind === "comment" || kind === "file") return [];
   const locked = await lockedPageIds(user, workspaceId);
   const guest = await isGuest(user, workspaceId);
+  await workspaceRoles(user, workspaceId);
   const roles = new Map<string, boolean>();
   const hidden = new Map<string, Set<string>>();
   const fields = new Map<string, Field[]>();

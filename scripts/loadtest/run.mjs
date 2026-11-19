@@ -34,6 +34,8 @@ const { values: opt } = parseArgs({
     "stop-p95": { type: "string", default: "5000" },
     probe: { type: "string", default: "0" },
     mix: { type: "string", default: "" },
+    kind: { type: "string", default: "mixed" },
+    "idle-interval": { type: "string", default: "10" },
   },
 });
 const seed = JSON.parse(readFileSync(opt.seed, "utf8"));
@@ -49,7 +51,9 @@ const options = {
   presence: opt.presence !== "off",
   rampMs: SETTLE,
   mix: opt.mix,
+  idleMs: Number(opt["idle-interval"]) * 1000,
 };
+if (!["mixed", "idle"].includes(opt.kind)) throw new Error(`unknown --kind: ${opt.kind}`);
 const editorEvery = Number(opt["editor-share"]) > 0 ? Math.max(1, Math.round(1 / Number(opt["editor-share"]))) : Infinity;
 const coeditors = Number(opt.coeditors);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -111,9 +115,14 @@ async function flush() {
   return got;
 }
 // Virtual user i: an editor every `editorEvery` users (editors of one
-// document in the same worker), the others readers/writers.
+// document in the same worker), the others readers/writers; with
+// --kind idle all of them idle tabs.
 function plan(n) {
   const lists = workers.map(() => []);
+  if (opt.kind === "idle") {
+    for (let i = 0; i < n; i++) lists[i % workers.length].push({ id: i, kind: "idle", userIndex: i % seed.users.length });
+    return lists;
+  }
   let editor = 0;
   for (let i = 0; i < n; i++) {
     const userIndex = i % seed.users.length;
@@ -195,7 +204,7 @@ function merge(results) {
     }
   return out;
 }
-const READS = new Set(["bootstrap", "page.open", "db.open", "db.query", "search", "editor.open"]);
+const READS = new Set(["bootstrap", "page.open", "db.open", "db.query", "search", "editor.open", "idle.bootstrap", "idle.page", "idle.bootstrap.304", "idle.page.304"]);
 const WRITES = new Set(["row.update", "row.create", "page.create", "comment.create", "doc.sync", "presence"]);
 const NOT_REQUESTS = new Set(["fanout", "fanout.unmatched", "sse.connect"]);
 const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
@@ -323,6 +332,21 @@ for (const vus of steps) {
   console.log(
     `| ${vus} (${step.editors} ed.) | ${step.rps.toFixed(1)} | ${f(step.reads.p50)}/${f(step.reads.p95)}/${f(step.reads.p99)} | ${f(step.writes.p50)}/${f(step.writes.p95)}/${f(step.writes.p99)} | ${f(scenarios["doc.sync"]?.p95)} | ${f(scenarios.fanout?.p95)} | ${(step.errorRate * 100).toFixed(2)} | ${f(s.cpuPercent)} | ${s.eluMean == null ? "–" : s.eluMean.toFixed(2)} | ${f(s.loopP99MaxMs)}/${f(s.loopMaxMs)} | ${s.stmtShare == null ? "–" : (s.stmtShare * 100).toFixed(0) + "%"} | ${f(s.rssMaxMB)} | ${s.walMB == null ? "–" : s.walMB.toFixed(1)} | ${step.loadavg.mean.toFixed(1)} |`,
   );
+  if (opt.kind === "idle" && cpuSeconds != null) {
+    // Idle tabs: the server's CPU per tab and the share of refreshes that
+    // were a 304.
+    const n = (k) => scenarios[k]?.ok || 0;
+    const refreshes = n("idle.bootstrap") + n("idle.bootstrap.304") + n("idle.page") + n("idle.page.304");
+    step.idle = {
+      cpuMsPerTabMinute: (cpuSeconds * 1000 * 60) / elapsed / vus,
+      cpuMsPerRefresh: refreshes ? (cpuSeconds * 1000) / refreshes : null,
+      bootstrap304: n("idle.bootstrap") + n("idle.bootstrap.304") ? n("idle.bootstrap.304") / (n("idle.bootstrap") + n("idle.bootstrap.304")) : null,
+      page304: n("idle.page") + n("idle.page.304") ? n("idle.page.304") / (n("idle.page") + n("idle.page.304")) : null,
+    };
+    console.log(
+      `  idle: ${step.idle.cpuMsPerTabMinute.toFixed(1)} ms CPU per tab and minute, ${step.idle.cpuMsPerRefresh?.toFixed(2)} ms per request, 304: bootstrap ${f(step.idle.bootstrap304 * 100)} %, page ${f(step.idle.page304 * 100)} %; p50 bootstrap ${f(scenarios["idle.bootstrap"]?.p50)}/304 ${f(scenarios["idle.bootstrap.304"]?.p50)} ms, page ${f(scenarios["idle.page"]?.p50)}/304 ${f(scenarios["idle.page.304"]?.p50)} ms`,
+    );
+  }
   writeFileSync(opt.out, JSON.stringify(report, (k, v) => (typeof v === "number" ? r1(v) : v), 1));
   // Far past the knee: further steps only pile up timeouts.
   if (step.reads.p95 > Number(opt["stop-p95"]) && step.writes.p95 > Number(opt["stop-p95"])) {

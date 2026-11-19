@@ -9,14 +9,14 @@
 // No permission model of its own: shelves are spaces, books are pages. A
 // page is listed when pageRole() lets the person read it – the same check
 // as the sidebar's (bootstrap) and the search's. With hundreds of pages per
-// shelf the person's page grants are read once (primePageAccess), not once
-// per page.
+// shelf the roles of all pages are computed at once (workspaceRoles()), not
+// page by page.
 import { all, one, sql } from "./db";
 import { HttpError } from "./auth";
 import { filterAsync } from "./each-async";
 import { lockedPageIds } from "./journal-extras";
 import { libraryBooks, libraryIndex, libraryShelves, readingNow, type LibraryBook, type LibraryPlace } from "./library";
-import { isGuest, memberRole, pageRole, primePageAccess, requireMember, spaceRole } from "./permissions";
+import { isGuest, memberRole, pageRole, requireMember, spaceRole, workspaceRoles } from "./permissions";
 import { SPACE_ORDER } from "./space-order";
 import { MARK_START, searchWorkspace, type SearchResult } from "./search-index";
 import { foldText } from "./search-store";
@@ -25,8 +25,8 @@ import type { Identity, Page, Space } from "./types";
 // The pages the person may read among `pages` (stored rows of one
 // workspace): no titles of journals behind a PIN not entered or of
 // encrypted spaces, no workflows for guests.
-async function readable(user: Identity, workspaceId: string, pages: Page[], spaces: Space[]) {
-  await primePageAccess(user, workspaceId, pages, spaces);
+async function readable(user: Identity, workspaceId: string, pages: Page[]) {
+  await workspaceRoles(user, workspaceId);
   const guest = await isGuest(user, workspaceId);
   const locked = await lockedPageIds(user, workspaceId);
   return await filterAsync(pages, async (p) => !locked.has(p.id) && !(guest && p.kind === "workflow") && !!(await pageRole(user, p)));
@@ -34,7 +34,7 @@ async function readable(user: Identity, workspaceId: string, pages: Page[], spac
 
 export async function spaceLibraryPages(user: Identity, space: Space) {
   const pages = await all<Page>("SELECT * FROM pages WHERE space_id=? AND deleted_at IS NULL AND synced=0 ORDER BY position", space.id);
-  return await readable(user, space.workspace_id, pages, [space]);
+  return await readable(user, space.workspace_id, pages);
 }
 
 const brief = (p: Page) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind, updatedAt: p.updated_at });
@@ -83,7 +83,6 @@ export async function libraryPages(user: Identity, workspaceId: string) {
       `SELECT * FROM pages WHERE space_id IN ${sql.jsonValues()} AND deleted_at IS NULL AND synced=0 ORDER BY position`,
       JSON.stringify(spaces.map((s) => s.id)),
     ),
-    spaces,
   );
   const withPages = new Set(pages.map((p) => p.space_id));
   const shown = await filterAsync(spaces, async (s) => withPages.has(s.id) || !!(await spaceRole(user, s)));

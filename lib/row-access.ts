@@ -49,8 +49,9 @@ async function restrictedGrants(user: Identity, pageId: string) {
     return restricted;
   });
 }
-// `grants` are the ones matching this person.
-function combine(
+// `grants` are the ones matching this person. Also for the roles of all
+// pages at once (lib/permissions.ts workspaceRoles()).
+export function combine(
   user: Identity,
   role: Role | null,
   row: AccessRow,

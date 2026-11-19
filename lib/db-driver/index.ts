@@ -16,7 +16,7 @@ export type { Db, Param, Row, RunResult, TxOptions, Backend } from "./types";
 export type { Dialect } from "./dialect";
 export { uniqueViolation } from "./dialect";
 
-const holder = globalThis as unknown as { flowplanAsyncDb?: Db };
+const holder = globalThis as unknown as { flowplanAsyncDb?: Db; flowplanDbEpoch?: number };
 export function database(): Db {
   if (holder.flowplanAsyncDb) return holder.flowplanAsyncDb;
   const url = postgresUrl();
@@ -97,7 +97,11 @@ function opened(inner: Db): Db {
   } as Db;
 }
 // Ends the Postgres pool (scripts, tests); SQLite stays open.
+// Counts the closings: values kept for the database open before
+// (lib/cache-versions.ts) do not count for the one opened next (a restore).
+export const databaseEpoch = () => holder.flowplanDbEpoch ?? 0;
 export async function closeDatabase() {
+  holder.flowplanDbEpoch = databaseEpoch() + 1;
   const current = holder.flowplanAsyncDb;
   holder.flowplanAsyncDb = undefined;
   await current?.close();

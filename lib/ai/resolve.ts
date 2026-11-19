@@ -165,7 +165,7 @@ export function isLocalProvider(config: { kind: string; baseUrl: string }) {
 // For the browser (bootstrap): which features work, with which provider,
 // and which pages of this workspace the AI may not read. No keys, no URLs
 // beyond the host name.
-export async function aiStatus(user: Identity, workspaceId?: string, visiblePages: { id: string }[] = []): Promise<AiStatus> {
+export async function aiStatus(user: Identity, workspaceId?: string, visiblePages: { id: string }[] = [], storedPages?: Parameters<typeof aiExcludedPages>[2]): Promise<AiStatus> {
   const features = Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, { ok: false }])) as AiStatus["features"];
   const own = await userAiSettings(user.id);
   const instance = await instanceAiSettings();
@@ -184,7 +184,7 @@ export async function aiStatus(user: Identity, workspaceId?: string, visiblePage
   const device = Object.values(deviceFeatures).some(Boolean);
   // One pass for both: what the device may not read is a part of what the
   // server's AI may not.
-  const excluded = (enabled || device) && workspaceId ? (await aiExcludedPages(user, visiblePages)) : [];
+  const excluded = (enabled || device) && workspaceId ? (await aiExcludedPages(user, visiblePages, storedPages?.workspaceId === workspaceId ? storedPages : undefined)) : [];
   const config = resolved?.ok ? resolved.config : null;
   let host = "";
   try {

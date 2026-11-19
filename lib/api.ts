@@ -1,4 +1,5 @@
 import { withReadMemo } from "./read-memo";
+import { sidebarPages, withKeptParts, workspaceMembers } from "./bootstrap-pages";
 import { noteRequestAction } from "./request-context";
 import { noteCommand } from "./metrics";
 import { shiftArea } from "./server-metrics";
@@ -178,6 +179,7 @@ import {
   snapshotAppearance,
 } from "./page-covers";
 import { documentPreview } from "./document-preview";
+import { recordPreviews } from "./record-previews";
 import {
   moveRow,
   maintainRowOrders,
@@ -240,7 +242,7 @@ import { protectionChanges } from "./share-access";
 import { adminResetTwoFactor } from "./two-factor";
 import { manageShareLink, listShareLinks } from "./share-links";
 import { recordShareCommand, recordShares } from "./record-share";
-import { relatedData, validateDatabaseRelations } from "./related-data";
+import { relatedForView, validateDatabaseRelations } from "./related-data";
 import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
 import { duplicatePageTree } from "./page-tree";
@@ -289,6 +291,7 @@ import {
   requirePage,
   spaceRole,
   pageRole,
+  workspaceRoles,
 } from "./permissions";
 import {
   createPage,
@@ -361,14 +364,16 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
   const guestHere = !!workspace.guest;
-  const pages = await filterAsync(await all<Page>(
-    // Synced blocks live inside the pages that show them, not in the tree.
-    "SELECT * FROM pages WHERE workspace_id=? AND synced=0 ORDER BY position",
-    workspace.id,
-  ), async (p) => !(guestHere && p.kind === "workflow") && !!(await pageRole(user, p)));
+  // The roles of all pages at once (#383); pageRole() below and in the
+  // parts of the answer takes them from there. The readable pages are kept
+  // across requests while nothing changed them (lib/bootstrap-pages.ts).
+  await workspaceRoles(user, workspace.id);
+  const { pages, stored: storedPages, tag: pagesTag } = await sidebarPages(user, workspace.id, guestHere);
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
   const lockedInbox = await lockedNotification();
-  return {
+  // Guests only see themselves; members see who is a guest.
+  const { members, tag: membersTag } = await workspaceMembers(user, workspace.id, guestHere);
+  return withKeptParts({
     user,
     // Signs in with e-mail and password (and passkeys) rather than SSO.
     localAccount: await isLocalAccount(user.id),
@@ -510,15 +515,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
             ],
           ) || "Ohne Titel",
       })),
-    // Guests only see themselves; members see who is a guest.
-    members: (await all(
-      `SELECT u.id,u.name,u.email,u.disabled,u.avatar,m.role,
-       EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=u.id) guest
-       FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?`,
-      workspace.id,
-    )).filter(
-      (m) => !(workspace as { guest?: number }).guest || m.id === user.id,
-    ),
+    members,
     // Behind a journal PIN not entered: only that the journal is locked.
     notifications: await mapAsync(await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
       "SELECT * FROM notifications WHERE user_id=? AND push_only IS NULL ORDER BY created_at DESC,seq DESC LIMIT 100",
@@ -526,8 +523,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE, markup: null } : n)),
     // Which AI features work here, with which provider, and which pages the
     // AI may not read (lib/ai). Never keys or addresses beyond the host.
-    ai: await aiStatus(user, workspace.id, pages),
-  };
+    ai: await aiStatus(user, workspace.id, pages, { workspaceId: workspace.id, pages: storedPages }),
+  }, { pages: pagesTag, members: membersTag });
 }
 export async function pageData(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const data = await pageContent(user, pid, options);
@@ -586,15 +583,12 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
   if (options.presence !== false) await notePresence(pid, user.id);
   if (p.kind === "database") {
     const data = await database(pid);
-    // This database's own rows are already in rows (the client adds them).
-    const relations = await relatedData(user, p, { rootRows: false });
-    relations.related[pid] = [];
-    const documentHtml = new Map(
-      (await all<{ row_id: string; html: string }>(
-        "SELECT d.row_id,d.html FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=?",
-        pid,
-      )).map((d) => [d.row_id, d.html]),
-    );
+    // This database's own rows are already in rows (the client adds them);
+    // of related databases only what the view needs (#383).
+    const relations = await relatedForView(user, p);
+    const records = await rows(pid);
+    // Kept previews of the records' texts (lib/record-previews.ts).
+    const { previews } = await recordPreviews(pid, records);
     return {
       page: p,
       images: await pageImages(pid),
@@ -612,13 +606,16 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
       readOnlyFields: await readOnlyFieldIds(user, p, data.fields),
       relationPairs: await relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
-      rows: await mapAsync(await visibleRows(user, p, await rows(pid)), async (r) => ({
-        ...r,
-        preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
-        ...(r.access !== "inherit" && await canManageRow(user, p, r)
-          ? { grants: await rowGrants(r.id) }
-          : {}),
-      })),
+      // `content` stays: saving a record document keeps the text there as
+      // well, and API callers (and the browser specs) read it.
+      rows: await mapAsync(await visibleRows(user, p, records), async (r) =>
+        // (`r` is a copy of its own already.)
+        Object.assign(r, {
+          preview: previews.get(r.id) ?? documentPreview(""),
+          ...(r.access !== "inherit" && await canManageRow(user, p, r)
+            ? { grants: await rowGrants(r.id) }
+            : {}),
+        })),
       rowTemplates: await rowTemplates(pid),
       // Groups for record permissions.
       groups:
