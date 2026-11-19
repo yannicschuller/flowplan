@@ -14,9 +14,11 @@ import { journalDayQuery, localDate as todayLocal } from "@/lib/journal-links";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { atOpensMention, typedMenu } from "@/lib/mention-trigger";
-import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
+import type { AnnotationResult } from "./image-annotator";
 import dynamic from "next/dynamic";
 // The mask editor of flashcards (image occlusion) loads when it opens.
+// Only after "Annotate image": its own chunk, out of the document page's first load.
+const ImageAnnotator = dynamic(() => import("./image-annotator").then((m) => m.ImageAnnotator), { ssr: false });
 const OcclusionEditor = dynamic(() => import("./study/occlusion-editor").then((m) => m.OcclusionEditor), { ssr: false });
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
