@@ -2037,6 +2037,35 @@ dbContext.hooks.open = async (backend) => {
   await (await import("./data-steps")).runDataSteps();
 };
 
+// How the SQLite file is used (#383, docs/architecture/database.md
+// "Pragmas"), on top of WAL, foreign keys and the busy timeout:
+// - synchronous=NORMAL: in WAL mode a commit no longer waits for the disk
+//   (fsync at checkpoints only) – SQLite's and Litestream's recommendation
+//   for WAL. A crash of the process loses nothing; a power loss or a crash
+//   of the machine can lose the last commits, never the file's consistency.
+// - cache_size: 64 MiB of page cache instead of 2 MiB (an upper bound,
+//   taken as pages are read).
+// - mmap_size: reads through 256 MiB of memory-mapped file instead of
+//   copies (address space, not memory; WAL frames still go through read()).
+// - temp_store=MEMORY: sorts and temporary indexes in memory, not in files.
+const SQLITE_TUNING =
+  "PRAGMA synchronous=NORMAL; PRAGMA cache_size=-65536; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY; PRAGMA analysis_limit=400;";
+const OPTIMIZE_EVERY = 6 * 3600_000;
+// `PRAGMA optimize` on the open connection every OPTIMIZE_EVERY ms, through
+// the asynchronous driver (it waits for a transaction that holds the
+// connection). Once per process; SQLite only.
+function scheduleOptimize() {
+  const runtime = globalThis as { flowplanOptimizeTimer?: NodeJS.Timeout };
+  if (runtime.flowplanOptimizeTimer) return;
+  runtime.flowplanOptimizeTimer = setInterval(() => {
+    if (!globalDb.flowplanDb || database().backend !== "sqlite") return;
+    void database()
+      .exec("PRAGMA optimize") // sqlite-only
+      .catch((error) => console.error("PRAGMA optimize failed", error));
+  }, OPTIMIZE_EVERY);
+  runtime.flowplanOptimizeTimer.unref();
+}
+
 export function db() {
   if (globalDb.flowplanDb) {
     migrate(globalDb.flowplanDb);
@@ -2053,6 +2082,7 @@ export function db() {
   d.exec(
     "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
   );
+  d.exec(SQLITE_TUNING);
   d.exec(`
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,subject TEXT UNIQUE NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,disabled INTEGER DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,groups_json TEXT NOT NULL,expires INTEGER NOT NULL);
@@ -2084,6 +2114,10 @@ export function db() {
  `);
   globalDb.flowplanDb = d;
   migrate(d);
+  // Statistics for the query planner (#383): the tables whose numbers are
+  // missing or outdated, with a bounded analysis, then every few hours.
+  d.exec("PRAGMA optimize=0x10002");
+  scheduleOptimize();
   // After the open, through the asynchronous helpers (also on PostgreSQL,
   // dbContext.hooks.openPostgres below): uploads whose deletion was queued,
   // the object storage queue.
