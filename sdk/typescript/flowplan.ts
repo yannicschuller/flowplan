@@ -279,6 +279,156 @@ export type Space = {
   deleted_at?: string | null;
 };
 
+export type LibraryOverview = {
+  /** Your own private library spaces */
+  personal: ({
+    id: string;
+    name: string;
+    icon?: string;
+    iconColor?: string;
+    visibility: "team" | "private";
+    /** Pages of all its books */
+    pages: number;
+    /** You may change who can see the shelf (the space's access) */
+    canManage: boolean;
+    books: ({
+      id: string;
+      title: string;
+      icon: string;
+      kind: string;
+      updatedAt?: string | null;
+      cover?: string;
+      pages: number;
+      chapters: number;
+    })[];
+  })[];
+  /** Team library spaces and private ones shared with you */
+  shared: ({
+    id: string;
+    name: string;
+    icon?: string;
+    iconColor?: string;
+    visibility: "team" | "private";
+    /** Pages of all its books */
+    pages: number;
+    /** You may change who can see the shelf (the space's access) */
+    canManage: boolean;
+    books: ({
+      id: string;
+      title: string;
+      icon: string;
+      kind: string;
+      updatedAt?: string | null;
+      cover?: string;
+      pages: number;
+      chapters: number;
+    })[];
+  })[];
+  continueReading: {
+    spaceId: string;
+    book: {
+      id?: string;
+      title?: string;
+      icon?: string;
+      kind?: string;
+      updatedAt?: string;
+    };
+    page: {
+      id?: string;
+      title?: string;
+      icon?: string;
+      kind?: string;
+      updatedAt?: string;
+    };
+    /** Place of the page in the book's reading order (1 = the book's own page) */
+    position: number;
+    total: number;
+    visitedAt: string;
+  }[];
+};
+
+export type LibrarySearch = {
+  query: string;
+  shelves: {
+    /** The space (shelves) or page */
+    id: string;
+    /** A record of a database page */
+    rowId?: string;
+    title: string;
+    icon: string;
+    /** shelf, a page kind, row, comment or file */
+    kind: string;
+    spaceId: string;
+    /** 0 book, 1 chapter, 2 and more a page further down */
+    level?: number;
+    path: {
+      id: string;
+      title: string;
+    }[];
+    snippet?: string;
+  }[];
+  books: {
+    /** The space (shelves) or page */
+    id: string;
+    /** A record of a database page */
+    rowId?: string;
+    title: string;
+    icon: string;
+    /** shelf, a page kind, row, comment or file */
+    kind: string;
+    spaceId: string;
+    /** 0 book, 1 chapter, 2 and more a page further down */
+    level?: number;
+    path: {
+      id: string;
+      title: string;
+    }[];
+    snippet?: string;
+  }[];
+  chapters: {
+    /** The space (shelves) or page */
+    id: string;
+    /** A record of a database page */
+    rowId?: string;
+    title: string;
+    icon: string;
+    /** shelf, a page kind, row, comment or file */
+    kind: string;
+    spaceId: string;
+    /** 0 book, 1 chapter, 2 and more a page further down */
+    level?: number;
+    path: {
+      id: string;
+      title: string;
+    }[];
+    snippet?: string;
+  }[];
+  pages: {
+    /** The space (shelves) or page */
+    id: string;
+    /** A record of a database page */
+    rowId?: string;
+    title: string;
+    icon: string;
+    /** shelf, a page kind, row, comment or file */
+    kind: string;
+    spaceId: string;
+    /** 0 book, 1 chapter, 2 and more a page further down */
+    level?: number;
+    path: {
+      id: string;
+      title: string;
+    }[];
+    snippet?: string;
+  }[];
+  total: {
+    shelves: number;
+    books: number;
+    chapters: number;
+    pages: number;
+  };
+};
+
 export type Library = {
   space: {
     id: string;
@@ -3567,6 +3717,16 @@ export class FlowplanClient {
   /** Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also `OR` (or `|`), `AND` (implicit), `NOT` or `-` before any term or group, parentheses (NOT binds tightest, then AND, then OR), `created_by:`/`creator:` and `updated_by:`/`editor:` (a name or `me`), `created:` and `updated:` (`2026-03`, `>2026-01-01`, `a..b`, `-7d`, `-2w`, `-3m`, `-1y`, `today`, `yesterday`, `this-week`, `last-week`, `this-month`, `last-month`, `this-year`, `last-year`), `type:document|database|whiteboard|record`, `in:"Space name"` and `title:`; such queries list the matching pages and records (without snippets) by last change. Answered with `Cache-Control: no-store`. (GET /api/search) */
   async search(query: { workspace: string; q: string; kind?: "all" | "document" | "database" | "whiteboard" | "row" | "comment" | "file"; space?: string; days?: "0" | "1"; tz?: string; sort?: "relevance" | "edited" | "created" }, options?: RequestOptions): Promise<SearchResult[]> {
     return this.json<SearchResult[]>("GET", `/api/search`, { query }, options);
+  }
+
+  /** The workspace's library — Every space shown as a library (“Show as library”, `library` of `space.update`) is a shelf; its top-level pages are the books. `personal` are your own private spaces, `shared` the team's spaces and private spaces shared with you, in the sidebar's order. A book lists its pages (its own page included), the number of chapters and its latest change; `GET /api/spaces/{spaceId}/library` has the chapters and pages. `continueReading`: per book the page you visited last, most recent first (at most 6). Only pages you may read – permissions are those of the spaces and pages (space access per person and group, “Share” of a page), there is no separate library permission; `canManage` says whether you may change who can see a shelf (`space.update`, `grant.set`). Answered with `Cache-Control: no-store`. (GET /api/library) */
+  async library(query: { workspace: string }, options?: RequestOptions): Promise<LibraryOverview> {
+    return this.json<LibraryOverview>("GET", `/api/library`, { query }, options);
+  }
+
+  /** Search the library — Searches all shelves at once and groups the hits by level: `shelves` (space names), `books` and `chapters` (titles of top-level pages and their sub-pages) and `pages` – titles further down, then text, records, comments and files of any page of a book, with a snippet (matches between U+0002 and U+0003). Titles match the words of `q` (whole and leading matches first, then the tree's order); the content comes from the full-text search (`GET /api/search`, same query language, journal days left out) limited to the shelves. `path` leads from the shelf down to the hit's parent (for a record, comment or file: to its page). At most 50 hits per group; `total` counts them all. Same permissions as the search. Answered with `Cache-Control: no-store`. (GET /api/library/search) */
+  async librarySearch(query: { workspace: string; q: string; tz?: string }, options?: RequestOptions): Promise<LibrarySearch> {
+    return this.json<LibrarySearch>("GET", `/api/library/search`, { query }, options);
   }
 
   /** A space as a library — The space's top-level pages as books, their sub-pages as chapters and the chapters' sub-pages as pages, in the order of the page tree – only pages you may read (journals behind a PIN not entered, encrypted spaces and journal days left out). `pages` counts a book's pages including the book's own page, `below` the pages under a chapter or page, `updatedAt` of a book is the latest change in it. `space.library` says whether the space is shown as a library (“Show as library” in the space's settings; `library` of `space.update`); the answer is the same either way. Answered with `Cache-Control: no-store`. (GET /api/spaces/{spaceId}/library) */

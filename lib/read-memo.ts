@@ -27,9 +27,10 @@ export async function withReadMemo<T>(fn: () => T): Promise<T> {
 
 // The remembered value for key, or compute() remembered. The key names the
 // lookup and all its inputs.
-export async function memoized<T>(key: string, compute: () => T): Promise<T> {
+// The memo in place, current (emptied after a write or MAX_AGE), or null.
+function current(): Memo | null {
   const memo = store.getStore();
-  if (!memo) return await compute();
+  if (!memo) return null;
   const generation = writeGeneration();
   const now = performance.now();
   if (memo.generation !== generation || now - memo.since > MAX_AGE) {
@@ -37,8 +38,24 @@ export async function memoized<T>(key: string, compute: () => T): Promise<T> {
     memo.generation = generation;
     memo.since = now;
   }
+  return memo;
+}
+export async function memoized<T>(key: string, compute: () => T): Promise<T> {
+  const memo = current();
+  if (!memo) return await compute();
   if (memo.values.has(key)) return memo.values.get(key) as T;
   const value = await compute();
   memo.values.set(key, value);
   return value;
+}
+
+// Remembers values looked up in bulk (one query for many pages) under the
+// keys memoized() would use for them one by one – the same lifetime, so a
+// write drops them as well. Keys already remembered keep their value.
+// Without a memo in place nothing happens: the checks then ask themselves.
+export function primeMemo(entries: Iterable<[string, unknown]>) {
+  const memo = current();
+  if (!memo) return false;
+  for (const [key, value] of entries) if (!memo.values.has(key)) memo.values.set(key, value);
+  return true;
 }

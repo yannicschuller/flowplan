@@ -31,7 +31,7 @@ import { markdownToHtml } from "./markdown-import";
 import { cleanHtml, htmlState, htmlJson } from "./document-server";
 import { rewriteSchema } from "./document-rewrite";
 import { searchWorkspace, MARK_START, MARK_END } from "./search-index";
-import { spaceLibrary } from "./library-server";
+import { libraryOverview, searchLibrary, spaceLibrary } from "./library-server";
 import { listCollections, runCollection } from "./collections";
 import { extractTasks, myTasks, taskKey } from "./doc-tasks";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
@@ -922,13 +922,29 @@ const tools: Tool[] = [
   },
   {
     name: "get_library",
-    title: "Books of a space",
+    title: "Library and books",
     description:
-      "A space as a library: its top-level pages as books (with the number of pages and the latest change), their sub-pages as chapters and the chapters' sub-pages, in the order of the page tree – only pages you can read. Works for every space; list_workspaces says which spaces are shown as a library (library: true).",
-    input: z.object({ spaceId: id("Space ID from list_workspaces") }),
+      "With spaceId: that space as a library – its top-level pages as books (with the number of pages and the latest change), their sub-pages as chapters and the chapters' sub-pages, in the order of the page tree. With workspaceId instead: the workspace's library – every space shown as a library (list_workspaces: library: true) is a shelf with its books, split into your own private shelves (personal) and shared ones, plus continueReading (the page you visited last per book). Only pages you can read; who sees a shelf or book follows the space's access and the page's sharing.",
+    input: z
+      .object({ spaceId: id("Space ID from list_workspaces").optional(), workspaceId: id("Workspace ID: all shelves of its library").optional() })
+      .refine((a) => !!a.spaceId || !!a.workspaceId, { message: "spaceId or workspaceId is required" }),
     write: false,
     thirdParty: true,
-    run: (async (user: Identity, args: { spaceId: string }) => await spaceLibrary(user, args.spaceId)) as Tool["run"],
+    run: (async (user: Identity, args: { spaceId?: string; workspaceId?: string }) =>
+      args.spaceId ? await spaceLibrary(user, args.spaceId) : await libraryOverview(user, args.workspaceId!)) as Tool["run"],
+  },
+  {
+    name: "search_library",
+    title: "Search the library",
+    description:
+      "Searches all shelves of a workspace's library (spaces shown as a library) and groups the hits by level: shelves (space names), books and chapters (titles of top-level pages and their sub-pages) and pages (titles further down, then text, records, comments and files with a snippet). Each hit has its path from the shelf down. Same query language and permissions as search; journal days are left out.",
+    input: z.object({
+      workspaceId: id("Workspace ID"),
+      query: z.string().min(1).max(500).describe("Search words and filters"),
+    }),
+    write: false,
+    thirdParty: true,
+    run: (async (user: Identity, args: { workspaceId: string; query: string }) => await searchLibrary(user, args.workspaceId, args.query)) as Tool["run"],
   },
   {
     name: "search",

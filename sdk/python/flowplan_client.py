@@ -271,6 +271,21 @@ Space = TypedDict("Space", {
     "deleted_at": Optional[str],
 }, total=False)
 
+LibraryOverview = TypedDict("LibraryOverview", {
+    "personal": Required[list[dict[str, Any]]],  # Your own private library spaces
+    "shared": Required[list[dict[str, Any]]],  # Team library spaces and private ones shared with you
+    "continueReading": Required[list[dict[str, Any]]],
+}, total=False)
+
+LibrarySearch = TypedDict("LibrarySearch", {
+    "query": Required[str],
+    "shelves": Required[list[dict[str, Any]]],
+    "books": Required[list[dict[str, Any]]],
+    "chapters": Required[list[dict[str, Any]]],
+    "pages": Required[list[dict[str, Any]]],
+    "total": Required[dict[str, Any]],
+}, total=False)
+
 Library = TypedDict("Library", {
     "space": Required[dict[str, Any]],
     "books": Required[list[dict[str, Any]]],
@@ -2060,6 +2075,16 @@ SearchQuery = TypedDict("SearchQuery", {
     "sort": Literal["relevance", "edited", "created"],  # `relevance`: the best match – text relevance (exact and prefix title matches first) plus your own visits, recent edits and favourites; `edited`/`created`: newest first
 }, total=False)
 
+LibraryQuery = TypedDict("LibraryQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+LibrarySearchQuery = TypedDict("LibrarySearchQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "q": Required[str],  # Search words and filters
+    "tz": str,  # IANA time zone for relative dates such as created:today (default UTC)
+}, total=False)
+
 SearchRecentQuery = TypedDict("SearchRecentQuery", {
     "workspace": Required[str],  # Workspace ID
     "kind": Literal["all", "document", "database", "whiteboard", "row"],  # Only this kind
@@ -2707,6 +2732,14 @@ class FlowplanClient:
     def search(self, query: "SearchQuery", headers: Optional[dict[str, str]] = None) -> list["SearchResult"]:
         """Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also `OR` (or `|`), `AND` (implicit), `NOT` or `-` before any term or group, parentheses (NOT binds tightest, then AND, then OR), `created_by:`/`creator:` and `updated_by:`/`editor:` (a name or `me`), `created:` and `updated:` (`2026-03`, `>2026-01-01`, `a..b`, `-7d`, `-2w`, `-3m`, `-1y`, `today`, `yesterday`, `this-week`, `last-week`, `this-month`, `last-month`, `this-year`, `last-year`), `type:document|database|whiteboard|record`, `in:"Space name"` and `title:`; such queries list the matching pages and records (without snippets) by last change. Answered with `Cache-Control: no-store`. (GET /api/search)"""
         return self._json("GET", "/api/search", query=dict(query) if query else None, headers=headers)
+
+    def library(self, query: "LibraryQuery", headers: Optional[dict[str, str]] = None) -> "LibraryOverview":
+        """The workspace's library — Every space shown as a library (“Show as library”, `library` of `space.update`) is a shelf; its top-level pages are the books. `personal` are your own private spaces, `shared` the team's spaces and private spaces shared with you, in the sidebar's order. A book lists its pages (its own page included), the number of chapters and its latest change; `GET /api/spaces/{spaceId}/library` has the chapters and pages. `continueReading`: per book the page you visited last, most recent first (at most 6). Only pages you may read – permissions are those of the spaces and pages (space access per person and group, “Share” of a page), there is no separate library permission; `canManage` says whether you may change who can see a shelf (`space.update`, `grant.set`). Answered with `Cache-Control: no-store`. (GET /api/library)"""
+        return self._json("GET", "/api/library", query=dict(query) if query else None, headers=headers)
+
+    def library_search(self, query: "LibrarySearchQuery", headers: Optional[dict[str, str]] = None) -> "LibrarySearch":
+        """Search the library — Searches all shelves at once and groups the hits by level: `shelves` (space names), `books` and `chapters` (titles of top-level pages and their sub-pages) and `pages` – titles further down, then text, records, comments and files of any page of a book, with a snippet (matches between U+0002 and U+0003). Titles match the words of `q` (whole and leading matches first, then the tree's order); the content comes from the full-text search (`GET /api/search`, same query language, journal days left out) limited to the shelves. `path` leads from the shelf down to the hit's parent (for a record, comment or file: to its page). At most 50 hits per group; `total` counts them all. Same permissions as the search. Answered with `Cache-Control: no-store`. (GET /api/library/search)"""
+        return self._json("GET", "/api/library/search", query=dict(query) if query else None, headers=headers)
 
     def space_library(self, space_id: str, headers: Optional[dict[str, str]] = None) -> "Library":
         """A space as a library — The space's top-level pages as books, their sub-pages as chapters and the chapters' sub-pages as pages, in the order of the page tree – only pages you may read (journals behind a PIN not entered, encrypted spaces and journal days left out). `pages` counts a book's pages including the book's own page, `below` the pages under a chapter or page, `updatedAt` of a book is the latest change in it. `space.library` says whether the space is shown as a library (“Show as library” in the space's settings; `library` of `space.update`); the answer is the same either way. Answered with `Cache-Control: no-store`. (GET /api/spaces/{spaceId}/library)"""
