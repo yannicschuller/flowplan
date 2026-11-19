@@ -1,4 +1,5 @@
 import { PublicOutline } from "./document-outline";
+import { moduleOff, pageModule } from "@/lib/instance-modules";
 import { coloredChoices } from "./option-chips";
 import { choiceChipClass } from "@/lib/option-colors";
 import { requestLocale, serverT } from "@/lib/i18n-server";
@@ -159,6 +160,17 @@ async function renderPublishedPage({
     throw e;
   }
   const { page, root, pages } = context;
+  // A page whose kind is switched off for the instance (#386): not available.
+  if (await moduleOff(pageModule(page)))
+    return (
+      <main className="public-page">
+        <a className="public-brand" href="/">
+          flowplan
+        </a>
+        <h1>{page.title || t("Ohne Titel", "Untitled")}</h1>
+        <p>{t("Diese Seite ist nicht verfügbar: Seiten dieser Art sind auf dieser Instanz ausgeschaltet.", "This page is not available: pages of this kind are switched off on this instance.")}</p>
+      </main>
+    );
   // Links between the published pages show their icons (#96).
   const linkPages = await publishedLinkPages(token, pages);
   const d = page.kind === "database" ? (await database(page.id)) : null;

@@ -14,6 +14,7 @@ import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { adminSetSettingsLevel, setUserSettingsLevel, userSettingsLevel } from "./user-settings-level";
 import { adminResetFeatureModules, applyModulesToAll, setUserFeatureModules, userFeatureModules } from "./user-feature-modules";
+import { addedOffViews, kindModule, moduleOff, moduleOffError, modulesOff, modulesOffChange, pageModule, refuseOffCommand, requireModule } from "./instance-modules";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
@@ -466,8 +467,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
         (await instanceSettings()).allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
       // The draw.io editor (DRAWIO_URL, lib/drawio.ts); null when the
-      // address set is not usable.
-      drawio: drawioConfig(),
+      // address set is not usable, or while draw.io is switched off for the
+      // instance (#386): diagrams stay as pictures, the editor does not open.
+      drawio: (await moduleOff("drawio")) ? null : drawioConfig(),
       mail: !!mailConfig(),
       legal: legalLinks(),
       // The marketplace's origin and this version (lib/marketplace-config.ts); null: off.
@@ -873,6 +875,9 @@ async function runCommand(
       403,
       "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.",
     );
+  // Features switched off for the instance (#386, lib/instance-modules.ts):
+  // their commands are refused, whoever sends them.
+  await refuseOffCommand(action);
   // Fitting FSRS parameters takes up to half a minute (#344): never inside
   // a transaction – it reads, and stores its result in one of its own.
   if (action === "study.optimize" && !withinTransaction) return await studyOptimize(user, b);
@@ -886,6 +891,9 @@ async function runCommand(
       !["page.update", "page.delete", "page.snapshot"].includes(action)
     )
       throw new HttpError(409, "Diese Seite ist gesperrt.");
+    // A page whose kind is switched off for the instance (#386) is kept
+    // read-only: renaming, moving, deleting and versions stay.
+    if (!["page.update", "page.move", "page.delete", "page.snapshot"].includes(action)) await requireModule(pageModule(p));
     return p;
   };
   // Work that must only happen once the transaction is committed.
@@ -961,6 +969,9 @@ async function runCommand(
         if (deadmanBefore !== deadman) await audit(user.id, "admin.deadman", "instance", deadman ? "on" : "off");
         // Starter content for new accounts (#381): which space, if any.
         if (previous.starterSpace !== saved.starterSpace) await audit(user.id, "admin.starter", saved.starterSpace || "instance", saved.starterSpace ? "on" : "off");
+        // Features switched off for the instance (#386): which went off, which on.
+        const offChange = modulesOffChange(previous.modulesOff, saved.modulesOff);
+        if (offChange) await audit(user.id, "admin.modulesOff", "instance", offChange);
         break;
       }
       // AI (lib/ai): administration, own settings, what the AI may read.
@@ -1552,8 +1563,10 @@ async function runCommand(
           z
             .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"])
             .parse(b.kind || "document");
-        // Workflows (#168): not when switched off on the instance.
+        // Workflows (#168): not when switched off on the instance; no kind
+        // switched off for the instance (#386).
         if (kind === "workflow") await assertWorkflowsEnabled();
+        await requireModule(kindModule(kind));
         // From a template (#213): the given title wins; without one the
         // template's name.
         const givenTitle = typeof b.title === "string" && b.title.trim() ? b.title : undefined;
@@ -2144,7 +2157,10 @@ async function runCommand(
         result = await purgeTrashedFile(user, b);
         break;
       case "page.duplicate": {
-        result = await duplicatePageTree(user, await write());
+        const source = await write();
+        // Nothing new of a kind switched off for the instance (#386).
+        await requireModule(kindModule(source.kind));
+        result = await duplicatePageTree(user, source);
         break;
       }
       case "favorite":
@@ -2580,6 +2596,10 @@ async function runCommand(
           new Set(views.map((v) => v.id)).size !== views.length
         )
           throw new HttpError(400, "Doppelte Eigenschaft oder Ansicht.");
+        // No new view of a type switched off for the instance (#386); the
+        // views that exist stay as they are.
+        const offView = addedOffViews(await modulesOff(), d.views, views);
+        if (offView) throw moduleOffError(offView);
         if (fields.filter((f) => f.type === "aliases").length > 1)
           throw new HttpError(400, "Eine Datenbank hat höchstens eine Alias-Eigenschaft.");
         // Aliases weigh like the title in the search: index the records again

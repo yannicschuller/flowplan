@@ -23,6 +23,7 @@
 // (lib/page-ink-store.ts writePageInk) – pictures only those already on
 // the notebook; adding, duplicating, deleting (into the notebook's trash)
 // and reordering sheets.
+import { kindModule, requireModule } from "./instance-modules";
 import { createHash } from "node:crypto";
 import * as Y from "yjs";
 import { z } from "zod";
@@ -52,6 +53,8 @@ export async function canvasAccess(token: string, pageId: string, kind: Kind, wr
   if (context.role !== "editor") throw new HttpError(403, "Dieser Link erlaubt keine Live-Bearbeitung.");
   const page = context.page;
   if (page.kind !== kind) throw new HttpError(400, kind === "whiteboard" ? "Kein Whiteboard." : "Kein Notizbuch.");
+  // Switched off for the instance (#386): no live editing through links.
+  await requireModule(kindModule(kind));
   if (await isEncryptedPage(page)) throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
   if (write && page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   // The pages of the link (for a shared record its included sub-pages).

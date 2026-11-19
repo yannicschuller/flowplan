@@ -15,6 +15,8 @@ process.env.APP_URL = "https://flowplan.example.test";
 delete process.env.OIDC_ISSUER;
 const { FEATURE_MODULES, HOME_WIDGET_MODULE, PAGE_KIND_MODULE, SLASH_MODULE, VIEW_MODULE, hiddenModulesOf, isFeatureModule, moduleShownIn } = await import("../lib/feature-modules");
 const client = await import("../lib/feature-modules-client");
+// The person's side of the browser's copy (without the instance's `off`, #386).
+const choice = ({ hidden, own, standard }: { hidden: unknown; own: boolean; standard: unknown }) => ({ hidden, own, standard });
 
 test("stored values are read leniently, in a fixed order", () => {
   assert.deepEqual(hiddenModulesOf(null), []);
@@ -59,7 +61,7 @@ test("the browser's copy: the first bootstrap at once, a save wins over an older
     sent.push(body);
     await new Promise<void>((resolve) => (release = resolve));
   }, ["flashcards", "whiteboards"]);
-  assert.deepEqual(client.featureModules(), { hidden: ["flashcards", "whiteboards"], own: true, standard: ["whiteboards"] });
+  assert.deepEqual(choice(client.featureModules()), { hidden: ["flashcards", "whiteboards"], own: true, standard: ["whiteboards"] });
   // A bootstrap loaded while saving is older: ignored.
   client.setFeatureModulesFromServer({ hidden: ["whiteboards"], own: false, standard: ["whiteboards"] });
   assert.deepEqual(client.hiddenModules(), ["flashcards", "whiteboards"]);
@@ -72,15 +74,15 @@ test("the browser's copy: the first bootstrap at once, a save wins over an older
   assert.deepEqual(client.hiddenModules(), ["flashcards", "whiteboards"]);
   // Back to the default.
   await client.saveFeatureModules(async () => undefined, null);
-  assert.deepEqual(client.featureModules(), { hidden: ["whiteboards"], own: false, standard: ["whiteboards"] });
+  assert.deepEqual(choice(client.featureModules()), { hidden: ["whiteboards"], own: false, standard: ["whiteboards"] });
   // The default changes (an administrator): followed without an own choice.
   client.setFeatureModulesStandard(["ai"]);
-  assert.deepEqual(client.featureModules(), { hidden: ["ai"], own: false, standard: ["ai"] });
+  assert.deepEqual(choice(client.featureModules()), { hidden: ["ai"], own: false, standard: ["ai"] });
   await client.saveFeatureModules(async () => undefined, ["journal"]);
   client.setFeatureModulesStandard(["drawio"]);
-  assert.deepEqual(client.featureModules(), { hidden: ["journal"], own: true, standard: ["drawio"] });
+  assert.deepEqual(choice(client.featureModules()), { hidden: ["journal"], own: true, standard: ["drawio"] });
   client.setFeatureModulesStandard(["drawio"], true);
-  assert.deepEqual(client.featureModules(), { hidden: ["drawio"], own: false, standard: ["drawio"] });
+  assert.deepEqual(choice(client.featureModules()), { hidden: ["drawio"], own: false, standard: ["drawio"] });
 });
 
 // ---- stored per person ----

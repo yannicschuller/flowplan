@@ -13,13 +13,23 @@ import type { Identity } from "./types";
 export async function instanceModules(): Promise<FeatureModule[]> {
   return hiddenModulesOf((await instanceSettings()).modulesDefault);
 }
-// The features that apply: the own choice, without one the instance's default.
-export function modulesState(stored: string | null | undefined, standard: FeatureModule[]): FeatureModulesBoot {
-  return stored === null || stored === undefined ? { hidden: standard, own: false, standard } : { hidden: hiddenModulesOf(stored), own: true, standard };
+// The instance's default and the features switched off for the instance
+// (#386, lib/instance-modules.ts), in one read.
+async function instanceState() {
+  const settings = await instanceSettings();
+  return { standard: hiddenModulesOf(settings.modulesDefault), off: settings.modulesOff };
+}
+// The features that apply: the own choice, without one the instance's
+// default; `off` (switched off for the instance) is hidden on top of either.
+export function modulesState(stored: string | null | undefined, standard: FeatureModule[], off: FeatureModule[] = []): FeatureModulesBoot {
+  // `off` only when there is any (most instances switch nothing off).
+  const extra = off.length ? { off } : {};
+  return stored === null || stored === undefined ? { hidden: standard, own: false, standard, ...extra } : { hidden: hiddenModulesOf(stored), own: true, standard, ...extra };
 }
 export async function userFeatureModules(userId: string): Promise<FeatureModulesBoot> {
   const stored = (await one<{ modules: string | null }>("SELECT modules FROM users WHERE id=?", userId))?.modules;
-  return modulesState(stored, await instanceModules());
+  const { standard, off } = await instanceState();
+  return modulesState(stored, standard, off);
 }
 
 // profile.modules: the features the person hides, null for the instance's
@@ -29,7 +39,8 @@ export async function setUserFeatureModules(user: Identity, input: unknown) {
   const hidden = modulesInputSchema.parse(input);
   const stored = hidden === null ? null : JSON.stringify(hiddenModulesOf(hidden));
   await run("UPDATE users SET modules=? WHERE id=?", stored, user.id);
-  return { modules: modulesState(stored, await instanceModules()) };
+  const { standard, off } = await instanceState();
+  return { modules: modulesState(stored, standard, off) };
 }
 
 // admin.modules: an administrator puts a person back on the instance's
@@ -39,7 +50,8 @@ export const adminModulesSchema = z.object({ userId: z.uuid() });
 export async function adminResetFeatureModules(input: unknown) {
   const b = adminModulesSchema.parse(input);
   if (!(await run("UPDATE users SET modules=NULL WHERE id=? AND demo_until IS NULL", b.userId)).changes) throw new HttpError(404, "Benutzer nicht gefunden.");
-  return { modules: modulesState(null, await instanceModules()) };
+  const { standard, off } = await instanceState();
+  return { modules: modulesState(null, standard, off) };
 }
 
 // admin.modulesApplyAll: every account follows the instance's default from

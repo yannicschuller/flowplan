@@ -32,8 +32,9 @@ export function moduleTexts(t: T): Record<FeatureModule, { label: string; descri
   };
 }
 
-// One switch per feature: on = shown.
-export function ModuleSwitches({ hidden, onChange, disabled }: { hidden: readonly FeatureModule[]; onChange: (next: FeatureModule[]) => void; disabled?: boolean }) {
+// One switch per feature: on = shown. `off`: switched off for the instance
+// (#386) – shown off and disabled, whatever the choice.
+export function ModuleSwitches({ hidden, onChange, disabled, off = [] }: { hidden: readonly FeatureModule[]; onChange: (next: FeatureModule[]) => void; disabled?: boolean; off?: readonly FeatureModule[] }) {
   const t = useT();
   const texts = moduleTexts(t);
   return (
@@ -42,9 +43,9 @@ export function ModuleSwitches({ hidden, onChange, disabled }: { hidden: readonl
         <SwitchRow
           key={module}
           label={texts[module].label}
-          description={texts[module].description}
-          checked={!hidden.includes(module)}
-          disabled={disabled}
+          description={off.includes(module) ? t("Von der Administration für diese Instanz ausgeschaltet.", "Switched off for this instance by the administration.") : texts[module].description}
+          checked={!hidden.includes(module) && !off.includes(module)}
+          disabled={disabled || off.includes(module)}
           onChange={(on) => onChange(on ? hidden.filter((m) => m !== module) : [...hidden, module])}
         />
       ))}
@@ -82,7 +83,7 @@ export function FeatureModulesSettings() {
           </button>
         )}
       </SettingRow>
-      <ModuleSwitches hidden={state.hidden} onChange={save} />
+      <ModuleSwitches hidden={state.hidden} onChange={save} off={state.off} />
     </SettingGroup>
   );
 }

@@ -105,6 +105,10 @@ export const instanceSettingsSchema = z.object({
   // features hidden for everyone without a choice of their own. Read
   // leniently (a feature a later version drops), saved strictly (below).
   modulesDefault: z.unknown().transform(hiddenModulesOf),
+  // "Funktionen dieser Instanz" (#386, lib/instance-modules.ts): the
+  // features switched off for everyone, on the server as well. Read and
+  // saved like modulesDefault.
+  modulesOff: z.unknown().transform(hiddenModulesOf),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -143,6 +147,7 @@ const defaults: InstanceSettings = {
   starterBy: null,
   starterKeepWelcome: true,
   modulesDefault: [],
+  modulesOff: [],
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.
@@ -161,7 +166,8 @@ export async function instanceSettings(): Promise<InstanceSettings> {
 export async function saveInstanceSettings(input: unknown) {
   // The toolbar layout strictly: only known buttons, each once, bounded.
   if (input && typeof input === "object" && "toolbarLayoutDefault" in input) toolbarLayoutSchema.parse((input as { toolbarLayoutDefault: unknown }).toolbarLayoutDefault);
-  if (input && typeof input === "object" && "modulesDefault" in input) hiddenModulesSchema.parse((input as { modulesDefault: unknown }).modulesDefault);
+  for (const key of ["modulesDefault", "modulesOff"] as const)
+    if (input && typeof input === "object" && key in input) hiddenModulesSchema.parse((input as Record<string, unknown>)[key]);
   // Fields a form does not send keep their stored value.
   const next = instanceSettingsSchema.parse({
     ...(await instanceSettings()),

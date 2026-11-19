@@ -5,6 +5,18 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Features switched off for the instance (lib/instance-modules.ts, #386);
+  // "KI ist auf dieser Instanz ausgeschaltet." is further down (AI).
+  "Lernkarten sind auf dieser Instanz ausgeschaltet.": "Flashcards are switched off on this instance.",
+  "Whiteboards sind auf dieser Instanz ausgeschaltet.": "Whiteboards are switched off on this instance.",
+  "Notizbücher sind auf dieser Instanz ausgeschaltet.": "Notebooks are switched off on this instance.",
+  "Das Journal ist auf dieser Instanz ausgeschaltet.": "The journal is switched off on this instance.",
+  "Dashboards sind auf dieser Instanz ausgeschaltet.": "Dashboards are switched off on this instance.",
+  "Workflows sind auf dieser Instanz ausgeschaltet.": "Workflows are switched off on this instance.",
+  "draw.io ist auf dieser Instanz ausgeschaltet.": "draw.io is switched off on this instance.",
+  "Diese Ansichtsart ist auf dieser Instanz ausgeschaltet.": "This view type is switched off on this instance.",
+  "Formulare sind auf dieser Instanz ausgeschaltet.": "Forms are switched off on this instance.",
+  "Besprechungen sind auf dieser Instanz ausgeschaltet.": "Meetings are switched off on this instance.",
   // AI quotas (lib/ai/quota.ts, #382).
   "Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise).": "Cost limits need prices per model (Administration → AI → Prices).",
   "Unbekannte Rolle.": "Unknown role.",

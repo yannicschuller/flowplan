@@ -14,6 +14,7 @@
 //   through the share's own paths, links outside the share removed.
 // - At most PUBLIC_STUDY_PAGE cards per answer; `next` names the offset of
 //   the next part.
+import { moduleOff } from "./instance-modules";
 import { all, one } from "./db";
 import { HttpError } from "./auth";
 import { publicFile, publicPage, publishedHtml } from "./publication";
@@ -41,7 +42,8 @@ type Deck = { page: Page; pages: Page[]; fields: Field[]; views: View[]; setting
 // mapping that reads properties the link does not show).
 export async function publicStudyDeck(token: string, pageId?: string): Promise<Deck | null> {
   const { page, pages } = await publicPage(token, pageId);
-  if (page.kind !== "database" || (await isEncryptedPage(page))) return null;
+  // Flashcards switched off for the instance (#386): no public studying.
+  if (page.kind !== "database" || (await moduleOff("flashcards")) || (await isEncryptedPage(page))) return null;
   const raw = await one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", page.id);
   if (!raw) return null;
   const fields: Field[] = JSON.parse(raw.fields);

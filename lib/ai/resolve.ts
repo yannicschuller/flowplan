@@ -17,6 +17,7 @@ import { privateAddress } from "../safe-fetch";
 import { isIP } from "node:net";
 import { mapAsync } from "../each-async";
 import { tokenAiAllowed } from "./token-access";
+import { moduleOff } from "../instance-modules";
 
 export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user" } | { ok: false; reason: AiReason };
 type Options = {
@@ -43,7 +44,8 @@ async function gate(user: Identity, feature: string, options: Options): Promise<
   // API tokens only with the "KI und Transkription" permission, while the
   // administration allows it (lib/ai/token-access.ts).
   if (user.apiScope && !tokenAiAllowed(user, instance)) return "api-token";
-  if (!instance.enabled) return "off";
+  // "KI" switched off in "Funktionen dieser Instanz" (#386) as the master switch.
+  if (!instance.enabled || (await moduleOff("ai"))) return "off";
   if (!featureAllowed(instance, feature)) return "feature-off";
   if (!(await userAllowedByPolicy(user.id, instance))) return "not-allowed";
   if (!instance.guests && await guestHere(user, options.workspaceId)) return "guest";
@@ -62,7 +64,7 @@ export async function deviceGate(user: Identity, feature: string, options: Optio
   if (!isAiFeature(feature) || !DEVICE_AI_FEATURES.includes(feature)) return "unknown-feature";
   if (user.apiScope) return "api-token";
   const instance = await instanceAiSettings();
-  if (!instance.device) return "off";
+  if (!instance.device || (await moduleOff("ai"))) return "off";
   if (!featureAllowed(instance, feature)) return "feature-off";
   if (!(await userAllowedByPolicy(user.id, instance))) return "not-allowed";
   if (!instance.guests && await guestHere(user, options.workspaceId)) return "guest";

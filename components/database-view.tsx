@@ -122,7 +122,7 @@ import {
 import RowDocument from "./row-document";
 import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { moduleShownIn, VIEW_MODULE } from "@/lib/feature-modules";
-import { useHiddenModules } from "@/lib/feature-modules-client";
+import { moduleOffHere, useHiddenModules } from "@/lib/feature-modules-client";
 import type { AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { DuplicateHint, RelatedPages } from "./related-pages";
@@ -4099,7 +4099,14 @@ export default function DatabaseView({
             )}
         </ScrollFade>
       )}
-      {view.type === "study" && (
+      {/* Flashcards or forms switched off for the instance (#386): the view
+          stays, without its content. */}
+      {(view.type === "study" || view.type === "form") && moduleOffHere(VIEW_MODULE[view.type]) && (
+        <p className="muted empty-state" role="note">
+          {view.type === "study" ? t("Lernkarten sind auf dieser Instanz ausgeschaltet. Die Karten und dein Lernstand bleiben erhalten.", "Flashcards are switched off on this instance. The cards and your progress are kept.") : t("Formulare sind auf dieser Instanz ausgeschaltet. Das Formular und seine Antworten bleiben erhalten.", "Forms are switched off on this instance. The form and its answers are kept.")}
+        </p>
+      )}
+      {view.type === "study" && !moduleOffHere("flashcards") && (
         <DatabaseStudy
           key={view.id}
           page={page}
@@ -4284,7 +4291,7 @@ export default function DatabaseView({
           }
         />
       )}
-      {view.type === "form" && (
+      {view.type === "form" && !moduleOffHere("forms") && (
         <DatabaseForm
           page={page}
           fields={fields}

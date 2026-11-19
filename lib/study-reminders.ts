@@ -21,6 +21,7 @@ import { all, id, one, run, transaction } from "./db";
 import { notificationOn } from "./notification-kinds";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { moduleOff } from "./instance-modules";
 import { DEFAULT_DAY_START, REMIND_AT, reminderMoment, studyDay, studyZone } from "./study-day";
 import type { Identity } from "./types";
 
@@ -154,14 +155,19 @@ export async function processStudyReminders(now = Date.now()) {
 }
 
 const runtime = globalThis as typeof globalThis & { flowplanStudyReminderTimer?: ReturnType<typeof setInterval> };
+// One round: the reminders sent, null when it did not run – while the
+// instance moves or flashcards are switched off for it (#386).
+export async function studyReminderRound(): Promise<number | null> {
+  if ((await workersPaused()) || (await moduleOff("flashcards"))) return null;
+  return await processStudyReminders();
+}
 export function startStudyReminderWorker(onSent: () => void) {
   if (runtime.flowplanStudyReminderTimer) return;
   const tick = () =>
     leaderDuty("study-reminders", async () => {
       // Cluster mode: the leader only (lib/cluster/leader.ts).
-      if (await workersPaused()) return;
       try {
-        if (await processStudyReminders()) onSent();
+        if (await studyReminderRound()) onSent();
       } catch (error) {
         console.error("Study reminders failed", error);
       }

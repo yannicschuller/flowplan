@@ -7,6 +7,7 @@
 import { all, one, run, transaction } from "../db";
 import { leaderDuty } from "../cluster/leader";
 import { workersPaused } from "../instance-read-only";
+import { moduleOff } from "../instance-modules";
 import { latestSlot } from "../automation-schedule";
 import { databaseSettings } from "../database-settings";
 import { doneRule, isDone } from "../database-settings-schema";
@@ -140,11 +141,17 @@ export async function processWorkflowSchedules(now = Date.now()) {
 }
 
 const holder = globalThis as { flowplanWorkflowSchedule?: ReturnType<typeof setInterval>; flowplanWorkflowRetentionDay?: string };
+// Whether the schedules' round runs: not while the instance moves, nor
+// while workflows are switched off for it (#386) – no schedule fires; once
+// on again, only the latest slot missed fires (as after a restart).
+export async function workflowSchedulesPaused() {
+  return (await workersPaused()) || (await moduleOff("workflows"));
+}
 export function startWorkflowSchedules() {
   if (holder.flowplanWorkflowSchedule) return;
   const tick = () => leaderDuty("workflow-schedules", async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (await workersPaused()) return;
+    if (await workflowSchedulesPaused()) return;
     try {
       await processWorkflowSchedules();
       await flushNotices();

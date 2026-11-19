@@ -336,7 +336,7 @@ import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
 import { setToolbarLayoutFromServer } from "@/lib/toolbar-layout-client";
 import { setSettingsLevelFromServer } from "@/lib/settings-level-client";
-import { primeFeatureModules, setFeatureModulesFromServer, useHiddenModules } from "@/lib/feature-modules-client";
+import { primeFeatureModules, setFeatureModulesFromServer, useFeatureModules } from "@/lib/feature-modules-client";
 import { moduleShownIn, PAGE_KIND_MODULE, type FeatureModule } from "@/lib/feature-modules";
 import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
@@ -728,7 +728,7 @@ export default function WorkspaceApp({
   // the interface (the AI settings still see it in `boot`).
   primeFeatureModules(boot.modules);
   useEffect(() => setFeatureModulesFromServer(boot.modules), [boot.modules]);
-  const hiddenModules = useHiddenModules();
+  const { effective: hiddenModules, off: offModules } = useFeatureModules();
   const featureShown = (module: FeatureModule | undefined) => moduleShownIn(hiddenModules, module);
   const uiAi = featureShown("ai") ? boot.ai : undefined;
   // "Animationen" (#260, lib/motion-pref.ts): data-motion on <html>, which
@@ -2288,8 +2288,12 @@ export default function WorkspaceApp({
         });
     }, 10000);
   }, [refresh]);
+  // A page whose kind is switched off for the instance (#386,
+  // lib/instance-modules.ts) opens read-only with a notice.
+  const offModule = data ? (data.page.journal_date ? "journal" : PAGE_KIND_MODULE[data.page.kind]) : undefined,
+    kindOff = !!offModule && offModules.includes(offModule);
   // May edit the open page – and does, unless it is open for reading.
-  const mayEdit = !!data && ["editor", "owner"].includes(data.role) && !data.page.locked,
+  const mayEdit = !!data && ["editor", "owner"].includes(data.role) && !data.page.locked && !kindOff,
     canRead = mayEdit && data?.page.kind === "document",
     reading = canRead && readPages.includes(data!.page.id);
   useEffect(() => setReadPages(readModeIds()), []);
@@ -5621,6 +5625,12 @@ export default function WorkspaceApp({
                       <div className="locked-notice">
                         <Lock size={14} />
                         {t("Diese Seite ist gesperrt.", "This page is locked.")}
+                      </div>
+                    )}
+                    {kindOff && (
+                      <div className="locked-notice" role="note">
+                        <Lock size={14} />
+                        {t("Auf dieser Instanz ausgeschaltet – die Seite bleibt erhalten und lässt sich nur lesen.", "Switched off on this instance – the page is kept and can only be read.")}
                       </div>
                     )}
                   </div>

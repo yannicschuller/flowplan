@@ -829,6 +829,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         anchor: "starter",
       },
       {
+        title: { de: "Funktionen dieser Instanz", en: "Features of this instance" },
+        keywords: {
+          de: "funktionen module ausschalten abschalten deaktivieren instanz server alle lernkarten whiteboards notizbücher journal dashboards workflows draw.io ki ansichten formulare besprechungen",
+          en: "features modules switch off turn off disable instance server everyone flashcards whiteboards notebooks journal dashboards workflows draw.io ai views forms meetings",
+        },
+        anchor: "modules-off",
+      },
+      {
         title: { de: "Funktionen für neue Konten", en: "Features for new accounts" },
         keywords: { de: "funktionen module ausblenden standard neue konten alle konten zuweisen lernkarten whiteboards ki", en: "features modules hide default new accounts apply all accounts flashcards whiteboards ai" },
         anchor: "modules-default",

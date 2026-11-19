@@ -8,6 +8,7 @@
 // for senders that cannot sign, with a stricter limit (10/min). The run
 // starts right away (202 with its id); a sender's Idempotency-Key or
 // X-Delivery-Id makes a delivery count once.
+import { requireModule } from "../instance-modules";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { all, audit, id, one, run, transaction } from "../db";
@@ -104,6 +105,8 @@ export function parseHookBody(contentType: string, body: Buffer): unknown {
 export type HookRequest = { token: string; headers: Headers; body: Buffer; query: URLSearchParams; now?: number };
 export async function receiveWorkflowHook(req: HookRequest): Promise<{ status: number; runId: string | null; duplicate?: boolean }> {
   const now = req.now ?? Date.now();
+  // Workflows switched off for the instance (#386): not available.
+  await requireModule("workflows");
   if (!/^[A-Za-z0-9_-]{30,100}$/.test(req.token)) refuse(undefined, "unknown token", 404);
   const hook = await one<HookRow>("SELECT * FROM workflow_hooks WHERE token_hash=?", workflowHookTokenHash(req.token));
   if (!hook) refuse(undefined, "unknown token", 404);

@@ -16,6 +16,7 @@ import { imageFileId } from "./page-appearance";
 import { fileIdOf } from "./file-cells";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
 import { localUpload, publishUpload } from "./storage";
+import { pageModule, requireModule } from "./instance-modules";
 import { databaseSettings, storeSettings } from "./database-settings";
 import { fittingStudySettings } from "./study-schema";
 
@@ -128,6 +129,8 @@ export async function copyPublication(user: Identity, input: unknown) {
     }
   };
   visit(null);
+  // Nothing of a kind switched off for the instance (#386).
+  for (const p of ordered) await requireModule(pageModule(p));
   for (const p of ordered) {
     const copy = await createPage(
       b.workspaceId,
