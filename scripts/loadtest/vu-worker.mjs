@@ -11,7 +11,11 @@
 //   with document.sync 80 ms after typing (one request in flight, the rest
 //   batched), and cursor updates (/api/presence). Editors of the same
 //   document run in the same worker, so the time from one editor's save to
-//   the update arriving at the others (fan-out) can be measured.
+//   the update arriving at the others (fan-out) can be measured;
+// - "idle" users are a signed-in tab nobody touches
+//   (components/workspace-app.tsx): every 10 s the bootstrap and the open
+//   page, each with the ETag of the last answer (If-None-Match), so most
+//   answers are a 304.
 import { parentPort, workerData } from "node:worker_threads";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
@@ -47,7 +51,7 @@ function classify(status) {
 }
 
 // One timed request; the body is read (and parsed only when asked for).
-async function request(name, path, { method = "GET", body, cookie, token, json = false, headers = {} } = {}) {
+async function request(name, path, { method = "GET", body, cookie, token, json = false, headers = {}, etag = false } = {}) {
   const start = performance.now();
   try {
     const response = await fetch(origin + path, {
@@ -64,12 +68,16 @@ async function request(name, path, { method = "GET", body, cookie, token, json =
     });
     const data = json ? await response.json().catch(() => null) : await response.arrayBuffer();
     const ms = performance.now() - start;
+    if (response.status === 304) {
+      record(`${name}.304`, ms);
+      return { ok: true, status: 304, data: null, etag: response.headers.get("etag") };
+    }
     if (!response.ok) {
       record(name, ms, classify(response.status));
       return { ok: false, status: response.status, data };
     }
     record(name, ms);
-    return { ok: true, status: response.status, data };
+    return { ok: true, status: response.status, data, ...(etag ? { etag: response.headers.get("etag") } : {}) };
   } catch (e) {
     const ms = performance.now() - start;
     record(name, ms, e?.name === "TimeoutError" || e?.name === "AbortError" ? "timeout" : "network");
@@ -312,6 +320,27 @@ async function editorLoop(vu) {
   doc.destroy();
 }
 
+// --- Idle tabs ---------------------------------------------------------------
+// A conditional GET like the web app's apiIfChanged: the ETag of the last
+// answer goes along; a 304 counts under `<name>.304`.
+async function conditional(vu, name, path) {
+  const tag = vu.tags.get(path);
+  const result = await request(name, path, { cookie: vu.user.cookie, headers: tag ? { "if-none-match": tag } : {}, etag: true });
+  if (result.etag) vu.tags.set(path, result.etag);
+  return result;
+}
+async function idleLoop(vu) {
+  vu.tags = new Map();
+  // Spread over the whole interval: tabs do not refresh in step.
+  await sleep(Math.random() * options.idleMs);
+  const pageId = pick(seed.docIds);
+  while (vu.alive) {
+    await conditional(vu, "idle.bootstrap", `/api/bootstrap?workspace=${seed.workspaceId}`);
+    await conditional(vu, "idle.page", `/api/pages/${pageId}`);
+    await sleep(options.idleMs);
+  }
+}
+
 // --- Service times ----------------------------------------------------------
 // Each request type alone, one after the other on an otherwise idle server:
 // the time the server needs for it (its cost), without queueing.
@@ -319,6 +348,13 @@ async function probe(count) {
   samples = new Map();
   const vu = { user: seed.users[0], alive: true };
   for (const [name] of MIX) for (let i = 0; i < count; i++) await action(vu, name);
+  // What an unchanged refresh costs (an idle tab): the same GET again with
+  // the ETag of the answer, answered 304.
+  vu.tags = new Map();
+  for (const [name, path] of [["bootstrap", `/api/bootstrap?workspace=${seed.workspaceId}`], ["page.open", `/api/pages/${seed.docIds[0]}`], ["db.open", `/api/pages/${seed.databaseId}`]]) {
+    await conditional(vu, name, path);
+    for (let i = 0; i < count; i++) await conditional(vu, name, path);
+  }
   // A keystroke saved on its own (document.sync) in a mid-sized document.
   const opened = await request("editor.open", `/api/pages/${seed.docIds[1]}`, { cookie: vu.user.cookie, json: true });
   const doc = new Y.Doc();
@@ -354,7 +390,7 @@ function setVUs(list) {
     if (!running.has(v.id)) {
       const vu = { ...v, user: seed.users[v.userIndex], alive: true };
       vus.push(vu);
-      void (v.kind === "editor" ? editorLoop(vu) : readerLoop(vu));
+      void (v.kind === "editor" ? editorLoop(vu) : v.kind === "idle" ? idleLoop(vu) : readerLoop(vu));
     }
 }
 parentPort.on("message", (msg) => {
