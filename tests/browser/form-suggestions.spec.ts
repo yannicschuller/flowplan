@@ -45,7 +45,7 @@ test("a text question suggests earlier answers while typing", async ({ page }, i
   await expect(anonymous).toBeChecked();
   let design = await openDesigner();
   await expect(design.getByRole("checkbox", { name: "Frühere Antworten für Artikel vorschlagen" })).toBeDisabled();
-  await expect(design.getByText(/Nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten/).first()).toBeVisible();
+  await expect(design.getByText(/nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten/).first()).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(design).toBeHidden();
 

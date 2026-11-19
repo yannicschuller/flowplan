@@ -8594,20 +8594,22 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 /* Why earlier answers are off, next to the switch, with the way to turn
    the form members-only (#385, components/database-form.tsx). */
 .form-suggest-locked {
-  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 10px;
+  margin: 4px 0 6px;
   padding: 10px 12px;
-  border-radius: 7px;
-  background: var(--blue-light);
-  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--secondary);
   font-size: 13px;
+  line-height: 1.45;
 }
 .form-suggest-locked > svg {
   flex: none;
-  color: var(--blue);
+  color: var(--secondary);
   width: 18px;
   height: 18px;
 }
@@ -8662,8 +8664,21 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 }
 .form-field-options {
   display: flex;
-  gap: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
   margin-bottom: 10px;
+}
+/* "Fragetyp" next to its selection, on the line of the two switches. */
+.form-field-options > label:not(.checkbox-label) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.form-field-options > label:not(.checkbox-label) :is(select, .fp-select) {
+  width: auto;
 }
 .form-field-design label {
   font-size: 12px;

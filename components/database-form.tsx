@@ -145,6 +145,17 @@ export default function DatabaseForm({
   // Earlier answers (#374) only in members-only forms that record who
   // answered; a form never saved is members-only by default.
   const suggestionsAllowed = formSuggestionsAllowed({ internal: form ? form.internal : 1, anonymous: form?.anonymous ?? 0 });
+  // Why earlier answers are off: one notice above the questions (#385);
+  // after switching to members only, the focus moves to the first switch
+  // that can now be used instead of getting lost with the button.
+  const lockedNoticeId = useId();
+  const designRef = useRef<HTMLFormElement>(null);
+  const [focusSuggest, setFocusSuggest] = useState(false);
+  useEffect(() => {
+    if (!focusSuggest || !suggestionsAllowed) return;
+    designRef.current?.querySelector<HTMLInputElement>(".form-suggest-design input[type=checkbox]:not(:disabled)")?.focus();
+    setFocusSuggest(false);
+  }, [focusSuggest, suggestionsAllowed]);
   const suggest = useMemo(
     () => (form?.enabled && suggestionsAllowed && Object.keys(config.suggestions || {}).length ? formSuggestSource(form.token) : undefined),
     [form?.enabled, form?.token, suggestionsAllowed, config.suggestions],
@@ -326,6 +337,7 @@ export default function DatabaseForm({
         title={t("Formular gestalten", "Design form")}
       >
         <form
+          ref={designRef}
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
@@ -361,6 +373,30 @@ export default function DatabaseForm({
             />
           </div>
           <h3>{t("Fragen", "Questions")}</h3>
+          {!suggestionsAllowed && designFields.some((f) => suggestible(f, draft) && !draft.hiddenFields.includes(f.id)) && (
+            <div className="form-suggest-locked">
+              <Info aria-hidden />
+              <p id={lockedNoticeId}>
+                {t(
+                  "Frühere Antworten vorschlagen geht nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten – sonst könnte jede Person mit dem Link fremde Antworten lesen. Feste Vorschlagslisten gehen in jedem Formular.",
+                  "Suggesting earlier answers only works in “Members only” forms without anonymous answers – otherwise anyone with the link could read other people's answers. Fixed suggestion lists work in every form.",
+                )}
+              </p>
+              {form && (
+                <button
+                  type="button"
+                  className="button compact"
+                  disabled={sharingPending !== null}
+                  onClick={async () => {
+                    await membersOnly();
+                    setFocusSuggest(true);
+                  }}
+                >
+                  {t("Auf „Nur für Mitglieder“ umstellen", "Switch to “Members only”")}
+                </button>
+              )}
+            </div>
+          )}
           {designFields.map((f, index) => (
             <Fragment key={f.id}>
             {draft.blocks.filter((b) => b.before === f.id).map((b) => (
@@ -456,8 +492,7 @@ export default function DatabaseForm({
                   field={f}
                   scope={draft.suggestions?.[f.id]}
                   allowed={suggestionsAllowed}
-                  switching={sharingPending !== null}
-                  onMembersOnly={form ? membersOnly : undefined}
+                  lockedNoticeId={lockedNoticeId}
                   lines={draft.suggestionLists?.[f.id] || []}
                   onLines={(lines) =>
                     setDraft((d) => ({ ...d, suggestionLists: { ...(d.suggestionLists || {}), [f.id]: lines } }))
@@ -578,8 +613,7 @@ function SuggestionDesign({
   field,
   scope,
   allowed,
-  switching,
-  onMembersOnly,
+  lockedNoticeId,
   lines,
   onLines,
   onChange,
@@ -587,8 +621,8 @@ function SuggestionDesign({
   field: Field;
   scope?: SuggestionScope;
   allowed: boolean;
-  switching: boolean;
-  onMembersOnly?: () => Promise<void>;
+  // The one notice above the questions that says why earlier answers are off.
+  lockedNoticeId: string;
   lines: string[];
   onLines: (lines: string[]) => void;
   onChange: (scope: SuggestionScope | undefined) => void;
@@ -599,24 +633,13 @@ function SuggestionDesign({
   const list = cleanSuggestionList(lines);
   const problem = suggestionListProblem(list);
   const [listOpen, setListOpen] = useState(list.length > 0);
-  // After switching to members only, the focus moves to the now usable
-  // switch instead of getting lost with the button.
-  const toggle = useRef<HTMLInputElement>(null),
-    [switched, setSwitched] = useState(false);
-  useEffect(() => {
-    if (switched && allowed) {
-      toggle.current?.focus();
-      setSwitched(false);
-    }
-  }, [switched, allowed]);
   return (
     <div className="form-suggest-design">
       <label className="checkbox-label">
         <input
-          ref={toggle}
           type="checkbox"
           aria-label={t(`Frühere Antworten für ${field.name} vorschlagen`, `Suggest earlier answers for ${field.name}`)}
-          aria-describedby={`${id}-earlier`}
+          aria-describedby={allowed ? `${id}-earlier` : lockedNoticeId}
           checked={on}
           disabled={!allowed}
           onChange={(e) => onChange(e.target.checked ? scope || "own" : undefined)}
@@ -636,39 +659,16 @@ function SuggestionDesign({
           </Select>
         </label>
       )}
-      {allowed ? (
-        on && (
-          <p className="muted small" id={`${id}-earlier`}>
-            {t(
-              "Ab zwei Buchstaben erscheinen bis zu acht frühere Antworten – nur aus Einträgen, die die antwortende Person sehen darf.",
-              "From two letters on, up to eight earlier answers appear – only from records the person answering may see.",
-            )}
-          </p>
-        )
-      ) : (
-        <div className="form-suggest-locked">
-          <Info aria-hidden />
-          <p id={`${id}-earlier`}>
-            {t(
-              "Nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten – sonst könnte jede Person mit dem Link fremde Antworten lesen. Eine feste Vorschlagsliste geht in jedem Formular.",
-              "Only in “Members only” forms without anonymous answers – otherwise anyone with the link could read other people's answers. A fixed list of suggestions works in every form.",
-            )}
-          </p>
-          {onMembersOnly && (
-            <button
-              type="button"
-              className="button compact"
-              disabled={switching}
-              onClick={async () => {
-                await onMembersOnly();
-                setSwitched(true);
-              }}
-            >
-              {t("Auf „Nur für Mitglieder“ umstellen", "Switch to “Members only”")}
-            </button>
-          )}
-        </div>
-      )}
+      {allowed
+        ? on && (
+            <p className="muted small" id={`${id}-earlier`}>
+              {t(
+                "Ab zwei Buchstaben erscheinen bis zu acht frühere Antworten – nur aus Einträgen, die die antwortende Person sehen darf.",
+                "From two letters on, up to eight earlier answers appear – only from records the person answering may see.",
+              )}
+            </p>
+          )
+        : null}
       {listOpen ? (
         <div className="form-suggest-list-design">
           <label htmlFor={`${id}-list`}>{t("Feste Vorschläge, einer pro Zeile", "Fixed suggestions, one per line")}</label>

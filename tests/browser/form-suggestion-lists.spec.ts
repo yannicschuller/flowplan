@@ -48,9 +48,10 @@ test("the designer explains the members-only rule and a public form suggests the
   const design = page.getByRole("dialog", { name: "Formular gestalten" });
   const toggle = design.getByRole("checkbox", { name: "Frühere Antworten für Ort vorschlagen" });
   await expect(toggle).toBeDisabled();
-  await expect(toggle).toHaveAccessibleDescription(/Nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten/);
-  const city = design.locator("section.form-field-design").filter({ has: page.getByRole("checkbox", { name: "Frühere Antworten für Ort vorschlagen" }) });
-  const switchButton = city.getByRole("button", { name: "Auf „Nur für Mitglieder“ umstellen" });
+  await expect(toggle).toHaveAccessibleDescription(/nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten/);
+  // One notice above the questions, not one per question.
+  const switchButton = design.getByRole("button", { name: "Auf „Nur für Mitglieder“ umstellen" });
+  await expect(switchButton).toHaveCount(1);
   await expect(switchButton).toBeVisible();
   await switchButton.scrollIntoViewIfNeeded();
   await shoot(page, "designer-locked");
@@ -58,7 +59,8 @@ test("the designer explains the members-only rule and a public form suggests the
   // One click: members only, no anonymous answers – the switch can be used.
   await switchButton.click();
   await expect(toggle).toBeEnabled();
-  await expect(toggle).toBeFocused();
+  // The focus lands on the first switch that can now be used ("Name").
+  await expect(design.getByRole("checkbox", { name: "Frühere Antworten für Name vorschlagen" })).toBeFocused();
   await expect(design.getByRole("button", { name: "Auf „Nur für Mitglieder“ umstellen" })).toHaveCount(0);
   const settings = await read();
   expect(settings.form.internal).toBe(1);
