@@ -21,6 +21,8 @@ import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
 import { PageIcon } from "./ui";
+import { Cube } from "@phosphor-icons/react";
+import { isModelName } from "@/lib/model-formats";
 export type CellFile = { url: string; name: string; mime: string };
 // The editor of formatted text (#126) loads with the first text cell that
 // is edited (TipTap is shared with the comment composer's chunk). Without a
@@ -547,6 +549,8 @@ function FilesInput({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={url} alt="" className="file-thumb" />
               )}
+              {/* A 3D file (#384): the link opens the 3D viewer. */}
+              {!image(url) && isModelName(fileLabel(url, names)) && <Cube size={16} aria-hidden className="file-model-icon" />}
               <a href={url} target="_blank" rel="noreferrer noopener">
                 {fileLabel(url, names)}
               </a>

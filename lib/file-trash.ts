@@ -69,7 +69,7 @@ export async function trashFiles(user: Identity, input: Record<string, unknown>)
 export async function trashUnusedFiles(user: Identity, input: Record<string, unknown>) {
   const workspaceId = uuid.parse(input.workspaceId);
   await requireMember(user, workspaceId, "editor");
-  const kind = z.enum(["all", "image", "video", "audio", "pdf", "other"]).catch("all").parse(input.kind ?? "all");
+  const kind = z.enum(["all", "image", "video", "audio", "pdf", "model", "other"]).catch("all").parse(input.kind ?? "all");
   const query = z.string().max(200).catch("").parse(input.query ?? "");
   const entries = (await mediaEntries(user, workspaceId, { kind, query })).filter((e) => e.unused && e.canDelete);
   await transaction(async () => {

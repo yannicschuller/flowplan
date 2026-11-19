@@ -3,9 +3,11 @@ import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { PdfThumbnail } from "./pdf-viewer";
+import { isModelName } from "@/lib/model-formats";
 import { Modal } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import {
+  Cube,
   File as FileIcon,
   FileAudio,
   FileVideo,
@@ -21,6 +23,7 @@ const kinds: [MediaKind, string, string][] = [
   ["video", "Videos", "Videos"],
   ["audio", "Audio", "Audio"],
   ["pdf", "PDF", "PDF"],
+  ["model", "3D", "3D"],
   ["other", "Sonstige", "Other"],
 ];
 const size = (bytes: number) =>
@@ -243,6 +246,7 @@ export function MediaLibrary({
               rel="noopener noreferrer"
               aria-label={t(`${item.name} öffnen`, `Open ${item.name}`)}
               data-pdf={item.kind === "pdf" ? item.name : undefined}
+              data-model={item.kind === "model" || isModelName(item.name) ? item.name : undefined}
             >
               {item.kind === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -253,6 +257,8 @@ export function MediaLibrary({
                 <FileAudio size={36} />
               ) : item.kind === "pdf" ? (
                 <PdfThumbnail src={item.url} width={180} />
+              ) : item.kind === "model" || isModelName(item.name) ? (
+                <Cube size={36} weight="duotone" />
               ) : (
                 <FileIcon size={36} />
               )}

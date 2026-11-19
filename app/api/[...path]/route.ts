@@ -18,7 +18,7 @@ import { hasCalDavAccess } from "@/lib/caldav";
 import { withMeetingNotes } from "@/lib/meeting-notes";
 import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
-import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
+import { requireBodySize, sanitizeFileName, stripLocation, uploadMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { notebookPeers, sheetTrash } from "@/lib/notebook-organize";
 import { storageOverview } from "@/lib/storage-overview";
@@ -1028,7 +1028,7 @@ async function handleGET(
       return NextResponse.json(
         await mediaLibrary(user, wid, {
           kind: z
-            .enum(["all", "image", "video", "audio", "pdf", "other"])
+            .enum(["all", "image", "video", "audio", "pdf", "model", "other"])
             .catch("all")
             .parse(url.searchParams.get("kind") || "all"),
           query: url.searchParams.get("q") || "",
@@ -2128,7 +2128,7 @@ async function handlePOST(
       // The type must match the content; photos lose their location.
       const raw = Buffer.from(await file.arrayBuffer());
       if (encrypted && raw.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
-      const mime = encrypted ? "application/octet-stream" : verifiedMime(file.type, raw);
+      const mime = encrypted ? "application/octet-stream" : uploadMime(file.type, file.name, raw);
       const content = encrypted ? raw : stripLocation(raw, mime);
       const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
       // Checked again with the insert (parallel uploads, lib/page-upload.ts).

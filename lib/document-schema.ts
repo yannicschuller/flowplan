@@ -984,6 +984,18 @@ export const Media = Node.create({
         title: (el as HTMLElement).getAttribute("data-title") || "",
       }),
     },
+    // A 3D or CAD file (#384) as a card that opens the 3D viewer
+    // (components/model-viewer.tsx). The address comes from the inner link,
+    // which publications, shares and archives rewrite like any link.
+    {
+      tag: "div[data-model]",
+      priority: 60,
+      getAttrs: (el) => ({
+        src: (el as HTMLElement).querySelector("a[href]")?.getAttribute("href") || (el as HTMLElement).getAttribute("data-model"),
+        kind: "model",
+        title: (el as HTMLElement).getAttribute("data-title") || "",
+      }),
+    },
   ],
   renderHTML: ({ node }) => {
     const { src, kind, title } = node.attrs;
@@ -1026,6 +1038,16 @@ export const Media = Node.create({
           ...widthStyle(node.attrs.width),
         },
         ["a", { href: src }, title || "PDF"],
+      ];
+    if (kind === "model" && /^\/api\/files\/[a-f0-9-]+$/.test(src))
+      return [
+        "div",
+        {
+          "data-model": src,
+          "data-title": title || "3D",
+          class: "model-block",
+        },
+        ["a", { href: src }, title || "3D"],
       ];
     return ["p", {}, "Medium nicht verfügbar"];
   },

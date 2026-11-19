@@ -459,7 +459,7 @@ async function writableHtml(
       delete attrs["data-mention"];
     // The same attributes publishedHtml rewrites: a PDF block (data-pdf)
     // keeps its file, also one the guest cannot see.
-    for (const attr of ["href", "src", "data-pdf"]) {
+    for (const attr of ["href", "src", "data-pdf", "data-model"]) {
       const value = attrs[attr];
       if (!value) continue;
       if (hidden.has(value)) {

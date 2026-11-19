@@ -1529,7 +1529,7 @@ CommandFileDeleteResult = TypedDict("CommandFileDeleteResult", {
 CommandFilesDeleteUnused = TypedDict("CommandFilesDeleteUnused", {
     "action": Required[Literal["files.deleteUnused"]],
     "workspaceId": Required[str],
-    "kind": Literal["all", "image", "video", "audio", "pdf", "other"],
+    "kind": Literal["all", "image", "video", "audio", "pdf", "model", "other"],
     "query": str,
 }, total=False)
 
@@ -2171,7 +2171,7 @@ TemplatesQuery = TypedDict("TemplatesQuery", {
 
 MediaQuery = TypedDict("MediaQuery", {
     "workspace": Required[str],  # Workspace ID
-    "kind": Literal["all", "image", "video", "audio", "pdf", "other"],  # Only this kind
+    "kind": Literal["all", "image", "video", "audio", "pdf", "model", "other"],  # Only this kind
     "q": str,  # Name contains
     "offset": int,  # Paging offset
     "usage": Literal["all", "unused"],  # `unused`: only files no current content refers to

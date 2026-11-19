@@ -1,0 +1,247 @@
+/* ---------- 3D viewer (#384, components/viewer3d) ----------
+   Loaded with the viewer, not with the workspace. The canvas gets its size
+   from here (the renderer never sets a style attribute); the scene is drawn
+   transparent over the stage, whose background follows the theme. */
+.viewer3d {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  animation: fade-in 0.15s ease both;
+}
+.viewer3d-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.viewer3d-bar > svg {
+  flex-shrink: 0;
+  color: var(--blue);
+}
+.viewer3d-bar strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.viewer3d-format {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.viewer3d-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.viewer3d-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.viewer3d-views {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--hover);
+}
+.viewer3d-tool,
+.viewer3d-view {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.viewer3d-view {
+  min-width: 46px;
+  height: 30px;
+  border-radius: 7px;
+  font-weight: 500;
+}
+.viewer3d-tool:hover:not(:disabled),
+.viewer3d-view:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.viewer3d-view:hover:not(:disabled) {
+  background: var(--bg);
+}
+.viewer3d-tool[aria-pressed="true"],
+.viewer3d-view[aria-pressed="true"] {
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.viewer3d-tool:disabled,
+.viewer3d-view:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.viewer3d-tool:focus-visible,
+.viewer3d-view:focus-visible,
+.viewer3d-canvas:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.viewer3d-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.viewer3d-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--surface) 40%, var(--bg)) 0%, var(--bg) 70%),
+    var(--bg);
+}
+.viewer3d-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Fingers turn, pinch and pan the model, not the page. */
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.viewer3d-canvas.is-ready {
+  opacity: 1;
+}
+.viewer3d-canvas.is-measuring {
+  cursor: crosshair;
+}
+.viewer3d-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 24px;
+  color: var(--secondary);
+  text-align: center;
+  line-height: 1.5;
+}
+.viewer3d-message.is-error {
+  color: var(--text);
+}
+.viewer3d-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 4px 14px #0000001a;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.viewer3d-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+}
+.viewer3d-info strong {
+  font-variant-numeric: tabular-nums;
+}
+.viewer3d-measurements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.viewer3d-measurements li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.viewer3d-measurements strong {
+  color: #c2410c;
+}
+[data-theme="dark"] .viewer3d-measurements strong {
+  color: #ff9a5c;
+}
+.viewer3d-measurements .icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+}
+@media (max-width: 600px) {
+  .viewer3d-format {
+    display: none;
+  }
+  /* Two rows rather than tools out of sight. */
+  .viewer3d-tools {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 6px 8px;
+  }
+  .viewer3d-divider {
+    display: none;
+  }
+  .viewer3d-tool.is-labelled span {
+    display: none;
+  }
+  .viewer3d-view {
+    min-width: 40px;
+  }
+  .viewer3d-hint {
+    white-space: normal;
+    width: max-content;
+    max-width: calc(100% - 32px);
+    text-align: center;
+  }
+}
+@media print {
+  .viewer3d {
+    display: none;
+  }
+}

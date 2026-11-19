@@ -37,6 +37,7 @@ import { siteUrl } from "@/lib/seo";
 import { LocaleProvider } from "@/components/i18n";
 import { catalogScript } from "@/lib/i18n-catalogs-server";
 import { PdfViewerHost } from "@/components/pdf-viewer";
+import { ModelViewerHost } from "@/components/model-viewer";
 import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
@@ -134,6 +135,7 @@ export default async function RootLayout({
           <NativeAppZoomLock />
           {children}
           <PdfViewerHost />
+          <ModelViewerHost />
           {/* Copy buttons on a plain-http instance (#62). */}
           <ClipboardFallback />
         </LocaleProvider>

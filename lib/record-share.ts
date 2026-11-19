@@ -244,7 +244,7 @@ export async function recordFileIds(scope: RecordScope) {
         if (fid) ids.add(fid);
       }
   cleanHtml(await recordHtml(scope), (tagName, attribs) => {
-    for (const attr of ["src", "href", "data-pdf"]) {
+    for (const attr of ["src", "href", "data-pdf", "data-model"]) {
       const m = /^\/api\/files\/([\w-]+)$/.exec(attribs[attr] || "");
       if (m) ids.add(m[1]);
     }

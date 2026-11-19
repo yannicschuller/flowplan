@@ -5,7 +5,8 @@ import { hiddenFileIds } from "./row-files";
 import { usedFileIds } from "./file-usage";
 import type { Identity, Page } from "./types";
 
-export type MediaKind = "all" | "image" | "video" | "audio" | "pdf" | "other";
+// "model": 3D and CAD files (#384, lib/model-formats.ts), stored as model/*.
+export type MediaKind = "all" | "image" | "video" | "audio" | "pdf" | "model" | "other";
 export type MediaUsage = "all" | "unused";
 export type MediaItem = {
   id: string;
@@ -33,14 +34,17 @@ const kindOf = (mime: string): MediaItem["kind"] =>
         ? "audio"
         : mime === "application/pdf"
           ? "pdf"
-          : "other";
+          : mime.startsWith("model/")
+            ? "model"
+            : "other";
 const kindSql: Record<Exclude<MediaKind, "all">, string> = {
   image: "f.mime LIKE 'image/%'",
   video: "f.mime LIKE 'video/%'",
   audio: "f.mime LIKE 'audio/%'",
   pdf: "f.mime='application/pdf'",
+  model: "f.mime LIKE 'model/%'",
   other:
-    "f.mime NOT LIKE 'image/%' AND f.mime NOT LIKE 'video/%' AND f.mime NOT LIKE 'audio/%' AND f.mime<>'application/pdf'",
+    "f.mime NOT LIKE 'image/%' AND f.mime NOT LIKE 'video/%' AND f.mime NOT LIKE 'audio/%' AND f.mime<>'application/pdf' AND f.mime NOT LIKE 'model/%'",
 };
 
 // May this person delete files of the page (move them to the trash, restore

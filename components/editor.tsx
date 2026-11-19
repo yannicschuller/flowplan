@@ -269,6 +269,7 @@ import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { blockPaste, syncDomSelection, syncDomSelectionOnKey } from "@/lib/block-paste";
 import { shortcutLetter } from "@/lib/keymap";
+import { isModelName } from "@/lib/model-formats";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
 const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
@@ -1769,6 +1770,16 @@ export default function DocumentEditor({
           .insertContent({
             type: "media",
             attrs: { src: data.url, kind: "pdf", title: file.name },
+          })
+          .run();
+      else if (isModelName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
+        // A 3D or CAD file (#384): a card that opens the 3D viewer.
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "media",
+            attrs: { src: data.url, kind: "model", title: file.name },
           })
           .run();
       else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
