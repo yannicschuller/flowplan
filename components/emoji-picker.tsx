@@ -4,6 +4,7 @@ import { Select } from "./select";
 import { useEffect, useMemo, useState } from "react";
 import { emojiGroups, loadEmojiEntries, searchEmojis, type EmojiEntry } from "@/lib/emoji-data";
 import { PageIcon } from "./ui";
+import { rememberEmojiTone } from "@/lib/emoji-trigger";
 export default function EmojiPicker({
   selected,
   onSelect,
@@ -102,6 +103,8 @@ export default function EmojiPicker({
             onChange={(e) => {
               setTone(e.target.value);
               setLimit(200);
+              // The emoji suggestions after ":" use this tone (#388).
+              if (e.target.value !== "all") rememberEmojiTone(Number(e.target.value) || null);
             }}
           >
             <option value="all">{t("Alle Hauttöne", "All skin tones")}</option>
@@ -128,7 +131,10 @@ export default function EmojiPicker({
             aria-label={`${locale === "de" ? e.label : e.labelEn} ${e.emoji}`}
             aria-pressed={selected === e.emoji}
             disabled={busy}
-            onClick={() => select(e.emoji)}
+            onClick={() => {
+              if (e.tones.length === 1) rememberEmojiTone(e.tones[0]);
+              void select(e.emoji);
+            }}
           >
             {e.emoji}
           </button>

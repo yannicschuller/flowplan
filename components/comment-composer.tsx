@@ -36,6 +36,7 @@ import {
   type CommentNode,
 } from "@/lib/comment-content";
 import { AutoLinkRules } from "@/lib/auto-link-plugin";
+import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 const Mention = Node.create({
   name: "mention",
   group: "inline",
@@ -102,6 +103,8 @@ export function CommentComposer({
   const live = useRef({ onChange, mention, choices, choice });
   live.current = { onChange, mention, choices, choice };
   const selectMention = useRef<(person: MentionChoice) => void>(() => {});
+  // Emoji suggestions after ":" (#388), as in the document.
+  const emojiSuggest = useEmojiSuggest();
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -112,6 +115,7 @@ export function CommentComposer({
       Mention,
       // The workspace's automatic links (#202), as long as comments allow them.
       AutoLinkRules.configure({ allow: safeCommentLink }),
+      emojiSuggest.extension,
       Extension.create({
         name: "commentLimits",
         addProseMirrorPlugins() {
@@ -150,6 +154,8 @@ export function CommentComposer({
       },
       handleKeyDown(view, event) {
         if (event.isComposing) return false;
+        // The emoji row after ":" (#388) takes its keys first.
+        if (emojiSuggest.controller.keyDown(view, event)) return true;
         const state = live.current;
         if (
           state.mention &&
@@ -468,6 +474,7 @@ export function CommentComposer({
         </div>
       )}
       <EditorContent editor={editor} />
+      <EmojiSuggest suggest={emojiSuggest} />
       {mention && (
         <div className="comment-mention-picker">
           {mention.manual && (
