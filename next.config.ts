@@ -80,7 +80,17 @@ const config: NextConfig = {
   ...(process.env.FLOWPLAN_DIST_DIR
     ? { distDir: process.env.FLOWPLAN_DIST_DIR }
     : {}),
-  turbopack: { root: process.cwd() },
+  turbopack: {
+    root: process.cwd(),
+    rules: {
+      // Icons only in the weights the app draws (scripts/icon-weights-loader.cjs):
+      // thin and light are never used, about a third of every icon's paths.
+      "*.es.js": {
+        condition: { path: /node_modules\/@phosphor-icons\/react\/dist\/defs\// },
+        loaders: ["./scripts/icon-weights-loader.cjs"],
+      },
+    },
+  },
   // next/image is not used: no image optimisation on the server, so sharp
   // (and its native builds for glibc and musl, @img/*) stays out.
   images: { unoptimized: true },
