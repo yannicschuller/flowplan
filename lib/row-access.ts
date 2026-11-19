@@ -26,17 +26,28 @@ export async function rowRoleResolver(
   role?: Awaited<ReturnType<typeof pageRole>>,
 ) {
   if (role === undefined) role = await pageRole(user, page);
-  const restricted = new Map<string, RowGrant[]>();
-  for (const g of await all<RowGrant & { row_id: string }>(
-    `SELECT g.row_id,g.user_id,g.group_id,g.role FROM row_grants g JOIN rows r ON r.id=g.row_id
-     WHERE r.page_id=? AND r.access!='inherit' AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?))`,
-    page.id,
-    user.id,
-    user.id,
-  ))
-    restricted.set(g.row_id, [...(restricted.get(g.row_id) || []), g]);
+  const restricted = await restrictedGrants(user, page.id);
   return (row: AccessRow): Role | null =>
     combine(user, role, row, restricted.get(row.id) || []);
+}
+// The record grants of a database that match this person, by record (only
+// records with their own access). Remembered within a request until the
+// next write (lib/read-memo.ts): the sidebar, the search and the backlinks
+// ask once per database, not once per record or sub-page (#383). Never
+// changed once built.
+async function restrictedGrants(user: Identity, pageId: string) {
+  return await memoized(`row-grants:${pageId}:${user.id}`, async () => {
+    const restricted = new Map<string, RowGrant[]>();
+    for (const g of await all<RowGrant & { row_id: string }>(
+      `SELECT g.row_id,g.user_id,g.group_id,g.role FROM row_grants g JOIN rows r ON r.id=g.row_id
+       WHERE r.page_id=? AND r.access<>'inherit' AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?))`,
+      pageId,
+      user.id,
+      user.id,
+    ))
+      restricted.set(g.row_id, [...(restricted.get(g.row_id) || []), g]);
+    return restricted;
+  });
 }
 // `grants` are the ones matching this person.
 function combine(
@@ -129,7 +140,8 @@ export async function hiddenRowIds(user: Identity, page: Page) {
   const resolve = await rowRoleResolver(user, page);
   return new Set(
     (await all<AccessRow>(
-      "SELECT id,access,created_by FROM rows WHERE page_id=? AND access='private'",
+      // (access<>'inherit' as well: the partial index rows_restricted.)
+      "SELECT id,access,created_by FROM rows WHERE page_id=? AND access<>'inherit' AND access='private'",
       page.id,
     ))
       .filter((r) => !resolve(r))

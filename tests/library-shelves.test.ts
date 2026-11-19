@@ -20,7 +20,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { withReadMemo } = await import("../lib/read-memo");
 const { startRuntimeMetrics } = await import("../lib/runtime-metrics");
 const { libraryOverview, searchLibrary, spaceLibrary, LIBRARY_GROUP_LIMIT } = await import("../lib/library-server");
-const { refreshSearchIndex } = await import("../lib/search-index");
+const { refreshSearchIndex, drainSearchIndex } = await import("../lib/search-index");
 const { libraryIndex, libraryShelves, readingNow, LIBRARY_HOME } = await import("../lib/library");
 const { stepOf } = await import("../lib/history-nav");
 startRuntimeMetrics();
@@ -264,6 +264,8 @@ test("a library of 1,000 pages on several shelves: bounded statements, fast", as
   }
   await act(owner, { action: "grant.set", resourceId: shared, userId: reader.id, role: "viewer" });
   await refreshSearchIndex();
+  // All 1,000 pages indexed: a search drains only a few entries itself (#383).
+  await drainSearchIndex();
   const measure = async <T,>(fn: () => Promise<T>) => {
     const before = statements();
     const start = performance.now();

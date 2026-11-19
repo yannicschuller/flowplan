@@ -54,9 +54,9 @@ test("a search refreshes a large backlog in part and the drain finishes it", asy
     rows: Array.from({ length: 1500 }, (_, i) => ({ title: `Lieferung ${i}`, note: i === 1499 ? "Zollpapiere" : "" })),
   });
   assert.equal(await backlog(), 1500);
-  // Up to 1000 entries right away; the rest follows in the background.
+  // Up to 200 entries right away (#383); the rest follows in the background.
   await searchWorkspace(owner, wid, "Lieferung");
-  assert.equal(await backlog(), 500);
+  assert.equal(await backlog(), 1300);
   await drainSearchIndex();
   assert.equal(await backlog(), 0);
   assert.equal(Number((await one<{ n: number }>("SELECT count(*) n FROM search_index WHERE page_id=? AND row_id<>''", db))?.n), 1500);

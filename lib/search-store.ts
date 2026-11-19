@@ -148,6 +148,11 @@ export async function removePages(pageIds: string[]) {
 // The last key of an ORDER BY over search_index (alias s), for equal
 // ranks: the order the entries went in, as FTS5 returns them on SQLite.
 export const entryOrder = () => (sql.name === "sqlite" ? "" : ",s.id");
+// The key of an entry (alias `s`), and a condition for the entries whose
+// keys are in a JSON array parameter.
+export const entryId = () => (sql.name === "sqlite" ? "s.rowid" : "s.id");
+export const entryIdIn = () =>
+  sql.name === "sqlite" ? `s.rowid IN ${sql.jsonValues()}` : "s.id IN (SELECT (json_array_elements_text(?::json))::bigint)";
 
 // Entries (alias `s` of search_index) that contain one of the phrases
 // (any of them; three characters or more each). Build the query as

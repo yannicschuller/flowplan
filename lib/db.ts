@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 107;
+export const SCHEMA_VERSION = 108;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1590,13 +1590,50 @@ function migrate(d: DatabaseSync) {
   // schema number stays.
   if (!(d.prepare("PRAGMA table_info(study_prefs)").all() as { name: string }[]).some((c) => c.name === "group_params"))
     d.exec("ALTER TABLE study_prefs ADD COLUMN group_params TEXT");
+  // Schema 106 – indexes for the permission checks and the page tree
+  // (#383): the groups and workspaces of a person (every grant check asks
+  // for the groups, the sidebar for the memberships), the pages below a
+  // page, and the records with their own access (most records inherit, so
+  // this index stays small; the checks of record permissions read only
+  // these). Indexes only – an older version uses them as well – but the
+  // number tells PostgreSQL to add them (lib/db-driver/pg-current.ts).
+  d.exec(`CREATE INDEX IF NOT EXISTS group_members_user ON group_members(user_id);
+    CREATE INDEX IF NOT EXISTS members_user ON members(user_id);
+    CREATE INDEX IF NOT EXISTS pages_parent ON pages(parent_id);
+    CREATE INDEX IF NOT EXISTS rows_restricted ON rows(page_id) WHERE access<>'inherit';`);
   // Schema 107 – AI quotas (#382, lib/ai/quota.ts).
   migrateAiQuotas(d);
+  // Schema 108 – the links in the text of pages and records (#383,
+  // lib/text-links.ts) for the backlinks, instead of a LIKE over all HTML
+  // on every page GET. The triggers mark changed sources (also when an
+  // older version writes); the data step "text-links-107" marks all once.
+  migrateTextLinks(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 108 – text links (lib/text-links.ts): text_links per source (a
+// page's document: page_id, row_id ''; a record's text: page_id '',
+// row_id) and target ('p:<page id>', 'r:<record id>'), text_link_dirty the
+// sources to read again. No foreign keys (page_id or row_id is ''): the
+// delete triggers drop the links of a source that is gone.
+function migrateTextLinks(d: DatabaseSync) {
+  const mark = (page: string, row: string) =>
+    `INSERT INTO text_link_dirty(page_id,row_id) SELECT ${page},${row} WHERE NOT EXISTS(SELECT 1 FROM text_link_dirty WHERE page_id=${page} AND row_id=${row});`;
+  d.exec(`CREATE TABLE IF NOT EXISTS text_links(page_id TEXT NOT NULL DEFAULT '',row_id TEXT NOT NULL DEFAULT '',target TEXT NOT NULL,PRIMARY KEY(target,page_id,row_id));
+    CREATE INDEX IF NOT EXISTS text_links_source ON text_links(page_id,row_id);
+    CREATE TABLE IF NOT EXISTS text_link_dirty(page_id TEXT NOT NULL DEFAULT '',row_id TEXT NOT NULL DEFAULT '',PRIMARY KEY(page_id,row_id));
+    CREATE TRIGGER IF NOT EXISTS text_links_document_insert AFTER INSERT ON documents BEGIN ${mark("NEW.page_id", "''")} END;
+    CREATE TRIGGER IF NOT EXISTS text_links_document_update AFTER UPDATE OF html ON documents WHEN NEW.html IS NOT OLD.html BEGIN ${mark("NEW.page_id", "''")} END;
+    CREATE TRIGGER IF NOT EXISTS text_links_document_delete AFTER DELETE ON documents BEGIN DELETE FROM text_links WHERE page_id=OLD.page_id AND row_id=''; DELETE FROM text_link_dirty WHERE page_id=OLD.page_id AND row_id=''; END;
+    CREATE TRIGGER IF NOT EXISTS text_links_row_insert AFTER INSERT ON rows WHEN COALESCE(NEW.content,'')<>'' BEGIN ${mark("''", "NEW.id")} END;
+    CREATE TRIGGER IF NOT EXISTS text_links_row_update AFTER UPDATE OF content ON rows WHEN NEW.content IS NOT OLD.content BEGIN ${mark("''", "NEW.id")} END;
+    CREATE TRIGGER IF NOT EXISTS text_links_row_delete AFTER DELETE ON rows BEGIN DELETE FROM text_links WHERE page_id='' AND row_id=OLD.id; DELETE FROM text_link_dirty WHERE page_id='' AND row_id=OLD.id; END;
+    CREATE TRIGGER IF NOT EXISTS text_links_row_document_insert AFTER INSERT ON row_documents BEGIN ${mark("''", "NEW.row_id")} END;
+    CREATE TRIGGER IF NOT EXISTS text_links_row_document_update AFTER UPDATE OF html ON row_documents WHEN NEW.html IS NOT OLD.html BEGIN ${mark("''", "NEW.row_id")} END;
+    CREATE TRIGGER IF NOT EXISTS text_links_row_document_delete AFTER DELETE ON row_documents BEGIN ${mark("''", "OLD.row_id")} END;`);
 }
 // Flashcards (docs/specs/flashcards.md §3.3, lib/study.ts):
 // - study_cards: the derived index of cards (record × sub: '' the card, 'r'
@@ -2058,6 +2095,35 @@ dbContext.hooks.open = async (backend) => {
   await (await import("./data-steps")).runDataSteps();
 };
 
+// How the SQLite file is used (#383, docs/architecture/database.md
+// "Pragmas"), on top of WAL, foreign keys and the busy timeout:
+// - synchronous=NORMAL: in WAL mode a commit no longer waits for the disk
+//   (fsync at checkpoints only) – SQLite's and Litestream's recommendation
+//   for WAL. A crash of the process loses nothing; a power loss or a crash
+//   of the machine can lose the last commits, never the file's consistency.
+// - cache_size: 64 MiB of page cache instead of 2 MiB (an upper bound,
+//   taken as pages are read).
+// - mmap_size: reads through 256 MiB of memory-mapped file instead of
+//   copies (address space, not memory; WAL frames still go through read()).
+// - temp_store=MEMORY: sorts and temporary indexes in memory, not in files.
+const SQLITE_TUNING =
+  "PRAGMA synchronous=NORMAL; PRAGMA cache_size=-65536; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY; PRAGMA analysis_limit=400;";
+const OPTIMIZE_EVERY = 6 * 3600_000;
+// `PRAGMA optimize` on the open connection every OPTIMIZE_EVERY ms, through
+// the asynchronous driver (it waits for a transaction that holds the
+// connection). Once per process; SQLite only.
+function scheduleOptimize() {
+  const runtime = globalThis as { flowplanOptimizeTimer?: NodeJS.Timeout };
+  if (runtime.flowplanOptimizeTimer) return;
+  runtime.flowplanOptimizeTimer = setInterval(() => {
+    if (!globalDb.flowplanDb || database().backend !== "sqlite") return;
+    void database()
+      .exec("PRAGMA optimize") // sqlite-only
+      .catch((error) => console.error("PRAGMA optimize failed", error));
+  }, OPTIMIZE_EVERY);
+  runtime.flowplanOptimizeTimer.unref();
+}
+
 export function db() {
   if (globalDb.flowplanDb) {
     migrate(globalDb.flowplanDb);
@@ -2074,6 +2140,7 @@ export function db() {
   d.exec(
     "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
   );
+  d.exec(SQLITE_TUNING);
   d.exec(`
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,subject TEXT UNIQUE NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,disabled INTEGER DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,groups_json TEXT NOT NULL,expires INTEGER NOT NULL);
@@ -2105,6 +2172,10 @@ export function db() {
  `);
   globalDb.flowplanDb = d;
   migrate(d);
+  // Statistics for the query planner (#383): the tables whose numbers are
+  // missing or outdated, with a bounded analysis, then every few hours.
+  d.exec("PRAGMA optimize=0x10002");
+  scheduleOptimize();
   // After the open, through the asynchronous helpers (also on PostgreSQL,
   // dbContext.hooks.openPostgres below): uploads whose deletion was queued,
   // the object storage queue.
@@ -2203,6 +2274,12 @@ function noteWrite() {
 // Schema changes through run() (tests, one-time steps) outdate cached statements.
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 
+// node:sqlite returns each row as a fresh object without a prototype; it
+// gets Object's prototype in place (#383), as the copy `{ ...row }` did
+// before at more than twice the cost: plain objects for the rest of the code
+// (React's serialisation to the client, deepStrictEqual, hasOwnProperty),
+// still one object per row and call, owned by the caller.
+const asPlain = (row: object) => Object.setPrototypeOf(row, Object.prototype) as object;
 // The synchronous SQLite statements behind the asynchronous SQLite driver
 // (lib/db-driver/sqlite.ts) – only for it and SQLite-only code (the
 // migrations, the file checks). Everything else uses one/all/run below.
@@ -2213,13 +2290,14 @@ export function sqliteOne<T = Record<string, unknown>>(sql: string, ...params: P
   const row = cached.statement.get(...params);
   if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
-  return row ? ({ ...row } as T) : undefined;
+  return row ? (asPlain(row) as T) : undefined;
 }
 export function sqliteAll<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
-  const rows = cached.statement.all(...params).map((row) => ({ ...row })) as T[];
+  const rows = cached.statement.all(...params) as T[];
+  for (const row of rows) asPlain(row as object);
   if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return rows;

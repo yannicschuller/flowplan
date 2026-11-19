@@ -8,6 +8,7 @@
 // lib/db.ts catch what a forgotten code path might still try.
 import { z } from "zod";
 import { all, audit, one, run, nowText, lockMembership } from "./db";
+import { memoized } from "./read-memo";
 import { HttpError } from "./auth";
 import { memberRole, pageRole, requirePage, spaceRole } from "./permissions";
 import { canManageSpace } from "./workspace-lifecycle";
@@ -64,8 +65,12 @@ const titleCipher = z
 export type SpaceFlags = Space & { encrypted?: number; key_version?: number; encrypt_titles?: number; rotate_pending?: number };
 export async function encryptedSpace(spaceId: string | null | undefined): Promise<SpaceFlags | null> {
   if (!spaceId) return null;
-  const space = await one<SpaceFlags>("SELECT * FROM spaces WHERE id=?", spaceId);
-  return space?.encrypted ? space : null;
+  // Remembered within a request until the next write (lib/read-memo.ts):
+  // the sidebar asks for every page it shows (#383).
+  return await memoized(`encrypted-space:${spaceId}`, async () => {
+    const space = await one<SpaceFlags>("SELECT * FROM spaces WHERE id=?", spaceId);
+    return space?.encrypted ? space : null;
+  });
 }
 export async function isEncryptedPage(page: Pick<Page, "space_id"> | null | undefined) {
   return !!page && !!(await encryptedSpace(page.space_id));

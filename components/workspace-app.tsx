@@ -345,6 +345,7 @@ import { setStartScreenLocal } from "@/lib/start-screen-client";
 import { fullWidthPagesOf, showsFullWidth } from "@/lib/page-width-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
+import { visiblePoll } from "@/lib/visible-poll";
 import { WhatsNew } from "./whats-new";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
@@ -2276,8 +2277,9 @@ export default function WorkspaceApp({
   }, [boot.user.id]);
   useEffect(() => {
     let polling = false;
-    const timer = setInterval(() => {
-      if (!navigator.onLine || polling) return;
+    // Paused while the tab is hidden, made up for when it is shown (#383).
+    return visiblePoll(() => {
+      if (polling) return;
       polling = true;
       void refresh()
         .catch(() => {})
@@ -2285,7 +2287,6 @@ export default function WorkspaceApp({
           polling = false;
         });
     }, 10000);
-    return () => clearInterval(timer);
   }, [refresh]);
   // May edit the open page – and does, unless it is open for reading.
   const mayEdit = !!data && ["editor", "owner"].includes(data.role) && !data.page.locked,

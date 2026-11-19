@@ -1382,6 +1382,9 @@ export default function DocumentEditor({
         }
         onStatus(dirty.current ? "unsaved" : "saved");
       } else {
+        // A hidden tab does not check (#383): the check follows once it is
+        // shown again (visibilitychange below). Saves still go out.
+        if (document.visibilityState === "hidden") return;
         // With the live channel open, changes arrive by push; the full
         // check (new document version, missed updates) runs less often.
         if (live.current && Date.now() - lastPoll.current < 20_000) return;
@@ -1595,7 +1598,11 @@ export default function DocumentEditor({
   ]);
   useEffect(() => {
     const interval = setInterval(sync, 1800);
+    const shown = () => {
+      if (document.visibilityState !== "hidden") void sync();
+    };
     window.addEventListener("online", sync);
+    document.addEventListener("visibilitychange", shown);
     const unload = (e: BeforeUnloadEvent) => {
       if (dirty.current) {
         persistOnLeave();
@@ -1606,6 +1613,7 @@ export default function DocumentEditor({
     return () => {
       clearInterval(interval);
       window.removeEventListener("online", sync);
+      document.removeEventListener("visibilitychange", shown);
       window.removeEventListener("beforeunload", unload);
       void sync();
     };
