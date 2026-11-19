@@ -10,6 +10,7 @@ import { cellText } from "./cell-text";
 import {
   formConfigSchema,
   orderedFormFields,
+  suggestionList,
   validateFormValues,
   type FormConfig,
 } from "./form-settings";
@@ -73,7 +74,14 @@ export async function getForm(token: string, user: Identity | null) {
   );
   return {
     ...f,
-    config,
+    // Fixed suggestions (#385) only for questions this form asks.
+    config: {
+      ...config,
+      suggestionLists: Object.fromEntries(questions.flatMap((q) => {
+        const list = suggestionList(q, config);
+        return list ? [[q.id, list]] : [];
+      })),
+    },
     title: config.title || f.title,
     fields: questions,
     // Choices for people and relations, only for signed-in members; guests

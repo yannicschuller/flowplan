@@ -5,6 +5,7 @@ import { newTimeRefused, validDateValue } from "./date-values";
 import type { Field } from "./types";
 import { isQuestion, surveyLogic, surveySchema, validateSurvey } from "./survey";
 import { conditionSchema, evaluateLogic, validRedirect, type Condition, type LogicItem } from "./form-logic";
+import { cleanSuggestionList, SUGGESTION_LIST_ITEM_MAX, SUGGESTION_LIST_MAX } from "./form-suggestion-list";
 // Text blocks and page breaks between the questions of an ordinary form:
 // placed before a question (`before`, a property id) or at the end ("").
 export const formBlockSchema = z.object({
@@ -64,6 +65,25 @@ export const formConfigSchema = z.object({
   // signed-in members that record who answered offer them
   // (lib/form-suggestions.ts); a question without an entry gets none.
   suggestions: z.record(z.string(), z.enum(["own", "all"])).default({}),
+  // Fixed suggestions per text question (#385, lib/form-suggestion-list.ts):
+  // the author's own entries, offered in every form, public ones too.
+  // Trimmed and without duplicates; questions without entries drop out.
+  suggestionLists: z
+    .record(
+      z.string().max(100),
+      z
+        .array(z.string().max(1000))
+        .max(1000)
+        .transform(cleanSuggestionList)
+        .pipe(
+          z
+            .array(z.string().max(SUGGESTION_LIST_ITEM_MAX, `Vorschläge dürfen höchstens ${SUGGESTION_LIST_ITEM_MAX} Zeichen lang sein.`))
+            .max(SUGGESTION_LIST_MAX, `Höchstens ${SUGGESTION_LIST_MAX} Vorschläge pro Frage.`),
+        ),
+    )
+    .refine((lists) => Object.keys(lists).length <= 80, "Zu viele Vorschlagslisten.")
+    .transform((lists) => Object.fromEntries(Object.entries(lists).filter(([, list]) => list.length)))
+    .default({}),
   ...formFollowUpSchema.shape,
   // Survey mode (lib/survey.ts): question types, pages, conditions …
   survey: surveySchema.optional(),
@@ -112,6 +132,11 @@ export const suggestible = (field: Field, config: FormConfig) =>
 // The scope of a question's suggestions, if they are on and fit it.
 export function suggestionScope(field: Field, config: FormConfig): SuggestionScope | undefined {
   return suggestible(field, config) ? config.suggestions?.[field.id] : undefined;
+}
+// A question's fixed suggestions (#385), if it can have them.
+export function suggestionList(field: Field, config: FormConfig): string[] | undefined {
+  const list = suggestible(field, config) ? config.suggestionLists?.[field.id] : undefined;
+  return list?.length ? list : undefined;
 }
 // Server-side suggestions read other answers, so only forms restricted to
 // signed-in members that record who answered offer them.

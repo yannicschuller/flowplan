@@ -1,13 +1,19 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { formSuggestSource } from "./form-suggest-input";
-import { Article, ChartBar, Copy, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
+import { Article, ChartBar, Copy, Info, ListBullets, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
 import { Modal, requireConnection } from "./ui";
 import { FormFlow, FormThanks } from "./form-flow";
 import { FormConditionEditor, FormFollowUpSettings, fieldTarget, type ConditionTarget } from "./form-logic-editor";
 import { validRedirect } from "@/lib/form-logic";
+import {
+  cleanSuggestionList,
+  SUGGESTION_LIST_ITEM_MAX,
+  SUGGESTION_LIST_MAX,
+  suggestionListProblem,
+} from "@/lib/form-suggestion-list";
 import {
   formConfigSchema,
   formRedirect,
@@ -79,6 +85,16 @@ export default function DatabaseForm({
       setSharingPending(null);
     }
   }
+  // Earlier answers need a members-only form that records who answered
+  // (#385): one step from the designer, which stays open.
+  async function membersOnly() {
+    setSharingPending({ internal: true, anonymous: false });
+    try {
+      await act({ action: "form.update", internal: true, anonymous: false });
+    } finally {
+      setSharingPending(null);
+    }
+  }
   // Properties a customer may see: no people, relations or files.
   const portalCandidates = fields.filter(
     (f) => !["person", "relation", "created_by", "updated_by", "files"].includes(f.type),
@@ -124,6 +140,8 @@ export default function DatabaseForm({
   const updateBlock = (id: string, patch: Partial<FormBlock>) => setDraft({ ...draft, blocks: draft.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
   const removeBlock = (id: string) => setDraft({ ...draft, blocks: draft.blocks.filter((b) => b.id !== id) });
   const survey = config.survey?.enabled ? config.survey : null;
+  // Fixed suggestion lists (#385): cleaned on saving; too long ones block it.
+  const listsInvalid = Object.values(draft.suggestionLists || {}).some((lines) => !!suggestionListProblem(cleanSuggestionList(lines)));
   // Earlier answers (#374) only in members-only forms that record who
   // answered; a form never saved is members-only by default.
   const suggestionsAllowed = formSuggestionsAllowed({ internal: form ? form.internal : 1, anonymous: form?.anonymous ?? 0 });
@@ -312,7 +330,12 @@ export default function DatabaseForm({
             e.preventDefault();
             setBusy(true);
             try {
-              if (await act({ action: "form.update", config: draft }))
+              const suggestionLists = Object.fromEntries(
+                Object.entries(draft.suggestionLists || {})
+                  .map(([id, lines]) => [id, cleanSuggestionList(lines)] as const)
+                  .filter(([, list]) => list.length),
+              );
+              if (await act({ action: "form.update", config: { ...draft, suggestionLists } }))
                 setDesign(false);
             } finally {
               setBusy(false);
@@ -433,6 +456,12 @@ export default function DatabaseForm({
                   field={f}
                   scope={draft.suggestions?.[f.id]}
                   allowed={suggestionsAllowed}
+                  switching={sharingPending !== null}
+                  onMembersOnly={form ? membersOnly : undefined}
+                  lines={draft.suggestionLists?.[f.id] || []}
+                  onLines={(lines) =>
+                    setDraft((d) => ({ ...d, suggestionLists: { ...(d.suggestionLists || {}), [f.id]: lines } }))
+                  }
                   onChange={(scope) => {
                     const suggestions = { ...(draft.suggestions || {}) };
                     if (scope) suggestions[f.id] = scope;
@@ -530,7 +559,7 @@ export default function DatabaseForm({
             anonymous={!!form?.anonymous}
             onChange={(patch) => setDraft({ ...draft, ...patch })}
           />
-          <button className="button primary" disabled={busy || !validRedirect(draft.redirectUrl)}>
+          <button className="button primary" disabled={busy || listsInvalid || !validRedirect(draft.redirectUrl)}>
             {busy ? t("Wird gespeichert …", "Saving …") : t("Formular speichern", "Save form")}
           </button>
         </form>
@@ -539,29 +568,55 @@ export default function DatabaseForm({
   );
 }
 
-// Earlier answers as suggestions for a text question (#374): off by
-// default; the person's own answers or all they may read. Forms open to
-// anyone with the link (or with anonymous answers) offer none from the
-// server – only the browser's own history of this device.
+// Suggestions for a text question. A fixed list (#385) the author types
+// in works in every form. Earlier answers (#374) are off by default: the
+// person's own answers or all they may read, and only in members-only
+// forms that record who answered – otherwise anyone with the link could
+// read other people's answers. Then the reason stands next to the switch,
+// with a button that makes the form members-only.
 function SuggestionDesign({
   field,
   scope,
   allowed,
+  switching,
+  onMembersOnly,
+  lines,
+  onLines,
   onChange,
 }: {
   field: Field;
   scope?: SuggestionScope;
   allowed: boolean;
+  switching: boolean;
+  onMembersOnly?: () => Promise<void>;
+  lines: string[];
+  onLines: (lines: string[]) => void;
   onChange: (scope: SuggestionScope | undefined) => void;
 }) {
   const t = useT();
+  const id = useId();
   const on = allowed && !!scope;
+  const list = cleanSuggestionList(lines);
+  const problem = suggestionListProblem(list);
+  const [listOpen, setListOpen] = useState(list.length > 0);
+  // After switching to members only, the focus moves to the now usable
+  // switch instead of getting lost with the button.
+  const toggle = useRef<HTMLInputElement>(null),
+    [switched, setSwitched] = useState(false);
+  useEffect(() => {
+    if (switched && allowed) {
+      toggle.current?.focus();
+      setSwitched(false);
+    }
+  }, [switched, allowed]);
   return (
     <div className="form-suggest-design">
       <label className="checkbox-label">
         <input
+          ref={toggle}
           type="checkbox"
           aria-label={t(`Frühere Antworten für ${field.name} vorschlagen`, `Suggest earlier answers for ${field.name}`)}
+          aria-describedby={`${id}-earlier`}
           checked={on}
           disabled={!allowed}
           onChange={(e) => onChange(e.target.checked ? scope || "own" : undefined)}
@@ -581,18 +636,66 @@ function SuggestionDesign({
           </Select>
         </label>
       )}
-      {(on || !allowed) && (
-      <p className="muted small">
-        {allowed
-          ? t(
+      {allowed ? (
+        on && (
+          <p className="muted small" id={`${id}-earlier`}>
+            {t(
               "Ab zwei Buchstaben erscheinen bis zu acht frühere Antworten – nur aus Einträgen, die die antwortende Person sehen darf.",
               "From two letters on, up to eight earlier answers appear – only from records the person answering may see.",
-            )
-          : t(
-              "Nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten – sonst könnte jede Person mit dem Link fremde Antworten lesen. Der Browser bietet aber an, was auf diesem Gerät schon eingegeben wurde.",
-              "Only in “Members only” forms without anonymous answers – otherwise anyone with the link could read other people's answers. The browser still offers what was typed on this device before.",
             )}
-      </p>
+          </p>
+        )
+      ) : (
+        <div className="form-suggest-locked">
+          <Info aria-hidden />
+          <p id={`${id}-earlier`}>
+            {t(
+              "Nur in Formularen „Nur für Mitglieder“ ohne anonyme Antworten – sonst könnte jede Person mit dem Link fremde Antworten lesen. Eine feste Vorschlagsliste geht in jedem Formular.",
+              "Only in “Members only” forms without anonymous answers – otherwise anyone with the link could read other people's answers. A fixed list of suggestions works in every form.",
+            )}
+          </p>
+          {onMembersOnly && (
+            <button
+              type="button"
+              className="button compact"
+              disabled={switching}
+              onClick={async () => {
+                await onMembersOnly();
+                setSwitched(true);
+              }}
+            >
+              {t("Auf „Nur für Mitglieder“ umstellen", "Switch to “Members only”")}
+            </button>
+          )}
+        </div>
+      )}
+      {listOpen ? (
+        <div className="form-suggest-list-design">
+          <label htmlFor={`${id}-list`}>{t("Feste Vorschläge, einer pro Zeile", "Fixed suggestions, one per line")}</label>
+          <textarea
+            id={`${id}-list`}
+            rows={4}
+            aria-label={t(`Feste Vorschläge für ${field.name}`, `Fixed suggestions for ${field.name}`)}
+            aria-describedby={`${id}-list-hint`}
+            aria-invalid={problem ? true : undefined}
+            value={lines.join("\n")}
+            onChange={(e) => onLines(e.target.value.split(/\r?\n/))}
+          />
+          <p className={problem ? "error small" : "muted small"} id={`${id}-list-hint`}>
+            {problem === "count"
+              ? t(`Höchstens ${SUGGESTION_LIST_MAX} Vorschläge – es sind ${list.length}.`, `At most ${SUGGESTION_LIST_MAX} suggestions – there are ${list.length}.`)
+              : problem === "length"
+                ? t(`Ein Vorschlag darf höchstens ${SUGGESTION_LIST_ITEM_MAX} Zeichen lang sein.`, `A suggestion may be at most ${SUGGESTION_LIST_ITEM_MAX} characters long.`)
+                : t(
+                    `Erscheinen beim Tippen in jedem Formular, auch in öffentlichen – zuerst, vor früheren Antworten. ${list.length} von ${SUGGESTION_LIST_MAX}.`,
+                    `Appear while typing in every form, public ones too – first, before earlier answers. ${list.length} of ${SUGGESTION_LIST_MAX}.`,
+                  )}
+          </p>
+        </div>
+      ) : (
+        <button type="button" className="text-button" aria-label={t(`Feste Vorschläge für ${field.name} eingeben`, `Enter fixed suggestions for ${field.name}`)} onClick={() => setListOpen(true)}>
+          <ListBullets aria-hidden /> {t("Feste Vorschläge eingeben", "Enter fixed suggestions")}
+        </button>
       )}
     </div>
   );
