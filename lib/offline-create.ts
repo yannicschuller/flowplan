@@ -16,8 +16,7 @@
 import type { OfflinePageChange, OfflinePageKind, OfflineUploadChange, QueuedChange } from "./offline-queue";
 import type { Field, Page, Row, View } from "./types";
 import type { CatalogTemplate } from "./template-catalog";
-import { resolveCatalogDates } from "./template-catalog";
-import { databaseKinds, databaseSetup, type DatabaseKind, type Translate } from "./database-setup";
+import { databaseKinds, type DatabaseKind } from "./database-setup";
 
 // Uploads that wait on the device: up to 25 MB per file and 200 MB in all;
 // bigger files need the connection.
@@ -238,32 +237,4 @@ export function localPageChange(queue: QueuedChange[], failed: FailedChange[], p
   if (waiting) return { change: waiting, state: "pending" };
   const lost = failed.find((f) => f.change.kind === "page" && f.change.pageId === pageId);
   return lost ? { change: lost.change as OfflinePageChange, state: "failed", reason: lost.reason } : null;
-}
-
-// What a database made offline shows: the fields and views the server
-// will create (lib/database-setup.ts, or the template's) and the
-// template's example records under the ids sent along.
-export function localDatabase(
-  change: OfflinePageChange,
-  tr: Translate,
-  template?: CatalogTemplate,
-): { fields: Field[]; views: View[]; settings?: object; recordLayout?: object; rows: Row[] } {
-  const at = new Date(change.at).toISOString();
-  if (template && change.starterTemplate) {
-    const rows = (template.rows || []).map((row, i) => ({
-      id: change.rowIds?.[i] || `${change.pageId}-${i}`,
-      page_id: change.pageId,
-      cells: resolveCatalogDates(row.cells),
-      position: i,
-      created_at: at,
-      updated_at: at,
-      created_by: "",
-      updated_by: "",
-      version: 1,
-      role: "editor" as const,
-    }));
-    return { fields: template.fields || [], views: template.views || [], settings: template.settings, rows };
-  }
-  const setup = databaseSetup((databaseKinds.includes(change.databaseKind as DatabaseKind) ? change.databaseKind : "tasks") as DatabaseKind, tr);
-  return { ...setup, rows: [] };
 }

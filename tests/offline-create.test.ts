@@ -8,7 +8,6 @@ import {
   discardPage,
   failChange,
   failedPageOf,
-  localDatabase,
   localPageChange,
   offlineTemplate,
   pageChange,
@@ -19,6 +18,7 @@ import {
   withLocalPages,
   type FailedChange,
 } from "../lib/offline-create";
+import { localDatabase } from "../lib/offline-local-database";
 import { applyQueue, type OfflinePageChange, type QueuedChange } from "../lib/offline-queue";
 import { templateCatalog } from "../lib/template-catalog";
 import { databaseSetup } from "../lib/database-setup";

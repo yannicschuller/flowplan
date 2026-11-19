@@ -24,7 +24,13 @@ const { refreshSearchIndex } = await import("../lib/search-index");
 const { libraryIndex, libraryShelves, readingNow, LIBRARY_HOME } = await import("../lib/library");
 const { stepOf } = await import("../lib/history-nav");
 startRuntimeMetrics();
-const statements = () => (globalThis as unknown as { flowplanRuntimeMetrics: { sqlCount: number } }).flowplanRuntimeMetrics.sqlCount;
+// Statements are counted where runtime metrics run (FLOWPLAN_METRICS_LOOP=1);
+// elsewhere (the PostgreSQL job) only the results are checked.
+const metrics = () => (globalThis as unknown as { flowplanRuntimeMetrics?: { sqlCount: number } }).flowplanRuntimeMetrics;
+const statements = () => metrics()?.sqlCount ?? 0;
+const bounded = (count: number, max: number, message: string) => {
+  if (metrics()) assert.ok(count < max, message);
+};
 
 // ---- Pure ----
 
@@ -270,19 +276,19 @@ test("a library of 1,000 pages on several shelves: bounded statements, fast", as
   assert.equal(overview.value.shared[0].books.length, 10);
   assert.equal(overview.value.shared.reduce((n, s) => n + s.pages, 0) + overview.value.personal.reduce((n, s) => n + s.pages, 0), 1000);
   // Not one per page or book: a handful for the whole library.
-  assert.ok(overview.statements < 40, `overview: ${overview.statements} statements`);
+  bounded(overview.statements, 40, `overview: ${overview.statements} statements`);
   const readerView = await measure(() => libraryOverview(reader, wid));
   assert.deepEqual(readerView.value.shared.map((s) => [s.name, s.books.length]), [["Regal 0", 10], ["Regal 1", 10], ["Regal 2", 10], ["Regal 3", 1]]);
   assert.equal(readerView.value.shared[3].pages, 25);
-  assert.ok(readerView.statements < 40, `reader overview: ${readerView.statements} statements`);
+  bounded(readerView.statements, 40, `reader overview: ${readerView.statements} statements`);
   const one = await measure(() => spaceLibrary(owner, shelves[0]));
   assert.equal(one.value.books.length, 10);
-  assert.ok(one.statements < 30, `one shelf: ${one.statements} statements`);
+  bounded(one.statements, 30, `one shelf: ${one.statements} statements`);
   // The search: titles of every level and content hits, grouped.
   const found = await measure(() => searchLibrary(reader, wid, "Kapitel 3.0"));
   assert.ok(found.value.chapters.length >= 4);
   assert.equal(found.value.chapters.every((h) => h.title.startsWith("Kapitel 3.0.")), true);
-  assert.ok(found.statements < 200, `search: ${found.statements} statements`);
+  bounded(found.statements, 200, `search: ${found.statements} statements`);
   const content = await measure(() => searchLibrary(reader, wid, "Leuchttürme"));
   // 3 team shelves × 40 + 4 pages of the shared book have the word; the
   // full-text search hands over its best 50 (SEARCH_LIMIT).

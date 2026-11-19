@@ -31,12 +31,9 @@ import {
   OfflineConflicts,
 } from "./offline-queue";
 import { applyQueue } from "@/lib/offline-queue";
-import { isOfflinePageKind, localDatabase, localPage as localPageOf, localPageChange, offlineTemplate, pageChange, withLocalPages, type LocalState } from "@/lib/offline-create";
+import { isOfflinePageKind, localPage as localPageOf, localPageChange, offlineTemplate, pageChange, withLocalPages, type LocalState } from "@/lib/offline-create";
 import { isPendingPage, sendPendingNow } from "@/lib/offline-pending";
-import { OFFLINE_BOARD_GENERATION, keptInk } from "./offline-uploads";
 import { OfflineFailedUploads, OfflineMark, OfflinePageNotice } from "./offline-mark";
-import { fullPaper } from "@/lib/notebook-paper";
-import { emptyInk } from "@/lib/ink/model";
 import { STUDY_PENDING, studyPendingFlag } from "@/lib/study-pending-flag";
 import { draftKey, draftSent, keyed, newIdempotencyKey } from "@/lib/idempotency-key";
 import {
@@ -1867,44 +1864,12 @@ export default function WorkspaceApp({
   // views and the template's records, an empty board, a notebook with its
   // first sheet and the handwriting kept here.
   const openedLocal = useRef(new Set<string>());
-  const localPageData = useCallback(
-    (change: import("@/lib/offline-queue").OfflinePageChange, state: LocalState): PageData => {
-      const b = bootRef.current;
-      const template = change.starterTemplate ? catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[change.starterTemplate] : undefined;
-      const page = { ...localPageOf(change, b.user.id, state) };
-      const data = {
-        page,
-        role: "editor",
-        comments: [],
-        snapshots: [],
-        present: [],
-        backlinks: [],
-        images: [],
-        shareLinks: [],
-        rows: [],
-        related: {},
-        rowTemplates: [],
-        form: null,
-        state: null,
-        html: change.pageKind === "document" ? template?.html || "" : "",
-        generation: "1",
-        offlineNew: true,
-      } as unknown as PageData;
-      if (change.pageKind === "database") {
-        const db = localDatabase(change, tr, template);
-        data.database = { page_id: change.pageId, fields: db.fields, views: db.views, version: 1, ...(db.settings ? { settings: db.settings as never } : {}), ...(db.recordLayout ? { recordLayout: db.recordLayout as never } : {}) };
-        data.rows = db.rows;
-      } else if (change.pageKind === "whiteboard") data.whiteboard = { state: "AAA=", generation: OFFLINE_BOARD_GENERATION };
-      else if (change.pageKind === "notebook" && change.sheetId) {
-        const ink = emptyInk();
-        const kept = keptInk(change.pageId);
-        if (kept[change.sheetId]) ink.pages[change.sheetId] = kept[change.sheetId];
-        data.notebook = { paper: fullPaper({}), sheets: [{ id: change.sheetId, position: 0, paper: {}, background: null, ink, version: 0 }], canEdit: true, outline: [] };
-      }
-      return data;
-    },
-    [],
-  );
+  const localPageData = useCallback(async (change: import("@/lib/offline-queue").OfflinePageChange, state: LocalState): Promise<PageData> => {
+    const b = bootRef.current;
+    const template = change.starterTemplate ? catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[change.starterTemplate] : undefined;
+    const { localPageData: build } = await import("./offline-local-data");
+    return build(change, { ...localPageOf(change, b.user.id, state) }, tr, template) as unknown as PageData;
+  }, []);
   // For "Retry" on a page that failed to open.
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
@@ -1937,7 +1902,7 @@ export default function WorkspaceApp({
       // A page made offline (#370): built here until the queue created it.
       const localNew = localWaiting(id);
       if (localNew) {
-        const local = localPageData(localNew.change, localNew.state);
+        const local = await localPageData(localNew.change, localNew.state);
         openedLocal.current.add(id);
         if (!keepNav) setMobile(false);
         setScreen("page");
