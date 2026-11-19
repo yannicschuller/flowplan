@@ -113,8 +113,11 @@ test("a deck published to the marketplace: no learning state, no people, the pic
   const db = await one<{ fields: string; version: number }>("SELECT fields,version FROM databases WHERE page_id=?", pageId);
   const fields = JSON.parse(db!.fields);
   await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([...fields, { id: "owner", name: "Zuständig", type: "person" }]), pageId);
-  const rowIds = (await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position", pageId)).map((r) => r.id);
-  await run("UPDATE rows SET cells=json_set(cells,'$.owner',?),created_by=?,updated_by=? WHERE page_id=?", editor.id, editor.id, editor.id, pageId);
+  const rowList = await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position", pageId);
+  const rowIds = rowList.map((r) => r.id);
+  // Portable on SQLite and PostgreSQL: the cells are rewritten in JS.
+  for (const r of rowList)
+    await run("UPDATE rows SET cells=?,created_by=?,updated_by=? WHERE id=?", JSON.stringify({ ...JSON.parse(r.cells || "{}"), owner: editor.id }), editor.id, editor.id, r.id);
   await replaceRowDocument(rowIds[0], `<p>Frag <span data-mention="${editor.id}" class="mention">@editor</span>: die Hauptstadt von Frankreich ist <span data-cloze="1">Paris</span>.</p>`, owner.id);
   const fid = id();
   mkdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads"), { recursive: true });
