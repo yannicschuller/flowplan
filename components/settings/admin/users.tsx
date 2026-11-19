@@ -34,6 +34,8 @@ import type { User } from "@/lib/types";
 import { UPDATE_NOTES_LEVELS, updateNotesLevelOf, type UpdateNotesLevel } from "@/lib/update-notes-pref";
 import { SETTINGS_LEVELS, isSettingsLevel } from "@/lib/settings-level";
 import { useLevelName } from "../../settings-level";
+import { hiddenModulesOf, type FeatureModule } from "@/lib/feature-modules";
+import { moduleTexts } from "../user/feature-modules";
 import { useT } from "../../i18n";
 import { Avatar, Modal, showNotice } from "../../ui";
 import { Select } from "../../select";
@@ -814,7 +816,13 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
   // without one (lib/user-settings-level.ts).
   const levelName = useLevelName();
   const settingsLevelValue = isSettingsLevel(u.settings_level) ? u.settings_level : "default";
-  const more = [t("Grenzen", "limits"), t("Neuigkeiten", "what’s new"), t("Einstellungsstufe", "settings level"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
+  // The switched-off features (#378): the person's own choice, or the
+  // instance's default without one. Only the person chooses; here they can
+  // be put back on the default (lib/user-feature-modules.ts).
+  const moduleTitles = moduleTexts(t);
+  const ownModules = u.modules === null || u.modules === undefined ? null : hiddenModulesOf(u.modules);
+  const modulesSummary = (list: FeatureModule[]) => (list.length ? list.map((m) => moduleTitles[m].label).join(", ") : t("keine", "none"));
+  const more = [t("Grenzen", "limits"), t("Neuigkeiten", "what’s new"), t("Einstellungsstufe", "settings level"), t("Funktionen", "features"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
   const storageMb = usage?.effective.storageMb ?? 0;
   return (
     <Modal open onClose={onClose} title={u.name} className="modal-side ux-drawer" sheet>
@@ -1010,6 +1018,22 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
                 </option>
               ))}
             </Select>
+          </PanelRow>
+          <PanelRow
+            label={t("Funktionen", "Features")}
+            hint={
+              ownModules
+                ? t(`Eigene Auswahl von ${u.name}, ausgeblendet: ${modulesSummary(ownModules)}. Nur die Oberfläche – Rechte ändern sich nicht.`, `${u.name}’s own choice, hidden: ${modulesSummary(ownModules)}. The interface only – permissions do not change.`)
+                : t(`Instanz-Standard, ausgeblendet: ${modulesSummary(hiddenModulesOf(data.settings.modulesDefault))}. Die Person kann es unter Darstellung & Sprache selbst ändern.`, `Instance default, hidden: ${modulesSummary(hiddenModulesOf(data.settings.modulesDefault))}. The person can change it under Appearance & language.`)
+            }
+          >
+            {ownModules ? (
+              <button type="button" className="button compact" onClick={() => void run({ action: "admin.modules", userId: u.id }, t("Auf den Instanz-Standard gesetzt.", "Put on the instance default."))}>
+                {t("Instanz-Standard", "Instance default")}
+              </button>
+            ) : (
+              <span className="muted">{t("Instanz-Standard", "Instance default")}</span>
+            )}
           </PanelRow>
           {ai && (
             <PanelRow label={t("KI-Funktionen", "AI features")} hint={t("Nur ausgewählte Personen dürfen KI nutzen (Administration → KI).", "Only selected people may use AI (Administration → AI).")}>

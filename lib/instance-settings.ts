@@ -3,6 +3,7 @@ import { all, run } from "./db";
 import { HttpError } from "./auth";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { settingsLevelSchema } from "./settings-level";
+import { hiddenModulesOf, hiddenModulesSchema } from "./feature-modules";
 import { isDefaultToolbarLayout, parsedToolbarLayout, toolbarLayoutSchema, type ToolbarLayout } from "./toolbar-layout";
 
 // The instance's default formatting toolbar, as stored: read leniently
@@ -91,6 +92,10 @@ export const instanceSettingsSchema = z.object({
   // formatting toolbar of everyone without a layout of their own (null =
   // the built-in one).
   toolbarLayoutDefault: z.unknown().transform(storedToolbarLayout),
+  // "Funktionen für neue Konten" (#378, lib/feature-modules.ts): the
+  // features hidden for everyone without a choice of their own. Read
+  // leniently (a feature a later version drops), saved strictly (below).
+  modulesDefault: z.unknown().transform(hiddenModulesOf),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -125,6 +130,7 @@ const defaults: InstanceSettings = {
   deadManSwitch: true,
   inviteLinks: true,
   toolbarLayoutDefault: null,
+  modulesDefault: [],
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.
@@ -143,6 +149,7 @@ export async function instanceSettings(): Promise<InstanceSettings> {
 export async function saveInstanceSettings(input: unknown) {
   // The toolbar layout strictly: only known buttons, each once, bounded.
   if (input && typeof input === "object" && "toolbarLayoutDefault" in input) toolbarLayoutSchema.parse((input as { toolbarLayoutDefault: unknown }).toolbarLayoutDefault);
+  if (input && typeof input === "object" && "modulesDefault" in input) hiddenModulesSchema.parse((input as { modulesDefault: unknown }).modulesDefault);
   // Fields a form does not send keep their stored value.
   const next = instanceSettingsSchema.parse({
     ...(await instanceSettings()),

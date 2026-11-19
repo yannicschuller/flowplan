@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AddressBook, Cards, CheckSquare, Files, Rows, Star } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
+import { moduleShown, useHiddenModules } from "@/lib/feature-modules-client";
 
 export const DATABASE_KIND_KEY = "flowplan-database-kind";
 export type DatabaseChoice = "tasks" | "documents" | "contacts" | "flashcards" | "empty" | `template:${string}`;
@@ -13,6 +14,8 @@ type Template = { id: string; name: string; kind: string };
 export function rememberedDatabaseKind(): DatabaseChoice {
   try {
     const stored = localStorage.getItem(DATABASE_KIND_KEY) || "";
+    // Flashcards switched off since (#378): the default kind instead.
+    if (stored === "flashcards" && !moduleShown("flashcards")) return "tasks";
     if (["tasks", "documents", "contacts", "flashcards", "empty"].includes(stored) || stored.startsWith("template:")) return stored as DatabaseChoice;
   } catch {}
   return "tasks";
@@ -37,6 +40,7 @@ export function DatabaseKindPicker({
   onChange: (choice: DatabaseChoice, template?: Template) => void;
 }) {
   const t = useT();
+  const hiddenModules = useHiddenModules();
   const [templates, setTemplates] = useState<Template[]>([]);
   useEffect(() => {
     let current = true;
@@ -72,7 +76,8 @@ export function DatabaseKindPicker({
       hint: t("Vorderseite, Rückseite, Tags – mit der Ansicht „Lernen“ und Wiederholung in Abständen", "Front, back, tags – with the view “Study” and spaced repetition"),
     },
     { id: "empty" as const, icon: Rows, label: t("Leer", "Empty"), hint: t("Nur ein Titel", "Only a title") },
-  ];
+    // Flashcards switched off (#378): no such kind, unless it is chosen.
+  ].filter((kind) => kind.id !== "flashcards" || value === "flashcards" || !hiddenModules.includes("flashcards"));
   const hint = kinds.find((kind) => kind.id === value)?.hint;
   // "Art" with the kinds as one segmented row, the chosen one's fields as a
   // line below; saved database templates follow as chips (the "New page"

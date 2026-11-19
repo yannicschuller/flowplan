@@ -26,6 +26,8 @@ import { DuplicateHint } from "./related-pages";
 import { AiDatabaseCreator, type DatabaseProposal } from "./ai-database";
 import { DatabaseKindPicker, rememberedDatabaseKind, type DatabaseChoice } from "./database-kind-picker";
 import { aiUsable } from "@/lib/ai/client";
+import { moduleShownIn, PAGE_KIND_MODULE } from "@/lib/feature-modules";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 import type { Bootstrap, PageKind } from "@/lib/types";
 
 type Choice = PageKind | "template";
@@ -115,10 +117,11 @@ export function NewPageDialog({
     if (!open) selected.current = false;
   }, [open]);
   const tiles = useRef<HTMLDivElement>(null);
+  const hiddenModules = useHiddenModules();
   const chosen: Choice = template ? "template" : kind;
   const aiDatabase = aiUsable(boot.ai, "database");
   const database = kind === "database" && !template;
-  const types: { id: Choice; icon: Icon; label: string; description: string; short?: string }[] = [
+  const allTypes: { id: Choice; icon: Icon; label: string; description: string; short?: string }[] = [
     {
       id: "document",
       icon: FileText,
@@ -154,6 +157,9 @@ export function NewPageDialog({
         : t("Besprechungsnotizen, Projektsteckbrief, Spezifikation … und deine gespeicherten Vorlagen", "Meeting notes, project brief, spec … and your saved templates"),
     },
   ];
+  // Kinds of a switched-off feature leave out their tile (#378) – unless
+  // one was asked for already (it stays chosen).
+  const types = allTypes.filter((type) => type.id === chosen || type.id === "template" || moduleShownIn(hiddenModules, PAGE_KIND_MODULE[type.id]));
   const choose = (id: Choice) => {
     if (id === "template") return onTemplates();
     if (id === "database" && chosen !== "database") onDatabaseChoice(rememberedDatabaseKind());

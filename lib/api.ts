@@ -13,6 +13,7 @@ import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { adminSetSettingsLevel, setUserSettingsLevel, userSettingsLevel } from "./user-settings-level";
+import { adminResetFeatureModules, applyModulesToAll, setUserFeatureModules, userFeatureModules } from "./user-feature-modules";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
@@ -409,6 +410,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     updateNotes: await userUpdateNotes(user),
     // The settings level (#294, lib/settings-level.ts).
     settingsLevel: await userSettingsLevel(user.id),
+    // The features the person switched off (#378, lib/feature-modules.ts).
+    modules: await userFeatureModules(user.id),
     pages,
     // The records pages sit under (#231, lib/record-pages.ts): the sidebar
     // shows them in their database, the breadcrumb and the record its pages.
@@ -1078,6 +1081,11 @@ async function runCommand(
       case "profile.settingsLevel":
         result = await setUserSettingsLevel(user, b.level);
         break;
+      // Features switched off for a calmer interface, null for the
+      // instance's default (#378, lib/feature-modules.ts).
+      case "profile.modules":
+        result = await setUserFeatureModules(user, b.hidden);
+        break;
       // "Was ist neu": the latest release notes up to the running version.
       case "releaseNotes.list":
         result = recentReleaseNotes({ limit: b.limit });
@@ -1157,6 +1165,16 @@ async function runCommand(
         securityEvent("admin.user", { actorId: user.id, detail: `settings level ${(result as { level: string | null }).level ?? "default"} ${b.userId}` });
         break;
       }
+      // A person back on the instance's default features, or everyone
+      // (#378, lib/user-feature-modules.ts); both in the activity log.
+      case "admin.modules":
+        requireAdmin(user);
+        result = await adminResetFeatureModules(b);
+        break;
+      case "admin.modulesApplyAll":
+        requireAdmin(user);
+        result = await applyModulesToAll();
+        break;
       case "admin.updateNotes": {
         requireAdmin(user);
         result = await adminSetUpdateNotes(b);

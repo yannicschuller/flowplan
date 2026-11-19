@@ -18,6 +18,8 @@ import { isServerKind, type HomeLayout } from "@/lib/home-layout-schema";
 import { HomeEnvContext, WidgetBody, WidgetFrame, widgetHidden, type HomeEnv, type WidgetResult } from "./widgets";
 import { localDay, localZone } from "./format";
 import { headerStyle } from "./look";
+import { HOME_WIDGET_MODULE, moduleShownIn } from "@/lib/feature-modules";
+import { useHiddenModules } from "@/lib/feature-modules-client";
 import { useMasonry } from "../use-masonry";
 
 const HomeEditor = dynamic(() => loadView(() => import("./home-editor")), { ssr: false });
@@ -44,6 +46,7 @@ export default function HomeScreen(props: HomeProps) {
   const { boot, clock, notifyError } = props;
   const t = useT();
   const locale = useLocale();
+  const hiddenModules = useHiddenModules();
   const workspaceId = boot.workspace.id;
   const saved = boot.home?.layout;
   const [editing, setEditing] = useState(false);
@@ -237,7 +240,8 @@ export default function HomeScreen(props: HomeProps) {
               <div className="home-grid-wrap">
                 <div className="home-grid" ref={gridRef}>
                   {layout.widgets
-                    .filter((w) => !widgetHidden(w, env))
+                    // Widgets of a switched-off feature (#378) wait in the layout.
+                    .filter((w) => !widgetHidden(w, env) && moduleShownIn(hiddenModules, HOME_WIDGET_MODULE[w.kind]))
                     .map((w) => (
                       <WidgetFrame key={w.id} widget={w}>
                         <WidgetBody widget={w} />

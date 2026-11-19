@@ -26,6 +26,9 @@ export type User = {
   // Administration only: the settings level of the person, null for the
   // instance's default (#294, lib/user-settings-level.ts).
   settings_level?: string | null;
+  // Administration only: the person's switched-off features as JSON, null
+  // for the instance's default (#378, lib/user-feature-modules.ts).
+  modules?: string | null;
 };
 export type Identity = User & {
   groups: string[];
@@ -337,6 +340,8 @@ export type Bootstrap = {
   toolbarLayoutCustom?: boolean;
   // The settings level (#294, lib/settings-level.ts).
   settingsLevel?: import("./settings-level").SettingsLevelBoot;
+  // The features the person switched off (#378, lib/feature-modules.ts).
+  modules?: import("./feature-modules").FeatureModulesBoot;
   // "Animationen" (#260, lib/motion-pref.ts).
   motion?: import("./motion-pref").MotionPref;
   // "Seiten in voller Breite anzeigen" (#257, lib/page-width-pref.ts).

@@ -14,7 +14,8 @@
 // profile, all devices),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
 // "Was ist neu" (#223, profile, all devices), "Beim Öffnen auf dem Handy"
-// (lib/start-screen.ts, profile, all devices).
+// (lib/start-screen.ts, profile, all devices), "Funktionen" (#378,
+// profile, all devices, components/settings/user/feature-modules.tsx).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useInFlowplanApp } from "@/lib/native-app";
 import { CircleHalf, Gift, Keyboard, Moon, Sun } from "@phosphor-icons/react";
@@ -39,6 +40,7 @@ import { quoteShortcut, setQuoteShortcutLocal, useQuoteShortcut } from "@/lib/qu
 import type { FormattingToolbarPref } from "@/lib/toolbar-pref";
 import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import { ToolbarLayoutEditor } from "./toolbar-layout-editor";
+import { FeatureModulesSettings } from "./feature-modules";
 import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
@@ -340,6 +342,7 @@ export default function AppearanceSection() {
           </SettingRow>
         )}
       </SettingGroup>
+      <FeatureModulesSettings />
       <SettingGroup id="start" title={t("Beim Öffnen", "On opening")}>
         <SettingRow
           anchor="start-screen"

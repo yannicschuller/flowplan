@@ -1,8 +1,8 @@
 "use client";
 // Administration → Instanz: the instance's name and public demo, the running
 // version and whether a newer one is out, what "Neuigkeiten nach
-// Updates" new accounts start with (#223) and the default formatting
-// toolbar (#292). The other instance settings live
+// Updates" new accounts start with (#223), the default formatting
+// toolbar (#292) and the features new accounts see (#378). The other instance settings live
 // where they belong: registration and two-factor under Anmeldung & SSO,
 // limits under Grenzen & Aufbewahrung, backups under Speicher & Sicherung,
 // the notice under Wartung & Hinweise, extensions and domains under
@@ -16,6 +16,7 @@ import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, InstanceSelect, InstanceSwitch, InstanceText, useDocs } from "./parts";
 import { InstanceToolbarLayout } from "./toolbar-layout-default";
+import { InstanceModules } from "./modules-default";
 
 export default function GeneralSection() {
   const t = useT();
@@ -156,6 +157,8 @@ export default function GeneralSection() {
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
         <InstanceToolbarLayout />
       </SettingGroup>
+      {/* The features new accounts see (#378). */}
+      <InstanceModules />
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>
           <FixLink href="#admin/signin">{t("Anmeldung & SSO", "Sign-in & SSO")}</FixLink>
