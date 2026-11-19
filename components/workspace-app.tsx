@@ -141,7 +141,7 @@ import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/li
 import { workspaceCookie } from "@/lib/last-workspace";
 import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
-import { ListSkeleton, SettingsSkeleton, viewShapeOf } from "./skeleton";
+import { ListSkeleton, SettingsSkeleton, ViewSkeleton, viewShapeOf } from "./skeleton";
 import { RoutePendingPlaceholder } from "./route-pending";
 import { routePendingDone } from "@/lib/route-pending";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
@@ -268,7 +268,7 @@ import {
   showNotice,
   OfflineNotice,
 } from "./ui";
-import DatabaseView, { type DatabaseData } from "./database-view";
+import type { DatabaseData } from "./database-view";
 import { MovePageDialog } from "./move-page-dialog";
 import { MetaResolveDialog, moveIntro, ScopeChoice } from "./meta-scope";
 import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
@@ -367,6 +367,10 @@ const DocumentEditor = dynamic(() => loadView(() => import("./editor")), {
   ssr: false,
   loading: () => <Loading what="document" />,
 });
+// Databases with their views, toolbar, tools and records: loaded with the
+// first database (started together with the page's data, below, and on
+// hover by the prefetch), not with every page.
+const DatabaseView = dynamic(() => loadView(() => import("./database-view")), { ssr: false, loading: () => <ViewSkeleton /> });
 // The collection editor with its filter builder (#86): loaded when opened.
 const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
@@ -756,9 +760,10 @@ export default function WorkspaceApp({
   }, [share]);
   // A document known from the page tree, or a record in the address (its
   // own document): the editor (with TipTap) starts loading together with
-  // the page's data instead of after it.
+  // the page's data instead of after it; so does a database's code.
   const openingKind = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.kind : undefined;
   useEffect(() => {
+    if (openingKind === "database") void import("./database-view").catch(() => {});
     if (openingKind === "document" || (openingKind === "database" && parsePageLocation(location.hash)?.rowId)) void import("./editor").catch(() => {});
   }, [openingKind, pageId]);
   const linkIcon = useExternalLinkIcon();
@@ -1342,7 +1347,9 @@ export default function WorkspaceApp({
                 ? () => import("./workflow/workflow-view")
                 : kind === "document"
                   ? () => import("./editor")
-                  : null;
+                  : kind === "database"
+                    ? () => import("./database-view")
+                    : null;
         void load?.().catch(() => {});
       },
     });
