@@ -1,4 +1,5 @@
 import { revokeRecordSharesOfPage } from "./record-share";
+import { forgetPagePresence } from "./page-presence";
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { claimTicketPrefix } from "./ticket-refs";
@@ -46,6 +47,7 @@ async function revokePage(pageId: string) {
   await run("UPDATE forms SET enabled=0 WHERE page_id=?", pageId);
   await run("DELETE FROM notifications WHERE page_id=?", pageId);
   await run("DELETE FROM presence WHERE page_id=?", pageId);
+  forgetPagePresence(pageId);
 }
 // Only invoked inside the command transaction. File removal is queued until commit.
 export async function purgePages(workspaceId: string, pages: Page[]) {

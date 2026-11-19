@@ -81,6 +81,7 @@ import { deleteInboundAddress, rotateInboundToken, saveInboundAddress } from "./
 import { pageToRecord } from "./page-to-record";
 import { recordToPage } from "./record-to-page";
 import { textBacklinks } from "./text-backlinks";
+import { notePresence, pagePresence } from "./page-presence";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
 import { transcriptionEnabled } from "./transcribe";
@@ -577,18 +578,9 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
     "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC,seq DESC LIMIT 50",
     pid,
   );
-  const present = await all(
-    "SELECT u.id,u.name FROM presence p JOIN users u ON u.id=p.user_id WHERE p.page_id=? AND seen>?",
-    pid,
-    Date.now() - 45000,
-  );
-  if (options.presence !== false)
-    await run(
-      "INSERT INTO presence VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET seen=excluded.seen",
-      pid,
-      user.id,
-      Date.now(),
-    );
+  // Who else has the page open (lib/page-presence.ts: in memory, #383).
+  const present = await pagePresence(pid);
+  if (options.presence !== false) await notePresence(pid, user.id);
   if (p.kind === "database") {
     const data = await database(pid);
     // This database's own rows are already in rows (the client adds them).
