@@ -95,6 +95,11 @@ export function AiStatisticsSection() {
               { key: "out", label: t("Ausgabe", "Output"), values: s.perDay.map((d) => d.tokensOut), color: 2 },
             ]}
             formatY={(n) => compact(n)}
+            limit={
+              s.limits.quota.unit === "tokens" && typeof s.limits.quota.instance?.day === "number"
+                ? { value: s.limits.quota.instance.day, label: t(`Grenze der Instanz je Tag: ${compact(s.limits.quota.instance.day)}`, `Instance limit per day: ${compact(s.limits.quota.instance.day)}`) }
+                : null
+            }
           />
           <h3 className="mon-subhead">{t("Nach Modell", "By model")}</h3>
           <div className="mon-table">
@@ -136,6 +141,7 @@ export function AiStatisticsSection() {
               `Limits: at most ${num(s.limits.requestsPerPersonHour)} AI requests per person and hour${s.limits.workflowTokensPerDay !== null ? `, ${compact(s.limits.workflowTokensPerDay)} tokens per workflow and day` : ""}. There is no limit per workspace.`,
             )}
           </p>
+          <QuotaLines quota={s.limits.quota} money={money} />
           {s.people && (
             <>
               <h3 className="mon-subhead">{t("Nach Person (nur für Administratoren)", "By person (administrators only)")}</h3>
@@ -155,5 +161,33 @@ export function AiStatisticsSection() {
         </div>
       )}
     </SettingGroup>
+  );
+}
+
+// i18n-table: 1 – [German, English] pairs
+const PER_PERIOD: Record<string, readonly [string, string]> = {
+  day: ["je Tag", "per day"],
+  week: ["je Woche", "per week"],
+  month: ["je Monat", "per month"],
+  year: ["je Jahr", "per year"],
+};
+// The AI quotas (#382) as lines below the statistics: the instance's
+// ceiling and the default per person, per period.
+function QuotaLines({ quota, money }: { quota: AiStatistics["limits"]["quota"]; money: (n: number | null) => string }) {
+  const t = useT();
+  if (!quota.rules) return null;
+  const list = (limits: Partial<Record<string, number | null>> | null) =>
+    Object.entries(limits || {})
+      .filter((e): e is [string, number] => typeof e[1] === "number" && !!PER_PERIOD[e[0]])
+      .map(([p, v]) => `${quota.unit === "cost" ? money(v) : compact(v)} ${t(PER_PERIOD[p][0], PER_PERIOD[p][1])}`)
+      .join(", ");
+  const instance = list(quota.instance),
+    person = list(quota.person);
+  return (
+    <p className="muted mon-small">
+      {instance ? t(`Kontingent der ganzen Instanz: ${instance}.`, `Quota of the whole instance: ${instance}.`) : t("Kein Kontingent für die ganze Instanz.", "No quota for the whole instance.")}{" "}
+      {person ? t(`Standard je Person: ${person}.`, `Default per person: ${person}.`) : t("Kein Standard je Person.", "No default per person.")}{" "}
+      <a href="#admin/ai/quotas">{t("Kontingente bearbeiten", "Edit quotas")}</a>
+    </p>
   );
 }

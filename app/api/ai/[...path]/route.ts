@@ -17,7 +17,9 @@ import { requireAdmin, requireMember, requirePage } from "@/lib/permissions";
 import type { Identity } from "@/lib/types";
 import { AI_FEATURE_IDS, AI_REASON_TEXT } from "@/lib/ai/features";
 import { aiBlockInfo, aiPageAccess, aiRules } from "@/lib/ai/access";
-import { aiStatus, draftProviderConfig, instanceProviderConfig, userProviderConfig } from "@/lib/ai/resolve";
+import { aiProviderSource, aiStatus, draftProviderConfig, instanceProviderConfig, userProviderConfig } from "@/lib/ai/resolve";
+import { adminQuotas, quotaStatus } from "@/lib/ai/quota";
+import { QUOTA_PERIODS } from "@/lib/ai/quota-shared";
 import { aiStreamResponse, AI_LIMITS } from "@/lib/ai/run";
 import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
 import { adminAiView, assertSettingsCaller, instanceAiSettings, userAiSettings, userKeyInfo } from "@/lib/ai/settings";
@@ -119,6 +121,14 @@ async function handleGET(req: Request, { params }: { params: Promise<{ path: str
   try {
     const { path } = await params;
     const url = new URL(req.url);
+    // What is left of the AI quota (#382, lib/ai/quota.ts): the browser, and
+    // API tokens with "KI und Transkription".
+    if (path.length === 1 && path[0] === "quota") {
+      const user = await requireUser();
+      if (user.apiScope) await requireTokenAi(user);
+      if (user.demo) throw new HttpError(403, AI_REASON_TEXT.demo[0]);
+      return NextResponse.json(await quotaStatus(user, await aiProviderSource(user)), noStore);
+    }
     const user = await signedIn();
     if (path.length === 1 && path[0] === "settings") {
       const workspace = url.searchParams.get("workspace");
@@ -140,6 +150,10 @@ async function handleGET(req: Request, { params }: { params: Promise<{ path: str
     if (path.length === 1 && path[0] === "admin") {
       requireAdmin(user);
       return NextResponse.json({ ...(await adminAiView()), semantic: await semanticStats() }, noStore);
+    }
+    // The AI quotas with the usage of a period (Administration → KI → Kontingente).
+    if (path.length === 2 && path[0] === "admin" && path[1] === "quotas") {
+      return NextResponse.json(await adminQuotas(user, z.enum(QUOTA_PERIODS).catch("month").parse(url.searchParams.get("period") || "month")), noStore);
     }
     // AI in a database: values waiting to be computed, and when and with
     // which model each value was computed.

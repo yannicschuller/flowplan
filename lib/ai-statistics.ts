@@ -103,6 +103,10 @@ export async function aiStatistics(now = Date.now(), days = 30, people = true) {
   const workspaceNames = await names("workspaces", [...workspaces.keys()]);
   const personNames = people ? await names("users", [...persons.keys()]) : new Map<string, string>();
   const limits = await workflowLimits().catch(() => null);
+  // The AI quotas (#382, lib/ai/quota.ts) as lines next to the numbers.
+  const { quotaRules, quotaSettings, instanceLimits } = await import("./ai/quota");
+  const quotaUnit = (await quotaSettings()).unit;
+  const rules = await quotaRules(quotaUnit).catch(() => []);
   return {
     days,
     currency: settings.currency,
@@ -120,6 +124,7 @@ export async function aiStatistics(now = Date.now(), days = 30, people = true) {
     limits: {
       requestsPerPersonHour: Math.max(1, Number(process.env.FLOWPLAN_AI_REQUESTS_PER_HOUR) || 300),
       workflowTokensPerDay: limits?.aiTokensPerDay ?? null,
+      quota: { unit: quotaUnit, instance: instanceLimits(rules), person: rules.find((r) => r.scope === "default")?.limits ?? null, rules: rules.length },
     },
   };
 }

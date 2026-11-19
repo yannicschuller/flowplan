@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 105;
+export const SCHEMA_VERSION = 107;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1590,6 +1590,8 @@ function migrate(d: DatabaseSync) {
   // schema number stays.
   if (!(d.prepare("PRAGMA table_info(study_prefs)").all() as { name: string }[]).some((c) => c.name === "group_params"))
     d.exec("ALTER TABLE study_prefs ADD COLUMN group_params TEXT");
+  // Schema 107 – AI quotas (#382, lib/ai/quota.ts).
+  migrateAiQuotas(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1721,6 +1723,25 @@ function migrateServerMetrics(d: DatabaseSync) {
       d.exec(`ALTER TABLE ${table} ADD COLUMN client_errors INTEGER NOT NULL DEFAULT 0`);
   d.exec(`CREATE TABLE IF NOT EXISTS metrics_ai_usage(day TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',workspace_id TEXT NOT NULL DEFAULT '',user_id TEXT NOT NULL DEFAULT '',feature TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,timeouts INTEGER NOT NULL DEFAULT 0,ms_total INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',PRIMARY KEY(day,model,source,workspace_id,user_id,feature));
     CREATE INDEX IF NOT EXISTS metrics_ai_usage_user ON metrics_ai_usage(user_id);`);
+}
+// AI quotas (#382, lib/ai/quota.ts):
+// - ai_quota_usage: tokens of the answered requests with the instance's
+//   provider per calendar day (in the quota's time zone), person ('' for the
+//   search index and deleted accounts), model and kind ('person',
+//   'workflow', 'system'). Written at once – the counts a request is refused
+//   on – and kept 400 days. Counts only, never a prompt.
+// - ai_quota_rules: the limits per level (scope 'instance', 'default',
+//   'role', 'group', 'user'; target '' or the role, group or account) as
+//   JSON per period, or exempt.
+// - ai_quota_alerts: the highest level per period of the instance ceiling
+//   the administrators were told about (warning, then 100 %).
+// New tables only; an older version would not keep to the limits, hence
+// the number.
+export function migrateAiQuotas(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS ai_quota_usage(day TEXT NOT NULL,user_id TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL CHECK(kind IN ('person','workflow','system')),requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,user_id,model,kind));
+    CREATE INDEX IF NOT EXISTS ai_quota_usage_user ON ai_quota_usage(user_id,day);
+    CREATE TABLE IF NOT EXISTS ai_quota_rules(scope TEXT NOT NULL CHECK(scope IN ('instance','default','role','group','user')),target TEXT NOT NULL DEFAULT '',exempt INTEGER NOT NULL DEFAULT 0,limits TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL,PRIMARY KEY(scope,target));
+    CREATE TABLE IF NOT EXISTS ai_quota_alerts(period_key TEXT PRIMARY KEY,level INTEGER NOT NULL,at INTEGER NOT NULL);`);
 }
 // Error details of the monitoring (lib/error-details.ts): one row per kind
 // of 5xx (fingerprint: route, command, error name, top stack frame) with

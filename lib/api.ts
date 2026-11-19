@@ -28,6 +28,7 @@ import { afterEncryptedPageCreate, e2eeCommand, encryptedPageData, guardEncrypte
 import { emergencyCommand } from "./emergency-access";
 import { deadmanCommand } from "./dead-man-switch";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
+import { saveQuotaConfig } from "./ai/quota";
 import { setAiBlock, setAiRule } from "./ai/access";
 import { aiStatus } from "./ai/resolve";
 import { markdownSource } from "./markdown";
@@ -976,6 +977,10 @@ async function runCommand(
         break;
       case "admin.aiUser":
         result = await setUserAiPolicy(user, b);
+        break;
+      // AI quotas (#382, lib/ai/quota.ts): settings and limits.
+      case "admin.aiQuotas":
+        result = await saveQuotaConfig(user, b);
         break;
       case "ai.settings":
         result = await saveUserAiPrefs(user, b);

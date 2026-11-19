@@ -15,6 +15,7 @@ import { AI_MESSAGES } from "./transport";
 import { redactSecrets } from "./redact";
 import { resolveAi } from "./resolve";
 import { takeAiSlot } from "./concurrency";
+import { recordQuotaUsage, requireQuota } from "./quota";
 
 export const AI_LIMITS = {
   maxMessages: 100,
@@ -93,8 +94,15 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   if (size > AI_LIMITS.maxPromptChars) throw new HttpError(413, "Der Text für die KI ist zu lang.");
   if (input.messages.reduce((n, m) => n + (m.images?.length || 0), 0) > AI_LIMITS.images) throw new HttpError(413, "Zu viele Bilder für die KI.");
   if (!options.charged) limitAi(user.id);
+  // The AI quota (#382, lib/ai/quota.ts): only the instance's provider
+  // counts. The estimate – the prompt and the most the answer may take –
+  // must fit, else nothing is sent.
+  const quota = resolved.source === "instance" ? await requireQuota(user, { feature, model: resolved.config.model, tokensIn: estimateTokens(size), tokensOut: input.maxTokens ?? 1024 }) : null;
   const release = await takeAiSlot(user.id, AI_LIMITS.concurrent);
-  if (!release) throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  if (!release) {
+    quota?.();
+    throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  }
   // Tokens per feature for the monitoring (lib/metrics.ts): as reported by
   // the provider, else estimated from the characters.
   const usage: TokenUsage = {};
@@ -129,6 +137,9 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
         } catch {}
       noteAiCall({ feature, tokensIn, tokensOut, answered, failure, ms: Date.now() - started, model: resolved.config.model, source: resolved.source, workspaceId, userId: user.id });
     }
+    if (answered && resolved.source === "instance")
+      await recordQuotaUsage({ userId: user.id, kind: feature === "workflows" ? "workflow" : "person", model: resolved.config.model, tokensIn, tokensOut });
+    quota?.();
     release();
   }
 }

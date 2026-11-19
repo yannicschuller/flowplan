@@ -14,6 +14,7 @@
 // AI may read it). Under such an answer, people who may edit the page can
 // put it in as suggested changes ("Als Änderungsvorschlag einfügen",
 // lib/ai/page-edit.ts) – accepted or rejected one by one in the document.
+import { AiQuotaNote } from "./ai-quota";
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, FileText, Lifebuoy, MagnifyingGlass, PaperPlaneRight, PencilLine, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -397,6 +398,7 @@ export function AskPanel({
             <X size={18} />
           </button>
         </header>
+        {provider?.source === "instance" && <AiQuotaNote />}
         <div className="ai-ask-bar">
           <div className="ai-ask-scope">
             <MagnifyingGlass size={15} aria-hidden="true" />

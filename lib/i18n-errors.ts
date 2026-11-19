@@ -5,6 +5,12 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // AI quotas (lib/ai/quota.ts, #382).
+  "Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise).": "Cost limits need prices per model (Administration → AI → Prices).",
+  "Unbekannte Rolle.": "Unknown role.",
+  "Gruppe nicht gefunden.": "Group not found.",
+  "Eine Grenze ist doppelt eingetragen.": "A limit is entered twice.",
+  "Unbekannte Zeitzone.": "Unknown time zone.",
   // Starter content for new accounts (lib/starter-content.ts, #381).
   "Ein Ende-zu-Ende-verschlüsselter Bereich kann kein Startinhalt sein.": "An end-to-end encrypted space cannot be starter content.",
   // The restart history (lib/restarts/history.ts).
@@ -1579,6 +1585,15 @@ const exact: Record<string, string> = {
   "Kein Beispielbereich vorhanden.": "There is no sample space.",
 };
 const patterns: [RegExp, string][] = [
+  // The instance's AI quota for administrators (lib/ai/quota.ts instanceAlertText).
+  [/^Das KI-Kontingent der Instanz für heute ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for today is used."],
+  [/^Das KI-Kontingent der Instanz für heute ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for today is used up – AI through the instance's provider is blocked until $1."],
+  [/^Das KI-Kontingent der Instanz für diese Woche ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for this week is used."],
+  [/^Das KI-Kontingent der Instanz für diese Woche ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for this week is used up – AI through the instance's provider is blocked until $1."],
+  [/^Das KI-Kontingent der Instanz für diesen Monat ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for this month is used."],
+  [/^Das KI-Kontingent der Instanz für diesen Monat ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for this month is used up – AI through the instance's provider is blocked until $1."],
+  [/^Das KI-Kontingent der Instanz für dieses Jahr ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for this year is used."],
+  [/^Das KI-Kontingent der Instanz für dieses Jahr ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for this year is used up – AI through the instance's provider is blocked until $1."],
   [/^Die Sicherung vorher ist fehlgeschlagen, die Replik bleibt: (.+)$/, "The backup before it failed, the replica stays: $1"],
   [/^„(.+)“ lässt sich nicht als Kartenseite verwenden\.$/, "“$1” cannot be used as a side of a card."],
   // The Anki import (lib/importers/anki-read.ts, lib/importers/anki.ts).

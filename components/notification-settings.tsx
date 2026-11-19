@@ -44,6 +44,10 @@ const kindHints: Record<NotificationKind, [string, string]> = {
     "Die tägliche Erinnerung an fällige Lernkarten, zur Uhrzeit, die du unter „Lernen“ einstellst – nur wenn du an dem Tag noch nicht gelernt hast.",
     "The daily reminder of due flashcards, at the time you set under “Study” – only if you have not studied that day yet.",
   ],
+  ai_quota: [
+    "Nur für Administratoren: wenn das KI-Kontingent der ganzen Instanz fast oder ganz verbraucht ist. Ein Tipp öffnet Administration → KI → Kontingente.",
+    "Administrators only: when the AI quota of the whole instance is almost or fully used up. A tap opens Administration → AI → Quotas.",
+  ],
 };
 
 // The severities the rules use (lib/security-kinds.ts): "from warning on"

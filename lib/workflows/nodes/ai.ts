@@ -16,6 +16,7 @@ import { aiMayRead, AI_BLOCKED_MESSAGE } from "../../ai/access";
 import { aiComplete, requireAi, AI_LIMITS, type AiRunOptions } from "../../ai/run";
 import { aiJson, AI_INVALID_JSON } from "../../ai/json";
 import { redactSecrets } from "../../ai/redact";
+import { AiQuotaError } from "../../ai/quota";
 import { estimateTokens } from "../../metrics";
 import { Temporal } from "../../date-values";
 import { LANGUAGES } from "../../i18n";
@@ -153,6 +154,8 @@ const SYSTEM = (mark: string) =>
 type Call = { system: string; prompt: string; maxTokens: number; temperature?: number };
 const errorFor = (error: unknown): never => {
   if (error instanceof StepError) throw error;
+  // The instance's AI quota (#382): a limit, not worth retrying soon.
+  if (error instanceof AiQuotaError) throw new StepError(error.message, "limit");
   if (error instanceof HttpError) {
     if (error.status === 429 || error.status >= 500) throw new StepError(error.message, "transient");
     if (error.status === 403 && error.message === AI_BLOCKED_MESSAGE) throw new StepError(error.message, "permission");

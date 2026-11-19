@@ -22,6 +22,7 @@ import type { Field, Identity, Page, User } from "../types";
 import { aiFilter, aiMayRead, AI_BLOCKED_MESSAGE } from "./access";
 import { AI_REASON_TEXT, type AiReason } from "./features";
 import { aiJson } from "./json";
+import { AiQuotaError } from "./quota";
 import { instanceAiSettings } from "./settings";
 import { resolveAi } from "./resolve";
 import { redactSecrets } from "./redact";
@@ -363,7 +364,9 @@ export async function processAiCellJobs(limit = 12, now = Date.now()) {
       const message = String((error as Error)?.message || error);
       if (status === 429) {
         waiting.add(job.user_id);
-        await run("UPDATE ai_cell_jobs SET next_at=? WHERE user_id=? AND next_at<=?", Date.now() + 60_000, job.user_id, Date.now() + 60_000);
+        // A used-up AI quota (#382): the values wait until it resets.
+        const until = error instanceof AiQuotaError ? Math.max(error.quota.resetAt, Date.now() + 60_000) : Date.now() + 60_000;
+        await run("UPDATE ai_cell_jobs SET next_at=? WHERE user_id=? AND next_at<=?", until, job.user_id, until);
         continue;
       }
       const scope = error instanceof AiCellError ? error.scope : status >= 500 ? null : "row";

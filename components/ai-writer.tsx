@@ -14,6 +14,7 @@
 // name a page by its exact title stay no plain text either: once the answer
 // is complete they are resolved against the pages the person may read
 // (lib/ai/title-links.ts, #134).
+import { AiQuotaNote } from "./ai-quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMParser as ProseMirrorDOMParser, type Schema } from "@tiptap/pm/model";
@@ -350,6 +351,7 @@ export function AiWriter({
         if (!(event.target as HTMLElement).closest("input, textarea, select, .fp-select")) event.preventDefault();
       }}
     >
+      {writeRoute.primary !== "device" && <AiQuotaNote />}
       {phase === "choose" && request.kind !== "transcript" && (
         <>
           <form

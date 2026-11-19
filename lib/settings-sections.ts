@@ -258,6 +258,13 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "KI", en: "AI" },
     description: { de: "Deine KI-Funktionen, ein eigener Anbieter und worauf die KI zugreifen darf.", en: "Your AI features, an own provider and what the AI may access." },
     keywords: { de: "ki künstliche intelligenz anbieter ollama openai schlüssel zugriff", en: "ai artificial intelligence provider ollama openai key access" },
+    entries: [
+      {
+        title: { de: "KI-Kontingent", en: "AI quota" },
+        keywords: { de: "kontingent limit grenze tokens kosten übrig verbraucht", en: "quota limit tokens cost left used remaining" },
+        anchor: "quota",
+      },
+    ],
   },
   {
     id: "devices",
@@ -677,6 +684,23 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "KI", en: "AI" },
     description: { de: "Anbieter, wer KI nutzen darf und welche Funktionen es gibt.", en: "Provider, who may use AI and which features exist." },
     keywords: { de: "ki anbieter ollama openai funktionen zugriff semantische suche", en: "ai provider ollama openai features access semantic search" },
+    entries: [
+      {
+        title: { de: "Kontingente", en: "Quotas" },
+        keywords: { de: "kontingent limit grenze tokens kosten zeitzone woche hinweis workflows", en: "quota limit tokens cost time zone week warning workflows" },
+        anchor: "quotas",
+      },
+      {
+        title: { de: "Grenzen je Instanz, Gruppe und Person", en: "Limits per instance, group and person" },
+        keywords: { de: "kontingent standard gruppe rolle gäste administratoren ausgenommen ausnahme tag woche monat jahr", en: "quota default group role guests administrators exempt exception day week month year" },
+        anchor: "quota-limits",
+      },
+      {
+        title: { de: "KI-Nutzung je Person, Gruppe und Modell", en: "AI usage per person, group and model" },
+        keywords: { de: "kontingent verbrauch übrig tokens kosten", en: "quota usage left tokens cost" },
+        anchor: "quota-usage",
+      },
+    ],
   },
   {
     id: "extensions",
