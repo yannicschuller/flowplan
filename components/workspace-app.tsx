@@ -81,6 +81,8 @@ import { openPageAliases, AliasIcon } from "./page-aliases";
 import type { AskRequest } from "./ai-ask";
 import { useMedia } from "./use-media";
 import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
+import { dockState, evictDock, serverDockState, subscribeDock } from "@/lib/side-dock";
+import { isPdfName, openPdfPanel } from "./pdf-viewer";
 import { proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
 import type { AiSummaryTarget } from "./ai-summary";
@@ -2362,10 +2364,24 @@ export default function WorkspaceApp({
     if (!askOpen) return;
     setAskMounted(true);
     setComments(false);
+    evictDock();
   }, [askOpen]);
   useEffect(() => {
-    if (comments) setAsk(null);
+    if (!comments) return;
+    setAsk(null);
+    evictDock();
   }, [comments]);
+  // The docked side panel of a record or a PDF (#392, lib/side-dock.ts)
+  // takes the same edge: opening it closes the other two.
+  const dock = useSyncExternalStore(subscribeDock, dockState, serverDockState);
+  useEffect(() => {
+    if (!dock) return;
+    setAsk(null);
+    setComments(false);
+    // Opened from a hit of the search (its menu): the search closes.
+    if (searchOpen.current) closeSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dock?.owner]);
   // Narrow wide screens (an iPad, a small window): the panel lies over the
   // page; pinned beside it, the sidebar makes room while the panel is open
   // and comes back when it closes or lies over the page again – unless the
@@ -4202,6 +4218,8 @@ export default function WorkspaceApp({
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, activeItem?.id]);
+  // A PDF among the files found: also into the side panel (#392).
+  const pdfHit = (p: SearchResult) => (p.kind === "file" && p.fileId && isPdfName(p.title) ? `/api/files/${p.fileId}` : null);
   const paletteOption = (item: PaletteItem, index: number, content: React.ReactNode) => (
     <div
       key={item.id}
@@ -4266,10 +4284,11 @@ export default function WorkspaceApp({
     <TagOptionsContext.Provider value={tagOptions}>
     <div
       data-motion={motionAttribute(motion)}
-      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? (askNarrowWindow && !askPinned ? " ask-overlay" : " ask-open") : ""}`}
+      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? (askNarrowWindow && !askPinned ? " ask-overlay" : " ask-open") : ""}${dock?.docked ? " side-dock-open" : ""}`}
       style={
-        sidebarWidth || askWidth || overlayWidth
+        sidebarWidth || askWidth || overlayWidth || dock
           ? ({
+              ...(dock ? { "--side-dock-width": `${dock.width}px` } : {}),
               ...(sidebarWidth ? { "--sidebar-width": `${sidebarWidth}px` } : {}),
               ...(askWidth ? { "--ask-width": `${askWidth}px` } : {}),
               ...(overlayWidth ? { "--overlay-width": `${overlayWidth}px` } : {}),
@@ -6433,6 +6452,8 @@ export default function WorkspaceApp({
           )}
         </div>
       </main>
+      {/* The docked side panel's place (components/side-panel.tsx). */}
+      <div id="side-dock-root" className="side-dock-root" />
       <AppPromo paused={onboarding} />
       {/* Offline use on a device the introduction did not run on (#295):
           for people who went through the introduction (it asks there), once
@@ -6839,7 +6860,7 @@ export default function WorkspaceApp({
                   recentPages.length + i,
                   <>
                     <PageIcon name={shownPageIcon(p.icon, p.kind === "comment" || p.kind === "file" ? "document" : p.kind)} />
-                    <span>
+                    <span {...(pdfHit(p) ? { "data-pdf-src": pdfHit(p), "data-pdf": p.title } : {})}>
                       {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
                       {p.alias && <span className="alias-hit"> · {p.alias}</span>}
                       {p.pageTitle && (p.kind === "comment" || p.kind === "file") && (
@@ -6862,6 +6883,21 @@ export default function WorkspaceApp({
                       )}
                     </span>
                     <small className="palette-date">{edited(p.updatedAt)}</small>
+                    {pdfHit(p) && (
+                      <button
+                        type="button"
+                        className="icon-button palette-side-panel"
+                        aria-label={t(`„${p.title}“ im Seitenfenster öffnen`, `Open “${p.title}” in the side panel`)}
+                        title={t("Im Seitenfenster öffnen", "Open in side panel")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeSearch();
+                          openPdfPanel(pdfHit(p)!, p.title);
+                        }}
+                      >
+                        <SidebarSimple size={16} />
+                      </button>
+                    )}
                   </>,
                 );
               })}

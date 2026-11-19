@@ -467,7 +467,12 @@ function pickedKey(ed: InkEditor, event: KeyboardEvent, mod: boolean) {
   return true;
 }
 export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser", s: "shape" };
-export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { tools = false }: { tools?: boolean } = {}) {
+// The PDF side panel (components/pdf-panel.tsx) writes beside a notebook:
+// while it was touched last, its shortcuts act and those of the page beside
+// it wait (and the other way round).
+let panelInk = false;
+export const setPanelInkFocus = (on: boolean) => void (panelInk = on);
+export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { tools = false, panel = false }: { tools?: boolean; panel?: boolean } = {}) {
   const ref = useRef(editor);
   ref.current = editor;
   const toolsRef = useRef(tools);
@@ -476,7 +481,7 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
     if (!enabled) return;
     const key = (event: KeyboardEvent) => {
       const ed = ref.current;
-      if (!ed) return;
+      if (!ed || panelInk !== panel) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog]")) return;
       const mod = event.metaKey || event.ctrlKey;
@@ -524,5 +529,5 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
-  }, [enabled]);
+  }, [enabled, panel]);
 }

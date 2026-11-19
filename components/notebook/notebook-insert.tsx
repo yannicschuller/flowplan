@@ -16,6 +16,7 @@ import { placeImage } from "@/lib/ink/image";
 import { inkId, type InkImage } from "@/lib/ink/model";
 import { isPicture, notebookPictures, PICTURE_TYPES, preparePicture, uploadToPage, type NotebookPicture } from "./notebook-media";
 import { StickerPanel } from "./sticker-panel";
+import { CLIP_TYPE, getClip, type PdfClip } from "@/lib/pdf-clip";
 
 type XY = { x: number; y: number };
 // Points per pixel of a picture (96 per inch).
@@ -30,6 +31,7 @@ export function useNotebookInsert({
   onError,
   onBusy,
   onPdf,
+  onClip,
   refuse,
 }: {
   // Said instead of uploading (guests of an edit link, #280).
@@ -43,6 +45,8 @@ export function useNotebookInsert({
   onBusy: (text: string) => void;
   // A PDF dropped or pasted: imported as sheets.
   onPdf?: (file: File) => void;
+  // A region of a PDF dragged from the side panel (#392, lib/pdf-clip.ts).
+  onClip?: (clip: PdfClip, sheetId: string, at: XY | null) => void;
 }) {
   const t = useT();
   // The middle of what is visible of a sheet, in its page units.
@@ -124,19 +128,22 @@ export function useNotebookInsert({
   const dropProps = canEdit
     ? {
         onDragOver: (e: React.DragEvent) => {
-          if (![...e.dataTransfer.types].includes("Files")) return;
+          const types = [...e.dataTransfer.types];
+          if (!types.includes("Files") && !(onClip && types.includes(CLIP_TYPE))) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
         },
         onDrop: (e: React.DragEvent) => {
           const files = [...e.dataTransfer.files];
-          if (!files.length) return;
+          const clip = onClip ? getClip(e.dataTransfer.getData(CLIP_TYPE)) : null;
+          if (!files.length && !clip) return;
           e.preventDefault();
           const sheet = (e.target as Element).closest<HTMLElement>(".notebook-sheet");
           const sheetId = sheet?.dataset.sheet || current();
           const layer = sheet?.querySelector<HTMLElement>(".ink-layer");
           const size = sizeOf(sheetId);
           const at = layer && size ? clientToPage(e.clientX, e.clientY, layer.getBoundingClientRect(), size) : null;
+          if (clip) return void onClip!(clip, sheetId, at);
           void insertFiles(files, sheetId, at);
         },
       }

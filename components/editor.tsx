@@ -131,6 +131,7 @@ import {
 import { freshLinkedIds } from "@/lib/linked-paste";
 import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
+import { CLIP_TYPE, clipFileName, clipHref, getClip, registerClipTarget, trackClipTarget, type PdfClip } from "@/lib/pdf-clip";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import {
@@ -817,7 +818,7 @@ export default function DocumentEditor({
       ),
     [plugins],
   );
-  const uploadFile = useRef(async (_file: File) => {});
+  const uploadFile = useRef(async (_file: File, _caption?: { text: string; href: string }) => {});
   const slashPick = useRef((_index: number) => {});
   const slashBack = useRef(() => {});
   // Keeps the typed query in step with the text; leaving the "/…" word,
@@ -1070,6 +1071,15 @@ export default function DocumentEditor({
         },
         handleDrop: (view, event, _slice, moved) => {
           const files = [...(event.dataTransfer?.files || [])];
+          // A region of a PDF from the side panel (#392, lib/pdf-clip.ts).
+          const clip = editable && !moved ? getClip(event.dataTransfer?.getData(CLIP_TYPE) || "") : null;
+          if (clip) {
+            const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+            if (at) view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(at.pos))));
+            event.preventDefault();
+            void insertClip.current(clip);
+            return true;
+          }
           if (!editable || moved || !files.length) return false;
           event.preventDefault();
           const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -1666,7 +1676,7 @@ export default function DocumentEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, !!draft]);
-  uploadFile.current = (file: File) => upload(file);
+  uploadFile.current = (file: File, caption?: { text: string; href: string }) => upload(file, caption);
   async function importDrawing(file: File) {
     const host = pages.find((p) => p.id === pageId);
     if (!host || needsConnection()) return;
@@ -1720,7 +1730,27 @@ export default function DocumentEditor({
       return true;
     });
   }, [editor, editable, embedded, pageId, rowId]);
-  async function upload(original: File) {
+  // "Einfügen" in the PDF side panel (#392): the region as a picture where
+  // the cursor is, below it its caption linking back to the PDF page.
+  const insertClip = useRef(async (clip: PdfClip) => {
+    await uploadFile.current(new File([clip.blob], clipFileName(clip.title, clip.page), { type: "image/png" }), {
+      text: t(`${clip.title}, S. ${clip.page}`, `${clip.title}, p. ${clip.page}`),
+      href: clipHref(clip.src, clip.page),
+    });
+    return true;
+  });
+  useEffect(() => {
+    const dom = editor && !editor.isDestroyed ? editor.view.dom : null;
+    if (!dom || !editable) return;
+    const id = `editor:${pageId}:${rowId || ""}`;
+    const off = registerClipTarget({ id, element: () => (!editor || editor.isDestroyed ? null : editor.view.dom), insert: (clip) => insertClip.current(clip) });
+    const untrack = trackClipTarget(id, dom);
+    return () => {
+      off();
+      untrack();
+    };
+  }, [editor, editable, pageId, rowId]);
+  async function upload(original: File, caption?: { text: string; href: string }) {
     // Excalidraw and draw.io drawings become a new whiteboard shown here.
     if (
       boardFileName(original.name) ||
@@ -1771,12 +1801,20 @@ export default function DocumentEditor({
         data = answer;
       }
       primePlaceholder(data.url, data.placeholder);
-      if (file.type.startsWith("image/"))
-        editor
-          ?.chain()
-          .focus()
-          .setImage({ src: data.url, alt: original.name })
-          .run();
+      if (file.type.startsWith("image/")) {
+        // With a caption (a region of a PDF): the picture and the line
+        // below it in one step.
+        if (caption)
+          editor
+            ?.chain()
+            .focus()
+            .insertContent([
+              { type: "image", attrs: { src: data.url, alt: caption.text } },
+              { type: "paragraph", content: [{ type: "text", text: caption.text, marks: [{ type: "link", attrs: { href: caption.href } }] }] },
+            ])
+            .run();
+        else editor?.chain().focus().setImage({ src: data.url, alt: original.name }).run();
+      }
       else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name))
         editor
           ?.chain()

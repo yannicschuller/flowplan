@@ -1,0 +1,520 @@
+/* The docked side panel (#392, components/side-panel.tsx): a record of a
+   database view or a PDF beside the page. From 768 px it is the app
+   shell's third column (like "KI fragen") and the page narrows beside it;
+   on phones a bottom sheet over the lower part of the page. Its width
+   comes from lib/side-panel.ts (dragged at its left edge, kept per device). */
+.side-dock-root {
+  display: contents;
+}
+.side-panel {
+  position: relative;
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  animation: side-panel-in var(--motion-slow) var(--ease-standard) backwards;
+}
+.side-panel > .sheet-handle {
+  display: none;
+}
+.side-panel-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 57px;
+  min-height: 57px;
+  padding: 0 calc(8px + var(--safe-right, 0px)) 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.side-panel-icon {
+  flex: none;
+  color: var(--accent-strong);
+}
+.side-panel-pdf .side-panel-icon {
+  color: #e5533d;
+}
+.side-panel-heading {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.side-panel-heading:focus {
+  outline: none;
+}
+.side-panel-heading:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.side-panel-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.side-panel-actions .modal-heading-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.side-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+/* A record: its page in the panel, with room at the sides. */
+.record-dock .side-panel-body {
+  padding: 18px calc(20px + var(--safe-right, 0px)) 40px 22px;
+}
+.record-dock .row-detail {
+  max-width: none;
+}
+/* The record the panel shows, in the view beside it. */
+.database [data-docked]:is(tr, .board-card, .record-list-item, .timeline-entry) {
+  box-shadow: inset 3px 0 0 var(--accent-strong);
+}
+.database tr[data-docked] > td {
+  background: color-mix(in srgb, var(--accent-strong) 7%, transparent);
+}
+.database .timeline-entry[data-docked] .timeline-range {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+@keyframes side-panel-in {
+  from {
+    opacity: 0;
+    translate: calc(16px * var(--motion-move)) 0;
+  }
+}
+@media (min-width: 768px) {
+  .app-shell.side-dock-open {
+    --side-dock-space: var(--side-dock-width, 520px);
+    grid-template-columns: var(--sidebar-width, 246px) minmax(0, 1fr) var(--side-dock-space);
+  }
+  .app-shell.side-dock-open.desktop-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) var(--side-dock-space);
+  }
+  /* What floats at the page's right edge moves left of the panel. */
+  .app-shell.side-dock-open .document-outline:not(.outline-popover) {
+    right: calc(var(--side-dock-space) + 20px);
+  }
+  .app-shell.side-dock-open .author-legend,
+  .app-shell.side-dock-open .find-bar {
+    right: calc(var(--side-dock-space) + 16px);
+  }
+}
+@media (min-width: 768px) and (max-width: 1200px) {
+  .app-shell.side-dock-open {
+    grid-template-columns: var(--sidebar-width, 225px) minmax(0, 1fr) var(--side-dock-space);
+  }
+}
+/* Phones: a sheet above the tab bar; the page above it stays usable. */
+@media (max-width: 767px) {
+  .side-panel:not(.side-panel-inline) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--tab-bar-space, 0px);
+    z-index: 40;
+    height: min(58dvh, 620px);
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 34px #1d1a1424;
+    animation: side-sheet-in var(--motion-slow) var(--ease-standard) backwards;
+  }
+  .side-panel > .sheet-handle {
+    display: block;
+    position: relative;
+    flex: none;
+    height: 16px;
+    margin-bottom: -10px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .side-panel > .sheet-handle::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 5px;
+    margin-left: -18px;
+    border-radius: 3px;
+    background: var(--muted);
+    opacity: 0.45;
+  }
+  .side-panel-head {
+    height: 50px;
+    min-height: 50px;
+    padding: 0 calc(6px + var(--safe-right)) 0 calc(14px + var(--safe-left));
+  }
+  .side-panel-head .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+  .record-dock .side-panel-body {
+    padding: 14px calc(16px + var(--safe-right)) 28px calc(16px + var(--safe-left));
+  }
+  /* The page scrolls far enough to show its end above the sheet. */
+  .app-shell:has(> .side-dock-root > .side-panel) .main-scroll {
+    padding-bottom: min(58dvh, 620px);
+  }
+}
+:root[data-theme="dark"] .side-panel:not(.side-panel-inline) {
+  box-shadow: none;
+}
+@media (max-width: 767px) {
+  :root[data-theme="dark"] .side-panel:not(.side-panel-inline) {
+    box-shadow: 0 -10px 34px #0009;
+  }
+}
+@keyframes side-sheet-in {
+  from {
+    opacity: calc(1 - var(--motion-move));
+    translate: 0 calc(100% * var(--motion-move));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-panel {
+    animation: none;
+  }
+}
+@media print {
+  .side-panel {
+    display: none !important;
+  }
+}
+
+/* Published pages (wide windows): the record beside the view, the page
+   moves over to keep its width beside the panel. */
+.side-panel.side-panel-inline {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--side-panel-width);
+  box-shadow: -10px 0 30px -14px #1d1a1440;
+}
+@media (min-width: 1000px) {
+  html.public-peek-open main.public-page {
+    margin-right: calc(var(--side-panel-inline-width, 520px) + 24px);
+    margin-left: max(24px, calc((100vw - var(--side-panel-inline-width, 520px) - 24px - 850px) / 2));
+  }
+  html.public-peek-open main.public-page.public-wide {
+    margin-left: 24px;
+  }
+}
+.public-record-peek .side-panel-body {
+  padding: 18px 22px 40px;
+}
+.public-record-peek .public-record-body > h1 {
+  margin-top: 0;
+  font-size: 28px;
+}
+.public-record-peek .side-panel-actions a.icon-button {
+  display: inline-grid;
+  place-items: center;
+}
+
+/* The PDF in the panel (components/pdf-panel.tsx). */
+.side-panel-pdf .side-panel-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pdf-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.pdf-panel-modes {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.pdf-panel-modes .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pdf-panel-modes .chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  color: var(--accent-strong);
+}
+.pdf-panel-page {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pdf-panel-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+.pdf-panel-zoom > span {
+  min-width: 42px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-panel-zoom .icon-button {
+  width: 30px;
+  height: 30px;
+}
+.pdf-panel .ink-toolbar {
+  position: relative;
+  flex: none;
+  max-width: 100%;
+  margin: 0;
+  border-radius: 0;
+  border-width: 0 0 1px;
+  box-shadow: none;
+  overflow-x: auto;
+}
+.pdf-panel-hint {
+  flex: none;
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.pdf-panel .pdf-viewer-notice {
+  flex: none;
+  margin: 8px 12px 0;
+}
+.pdf-panel-pages {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 12px 40px;
+  background: var(--sidebar);
+  touch-action: pan-x pan-y;
+}
+.pdf-panel-pages .pdf-viewer-sheets {
+  gap: 12px;
+}
+.pdf-panel-pages .pdf-page {
+  background: #fff;
+  box-shadow: 0 1px 3px #0002, 0 0 0 1px #0000000d;
+}
+.pdf-panel-pages .pdf-viewer-message {
+  color: var(--muted);
+}
+.pdf-panel.is-annotating .pdf-panel-pages,
+.pdf-panel.is-clipping .pdf-panel-pages {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* "Bereich": the lasso over a page, the region taken and its bar. */
+.pdf-lasso-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: crosshair;
+  touch-action: none;
+}
+.pdf-lasso-layer svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.pdf-lasso-layer polyline {
+  fill: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  stroke: var(--accent-strong);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+.pdf-region {
+  position: absolute;
+  z-index: 4;
+  border: 2px dashed var(--accent-strong);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent-strong) 10%, transparent);
+  cursor: progress;
+}
+.pdf-region.is-ready {
+  cursor: grab;
+}
+.pdf-region.is-ready:active {
+  cursor: grabbing;
+}
+.pdf-region-bar {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  line-height: normal;
+}
+.pdf-region-bar .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+/* A long press on a PDF opens the menu, not the system's. */
+.pdf-card,
+.media-thumb[data-pdf],
+.notebook-attachment {
+  -webkit-touch-callout: none;
+}
+.palette-side-panel {
+  flex: none;
+  width: 30px;
+  height: 30px;
+}
+
+/* A notebook's attachments (PDFs beside the sheets) and the captions of
+   regions taken from a PDF. */
+.notebook-attachments {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  scrollbar-width: thin;
+}
+.notebook-attachments-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.notebook-attachment {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--sidebar);
+  color: var(--text);
+  font-size: 13px;
+}
+.notebook-attachment > button:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.notebook-attachment > button:first-child > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.notebook-attachment > button:first-child > svg {
+  flex: none;
+  color: #e5533d;
+}
+.notebook-attachment .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.notebook-source-chip {
+  position: absolute;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 60%;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+  box-shadow: 0 1px 2px #0001;
+}
+.notebook-insert-mode {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+}
+.notebook-insert-mode > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.notebook-insert-mode > label:has(input:checked) {
+  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 6%, transparent);
+}
+.notebook-insert-mode input {
+  margin-top: 3px;
+}
+.notebook-insert-mode span {
+  display: grid;
+  gap: 2px;
+}
+.notebook-insert-mode small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.notebook-source-chip:hover {
+  text-decoration: underline;
+}

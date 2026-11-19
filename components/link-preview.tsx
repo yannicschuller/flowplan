@@ -1,4 +1,5 @@
 "use client";
+import { pdfPageLink } from "@/lib/pdf-clip";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
@@ -190,6 +191,8 @@ export function LinkPreview({
         "a[href], span[data-mention]",
       );
       if (!target || target.closest(".sidebar, .link-preview")) return;
+      // A link to a page of a PDF opens the side panel (pdf-viewer.tsx).
+      if (pdfPageLink(target.getAttribute("href") || "")) return;
       // Opening a page removes the link before the pointer can leave it, so
       // no mouseout would ever close the card.
       if (target.matches('a[href*="#page="]')) clear();

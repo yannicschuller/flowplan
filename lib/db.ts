@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 115;
+export const SCHEMA_VERSION = 116;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1626,11 +1626,22 @@ function migrate(d: DatabaseSync) {
   // Schema 115 – widget pushes (iOS) and profiles whose app keeps its
   // registration without notifications (lib/widget-push.ts).
   migrateWidgetPush(d);
+  // Schema 116 – a notebook's attachments (lib/notebook.ts, #392).
+  migrateNotebookAttachments(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 116 – PDFs attached to a notebook without becoming sheets (#392,
+// lib/notebook.ts): notebooks.attachments, a JSON list of the files (of the
+// notebook page) in their order. They open in the side panel beside the
+// sheets. An older version ignores the column, but would drop the list
+// when it copies or restores a notebook – hence the new number.
+function migrateNotebookAttachments(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(notebooks)").all() as { name: string }[]).some((c) => c.name === "attachments"))
+    d.exec("ALTER TABLE notebooks ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'");
 }
 // Schema 115 – widget pushes (lib/widget-push.ts, iOS 26 WidgetKit push
 // through the relay, type "widgets") and app profiles that stay registered

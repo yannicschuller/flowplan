@@ -65,6 +65,7 @@ import { publicPageClass } from "@/lib/public-page-class";
 import { recordCrumb, recordHref, viewHref, viewScrollKey, viewStateOf, type ViewState } from "@/lib/public-nav";
 import { PublicThemeToggle } from "./public-theme-toggle";
 import { PublicBackLink, PublicViewMemory } from "./public-view-memory";
+import { PublicRecordPeek } from "./public-record-peek";
 import { sharedStudyCards } from "@/lib/shared-study";
 import { PublicStudy } from "./public-study";
 import { activeUser } from "@/lib/auth";
@@ -645,6 +646,8 @@ async function renderPublishedPage({
         </nav>
       )}
       {d && !record && <PublicViewMemory storageKey={viewKey} />}
+      {/* Wide windows: records open beside the view (#392). */}
+      {d && !record && <PublicRecordPeek />}
       <SharedInteractions
         key={`${page.id}:${rowId || ""}`}
         token={token}

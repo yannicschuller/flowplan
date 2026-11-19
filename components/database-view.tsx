@@ -85,6 +85,10 @@ import {
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
 import { cardFields } from "@/lib/card-fields";
 import { GalleryCover } from "./gallery-cover";
+import { DOCKABLE_VIEWS as dockableViews, neighbourRecord, recordDocks } from "@/lib/side-panel";
+import { useRecordDock } from "./record-dock";
+// The docked side panel (#392) loads with its first record.
+const SidePanel = lazy(() => import("./side-panel"));
 import { CoverFrame } from "./cover-frame";
 import { primePlaceholder } from "./image-placeholder";
 import { ScrollFade } from "./scroll-fade";
@@ -92,6 +96,8 @@ import { useStickyTableHead } from "./sticky-table-head";
 import type { PageImage } from "@/lib/page-appearance";
 import {
   Fragment,
+  lazy,
+  Suspense,
   type ReactNode,
   useMemo,
   useState,
@@ -507,7 +513,7 @@ export default function DatabaseView({
   function setRowId(id: string | null, occurrence?: string, zone?: string) {
     if (id) lastOpened.current = id;
     // A record opened from a record shown as a page stays a page (#231).
-    const full = !!id && routeNavigation && !record && (viewRecordMode === "full" || pageRecord);
+    const full = !!id && routeNavigation && !record && (openMode === "full" || pageRecord);
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence, zone } : null);
     setLocalRowId(id);
     setFullFromUrl(full);
@@ -743,12 +749,19 @@ export default function DatabaseView({
       (f) => !view.hiddenFields?.includes(f.id),
     );
   const viewRecordMode = viewRecordOpenMode(view, recordLayout);
+  // "Seitenleiste" beside the view (#392): the view narrows, the panel
+  // takes the right column. Too narrow for that: a page of its own (a
+  // dialog across the window where the database is not the page itself).
+  const docking = viewRecordMode === "side" && recordDocks(view.type, view.sidePanel);
+  const dockRoom = useRecordDock();
+  const openMode: RecordOpenMode = docking && !dockRoom ? "full" : viewRecordMode;
   // The open record as a page of its own in the main area (#231): asked
   // for by the address or by the view's setting "Ganze Seite" – only for
   // the database opened as the page itself. Elsewhere (a linked database,
   // a related record on top) "Ganze Seite" stays a dialog across the window.
-  const pageRecord = routeNavigation && !record && !!rowId && (fullFromUrl || viewRecordMode === "full") && data.rows.some((r) => r.id === rowId);
-  const recordMode: RecordOpenMode = pageRecord ? "full" : viewRecordMode;
+  const pageRecord = routeNavigation && !record && !!rowId && (fullFromUrl || openMode === "full") && data.rows.some((r) => r.id === rowId);
+  const recordMode: RecordOpenMode = pageRecord ? "full" : openMode;
+  const docked = docking && dockRoom && !record && !pageRecord && !!rowId;
   // The first column (and the selection cell before it) stays in place while
   // the table scrolls sideways.
   // Next to the selection column (wider on touch screens: --selection-column);
@@ -864,6 +877,34 @@ export default function DatabaseView({
     [data, fields, view, query, filterNow, members],
   );
   const selected = data.rows.find((r) => r.id === rowId);
+  // While a record is docked: ↑/↓ open the one before or after it in the
+  // view's order (as shown), and its row, card or bar is marked.
+  const dockedId = docked && selected ? selected.id : null;
+  const openRow = useRef(setRowId);
+  openRow.current = setRowId;
+  useEffect(() => {
+    if (!dockedId) return;
+    const key = (e: KeyboardEvent) => {
+      if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const target = e.target as Element | null;
+      if (target?.closest?.("input, textarea, select, [contenteditable=true], [role=listbox], [role=menu], .modal") || document.querySelector('[aria-modal="true"]')) return;
+      const root = boardRef.current;
+      const ids = [...(root?.querySelectorAll<HTMLElement>("[data-row-id]") || [])].map((el) => el.dataset.rowId || "");
+      const next = neighbourRecord(ids, dockedId, e.key === "ArrowDown" ? 1 : -1);
+      if (!next) return;
+      e.preventDefault();
+      openRow.current(next);
+      root?.querySelector(`[data-row-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [dockedId]);
+  useEffect(() => {
+    const root = boardRef.current;
+    if (!root) return;
+    for (const el of root.querySelectorAll<HTMLElement>("[data-docked]")) if (el.dataset.rowId !== dockedId) delete el.dataset.docked;
+    if (dockedId) for (const el of root.querySelectorAll<HTMLElement>(`[data-row-id="${CSS.escape(dockedId)}"]`)) el.dataset.docked = "";
+  });
   // A related record on top of another view (#192): it closes with its
   // dialog (or once it is gone: deleted, moved, turned into a page).
   const recordGone = !!record && !selected;
@@ -945,7 +986,7 @@ export default function DatabaseView({
     return (
       <>
         {pageRecord ? (
-          viewRecordMode !== "full" && (
+          openMode !== "full" && (
             <button
               type="button"
               className="icon-button record-page-toggle active"
@@ -3036,6 +3077,7 @@ export default function DatabaseView({
       if (!next) return;
       e.preventDefault();
       (next.querySelector<HTMLElement>(".row-title-link") || next).focus();
+      if (docked && next.dataset.rowId) setRowId(next.dataset.rowId);
     } else if (e.key === "Enter" && target === e.currentTarget) {
       e.preventDefault();
       setRowId(r.id);
@@ -3222,7 +3264,7 @@ export default function DatabaseView({
         // Records (rows, cards, list items) get their own menu; fields
         // being edited keep the browser's.
         const target = e.target as HTMLElement;
-        if (target.closest("input, textarea, select, [contenteditable=true], .modal, .ProseMirror")) return;
+        if (target.closest("input, textarea, select, [contenteditable=true], .modal, .side-panel, .ProseMirror")) return;
         // An option's chip: its colour (#242).
         const chip = target.closest<HTMLElement>("[data-option-field]");
         if (chip && optionsEditable) {
@@ -4478,6 +4520,20 @@ export default function DatabaseView({
               ))}
             </Select>
           </label>
+          {viewRecordMode === "side" && (dockableViews as readonly string[]).includes(view.type) && (
+            <label>
+              {t("Seitenleiste", "Side peek")}
+              <Select
+                aria-label={t("Seitenleiste", "Side peek")}
+                disabled={!viewEditable}
+                value={recordDocks(view.type, view.sidePanel) ? "beside" : "over"}
+                onChange={(e) => updateView({ sidePanel: e.target.value as "beside" | "over" })}
+              >
+                <option value="beside">{t("Daneben – die Ansicht wird schmaler", "Beside – the view narrows")}</option>
+                <option value="over">{t("Darüber – über der Ansicht", "Over – on top of the view")}</option>
+              </Select>
+            </label>
+          )}
           {view.type === "study" && (
             <div className="settings-section">
               <h3>{t("Lernen", "Study")}</h3>
@@ -6450,6 +6506,24 @@ export default function DatabaseView({
             )}
           </div>
         );
+        if (docked && selected)
+          return (
+            <Suspense fallback={null}>
+              <SidePanel
+                kind="record"
+                owner={`record:${page.id}`}
+                label={t(`Eintrag „${recordTitle}“`, `Record “${recordTitle}”`)}
+                title={recordTitle}
+                actions={recordActions(selected)}
+                onClose={closeRecord}
+                className="record-dock"
+                // A new record keeps the focus in its title.
+                autoFocus={freshRowId !== selected.id}
+              >
+                {detail}
+              </SidePanel>
+            </Suspense>
+          );
         if (pageRecord && selected)
           return (
             <section className={`record-page${recordFullWidth ? " record-page-wide" : ""}`} aria-label={t("Eintrag", "Record")}>

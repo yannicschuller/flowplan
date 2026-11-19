@@ -162,7 +162,12 @@ block of documents (`components/ink/draw-block*.tsx`,
   point them to the copied files), `sticker` a built-in sticker
   (`lib/ink/stickers.ts`; `color` tints one-colour ones). `(x, y, w, h)` is
   the box shown before `rotation` (degrees clockwise around its centre);
-  `crop` the shown part of the whole picture in fractions (0–1). Drawn in
+  `crop` the shown part of the whole picture in fractions (0–1). A picture
+  taken as a region of a PDF page in the side panel (#392) carries
+  `source: { file, page, title }` – the PDF (a file of the page), its page
+  and name – for the caption that opens the panel at that page; copies
+  point it to the copied PDF or drop it. Versions before it drop the
+  field when they save that surface (the picture stays). Drawn in
   item order among the ink, so a picture can lie under the ink or over it;
   highlighter strokes above a picture are drawn multiplied over it. Erasers
   leave pictures alone (they are deleted from their frame); the lasso takes

@@ -7,29 +7,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowsOut,
   Cards,
-  Check,
-  ClockCounterClockwise,
   DownloadSimple,
   FileArrowDown,
   FilePdf,
-  FloppyDisk,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
   PencilSimpleLine,
   X,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { api, downloadBlob } from "./ui";
-import { InkLayer } from "./ink/ink-layer";
-import { InkToolbar } from "./ink/ink-toolbar";
-import { useMenuPlacement } from "./ink/menu-placement";
-import { useInkEditor, useInkShortcuts, type InkEditor } from "./ink/use-ink-editor";
-import type { PageSize } from "@/lib/ink/coords";
-import { emptyInk, hasInk, parseInk, type InkDoc } from "@/lib/ink/model";
-import { loadPdf, renderPage, type PdfDocument } from "./pdf-viewer";
-import { convertSelection } from "./ink/convert";
-import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { recognitionAvailable, recognitionId, recognitionRequest, recognizeInk } from "@/lib/ink/recognition";
+import { useInkShortcuts } from "./ink/use-ink-editor";
+import { loadPdf, type PdfDocument } from "./pdf-viewer";
+import { AnnotateBar, currentPageOf, PdfNotice, scrollToPage, usePdfAnnotations, ViewerPage } from "./pdf-annotations";
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./notebook/use-pinch-zoom";
 import { shortcutLetter } from "@/lib/keymap";
@@ -51,183 +40,22 @@ const fileIdOf = (src: string) => /^\/api\/files\/([\w-]+)$/.exec(src)?.[1] || n
 // two fingers and trackpads zoom freely (as in notebooks).
 const ZOOMS = { min: 0.5, max: 3, step: 0.25 };
 
-// What the pages need to show ink and, while annotating, to take it.
-type PageInk = {
-  editor: InkEditor;
-  editing: boolean;
-  show: boolean;
-  // The size of a page once known (recognition needs it).
-  onSize: (page: string, size: PageSize) => void;
-  // "Convert to text" where the device recognises handwriting.
-  convert?: (size: PageSize) => void;
-};
-// One page of the viewer; drawn once it comes near the visible area. The
-// ink lies over it in page units (PDF points), whatever the zoom.
-function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: number; width: number; ink: PageInk }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const [visible, setVisible] = useState(number <= 2);
-  const [size, setSize] = useState<PageSize | null>(null);
-  useEffect(() => {
-    const el = canvas.current;
-    if (!el || visible) return;
-    const io = new IntersectionObserver(([entry]) => entry.isIntersecting && setVisible(true), { rootMargin: "800px 0px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [visible]);
-  useEffect(() => {
-    if (!visible || !canvas.current) return;
-    let alive = true;
-    // Drawn aside and copied over when done: after a zoom the page shown
-    // before stays (stretched) until the sharp one is there, no blank flash.
-    const aside = document.createElement("canvas");
-    renderPage(doc, number, aside, width)
-      .then(() => {
-        const el = canvas.current;
-        if (!alive || !el || !aside.width) return;
-        el.width = aside.width;
-        el.height = aside.height;
-        el.getContext("2d")?.drawImage(aside, 0, 0);
-        aside.width = aside.height = 0;
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [doc, number, width, visible]);
-  // The page size (for the ink) once the page comes near: large PDFs do
-  // not load every page up front.
-  useEffect(() => {
-    if (!visible) return;
-    let alive = true;
-    doc
-      .getPage(number)
-      .then((page) => {
-        const { width: w, height: h } = page.getViewport({ scale: 1 });
-        if (alive) {
-          setSize({ width: w, height: h });
-          ink.onSize(String(number), { width: w, height: h });
-        }
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [doc, number, visible]);
-  return (
-    <div className="pdf-page-wrap" data-page={number} style={{ width }}>
-      <canvas ref={canvas} className="pdf-page" data-page={number} style={{ width, aspectRatio: size ? `${size.width} / ${size.height}` : undefined }} />
-      {size && ink.show && (
-        <InkLayer
-          page={String(number)}
-          size={size}
-          editor={ink.editor}
-          editing={ink.editing}
-          onConvert={ink.convert ? () => ink.convert!(size) : undefined}
-        />
-      )}
-    </div>
-  );
-}
-
-export default function PdfViewerDialog({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
+export default function PdfViewerDialog({ src, title, page: startPage, onClose }: { src: string; title: string; page?: number; onClose: () => void }) {
   const t = useT();
-  const keyHints = useKeyboardHints();
-  const placeMenu = useMenuPlacement();
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [error, setError] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [fitWidth, setFitWidth] = useState(800);
   const [current, setCurrent] = useState(1);
   const scroller = useRef<HTMLDivElement>(null);
-  // Ink on the PDF (lib/ink-store.ts): loaded with the viewer, editable for
-  // who may edit the page the file belongs to.
-  const [ink, setInk] = useState<{ version: number; canEdit: boolean } | null>(null);
+  // Ink on the PDF (pdf-annotations.tsx): loaded with the viewer, editable
+  // for who may edit the page the file belongs to.
   const [annotating, setAnnotating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
-  const [versions, setVersions] = useState<{ version: number; by: string | null; at: number; items: number }[] | null>(null);
+  const ann = usePdfAnnotations(src, title, annotating);
+  const { editor, ink, save, notice, setNotice } = ann;
   const [cards, setCards] = useState(false);
   useEffect(() => setCards(!!fileIdOf(src) && flashcardsAvailable()), [src]);
-  const editor = useInkEditor(emptyInk(), { active: annotating });
   useInkShortcuts(editor, annotating);
-  const inkUrl = `${src}/ink`;
-  const { reset } = editor;
-  useEffect(() => {
-    let alive = true;
-    api<{ doc: InkDoc; version: number; canEdit: boolean }>(inkUrl)
-      .then((data) => {
-        if (!alive) return;
-        reset(parseInk(data.doc));
-        setInk({ version: data.version, canEdit: data.canEdit });
-      })
-      // Without ink (older server, no access to it) the PDF still shows.
-      .catch(() => alive && setInk({ version: 0, canEdit: false }));
-    return () => {
-      alive = false;
-    };
-  }, [inkUrl, reset]);
-
-  // Saves the ink as a new version; true when saved.
-  async function save(): Promise<boolean> {
-    if (!ink) return false;
-    const snapshot = editor.docRef.current;
-    setSaving(true);
-    try {
-      const result = await api<{ version: number; conflict: { by: string | null; at: number; version: number } | null }>(inkUrl, {
-        base: ink.version,
-        doc: snapshot,
-      });
-      setInk((now) => (now ? { ...now, version: result.version } : now));
-      editor.markSaved(snapshot);
-      void recognizeSaved(snapshot, result.version);
-      setVersions(null);
-      if (result.conflict) {
-        const by = result.conflict.by || t("Jemand", "Someone");
-        setNotice({
-          text: t(
-            `${by} hat die Anmerkungen inzwischen ebenfalls geändert. Deine Fassung ist gespeichert; die andere findest du unter „Versionen“.`,
-            `${by} changed the annotations in the meantime as well. Your version is saved; the other one is under “Versions”.`,
-          ),
-        });
-      } else setNotice(null);
-      return true;
-    } catch (e) {
-      setNotice({ text: (e as Error).message || t("Die Anmerkungen konnten nicht gespeichert werden.", "The annotations could not be saved."), error: true });
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }
-  // In the app: the handwriting of changed pages recognised on the device,
-  // its text saved with the ink for search (lib/ink/recognition.ts).
-  const sizes = useRef(new Map<string, PageSize>());
-  const recognised = useRef(new Map<string, unknown>());
-  async function recognizeSaved(snapshot: InkDoc, version: number) {
-    if (!recognitionAvailable()) return;
-    const texts: Record<string, string> = {};
-    for (const [page, items] of Object.entries(snapshot.pages)) {
-      const size = sizes.current.get(page);
-      if (!size || recognised.current.get(page) === items) continue;
-      const request = recognitionRequest(recognitionId("search"), size, items);
-      if (!request) continue;
-      const result = await recognizeInk(request);
-      if (!result) continue;
-      recognised.current.set(page, items);
-      texts[page] = result.text;
-    }
-    if (!Object.keys(texts).length) return;
-    try {
-      await api(inkUrl, { version, recognized: texts });
-    } catch {}
-  }
-  const [canRecognize, setCanRecognize] = useState(false);
-  useEffect(() => setCanRecognize(recognitionAvailable()), []);
-  async function convert(size: PageSize) {
-    const result = await convertSelection(editor, size);
-    if (result === "empty") setNotice({ text: t("In der Auswahl wurde kein Text erkannt.", "No text was recognised in the selection.") });
-    if (result === "failed") setNotice({ text: t("Die Handschrift konnte nicht erkannt werden.", "The handwriting could not be recognised."), error: true });
-  }
   async function finish() {
     if (editor.dirty && !(await save())) return;
     editor.setSelection(null);
@@ -251,47 +79,6 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
   closeRef.current = close;
   const saveRef = useRef(save);
   saveRef.current = save;
-  async function showVersions() {
-    if (versions) return setVersions(null);
-    try {
-      const data = await api<{ versions: { version: number; by: string | null; at: number; items: number }[] }>(`${inkUrl}?versions=1`);
-      setVersions(data.versions);
-    } catch (e) {
-      setNotice({ text: (e as Error).message, error: true });
-    }
-  }
-  async function loadVersion(version: number) {
-    setVersions(null);
-    try {
-      const data = await api<{ doc: InkDoc }>(`${inkUrl}?version=${version}`);
-      editor.commit(parseInk(data.doc));
-      setNotice({ text: t(`Version ${version} geladen. Speichern stellt sie wieder her.`, `Version ${version} loaded. Saving restores it.`) });
-    } catch (e) {
-      setNotice({ text: (e as Error).message, error: true });
-    }
-  }
-  // The PDF with the ink drawn into it (vectors, original pages).
-  async function downloadAnnotated() {
-    setExporting(true);
-    try {
-      const response = await fetch(src, { credentials: "same-origin" });
-      if (!response.ok) throw new Error(String(response.status));
-      const { flattenInk } = await import("@/lib/ink/pdf-export");
-      const bytes = await flattenInk(new Uint8Array(await response.arrayBuffer()), editor.docRef.current);
-      const base = (title || "document.pdf").replace(/\.pdf$/i, "");
-      downloadBlob(`${base} (${t("mit Anmerkungen", "annotated")}).pdf`, new Blob([bytes as BlobPart], { type: "application/pdf" }));
-    } catch (e) {
-      setNotice({
-        text:
-          (e as Error).message === "encrypted"
-            ? t("Dieses PDF ist geschützt; es lässt sich nur ohne Anmerkungen herunterladen.", "This PDF is protected; it can only be downloaded without annotations.")
-            : t("Das PDF mit Anmerkungen konnte nicht erstellt werden.", "The PDF with annotations could not be created."),
-        error: true,
-      });
-    } finally {
-      setExporting(false);
-    }
-  }
 
   useEffect(() => {
     let alive = true;
@@ -323,14 +110,6 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
       document.body.style.overflow = previous;
     };
   }, [src]);
-  // Unsaved ink is not lost by closing the tab unnoticed.
-  const dirty = annotating && editor.dirty;
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
   // Pages fit the window width (at most 900 px), times the zoom.
   useEffect(() => {
     const measure = () => setFitWidth(Math.min(900, (scroller.current?.clientWidth || window.innerWidth) - 32));
@@ -338,22 +117,19 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
-  const onScroll = useCallback(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const pages = [...el.querySelectorAll<HTMLElement>(".pdf-page-wrap")];
-    const middle = el.scrollTop + el.clientHeight / 3;
-    const page = pages.findLast((p) => p.offsetTop <= middle);
-    setCurrent(Number(page?.dataset.page || 1));
-  }, []);
+  const onScroll = useCallback(() => setCurrent(currentPageOf(scroller.current)), []);
+  // Opened at a page (a link to it, #392): there once the pages are laid out.
+  useEffect(() => {
+    if (!doc || !startPage || startPage < 2) return;
+    const frame = requestAnimationFrame(() => scrollToPage(scroller.current, Math.min(startPage, doc.numPages)));
+    return () => cancelAnimationFrame(frame);
+  }, [doc, startPage]);
   // Two fingers (also while the pen draws, pen-only or not) and trackpads
   // zoom anchored where they pinch, and two fingers pan (use-pinch-zoom.ts).
   const pagesBox = useRef<HTMLDivElement>(null);
   usePinchZoom({ scroller, content: pagesBox, sheetSelector: ".pdf-page-wrap", zoom, setZoom, limits: ZOOMS });
   const width = Math.round(fitWidth * zoom);
-  const annotated = hasInk(editor.doc);
-  const onSize = useCallback((page: string, size: PageSize) => void sizes.current.set(page, size), []);
-  const pageInk: PageInk = { editor, editing: annotating, show: !!ink, onSize, convert: annotating && canRecognize ? (size) => void convert(size) : undefined };
+  const { annotated, exporting, pageInk } = ann;
   return (
     <div className={`pdf-viewer${annotating ? " is-annotating" : ""}`} role="dialog" aria-modal="true" aria-label={title || "PDF"}>
       <header className="pdf-viewer-bar">
@@ -403,7 +179,7 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
               aria-label={t("Mit Anmerkungen herunterladen", "Download with annotations")}
               title={t("Mit Anmerkungen herunterladen", "Download with annotations")}
               disabled={exporting}
-              onClick={() => void downloadAnnotated()}
+              onClick={() => void ann.downloadAnnotated()}
             >
               <FileArrowDown size={18} />
             </button>
@@ -413,46 +189,8 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
           </button>
         </span>
       </header>
-      {annotating && (
-        <InkToolbar editor={editor}>
-          <span className="ink-status" role="status">
-            {saving ? t("Wird gespeichert …", "Saving …") : editor.dirty ? t("Nicht gespeichert", "Not saved") : t("Gespeichert", "Saved")}
-          </span>
-          <div className="ink-menu-anchor">
-            <button type="button" aria-label={t("Versionen", "Versions")} title={t("Versionen", "Versions")} aria-expanded={!!versions} onClick={() => void showVersions()}>
-              <ClockCounterClockwise size={19} />
-            </button>
-            {versions && (
-              <div ref={placeMenu} className="ink-menu ink-versions" role="menu" aria-label={t("Versionen", "Versions")}>
-                {!versions.length && <span className="ink-menu-hint">{t("Noch keine gespeicherte Version.", "No saved version yet.")}</span>}
-                {versions.map((v) => (
-                  <button key={v.version} type="button" role="menuitem" onClick={() => void loadVersion(v.version)}>
-                    <strong>{t(`Version ${v.version}`, `Version ${v.version}`)}</strong>
-                    <span>
-                      {[v.by, new Date(v.at).toLocaleString(), t(`${v.items} Elemente`, `${v.items} items`)].filter(Boolean).join(" · ")}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button type="button" aria-label={t("Speichern", "Save")} title={t("Speichern", "Save") + keyHints.suffix("Mod+S")} disabled={saving || !editor.dirty} onClick={() => void save()}>
-            <FloppyDisk size={19} />
-          </button>
-          <button type="button" className="ink-done" onClick={() => void finish()} disabled={saving}>
-            <Check size={17} />
-            <span>{t("Fertig", "Done")}</span>
-          </button>
-        </InkToolbar>
-      )}
-      {notice && (
-        <p className={`pdf-viewer-notice${notice.error ? " is-error" : ""}`} role={notice.error ? "alert" : "status"}>
-          {notice.text}
-          <button type="button" aria-label={t("Hinweis schließen", "Dismiss")} onClick={() => setNotice(null)}>
-            <X size={14} />
-          </button>
-        </p>
-      )}
+      {annotating && <AnnotateBar ann={ann} onDone={() => void finish()} />}
+      <PdfNotice notice={notice} onDismiss={() => setNotice(null)} />
       <div className="pdf-viewer-pages-area" ref={scroller} onScroll={onScroll}>
         {error ? (
           <p className="pdf-viewer-message" role="alert">

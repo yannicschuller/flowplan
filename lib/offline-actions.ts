@@ -20,6 +20,7 @@ export const onlineOnlyActions: ReadonlySet<string> = new Set([
   "collection.duplicate",
   "synced.create",
   "notebook.import",
+  "notebook.attach",
   "rows.import",
   "workflow.import",
   "citation.import",

@@ -2,7 +2,7 @@
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
-import { PdfThumbnail } from "./pdf-viewer";
+import { PdfThumbnail, openPdfPanel } from "./pdf-viewer";
 import { isDrawingFormat, isModelName, modelFormatOf } from "@/lib/model-formats";
 import { Modal } from "./ui";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +13,7 @@ import {
   FileAudio,
   FileVideo,
   Images,
+  SidebarSimple,
   Trash,
 } from "@phosphor-icons/react";
 import type { MediaItem, MediaKind, MediaUsage } from "@/lib/media-library";
@@ -295,6 +296,17 @@ export function MediaLibrary({
               >
                 {item.pageTitle}
               </button>
+              {item.kind === "pdf" && (
+                <button
+                  type="button"
+                  className="icon-button media-side-panel"
+                  onClick={() => openPdfPanel(item.url, item.name)}
+                  title={t("Im Seitenfenster öffnen", "Open in side panel")}
+                  aria-label={t(`${item.name} im Seitenfenster öffnen`, `Open ${item.name} in the side panel`)}
+                >
+                  <SidebarSimple size={15} />
+                </button>
+              )}
               {item.canDelete && (
                 <button
                   className="icon-button media-delete"

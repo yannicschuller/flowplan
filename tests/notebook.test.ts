@@ -477,6 +477,60 @@ test("duplicating a notebook copies sheets, paper and ink; archives carry them",
   assert.equal((await store.readPageInk(owner, target, imported[0].id)).doc.pages[imported[0].id].length, 2);
 });
 
+test("PDFs attached to a notebook stay whole: attach, order, detach, copies and archives (#392)", async () => {
+  const { copyNotebook, parseAttachmentIds, remapAttachments } = await import("../lib/notebook");
+  const pid = await create("Seminar");
+  const pdf = async (name: string, mime = "application/pdf", page = pid) => {
+    const fid = id();
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, name, mime, 10, owner.id);
+    return fid;
+  };
+  const reader = await pdf("Reader.pdf"),
+    slides = await pdf("Folien.pdf");
+  type Answer = Sheets & { attachments: { id: string; name: string }[] };
+  const first = (await nb(editor, { action: "notebook.attach", pageId: pid, fileId: reader })) as Answer;
+  assert.deepEqual(first.attachments, [{ id: reader, name: "Reader.pdf" }]);
+  // No sheets came of it.
+  assert.equal(first.sheets.length, 1);
+  assert.equal(first.sheets[0].background, null);
+  // Attaching again moves it to the end, once.
+  await nb(owner, { action: "notebook.attach", pageId: pid, fileId: slides });
+  const again = (await nb(owner, { action: "notebook.attach", pageId: pid, fileId: reader })) as Answer;
+  assert.deepEqual(again.attachments.map((a) => a.name), ["Folien.pdf", "Reader.pdf"]);
+  // Only PDFs of this notebook, only for who may edit it.
+  await assert.rejects(async () => await nb(owner, { action: "notebook.attach", pageId: pid, fileId: await pdf("Foto.png", "image/png") }), { status: 400 });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.attach", pageId: pid, fileId: await pdf("Fremd.pdf", "application/pdf", await create("Andere")) }), { status: 404 });
+  await assert.rejects(async () => await nb(viewer, { action: "notebook.attach", pageId: pid, fileId: reader }), { status: 403 });
+  // The page data carries them; readers see them.
+  const page = (await one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", pid))!;
+  assert.deepEqual((await notebookData(viewer, page)).attachments?.map((a) => a.id), [slides, reader]);
+  // A file in the trash is not shown (and comes back with it).
+  await run("UPDATE files SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", slides);
+  assert.deepEqual((await notebookData(owner, page)).attachments?.map((a) => a.id), [reader]);
+  await run("UPDATE files SET deleted_at=NULL WHERE id=?", slides);
+  // Copies point to the copied files; archives carry and restore them.
+  const copy = await create("Kopie");
+  const copiedReader = await pdf("Reader.pdf", "application/pdf", copy);
+  await copyNotebook(pid, copy, new Map([[reader, copiedReader]]), owner.id);
+  const copyPage = (await one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", copy))!;
+  assert.deepEqual((await notebookData(owner, copyPage)).attachments?.map((a) => a.id), [copiedReader]);
+  const archive = JSON.parse(JSON.stringify(await notebookArchive(pid)));
+  assert.deepEqual(archive.attachments, [slides, reader]);
+  const target = await create("Wiederhergestellt");
+  const restoredSlides = await pdf("Folien.pdf", "application/pdf", target);
+  await importNotebook(target, archive, new Map([[slides, restoredSlides]]), owner.id);
+  const targetPage = (await one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", target))!;
+  assert.deepEqual((await notebookData(owner, targetPage)).attachments?.map((a) => a.id), [restoredSlides]);
+  // Detached: gone from the list, the file stays on the page.
+  const detached = (await nb(owner, { action: "notebook.detach", pageId: pid, fileId: slides })) as Answer;
+  assert.deepEqual(detached.attachments.map((a) => a.id), [reader]);
+  assert.ok(await one("SELECT 1 FROM files WHERE id=?", slides));
+  // The stored list as read (pure).
+  assert.deepEqual(parseAttachmentIds(JSON.stringify([reader.toUpperCase(), reader, "x", 3])), [reader]);
+  assert.deepEqual(parseAttachmentIds("nonsense"), []);
+  assert.deepEqual(remapAttachments([reader, slides], new Map([[slides, "c"]])), ["c"]);
+});
+
 test("a notebook saved as a template gives new notebooks its sheets, paper and handwriting", async () => {
   const pid = await create("Vorlage Heft");
   const [first] = await notebookSheets(pid);

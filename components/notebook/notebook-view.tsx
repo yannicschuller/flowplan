@@ -78,6 +78,11 @@ import { SheetLinks } from "./sheet-links";
 import { LinkDialog, TitleDialog, TransferDialog, TrashDialog } from "./notebook-dialogs";
 import { NotebookPresentation } from "./notebook-presentation";
 import { useNotebookLive } from "./use-notebook-live";
+import { NotebookAttachments, SheetSources } from "./notebook-attachments";
+import { uploadToPage } from "./notebook-media";
+import { openPdfPanel } from "../pdf-viewer";
+import { clipFileName, pdfFileId, registerClipTarget, trackClipTarget, type PdfClip } from "@/lib/pdf-clip";
+import type { NotebookAttachment } from "@/lib/notebook";
 import { addOutlineHeading, NOTEBOOK_STRUCTURE_EVENT, type NotebookStructureEvent } from "./outline-api";
 import type { NotebookLink, NotebookLinkTarget, OutlineEntry } from "@/lib/notebook-organize-model";
 import { shortcutLetter } from "@/lib/keymap";
@@ -90,6 +95,7 @@ type CommandAnswer = {
   created?: string[];
   trashed?: string[];
   ink?: Record<string, { doc: InkDoc; version: number }>;
+  attachments?: NotebookAttachment[];
 };
 // Where new sheets go (lib/notebook.ts sheetPlace): before the first sheet,
 // after a sheet, or at the end (after: null).
@@ -146,6 +152,8 @@ export default function NotebookView({
     notebook.sheets.map(({ id, position, paper: own, background, title, bookmark, links }) => ({ id, position, paper: own, background, title, bookmark, links })),
   );
   const [outline, setOutline] = useState<OutlineEntry[]>(notebook.outline || []);
+  // PDFs kept whole beside the sheets (#392), opened in the side panel.
+  const [attachments, setAttachments] = useState<NotebookAttachment[]>(notebook.attachments || []);
   // Recognised handwriting as loaded (search in the overview).
   const recognized = useMemo(() => Object.fromEntries(notebook.sheets.flatMap((s) => (s.recognized ? [[s.id, s.recognized]] : []))), [notebook.sheets]);
   const initial = useMemo(() => {
@@ -256,6 +264,7 @@ export default function NotebookView({
       setPaper(answer.paper);
       setSheets(answer.sheets);
       if (answer.outline) setOutline(answer.outline);
+      if (answer.attachments) setAttachments(answer.attachments);
       for (const sid of answer.created || []) {
         const ink = answer.ink?.[sid];
         const items = ink ? parseInk(ink.doc).pages[sid] || [] : [];
@@ -490,9 +499,29 @@ export default function NotebookView({
   // Where the PDF chosen next goes; the dialog that asks.
   const pdfPlace = useRef<Place>({ after: null });
   const [inserting, setInserting] = useState<string | null>(null);
-  const choosePdf = (place: Place) => {
+  // "Als Blätter" (each page a sheet) or "Als Anhang" (#392: the PDF stays
+  // whole, it opens in the side panel beside the sheets).
+  const [pdfMode, setPdfMode] = useState<"sheets" | "attach">("sheets");
+  const pdfAttach = useRef(false);
+  const choosePdf = (place: Place, attach = false) => {
     pdfPlace.current = place;
+    pdfAttach.current = attach;
     fileInput.current?.click();
+  };
+  const attachPdf = async (file: File) => {
+    if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) return onError(t("Bitte ein PDF wählen.", "Please choose a PDF."));
+    if (needsConnection()) return;
+    setBusy(t("PDF wird hochgeladen …", "Uploading PDF …"));
+    try {
+      const uploaded = await uploadToPage(pageId, file);
+      if (uploaded.mime !== "application/pdf") throw new Error(t("Bitte ein PDF wählen.", "Please choose a PDF."));
+      const answer = await run({ action: "notebook.attach", fileId: uploaded.id });
+      if (answer) openPdfPanel(fileUrl(uploaded.id), file.name);
+    } catch (e) {
+      onError((e as Error).message || t("Das PDF konnte nicht hochgeladen werden.", "The PDF could not be uploaded."));
+    } finally {
+      setBusy("");
+    }
   };
   const importPdf = useCallback(
     async (file: File, place: Place = { after: currentRef.current || null }) => {
@@ -552,17 +581,59 @@ export default function NotebookView({
     onError,
     onBusy: setBusy,
     onPdf: (file) => void importPdf(file),
+    onClip: canEdit && !guest ? (clip, sheetId, at) => void insertClip(clip, sheetId, at) : undefined,
     refuse: guest ? t("Hochladen ist für Gäste nicht möglich.", "Uploading is not available to guests.") : undefined,
   });
-  // "Insert PDF": a notebook with nothing on it yet takes the PDF at once,
-  // otherwise the dialog asks where (after the current sheet first).
+  // "Insert PDF": the dialog asks how – as sheets (where: after the
+  // current sheet first) or as an attachment.
   const insertPdf = () => {
     const list = sheetsRef.current;
-    if (list.length === 1 && !list[0].background && !editor.docRef.current.pages[list[0].id]?.length) return choosePdf({ after: null });
     const at = list.findIndex((s) => s.id === currentRef.current);
+    setPdfMode("sheets");
     setInserting(at < 0 || at === list.length - 1 ? "end" : `after:${list[at].id}`);
   };
+  // A region of a PDF from the side panel (#392): a picture of the page on
+  // the sheet, its caption leading back to the PDF page.
+  const insertClip = useCallback(
+    async (clip: PdfClip, sheetId = currentRef.current, at: { x: number; y: number } | null = null) => {
+      if (!sheetId || guest) return false;
+      setBusy(t("Bild wird hochgeladen …", "Uploading picture …"));
+      try {
+        const uploaded = await uploadToPage(pageId, new File([clip.blob], clipFileName(clip.title, clip.page), { type: "image/png" }));
+        const pdf = pdfFileId(clip.src);
+        insertRef.current.place(
+          sheetId,
+          { file: uploaded.id, ...(pdf ? { source: { file: pdf, page: clip.page, title: clip.title } } : {}) },
+          clip.points,
+          at,
+          0.8,
+        );
+        return true;
+      } catch (e) {
+        onError((e as Error).message || t("Das Bild konnte nicht hochgeladen werden.", "The picture could not be uploaded."));
+        return false;
+      } finally {
+        setBusy("");
+      }
+    },
+    [guest, onError, pageId, t],
+  );
   const placeOf = (choice: string): Place => (choice === "start" ? { at: "start" } : choice.startsWith("after:") ? { after: choice.slice(6) } : { after: null });
+  const insertRef = useRef(insert);
+  insertRef.current = insert;
+  // "Einfügen" in the PDF side panel lands here while this notebook was
+  // worked in last (lib/pdf-clip.ts).
+  useEffect(() => {
+    const el = scroller.current;
+    if (!canEdit || guest || !el) return;
+    const id = `notebook:${pageId}`;
+    const off = registerClipTarget({ id, element: () => scroller.current, insert: (clip) => insertClip(clip) });
+    const untrack = trackClipTarget(id, el);
+    return () => {
+      off();
+      untrack();
+    };
+  }, [canEdit, guest, insertClip, pageId]);
   // "New notebook from PDF".
   useEffect(() => {
     if (!canEdit) return;
@@ -916,7 +987,8 @@ export default function NotebookView({
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = "";
-              if (file) void importPdf(file, pdfPlace.current);
+              if (file && pdfAttach.current) void attachPdf(file);
+              else if (file) void importPdf(file, pdfPlace.current);
             }}
           />
         </div>
@@ -946,6 +1018,14 @@ export default function NotebookView({
             <X size={14} />
           </button>
         </p>
+      )}
+      {member && (
+        <NotebookAttachments
+          attachments={attachments}
+          fileUrl={fileUrl}
+          canEdit={canEdit}
+          onDetach={(fileId) => void run({ action: "notebook.detach", fileId })}
+        />
       )}
       <div className="notebook-body">
         {thumbs && (
@@ -1118,6 +1198,7 @@ export default function NotebookView({
                     onOutline={canEdit && member ? (title, y) => outlineFromSelection(sheet.id, title, y) : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />
+                  <SheetSources items={editor.doc.pages[sheet.id]} size={size} fileUrl={fileUrl} />
                   {sheet.links && (
                     <SheetLinks
                       links={sheet.links}
@@ -1154,12 +1235,34 @@ export default function NotebookView({
       />
       <Modal open={!!inserting} onClose={() => setInserting(null)} title={t("PDF einfügen", "Insert PDF")} className="notebook-insert-dialog">
         <div className="notebook-paper-form">
-          <p>
-            {t(
-              "Jede Seite des PDFs wird ein eigenes Blatt mit der Seite als Hintergrund; darauf schreibst du wie auf jedem Blatt.",
-              "Each page of the PDF becomes a sheet of its own with the page as background; you write on it like on any sheet.",
-            )}
-          </p>
+          <fieldset className="notebook-insert-mode">
+            <legend className="sr-only">{t("Wie das PDF ins Notizbuch kommt", "How the PDF goes into the notebook")}</legend>
+            <label>
+              <input type="radio" name="notebook-pdf-mode" checked={pdfMode === "sheets"} onChange={() => setPdfMode("sheets")} />
+              <span>
+                <strong>{t("Als Blätter", "As sheets")}</strong>
+                <small>
+                  {t(
+                    "Jede Seite des PDFs wird ein eigenes Blatt mit der Seite als Hintergrund; darauf schreibst du wie auf jedem Blatt.",
+                    "Each page of the PDF becomes a sheet of its own with the page as background; you write on it like on any sheet.",
+                  )}
+                </small>
+              </span>
+            </label>
+            <label>
+              <input type="radio" name="notebook-pdf-mode" checked={pdfMode === "attach"} onChange={() => setPdfMode("attach")} />
+              <span>
+                <strong>{t("Als Anhang", "As an attachment")}</strong>
+                <small>
+                  {t(
+                    "Das PDF bleibt ganz und öffnet sich im Seitenfenster neben deinen Blättern – zum Lesen, Anmerken und Übernehmen von Ausschnitten.",
+                    "The PDF stays whole and opens in the side panel beside your sheets – to read, annotate and take regions from.",
+                  )}
+                </small>
+              </span>
+            </label>
+          </fieldset>
+          {pdfMode === "sheets" && (
           <label className="notebook-insert-place">
             {t("Einfügen", "Insert")}
             <Select value={inserting || "end"} onChange={(e) => setInserting(e.target.value)}>
@@ -1172,12 +1275,15 @@ export default function NotebookView({
               <option value="end">{t(`Am Ende (nach Blatt ${sheets.length})`, `At the end (after sheet ${sheets.length})`)}</option>
             </Select>
           </label>
+          )}
+          {pdfMode === "sheets" && (
           <p className="notebook-insert-hint">
             {t(
               `Höchstens ${MAX_IMPORT_PAGES} Seiten auf einmal, ${MAX_SHEETS} Blätter je Notizbuch.`,
               `At most ${MAX_IMPORT_PAGES} pages at a time, ${MAX_SHEETS} sheets per notebook.`,
             )}
           </p>
+          )}
           <div className="modal-actions">
             <button type="button" className="button" onClick={() => setInserting(null)}>
               {t("Abbrechen", "Cancel")}
@@ -1188,7 +1294,7 @@ export default function NotebookView({
               onClick={() => {
                 const choice = inserting || "end";
                 setInserting(null);
-                choosePdf(placeOf(choice));
+                choosePdf(placeOf(choice), pdfMode === "attach");
               }}
             >
               <FilePdf size={16} /> {t("PDF wählen …", "Choose PDF …")}

@@ -329,6 +329,8 @@ export type SearchResult = {
   icon: string;
   space_id: string;
   kind: "document" | "database" | "whiteboard" | "row" | "comment" | "file";
+  // A file hit: the file (a PDF opens in the side panel from there, #392).
+  fileId?: string;
   snippet: string;
   // The alias the query matched when the title did not ("Title · alias").
   alias?: string;
@@ -491,6 +493,7 @@ export async function searchWorkspace(
       icon: type === "row" && rowId ? "" : page.icon,
       space_id: page.space_id,
       kind: type,
+      ...(key.startsWith("f:") ? { fileId: key.slice(2) } : {}),
       snippet,
       ...(alias ? { alias } : {}),
       ...(day ? { journalDate: day } : {}),

@@ -64,3 +64,17 @@ export function recordCrumb(cells: Record<string, unknown>, fields: Field[], pub
   const text = truncateTitle(cellText(cells[title.id]), max);
   return text || null;
 }
+
+// A link to a record of the published database shown (…?row=<id>, the
+// same page): its address and record, for the side panel on wide windows
+// (#392, components/public-record-peek.tsx); null for anything else.
+export function recordLinkOf(href: string, here: { origin: string; pathname: string }): { url: string; row: string } | null {
+  try {
+    const url = new URL(href, here.origin + here.pathname);
+    const row = url.searchParams.get("row");
+    if (!row || url.origin !== here.origin || url.pathname !== here.pathname) return null;
+    return { url: url.pathname + url.search, row };
+  } catch {
+    return null;
+  }
+}

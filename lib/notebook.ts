@@ -10,6 +10,9 @@
 //                 in points; the ink lies over it like on a PDF.
 //     paper.image: an own paper template (lib/notebook-paper.ts PaperImage),
 //                 a copy attached to the page (lib/notebook-library.ts).
+//   notebooks.attachments: PDFs attached to the notebook page that stay
+//                 whole (#392): a list of file ids; they open in the side
+//                 panel beside the sheets.
 import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -40,7 +43,46 @@ export type NotebookSheet = {
 };
 // recognized: the text recognised in the handwriting (search in the overview).
 export type NotebookSheetData = NotebookSheet & { ink: InkDoc; version: number; recognized?: string };
-export type NotebookPayload = { paper: Paper; sheets: NotebookSheetData[]; canEdit: boolean; outline?: OutlineEntry[] };
+export type NotebookAttachment = { id: string; name: string };
+export type NotebookPayload = { paper: Paper; sheets: NotebookSheetData[]; canEdit: boolean; outline?: OutlineEntry[]; attachments?: NotebookAttachment[] };
+export const MAX_ATTACHMENTS = 50;
+
+// The stored list: file ids, each once, at most MAX_ATTACHMENTS.
+export function parseAttachmentIds(value: unknown): string[] {
+  let raw = value;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw || "[]");
+    } catch {
+      raw = [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  const ids = raw.filter((x): x is string => typeof x === "string" && z.uuid().safeParse(x).success).map((x) => x.toLowerCase());
+  return [...new Set(ids)].slice(0, MAX_ATTACHMENTS);
+}
+// The attachments as shown: files of the page that are still there (not in
+// the trash), in the stored order.
+export async function notebookAttachments(pageId: string): Promise<NotebookAttachment[]> {
+  const ids = parseAttachmentIds((await one<{ attachments: string | null }>("SELECT attachments FROM notebooks WHERE page_id=?", pageId))?.attachments);
+  if (!ids.length) return [];
+  const files = await all<{ id: string; name: string }>(
+    `SELECT id,name FROM files WHERE page_id=? AND deleted_at IS NULL AND id IN (${ids.map(() => "?").join(",")})`,
+    pageId,
+    ...ids,
+  );
+  const names = new Map(files.map((f) => [f.id.toLowerCase(), f.name || "PDF"]));
+  return ids.flatMap((fid) => (names.has(fid) ? [{ id: fid, name: names.get(fid)! }] : []));
+}
+async function writeAttachments(pageId: string, ids: string[]) {
+  await run("UPDATE notebooks SET attachments=? WHERE page_id=?", JSON.stringify(parseAttachmentIds(ids)), pageId);
+}
+// Attachments of a copy: the copies' files; those not copied go.
+export const remapAttachments = (ids: string[], files: Map<string, string>) =>
+  ids.flatMap((fid) => {
+    const copy = files.get(fid) ?? files.get(fid.toLowerCase());
+    return copy ? [copy.toLowerCase()] : [];
+  });
 
 const backgroundSchema = z.object({
   file: z.uuid(),
@@ -137,6 +179,7 @@ export async function notebookData(user: Identity, page: Page): Promise<Notebook
     }),
     canEdit: await mayEditInk(user, page),
     outline: await notebookOutline(page.id, sheets),
+    attachments: await notebookAttachments(page.id),
   };
 }
 
@@ -272,13 +315,29 @@ export async function notebookCommand(user: Identity, page: Page, action: string
       result.created = created;
       break;
     }
+    // A PDF of the page kept whole beside the sheets (#392).
+    case "notebook.attach": {
+      const fileId = z.uuid().parse(b.fileId).toLowerCase();
+      const file = await one<{ id: string; name: string; mime: string }>("SELECT id,name,mime FROM files WHERE id=? AND page_id=? AND deleted_at IS NULL", fileId, page.id);
+      if (!file) throw new HttpError(404, "Datei fehlt.");
+      if (!isPdfFile(file)) throw new HttpError(400, "Nur PDFs lassen sich anhängen.");
+      const ids = (await notebookAttachments(page.id)).map((a) => a.id);
+      if (!ids.includes(fileId) && ids.length >= MAX_ATTACHMENTS) throw new HttpError(413, `Ein Notizbuch hat höchstens ${MAX_ATTACHMENTS} Anhänge.`);
+      await writeAttachments(page.id, [...ids.filter((x) => x !== fileId), fileId]);
+      break;
+    }
+    case "notebook.detach": {
+      const fileId = z.uuid().parse(b.fileId).toLowerCase();
+      await writeAttachments(page.id, (await notebookAttachments(page.id)).map((a) => a.id).filter((x) => x !== fileId));
+      break;
+    }
     default:
       if (!ORGANIZE_ACTIONS.has(action)) throw new HttpError(400, "Unbekannte Aktion.");
       Object.assign(result, await organizeCommand(user, page, action, b));
   }
   await touch();
   const sheets = await notebookSheets(page.id);
-  return { ...result, paper: await notebookPaper(page.id), sheets, outline: await notebookOutline(page.id, sheets) };
+  return { ...result, paper: await notebookPaper(page.id), sheets, outline: await notebookOutline(page.id, sheets), attachments: await notebookAttachments(page.id) };
 }
 
 // ---- Copies, archives, exports ----
@@ -304,6 +363,7 @@ export async function copyNotebook(fromPage: string, toPage: string, files: Map<
   const sheets = await notebookSheets(fromPage);
   for (const sheet of sheets) await writeSheetMeta(surfaces.get(sheet.id)!, { ...sheet, links: remapLinks(sheet.links, surfaces) });
   await writeOutline(toPage, remapOutline(await notebookOutline(fromPage, sheets), surfaces));
+  await writeAttachments(toPage, remapAttachments((await notebookAttachments(fromPage)).map((a) => a.id), files));
 }
 // Links and contents entries of copied sheets: to the copies; links to
 // sheets that were not copied go.
@@ -350,6 +410,8 @@ export const notebookArchiveSchema = z.object({
   recordings: z.lazy(() => recordingsArchiveSchema).optional(),
   // The table of contents, sheets by their index ("_0").
   outline: z.unknown().optional(),
+  // PDFs kept beside the sheets (#392), the archive's file ids.
+  attachments: z.array(z.string().max(64)).max(MAX_ATTACHMENTS).optional(),
 });
 export type NotebookArchive = z.infer<typeof notebookArchiveSchema>;
 export async function notebookArchive(pageId: string): Promise<NotebookArchive> {
@@ -359,7 +421,9 @@ export async function notebookArchive(pageId: string): Promise<NotebookArchive> 
   // Sheets are referred to by their place in the archive.
   const index = new Map(sheets.map((s, i) => [s.id, `_${i}`]));
   const outline = remapOutline(await notebookOutline(pageId, sheets), index);
+  const attachments = (await notebookAttachments(pageId)).map((a) => a.id);
   return {
+    ...(attachments.length ? { attachments } : {}),
     ...(recordings.length ? { recordings } : {}),
     paper: await notebookPaper(pageId),
     sheets: sheets.map((sheet) => {
@@ -406,6 +470,7 @@ export async function importNotebook(pageId: string, data: NotebookArchive, file
     await writeSheetMeta(created.get(`_${index}`)!, { title: sheet.title, bookmark: sheet.bookmark, links: remapLinks(cleanLinks(sheet.links), created) });
   });
   if (data.outline) await writeOutline(pageId, remapOutline(cleanOutline(data.outline), created));
+  if (data.attachments?.length) await writeAttachments(pageId, remapAttachments(parseAttachmentIds(data.attachments), files));
 }
 
 // Typed and recognised text of all sheets, in order (exports, summaries).

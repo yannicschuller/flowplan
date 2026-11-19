@@ -275,6 +275,8 @@ export type View = {
   // How this view opens its records; unset means the database default
   // (recordLayout.open).
   recordOpen?: import("./record-layout").RecordOpenMode;
+  // Where "Seitenleiste" opens: beside the view (it narrows) or over it (#392).
+  sidePanel?: import("./side-panel").SidePanelPlace;
 };
 export type Database = {
   page_id: string;

@@ -6,17 +6,29 @@
 // when a PDF is opened. PdfThumbnail draws the first page.
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { loadView } from "@/components/view-fallback";
-import { FilePdf } from "@phosphor-icons/react";
+import { ArrowsOut, FilePdf, SidebarSimple } from "@phosphor-icons/react";
+import { ContextMenu } from "./context-menu";
+import { useT } from "./i18n";
 import { canvasSize } from "@/lib/ink/coords";
 
 export type PdfDocument = import("pdfjs-dist").PDFDocumentProxy;
-// The viewer itself (pages, zoom, annotating) loads on first use.
+// The viewer itself (pages, zoom, annotating) loads on first use, as does
+// the side panel (pdf-panel.tsx, #392).
 const PdfViewerDialog = lazy(() => loadView(() => import("./pdf-viewer-dialog")));
+const PdfPanel = lazy(() => loadView(() => import("./pdf-panel")));
 const EVENT = "flowplan:pdf";
+const PANEL_EVENT = "flowplan:pdf-panel";
 
-export function openPdf(src: string, title: string) {
-  window.dispatchEvent(new CustomEvent(EVENT, { detail: { src, title } }));
+export function openPdf(src: string, title: string, page?: number) {
+  window.dispatchEvent(new CustomEvent(EVENT, { detail: { src, title, page } }));
 }
+// "Im Seitenfenster öffnen": the PDF beside the page (in the app's shell;
+// elsewhere the viewer opens), at `page` when given.
+export function openPdfPanel(src: string, title: string, page?: number) {
+  window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: { src, title, page } }));
+}
+// Whether the side panel can open here (the app's shell has its place).
+export const pdfPanelAvailable = () => typeof document !== "undefined" && !!document.getElementById("side-dock-root");
 // A link or file name that points at a PDF in Flowplan.
 export const isPdfName = (name: string) => /\.pdf$/i.test(name.trim());
 
@@ -138,7 +150,85 @@ function decorate(root: ParentNode) {
   }
 }
 
+// The PDF a right-click or a long press is on: a PDF card (editor, read-only
+// page), a link to a PDF in Flowplan, a file of the media library or a hit
+// of the search ([data-pdf-src]).
+function pdfAt(target: EventTarget | null): { src: string; title: string; element: HTMLElement } | null {
+  const el = (target as Element | null)?.closest?.<HTMLElement>(".pdf-block[data-pdf], [data-pdf-src], a[href]");
+  if (!el) return null;
+  if (el.matches(".pdf-block")) return fileLink.test(el.dataset.pdf || "") ? { src: el.dataset.pdf!, title: el.dataset.title || "PDF", element: el } : null;
+  if (el.dataset.pdfSrc) return fileLink.test(el.dataset.pdfSrc) ? { src: el.dataset.pdfSrc, title: el.dataset.pdf || "PDF", element: el } : null;
+  const href = el.getAttribute("href") || "";
+  const title = el.dataset.pdf || el.textContent?.trim() || "";
+  return fileLink.test(href) && (el.dataset.pdf || isPdfName(title)) ? { src: href, title: title || "PDF", element: el } : null;
+}
+
 export function PdfViewerHost() {
+  const t = useT();
+  // "Im Seitenfenster öffnen" (#392): right-click, the context menu key or
+  // a long press on a PDF – where the side panel can open (the app).
+  const [menu, setMenu] = useState<{ x: number; y: number; src: string; title: string } | null>(null);
+  useEffect(() => {
+    const show = (found: ReturnType<typeof pdfAt>, x: number, y: number) => {
+      if (!found) return false;
+      // From the keyboard there is no pointer: next to the element.
+      if (!x && !y) {
+        const rect = found.element.getBoundingClientRect();
+        x = rect.left + 12;
+        y = rect.top + Math.min(rect.height, 40);
+      }
+      setMenu({ x, y, src: found.src, title: found.title });
+      return true;
+    };
+    const context = (event: MouseEvent) => {
+      if (event.defaultPrevented || !pdfPanelAvailable()) return;
+      if (show(pdfAt(event.target), event.clientX, event.clientY)) event.preventDefault();
+    };
+    // Touch: held still for half a second; the click after it is dropped.
+    let press: { id: number; x: number; y: number; timer: number } | null = null,
+      swallow: { at: number; element: HTMLElement } | null = null;
+    const cancel = () => {
+      if (press) window.clearTimeout(press.timer);
+      press = null;
+    };
+    const down = (event: PointerEvent) => {
+      cancel();
+      if (event.pointerType !== "touch" || !pdfPanelAvailable()) return;
+      const found = pdfAt(event.target);
+      if (!found) return;
+      const { clientX: x, clientY: y } = event;
+      press = { id: event.pointerId, x, y, timer: window.setTimeout(() => {
+        press = null;
+        if (show(found, x, y)) swallow = { at: Date.now(), element: found.element };
+      }, 550) };
+    };
+    const move = (event: PointerEvent) => {
+      if (press && press.id === event.pointerId && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) cancel();
+    };
+    // Only the click the held finger lets go on – not a tap in the menu.
+    const click = (event: MouseEvent) => {
+      const held = swallow;
+      swallow = null;
+      if (!held || Date.now() - held.at > 1500 || !held.element.contains(event.target as Node)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener("contextmenu", context);
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointerup", cancel, true);
+    document.addEventListener("pointercancel", cancel, true);
+    document.addEventListener("click", click, true);
+    return () => {
+      cancel();
+      document.removeEventListener("contextmenu", context);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerup", cancel, true);
+      document.removeEventListener("pointercancel", cancel, true);
+      document.removeEventListener("click", click, true);
+    };
+  }, []);
   // Links to PDFs in Flowplan open the viewer instead of downloading.
   // In text being edited only with ⌘/Ctrl, so clicking still places the caret.
   useEffect(() => {
@@ -148,6 +238,16 @@ export function PdfViewerHost() {
       if (!link) return;
       const href = link.getAttribute("href") || "";
       const block = link.closest<HTMLElement>(".pdf-block");
+      // A link to a page of a PDF (the caption of a region taken from the
+      // side panel, #392): the panel at that page.
+      const [file, hash = ""] = href.split("#");
+      const page = /^pdf-page=(\d{1,6})$/.exec(hash)?.[1];
+      if (page && fileLink.test(file)) {
+        // Also in text being edited (like other links there).
+        event.preventDefault();
+        openPdfPanel(file, link.dataset.pdf || pdfTitleOf(link.textContent || ""), Number(page));
+        return;
+      }
       const title = link.dataset.pdf || block?.dataset.title || link.textContent?.trim() || "PDF";
       if (!fileLink.test(href) || !(link.dataset.pdf || block || isPdfName(title))) return;
       if (link.closest("[contenteditable=true]") && !(event.metaKey || event.ctrlKey)) return;
@@ -171,22 +271,58 @@ export function PdfViewerHost() {
       observer.disconnect();
     };
   }, []);
-  const [open, setOpen] = useState<{ src: string; title: string; n: number } | null>(null);
+  const [open, setOpen] = useState<{ src: string; title: string; page?: number; n: number } | null>(null);
+  // The side panel: kept while it is open, with the PDF it shows (another
+  // one replaces it, the same one goes to the page asked for).
+  const [panel, setPanel] = useState<{ src: string; title: string; page?: number; n: number } | null>(null);
   useEffect(() => {
     let n = 0;
+    type Detail = { src: string; title: string; page?: number };
     const show = (event: Event) => {
-      const detail = (event as CustomEvent<{ src: string; title: string }>).detail;
+      const detail = (event as CustomEvent<Detail>).detail;
       if (!fileLink.test(detail?.src || "")) return;
       // A new viewer each time (fresh zoom, page and ink).
-      setOpen({ src: detail.src, title: detail.title, n: ++n });
+      setOpen({ src: detail.src, title: detail.title, page: detail.page, n: ++n });
+    };
+    const side = (event: Event) => {
+      const detail = (event as CustomEvent<Detail>).detail;
+      if (!fileLink.test(detail?.src || "")) return;
+      if (!pdfPanelAvailable()) return setOpen({ src: detail.src, title: detail.title, page: detail.page, n: ++n });
+      setPanel({ src: detail.src, title: detail.title || "PDF", page: detail.page, n: ++n });
     };
     window.addEventListener(EVENT, show);
-    return () => window.removeEventListener(EVENT, show);
+    window.addEventListener(PANEL_EVENT, side);
+    return () => {
+      window.removeEventListener(EVENT, show);
+      window.removeEventListener(PANEL_EVENT, side);
+    };
   }, []);
-  if (!open) return null;
   return (
-    <Suspense fallback={null}>
-      <PdfViewerDialog key={open.n} src={open.src} title={open.title} onClose={() => setOpen(null)} />
-    </Suspense>
+    <>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={menu.title}
+          onClose={() => setMenu(null)}
+          items={[
+            { icon: <SidebarSimple />, label: t("Im Seitenfenster öffnen", "Open in side panel"), run: () => openPdfPanel(menu.src, menu.title) },
+            { icon: <ArrowsOut />, label: t("Im PDF-Viewer öffnen", "Open in the PDF viewer"), run: () => openPdf(menu.src, menu.title) },
+          ]}
+        />
+      )}
+      {panel && (
+        <Suspense fallback={null}>
+          <PdfPanel src={panel.src} title={panel.title} page={panel.page} request={panel.n} onClose={() => setPanel(null)} />
+        </Suspense>
+      )}
+      {open && (
+        <Suspense fallback={null}>
+          <PdfViewerDialog key={open.n} src={open.src} title={open.title} page={open.page} onClose={() => setOpen(null)} />
+        </Suspense>
+      )}
+    </>
   );
 }
+// The PDF's name from a caption "Name.pdf, S. 3" / "Name.pdf, p. 3".
+const pdfTitleOf = (caption: string) => caption.trim().replace(/,\s*\S+\s*\d+\s*$/, "") || "PDF";

@@ -168,6 +168,8 @@ export const view = z
       .optional(),
     calculations: calculationsSchema.optional(),
     recordOpen: z.enum(["center", "side", "full"]).optional(),
+    // "Seitenleiste" beside the view or over it (#392, lib/side-panel.ts).
+    sidePanel: z.enum(["beside", "over"]).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.filterGroup && v.filters.length)

@@ -32,6 +32,7 @@ import "./onboarding-migrate.css";
 import "./study.css";
 import "./ai-quota.css";
 import "./comment-margin.css";
+import "./side-panel.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";

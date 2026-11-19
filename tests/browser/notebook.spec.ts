@@ -150,8 +150,11 @@ test("a PDF becomes a notebook: one sheet per page, ink on top, exported again",
   const tools = await openNotebook(page, id);
   const controls = page.getByRole("toolbar", { name: "Notizbuch" });
   await controls.getByRole("button", { name: "Weitere Aktionen" }).click();
-  const chooser = page.waitForEvent("filechooser");
   await page.getByRole("menuitem", { name: "PDF einfügen …" }).click();
+  // As sheets (the dialog's first choice; "Als Anhang" keeps it whole, #392).
+  await expect(page.getByRole("radio", { name: /Als Blätter/ })).toBeChecked();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "PDF wählen …" }).click();
   await (await chooser).setFiles({ name: "Skript.pdf", mimeType: "application/pdf", buffer: samplePdf(["Kapitel eins", "Kapitel zwei", "Kapitel drei"]) });
   // The empty first sheet made way for the three pages.
   await expect(page.locator(".notebook-sheet")).toHaveCount(3, { timeout: 20_000 });

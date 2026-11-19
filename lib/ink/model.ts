@@ -107,7 +107,12 @@ export type InkImage = {
   crop?: { x: number; y: number; w: number; h: number };
   opacity?: number;
   rec?: InkRec;
+  // A region of a PDF page taken from the side panel (#392): the PDF (a
+  // file of the workspace), its page and name, for the caption that opens
+  // the panel at that page.
+  source?: InkSource;
 };
+export type InkSource = { file: string; page: number; title: string };
 export type InkItem = InkStroke | InkText | InkImage;
 export type InkDoc = {
   format: typeof INK_FORMAT;
@@ -224,7 +229,16 @@ function cleanImage(item: Record<string, unknown>, id: string): InkImage | null 
   if (finite(item.opacity) && item.opacity < 1) out.opacity = round2(clamp(item.opacity, 0.05, 1));
   const rec = cleanRec(item.rec);
   if (rec) out.rec = rec;
+  const source = cleanSource(item.source);
+  if (file && source) out.source = source;
   return out;
+}
+export function cleanSource(raw: unknown): InkSource | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { file, page, title } = raw as Record<string, unknown>;
+  if (typeof file !== "string" || !UUID.test(file) || !finite(page) || page < 1 || page > 100000) return null;
+  const name = typeof title === "string" ? title.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 200) : "";
+  return { file: file.toLowerCase(), page: Math.floor(page), title: name || "PDF" };
 }
 
 // Reads stored ink (an object or its JSON); anything unexpected is dropped.
@@ -278,7 +292,11 @@ export function mapInkFiles(doc: InkDoc, map: (file: string) => string | null | 
     const items = list.flatMap((item): InkItem[] => {
       if (item.type !== "image" || !item.file) return [item];
       const file = map(item.file);
-      return file ? [{ ...item, file }] : [];
+      if (!file) return [];
+      // The PDF a region came from: the copy's, or no caption.
+      const { source, ...rest } = item;
+      const pdf = source ? map(source.file) : null;
+      return [{ ...rest, file, ...(source && pdf ? { source: { ...source, file: pdf } } : {}) }];
     });
     if (items.length) pages[key] = items;
   }

@@ -3058,6 +3058,9 @@ async function runCommand(
       case "notebook.sheet.move":
       case "notebook.sheet.paper":
       case "notebook.import":
+      // PDFs kept beside the sheets (#392).
+      case "notebook.attach":
+      case "notebook.detach":
       // The page overview (lib/notebook-organize.ts).
       case "notebook.sheet.meta":
       case "notebook.sheet.links":
