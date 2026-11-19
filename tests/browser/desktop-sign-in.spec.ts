@@ -2,12 +2,26 @@ import { test, expect } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
 import { openPasswordForm } from "./sign-in-form";
 
+// The sign-in page offers "Mit Passkey anmelden" only once the instance has
+// an account – on a fresh test server it asks for the first account
+// instead (demo accounts don't count). The first account is created here
+// if no other spec did it before; once one exists this does nothing.
+async function setUp(browser: import("@playwright/test").Browser, origin: string) {
+  const seed = await browser.newContext();
+  await seed.request.post(`${origin}/api/auth/register`, {
+    headers: { origin },
+    data: { name: "Admin", email: `first-${Date.now()}@example.test`, password: "ein-langes-passwort" },
+  });
+  await seed.close();
+}
+
 // The desktop app signs in through the browser: a one-time code that only
 // the holder of the verifier can redeem, once.
 test("the desktop app signs in through the browser", async ({ browser }, testInfo) => {
   test.setTimeout(180_000);
   test.skip(testInfo.project.name !== "desktop", "One run covers the flow.");
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await setUp(browser, origin);
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
 
@@ -71,6 +85,7 @@ test("the desktop app signs in through the browser", async ({ browser }, testInf
 test("the Windows desktop app signs in with passkeys in its window", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One run covers it.");
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await setUp(browser, origin);
   const agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Electron/44.9.3 Safari/537.36 FlowplanDesktop/1.3.2";
   const app = await browser.newContext({ userAgent: agent });
   // The app's bridge (flowplan-desktop preload.js); Windows Hello cancelled.
@@ -111,6 +126,7 @@ test("the Windows desktop app signs in with passkeys in its window", async ({ br
 test("the mobile app signs in with passkeys and SSO through the browser", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "One run covers it.");
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await setUp(browser, origin);
   const app = await browser.newContext({
     userAgent:
       "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.0.0",
