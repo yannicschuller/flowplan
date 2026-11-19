@@ -145,6 +145,30 @@ export function StorageUsage({ storage }: { storage: Awaited<ReturnType<typeof u
       <SettingRow wide label={t("Hochgeladene Dateien", "Uploaded files")} description={`${bytes(data.local.uploads.bytes)} · ${number(data.local.uploads.files)} ${t("Dateien", "Files")}`}>
         <Breakdown parts={data.local.uploads.byType} label={t("Dateien nach Art", "Files by kind")} />
       </SettingRow>
+      {s3.enabled && s3.cache && (
+        <SettingRow
+          label={t("Lokaler Zwischenspeicher", "Local cache")}
+          description={
+            s3.cache.limitBytes
+              ? t(
+                  `Die Dateien liegen im Bucket; lokal bleiben die zuletzt benutzten, bis zu ${bytes(s3.cache.limitBytes)} (S3_LOCAL_CACHE). Fehlt eine Datei, holt Flowplan sie beim Aufruf aus dem Bucket.`,
+                  `The files are in the bucket; the most recently used stay local, up to ${bytes(s3.cache.limitBytes)} (S3_LOCAL_CACHE). A missing file is fetched from the bucket when it is opened.`,
+                )
+              : t("Die Dateien liegen im Bucket; lokal bleiben die benutzten, ohne Grenze.", "The files are in the bucket; the ones in use stay local, without a limit.")
+          }
+        >
+          <span>
+            {s3.cache.limitBytes
+              ? t(`${bytes(s3.cache.bytes)} von ${bytes(s3.cache.limitBytes)} lokal`, `${bytes(s3.cache.bytes)} of ${bytes(s3.cache.limitBytes)} local`)
+              : t(`${bytes(s3.cache.bytes)} lokal`, `${bytes(s3.cache.bytes)} local`)}
+            {" · "}
+            {t(
+              `${number(s3.cache.onlyInBucketFiles)} Dateien (${bytes(s3.cache.onlyInBucketBytes)}) nur im Bucket`,
+              `${number(s3.cache.onlyInBucketFiles)} files (${bytes(s3.cache.onlyInBucketBytes)}) only in the bucket`,
+            )}
+          </span>
+        </SettingRow>
+      )}
       {s3.enabled && s3.reachable && s3.uploads && (
         <SettingRow
           wide

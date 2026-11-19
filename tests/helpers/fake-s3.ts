@@ -1,6 +1,7 @@
 // An S3 stand-in for tests: path-style objects in memory, ListObjectsV2
 // (prefix, delimiter, Size, LastModified, max-keys and continuation
-// tokens), CopyObject, DeleteObjects (POST ?delete), and failures on
+// tokens), HeadObject (Content-Length), CopyObject, DeleteObjects (POST
+// ?delete), and failures on
 // demand. Signed requests only (AWS4-HMAC-SHA256), like the real thing.
 //
 //   const s3 = await startFakeS3();
@@ -92,6 +93,11 @@ export async function startFakeS3(): Promise<FakeS3> {
       if (req.method === "DELETE") {
         objects.delete(path);
         return void res.writeHead(204).end();
+      }
+      if (req.method === "HEAD") {
+        const object = objects.get(path);
+        if (!object) return void res.writeHead(404).end();
+        return void res.writeHead(200, { "Content-Length": object.body.length }).end();
       }
       if (req.method === "GET") {
         const object = objects.get(path);

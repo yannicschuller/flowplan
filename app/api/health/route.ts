@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { sessionIdentityFromRequest } from "@/lib/auth";
 import { one } from "@/lib/db";
 import { metricsAuthorized } from "@/lib/instance-ops";
-import { storageStatus } from "@/lib/storage";
+import { storageStatus, uploadCacheStatus } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,8 +63,10 @@ export async function GET(request: Request) {
   if (!(await detailsAllowed(request))) return NextResponse.json(verdict, init);
   const build = buildInfo();
   let mirror: Awaited<ReturnType<typeof storageStatus>> = { enabled: false };
+  let cache: Awaited<ReturnType<typeof uploadCacheStatus>> = null;
   try {
     mirror = await storageStatus();
+    cache = await uploadCacheStatus();
   } catch {}
   return NextResponse.json(
     {
@@ -74,8 +76,24 @@ export async function GET(request: Request) {
       failedPushDeliveries: failedPush,
       // Object storage mirror: pending uploads/deletions, not part of the
       // health verdict (the local copy keeps working while S3 is away).
+      // With S3_LOCAL_CACHE (or in cluster mode) the uploads folder is a
+      // cache: its limit and size, and what is only in the bucket.
       objectStorage: mirror.enabled
-        ? { pending: mirror.pending, retrying: mirror.failing }
+        ? {
+            pending: mirror.pending,
+            retrying: mirror.failing,
+            ...(cache
+              ? {
+                  localCache: {
+                    limitBytes: cache.limitBytes,
+                    bytes: cache.bytes,
+                    files: cache.files,
+                    onlyInBucketFiles: cache.onlyInBucketFiles,
+                    onlyInBucketBytes: cache.onlyInBucketBytes,
+                  },
+                }
+              : {}),
+          }
         : "off",
       uptimeSeconds: Math.round(process.uptime()),
       // What runs here, for deployment checks (only with the details).

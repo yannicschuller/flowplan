@@ -17,7 +17,7 @@
 // pre-move-<time>), exactly like a restore from a backup.
 import { snapshotDatabase } from "./db-snapshot";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { closeSync, createReadStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
@@ -35,7 +35,7 @@ import { encryptionKeys, currentKeyId } from "./encryption";
 import { openSecret, sealSecret } from "./secret-box";
 import { secretKeyIds, secretsKeySource } from "./ai/secrets";
 import { mailConfig, smtpOptions, smtpTlsHint } from "./mail";
-import { bucketFetch, storageConfig, localUploadNames } from "./storage";
+import { bucketFetch, storageConfig, localCacheMode, localUploadNames, openUpload, withUploadFile } from "./storage";
 import { confirmsWithPassword } from "./account-deletion";
 import { passwordLogin } from "./local-auth";
 import { verifyLdapPassword } from "./ldap-auth";
@@ -60,7 +60,6 @@ import {
   type MoveSource,
   type MoveSummary,
 } from "./instance-move-pull";
-import { clusterMode } from "./cluster/config";
 
 export const MOVE_TOKEN_HOURS = 24;
 const dataDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -242,7 +241,10 @@ export async function createSnapshot() {
 // SHA-256 of the uploads, kept while name, size and time stay the same: the
 // final sync after the first copy hashes only what changed.
 const hashes = globalThis as unknown as { flowplanMoveHashes?: Map<string, { size: number; mtime: number; sha256: string }> };
-async function hashedFiles(dir: string, names: string[]) {
+// fromBucket: uploads in cache mode – a file only in the bucket is hashed
+// from a temporary download (an upload's content never changes under its
+// name, so its hash is kept by name).
+async function hashedFiles(dir: string, names: string[], fromBucket = false) {
   const cache = (hashes.flowplanMoveHashes ??= new Map());
   const out: MoveFile[] = [];
   const queue = names.slice();
@@ -254,6 +256,14 @@ async function hashedFiles(dir: string, names: string[]) {
       try {
         info = statSync(path);
       } catch {
+        if (!fromBucket) continue;
+        const known = cache.get(`bucket:${name}`);
+        const hashed = known
+          ? { size: known.size, sha256: known.sha256 }
+          : await withUploadFile(name, async (source) => ({ size: statSync(source).size, sha256: await fileSha256(source) }));
+        if (!hashed) continue;
+        cache.set(`bucket:${name}`, { ...hashed, mtime: 0 });
+        out.push({ name, ...hashed });
         continue;
       }
       if (!info.isFile()) continue;
@@ -270,15 +280,18 @@ export async function moveManifest(): Promise<MoveManifest> {
   const dir = dataDir(),
     uploads = resolve(dir, "uploads");
   const snapshot = await createSnapshot();
-  // Cluster mode: the folder is only a cache – every file, fetched first.
-  const names = clusterMode() ? await localUploadNames() : existsSync(uploads) ? readdirSync(uploads).filter((n) => UPLOAD_NAME.test(n)) : [];
+  // Cache mode (cluster, S3_LOCAL_CACHE): the folder holds only part of the
+  // files – the ones only in the bucket are hashed from there, and served
+  // from there when the target asks for them (serveMoveUpload).
+  const cached = localCacheMode();
+  const names = cached ? await localUploadNames() : existsSync(uploads) ? readdirSync(uploads).filter((n) => UPLOAD_NAME.test(n)) : [];
   return {
     format: MOVE_FORMAT,
     createdAt: new Date().toISOString(),
     appUrl: appUrl().replace(/\/+$/, ""),
     readOnly: (await readOnlyState()).readOnly,
     snapshot,
-    files: await hashedFiles(uploads, names),
+    files: await hashedFiles(uploads, names, cached),
     extras: await hashedFiles(dir, MOVE_EXTRAS.filter((n) => existsSync(resolve(dir, n)))),
   };
 }
@@ -312,14 +325,38 @@ export async function finishSource(state: SourceState, input: unknown, now = Dat
 export const MOVE_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 // A file, whole or from the byte the Range header names (the target resumes
 // an interrupted transfer there).
-export function serveMoveFile(path: string, range: string | null) {
-  const size = statSync(path).size;
+const close = (source: string | { fd: number }) => {
+  if (typeof source !== "string")
+    try {
+      closeSync(source.fd);
+    } catch {}
+};
+// Cache mode (cluster, S3_LOCAL_CACHE): an upload only in the bucket is
+// served from a temporary download, without filling the cache.
+export async function serveMoveUpload(name: string, range: string | null) {
+  if (!UPLOAD_NAME.test(name)) return null;
+  const file = await openUpload(name);
+  if (!file) return null;
+  try {
+    return serveMoveFile(file, range);
+  } catch (error) {
+    close(file);
+    throw error;
+  }
+}
+export function serveMoveFile(source: string | { fd: number; size: number }, range: string | null) {
+  const path = typeof source === "string" ? source : "";
+  const size = typeof source === "string" ? statSync(path).size : source.size;
   const match = range ? /^bytes=(\d+)-$/.exec(range.trim()) : null;
   if (range && !match) throw new HttpError(416, "Nur Bereiche der Form bytes=<start>- sind möglich.");
   const start = match ? Number(match[1]) : 0;
-  if (start > size || (match && start === size && size > 0))
+  if (start > size || (match && start === size && size > 0)) {
+    close(source);
     return new Response(null, { status: 416, headers: { ...MOVE_HEADERS, "Content-Range": `bytes */${size}` } });
-  const body = size === 0 ? null : (Readable.toWeb(createReadStream(path, { start })) as ReadableStream);
+  }
+  if (size === 0) close(source);
+  const stream = typeof source === "string" ? createReadStream(path, { start }) : createReadStream("", { fd: source.fd, start });
+  const body = size === 0 ? null : (Readable.toWeb(stream) as ReadableStream);
   return new Response(body, {
     status: match ? 206 : 200,
     headers: {

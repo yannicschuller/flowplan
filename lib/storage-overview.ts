@@ -5,7 +5,7 @@ import { AwsClient } from "aws4fetch";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, databaseBytes, one, tableSizes } from "./db";
-import { storageConfig, storageStatus } from "./storage";
+import { storageConfig, storageStatus, uploadCacheStatus } from "./storage";
 
 const dataDir = () => resolve(/*turbopackIgnore: true*/ process.env.FLOWPLAN_DATA_DIR || "./data");
 function fileSize(path: string) {
@@ -186,6 +186,8 @@ export async function storageOverview() {
         latencyMs?: number;
         pending: number;
         retrying: boolean;
+        // S3_LOCAL_CACHE (or cluster mode): the uploads folder as a cache.
+        cache: Awaited<ReturnType<typeof uploadCacheStatus>>;
         partial?: boolean;
         uploads?: { objects: number; bytes: number; byType: Awaited<ReturnType<typeof emptyMedia>> };
         missing?: number;
@@ -209,6 +211,7 @@ export async function storageOverview() {
       prefix: config.prefix,
       pending: status.enabled ? status.pending : 0,
       retrying: status.enabled ? status.failing : false,
+      cache: await uploadCacheStatus().catch(() => null),
     };
     try {
       const listing = (await bucketContents())!;

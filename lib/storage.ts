@@ -20,13 +20,24 @@
 // which fetch it from the bucket when this instance does not have it. The
 // cache is kept below FLOWPLAN_CACHE_MAX_MB (oldest unused files first). On
 // shutdown the uploads under way and the due queue are drained.
+//
+// S3_LOCAL_CACHE (#389, e.g. "2GB"): the same cache for a single instance.
+// The bucket is the truth for the files confirmed in it; above the limit the
+// least recently used of those leave the local folder (pruneUploadCache) and
+// come back when a request needs them (ensureLocal). Files not confirmed in
+// the bucket always stay. Whole-instance copies (backup, SFTP mirror, move)
+// read the evicted ones from the bucket without putting them back into the
+// cache (withUploadFile, openUploadStream). The SQLite database is never
+// part of this.
 import { AwsClient } from "aws4fetch";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import type { Readable } from "node:stream";
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { all, one, run, sql } from "./db";
-import { currentKeyId, isEncrypted, seal, unseal } from "./encryption";
+import { currentKeyId, isEncrypted, OVERHEAD, seal, unseal } from "./encryption";
 import { DELETED_UPLOADS, deletedName } from "./deleted-uploads";
 import { clusterMode } from "./cluster/config";
 import { channelName, listen } from "./cluster/pg-session";
@@ -113,6 +124,8 @@ const state = globalThis as unknown as {
     again: boolean;
     timer?: ReturnType<typeof setInterval>;
     prune?: ReturnType<typeof setInterval>;
+    pruneSoon?: ReturnType<typeof setTimeout>;
+    pruning?: boolean;
     unlisten?: () => void;
   };
 };
@@ -126,6 +139,8 @@ export async function setupStorage(d?: DatabaseSync) {
   const config = storageConfig();
   const postgres = sql.name === "postgres";
   if (!config) {
+    if (process.env.S3_LOCAL_CACHE?.trim())
+      console.log("Dateispeicher: S3_LOCAL_CACHE wird ignoriert – ohne S3_BUCKET bleiben alle Dateien lokal.");
     if (d)
       d.exec(`DROP TRIGGER IF EXISTS storage_file_insert;
         DROP TRIGGER IF EXISTS storage_file_delete;`); // sqlite-only
@@ -159,6 +174,13 @@ export async function setupStorage(d?: DatabaseSync) {
   // First use of this bucket, or local files replaced by an instance
   // restore: every file is uploaded again.
   if (previous !== target(config) || existsSync(marker)) {
+    // With a cache, files removed locally exist only in the old place: they
+    // cannot be uploaded from here (the queue gives up on them).
+    if (previous && localCacheMode()) {
+      const missing = (await all<{ id: string }>("SELECT id FROM files")).filter((f) => validKey(String(f.id)) && !existsSync(localPath(String(f.id)))).length;
+      if (missing)
+        console.error(`Dateispeicher: Ziel geändert (${previous} → ${target(config)}), aber ${missing} Dateien liegen nur im bisherigen Bucket – kopiere sie dorthin (z. B. mit rclone copy), sonst fehlen sie.`);
+    }
     await run("DELETE FROM storage_sealed");
     await run("INSERT INTO storage_queue(key,op) SELECT id,'put' FROM files WHERE true ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0");
     await run("INSERT INTO storage_state(name,value) VALUES('target',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", target(config));
@@ -183,13 +205,21 @@ export async function setupStorage(d?: DatabaseSync) {
       })
       .catch((error) => console.error("Dateispeicher: LISTEN fehlgeschlagen, nur die Abfrage alle 15 s", (error as Error).message));
   setImmediate(kickStorage);
-  // In cluster mode the local folder is a cache of the bucket: files come
-  // when a request needs them (ensureLocal), not all at every start, and
-  // the least used go again when it grows past FLOWPLAN_CACHE_MAX_MB.
-  if (!clusterMode()) setImmediate(() => void hydrate());
+  // In cluster mode and with S3_LOCAL_CACHE the local folder is a cache of
+  // the bucket: files come when a request needs them (ensureLocal), not all
+  // at every start (that would refill what was evicted on purpose), and the
+  // least used go again when it grows past the limit – at the start, after
+  // uploads and every five minutes.
+  const raw = process.env.S3_LOCAL_CACHE?.trim();
+  if (raw && parseCacheSize(raw) === null)
+    console.error(`Dateispeicher: S3_LOCAL_CACHE="${raw.slice(0, 40)}" nicht verstanden (z. B. 2GB, 500MB) – alle Dateien bleiben lokal.`);
+  if (!localCacheMode()) setImmediate(() => void hydrate());
   else {
-    current.prune = setInterval(() => void pruneUploadCache().catch((error) => console.error("Dateispeicher: Zwischenspeicher nicht bereinigt", error)), 5 * 60_000);
+    const limit = cacheLimitBytes();
+    if (!clusterMode()) console.log(`Dateispeicher: lokaler Zwischenspeicher auf ${formatSize(limit)} begrenzt (S3_LOCAL_CACHE), der Bucket hält alle Dateien.`);
+    current.prune = setInterval(() => schedulePrune(0), 5 * 60_000);
     current.prune.unref?.();
+    schedulePrune(5_000);
   }
   onShutdownTask("storage", SHUTDOWN_PHASE.files, (deadline) => flushStorage(deadline));
 }
@@ -224,6 +254,7 @@ export function stopStorage() {
   const s = state.flowplanStorage;
   if (s?.timer) clearInterval(s.timer);
   if (s?.prune) clearInterval(s.prune);
+  if (s?.pruneSoon) clearTimeout(s.pruneSoon);
   s?.unlisten?.();
   state.flowplanStorage = undefined;
 }
@@ -297,6 +328,8 @@ async function drain() {
             });
             if (!response.ok) throw new Error(`PUT ${response.status}`);
             await run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", job.key, keyId);
+            // Now confirmed in the bucket: may leave the cache if it is full.
+            schedulePrune(30_000);
           } else {
             // Delayed deletion (lib/deleted-uploads.ts): the object moves to
             // .deleted/uploads/ first, so the scheduled backups in the bucket
@@ -341,6 +374,7 @@ async function drain() {
 export async function ensureLocal(key: string) {
   if (!validKey(key)) return false;
   const path = localPath(key);
+  noteUse(key);
   if (existsSync(path)) return true;
   const config = storageConfig();
   if (!config) return false;
@@ -381,26 +415,23 @@ export async function ensureLocal(key: string) {
 export async function localUpload(key: string): Promise<string | null> {
   if (!validKey(key)) return null;
   if (!(await ensureLocal(key))) return null;
-  const path = localPath(key);
-  if (clusterMode()) touchCached(key, path);
-  return path;
+  return localPath(key);
 }
 // The names of the stored files to read for a whole-instance copy (instance
 // backup, SFTP mirror, instance move): the uploads folder as it is – in
-// cluster mode, where it is only a cache, every file of the files table,
-// fetched into it first (the cache must hold them all for that while).
+// cache mode (cluster, S3_LOCAL_CACHE), where it holds only part of them,
+// also every file confirmed in the bucket. Nothing is fetched here: the copy
+// reads each with withUploadFile() or openUploadStream().
 export async function localUploadNames(): Promise<string[]> {
-  if (!clusterMode() || !storageConfig()) {
-    try {
-      return readdirSync(uploadsDir()).filter(validKey);
-    } catch {
-      return [];
-    }
-  }
-  const names: string[] = [];
-  for (const { id } of await all<{ id: string }>("SELECT id FROM files ORDER BY id"))
-    if (await localUpload(String(id))) names.push(String(id));
-  return names;
+  let here: string[] = [];
+  try {
+    here = readdirSync(uploadsDir()).filter(validKey);
+  } catch {}
+  if (!localCacheMode() || !storageConfig()) return here;
+  const names = new Set(here);
+  for (const { id } of await all<{ id: string }>("SELECT f.id FROM files f JOIN storage_sealed s ON s.key=f.id"))
+    if (validKey(String(id))) names.add(String(id));
+  return [...names].sort();
 }
 // The same as a path to read from in any case: fetched first when needed,
 // otherwise the (missing) path, so the caller's own "file missing" check
@@ -418,7 +449,7 @@ export async function readUpload(key: string): Promise<Buffer | null> {
   }
 }
 
-const inflight = globalThis as unknown as { flowplanUploadsInFlight?: Set<Promise<unknown>>; flowplanCacheTouched?: Map<string, number> };
+const inflight = globalThis as unknown as { flowplanUploadsInFlight?: Set<Promise<unknown>> };
 const uploadsInFlight = () => (inflight.flowplanUploadsInFlight ??= new Set());
 export const uploadsInFlightCount = () => uploadsInFlight().size;
 
@@ -481,54 +512,321 @@ export async function copyUpload(from: string, to: string): Promise<boolean> {
   return true;
 }
 
-// Cluster mode: the cache's use, for the pruning below (mtime as "last
-// used", written at most every ten minutes per file).
-function touchCached(key: string, path: string, now = Date.now()) {
-  const touched = (inflight.flowplanCacheTouched ??= new Map());
-  if (now - (touched.get(key) ?? 0) < 10 * 60_000) return;
-  touched.set(key, now);
-  if (touched.size > 50_000) touched.clear();
-  try {
-    utimesSync(path, now / 1000, now / 1000);
-  } catch {}
+// ---- The local cache (cluster mode, S3_LOCAL_CACHE) ----
+
+// S3_LOCAL_CACHE: "2GB", "500MB", "1.5 GiB" … (1 GB = 1024 MB). Empty or 0:
+// no limit (0); not understood: null (then ignored, with a log line).
+const SIZE_UNITS: Record<string, number> = { b: 1, k: 1024, kb: 1024, kib: 1024, m: 1024 ** 2, mb: 1024 ** 2, mib: 1024 ** 2, g: 1024 ** 3, gb: 1024 ** 3, gib: 1024 ** 3, t: 1024 ** 4, tb: 1024 ** 4, tib: 1024 ** 4 };
+export function parseCacheSize(value: string | undefined): number | null {
+  const text = (value ?? "").trim();
+  if (!text || text === "0") return 0;
+  const match = /^(\d+(?:[.,]\d+)?)\s*(b|[kmgt](?:i?b)?)$/i.exec(text);
+  if (!match) return null;
+  return Math.floor(Number(match[1].replace(",", ".")) * SIZE_UNITS[match[2].toLowerCase()]);
 }
-// FLOWPLAN_CACHE_MAX_MB: the cache's size limit (cluster mode; the Helm
-// chart sets it below the emptyDir's sizeLimit). 0 or unset: no limit.
-export const cacheLimitBytes = (env: Record<string, string | undefined> = process.env) => Math.max(0, Number(env.FLOWPLAN_CACHE_MAX_MB) || 0) * 1024 * 1024;
-// Removes the least recently used files of the cache until it is below 80 %
-// of the limit. Files used in the last 30 minutes and files the queue still
-// has to upload stay. Returns what was removed.
+export function formatSize(bytes: number) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes,
+    i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${Math.round(value * 10) / 10} ${units[i]}`;
+}
+// The cache's size limit in bytes (0: none): S3_LOCAL_CACHE, otherwise in
+// cluster mode FLOWPLAN_CACHE_MAX_MB (the Helm chart sets it below the
+// emptyDir's sizeLimit).
+export function cacheLimitBytes(env: Record<string, string | undefined> = process.env) {
+  const configured = parseCacheSize(env.S3_LOCAL_CACHE);
+  if (configured) return configured;
+  return clusterMode(env) ? Math.max(0, Number(env.FLOWPLAN_CACHE_MAX_MB) || 0) * 1024 * 1024 : 0;
+}
+// Whether the uploads folder is only a cache of the bucket: cluster mode, or
+// a single instance with S3_LOCAL_CACHE. Without S3 never.
+export function localCacheMode(env: Record<string, string | undefined> = process.env) {
+  if (!env.S3_BUCKET?.trim()) return false;
+  return clusterMode(env) || !!parseCacheSize(env.S3_LOCAL_CACHE);
+}
+
+// When each file was last used: in memory (a Map entry per read, nothing
+// else on the request's path), written as the file's mtime by the cache's
+// round (flushUseStamps) – so the order survives a restart without a write
+// per request. The round orders by max(stamp, mtime).
+type CacheStats = {
+  at: number;
+  limit: number;
+  // Locally: files and bytes of the cache.
+  files: number;
+  bytes: number;
+  // Only in the bucket (evicted, or not fetched yet).
+  remoteFiles: number;
+  remoteBytes: number;
+};
+const cacheState = globalThis as unknown as {
+  flowplanCacheUsed?: Map<string, number>;
+  flowplanCacheStats?: CacheStats;
+  flowplanCacheUnverified?: Map<string, number>;
+  flowplanCacheInUse?: Map<string, number>;
+};
+const usedStamps = () => (cacheState.flowplanCacheUsed ??= new Map());
+// Files a whole-instance copy reads right now (withUploadFile): never removed.
+const inUse = () => (cacheState.flowplanCacheInUse ??= new Map());
+export function noteUse(key: string, now = Date.now()) {
+  if (!localCacheMode()) return;
+  const used = usedStamps();
+  used.set(key, now);
+  // Bounded: what the round has not written yet is lost at worst.
+  if (used.size > 100_000) used.delete(used.keys().next().value!);
+}
+export function flushUseStamps() {
+  const used = usedStamps();
+  for (const [key, at] of [...used]) {
+    try {
+      if (statSync(localPath(key)).mtimeMs < at - 1000) utimesSync(localPath(key), at / 1000, at / 1000);
+    } catch {}
+    if (used.get(key) === at) used.delete(key);
+  }
+}
+
+// A file the round may remove must be confirmed in the bucket: uploaded
+// (storage_sealed, with the key it went up with), no job of the queue left
+// for it, and the object there with the expected size (HEAD) – the local
+// size, plus the encryption's overhead when it went up sealed. A file whose
+// object is gone although it counts as uploaded is queued again.
+async function confirmedInBucket(config: StorageConfig, key: string, size: number, keyId: string) {
+  const response = await aws(config).fetch(objectUrl(config, key), { method: "HEAD", signal: AbortSignal.timeout(10_000) });
+  if (response.status === 404) {
+    await run("DELETE FROM storage_sealed WHERE key=?", key);
+    await run("INSERT INTO storage_queue(key,op) SELECT id,'put' FROM files WHERE id=? ON CONFLICT(key) DO NOTHING", key);
+    setImmediate(kickStorage);
+    return false;
+  }
+  if (!response.ok) return false;
+  const length = Number(response.headers.get("content-length"));
+  return Number.isFinite(length) && length === size + (keyId ? OVERHEAD : 0);
+}
+
+// Files used or written in the last ten minutes stay (a reader that has
+// just fetched one reads it by its path); open files are safe anyway (their
+// data stays until they are closed).
+const CACHE_GRACE_MS = 10 * 60_000;
+// Bounded work per round: at most this many checks in the bucket; the next
+// round (scheduled right away when the cache is still too full) goes on.
+const PRUNE_CHECKS = 200;
+
+// Removes the least recently used files confirmed in the bucket until the
+// cache is below 80 % of the limit. Returns what was removed.
 export async function pruneUploadCache(now = Date.now(), limit = cacheLimitBytes()) {
-  if (!clusterMode() || !storageConfig() || !limit) return { removed: 0, bytes: 0 };
+  const config = storageConfig();
+  if (!config || !localCacheMode() || !limit) return { removed: 0, bytes: 0 };
+  flushUseStamps();
   let names: string[] = [];
   try {
-    names = readdirSync(uploadsDir()).filter(validKey);
-  } catch {
-    return { removed: 0, bytes: 0 };
-  }
+    names = readdirSync(uploadsDir());
+  } catch {}
+  // Temporary downloads left by a process that ended while reading.
+  for (const name of names)
+    if (/\.[0-9a-f]{12}\.read$/.test(name))
+      try {
+        if (now - statSync(localPath(name)).mtimeMs > 3_600_000) rmSync(localPath(name), { force: true });
+      } catch {}
+  names = names.filter(validKey);
   const files: { key: string; size: number; at: number }[] = [];
   let total = 0;
-  for (const key of names)
+  for (let i = 0; i < names.length; i++) {
+    // Large folders: let requests through every few thousand files.
+    if (i && i % 5000 === 0) await new Promise((r) => setImmediate(r));
     try {
-      const info = statSync(localPath(key));
+      const info = statSync(localPath(names[i]));
       if (!info.isFile()) continue;
       total += info.size;
-      files.push({ key, size: info.size, at: info.mtimeMs });
+      files.push({ key: names[i], size: info.size, at: info.mtimeMs });
     } catch {}
-  if (total <= limit) return { removed: 0, bytes: 0 };
-  const pending = new Set((await all<{ key: string }>("SELECT key FROM storage_queue WHERE op='put'")).map((r) => r.key));
-  let removed = 0,
-    bytes = 0;
-  for (const file of files.sort((a, b) => a.at - b.at)) {
-    if (total <= limit * 0.8) break;
-    if (now - file.at < 30 * 60_000 || pending.has(file.key)) continue;
-    rmSync(localPath(file.key), { force: true });
-    total -= file.size;
-    bytes += file.size;
-    removed++;
   }
-  if (removed) console.log(`Dateispeicher: ${removed} Dateien (${Math.round(bytes / 1048576)} MB) aus dem Zwischenspeicher entfernt`);
+  let removed = 0,
+    bytes = 0,
+    checks = 0;
+  if (total > limit) {
+    const sealed = new Map((await all<{ key: string; key_id: string }>("SELECT key,key_id FROM storage_sealed")).map((r) => [String(r.key), String(r.key_id ?? "")]));
+    const queued = new Set((await all<{ key: string }>("SELECT key FROM storage_queue")).map((r) => String(r.key)));
+    // Checked and not confirmed: asked again after an hour at the earliest.
+    const unverified = (cacheState.flowplanCacheUnverified ??= new Map());
+    for (const file of files.sort((a, b) => a.at - b.at || a.key.localeCompare(b.key))) {
+      if (total <= limit * 0.8 || checks >= PRUNE_CHECKS) break;
+      if (now - file.at < CACHE_GRACE_MS) break; // the rest is newer
+      const keyId = sealed.get(file.key);
+      if (keyId === undefined || queued.has(file.key) || inUse().has(file.key) || now - (unverified.get(file.key) ?? -Infinity) < 3_600_000) continue;
+      checks++;
+      let confirmed = false;
+      try {
+        confirmed = await confirmedInBucket(config, file.key, file.size, keyId);
+      } catch {}
+      if (!confirmed) {
+        unverified.set(file.key, now);
+        if (unverified.size > 50_000) unverified.clear();
+        continue;
+      }
+      // Once more right before removing: written, used, read or queued
+      // while the bucket answered.
+      try {
+        const info = statSync(localPath(file.key));
+        if (info.size !== file.size || info.mtimeMs !== file.at) continue;
+      } catch {
+        continue;
+      }
+      if (usedStamps().has(file.key) || inUse().has(file.key) || (await one("SELECT 1 FROM storage_queue WHERE key=?", file.key))) continue;
+      rmSync(localPath(file.key), { force: true });
+      total -= file.size;
+      bytes += file.size;
+      removed++;
+    }
+  }
+  if (removed) console.log(`Dateispeicher: ${removed} Dateien (${formatSize(bytes)}) aus dem lokalen Zwischenspeicher entfernt, sie liegen im Bucket`);
+  await recordCacheStats(now, limit, files.length - removed, total);
+  if (total > limit * 0.8 && checks >= PRUNE_CHECKS) schedulePrune(1_000);
   return { removed, bytes };
+}
+async function recordCacheStats(now: number, limit: number, localFiles: number, localBytes: number) {
+  // Files confirmed in the bucket that are not here.
+  let remoteFiles = 0,
+    remoteBytes = 0;
+  for (const row of await all<{ id: string; size: number }>("SELECT f.id,COALESCE(f.size,0) size FROM files f JOIN storage_sealed s ON s.key=f.id"))
+    if (!(validKey(String(row.id)) && existsSync(localPath(String(row.id))))) {
+      remoteFiles++;
+      remoteBytes += Number(row.size);
+    }
+  cacheState.flowplanCacheStats = { at: now, limit, files: localFiles, bytes: localBytes, remoteFiles, remoteBytes };
+}
+// One round at a time; a later request for one moves it no further out.
+function schedulePrune(delay: number) {
+  const s = state.flowplanStorage;
+  if (!s || !localCacheMode() || !cacheLimitBytes()) return;
+  if (s.pruneSoon) {
+    if (delay) return;
+    clearTimeout(s.pruneSoon);
+  }
+  s.pruneSoon = setTimeout(() => {
+    s.pruneSoon = undefined;
+    if (state.flowplanStorage !== s || s.pruning) return;
+    s.pruning = true;
+    void pruneUploadCache()
+      .catch((error) => console.error("Dateispeicher: Zwischenspeicher nicht bereinigt", error))
+      .finally(() => (s.pruning = false));
+  }, delay);
+  s.pruneSoon.unref?.();
+}
+// For Admin → Storage & backup and /api/health: the cache's limit (0: none,
+// cluster mode without FLOWPLAN_CACHE_MAX_MB), what is here and what only
+// in the bucket – from the last round, counted now when that is older than
+// a quarter of an hour. null: no cache (every file stays local).
+export async function uploadCacheStatus(now = Date.now()) {
+  if (!state.flowplanStorage || !storageConfig() || !localCacheMode()) return null;
+  const limit = cacheLimitBytes();
+  let stats = cacheState.flowplanCacheStats;
+  if (!stats || stats.limit !== limit || now - stats.at > 15 * 60_000) {
+    let files = 0,
+      bytes = 0;
+    try {
+      for (const name of readdirSync(uploadsDir()).filter(validKey))
+        try {
+          const info = statSync(localPath(name));
+          if (info.isFile()) {
+            files++;
+            bytes += info.size;
+          }
+        } catch {}
+    } catch {}
+    await recordCacheStats(now, limit, files, bytes);
+    stats = cacheState.flowplanCacheStats!;
+  }
+  return {
+    limitBytes: stats.limit,
+    bytes: stats.bytes,
+    files: stats.files,
+    onlyInBucketFiles: stats.remoteFiles,
+    onlyInBucketBytes: stats.remoteBytes,
+    checkedAt: new Date(stats.at).toISOString(),
+  };
+}
+
+// ---- Reading a file once, without putting it back into the cache ----
+
+// Downloads an object to a temporary file next to the cache (a name the
+// round never touches) and returns its path; null when it is nowhere. The
+// caller removes it.
+async function fetchTemporary(key: string): Promise<string | null> {
+  const config = storageConfig();
+  if (!config || !validKey(key)) return null;
+  try {
+    const response = await aws(config).fetch(objectUrl(config, key));
+    if (!response.ok) return null;
+    const raw = Buffer.from(await response.arrayBuffer());
+    const sealedWith = await one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", key);
+    if (sealedWith?.key_id && !isEncrypted(raw)) throw new Error("Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.");
+    mkdirSync(uploadsDir(), { recursive: true });
+    const path = `${localPath(key)}.${randomBytes(6).toString("hex")}.read`;
+    writeFileSync(path, unseal(raw));
+    return path;
+  } catch (error) {
+    console.error(`Dateispeicher: ${key} – ${(error as Error).message}`);
+    return null;
+  }
+}
+// Runs `use` with a path to read the file from: the local file (kept from
+// the round while `use` runs), or – in cache mode, when it is only in the
+// bucket – a temporary download removed afterwards. Whole-instance copies
+// (backup, SFTP mirror, move) read every file this way, so they neither
+// fill the cache nor change its order. null when the file exists nowhere.
+export async function withUploadFile<T>(key: string, use: (path: string) => Promise<T>): Promise<T | null> {
+  if (!validKey(key)) return null;
+  const path = localPath(key);
+  const pins = inUse();
+  pins.set(key, (pins.get(key) ?? 0) + 1);
+  try {
+    if (existsSync(path)) return await use(path);
+    if (!localCacheMode()) return (await ensureLocal(key)) ? await use(path) : null;
+  } finally {
+    const left = (pins.get(key) ?? 1) - 1;
+    if (left) pins.set(key, left);
+    else pins.delete(key);
+  }
+  const temporary = await fetchTemporary(key);
+  if (!temporary) return null;
+  try {
+    return await use(temporary);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+// The same as an open file (its descriptor and size): opened before it is
+// returned, so neither the round nor the temporary file's removal can take
+// it away meanwhile. The caller closes it (a read stream on it does).
+export async function openUpload(key: string): Promise<{ fd: number; size: number } | null> {
+  if (!validKey(key)) return null;
+  const opened = (path: string) => {
+    const fd = openSync(path, "r");
+    return { fd, size: fstatSync(fd).size };
+  };
+  const path = localPath(key);
+  try {
+    return opened(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (!localCacheMode()) return (await ensureLocal(key)) ? opened(path) : null;
+  const temporary = await fetchTemporary(key);
+  if (!temporary) return null;
+  try {
+    return opened(temporary);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+// As a stream (the instance backup's ZIP reads its entries one by one).
+export async function openUploadStream(key: string, start = 0): Promise<Readable | null> {
+  const file = await openUpload(key);
+  return file ? createReadStream("", { fd: file.fd, start }) : null;
 }
 
 // Shutdown (lib/cluster/runtime.ts): the uploads under way finish, then the
@@ -541,6 +839,8 @@ export async function flushStorage(deadline: number) {
     clearTimeout(timer);
   };
   await wait(Promise.allSettled([...uploadsInFlight()]));
+  // The cache's order of use, kept for the next start.
+  if (localCacheMode()) flushUseStamps();
   const s = state.flowplanStorage;
   if (!s || !storageConfig() || Date.now() >= deadline) return;
   if (s.timer) clearInterval(s.timer);
@@ -562,7 +862,9 @@ export async function flushStorage(deadline: number) {
 // background; requests fetch what they need right away.
 async function hydrate() {
   const s = state.flowplanStorage;
-  if (!s) return;
+  // A cache (S3_LOCAL_CACHE, cluster mode) is never filled up again: what
+  // the round removed comes back only when a request needs it.
+  if (!s || localCacheMode()) return;
   const ids = (await all<{ id: string }>("SELECT id FROM files"))
     .map((row) => row.id)
     .filter((key) => validKey(key) && !existsSync(localPath(key)));

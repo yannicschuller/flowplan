@@ -18,8 +18,7 @@ import { ZipFile } from "yazl";
 import { SCHEMA_VERSION, id, run, sql } from "./db";
 import { HttpError } from "./auth";
 import { ForeignObjectsError, dumpSummary } from "./pg-backup";
-import { localUploadNames } from "./storage";
-import { clusterMode } from "./cluster/config";
+import { localCacheMode, localUploadNames, openUploadStream } from "./storage";
 
 // Whole-instance backups for admins: a consistent SQLite copy, all uploads
 // and a manifest, streamed as ZIP. Restores are validated and applied on
@@ -36,8 +35,11 @@ export async function instanceBackupStream() {
   const copy = resolve(tmp, `instance-${id()}.sqlite`);
   await snapshotDatabase(copy);
   const uploads = resolve(dir, "uploads");
-  // Cluster mode: the folder is only a cache – every file, fetched first.
-  const files = clusterMode()
+  // Cache mode (cluster, S3_LOCAL_CACHE): the folder holds only part of the
+  // files – every file confirmed in the bucket as well, each read from the
+  // bucket when its turn comes, without filling the cache.
+  const cached = localCacheMode();
+  const files = cached
     ? await localUploadNames()
     : existsSync(uploads)
       ? readdirSync(uploads).filter((n) => /^[A-Za-z0-9_-]{1,100}$/.test(n))
@@ -55,7 +57,14 @@ export async function instanceBackupStream() {
   );
   zip.addFile(copy, "flowplan.sqlite");
   for (const name of files)
-    zip.addFile(resolve(uploads, name), `uploads/${name}`);
+    if (!cached) zip.addFile(resolve(uploads, name), `uploads/${name}`);
+    else
+      zip.addReadStreamLazy(`uploads/${name}`, {}, (done) => {
+        openUploadStream(name).then(
+          (stream) => (stream ? done(null, stream) : done(new Error(`Datei ${name} weder lokal noch im Bucket.`), undefined as never)),
+          (error) => done(error as Error, undefined as never),
+        );
+      });
   zip.end();
   const stream = zip.outputStream as Readable;
   const cleanup = () => rmSync(copy, { force: true });

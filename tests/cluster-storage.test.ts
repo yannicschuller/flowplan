@@ -7,7 +7,7 @@
 // Runs on SQLite and on PostgreSQL (DATABASE_URL), against an S3 stand-in.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -91,10 +91,14 @@ test("an instance without the file reads it through the storage layer", async ()
   assert.equal(await storage.copyUpload(fid, copy), true);
   assert.ok(s3.objects.has(object(copy)), "the copy is published at once");
   assert.equal(await storage.readUpload(id()), null);
-  // Whole-instance copies (backup, move) list every file of the table.
+  // Whole-instance copies (backup, move) list every file in the bucket and
+  // read it from there, without filling the cache.
   rmSync(join(uploads, fid));
   assert.ok((await storage.localUploadNames()).includes(fid));
-  assert.equal(existsSync(join(uploads, fid)), true);
+  assert.equal(existsSync(join(uploads, fid)), false);
+  assert.equal(await storage.withUploadFile(fid, async (path) => readFileSync(path, "utf8")), "von nebenan");
+  assert.equal(existsSync(join(uploads, fid)), false, "read once, not cached");
+  assert.deepEqual(readdirSync(uploads).filter((name) => name.startsWith(fid)), [], "no temporary file left");
 });
 
 test("the cache is kept below FLOWPLAN_CACHE_MAX_MB: least recently used first, recent and pending files stay", async () => {
