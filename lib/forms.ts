@@ -132,6 +132,15 @@ async function relationChoices(user: Identity, fields: Field[]) {
 // Options: `confirm: false` when the caller sends the confirmation e-mail
 // itself (with the customer portal's link); `sender` tells visitors apart
 // for the e-mail limits (account or address).
+// Responses go to the end in the order they arrive. Date.now() alone gave
+// two responses in the same millisecond the same position (and the same
+// created_at), so their order – in the table and among suggested earlier
+// answers – was left to chance.
+let lastPosition = 0;
+function submissionPosition() {
+  lastPosition = Math.max(Date.now(), lastPosition + 1);
+  return lastPosition;
+}
 export async function saveFormSubmission(
   pageId: string,
   user: Identity | null,
@@ -219,7 +228,7 @@ export async function saveFormSubmission(
     rid,
     pageId,
     JSON.stringify(stored),
-    Date.now(),
+    submissionPosition(),
     form?.anonymous ? null : user?.id || null,
     form?.anonymous ? null : user?.id || null,
   );
