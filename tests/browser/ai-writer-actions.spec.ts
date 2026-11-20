@@ -15,6 +15,7 @@ keepInstanceAi();
 // addresses the model writes itself stay text. "Mit bestehenden Seiten
 // verlinken" switched off is remembered and sends no pages.
 
+let actionSpace = "";
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const shots = process.env.AI_LINKS_SCREENSHOTS || "";
 test.setTimeout(120_000);
@@ -32,7 +33,10 @@ async function startMock(foreign: string): Promise<Mock> {
       mock.prompts.push(prompt);
       // Links the budget page by its handle – and tries an invented handle
       // and an address of its own.
-            const answer = "Der Werkstoff 42CrMo4 ist ein Vergütungsstahl. Bis Freitag prüfen wir die Lieferung.";
+            // The actions step asks for JSON with its tools; the writer for text.
+            const answer = prompt.includes('{"tool":"create_page"') && actionSpace
+              ? JSON.stringify({ actions: [{ tool: "create_page", spaceId: actionSpace, parentId: null, title: `42CrMo4 ${Date.now()}`, markdown: "Vergütungsstahl." }] })
+              : "Der Werkstoff 42CrMo4 ist ein Vergütungsstahl. Bis Freitag prüfen wir die Lieferung.";
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
       res.end("data: [DONE]\n\n");
@@ -75,6 +79,7 @@ test("the writing assistant steps aside for its actions dialog (#400)", async ({
     expect(response.ok(), await response.text()).toBe(true);
     return response.json();
   };
+  actionSpace = boot.spaces[0].id;
   const mock = await startMock(randomUUID());
   try {
     await command({ action: "admin.ai", settings: { enabled: true, provider: { kind: "openai", baseUrl: mock.base, model: "mock", embeddingModel: "" } } });
@@ -100,6 +105,13 @@ test("the writing assistant steps aside for its actions dialog (#400)", async ({
     // Back with its answer.
     await expect(writer).toBeVisible();
     await expect(writer.locator(".ai-preview")).toContainText("Vergütungsstahl");
+    // Once the actions ran, the assistant is done too (#400, second comment).
+    await writer.getByRole("button", { name: "Aktionen vorschlagen" }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: /Ausführen/ }).click();
+    await dialog.getByRole("button", { name: "Fertig" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator(".ai-writer")).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     await mock.close();

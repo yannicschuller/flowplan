@@ -35,11 +35,15 @@ export function AiActionsPanel({
   workspaceId,
   request,
   onClose,
+  onFinished,
   onOpen,
 }: {
   workspaceId: string;
   request: AiActionsRequest | null;
   onClose: () => void;
+  // Closing after the actions ran (instead of onClose): the writing
+  // assistant that asked is then done as well (#400).
+  onFinished?: () => void;
   // Opens a created page or record (default: by the address).
   onOpen?: (pageId: string, rowId?: string) => void;
 }) {
@@ -119,15 +123,16 @@ export function AiActionsPanel({
       setError((e as Error).message);
     }
   };
+  const close = () => (phase === "done" && onFinished ? onFinished() : onClose());
   const open = (pageId: string, rowId?: string) => {
     if (onOpen) onOpen(pageId, rowId);
     else location.hash = pageLocationHash({ pageId, rowId });
-    onClose();
+    close();
   };
 
   const okCount = results.filter((r) => r.ok).length;
   return (
-    <Modal open={!!request} onClose={onClose} title={t("KI-Aktionen", "AI actions")} wide className="ai-actions">
+    <Modal open={!!request} onClose={close} title={t("KI-Aktionen", "AI actions")} wide className="ai-actions">
       {phase === "proposing" && (
         <p className="ai-ask-thinking" aria-live="polite">
           <Sparkle size={14} /> {t("Die KI schlägt Aktionen vor …", "The AI is proposing actions …")}
@@ -259,7 +264,7 @@ export function AiActionsPanel({
       )}
       <div className="modal-actions">
         {phase === "done" ? (
-          <button type="button" className="button primary" onClick={onClose}>
+          <button type="button" className="button primary" onClick={close}>
             {t("Fertig", "Done")}
           </button>
         ) : (

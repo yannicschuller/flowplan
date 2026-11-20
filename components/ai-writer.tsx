@@ -344,7 +344,8 @@ export function AiWriter({
       ref={box}
       // While "KI-Aktionen" is open the writer steps aside: the dialog
       // (a portal to the body) sat below it and the writer covered its
-      // buttons (#400). It comes back with its answer when the dialog closes.
+      // buttons (#400). It comes back with its answer when the dialog is
+      // cancelled; once the actions ran, it closes as well.
       className={`ai-writer${actions ? " ai-writer-aside" : ""}`}
       aria-hidden={actions ? true : undefined}
       style={style}
@@ -532,7 +533,7 @@ export function AiWriter({
         </>
       )}
       <AiProviderFooter device={ranOn ? ranOn === "device" : (request.kind === "transcript" ? summaryRoute : writeRoute).primary === "device"} />
-      {ai.workspaceId && <AiActionsPanel workspaceId={ai.workspaceId} request={actions} onClose={() => setActions(null)} />}
+      {ai.workspaceId && <AiActionsPanel workspaceId={ai.workspaceId} request={actions} onClose={() => setActions(null)} onFinished={close} />}
     </div>
   );
 }
