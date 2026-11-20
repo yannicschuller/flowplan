@@ -12,6 +12,7 @@ import {
 import { tr } from "@/lib/locale-tag";
 import { noticeBuild } from "@/lib/stale-copy";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
+import { noteOwnAction } from "@/lib/notification-sound-client";
 import { appCopyUnreachable } from "@/lib/offline-store";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
@@ -667,12 +668,17 @@ export async function api<T = Record<string, unknown>>(
       }
     : { cache: "no-store", headers };
   if (heldBySession(url)) throw new ApiError(signedOutMessage(), 401);
+  // A change of one's own: a rule or workflow it sets off makes no sound
+  // (#401, lib/notification-sound-client.ts). Noted again with the answer –
+  // what it set off may come in only then.
+  if (body) noteOwnAction();
   let r = await fetch(url, init);
   for (let attempt = 0; body && attempt < 5 && (await stillProcessing(r)); attempt++) {
     const wait = Math.min(Number(r.headers.get("Retry-After")) || 1, 5);
     await new Promise((done) => setTimeout(done, wait * 1000));
     r = await fetch(url, init);
   }
+  if (body) noteOwnAction();
   return await readAnswer<T>(r, url, body);
 }
 // A 5xx names its request id (X-Request-Id, lib/request-context.ts), so a

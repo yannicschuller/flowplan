@@ -1,6 +1,6 @@
 // HTML files (#398): an uploaded .html/.htm file opens in a sandboxed
-// preview (components/html-viewer.tsx) – no scripts, no forms, nothing
-// loaded from elsewhere. Shared by the browser and the server
+// preview (components/html-viewer.tsx) – no scripts (unless run on
+// request, isolated), no forms, nothing loaded from elsewhere. Shared by the browser and the server
 // (lib/html-preview.ts); nothing here reads a file.
 
 // Larger files are only downloaded. The default; FLOWPLAN_HTML_PREVIEW_MB

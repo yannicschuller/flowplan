@@ -251,6 +251,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Benachrichtigungsarten", en: "Notification kinds" }, keywords: { de: "posteingang push e-mail erwähnungen kommentare", en: "inbox push email mentions comments" }, anchor: "kinds" },
       {
+        title: { de: "Ton bei neuen Benachrichtigungen", en: "Sound for new notifications" },
+        keywords: { de: "ton klang sound signalton geräusch hinweiston audio lautlos stumm sanft klar glocke anhören", en: "sound tone chime audio beep silent mute soft clear bell preview listen" },
+        anchor: "notification-sound",
+      },
+      {
         title: { de: "Chat-Apps", en: "Chat apps" },
         keywords: { de: "messenger telegram gotify ntfy matrix bot testnachricht", en: "messenger telegram gotify ntfy matrix bot test message" },
         anchor: "messengers",

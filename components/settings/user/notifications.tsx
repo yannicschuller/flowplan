@@ -1,12 +1,13 @@
 "use client";
-// Settings → Benachrichtigungen: kinds per channel, chat apps, the weekly
-// digest and push on this device. Every switch saves at once; the state
+// Settings → Benachrichtigungen: kinds per channel, the sound in the open
+// app, chat apps, the weekly digest and push on this device. Every switch saves at once; the state
 // shows next to it.
 import { useEffect, useRef, useState } from "react";
 import type { MessengerOverview } from "@/lib/messenger-services";
 import { NotificationSettings } from "../../notification-settings";
 import { MessengerSettings } from "../../messenger-settings";
 import { WeeklyDigestSettings } from "../../weekly-digest-settings";
+import { NotificationSoundSettings } from "../../notification-sound-settings";
 import PushSettings from "../../push-settings";
 import { api } from "../../ui";
 import { useUserSettings } from "../user-context";
@@ -38,6 +39,7 @@ export default function NotificationsSection() {
           onChange={(kind, value) => mutate({ action: "notification.prefs", kind, ...value })}
         />
       )}
+      <NotificationSoundSettings save={mutate} />
       {chatApps && <MessengerSettings overview={messengers} onChange={setMessengers} />}
       <WeeklyDigestSettings prefs={boot.weeklyDigest} ai={boot.ai} mail={!!boot.instance?.mail} save={mutate} />
       <PushSettings group />

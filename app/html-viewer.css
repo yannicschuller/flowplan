@@ -21,6 +21,19 @@
   flex-shrink: 0;
   color: var(--secondary);
 }
+.html-viewer-note-text {
+  flex: 1;
+  min-width: 0;
+}
+.html-viewer-note.is-running svg {
+  color: var(--blue);
+}
+.html-viewer-scripts {
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
 .html-viewer-stage {
   display: flex;
   padding: 16px;
@@ -46,6 +59,7 @@
 }
 @media (max-width: 600px) {
   .html-viewer-note {
+    flex-wrap: wrap;
     padding: 6px 12px;
     font-size: 12px;
   }

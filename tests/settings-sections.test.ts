@@ -83,6 +83,7 @@ test("search targets of the personal and connection sections exist in their pane
     "components/emergency-access.tsx",
     "components/dead-man-switch.tsx",
     "components/notification-settings.tsx",
+    "components/notification-sound-settings.tsx",
     "components/messenger-settings.tsx",
     "components/weekly-digest-settings.tsx",
     "components/push-settings.tsx",

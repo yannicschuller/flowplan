@@ -8,8 +8,17 @@
 // external pictures, styles and fonts stay away, which the note says. No
 // verdict on the file: it is shown inert, not judged. Larger files than
 // the server's preview limit (FLOWPLAN_HTML_PREVIEW_MB) are only downloaded.
+//
+// "Run scripts" (for this opening only, never remembered): the frame is
+// replaced by one with sandbox="allow-scripts" – never the same origin,
+// top navigation, popups, forms or modals – that loads the preview with
+// ?scripts=1, whose policy runs the file's inline scripts and still loads
+// nothing from anywhere. The page's origin stays opaque: no access to the
+// app, the session or its data. "Stop scripts" loads it inert again. The
+// button is there only if the server allows it (FLOWPLAN_HTML_PREVIEW_SCRIPTS,
+// told by the HEAD request's X-Flowplan-Preview-Scripts).
 import { useEffect, useRef, useState } from "react";
-import { DownloadSimple, FileHtml, Info, X } from "@phosphor-icons/react";
+import { DownloadSimple, FileHtml, Info, Play, Stop, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { htmlPreviewUrl } from "@/lib/html-files";
 import "@/app/viewer3d.css";
@@ -20,6 +29,8 @@ type State = "loading" | "ready" | "large" | "missing" | "failed";
 export default function HtmlViewerDialog({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
   const t = useT();
   const [state, setState] = useState<State>("loading");
+  const [scriptsAllowed, setScriptsAllowed] = useState(false);
+  const [scripts, setScripts] = useState(false);
   const name = title || "HTML";
   const preview = htmlPreviewUrl(src);
   const dialog = useRef<HTMLDivElement>(null);
@@ -29,9 +40,10 @@ export default function HtmlViewerDialog({ src, title, onClose }: { src: string;
   useEffect(() => {
     const controller = new AbortController();
     fetch(preview, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
-      .then((response) =>
-        setState(response.ok ? "ready" : response.status === 413 ? "large" : [403, 404, 410, 415].includes(response.status) ? "missing" : "failed"),
-      )
+      .then((response) => {
+        setScriptsAllowed(response.ok && response.headers.get("X-Flowplan-Preview-Scripts") === "allowed");
+        setState(response.ok ? "ready" : response.status === 413 ? "large" : [403, 404, 410, 415].includes(response.status) ? "missing" : "failed");
+      })
       .catch(() => {
         if (!controller.signal.aborted) setState("failed");
       });
@@ -76,15 +88,45 @@ export default function HtmlViewerDialog({ src, title, onClose }: { src: string;
           </button>
         </span>
       </header>
-      <p className="html-viewer-note">
+      <div className={scripts ? "html-viewer-note is-running" : "html-viewer-note"}>
         <Info size={16} aria-hidden />
-        <span>{t("Skripte und externe Inhalte sind abgeschaltet.", "Scripts and external content are switched off.")}</span>
-      </p>
-      <div className="viewer3d-stage html-viewer-stage">
-        {state === "ready" && (
-          // An empty sandbox: everything off (see above).
-          <iframe className="html-viewer-frame" src={preview} sandbox="" referrerPolicy="no-referrer" title={t(`Vorschau von ${name}`, `Preview of ${name}`)} />
+        <span className="html-viewer-note-text" role="status">
+          {scripts
+            ? t("Skripte laufen abgeschottet, ohne Netzwerk.", "Scripts run isolated, without network.")
+            : t("Skripte und externe Inhalte sind abgeschaltet.", "Scripts and external content are switched off.")}
+          {!scripts && scriptsAllowed && state === "ready" && (
+            <span className="html-viewer-note-more">
+              {" "}
+              {t(
+                "Skripte ausführen lässt sie abgeschottet laufen: ohne Zugriff auf Flowplan, deine Sitzung oder Daten, ohne Netzwerk, Pop-ups oder Weiterleitungen.",
+                "Run scripts lets them run isolated: no access to Flowplan, your session or data, no network, no pop-ups or redirects.",
+              )}
+            </span>
+          )}
+        </span>
+        {scriptsAllowed && state === "ready" && (
+          <button type="button" className="button html-viewer-scripts" onClick={() => setScripts(!scripts)}>
+            {scripts ? <Stop size={14} aria-hidden /> : <Play size={14} aria-hidden />}
+            {scripts ? t("Skripte anhalten", "Stop scripts") : t("Skripte ausführen", "Run scripts")}
+          </button>
         )}
+      </div>
+      <div className="viewer3d-stage html-viewer-stage">
+        {state === "ready" &&
+          (scripts ? (
+            // Scripts only (see above); keyed, so the page starts afresh.
+            <iframe
+              key="scripts"
+              className="html-viewer-frame"
+              src={`${preview}?scripts=1`}
+              sandbox="allow-scripts"
+              referrerPolicy="no-referrer"
+              title={t(`Vorschau von ${name}`, `Preview of ${name}`)}
+            />
+          ) : (
+            // An empty sandbox: everything off (see above).
+            <iframe key="inert" className="html-viewer-frame" src={preview} sandbox="" referrerPolicy="no-referrer" title={t(`Vorschau von ${name}`, `Preview of ${name}`)} />
+          ))}
         {state === "loading" && (
           <p className="viewer3d-message" role="status">
             {t("Vorschau wird geladen …", "Loading preview …")}

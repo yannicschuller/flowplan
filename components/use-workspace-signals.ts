@@ -5,6 +5,8 @@
 // after (re)connecting – something may have been missed meanwhile. A tab
 // that is hidden only notes what it missed and fetches it when shown.
 // Returns whether signals arrive (then the timed refresh is a safety net).
+// `notified` hears of every change of the notifications at once, hidden
+// or not (the sound for new ones, components/use-notification-sound-alerts.ts).
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { followWorkspace, type LiveEvent } from "./workspace-live";
 
@@ -48,6 +50,7 @@ export function useWorkspaceSignals(
   workspaceId: string,
   openPage: RefObject<string | null>,
   refresh: (only: { boot?: boolean; page?: boolean }) => Promise<unknown>,
+  notified?: RefObject<() => void>,
 ) {
   const [live, setLive] = useState(false);
   const refreshRef = useRef(refresh);
@@ -100,6 +103,7 @@ export function useWorkspaceSignals(
           first = false;
           return;
         }
+        if (event.type === "ready" || event.parts.includes("notifications")) notified?.current?.();
         const wanted = wantedFor(event, openPage.current);
         if (wanted) want(wanted);
       },
@@ -111,6 +115,6 @@ export function useWorkspaceSignals(
       if (timer !== null) window.clearTimeout(timer);
       setLive(false);
     };
-  }, [userId, workspaceId, openPage]);
+  }, [userId, workspaceId, openPage, notified]);
   return live;
 }

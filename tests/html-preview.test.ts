@@ -19,7 +19,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { readableFile } = await import("../lib/file-access");
 const { HTML_PREVIEW_CSP, htmlCharset, htmlPreviewResponse } = await import("../lib/html-preview");
 const { HTML_PREVIEW_LIMIT, htmlPreviewUrl, isHtmlName } = await import("../lib/html-files");
-const { htmlPreviewLimit } = await import("../lib/html-preview");
+const { htmlPreviewLimit, htmlPreviewScriptsAllowed, HTML_PREVIEW_SCRIPTS_CSP, HTML_PREVIEW_SCRIPTS_SANDBOX } = await import("../lib/html-preview");
 const { HttpError } = await import("../lib/auth");
 const { contentSecurityPolicy } = await import("../proxy");
 
@@ -45,8 +45,9 @@ async function file(name: string, content: string | Buffer, mime = "application/
   return fid;
 }
 const PAGE = `<!doctype html><html><head><title>Bericht</title><script>document.title = "gehackt"</script></head><body><h1>Hallo</h1><img src="https://example.com/x.png"></body></html>`;
-const get = (method = "GET") => new Request("http://localhost/api/files/x/html", { method });
-const preview = async (as: Identity, fid: string, method = "GET") => await htmlPreviewResponse(get(method), await readableFile(as, fid));
+const get = (method = "GET", query = "") => new Request(`http://localhost/api/files/x/html${query}`, { method });
+const preview = async (as: Identity, fid: string, method = "GET", query = "") => await htmlPreviewResponse(get(method, query), await readableFile(as, fid));
+const directives = (csp: string) => new Map(csp.split(";").map((d) => d.trim().split(/\s+/)).map(([name, ...values]) => [name, values.join(" ")]));
 const refused = async (promise: Promise<unknown>, status: number) =>
   await assert.rejects(promise, (e: unknown) => e instanceof HttpError && e.status === status);
 
@@ -95,6 +96,67 @@ test("the file's bytes as text/html with a policy that sandboxes it and loads no
   assert.equal(head.headers.get("content-security-policy"), HTML_PREVIEW_CSP);
   assert.equal(head.headers.get("content-length"), String(Buffer.byteLength(PAGE)));
   assert.equal(head.body, null);
+});
+
+test("scripts on request (?scripts=1): inline scripts only, nothing loaded, sandboxed with allow-scripts alone", async () => {
+  const fid = await file("skript.html", PAGE);
+  // By default (and HEAD): the scriptless policy, and the viewer is told
+  // that it may offer the button.
+  const plain = await preview(owner, fid, "HEAD");
+  assert.equal(plain.headers.get("content-security-policy"), HTML_PREVIEW_CSP);
+  assert.equal(plain.headers.get("x-flowplan-preview-scripts"), "allowed");
+  for (const query of ["?scripts=0", "?scripts=true", "?script=1"])
+    assert.equal((await preview(owner, fid, "GET", query)).headers.get("content-security-policy"), HTML_PREVIEW_CSP, query);
+  const response = await preview(owner, fid, "GET", "?scripts=1");
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), PAGE);
+  assert.equal(response.headers.get("content-security-policy"), HTML_PREVIEW_SCRIPTS_CSP);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.equal(response.headers.get("set-cookie"), null);
+  const policy = directives(HTML_PREVIEW_SCRIPTS_CSP);
+  assert.deepEqual([...policy.keys()].sort(), ["base-uri", "connect-src", "default-src", "font-src", "form-action", "frame-ancestors", "img-src", "sandbox", "script-src", "style-src"]);
+  assert.equal(policy.get("default-src"), "'none'");
+  // Only the file's own inline scripts: no host, no 'self', no eval.
+  assert.equal(policy.get("script-src"), "'unsafe-inline'");
+  assert.equal(policy.get("connect-src"), "'none'");
+  assert.equal(policy.get("img-src"), "data: blob:");
+  assert.equal(policy.get("style-src"), "'unsafe-inline'");
+  assert.equal(policy.get("font-src"), "data:");
+  assert.equal(policy.get("base-uri"), "'none'");
+  assert.equal(policy.get("form-action"), "'none'");
+  assert.equal(policy.get("frame-ancestors"), "'self'");
+  // The sandbox: scripts and nothing else – never the same origin, popups,
+  // forms, dialogs or navigating the app.
+  assert.equal(policy.get("sandbox"), "allow-scripts");
+  assert.deepEqual(HTML_PREVIEW_SCRIPTS_SANDBOX.split(/\s+/), ["allow-scripts"]);
+  // The dialog's frame uses exactly that token list.
+  const { readFileSync } = await import("node:fs");
+  const dialog = readFileSync(new URL("../components/html-viewer-dialog.tsx", import.meta.url), "utf8");
+  const sandboxes = [...new Set([...dialog.matchAll(/sandbox="([^"]*)"/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(sandboxes, ["", "allow-scripts"]);
+  assert.doesNotMatch(dialog, /allow-(same-origin|top-navigation|popups|forms|modals)/);
+  assert.match(dialog, /\?scripts=1/);
+});
+
+test("FLOWPLAN_HTML_PREVIEW_SCRIPTS: on by default; 0/false/off refuses ?scripts=1 (scriptless policy)", async () => {
+  for (const raw of [undefined, "", "1", "true", "on", " yes "]) assert.equal(htmlPreviewScriptsAllowed(raw), true, String(raw));
+  for (const raw of ["0", "false", "off", "OFF", " False ", "no"]) assert.equal(htmlPreviewScriptsAllowed(raw), false, raw);
+  const fid = await file("aus.html", PAGE);
+  const saved = process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS;
+  process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS = "off";
+  try {
+    const head = await preview(owner, fid, "HEAD");
+    assert.equal(head.headers.get("x-flowplan-preview-scripts"), "off");
+    const response = await preview(owner, fid, "GET", "?scripts=1");
+    assert.equal(response.status, 200);
+    // The page still shows, inert: the flag is ignored.
+    assert.equal(response.headers.get("content-security-policy"), HTML_PREVIEW_CSP);
+    assert.equal(response.headers.get("x-flowplan-preview-scripts"), "off");
+  } finally {
+    if (saved === undefined) delete process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS;
+    else process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS = saved;
+  }
 });
 
 test("the download's permissions: members may, others not", async () => {
@@ -152,6 +214,17 @@ test("published pages: the preview has the checks of the published file", async 
   assert.equal(shown.status, 200);
   assert.equal(shown.headers.get("content-security-policy"), HTML_PREVIEW_CSP);
   assert.equal(await shown.text(), PAGE);
+  assert.equal(shown.headers.get("x-flowplan-preview-scripts"), "allowed");
+  // Scripts on request there too.
+  const scripted = await GET(new Request(`http://localhost/api/share/${token}/files/${fid}/html?scripts=1`), { params: Promise.resolve({ token, fileId: fid }) });
+  assert.equal(scripted.headers.get("content-security-policy"), HTML_PREVIEW_SCRIPTS_CSP);
+  process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS = "0";
+  try {
+    const off = await GET(new Request(`http://localhost/api/share/${token}/files/${fid}/html?scripts=1`), { params: Promise.resolve({ token, fileId: fid }) });
+    assert.equal(off.headers.get("content-security-policy"), HTML_PREVIEW_CSP);
+  } finally {
+    delete process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS;
+  }
   // A file of the page the publication does not show is not served.
   assert.equal((await call(unused)).status, 404);
 });

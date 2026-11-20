@@ -1389,6 +1389,12 @@ function migrate(d: DatabaseSync) {
   // version ignores the column – so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "whiteboard_canvas"))
     d.exec("ALTER TABLE users ADD COLUMN whiteboard_canvas TEXT");
+  // "Ton bei neuen Benachrichtigungen" per person (#401,
+  // lib/notification-sound.ts): users.notification_sound, NULL = the default
+  // ('soft'), 'off', 'clear' or 'bell'. Only the interface reads it – an
+  // older version ignores the column – so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "notification_sound"))
+    d.exec("ALTER TABLE users ADD COLUMN notification_sound TEXT");
   // "Beim Öffnen auf dem Handy" per person (lib/start-screen.ts):
   // users.start_screen, NULL = the default ('home') or 'capture'. An older
   // version ignores the column, so the schema number stays.

@@ -344,12 +344,14 @@ import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import { setCommentMarginLocal } from "@/lib/comment-margin-pref-client";
 import { setWhiteboardCanvasLocal } from "@/lib/whiteboard-canvas-pref-client";
+import { setNotificationSoundLocal } from "@/lib/notification-sound-client";
 import { setStartScreenLocal } from "@/lib/start-screen-client";
 import { fullWidthPagesOf, showsFullWidth } from "@/lib/page-width-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
 import { openWhatsNew, setUpdateNotesLevelLocal } from "@/lib/update-notes-client";
 import { visiblePoll } from "@/lib/visible-poll";
 import { LIVE_REFRESH_MS, POLL_REFRESH_MS, PRESENCE_REFRESH_MS, useWorkspaceSignals } from "./use-workspace-signals";
+import { useNotificationSoundAlerts } from "./use-notification-sound-alerts";
 import { WhatsNew } from "./whats-new";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
@@ -756,6 +758,8 @@ export default function WorkspaceApp({
   useEffect(() => setCommentMarginLocal(boot.commentMargin), [boot.commentMargin]);
   // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
   useEffect(() => setWhiteboardCanvasLocal(boot.whiteboardCanvas), [boot.whiteboardCanvas]);
+  // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
+  useEffect(() => setNotificationSoundLocal(boot.notificationSound), [boot.notificationSound]);
   // Inside the iPhone, iPad and Android app: the app's profiles from the
   // workspace menu and a long press on the own account row (lib/native-app.ts).
   const profileSwitcher = useProfileSwitcherWay();
@@ -2318,7 +2322,11 @@ export default function WorkspaceApp({
   // The workspace's live signal (#383, components/workspace-live.ts): what
   // changed is fetched when it changes; the timed refresh below is then
   // only a safety net.
-  const live = useWorkspaceSignals(boot.user.id, boot.workspace.id, currentId, refresh);
+  // "Ton bei neuen Benachrichtigungen" (#401): new notifications make a
+  // short sound in one open tab.
+  const notificationSoundCheck = useRef<() => void>(() => {});
+  const live = useWorkspaceSignals(boot.user.id, boot.workspace.id, currentId, refresh, notificationSoundCheck);
+  useNotificationSoundAlerts(boot.user.id, boot.notifications, live, notificationSoundCheck);
   useEffect(() => {
     let polling = false;
     // Paused while the tab is hidden, made up for when it is shown (#383).
