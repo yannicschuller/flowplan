@@ -19,6 +19,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { readableFile } = await import("../lib/file-access");
 const { HTML_PREVIEW_CSP, htmlCharset, htmlPreviewResponse } = await import("../lib/html-preview");
 const { HTML_PREVIEW_LIMIT, htmlPreviewUrl, isHtmlName } = await import("../lib/html-files");
+const { htmlPreviewLimit } = await import("../lib/html-preview");
 const { HttpError } = await import("../lib/auth");
 const { contentSecurityPolicy } = await import("../proxy");
 
@@ -55,6 +56,13 @@ test("names: .html and .htm in any case, nothing else; the preview's address", (
   assert.equal(htmlPreviewUrl("/api/files/abc"), "/api/files/abc/html");
   assert.equal(htmlPreviewUrl("/api/share/t/files/abc"), "/api/share/t/files/abc/html");
   assert.equal(HTML_PREVIEW_LIMIT, 5 * 1024 * 1024);
+  assert.equal(htmlPreviewLimit(undefined), HTML_PREVIEW_LIMIT);
+  assert.equal(htmlPreviewLimit(""), HTML_PREVIEW_LIMIT);
+  assert.equal(htmlPreviewLimit("abc"), HTML_PREVIEW_LIMIT);
+  assert.equal(htmlPreviewLimit("-3"), HTML_PREVIEW_LIMIT);
+  assert.equal(htmlPreviewLimit("20"), 20 * 1024 * 1024);
+  assert.equal(htmlPreviewLimit("0.5"), 512 * 1024);
+  assert.equal(htmlPreviewLimit("5000"), 100 * 1024 * 1024);
 });
 
 test("the file's bytes as text/html with a policy that sandboxes it and loads nothing", async () => {

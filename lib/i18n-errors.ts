@@ -495,7 +495,6 @@ const exact: Record<string, string> = {
   "Datei fehlt.": "File missing.",
   // The HTML preview (#398, lib/html-preview.ts).
   "Keine HTML-Datei.": "Not an HTML file.",
-  "Die Datei ist zu groß für die Vorschau (höchstens 5 MB).": "The file is too large for the preview (at most 5 MB).",
   "Diese Datei wird noch verwendet.": "This file is still in use.",
   "Anfrage zu groß.": "Request too large.",
   "Eigenschaft fehlt.": "Property missing.",

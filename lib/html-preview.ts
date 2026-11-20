@@ -10,6 +10,16 @@ import { open } from "node:fs/promises";
 import { HttpError } from "./auth";
 import { localUpload, uploadPath } from "./storage";
 import { HTML_PREVIEW_LIMIT, isHtmlName } from "./html-files";
+import { ct } from "./content-locale";
+
+// The largest file the preview shows: FLOWPLAN_HTML_PREVIEW_MB (#398), default
+// 5 MB, at most 100 MB – the whole file is read into memory for a preview.
+export const HTML_PREVIEW_MAX_MB = 100;
+export function htmlPreviewLimit(raw = process.env.FLOWPLAN_HTML_PREVIEW_MB) {
+  const mb = Number(raw);
+  if (!raw || !Number.isFinite(mb) || mb <= 0) return HTML_PREVIEW_LIMIT;
+  return Math.round(Math.min(mb, HTML_PREVIEW_MAX_MB) * 1024 * 1024);
+}
 
 export const HTML_PREVIEW_CSP =
   "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox";
@@ -48,7 +58,11 @@ export async function htmlPreviewResponse(req: Request, file: { id: string; name
   }
   try {
     const { size } = await handle.stat();
-    if (size > HTML_PREVIEW_LIMIT) throw new HttpError(413, "Die Datei ist zu groß für die Vorschau (höchstens 5 MB).");
+    const limit = htmlPreviewLimit();
+    if (size > limit) {
+      const mb = Math.round((limit / 1024 / 1024) * 10) / 10;
+      throw new HttpError(413, ct(`Die Datei ist zu groß für die Vorschau (höchstens ${mb} MB).`, `The file is too large for the preview (at most ${mb} MB).`));
+    }
     // HEAD (the viewer asks before it frames the page) reads only as much
     // as the character set needs.
     const head = req.method === "HEAD";

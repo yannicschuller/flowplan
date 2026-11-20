@@ -7,7 +7,7 @@
 // (lib/html-preview.ts) adds a policy that loads nothing from anywhere –
 // external pictures, styles and fonts stay away, which the note says. No
 // verdict on the file: it is shown inert, not judged. Larger files than
-// HTML_PREVIEW_LIMIT are only downloaded.
+// the server's preview limit (FLOWPLAN_HTML_PREVIEW_MB) are only downloaded.
 import { useEffect, useRef, useState } from "react";
 import { DownloadSimple, FileHtml, Info, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -94,7 +94,7 @@ export default function HtmlViewerDialog({ src, title, onClose }: { src: string;
           <div className="viewer3d-message is-error html-viewer-problem" role="alert">
             <p>
               {state === "large"
-                ? t("Die Datei ist größer als 5 MB – zu groß für die Vorschau. Du kannst sie herunterladen.", "The file is larger than 5 MB – too large for the preview. You can download it.")
+                ? t("Die Datei ist zu groß für die Vorschau. Du kannst sie herunterladen.", "The file is too large for the preview. You can download it.")
                 : state === "missing"
                   ? t("Diese Datei ist nicht (mehr) verfügbar.", "This file is not available (any more).")
                   : t("Die Vorschau konnte nicht geladen werden.", "The preview could not be loaded.")}

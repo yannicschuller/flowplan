@@ -3,7 +3,8 @@
 // loaded from elsewhere. Shared by the browser and the server
 // (lib/html-preview.ts); nothing here reads a file.
 
-// Larger files are only downloaded.
+// Larger files are only downloaded. The default; FLOWPLAN_HTML_PREVIEW_MB
+// changes it on the server (lib/html-preview.ts htmlPreviewLimit()).
 export const HTML_PREVIEW_LIMIT = 5 * 1024 * 1024;
 
 // By the name only: HTML uploads are stored as plain downloads
