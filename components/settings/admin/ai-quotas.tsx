@@ -113,13 +113,13 @@ export function AiQuotasSection() {
           )}
         </p>
         <PeopleTable view={view} amount={amount} />
-        <h3 className="mon-subhead">{t("Nach Gruppe", "By group")}</h3>
+        <h3 className="mon-subhead ai-quota-sub">{t("Nach Gruppe", "By group")}</h3>
         <div className="mon-table">
           <ResponsiveTable
             label={t("Nach Gruppe", "By group")}
             rows={view.groups.filter((g) => g.used > 0 || g.tokens > 0)}
             rowKey={(g) => g.id}
-            empty={<p className="muted">{t("Keine Nutzung durch Gruppenmitglieder.", "No usage by group members.")}</p>}
+            empty={<p className="muted ai-quota-empty">{t("Keine Nutzung durch Gruppenmitglieder.", "No usage by group members.")}</p>}
             columns={[
               { key: "name", header: t("Gruppe", "Group"), primary: true, render: (g) => `${g.workspace ?? "–"} · ${g.name}` },
               { key: "members", header: t("Mitglieder", "Members"), align: "end", render: (g) => String(g.members) },
@@ -128,13 +128,13 @@ export function AiQuotasSection() {
             ]}
           />
         </div>
-        <h3 className="mon-subhead">{t("Nach Modell", "By model")}</h3>
+        <h3 className="mon-subhead ai-quota-sub">{t("Nach Modell", "By model")}</h3>
         <div className="mon-table">
           <ResponsiveTable
             label={t("Nach Modell", "By model")}
             rows={view.models}
             rowKey={(m) => m.model || "-"}
-            empty={<p className="muted">{t("Noch keine Nutzung in diesem Zeitraum.", "No usage in this period yet.")}</p>}
+            empty={<p className="muted ai-quota-empty">{t("Noch keine Nutzung in diesem Zeitraum.", "No usage in this period yet.")}</p>}
             columns={[
               {
                 key: "name",
@@ -410,7 +410,7 @@ function PeopleTable({ view, amount }: { view: AdminQuotaView; amount: (n: numbe
   return (
     <>
       <div className="ai-quota-people-head">
-        <h3 className="mon-subhead">{t("Nach Person", "By person")}</h3>
+        <h3 className="mon-subhead ai-quota-sub">{t("Nach Person", "By person")}</h3>
         <label className="mon-range" htmlFor={sortId}>
           <span>{t("Sortieren nach", "Sort by")}</span>
           <Select id={sortId} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
@@ -425,7 +425,7 @@ function PeopleTable({ view, amount }: { view: AdminQuotaView; amount: (n: numbe
           label={t("Nach Person", "By person")}
           rows={rows}
           rowKey={(p) => p.id}
-          empty={<p className="muted">{t("Noch keine Nutzung in diesem Zeitraum.", "No usage in this period yet.")}</p>}
+          empty={<p className="muted ai-quota-empty">{t("Noch keine Nutzung in diesem Zeitraum.", "No usage in this period yet.")}</p>}
           columns={[
             { key: "name", header: t("Person", "Person"), primary: true, render: (p) => p.name || p.email },
             { key: "used", header: t("Verbraucht", "Used||quota"), align: "end", render: (p) => amount(p.used) },

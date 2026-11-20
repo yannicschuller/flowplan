@@ -90,15 +90,45 @@
 .ai-quota-limits td.primary {
   min-width: 160px;
 }
+/* "Nutzung und Grenzen": the free text and headings line up with the
+   group's header and the tables' first column (22px). */
 .ai-quota-instance {
-  margin: 0 0 8px;
+  margin: 0;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ai-quota-instance small {
+  font-weight: 400;
+}
+.ai-quota-sub {
+  margin: 0;
+  padding: 16px 22px 8px;
+  border-top: 1px solid var(--border);
 }
 .ai-quota-people-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 8px 16px;
+  border-top: 1px solid var(--border);
+  padding: 10px 22px 4px;
+}
+.ai-quota-people-head .ai-quota-sub {
+  border-top: 0;
+  padding: 6px 0;
+}
+.ai-quota-people-head .mon-range {
+  margin: 0;
+  white-space: nowrap;
+}
+.ai-quota-empty {
+  margin: 0;
+  padding: 2px 22px 16px;
+  font-size: 13px;
 }
 .vz-limit {
   stroke: var(--signal);
