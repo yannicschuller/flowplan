@@ -264,6 +264,27 @@ try {
     console.log(server.log?.slice(-3000));
   }
 
+  // Exports run in worker threads (lib/worker-pool.ts): the bundled worker
+  // chunk is part of the build, reads the database on its own connection
+  // and gives the files back.
+  const word = await fetch(`${origin}/api/export/docx?page=${created.id}`, { headers });
+  const wordBytes = Buffer.from(await word.arrayBuffer());
+  check("Word-Export (Worker-Thread)", word.ok && wordBytes.subarray(0, 2).toString() === "PK", `${word.status}, ${wordBytes.length} B`);
+  const epub = await fetch(`${origin}/api/export/epub?space=${boot.spaces[0].id}`, { headers });
+  const epubBytes = Buffer.from(await epub.arrayBuffer());
+  check("EPUB-Export eines Bereichs (Worker-Thread)", epub.ok && epubBytes.subarray(30, 38).toString() === "mimetype", `${epub.status}, ${epubBytes.length} B`);
+  const markdown = await fetch(`${origin}/api/markdown-export`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ spaceId: boot.spaces[0].id, format: "zip", includeSubpages: true }),
+  });
+  const markdownBytes = Buffer.from(await markdown.arrayBuffer());
+  check("Markdown-Export eines Bereichs (Worker-Thread)", markdown.ok && markdownBytes.subarray(0, 2).toString() === "PK", `${markdown.status}, ${markdownBytes.length} B`);
+  const workerMetrics = await (await fetch(`${origin}/api/metrics`, { headers: { authorization: `Bearer ${metricsToken}` } })).text();
+  const workerJobs = Number(/^flowplan_worker_jobs_total (\d+)$/m.exec(workerMetrics)?.[1] ?? 0);
+  check("Exporte liefen in Worker-Threads", workerJobs >= 3, `${workerJobs} Jobs`);
+  if (workerJobs < 3) console.log(server.log?.slice(-3000));
+
   // Graceful stop (lib/cluster/runtime.ts): Next.js's exit waits for
   // Flowplan's shutdown tasks, then the process ends with 143.
   const stopped = await stop(server);

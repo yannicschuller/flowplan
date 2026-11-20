@@ -51,6 +51,8 @@ export type PostgresOptions = {
   keepAlive?: number;
   queryTimeout?: number;
   idleTimeout?: number;
+  // Every transaction read-only (a worker thread, lib/worker-pool.ts).
+  readOnly?: boolean;
   // Tests: a stand-in for pg.Pool.
   createPool?: (config: pg.PoolConfig) => pg.Pool;
 };
@@ -148,6 +150,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
     `-c statement_timeout=${options.statementTimeout ?? 0}`,
     `-c lock_timeout=${options.lockTimeout ?? 0}`,
     `-c idle_in_transaction_session_timeout=${options.idleInTransactionTimeout ?? 0}`,
+    ...(options.readOnly ? ["-c default_transaction_read_only=on"] : []),
   ];
   const keepAlive = options.keepAlive ?? 0;
   const queryTimeout = options.queryTimeout ?? 0;

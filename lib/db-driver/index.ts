@@ -7,7 +7,7 @@
 // SQLite unless DATABASE_URL=postgres://… is set. The synchronous helpers of
 // lib/db.ts keep working next to it during the transition.
 import { AsyncLocalStorage } from "node:async_hooks";
-import { currentTx, dbContext, postgresSchema, postgresUrl } from "./context";
+import { currentTx, dbContext, postgresSchema, postgresUrl, readerThread } from "./context";
 import { createPostgresDb, postgresConnectionOptions, postgresPrepare, postgresTimeouts } from "./postgres";
 import { createSqliteDb } from "./sqlite";
 import type { Db, Param, Row } from "./types";
@@ -24,7 +24,9 @@ export function database(): Db {
     url
       ? createPostgresDb(url, {
           schema: postgresSchema(),
-          max: poolSize(),
+          // A worker thread (lib/worker-pool.ts) runs one job at a time.
+          max: readerThread() ? 2 : poolSize(),
+          readOnly: readerThread(),
           prepare: postgresPrepare(),
           ...postgresTimeouts(),
           ...postgresConnectionOptions(),
@@ -64,7 +66,8 @@ function opened(inner: Db): Db {
   let ready: Promise<void> | null = null;
   let done = false;
   const wait = (): Promise<void> | null => {
-    if (done || store.getStore() || currentTx()) return null;
+    // The main thread opens the database; a worker thread only reads it.
+    if (done || store.getStore() || currentTx() || readerThread()) return null;
     return (ready ??= store.run(true, async () => {
       opening.flowplanOpening = { state: "running", since: Date.now() };
       try {

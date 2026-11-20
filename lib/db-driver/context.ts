@@ -2,6 +2,7 @@
 // helpers of lib/db.ts. On globalThis because bundles may hold these
 // modules more than once (as lib/db.ts does for its own state).
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isMainThread, workerData } from "node:worker_threads";
 
 export type TxScope = {
   // The outermost transaction this scope belongs to.
@@ -46,6 +47,12 @@ export const dbContext: State = (holder.flowplanDbContext ??= {
   hooks: {},
 });
 dbContext.hooks ??= {};
+// A worker thread of lib/worker-pool.ts (#383): it only reads, on a
+// connection of its own – SQLite read-only (a WAL reader beside the main
+// thread's connection), PostgreSQL with read-only transactions – and runs
+// none of the opening steps, migrations or maintenance; writes stay on the
+// main thread.
+export const readerThread = () => !isMainThread && (workerData as { flowplanDbReader?: unknown } | null)?.flowplanDbReader === true;
 // The transaction the caller runs in, if it is still open.
 export const currentTx = () => {
   const scope = dbContext.als.getStore();

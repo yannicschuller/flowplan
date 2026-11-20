@@ -15,6 +15,7 @@ import { ct } from "./content-locale";
 import { documentXhtml, xml } from "./export-xhtml";
 import { CALLOUT_MACROS, calloutLabel, codeLanguage, exportText, taskDone, type TextExportContext } from "./export-jira";
 import type { Identity } from "./types";
+import { offThread } from "./worker-pool";
 
 // Text inside <![CDATA[ … ]]>: only "]]>" ends it, so it is split there.
 export const cdata = (text: string) =>
@@ -137,7 +138,11 @@ export function documentConfluence(html: string, context: TextExportContext): st
   );
 }
 
+// In a worker thread (lib/worker-pool.ts), like the Jira export.
 export async function exportConfluence(user: Identity, options: { pageId: string; rowId?: string }) {
+  return await offThread("export.confluence", [user, options], () => confluenceHere(user, options));
+}
+async function confluenceHere(user: Identity, options: { pageId: string; rowId?: string }) {
   return await exportText(
     user,
     options,

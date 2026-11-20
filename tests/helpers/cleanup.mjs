@@ -18,6 +18,9 @@ if (isMainThread && /^postgres(ql)?:\/\//i.test(databaseUrl))
   await (await import("./postgres-backend.ts")).preparePostgres(databaseUrl);
 
 process.on("exit", () => {
+  // Only the test's own process: a worker thread that ends (OCR,
+  // lib/worker-pool.ts) shares the folder and leaves it alone.
+  if (!isMainThread) return;
   const dir = process.env.FLOWPLAN_DATA_DIR;
   if (!dir) return;
   const path = resolve(dir);

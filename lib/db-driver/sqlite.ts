@@ -10,7 +10,7 @@
 // AsyncLocalStorage, so helpers need no handle passed around – run in it;
 // tx() inside tx() is a savepoint.
 import { db as connection, noteRollback, noteTransaction, noteUnknownWrite, sqliteAll, sqliteOne, sqliteRun } from "../db";
-import { currentTx, dbContext, endScope, type TxScope } from "./context";
+import { currentTx, dbContext, endScope, readerThread, type TxScope } from "./context";
 import { sqliteDialect } from "./dialect";
 import type { Db, Param, TxOptions } from "./types";
 
@@ -76,7 +76,8 @@ export function createSqliteDb(): Db {
           : setImmediate((stack) => dbContext.sqliteActive === root && console.warn("Asynchronous SQLite transaction spans I/O:", stack), new Error().stack);
       let committed = false;
       try {
-        connection().exec("BEGIN IMMEDIATE"); // sqlite-only
+        // A worker thread only reads: a deferred transaction is its snapshot.
+        connection().exec(readerThread() ? "BEGIN" : "BEGIN IMMEDIATE"); // sqlite-only
         try {
           const value = await dbContext.als.run(root, fn);
           await dbContext.als.run(root, async () => dbContext.hooks.beforeCommit?.(options.actor));

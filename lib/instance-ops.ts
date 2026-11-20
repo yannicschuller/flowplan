@@ -14,6 +14,7 @@ import { clusterMode, instanceId } from "./cluster/config";
 import { isLeader, skippedDuties } from "./cluster/leader";
 import { liveStreamCount } from "./cluster/runtime";
 import { poolStats } from "./db-driver";
+import { workerPoolState } from "./worker-pool";
 import { mapAsync } from "./each-async";
 
 // Storage quota in MB: per-workspace override or FLOWPLAN_WORKSPACE_QUOTA_MB;
@@ -297,6 +298,13 @@ export async function prometheusMetrics() {
     processGauge("storage_uploads_in_flight", "Files being written to the bucket right now.", uploadsInFlightCount());
     metric("leader_skipped_rounds_total", "Leader rounds left out (another round of the duty still running, or a newer term).", "counter", [[{}, skippedDuties()]], true);
   }
+  // Worker threads of this process (lib/worker-pool.ts, FLOWPLAN_WORKERS).
+  const workers = workerPoolState();
+  processGauge("worker_threads", "Worker threads running now (exports, reading imports).", workers.threads);
+  processGauge("worker_threads_max", "Worker threads this process may start (FLOWPLAN_WORKERS).", workers.size);
+  processGauge("worker_jobs_running", "Jobs running in worker threads now.", workers.busy);
+  processGauge("worker_jobs_queued", "Jobs waiting for a worker thread.", workers.queued);
+  metric("worker_jobs_total", "Jobs worker threads have finished.", "counter", [[{}, workers.completed]], true);
   // Event loop, SQLite time and process (FLOWPLAN_METRICS_LOOP=1, lib/runtime-metrics.ts).
   lines.push(...runtimeMetricLines(walBytes(), own));
   return lines.join("\n") + "\n";

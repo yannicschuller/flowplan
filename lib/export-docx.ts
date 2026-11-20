@@ -8,6 +8,7 @@ import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { STATUS_BOX, taskStatusOf } from "./task-status";
 import { audit } from "./db";
+import { offThread } from "./worker-pool";
 import { appUrl, HttpError } from "./auth";
 import { writeZip } from "./archive";
 import { calloutType } from "./document-schema";
@@ -687,7 +688,11 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
 
 export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 // A page, or one record of a database, as a Word file for the person.
+// In a worker thread (lib/worker-pool.ts): parsing and walking the page's HTML.
 export async function exportDocx(user: Identity, options: { pageId: string; rowId?: string }) {
+  return await offThread("export.docx", [user, options], () => docxHere(user, options));
+}
+async function docxHere(user: Identity, options: { pageId: string; rowId?: string }) {
   const collected = await collectExportContent(user, { pageId: options.pageId, rowId: options.rowId, children: false, maxPages: 1, format: "Word" });
   const page = collected.pages[0];
   // buildDocx asks its lookups before its first await (withExportLookups).

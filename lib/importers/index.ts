@@ -27,6 +27,7 @@ import { isAnkiPackage } from "./anki-read";
 import { isWordArchive, parseWord, refuseLegacyOffice } from "./word";
 import { previewImport, requireSpace, writeImport, type ImportMode, type ImportPreview, type ImportResult } from "./write";
 import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
+import { parseImportOffThread } from "./parse-transfer";
 import type { Identity } from "../types";
 
 const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine|pdf)$/i, "") || "Import";
@@ -183,7 +184,8 @@ export async function importFromSource(
     const { importAnki } = await import("./anki");
     return await importAnki(user, workspaceId, spaceId, file, { dryRun: options.dryRun, anki: options.anki, zone: options.zone });
   }
-  const tree = await parseImport(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source, {
+  // Read in a worker thread (lib/importers/parse-transfer.ts).
+  const tree = await parseImportOffThread(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source, {
     nestLinked: options.nestLinked !== false && options.mode !== "database",
   });
   try {

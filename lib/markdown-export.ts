@@ -57,6 +57,7 @@ import { linkedBlockIds } from "./block-links";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 import { uploadSource } from "./storage";
+import { offThread } from "./worker-pool";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
   // in a folder of its own, named like the scheduled export
@@ -909,7 +910,14 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
   const name = record ? cellText(record.cells[dbs.get(root!.id)!.schema.fields[0].id]) || recordWord() : space ? space.name : root!.title;
   return { entries, root, space, name, pending };
 }
-export async function exportMarkdown(
+// In a worker thread (lib/worker-pool.ts): converting every page's HTML
+// held the request thread for seconds (a space of 120 pages: 16 s). There
+// the transaction is a read snapshot of its own connection, which keeps
+// nobody else from the database meanwhile.
+export async function exportMarkdown(user: Identity, options: MarkdownExportOptions) {
+  return await offThread("export.markdown", [user, options], () => markdownHere(user, options));
+}
+async function markdownHere(
   user: Identity,
   options: MarkdownExportOptions,
 ) {
