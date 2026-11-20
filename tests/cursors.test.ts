@@ -220,7 +220,7 @@ test("a closed live channel takes its tab's cursor along; the tab, if still ther
   await f.send(f.alice, a);
   assert.equal((await f.send(f.bob, b)).peers.length, 1);
   // The departure on pagehide got lost; the live channel of a's tab closes.
-  assert.equal(await editorLeft(f.alice.token, a.clientId), documentKey(f.page, undefined, "g1"));
+  assert.deepEqual((await editorLeft(f.alice.token, a.clientId))?.key, documentKey(f.page, undefined, "g1"));
   assert.equal((await f.send(f.bob, { ...b, sequence: 2 }, f.now + 1)).peers.length, 0);
   // Nothing more to take: no signal to the others.
   assert.equal(await editorLeft(f.alice.token, a.clientId), null);
@@ -322,25 +322,35 @@ test("per-session instance limit is bounded and abandoned records are reclaimed"
   await assert.doesNotReject(async () => await f.send(f.alice, f.request(), f.now + 300001));
 });
 
-test("presence: a cursor back after its lease is news for the others", async () => {
+test("presence: every accepted update brings the cursor for the others' editors; a departure takes it away", async () => {
   const f = await fixture();
   const a = f.request();
-  assert.equal((await f.send(f.alice, a)).changed, true);
-  // The same place again within the lease: a heartbeat, no news.
-  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 1 }, f.now + 1000)).changed, false);
-  // The same place after the lease ran out: back for the others.
-  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 2 }, f.now + 1000 + CURSOR_LEASE_MS)).changed, true);
+  const first = await f.send(f.alice, a);
+  assert.deepEqual(first.peer, { id: (first.peer as { id: string }).id, userId: f.alice.identity.id, name: "Alice <script>", cursor, expiresInMs: CURSOR_LEASE_MS });
+  // A heartbeat at the same place: sent again (it renews the lease with
+  // the others), under the same id.
+  const beat = await f.send(f.alice, { ...a, sequence: a.sequence + 1 }, f.now + 1000);
+  assert.equal(beat.peer?.id, first.peer?.id);
+  assert.ok(beat.peer?.cursor);
+  // A stale request: nothing for the others.
+  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence }, f.now + 1001)).peer, undefined);
+  // The cursor went: its id with null.
+  assert.deepEqual((await f.send(f.alice, { ...a, sequence: a.sequence + 2, cursor: null }, f.now + 1002)).peer, { id: first.peer?.id, cursor: null });
+  // Gone already: nothing to tell.
+  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 3, cursor: null }, f.now + 1003)).peer, undefined);
 });
 
 test("presence: a heartbeat while alone, moves of the others by signal", async () => {
   // Imported here: the plugin module touches no DOM at import time.
   const { presenceDelay, peerSignature } = await import("../lib/collaboration-cursors");
-  const { HEARTBEAT_ALONE_MS } = await import("../lib/cursor-protocol");
+  const { HEARTBEAT_ALONE_MS, HEARTBEAT_WITH_PEERS_MS } = await import("../lib/cursor-protocol");
   // Alone with the live channel open: a heartbeat of 15–30 s.
   assert.equal(presenceDelay(true, false), HEARTBEAT_ALONE_MS);
   assert.ok(HEARTBEAT_ALONE_MS >= 15_000 && HEARTBEAT_ALONE_MS <= 30_000);
-  // With others every second, as before (departures show within the lease).
-  assert.equal(presenceDelay(true, true), 1_000);
+  // With others and the live channel a heartbeat (their cursors come with
+  // the channel); without it every second, as before.
+  assert.equal(presenceDelay(true, true), HEARTBEAT_WITH_PEERS_MS);
+  assert.ok(HEARTBEAT_WITH_PEERS_MS * 2 < CURSOR_LEASE_MS);
   assert.equal(presenceDelay(false, true), 1_000);
   assert.ok(presenceDelay(false, false) <= 5_000);
   // Only what the others see counts as a change, not the expiry.
@@ -348,4 +358,82 @@ test("presence: a heartbeat while alone, moves of the others by signal", async (
   assert.equal(peerSignature([peer]), peerSignature([{ ...peer, expiresInMs: 40_000 }]));
   assert.notEqual(peerSignature([peer]), peerSignature([{ ...peer, name: "Anna" }]));
   assert.notEqual(peerSignature([peer]), peerSignature([]));
+});
+
+test("presence: moves stay home while nobody else has the document open; pushed cursors and answers merge", async () => {
+  const { sendsMoves, mergeAnswer, mergePushed } = await import("../lib/collaboration-cursors");
+  // Alone with the live channel: no moves. Someone there (the channel says
+  // so, or their cursor is shown), or no channel: as before.
+  assert.equal(sendsMoves(true, false, 0), false);
+  assert.equal(sendsMoves(true, true, 0), true);
+  assert.equal(sendsMoves(true, false, 1), true);
+  assert.equal(sendsMoves(false, false, 0), true);
+  const peer = (id: string, name = id) => ({ id, userId: `u-${id}`, name, cursor, expiresInMs: CURSOR_LEASE_MS, deadline: 0 });
+  // A pushed cursor is added, replaced in place, or removed.
+  let list = mergePushed([], peer("a"), 1000);
+  assert.equal(list[0].deadline, 1000 + CURSOR_LEASE_MS);
+  list = mergePushed([...list, peer("b")], peer("a", "Ann"), 2000);
+  assert.deepEqual(list.map((p) => p.name), ["Ann", "b"]);
+  assert.deepEqual(mergePushed(list, { id: "a", cursor: null }).map((p) => p.id), ["b"]);
+  // An answer replaces the list, but what the channel brought or took away
+  // after the request started stays.
+  const pushedAt = new Map([["a", 50], ["c", 150], ["d", 150]]);
+  const current = [peer("a", "old a"), peer("c", "pushed c")];
+  const answer = [peer("a", "answer a"), peer("b"), peer("d", "gone d")];
+  assert.deepEqual(mergeAnswer(current, answer, pushedAt, 100).map((p) => p.name), ["answer a", "b", "pushed c"]);
+});
+
+test("audience: each live stream hears whether anyone else is in its room", async () => {
+  const { joinAudience, audienceOthers } = await import("../lib/live-audience");
+  const room = `doc:${id()}:`;
+  const heard: Record<"a" | "b" | "a2", boolean[]> = { a: [], b: [], a2: [] };
+  const leaveA = joinAudience(room, "a", (o) => heard.a.push(o));
+  assert.deepEqual(heard.a, [false]);
+  assert.equal(audienceOthers(room, "a"), false);
+  const leaveB = joinAudience(room, "b", (o) => heard.b.push(o));
+  assert.deepEqual({ ...heard }, { a: [false, true], b: [true], a2: [] });
+  // A second stream under the same id is no audience for the first.
+  const leaveA2 = joinAudience(room, "a", (o) => heard.a2.push(o));
+  assert.deepEqual(heard.a2, [true]);
+  leaveB();
+  assert.deepEqual({ ...heard }, { a: [false, true, false], b: [true], a2: [true, false] });
+  leaveA2();
+  leaveA();
+  leaveA();
+  assert.equal(audienceOthers(room, "b"), false);
+});
+
+test("audience: streams on other instances count (cluster bus); a stale instance is forgotten", async () => {
+  const { joinAudience } = await import("../lib/live-audience");
+  const bus = (globalThis as unknown as { flowplanBus?: { handlers: Map<string, Set<(p: unknown, o: string) => void>> } }).flowplanBus;
+  const deliver = (payload: unknown, origin: string) => {
+    for (const handler of bus?.handlers.get("audience") ?? []) handler(payload, origin);
+  };
+  assert.ok(bus?.handlers.get("audience")?.size, "listening on the bus");
+  const room = `board:${id()}`;
+  const heard: boolean[] = [];
+  const leave = joinAudience(room, "me", (o) => heard.push(o));
+  // The same person on another instance is no audience; someone else is.
+  deliver({ k: "join", room, ids: ["me"] }, "other");
+  deliver({ k: "join", room, ids: ["you"] }, "other");
+  deliver({ k: "leave", room, ids: ["you"] }, "other");
+  assert.deepEqual(heard, [false, true, false]);
+  // A "here" without a "leave" lasts a minute.
+  const realNow = Date.now;
+  try {
+    deliver({ k: "here", room, ids: ["you"] }, "third");
+    assert.deepEqual(heard, [false, true, false, true]);
+    Date.now = () => realNow() + 61_000;
+    const late: boolean[] = [];
+    const leaveLate = joinAudience(room, "late", (o) => late.push(o));
+    // "me" is still here, "you" is forgotten.
+    assert.deepEqual(late, [true]);
+    leaveLate();
+    deliver({ k: "join", room, ids: ["x"] }, "fourth");
+    deliver({ k: "leave", room, ids: ["x"] }, "fourth");
+    assert.equal(heard.at(-1), false);
+  } finally {
+    Date.now = realNow;
+  }
+  leave();
 });

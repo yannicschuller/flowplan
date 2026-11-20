@@ -58,7 +58,7 @@ import { MAX_PLACEHOLDER_IDS, placeholderForUpload, placeholdersFor, storePlaceh
 import { publicFile } from "@/lib/publication";
 import { withShareRequest } from "@/lib/share-access";
 import { requireRow, rowDocumentData } from "@/lib/row-documents";
-import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
+import { documentKey, publishCursor, publishPresence, watchDocument } from "@/lib/document-live";
 import { watchWorkspace } from "@/lib/workspace-live";
 import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
 import { listApiTokens } from "@/lib/api-tokens";
@@ -1202,7 +1202,7 @@ async function handleGET(
         if (gone) return;
         gone = true;
         void editorLeft(session, clientId)
-          .then((key) => key && publishPresence(key, clientId))
+          .then((gone) => gone && publishCursor(gone.key, { id: gone.id, cursor: null }, clientId, true))
           .catch(() => {});
       };
       const stream = new ReadableStream<Uint8Array>({
@@ -1704,9 +1704,11 @@ async function handlePOST(
         hash((await cookies()).get(cookieName)?.value || ""),
         data,
       );
-      // A moved cursor reaches the others right away.
-      if (presence.changed)
-        publishPresence(presence.key, presence.clientId);
+      // The cursor reaches the others' editors with the signal: they draw
+      // it without asking (lib/collaboration-cursors.ts). Guests of share
+      // links hear of a change and ask for their projection.
+      if (presence.peer) publishCursor(presence.key, presence.peer, presence.clientId, presence.textChanged);
+      else if (presence.textChanged) publishPresence(presence.key, presence.clientId);
       return NextResponse.json(
         { peers: presence.peers },
         {

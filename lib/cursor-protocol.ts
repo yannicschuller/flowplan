@@ -54,12 +54,16 @@ export type CursorPeer = {
 export const CURSOR_LEASE_MS = 15_000;
 // The member editors' requests (lib/collaboration-cursors.ts): alone with
 // the live channel open only a heartbeat – longer than the lease, so its
-// cursor lapses while nobody looks; a newcomer's arrival is signalled, the
-// heartbeat answers at once, and a cursor that comes back after its lease
-// counts as news for the others (lib/editor-presence.ts). With others
-// every second, as before: their departures and lost rights show within
-// the lease.
+// cursor lapses while nobody looks – and no moves; a newcomer's arrival is
+// signalled, the heartbeat answers at once, and a cursor that comes back
+// after its lease counts as news for the others (lib/editor-presence.ts).
+// With others and the live channel the moves, and a heartbeat every 5 s:
+// the others' cursors arrive with the channel's signals, each request
+// renews this cursor's lease with them, and its answer (the full list)
+// shows departures and lost rights within the lease. Without the live
+// channel every second, as before.
 export const HEARTBEAT_ALONE_MS = 20_000;
+export const HEARTBEAT_WITH_PEERS_MS = 5_000;
 export const POLL_WITH_PEERS_MS = 1_000;
 // Alone without a live channel: a newcomer is only seen by asking.
 export const POLL_ALONE_WITHOUT_LIVE_MS = 3_000;
