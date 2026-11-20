@@ -342,7 +342,11 @@ export function AiWriter({
   return (
     <div
       ref={box}
-      className="ai-writer"
+      // While "KI-Aktionen" is open the writer steps aside: the dialog
+      // (a portal to the body) sat below it and the writer covered its
+      // buttons (#400). It comes back with its answer when the dialog closes.
+      className={`ai-writer${actions ? " ai-writer-aside" : ""}`}
+      aria-hidden={actions ? true : undefined}
       style={style}
       role="dialog"
       aria-label={t("KI-Schreibassistent", "AI writing assistant")}

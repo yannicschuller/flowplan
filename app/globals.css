@@ -27767,6 +27767,9 @@ h3 .block-reactions {
   font-size: 11px;
   color: var(--muted);
 }
+.ai-writer.ai-writer-aside {
+  visibility: hidden;
+}
 .ai-writer {
   position: fixed;
   z-index: 410;
