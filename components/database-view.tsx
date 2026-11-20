@@ -1181,10 +1181,25 @@ export default function DatabaseView({
         doneRule(fields, data.database.settings)?.field.id,
       )
     : null;
+  // A link to a record this tab has not loaded yet (just made in another
+  // tab, by a rule or through the API): the live signal brings it, but the
+  // open page is fetched at most every few seconds
+  // (components/use-workspace-signals.ts). Ask once at once; only a record
+  // still missing then is gone.
+  const [rowAskedFor, setRowAskedFor] = useState<string | null>(null);
+  const rowAsking = useRef<string | null>(null);
   useEffect(() => {
-    if (rowId && !selected)
+    if (!rowId || selected) return;
+    if (rowAsking.current !== rowId) {
+      rowAsking.current = rowId;
+      void onRefresh()
+        .catch(() => {})
+        .finally(() => setRowAskedFor(rowId));
+      return;
+    }
+    if (rowAskedFor === rowId)
       onError(t("Dieser Datensatz ist nicht mehr verfügbar.", "This record is no longer available."));
-  }, [rowId, selected, onError]);
+  }, [rowId, selected, rowAskedFor, onError, onRefresh]);
   const groupField = groupingField(fields, view);
   const dateField =
     fields.find((f) => f.id === view.dateField) ||
