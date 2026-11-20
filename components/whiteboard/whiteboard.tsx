@@ -14,7 +14,7 @@ import {
 } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
 import {
@@ -78,6 +78,7 @@ import {
   HardDrives,
   Plugs,
   ChalkboardTeacher,
+  Moon,
 } from "@phosphor-icons/react";
 import { Modal, api, requireConnection, sessionEnded } from "../ui";
 import { isPendingPage } from "@/lib/offline-pending";
@@ -175,6 +176,9 @@ import { fitBarMenu } from "./item-tools";
 import { RACK_DRAG_TYPE, RackInspector, RackStyleControls, RackWorld, dropRackItem, rackItemClass, rackKey, setRackFocus } from "./rack-panels";
 import { shortcutLetter } from "@/lib/keymap";
 import { placeStyleBar, type ScreenRect } from "@/lib/whiteboard-style-bar";
+import { BoardColors, DARK_CANVAS_CLASS } from "./board-colors";
+import { boardPalette } from "@/lib/whiteboard-display-colors";
+import { setWhiteboardCanvasLocal, useDarkCanvas, useDarkTheme, whiteboardCanvas } from "@/lib/whiteboard-canvas-pref-client";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -411,6 +415,36 @@ export default function Whiteboard({
   }, []);
   const [templatesOpen, setTemplatesOpen] = useState(false),
     [presenting, setPresenting] = useState<number | null>(null);
+  // The dark canvas (#399): in dark mode unless the person keeps boards
+  // light (lib/whiteboard-canvas-pref.ts). Display only – an export draws a
+  // light copy (lightCopy) – and the stored colours never change.
+  const darkTheme = useDarkTheme();
+  const darkCanvas = useDarkCanvas();
+  const [exportLight, setExportLight] = useState(false);
+  const shownDark = darkCanvas && !exportLight;
+  const colors = boardPalette(shownDark);
+  // Runs `copy` while the board is drawn light: re-rendered at once and
+  // back afterwards, before the browser paints (nothing flickers).
+  const lightCopy = <T,>(copy: () => T): T => {
+    if (!shownDark) return copy();
+    flushSync(() => setExportLight(true));
+    try {
+      return copy();
+    } finally {
+      flushSync(() => setExportLight(false));
+    }
+  };
+  // The quick toggle in "… → View and actions": the same account setting
+  // as in Settings → Appearance.
+  const toggleDarkCanvas = () => {
+    const before = whiteboardCanvas();
+    const next = before === "light" ? "theme" : "light";
+    setWhiteboardCanvasLocal(next);
+    api("/api/command", { action: "profile.whiteboardCanvas", whiteboardCanvas: next }).catch((e: Error) => {
+      setWhiteboardCanvasLocal(before);
+      onError(e.message);
+    });
+  };
   const [tool, setTool] = useState<Tool>("select"),
     [shapeKind, setShapeKind] = useState<ShapeKind>("rectangle"),
     [stickyColor, setStickyColor] = useState(stickyColors[0]),
@@ -2596,7 +2630,8 @@ export default function Whiteboard({
     const node = svg.current;
     const box = contentBounds(items, byId);
     if (!node || !box) return onError(t("Das Whiteboard ist leer.", "The whiteboard is empty."));
-    const clone = node.cloneNode(true) as SVGSVGElement;
+    // Exports stay light (#399).
+    const clone = lightCopy(() => node.cloneNode(true) as SVGSVGElement);
     clone.querySelectorAll("[data-ui]").forEach((el) => el.remove());
     const world = clone.querySelector("[data-world]");
     world?.removeAttribute("transform");
@@ -2669,6 +2704,7 @@ export default function Whiteboard({
     toWorld,
     center,
     svg,
+    lightCopy,
     container,
     pages,
     rowCards,
@@ -3155,7 +3191,10 @@ export default function Whiteboard({
             fontWeight: it.bold ? 700 : undefined,
             textAlign:
               it.type === "text" ? it.align || "left" : it.align || "center",
-            color: it.textColor || "#1f2937",
+            color: colors.text(
+              it.textColor || "#1f2937",
+              it.type === "sticky" ? colors.fill(it.fill || "#fff6b6") : it.type === "shape" ? colors.fill(it.fill || "#ffffff") : undefined,
+            ),
             transform: it.rotation ? `rotate(${it.rotation}deg)` : undefined,
             padding:
               (it.type === "text"
@@ -3463,6 +3502,24 @@ export default function Whiteboard({
           },
         ]
       : []),
+    // Only in dark mode, and only with an account to keep the choice (#399).
+    ...(darkTheme && userId && !guest
+      ? [
+          {
+            key: "dark-canvas",
+            label: t("Dunkle Fläche", "Dark canvas"),
+            title: t(
+              "Board auf dunkler Fläche zeigen – aus: immer hell (gilt für alle deine Boards, wie in Einstellungen → Darstellung & Sprache)",
+              "Show the board on a dark canvas – off: always light (applies to all your boards, as in Settings → Appearance & language)",
+            ),
+            icon: <Moon size={16} weight={darkCanvas ? "fill" : "regular"} />,
+            active: darkCanvas,
+            pressed: darkCanvas,
+            keepOpen: true,
+            run: toggleDarkCanvas,
+          },
+        ]
+      : []),
     {
       key: "fit",
       label: t("Alles anzeigen", "Show everything"),
@@ -3703,9 +3760,10 @@ export default function Whiteboard({
     .slice(0, 60);
   const board = (
     <BoardContext.Provider value={boardApi}>
+    <BoardColors value={colors}>
     <div
       ref={container}
-      className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}${showCables ? "" : " wb-cables-hidden"}`}
+      className={`whiteboard${shownDark ? ` ${DARK_CANVAS_CLASS}` : ""}${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}${showCables ? "" : " wb-cables-hidden"}`}
       tabIndex={0}
       aria-label={t("Whiteboard", "Whiteboard")}
       // Each press and each command key begins an undo step of its own:
@@ -3907,7 +3965,7 @@ export default function Whiteboard({
               cx={hover.x}
               cy={hover.y}
               r={tool === "eraser" ? 8 / view.zoom : 2.5}
-              fill={tool === "eraser" ? "none" : penColor}
+              fill={tool === "eraser" ? "none" : colors.ink(penColor)}
               strokeWidth={1 / view.zoom}
             />
           )}
@@ -5065,6 +5123,7 @@ export default function Whiteboard({
       <RackInspector board={boardApi} beside={diagram?.kind === "library" || diagram?.kind === "racks"} />
       {deviceCardView()}
     </div>
+    </BoardColors>
     </BoardContext.Provider>
   );
   // In full screen the board is rendered into the page body, so no parent

@@ -343,6 +343,7 @@ import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import { setCommentMarginLocal } from "@/lib/comment-margin-pref-client";
+import { setWhiteboardCanvasLocal } from "@/lib/whiteboard-canvas-pref-client";
 import { setStartScreenLocal } from "@/lib/start-screen-client";
 import { fullWidthPagesOf, showsFullWidth } from "@/lib/page-width-pref";
 import { HIDE_EXTERNAL_LINK_ICON_CLASS } from "@/lib/external-link-icon-pref";
@@ -753,6 +754,8 @@ export default function WorkspaceApp({
   const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
   // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
   useEffect(() => setCommentMarginLocal(boot.commentMargin), [boot.commentMargin]);
+  // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
+  useEffect(() => setWhiteboardCanvasLocal(boot.whiteboardCanvas), [boot.whiteboardCanvas]);
   // Inside the iPhone, iPad and Android app: the app's profiles from the
   // workspace menu and a long press on the own account row (lib/native-app.ts).
   const profileSwitcher = useProfileSwitcherWay();

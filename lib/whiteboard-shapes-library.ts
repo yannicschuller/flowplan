@@ -737,6 +737,12 @@ export function drawLibraryShape(item: Pick<WhiteboardItem, "lib" | "w" | "h" | 
   };
 }
 
+// The fill and line colour a library shape is drawn with: its own or the
+// shape's defaults (for the dark canvas, components/whiteboard/library-shape.tsx).
+export function libraryShapeColors(item: Pick<WhiteboardItem, "lib" | "fill" | "stroke">) {
+  const def = item.lib ? byId.get(item.lib) : undefined;
+  return { fill: safeColor(item.fill, def?.fill || "#ffffff"), stroke: safeColor(item.stroke, def?.stroke || "#1f2937") };
+}
 // A new library shape as a draft (local id "n"), in the given language.
 export function libraryDraft(id: string, t: (de: string, en: string) => string) {
   const def = byId.get(id);

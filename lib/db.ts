@@ -1383,6 +1383,12 @@ function migrate(d: DatabaseSync) {
   // schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "comment_margin"))
     d.exec("ALTER TABLE users ADD COLUMN comment_margin INTEGER");
+  // "Whiteboard-Fläche" per person (#399, lib/whiteboard-canvas-pref.ts):
+  // users.whiteboard_canvas, NULL = the default (the canvas follows the
+  // colour scheme) or 'light'. Only the interface reads it – an older
+  // version ignores the column – so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "whiteboard_canvas"))
+    d.exec("ALTER TABLE users ADD COLUMN whiteboard_canvas TEXT");
   // "Beim Öffnen auf dem Handy" per person (lib/start-screen.ts):
   // users.start_screen, NULL = the default ('home') or 'capture'. An older
   // version ignores the column, so the schema number stays.

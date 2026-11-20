@@ -51,17 +51,22 @@ function pictureData(href: string) {
 }
 
 // The board's SVG for the box, ready to save or draw.
-export async function boardSvgSource(node: SVGSVGElement, box: Box, options: { inline?: boolean } = {}) {
-  const clone = node.cloneNode(true) as SVGSVGElement;
-  // PDF pages are canvases: their pixels do not travel with a copy.
-  const sources = [...node.querySelectorAll("canvas")];
-  [...clone.querySelectorAll("canvas")].forEach((canvas, i) => {
-    const img = document.createElement("img");
-    try {
-      img.src = sources[i]?.toDataURL("image/png") || "";
-    } catch {}
-    img.className = canvas.className;
-    canvas.replaceWith(img);
+// `copy` runs the copying (synchronously) – on the dark canvas while the
+// board is drawn light, so exports always have the stored colours (#399).
+export async function boardSvgSource(node: SVGSVGElement, box: Box, options: { inline?: boolean; copy?: <T>(copy: () => T) => T } = {}) {
+  const clone = (options.copy ?? ((copy) => copy()))(() => {
+    const copy = node.cloneNode(true) as SVGSVGElement;
+    // PDF pages are canvases: their pixels do not travel with a copy.
+    const sources = [...node.querySelectorAll("canvas")];
+    [...copy.querySelectorAll("canvas")].forEach((canvas, i) => {
+      const img = document.createElement("img");
+      try {
+        img.src = sources[i]?.toDataURL("image/png") || "";
+      } catch {}
+      img.className = canvas.className;
+      canvas.replaceWith(img);
+    });
+    return copy;
   });
   clone.querySelectorAll("[data-ui], iframe, button").forEach((el) => el.remove());
   clone.querySelector("[data-world]")?.removeAttribute("transform");

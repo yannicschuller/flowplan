@@ -350,6 +350,8 @@ export type Bootstrap = {
   fullWidthPages?: boolean;
   // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
   commentMargin?: boolean;
+  // "Whiteboard-Fläche" (#399, lib/whiteboard-canvas-pref.ts).
+  whiteboardCanvas?: import("./whiteboard-canvas-pref").WhiteboardCanvasPref;
   // "Beim Öffnen auf dem Handy" (lib/start-screen.ts).
   startScreen?: import("./start-screen").StartScreen;
   // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts).

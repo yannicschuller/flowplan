@@ -17,6 +17,9 @@ import { cleanCrop } from "@/lib/whiteboard-embeds";
 import { LinkBadge, RichText, TagChips } from "./rich-text";
 import { EmbedShape } from "./embed-item";
 import { CardExcerpt } from "./card-preview";
+import { BoardColors, DARK_CANVAS_CLASS, useBoardColors } from "./board-colors";
+import { boardPalette } from "@/lib/whiteboard-display-colors";
+import { useDarkCanvas } from "@/lib/whiteboard-canvas-pref-client";
 // Racks, devices and cables (#90): the same drawing as the exports.
 import { cableStyle, isCable } from "@/lib/whiteboard-rack";
 import { RACK_DEFS, deviceSvg, rackContext, rackSvg } from "@/lib/whiteboard-rack-svg";
@@ -35,13 +38,18 @@ function TextBox({
   item,
   padding = 10,
   style,
+  background,
   children,
 }: {
   item: WhiteboardItem;
   padding?: number;
   style?: CSSProperties;
+  // The fill the text stands on, as shown (the canvas without one): on the
+  // dark canvas the text colour is chosen to read on it.
+  background?: string;
   children?: ReactNode;
 }) {
+  const colors = useBoardColors();
   return (
     <foreignObject
       x={0}
@@ -56,7 +64,7 @@ function TextBox({
           fontSize: item.fontSize || 16,
           fontWeight: item.bold ? 700 : 400,
           textAlign: item.align || "center",
-          color: item.textColor || "#1f2937",
+          color: colors.text(item.textColor || "#1f2937", background),
           justifyContent: item.type === "text" ? "flex-start" : "center",
           fontStyle: item.italic ? "italic" : undefined,
           textDecoration: item.underline ? "underline" : undefined,
@@ -138,6 +146,7 @@ function ShapeBody({
   deviceCards?: boolean;
 }) {
   const t = useT();
+  const colors = useBoardColors();
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${item.rotation} ${item.w / 2} ${item.h / 2})` : ""}`;
   const text = editing ?? undefined;
   if (item.covered && !["frame", "connector", "comment"].includes(item.type))
@@ -147,20 +156,22 @@ function ShapeBody({
       return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: rackSvg(item, rackContext(items), t) }} />;
     case "device":
       return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: deviceSvg(item, items, rackContext(items), t, { title: !deviceCards }) }} />;
-    case "sticky":
+    case "sticky": {
+      const fill = colors.fill(item.fill || "#fff6b6");
       return (
         <g transform={transform}>
           <rect
             width={item.w}
             height={item.h}
             rx={4}
-            fill={item.fill || "#fff6b6"}
+            fill={fill}
             filter="url(#wb-shadow)"
           />
-          <TextBox item={item}>{text}</TextBox>
+          <TextBox item={item} background={fill}>{text}</TextBox>
           {item.estimate && <EstimateTag value={item.estimate} width={item.w} />}
         </g>
       );
+    }
     case "text":
       return (
         <g transform={transform}>
@@ -174,31 +185,33 @@ function ShapeBody({
           </TextBox>
         </g>
       );
-    case "shape":
+    case "shape": {
       if (isLibraryShape(item.lib)) return <LibraryShapeView item={item} transform={transform} hideText={editing !== undefined} />;
+      const fill = colors.fill(item.fill || "#ffffff");
       return (
         <g transform={transform}>
           <path
             d={shapePath(item.shape, item.w, item.h)}
-            fill={item.fill || "#ffffff"}
-            stroke={item.stroke || "#1f2937"}
+            fill={fill}
+            stroke={colors.ink(item.stroke || "#1f2937")}
             strokeWidth={item.strokeWidth ?? 2}
             strokeDasharray={item.dashed ? "8 6" : undefined}
             vectorEffect="non-scaling-stroke"
           />
-          <TextBox item={item}>{text}</TextBox>
+          <TextBox item={item} background={fill}>{text}</TextBox>
         </g>
       );
+    }
     case "frame":
       return (
         <g transform={`translate(${item.x} ${item.y})`}>
           <rect
             width={item.w}
             height={item.h}
-            fill={
-              item.fill && item.fill !== "transparent" ? item.fill : "#ffffff"
-            }
-            stroke="#ced4da"
+            fill={colors.fill(
+              item.fill && item.fill !== "transparent" ? item.fill : "#ffffff",
+            )}
+            stroke={colors.line("#ced4da")}
             strokeWidth={1}
             rx={6}
           />
@@ -221,7 +234,7 @@ function ShapeBody({
         return (
           <path
             d={pressureOutline(points, (item.strokeWidth ?? 3) * 1.6)}
-            fill={item.stroke || "#1f2937"}
+            fill={colors.ink(item.stroke || "#1f2937")}
             stroke="none"
           />
         );
@@ -233,7 +246,7 @@ function ShapeBody({
         <path
           d={d}
           fill="none"
-          stroke={item.stroke || "#1f2937"}
+          stroke={colors.ink(item.stroke || "#1f2937")}
           strokeWidth={item.strokeWidth ?? 3}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -263,7 +276,7 @@ function ShapeBody({
           </g>
         );
       }
-      const color = item.stroke || "#1f2937",
+      const color = colors.ink(item.stroke || "#1f2937"),
         width = item.strokeWidth ?? 2;
       return (
         <g>
@@ -284,7 +297,7 @@ function ShapeBody({
           {/* Arrowheads, UML and crow's-foot ends (lib/whiteboard-connector-markers.ts). */}
           <g
             dangerouslySetInnerHTML={{
-              __html: markerSvg(connectorEnds(item).end, b, endDir, width, color) + markerSvg(connectorEnds(item).start, a, startDir, width, color),
+              __html: markerSvg(connectorEnds(item).end, b, endDir, width, color, colors.fill("#ffffff")) + markerSvg(connectorEnds(item).start, a, startDir, width, color, colors.fill("#ffffff")),
             }}
           />
           {item.text && (
@@ -309,7 +322,7 @@ function ShapeBody({
           ) : safeImageSource(item.src) ? (
             <BoardImage src={item.src!} w={item.w} h={item.h} />
           ) : (
-            <rect width={item.w} height={item.h} fill="#f1f3f5" />
+            <rect width={item.w} height={item.h} fill={colors.fill("#f1f3f5")} />
           )}
         </g>
       );
@@ -319,8 +332,8 @@ function ShapeBody({
       if (item.rowId)
         return (
           <g transform={transform}>
-            <rect width={item.w} height={item.h} rx={10} fill="#ffffff" stroke="#dee2e6" filter="url(#wb-shadow)" />
-            <rect width={6} height={item.h} rx={3} fill={item.fill || "#e0782c"} />
+            <rect width={item.w} height={item.h} rx={10} fill={colors.fill("#ffffff")} stroke={colors.line("#dee2e6")} filter="url(#wb-shadow)" />
+            <rect width={6} height={item.h} rx={3} fill={colors.fill(item.fill || "#e0782c")} />
             <foreignObject x={14} y={0} width={Math.max(1, item.w - 20)} height={item.h}>
               <div className="wb-card-body wb-row-card">
                 <small>{row?.database || page?.title || t("Datenbank", "Database")}</small>
@@ -344,15 +357,15 @@ function ShapeBody({
             width={item.w}
             height={item.h}
             rx={10}
-            fill="#ffffff"
-            stroke="#dee2e6"
+            fill={colors.fill("#ffffff")}
+            stroke={colors.line("#dee2e6")}
             filter="url(#wb-shadow)"
           />
           <rect
             width={6}
             height={item.h}
             rx={3}
-            fill={item.fill || "#3b3fd8"}
+            fill={colors.fill(item.fill || "#3b3fd8")}
           />
           <foreignObject
             x={14}
@@ -410,8 +423,8 @@ function ShapeBody({
           <rect
             width={item.w}
             height={item.h}
-            fill="#ffffff"
-            stroke="#adb5bd"
+            fill={colors.fill("#ffffff")}
+            stroke={colors.line("#adb5bd")}
             rx={4}
           />
           <foreignObject
@@ -454,7 +467,7 @@ function ShapeBody({
             height={Math.max(1, item.h)}
           >
             {item.emoji?.startsWith("icon:") ? (
-              <div className="wb-emoji-glyph wb-icon-glyph" style={{ color: item.stroke || "#1f2937" }}>
+              <div className="wb-emoji-glyph wb-icon-glyph" style={{ color: colors.ink(item.stroke || "#1f2937") }}>
                 <LibraryIcon value={item.emoji} size={Math.min(item.w, item.h) * 0.9} />
               </div>
             ) : (
@@ -511,7 +524,7 @@ export function WhiteboardDefs() {
         height="24"
         patternUnits="userSpaceOnUse"
       >
-        <circle cx="1" cy="1" r="1" fill="#ced4da" />
+        <circle cx="1" cy="1" r="1" fill="#ced4da" className="wb-grid-dot" />
       </pattern>
       <g dangerouslySetInnerHTML={{ __html: RACK_DEFS }} />
       <pattern
@@ -538,6 +551,9 @@ export function WhiteboardStatic({
   height?: number;
 }) {
   const t = useT();
+  // Documents, shared pages and the template gallery show boards on the
+  // dark canvas too (#399), by the reader's setting.
+  const dark = useDarkCanvas();
   const map = new Map(items.map((i) => [i.id, i]));
   const box = contentBounds(items, map);
   const pad = 40;
@@ -545,8 +561,9 @@ export function WhiteboardStatic({
     ? `${box.x - pad} ${box.y - pad} ${box.w + pad * 2} ${box.h + pad * 2}`
     : "0 0 800 400";
   return (
+    <BoardColors value={boardPalette(dark)}>
     <svg
-      className="wb-static"
+      className={dark ? `wb-static ${DARK_CANVAS_CLASS}` : "wb-static"}
       viewBox={view}
       style={{ height }}
       preserveAspectRatio="xMidYMid meet"
@@ -569,6 +586,7 @@ export function WhiteboardStatic({
           </g>
         ))}
     </svg>
+    </BoardColors>
   );
 }
 

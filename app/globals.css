@@ -13658,7 +13658,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   height: 100%;
   font-size: 14px;
   overflow: hidden;
-  /* The card is always white, in dark mode too. */
+  /* The card is white on the light canvas, also in dark mode (the dark
+     canvas: app/whiteboard-board.css). */
   color: #212529;
 }
 .wb-card-body small {

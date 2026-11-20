@@ -134,6 +134,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Sprache", en: "Language" }, anchor: "ui-language" },
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" }, anchor: "color-theme" },
       {
+        title: { de: "Whiteboard-Fläche", en: "Whiteboard canvas" },
+        keywords: { de: "whiteboard board fläche hintergrund dunkel hell dunkelmodus farbschema immer hell", en: "whiteboard board canvas background dark light dark mode colour scheme color always light" },
+        anchor: "whiteboard-canvas",
+        level: "normal",
+      },
+      {
         title: { de: "Animationen", en: "Animations" },
         keywords: { de: "bewegung animation reduziert aus übergänge einblenden barrierefreiheit", en: "motion animation reduced off transitions fade accessibility" },
         anchor: "motion",
