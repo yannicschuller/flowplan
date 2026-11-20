@@ -86,9 +86,13 @@ export async function whiteboardData(page: Page) {
   };
 }
 export async function whiteboardSnapshotItems(page: Page) {
+  // Only read: a board that was never opened has no row yet and no items
+  // (the exports read it in a worker thread, which does not write).
+  const row = await one<Stored>("SELECT state,generation FROM whiteboards WHERE page_id=?", page.id);
+  if (!row) return [];
   const doc = new Y.Doc();
   try {
-    Y.applyUpdate(doc, (await stored(page)).state);
+    Y.applyUpdate(doc, row.state);
     return whiteboardItems(doc);
   } finally {
     doc.destroy();

@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
 import { ZipFile } from "yazl";
 import { audit } from "./db";
+import { offThread } from "./worker-pool";
 import { HttpError } from "./auth";
 import { ct, contentLocale } from "./content-locale";
 import { exportName } from "./export-name";
@@ -236,7 +237,11 @@ export function epubChapters(content: ExportContent) {
 }
 
 export const EPUB_MAX_PAGES = 200;
+// In a worker thread (lib/worker-pool.ts): a space's HTML is parsed page by page.
 export async function exportEpub(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
+  return await offThread("export.epub", [user, options], () => epubHere(user, options));
+}
+async function epubHere(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
   const content = await collectExportContent(user, { ...options, maxPages: EPUB_MAX_PAGES, format: "EPUB" });
   const { chapters, resources } = await withExportLookups(content, epubChapters);
   const bytes = await buildEpub({

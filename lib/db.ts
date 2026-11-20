@@ -1,5 +1,6 @@
 import { setupStorage, stopStorage } from "./storage";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdirSync, statSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
 import { restorePendingIntoPostgres } from "./db-restore";
@@ -12,7 +13,7 @@ import { flushRelationChanges } from "./relation-sync";
 import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
 import { noteStatement, noteTransaction as noteTransactionMetric, runtimeMetricsOn } from "./runtime-metrics";
-import { currentTx, dbContext, postgresUrl } from "./db-driver/context";
+import { currentTx, dbContext, postgresUrl, readerThread } from "./db-driver/context";
 import { closeDatabase, database } from "./db-driver";
 // SQL that differs between SQLite and PostgreSQL (lib/db-driver/dialect.ts):
 // `sql` is the dialect of this process, `nowText()` the CURRENT_TIMESTAMP text.
@@ -2268,9 +2269,10 @@ function scheduleOptimize() {
 
 export function db() {
   if (globalDb.flowplanDb) {
-    migrate(globalDb.flowplanDb);
+    if (!readerThread()) migrate(globalDb.flowplanDb);
     return globalDb.flowplanDb;
   }
+  if (readerThread()) return (globalDb.flowplanDb = readerConnection());
   const dir = resolve(
     /* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data",
   );
@@ -2325,6 +2327,15 @@ export function db() {
     await cleanDeletedFiles();
     await setupStorage(d);
   })().catch((error) => console.error("Dateispeicher: Einrichtung fehlgeschlagen", error));
+  return d;
+}
+// A worker thread's connection (lib/worker-pool.ts, #383): the file the
+// main thread opened and migrated, read-only – a WAL reader with snapshots
+// of its own, which never waits for the main thread's transactions and
+// never holds them up. Nothing is created, migrated or cleaned up here.
+function readerConnection() {
+  const d = new DatabaseSync(resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data", "flowplan.sqlite"), { readOnly: true });
+  d.exec("PRAGMA busy_timeout=5000; PRAGMA cache_size=-16384; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY;");
   return d;
 }
 // The migrations on another SQLite file (a restored backup that is loaded
@@ -2845,12 +2856,31 @@ export function auditListeners() {
 export function onAudit(name: string, listener: AuditListener) {
   auditListeners().set(name, listener);
 }
+// A worker thread (lib/worker-pool.ts) does not write: the audit entries
+// of its job go back with the result, and the main thread writes them
+// once the job has succeeded (writeAudits).
+export type AuditEntry = [actor: string, action: string, resource: string, detail: string];
+const auditHolder = globalThis as { flowplanAuditCollector?: AsyncLocalStorage<AuditEntry[]> };
+const auditCollector = (auditHolder.flowplanAuditCollector ??= new AsyncLocalStorage<AuditEntry[]>());
+export async function collectingAudits<T>(fn: () => Promise<T>): Promise<{ value: T; audits: AuditEntry[] }> {
+  const audits: AuditEntry[] = [];
+  const value = await auditCollector.run(audits, fn);
+  return { value, audits };
+}
+export async function writeAudits(entries: readonly AuditEntry[]) {
+  for (const [actor, action, resource, detail] of entries) await audit(actor, action, resource, detail);
+}
 export async function audit(
   actor: string,
   action: string,
   resource: string,
   detail = "",
 ) {
+  const collected = readerThread() ? auditCollector.getStore() : undefined;
+  if (collected) {
+    collected.push([actor, action, resource, detail]);
+    return;
+  }
   await run(
     "INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(?,?,?,?,?)",
     id(),
