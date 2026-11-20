@@ -3,6 +3,7 @@
 // reads the database on a read-only connection of its own (workerData
 // flowplanDbReader, lib/db-driver/context.ts); its audit entries go back
 // with the result, the request thread writes them.
+import "./job-worker-globals";
 import { parentPort } from "node:worker_threads";
 import { workerJobs } from "../worker-jobs";
 import { collectingAudits, noteUnknownWrite } from "../db";
