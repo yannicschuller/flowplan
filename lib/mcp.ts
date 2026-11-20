@@ -21,10 +21,10 @@ import { HttpError, appUrl } from "./auth";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { studyDecks } from "./study-stats";
 import { studyOptimize } from "./study";
-import { command, database, rows } from "./api";
-import { visibleRows } from "./row-access";
+import { command, database } from "./api";
 import { relatedData } from "./related-data";
-import { computedCells, queryRows } from "./database";
+import { computedCells } from "./database";
+import { queryDatabaseRows } from "./database-query";
 import { cellText } from "./cell-text";
 import { exportMarkdown } from "./markdown-export";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
@@ -305,26 +305,19 @@ async function queryDatabase(
         throw new HttpError(404, "Ansicht nicht gefunden.");
       })()
     : ({ id: "", name: "", type: "table", filters: [], sorts: [] } as unknown as View);
-  const { related, relatedSchemas } = await relatedData(user, page);
-  const found = queryRows(
-    // The database's own records, as relatedData read them for relations to itself.
-    related[page.id] ?? await visibleRows(user, page, await rows(page.id)),
-    schema.fields,
-    view,
-    (args.query || "").slice(0, 200),
-    related,
-    relatedSchemas,
-  );
   const offset = args.offset || 0,
     limit = args.limit || 50;
+  // Filters and sorts on the server, only the requested page computed
+  // (lib/database-query.ts: the answer of queryRows() over every record).
+  const found = await queryDatabaseRows(user, page, schema.fields, view, { query: (args.query || "").slice(0, 200), offset, limit });
   const people = new Map((await members(page.workspace_id)).map((m) => [m.id, m.name]));
   return {
     database: { id: page.id, title: page.title, url: pageLink(page.id) },
     fields: schema.fields.map(fieldInfo),
     views: schema.views.map((v) => ({ id: v.id, name: v.name, type: v.type })),
-    total: found.length,
+    total: found.total,
     offset,
-    records: found.slice(offset, offset + limit).map((r) => ({
+    records: found.rows.map((r) => ({
       id: r.id,
       version: r.version,
       title: cellText(r.cells[schema.fields[0]?.id]) || "",

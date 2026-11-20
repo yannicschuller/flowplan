@@ -5,13 +5,12 @@
 // to that person. Repeating entries become RRULE/EXDATE, so calendar apps
 // show the series themselves.
 import { createHash, randomBytes } from "node:crypto";
-import { all, id, one, run } from "./db";
+import { id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { journalLocked } from "./journal-extras";
-import { queryRows } from "./database";
+import { queryDatabaseRows } from "./database-query";
 import { calendarRange, calendarSchema } from "./database-calendar";
-import { visibleRows } from "./row-access";
 import { cellText } from "./cell-text";
 import { icsRecurrenceLines, parseRecurrence } from "./recurrence";
 import type { Field, Identity, Page, Row, View } from "./types";
@@ -105,10 +104,9 @@ export async function calendarFeed(token: string) {
   const zone = calendarSchema.safeParse(view.calendar).success
     ? (view.calendar as { timeZone: string }).timeZone
     : "UTC";
-  const rows = (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", page.id)).map(
-    (r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row,
-  );
-  const shown = queryRows(await visibleRows(user, page, rows), fields, view);
+  // The view's filter on the server (lib/database-query.ts); no related
+  // records, as before.
+  const shown = (await queryDatabaseRows(user, page, fields, view, { related: { related: {}, relatedSchemas: {} } })).rows;
   const titleField = fields[0];
   const host = new URL(appUrl()).host;
   const stamp = utc(new Date().toISOString());

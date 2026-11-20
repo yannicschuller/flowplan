@@ -6,15 +6,13 @@ import { z } from "zod";
 import { all, one } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
-import { visibleRows } from "./row-access";
 import { journalLocked, requireUnlocked } from "./journal-extras";
 import { visibleFields } from "./field-access";
-import { queryRows } from "./database";
-import { relatedData } from "./related-data";
+import { queryDatabaseRows } from "./database-query";
 import { formatNumber } from "./field-format";
 import { contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
-import type { Field, Identity, Row, View } from "./types";
+import type { Field, Identity, View } from "./types";
 import { flatMapAsync, mapAsync } from "./each-async";
 
 export const metricSchema = z.object({
@@ -34,24 +32,21 @@ export async function computeMetric(user: Identity, query: MetricQuery) {
   const fields: Field[] = JSON.parse(raw.fields);
   const views: View[] = JSON.parse(raw.views);
   const view = views.find((v) => v.id === query.view);
-  const rows = (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", page.id)).map(
-    (r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row,
-  );
-  const { related, relatedSchemas } = await relatedData(user, page);
-  const shown = queryRows(
-    await visibleRows(user, page, rows),
-    fields,
-    view || ({ id: "all", name: "", type: "table", filters: [], sorts: [] } as View),
-    "",
-    related,
-    relatedSchemas,
-  );
   // Only a property this person may read (lib/field-access.ts).
   const field = (await visibleFields(user, page, fields)).find((f) => f.id === query.field);
-  let value: number | null = shown.length;
-  if (query.aggregate !== "count") {
-    if (!field) throw new HttpError(400, "Eigenschaft fehlt.");
-    const numbers = shown
+  if (query.aggregate !== "count" && !field) throw new HttpError(400, "Eigenschaft fehlt.");
+  // The view's filter on the server (lib/database-query.ts); a count reads
+  // no record whole.
+  const shown = await queryDatabaseRows(
+    user,
+    page,
+    fields,
+    view || ({ id: "all", name: "", type: "table", filters: [], sorts: [] } as unknown as View),
+    { countOnly: query.aggregate === "count" },
+  );
+  let value: number | null = shown.total;
+  if (query.aggregate !== "count" && field) {
+    const numbers = shown.rows
       .map((r) => r.cells[field.id])
       .map((v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN))
       .filter((n) => Number.isFinite(n));
@@ -78,7 +73,7 @@ export async function computeMetric(user: Identity, query: MetricQuery) {
     source: page.title || "",
     view: view?.name || "",
     field: field?.name || "",
-    records: shown.length,
+    records: shown.total,
   };
 }
 

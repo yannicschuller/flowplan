@@ -157,20 +157,14 @@ export type QueryLabels = {
   sprints?: readonly { id: string; name: string }[];
 };
 const personTypes = new Set<Field["type"]>(["person", "created_by", "updated_by"]);
-export function queryRows(
-  rows: Row[],
+// The text of a cell and the names of people, related records and sprints,
+// as search and sorting read them. Formatted text (#126) reads as plain text.
+function cellLabels(
   fields: Field[],
-  view: View,
-  query = "",
-  related: Record<string, Row[]> = {},
-  schemas: Record<string, Field[]> = {},
-  now: Date = new Date(),
-  // Names for people and sprints, so they sort and are found by name.
-  labels: QueryLabels = {},
+  related: Record<string, Row[]>,
+  schemas: Record<string, Field[]>,
+  labels: QueryLabels,
 ) {
-  const ranks = rowOrderRanks(view.rowOrder),
-    filters = effectiveFilterGroup(view);
-  // Search and sorting read formatted text (#126) as plain text.
   const formatted = new Set(fields.filter((f) => isFormattedText(f, fields)).map((f) => f.id));
   const textOf = (id: string, v: unknown) => (formatted.has(id) ? toPlain(cellText(v)) : cellText(v));
   // People, related records and sprints by the names the table shows
@@ -200,7 +194,79 @@ export function queryRows(
     const ids = Array.isArray(v) ? v : v === null || v === undefined || v === "" ? [] : [v];
     return ids.map((x) => names.get(String(x)) ?? "").filter(Boolean).join(", ");
   };
-  const sortText = (id: string, v: unknown) => labelOf(id, v) ?? textOf(id, v);
+  return { textOf, labelOf };
+}
+// One collator for all comparisons: the order of
+// a.localeCompare(b, "de", { numeric: true }) without a collator per call
+// (#383: that was most of a sorted query's time).
+const collator = new Intl.Collator("de", { numeric: true });
+// The order of a view: its sorts (numbers as numbers, everything else by the
+// text the table shows), then the saved row order, then the position.
+// `cells` are the computed cells, at least those of the sorted properties.
+export function rowComparator(
+  fields: Field[],
+  view: Pick<View, "sorts" | "rowOrder">,
+  related: Record<string, Row[]> = {},
+  schemas: Record<string, Field[]> = {},
+  labels: QueryLabels = {},
+) {
+  const ranks = rowOrderRanks(view.rowOrder);
+  const { textOf, labelOf } = cellLabels(fields, related, schemas, labels);
+  const sorts = view.sorts || [];
+  // The sort text of a row, once per row and sort.
+  const keys = sorts.map(() => new WeakMap<object, string>());
+  const sortText = (i: number, cells: Record<string, unknown>) => {
+    let text = keys[i].get(cells);
+    if (text === undefined) {
+      const id = sorts[i].field,
+        v = cells[id];
+      text = labelOf(id, v) ?? textOf(id, v);
+      keys[i].set(cells, text);
+    }
+    return text;
+  };
+  return (a: Pick<Row, "id" | "position" | "cells">, b: Pick<Row, "id" | "position" | "cells">) => {
+    for (let i = 0; i < sorts.length; i++) {
+      const s = sorts[i];
+      const av = a.cells[s.field],
+        bv = b.cells[s.field];
+      const n =
+        typeof av === "number" && typeof bv === "number"
+          ? av - bv
+          : collator.compare(sortText(i, a.cells), sortText(i, b.cells));
+      if (n) return s.direction === "asc" ? n : -n;
+    }
+    return (
+      (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) ||
+      a.position - b.position
+    );
+  };
+}
+// Whether a query has to read records of other databases: rollups and
+// subtask progress compute from them, sorting and search by a relation
+// read the linked records' titles.
+export function needsRelatedRows(fields: Field[], view: Pick<View, "sorts">, query = "") {
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  return (
+    fields.some((f) => f.type === "rollup" || f.type === "progress") ||
+    (view.sorts || []).some((s) => byId.get(s.field)?.type === "relation") ||
+    (!!query && fields.some((f) => f.type === "relation"))
+  );
+}
+export function queryRows<T extends Row>(
+  rows: T[],
+  fields: Field[],
+  view: View,
+  query = "",
+  related: Record<string, Row[]> = {},
+  schemas: Record<string, Field[]> = {},
+  now: Date = new Date(),
+  // Names for people and sprints, so they sort and are found by name.
+  labels: QueryLabels = {},
+) {
+  const filters = effectiveFilterGroup(view);
+  const { textOf, labelOf } = cellLabels(fields, related, schemas, labels);
+  const q = query.toLowerCase();
   return rows
     .map((r) => ({
       ...r,
@@ -210,25 +276,11 @@ export function queryRows(
       (r) =>
         matchesFilterGroup(r.cells, filters, fields, now) &&
         (!query ||
-          r.preview?.text.toLowerCase().includes(query.toLowerCase()) ||
+          r.preview?.text.toLowerCase().includes(q) ||
           Object.entries(r.cells).some(([id, v]) =>
-            textOf(id, v).toLowerCase().includes(query.toLowerCase()) ||
-            !!labelOf(id, v)?.toLowerCase().includes(query.toLowerCase()),
+            textOf(id, v).toLowerCase().includes(q) ||
+            !!labelOf(id, v)?.toLowerCase().includes(q),
           )),
     )
-    .sort((a, b) => {
-      for (const s of view.sorts) {
-        const av = a.cells[s.field],
-          bv = b.cells[s.field];
-        const n =
-          typeof av === "number" && typeof bv === "number"
-            ? av - bv
-            : sortText(s.field, av).localeCompare(sortText(s.field, bv), "de", { numeric: true });
-        if (n) return s.direction === "asc" ? n : -n;
-      }
-      return (
-        (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) ||
-        a.position - b.position
-      );
-    });
+    .sort(rowComparator(fields, view, related, schemas, labels));
 }
