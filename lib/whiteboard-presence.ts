@@ -4,6 +4,7 @@
 // go to the other instances (lib/cluster/bus.ts), whose hubs keep the same
 // cursors and deliver them to their viewers.
 import { onBus, publish } from "./cluster/bus";
+import { audienceEvent, boardRoom, joinAudience } from "./live-audience";
 
 export type BoardView = { x: number; y: number; w: number; h: number };
 export type BoardCursor = {
@@ -126,7 +127,15 @@ export function watchBoard(
   const listener = { userId, send };
   b.listeners.add(listener);
   send(`data: ${JSON.stringify({ type: "snapshot", cursors: boardCursors(pageId, userId) })}\n\n`);
+  // Whether anyone else has the board open (lib/live-audience.ts): alone,
+  // the board keeps its pointer to itself (components/whiteboard).
+  const leave = joinAudience(boardRoom(pageId), userId, (others) => {
+    try {
+      send(audienceEvent(others));
+    } catch {}
+  });
   return () => {
+    leave();
     b.listeners.delete(listener);
     // The last tab of this person closed: their cursor goes too.
     if (![...b.listeners].some((l) => l.userId === userId) && b.cursors.delete(userId)) {
