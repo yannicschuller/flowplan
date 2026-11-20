@@ -274,6 +274,7 @@ import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { blockPaste, syncDomSelection, syncDomSelectionOnKey } from "@/lib/block-paste";
 import { shortcutLetter } from "@/lib/keymap";
 import { isModelName } from "@/lib/model-formats";
+import { isHtmlName } from "@/lib/html-files";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
 const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
@@ -1832,6 +1833,16 @@ export default function DocumentEditor({
           .insertContent({
             type: "media",
             attrs: { src: data.url, kind: "model", title: file.name },
+          })
+          .run();
+      else if (isHtmlName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
+        // An HTML file (#398): a card that opens the sandboxed preview.
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "media",
+            attrs: { src: data.url, kind: "html", title: file.name },
           })
           .run();
       else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))

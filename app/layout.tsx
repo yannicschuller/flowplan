@@ -41,6 +41,7 @@ import { LocaleProvider } from "@/components/i18n";
 import { catalogScript } from "@/lib/i18n-catalogs-server";
 import { PdfViewerHost } from "@/components/pdf-viewer";
 import { ModelViewerHost } from "@/components/model-viewer";
+import { HtmlViewerHost } from "@/components/html-viewer";
 import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
@@ -139,6 +140,7 @@ export default async function RootLayout({
           {children}
           <PdfViewerHost />
           <ModelViewerHost />
+          <HtmlViewerHost />
           {/* Copy buttons on a plain-http instance (#62). */}
           <ClipboardFallback />
         </LocaleProvider>

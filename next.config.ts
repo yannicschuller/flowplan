@@ -237,6 +237,13 @@ const config: NextConfig = {
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
         ],
       },
+      // The HTML preview (#398, lib/html-preview.ts) sends no referrer at
+      // all; a later rule wins over the one above (a route's own header
+      // would not).
+      ...["/api/files/:id/html", "/api/share/:token/files/:fileId/html"].map((source) => ({
+        source,
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      })),
     ];
   },
 };

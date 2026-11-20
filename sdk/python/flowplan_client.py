@@ -3116,6 +3116,10 @@ class FlowplanClient:
         """Download a file — Needs read access to the page the file belongs to. Supports `Range` requests. (GET /api/files/{fileId})"""
         return self._bytes("GET", "/api/files/" + _p(file_id), headers=headers)
 
+    def html_preview(self, file_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
+        """Sandboxed preview of an HTML file — The same access as the download. Only files named `.html` or `.htm`, up to 5 MB (larger: 413, other files: 415). The bytes unchanged as `text/html` (character set from a byte order mark or `<meta charset>`, else UTF-8) with a policy that sandboxes the page and loads nothing: no scripts, forms or external resources, pictures and fonts only as `data:`. (GET /api/files/{fileId}/html)"""
+        return self._bytes("GET", "/api/files/" + _p(file_id) + "/html", headers=headers)
+
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
         """Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
         return self._json("POST", "/api/upload", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)

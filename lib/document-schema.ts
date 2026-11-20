@@ -996,6 +996,18 @@ export const Media = Node.create({
         title: (el as HTMLElement).getAttribute("data-title") || "",
       }),
     },
+    // An HTML file (#398) as a card that opens the sandboxed preview
+    // (components/html-viewer.tsx). The address is only in the inner link,
+    // which publications, shares and archives rewrite like any link.
+    {
+      tag: "div[data-html-file]",
+      priority: 60,
+      getAttrs: (el) => ({
+        src: (el as HTMLElement).querySelector("a[href]")?.getAttribute("href") || "",
+        kind: "html",
+        title: (el as HTMLElement).getAttribute("data-title") || "",
+      }),
+    },
   ],
   renderHTML: ({ node }) => {
     const { src, kind, title } = node.attrs;
@@ -1048,6 +1060,16 @@ export const Media = Node.create({
           class: "model-block",
         },
         ["a", { href: src }, title || "3D"],
+      ];
+    if (kind === "html" && /^\/api\/files\/[a-f0-9-]+$/.test(src))
+      return [
+        "div",
+        {
+          "data-html-file": "true",
+          "data-title": title || "HTML",
+          class: "html-block",
+        },
+        ["a", { href: src }, title || "HTML"],
       ];
     return ["p", {}, "Medium nicht verfügbar"];
   },

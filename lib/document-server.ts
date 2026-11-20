@@ -82,6 +82,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-pdf",
         // A 3D file's card (#384, lib/document-schema.ts).
         "data-model",
+        // An HTML file's card (#398, lib/document-schema.ts).
+        "data-html-file",
         "data-title",
         "data-spoiler",
         // A gap of a flashcard (lib/cloze-mark.ts).

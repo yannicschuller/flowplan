@@ -21,8 +21,10 @@ import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
 import { PageIcon } from "./ui";
-import { Cube } from "@phosphor-icons/react";
+import { Cube, Eye } from "@phosphor-icons/react";
 import { isModelName } from "@/lib/model-formats";
+import { isHtmlName } from "@/lib/html-files";
+import { openHtml } from "./html-viewer";
 export type CellFile = { url: string; name: string; mime: string };
 // The editor of formatted text (#126) loads with the first text cell that
 // is edited (TipTap is shared with the comment composer's chunk). Without a
@@ -554,6 +556,18 @@ function FilesInput({
               <a href={url} target="_blank" rel="noreferrer noopener">
                 {fileLabel(url, names)}
               </a>
+              {/* An HTML file (#398): its sandboxed preview (the link opens it too). */}
+              {fileIdOf(url) && isHtmlName(fileLabel(url, names)) && (
+                <button
+                  type="button"
+                  className="file-preview-button"
+                  onClick={() => openHtml(url, fileLabel(url, names))}
+                  aria-label={t(`Vorschau von ${fileLabel(url, names)}`, `Preview of ${fileLabel(url, names)}`)}
+                >
+                  <Eye size={13} aria-hidden />
+                  {t("Vorschau", "Preview")}
+                </button>
+              )}
               {!disabled && (
                 <button
                   type="button"

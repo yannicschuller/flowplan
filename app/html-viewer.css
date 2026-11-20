@@ -1,0 +1,60 @@
+/* ---------- HTML viewer (#398, components/html-viewer-dialog.tsx) ----------
+   Loaded with the viewer, on top of the 3D viewer's frame (viewer3d.css).
+   The page in the frame keeps its own look: a white sheet, as a browser
+   shows a page without a background of its own, in light and dark mode. */
+.html-viewer:focus {
+  outline: none;
+}
+.html-viewer-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.html-viewer-note svg {
+  flex-shrink: 0;
+  color: var(--secondary);
+}
+.html-viewer-stage {
+  display: flex;
+  padding: 16px;
+}
+.html-viewer-frame {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color-scheme: light;
+  box-shadow: 0 6px 24px #0000001a;
+}
+.html-viewer-problem {
+  flex-direction: column;
+  gap: 14px;
+}
+.html-viewer-problem p {
+  max-width: 420px;
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .html-viewer-note {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .html-viewer-stage {
+    padding: 0;
+  }
+  .html-viewer-frame {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

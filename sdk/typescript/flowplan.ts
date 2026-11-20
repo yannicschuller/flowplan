@@ -4624,6 +4624,11 @@ export class FlowplanClient {
     return this.request("GET", `/api/files/${encodeURIComponent(fileId)}`, {}, options);
   }
 
+  /** Sandboxed preview of an HTML file — The same access as the download. Only files named `.html` or `.htm`, up to 5 MB (larger: 413, other files: 415). The bytes unchanged as `text/html` (character set from a byte order mark or `<meta charset>`, else UTF-8) with a policy that sandboxes the page and loads nothing: no scripts, forms or external resources, pictures and fonts only as `data:`. (GET /api/files/{fileId}/html) */
+  async htmlPreview(fileId: string, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/files/${encodeURIComponent(fileId)}/html`, {}, options);
+  }
+
   /** Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload) */
   async uploadFile(form: {
     pageId: string;

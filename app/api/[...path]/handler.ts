@@ -52,6 +52,7 @@ import {
 import { sendTestPush } from "@/lib/push-test";
 import { listPageTemplates } from "@/lib/page-templates";
 import { fileResponse } from "@/lib/file-response";
+import { readableFile } from "@/lib/file-access";
 import { MAX_PLACEHOLDER_IDS, placeholderForUpload, placeholdersFor, storePlaceholder } from "@/lib/image-placeholders";
 import { publicFile } from "@/lib/publication";
 import { withShareRequest } from "@/lib/share-access";
@@ -124,7 +125,6 @@ import { importTracker } from "@/lib/tracker-import";
 import { trackJob } from "@/lib/background-jobs";
 import { recordBacklinks } from "@/lib/relation-backlinks";
 import { recordContext } from "@/lib/record-context";
-import { hiddenFileIds } from "@/lib/row-files";
 import { pagePreview } from "@/lib/page-preview";
 import { blockPreview, searchBlocks } from "@/lib/block-links";
 import { withActivity } from "@/lib/page-activity";
@@ -1452,20 +1452,7 @@ async function handleGET(
         },
       });
     }
-    if (path[0] === "files" && path[1]) {
-      const file = await one<{
-        id: string;
-        page_id: string;
-        name: string;
-        mime: string;
-      }>("SELECT * FROM files WHERE id=?", path[1]);
-      if (!file) throw new HttpError(404, "Datei fehlt.");
-      const owner = await requirePage(user, file.page_id);
-      await requireUnlocked(user, owner);
-      // A file used only by a record hidden from this person stays hidden.
-      if ((await hiddenFileIds(user, owner)).has(file.id)) throw new HttpError(404, "Datei fehlt.");
-      return await fileResponse(req, file);
-    }
+    if (path[0] === "files" && path[1]) return await fileResponse(req, await readableFile(user, path[1]));
     if (path[0] === "export") {
       const wid = url.searchParams.get("workspace") || "";
       await requireMember(user, wid);

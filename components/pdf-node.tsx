@@ -7,9 +7,10 @@
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import type { Node as TiptapNode } from "@tiptap/core";
-import { Blueprint, Cube, FilePdf } from "@phosphor-icons/react";
+import { Blueprint, Cube, FileHtml, FilePdf } from "@phosphor-icons/react";
 import { PdfThumbnail, openPdf } from "./pdf-viewer";
 import { openModel } from "./model-viewer";
+import { openHtml } from "./html-viewer";
 import { MODEL_FORMAT_LABELS, isDrawingFormat, modelFormatOf } from "@/lib/model-formats";
 import { useT } from "./i18n";
 
@@ -74,14 +75,35 @@ function ModelCard({ node, selected }: NodeViewProps) {
   );
 }
 
+function HtmlCard({ node, selected }: NodeViewProps) {
+  const t = useT();
+  const { src, title } = node.attrs as { src: string; title: string };
+  const name = title || "HTML";
+  return (
+    <NodeViewWrapper className={`html-block${selected ? " is-selected" : ""}`} data-html-file="true" data-title={title} contentEditable={false}>
+      <button type="button" className="model-card html-card" onClick={() => openHtml(src, name)} aria-label={t(`Vorschau von „${name}“ öffnen`, `Open preview of “${name}”`)}>
+        <span className="model-card-icon" aria-hidden>
+          <FileHtml size={30} weight="duotone" />
+        </span>
+        <span className="model-card-text">
+          <span className="model-card-name">{name}</span>
+          <small>HTML · {t("Vorschau öffnen", "Open preview")}</small>
+        </span>
+      </button>
+    </NodeViewWrapper>
+  );
+}
+
 export function withPdfView<T extends TiptapNode>(media: T): T {
   return media.extend({
     addNodeView() {
       const pdf = ReactNodeViewRenderer(PdfCard);
       const model = ReactNodeViewRenderer(ModelCard);
+      const html = ReactNodeViewRenderer(HtmlCard);
       return (props) => {
         if (props.node.attrs.kind === "pdf") return pdf(props);
         if (props.node.attrs.kind === "model") return model(props);
+        if (props.node.attrs.kind === "html") return html(props);
         // Everything else exactly as the schema renders it.
         const spec = props.node.type.spec.toDOM!(props.node);
         const { dom } = DOMSerializer.renderSpec(document, spec);
