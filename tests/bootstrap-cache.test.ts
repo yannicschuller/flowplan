@@ -107,12 +107,12 @@ test("the triggers move the versions with every write that can change the list o
   await moves(() => run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, someone.id), rolesOnly, "member removed");
   // Spaces.
   const space = id();
-  await moves(() => run("INSERT INTO spaces(id,workspace_id,name) VALUES(?,?,?)", space, wid, "S"), rolesOnly, "space");
-  await moves(() => run("UPDATE spaces SET name='T' WHERE id=?", space), neither, "space name");
-  await moves(() => run("UPDATE spaces SET visibility='private' WHERE id=?", space), rolesOnly, "visibility");
-  await moves(() => run("UPDATE spaces SET owner_id=? WHERE id=?", viewer.id, space), rolesOnly, "owner");
-  await moves(() => run("UPDATE spaces SET deleted_at='2030-01-01 00:00:00' WHERE id=?", space), rolesOnly, "space trash");
-  await moves(() => run("DELETE FROM spaces WHERE id=?", space), rolesOnly, "space delete");
+  await moves(() => run("INSERT INTO spaces(id,workspace_id,name) VALUES(?,?,?)", space, wid, "S"), yes, "space");
+  await moves(() => run("UPDATE spaces SET name='T' WHERE id=?", space), pagesOnly, "space name (schema 118: the sidebar shows it)");
+  await moves(() => run("UPDATE spaces SET visibility='private' WHERE id=?", space), yes, "visibility");
+  await moves(() => run("UPDATE spaces SET owner_id=? WHERE id=?", viewer.id, space), yes, "owner");
+  await moves(() => run("UPDATE spaces SET deleted_at='2030-01-01 00:00:00' WHERE id=?", space), yes, "space trash");
+  await moves(() => run("DELETE FROM spaces WHERE id=?", space), yes, "space delete");
   // Records: only those with their own access count.
   const plain = id(),
     own = id();
