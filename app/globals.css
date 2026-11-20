@@ -28223,6 +28223,11 @@ h3 .block-reactions {
     color: var(--text);
   }
 }
+/* Little of the AI quota left (#382): under the header, across the panel. */
+.ask-panel > .ai-quota-note {
+  flex: none;
+  margin: 12px 0 0;
+}
 /* The conversation, and before it the greeting with suggestions. Spacing
    on a 4/8 px scale; answers keep a readable line length. */
 .ai-ask-log {
