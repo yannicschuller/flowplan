@@ -489,8 +489,20 @@ const editorScenes: Scene[] = [
     title: "Cover picker",
     covers: ["components/cover-picker.tsx"],
     steps: async (page, ctx) => {
-      await editorWith(page, ctx, RICH_HTML);
+      // Two covers uploaded, the second one set: the first is a former
+      // cover, marked "Nicht verwendet" with "Entfernen" (#396).
+      const id = await ctx.fixture({ html: RICH_HTML, title: "Entwurf" });
+      const { diagramPng } = await import("../../tests/helpers/png");
+      let url = "";
+      for (const name of ["Altes Cover.png", "Neues Cover.png"]) {
+        const upload = await ctx.api.post("/api/upload", { headers: { origin: ctx.origin }, multipart: { pageId: id, purpose: "cover", file: { name, mimeType: "image/png", buffer: diagramPng() } } });
+        url = (await upload.json()).url;
+      }
+      await ctx.command({ action: "page.update", pageId: id, patch: { cover: url } });
+      await ctx.open(`#page=${id}`);
+      await editor(page).waitFor();
       await pageAction(page, "Cover ändern");
+      await page.getByText("Nicht verwendet").first().waitFor();
       await page.getByRole("dialog").last().waitFor();
     },
   },
