@@ -352,6 +352,8 @@ export type Bootstrap = {
   commentMargin?: boolean;
   // "Whiteboard-Fläche" (#399, lib/whiteboard-canvas-pref.ts).
   whiteboardCanvas?: import("./whiteboard-canvas-pref").WhiteboardCanvasPref;
+  // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
+  notificationSound?: import("./notification-sound").NotificationSound;
   // "Beim Öffnen auf dem Handy" (lib/start-screen.ts).
   startScreen?: import("./start-screen").StartScreen;
   // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts).

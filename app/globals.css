@@ -6219,6 +6219,16 @@ mark[data-color],
 .setting-control .segmented label {
   gap: 6px;
 }
+/* "Ton bei neuen Benachrichtigungen" (#401): the choice and "Anhören". */
+.notification-sound-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.notification-sound-control .segmented {
+  max-width: 100%;
+}
 
 .setting-group {
   margin-bottom: 22px;

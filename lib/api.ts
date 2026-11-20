@@ -13,6 +13,7 @@ import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserCommentMargin, userCommentMargin } from "./user-comment-margin";
 import { setUserWhiteboardCanvas, userWhiteboardCanvas } from "./user-whiteboard-canvas";
+import { setUserNotificationSound, userNotificationSound } from "./user-notification-sound";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { adminSetSettingsLevel, setUserSettingsLevel, userSettingsLevel } from "./user-settings-level";
@@ -419,6 +420,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     commentMargin: await userCommentMargin(user.id),
     // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
     whiteboardCanvas: await userWhiteboardCanvas(user.id),
+    // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
+    notificationSound: await userNotificationSound(user.id),
     // "Beim Öffnen auf dem Handy" (lib/start-screen.ts).
     startScreen: await userStartScreen(user.id),
     // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts): the level
@@ -1113,6 +1116,10 @@ async function runCommand(
       // The whiteboard canvas dark in dark mode or always light (#399, lib/whiteboard-canvas-pref.ts).
       case "profile.whiteboardCanvas":
         result = await setUserWhiteboardCanvas(user, b.whiteboardCanvas);
+        break;
+      // The sound for new notifications in the open app, or none (#401, lib/notification-sound.ts).
+      case "profile.notificationSound":
+        result = await setUserNotificationSound(user, b.notificationSound);
         break;
       // What a phone opens with (lib/start-screen.ts).
       case "profile.startScreen":

@@ -18,6 +18,7 @@ import { motionPrefSchema } from "./motion-pref";
 import { fullWidthPagesSchema } from "./page-width-pref";
 import { commentMarginSchema } from "./comment-margin-pref";
 import { whiteboardCanvasSchema } from "./whiteboard-canvas-pref";
+import { notificationSoundSchema } from "./notification-sound";
 import { startScreenSchema } from "./start-screen";
 import { updateNotesLevelSchema } from "./update-notes-pref";
 import { settingsLevelSchema } from "./settings-level";
@@ -76,7 +77,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.whiteboardCanvas", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -449,6 +450,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: \"theme\" (the default) shows whiteboards on a dark canvas while the dark colour scheme is used – very dark strokes and text shown light, light fills toned down; \"light\" keeps the canvas light. Display only: the boards' colours are stored unchanged, others see their own choice and exports stay light.",
     input: z.object({ action: z.literal("profile.whiteboardCanvas"), whiteboardCanvas: whiteboardCanvasSchema }),
     result: z.object({ whiteboardCanvas: whiteboardCanvasSchema }),
+  },
+  {
+    action: "profile.notificationSound",
+    summary: "Choose the sound for new notifications in the open app",
+    description: "For the caller, on all devices: the short sound the web app (and the desktop app's window) plays when a new notification reaches the inbox while Flowplan is open – \"soft\" (the default), \"clear\", \"bell\" or \"off\". Only one open tab plays it, never for the caller's own doing, and only after the page was clicked or typed in once (the browser's autoplay rule). Push on phones and the desktop app's system notifications keep their own sound.",
+    input: z.object({ action: z.literal("profile.notificationSound"), notificationSound: notificationSoundSchema }),
+    result: z.object({ notificationSound: notificationSoundSchema }),
   },
   {
     action: "profile.startScreen",
