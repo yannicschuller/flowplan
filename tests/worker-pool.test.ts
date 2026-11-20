@@ -347,3 +347,29 @@ test("the search gives in a worker thread what it gives on the request thread", 
   }
   assert.ok((await searchWorkspace(owner, wid, "Lieferkette")).length >= 5);
 });
+
+test("MCP query_database gives in a worker thread what it gives on the request thread", async () => {
+  const { queryDatabase } = await import("../lib/mcp");
+  const schema = await database(table);
+  await command(owner, {
+    action: "database.update",
+    pageId: table,
+    version: schema.version,
+    fields: schema.fields,
+    views: [...schema.views, { id: "big", name: "Groß", type: "table", filters: [{ field: "amount", op: "gt", value: "20" }], sorts: [{ field: "amount", direction: "desc" }] }],
+  });
+  await exportJira(owner, { pageId: child });
+  const query = (person: Identity, args: Parameters<typeof queryDatabase>[1]) =>
+    pool.offThread("mcp.query_database", [person, args], () => queryDatabase(person, args), { ifFree: true });
+  for (const args of [{ databaseId: table }, { databaseId: table, viewId: "big", limit: 10, offset: 5 }, { databaseId: table, query: "Eintrag 1" }]) {
+    const here = await inThread(() => queryDatabase(owner, args));
+    const there = await inWorker(() => query(owner, args));
+    assert.deepEqual(there, here, JSON.stringify(args));
+  }
+  assert.ok(((await queryDatabase(owner, { databaseId: table, viewId: "big" })) as { total: number }).total > 0);
+  // No access: the same error from the worker.
+  const refusal = async (fn: () => Promise<unknown>) => await fn().then(() => null, (e: unknown) => (e instanceof HttpError ? [e.status, e.message] : String(e)));
+  const here = await inThread(() => refusal(() => queryDatabase(stranger, { databaseId: table })));
+  assert.ok(here);
+  assert.deepEqual(await refusal(() => query(stranger, { databaseId: table })), here);
+});
