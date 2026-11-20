@@ -28907,6 +28907,13 @@ h3 .block-reactions {
   .ai-ask-greeting {
     font-size: 30px;
   }
+  /* The sheet is short: the greeting, the question and the suggestions. */
+  .ask-panel .ai-ask-hint {
+    display: none;
+  }
+  .ask-panel .ai-ask-suggestions {
+    margin-top: 20px;
+  }
   /* 16 px: iOS zooms into smaller fields. */
   .ai-ask-box textarea {
     font-size: 16px;

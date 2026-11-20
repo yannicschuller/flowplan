@@ -190,7 +190,8 @@ export function AskPanel({
   useEffect(() => () => controller.current?.abort(), []);
   useLayoutEffect(() => {
     const el = log.current;
-    if (el && visible && stick.current) el.scrollTop = el.scrollHeight;
+    // Before the first question the greeting is read from the top.
+    if (el && visible && stick.current) el.scrollTop = messages.length ? el.scrollHeight : 0;
   }, [messages, visible]);
   // Every request to open: the sheet comes up, the question (if any) is in
   // the field and focus moves into the panel.
