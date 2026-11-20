@@ -4205,6 +4205,14 @@ tr:hover .row-open,
 .form-heading {
   margin-bottom: 30px;
 }
+/* Long titles and compound words (e.g. "Beschaffungsanfrage") stay inside
+   the card on phones and in narrow embeds (#412): smaller on narrow
+   screens, hyphenated by the page language, broken as a last resort. */
+.form-heading h1 {
+  font-size: clamp(24px, 7.5vw, 34px);
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
 .form-heading p {
   font-size: 13px;
   color: var(--muted);
