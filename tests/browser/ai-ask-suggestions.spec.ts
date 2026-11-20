@@ -149,6 +149,7 @@ test("Ask AI: greeting, suggestions that fit, the composer's pills and sending a
     await expect(details).toContainText("OpenAI-kompatibel");
     await expect(details).toContainText("gpt-4.1-mini");
     await expect(details).toContainText("Texte bleiben auf diesem Server.");
+    await shoot(page, panel, `${phone ? "phone" : "desktop"}-model-details`);
     // Escape closes the details, not the panel.
     await page.keyboard.press("Escape");
     await expect(details).toBeHidden();
@@ -160,6 +161,7 @@ test("Ask AI: greeting, suggestions that fit, the composer's pills and sending a
     await expect(note).toHaveAttribute("aria-expanded", "false");
     await note.click();
     await expect(panel).toContainText("wird nicht auf dem Server gespeichert");
+    await shoot(page, panel, `${phone ? "phone" : "desktop"}-privacy`);
     await page.keyboard.press("Escape");
     await expect(note).toHaveAttribute("aria-expanded", "false");
 

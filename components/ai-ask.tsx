@@ -522,7 +522,7 @@ export function AskPanel({
                 {m.content}
               </div>
             ) : (
-              <div key={i} className={`ai-ask-answer${m.streaming ? " streaming" : ""}${m.error ? " error" : ""}`}>
+              <div key={i} className={`ai-ask-answer${m.streaming ? " streaming" : ""}${m.error ? " failed" : ""}`}>
                 {m.streaming && !m.content ? (
                   <p className="ai-ask-thinking">{t("Sucht im Arbeitsbereich …", "Searching the workspace …")}</p>
                 ) : m.error ? (
