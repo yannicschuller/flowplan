@@ -41,6 +41,7 @@ import { Avatar, Modal, showNotice } from "../../ui";
 import { Select } from "../../select";
 import { EmptyState, NumberField, SaveState, StatusBadge, useSaveState, type Tone } from "../../settings-ui";
 import { AiUserSwitch } from "../../ai-settings";
+import { AiRulePanel } from "./ai-rule";
 import { useAdminData, type AdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, type StatusItem } from "./parts";
@@ -882,6 +883,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
         </section>
       )}
       {(ssoGroups || identities.length > 0) && <SsoGroups report={ssoGroups} now={now} />}
+      {data.aiPolicy?.enabled && <AiRulePanel scope="user" target={u.id} name={u.name} className="ux-block" />}
       <form
         className="ux-block ux-rows"
         aria-label={t(`Einstellungen für ${u.name}`, `Settings for ${u.name}`)}

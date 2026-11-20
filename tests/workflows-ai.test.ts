@@ -229,3 +229,33 @@ test("no tools, no actions: the AI's answer is only a value; a workflow without 
   assert.ok(mock.chats.every((c) => !("tools" in (c as object))));
   void id;
 });
+
+test("the model: a workflow runs with the model the administration set for the person it runs as", async () => {
+  mock.answer = () => "Kurz gesagt.";
+  // The editor gets a larger model than the instance's default ("chat").
+  await act({ action: "admin.aiRule", scope: "user", target: editor.id, model: "chat-large" }, admin);
+  try {
+    const scope = (await act({ action: "page.create", workspaceId: wid, spaceId: space, title: "Modell-Übersicht" })).id as string;
+    const build = () => {
+      const t = node("trigger.page.created", { scope: { kind: "below", pageId: scope, depth: "children" }, kinds: ["document"] }, "Neu");
+      const ai = node("ai.summarize", { text: `{{${t.id}.page.title}}`, length: "sentence", language: "auto" }, "KI");
+      return { nodes: [t, ai], edges: [edge(t, ai)] };
+    };
+    // Activated by the editor: runs as the editor, with the editor's model –
+    // whoever creates the page.
+    const asEditor = await workflow("Als Bearbeiterin", build(), editor);
+    await act({ action: "page.create", workspaceId: wid, spaceId: space, parentId: scope, title: "Erste" });
+    await drainWorkflows();
+    assert.equal((await lastRun(asEditor.pageId)).status, "succeeded");
+    assert.equal(mock.chats.at(-1)!.model, "chat-large");
+    await act({ action: "workflow.pause", pageId: asEditor.pageId }, editor);
+    // Activated by the owner (no rule): the instance's default.
+    const asOwner = await workflow("Als Eigentümerin", build());
+    await act({ action: "page.create", workspaceId: wid, spaceId: space, parentId: scope, title: "Zweite" }, editor);
+    await drainWorkflows();
+    assert.equal((await lastRun(asOwner.pageId)).status, "succeeded");
+    assert.equal(mock.chats.at(-1)!.model, "chat");
+  } finally {
+    await act({ action: "admin.aiRule", scope: "user", target: editor.id, model: null }, admin);
+  }
+});

@@ -154,6 +154,8 @@ export type AiStatus = {
     source: "instance" | "user";
     // Text stays on this server (or in its own network).
     local: boolean;
+    // The administration set this person's model (lib/ai/model-policy.ts).
+    assigned?: boolean;
   } | null;
   // Whether the person may store an own provider.
   userProviders: boolean;

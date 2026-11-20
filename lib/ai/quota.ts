@@ -96,7 +96,7 @@ export function periodBounds(period: QuotaPeriod, ms: number, zone: string, week
 /* ---------- Settings and rules ---------- */
 
 const limitValue = z.number().min(0).max(1e12).nullable().optional();
-const limitsSchema = z.object(Object.fromEntries(QUOTA_PERIODS.map((p) => [p, limitValue])) as Record<QuotaPeriod, typeof limitValue>).strict();
+export const limitsSchema = z.object(Object.fromEntries(QUOTA_PERIODS.map((p) => [p, limitValue])) as Record<QuotaPeriod, typeof limitValue>).strict();
 const settingsSchema = z.object({
   unit: z.enum(["tokens", "cost"]),
   timeZone: z.string().trim().max(100).refine((zone) => validZone(zone), "Unbekannte Zeitzone."),
@@ -119,7 +119,7 @@ export async function quotaSettings(): Promise<QuotaSettings> {
 }
 
 // Only the periods with a number; tokens are whole.
-function cleanLimits(raw: unknown, unit: QuotaUnit): QuotaLimits {
+export function cleanLimits(raw: unknown, unit: QuotaUnit): QuotaLimits {
   const parsed = limitsSchema.safeParse(raw ?? {});
   const out: QuotaLimits = {};
   if (!parsed.success) return out;
@@ -144,7 +144,7 @@ export async function quotaRules(unit?: QuotaUnit): Promise<QuotaRule[]> {
     return [];
   }
 }
-const hasLimit = (limits: QuotaLimits | null | undefined) => !!limits && QUOTA_PERIODS.some((p) => typeof limits[p] === "number");
+export const hasLimit = (limits: QuotaLimits | null | undefined) => !!limits && QUOTA_PERIODS.some((p) => typeof limits[p] === "number");
 
 /* ---------- Which limits apply ---------- */
 
@@ -171,8 +171,8 @@ export function personalLimits(rules: QuotaRule[], who: QuotaPerson): PersonalLi
 }
 export const instanceLimits = (rules: QuotaRule[]) => rules.find((r) => r.scope === "instance")?.limits ?? null;
 
-// Roles and groups of a person.
-async function personOf(user: Pick<Identity, "id" | "isAdmin">): Promise<QuotaPerson> {
+// Roles and groups of a person (also for the model, lib/ai/model-policy.ts).
+export async function quotaPerson(user: Pick<Identity, "id" | "isAdmin">): Promise<QuotaPerson> {
   const groups = (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", user.id)).map((g) => g.group_id);
   const roles: QuotaRole[] = [];
   if (user.isAdmin) roles.push("admin");
@@ -327,7 +327,7 @@ export async function requireQuota(
   const workflow = input.feature === "workflows";
   const instance = instanceLimits(rules);
   const checkInstance = hasLimit(instance) && (!workflow || settings.workflowsCountInstance);
-  const personal = workflow ? null : personalLimits(rules, await personOf(user));
+  const personal = workflow ? null : personalLimits(rules, await quotaPerson(user));
   const checkPerson = !!personal && hasLimit(personal.limits);
   if (!checkInstance && !checkPerson) return () => {};
   const ai = await instanceAiSettings();
@@ -374,7 +374,7 @@ export async function quotaStatus(user: Pick<Identity, "id" | "isAdmin">, source
   const base: QuotaStatus = { applies: false, unit: settings.unit, currency: ai.currency, warnAt: settings.warnAt, timeZone: settings.timeZone, exempt: false, periods: [], low: false, blocked: false };
   const rules = await quotaRules(settings.unit);
   if (!rules.length || source !== "instance") return base;
-  const personal = personalLimits(rules, await personOf(user));
+  const personal = personalLimits(rules, await quotaPerson(user));
   const periods = [
     ...(hasLimit(personal.limits) ? await periodStates("person", personal.limits!, settings, ai.prices, { userId: user.id }, now) : []),
     ...(hasLimit(instanceLimits(rules)) ? await periodStates("instance", instanceLimits(rules)!, settings, ai.prices, { instance: true, workflows: settings.workflowsCountInstance }, now) : []),
@@ -438,6 +438,7 @@ export async function forgetQuotaPerson(userId: string) {
   );
   await run("DELETE FROM ai_quota_usage WHERE user_id=?", userId);
   await run("DELETE FROM ai_quota_rules WHERE scope='user' AND target=?", userId);
+  await run("DELETE FROM ai_model_rules WHERE scope='user' AND target=?", userId);
 }
 
 /* ---------- Administration ---------- */
@@ -527,7 +528,11 @@ export async function adminQuotaView(period: QuotaPeriod = "month", now = Date.n
   const models = new Map<string, UsageRow[]>();
   for (const r of rows) models.set(r.model, [...(models.get(r.model) || []), r]);
   const usedModels = [...models.keys()].filter(Boolean);
+  // The model per person, group and role (lib/ai/model-policy.ts) beside the limits.
+  const { quotaModelView } = await import("./admin-rule");
+  const model = await quotaModelView(personView);
   return {
+    model: { provider: model.provider, rules: model.modelRules, options: model.modelOptions },
     settings,
     currency: ai.currency,
     priced: ai.prices.length > 0,
@@ -539,7 +544,7 @@ export async function adminQuotaView(period: QuotaPeriod = "month", now = Date.n
     resetAt,
     instance: { limit: instanceLimits(rules)?.[period] ?? null, used: amountOf(instanceRows, settings.unit, ai.prices), tokens: tokens(instanceRows), cost: priced(instanceRows) },
     workflows: { tokens: tokens(rows.filter((r) => r.kind === "workflow")) },
-    people: personView,
+    people: personView.map((p) => ({ ...p, model: model.effective.get(p.id) ?? null })),
     groups: groups.map((g) => {
       const members = memberships.filter((m) => m.group_id === g.id).map((m) => m.user_id);
       const list = personal.filter((r) => members.includes(r.user_id));

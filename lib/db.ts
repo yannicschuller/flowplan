@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 116;
+export const SCHEMA_VERSION = 117;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1628,11 +1628,24 @@ function migrate(d: DatabaseSync) {
   migrateWidgetPush(d);
   // Schema 116 – a notebook's attachments (lib/notebook.ts, #392).
   migrateNotebookAttachments(d);
+  // Schema 117 – the AI model per person, group and role (lib/ai/model-policy.ts).
+  migrateAiModelRules(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 117 – the AI model per person, workspace group and role
+// (lib/ai/model-policy.ts): ai_model_rules holds, per level (scope 'role',
+// 'group', 'user'; target the role, group or account), the model of the
+// instance's provider these people use instead of the instance's default
+// ('' on a person: the instance's default, whatever their groups say), and
+// the provider kind it was chosen for – a rule for another kind than the
+// instance's current one does not apply. An older version would send every
+// request with the instance's model, hence the number.
+export function migrateAiModelRules(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS ai_model_rules(scope TEXT NOT NULL CHECK(scope IN ('role','group','user')),target TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL,PRIMARY KEY(scope,target));`);
 }
 // Schema 116 – PDFs attached to a notebook without becoming sheets (#392,
 // lib/notebook.ts): notebooks.attachments, a JSON list of the files (of the

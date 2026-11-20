@@ -78,3 +78,16 @@ export function tightest(periods: QuotaPeriodState[]): QuotaPeriodState | null {
   for (const p of periods) if (!best || quotaShare(p) > quotaShare(best)) best = p;
   return best;
 }
+
+// The model per person, group and role (lib/ai/model-policy.ts): which
+// model of the instance's provider a person's AI uses instead of the
+// instance's default. On a person, model '' means the instance's default
+// (whatever their groups say). `kind`: the provider kind the rule was
+// chosen for – a rule for another kind than the instance's provider is
+// inactive.
+export const MODEL_RULE_SCOPES = ["role", "group", "user"] as const;
+export type ModelRuleScope = (typeof MODEL_RULE_SCOPES)[number];
+export type ModelRule = { scope: ModelRuleScope; target: string; model: string; kind: string };
+// What applies to a person: the model, which level set it ('instance': the
+// instance's default, no rule) and the instance's default for comparison.
+export type ModelPolicy = { model: string; source: "user" | "group" | "role" | "instance"; target: string | null; default: string };

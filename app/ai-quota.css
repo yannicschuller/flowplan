@@ -143,3 +143,144 @@
     max-width: none;
   }
 }
+/* The model column of the limits table and the note below it. */
+.fp-select.ai-quota-model {
+  width: 100%;
+  min-width: 150px;
+  max-width: 220px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.ai-quota-model-note {
+  margin: 0;
+  padding: 12px 22px 4px;
+  font-size: 12.5px;
+}
+/* "KI" in a person's details (Administration → Benutzer) and in a group's
+   dialog (components/settings/admin/ai-rule.tsx). */
+.ai-rule {
+  display: grid;
+  gap: 2px;
+}
+.ai-rule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+.ai-rule-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.ai-rule-head svg {
+  color: var(--secondary);
+}
+.ai-rule-note {
+  margin: 4px 0;
+  font-size: 12.5px;
+}
+.ai-rule-error {
+  color: var(--danger, #b42318);
+}
+.ai-rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 50px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.ai-rule-text {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+}
+.ai-rule-text label {
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.ai-rule-text small {
+  color: var(--secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ai-rule-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 60%;
+}
+.fp-select.ai-rule-select {
+  width: 210px;
+  max-width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.ai-rule-limits {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 0 10px;
+}
+.ai-rule-limits label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.ai-rule-limits .ai-quota-limit {
+  max-width: none;
+  min-width: 0;
+}
+.ai-rule-usage {
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--border);
+}
+.ai-rule-usage-head {
+  margin: 0 0 8px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.ai-rule-usage .ai-quota-bars {
+  gap: 10px;
+  padding: 0;
+}
+/* In a workspace group's dialog: below the member list. */
+.ws-ai-rule {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 600px) {
+  .ai-rule-row {
+    flex-wrap: wrap;
+  }
+  .ai-rule-control {
+    max-width: 100%;
+    width: 100%;
+  }
+  .fp-select.ai-rule-select {
+    flex: 1;
+    width: auto;
+    min-height: 44px;
+  }
+  .ai-rule-control .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .ai-rule-limits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ai-rule-limits .ai-quota-limit {
+    min-height: 44px;
+  }
+}

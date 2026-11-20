@@ -19,6 +19,7 @@ import { AI_FEATURE_IDS, AI_REASON_TEXT } from "@/lib/ai/features";
 import { aiBlockInfo, aiPageAccess, aiRules } from "@/lib/ai/access";
 import { aiProviderSource, aiStatus, draftProviderConfig, instanceProviderConfig, userProviderConfig } from "@/lib/ai/resolve";
 import { adminQuotas, quotaStatus } from "@/lib/ai/quota";
+import { aiRuleView } from "@/lib/ai/admin-rule";
 import { QUOTA_PERIODS } from "@/lib/ai/quota-shared";
 import { aiStreamResponse, AI_LIMITS } from "@/lib/ai/run";
 import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
@@ -155,6 +156,10 @@ async function handleGET(req: Request, { params }: { params: Promise<{ path: str
     if (path.length === 2 && path[0] === "admin" && path[1] === "quotas") {
       return NextResponse.json(await adminQuotas(user, z.enum(QUOTA_PERIODS).catch("month").parse(url.searchParams.get("period") || "month")), noStore);
     }
+    // The model and the limits of one person, group or role, with its usage
+    // (lib/ai/admin-rule.ts; a person's details, a group's dialog).
+    if (path.length === 2 && path[0] === "admin" && path[1] === "rule")
+      return NextResponse.json(await aiRuleView(user, { scope: url.searchParams.get("scope"), target: url.searchParams.get("target") }), noStore);
     // AI in a database: values waiting to be computed, and when and with
     // which model each value was computed.
     if (path.length === 2 && path[0] === "database" && path[1] === "status")
