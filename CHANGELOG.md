@@ -2,6 +2,230 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.0 – 2026-11-20
+
+### New
+
+- File previews: 3D and CAD files (STL, OBJ, glTF/GLB, 3MF, STEP, IGES), 2D drawings (DXF, DWG), spreadsheets (CSV, XLSX) and uploaded HTML files open right in Flowplan – HTML isolated, scripts only on request ([#384](https://github.com/yannicschuller/flowplan/issues/384), [#398](https://github.com/yannicschuller/flowplan/issues/398), [#402](https://github.com/yannicschuller/flowplan/issues/402)).
+- Timeline: ranges, continuous zoom, free scrolling, milestones, and arrows and hierarchy set per view ([#390](https://github.com/yannicschuller/flowplan/issues/390), [#394](https://github.com/yannicschuller/flowplan/issues/394), [#395](https://github.com/yannicschuller/flowplan/issues/395)).
+- Side panel: open records beside the view and PDFs beside the page – with annotations and snippets into a notebook ([#392](https://github.com/yannicschuller/flowplan/issues/392)).
+- Comments on text sit in the margin beside their passage ([#387](https://github.com/yannicschuller/flowplan/issues/387)).
+- AI: model and quota per person and group (Administration → Users), limits for the whole instance, and everyone sees what is left ([#382](https://github.com/yannicschuller/flowplan/issues/382)).
+- "Ask AI" as a chat with a greeting, suggestions and an input box with options.
+- Show and hide features: per person, with a default for new accounts, or for the whole instance ([#378](https://github.com/yannicschuller/flowplan/issues/378), [#386](https://github.com/yannicschuller/flowplan/issues/386)).
+- Offline: new pages, databases, boards, notebooks, template pages and uploads wait on the device until the connection is back ([#370](https://github.com/yannicschuller/flowplan/issues/370)).
+- Automations: "Create task" adds a task to the record or to a task database ([#380](https://github.com/yannicschuller/flowplan/issues/380)).
+- Starter content for new accounts ([#381](https://github.com/yannicschuller/flowplan/issues/381)).
+- Flashcards: Anki sub-decks as databases of their own, AI flashcards right from the PDF viewer, image occlusion with zoom, a memory model per sub-deck and card type, decks as marketplace templates ([#341](https://github.com/yannicschuller/flowplan/issues/341), [#342](https://github.com/yannicschuller/flowplan/issues/342), [#343](https://github.com/yannicschuller/flowplan/issues/343), [#344](https://github.com/yannicschuller/flowplan/issues/344), [#345](https://github.com/yannicschuller/flowplan/issues/345)).
+- Whiteboards follow dark mode; anyone who prefers a light canvas picks "Always light" ([#399](https://github.com/yannicschuller/flowplan/issues/399)).
+- A short sound for new notifications while Flowplan is open (can be switched off) ([#401](https://github.com/yannicschuller/flowplan/issues/401)).
+- Image markup: pinch to zoom and pan, a visible "Mark up" button ([#404](https://github.com/yannicschuller/flowplan/issues/404)).
+- Forms suggest earlier answers while typing and support fixed suggestion lists ([#374](https://github.com/yannicschuller/flowplan/issues/374), [#385](https://github.com/yannicschuller/flowplan/issues/385)).
+- Emoji suggestions after ":" in the editor, and password fields with an eye button ([#388](https://github.com/yannicschuller/flowplan/issues/388), [#372](https://github.com/yannicschuller/flowplan/issues/372)).
+- S3 storage: optionally cache only part of the files locally, the bucket holds them all ([#389](https://github.com/yannicschuller/flowplan/issues/389)).
+
+### Improved
+
+- Much faster with many people: a live signal instead of polling, search, exports and opening large databases in background threads, filters in SQL, less memory per person ([#383](https://github.com/yannicschuller/flowplan/issues/383)).
+- A smaller image (435 → 278 MB) and less JavaScript when the app loads.
+- Library: all shelves in the navigation, books and chapters open as overviews ([#329](https://github.com/yannicschuller/flowplan/issues/329)).
+- Published and shared pages: full width for databases, a theme button, back to the view ([#391](https://github.com/yannicschuller/flowplan/issues/391), [#393](https://github.com/yannicschuller/flowplan/issues/393)).
+- The AI writing assistant makes room for "AI actions" and closes once they ran ([#400](https://github.com/yannicschuller/flowplan/issues/400)).
+- Marketplace packages and templates leave people out ([#345](https://github.com/yannicschuller/flowplan/issues/345)).
+- Litestream: a stuck replica is detected earlier; how much it logs can be set ([#335](https://github.com/yannicschuller/flowplan/issues/335)).
+- Mac desktop app: passkeys from the iCloud Keychain through the browser; passkeys can also be added from the phone apps.
+- Missing French and Chinese texts filled in ([#339](https://github.com/yannicschuller/flowplan/issues/339)).
+
+### Bug fixes
+
+- Nothing moves under your finger on touch screens any more; drawing blocks no longer trap touches ([#377](https://github.com/yannicschuller/flowplan/issues/377), [#322](https://github.com/yannicschuller/flowplan/issues/322)).
+- Clicks right after switching a database view reach the new view ([#338](https://github.com/yannicschuller/flowplan/issues/338)).
+- Moving, renaming or restyling a space shows up in other tabs at once.
+- A link to a record no longer reports it as gone too early.
+- Timeline on phones: titles in two lines, labels clear of the arrows.
+- Emoji icons in the sidebar, favorites and recent pages are no longer clipped.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.11.0, version references from 0.10.2 to 0.11.0 ([218486c](https://github.com/yannicschuller/flowplan/commit/218486c71548fe5be24cffda0ff157087183152a))
+- Revert the @xyflow/react 13 upgrade for now ([94708fc](https://github.com/yannicschuller/flowplan/commit/94708fc5e1c6a7b3948856124d509bf5a76773a5))
+- Upgrade @xyflow/react to 13 ([e07d7c5](https://github.com/yannicschuller/flowplan/commit/e07d7c51e2ee0ae28a500be1078a4dd8be102cc4))
+- Update all @tiptap packages to 3.35.0 ([6d8f06f](https://github.com/yannicschuller/flowplan/commit/6d8f06fa8e15195b277492e85172546877612900))
+- Bump @simplewebauthn/server from 14.0.3 to 14.1.0 ([050345e](https://github.com/yannicschuller/flowplan/commit/050345e7d0843ef91657eed53953e7789088eb61))
+- Browser spec image-markup-zoom: a pinch lands within a few per cent ([19ea0a4](https://github.com/yannicschuller/flowplan/commit/19ea0a407e156d0c354fb137fccbb7a1e56411c1))
+- Help docs: image markup with zoom ([e728270](https://github.com/yannicschuller/flowplan/commit/e7282702e9a684dbf1c29e7c8ef5f64efaff9458))
+- Opening a database: the backlinks' table brought up to date first (#383) ([265fe81](https://github.com/yannicschuller/flowplan/commit/265fe8121c0ef36ece675eba7fb17845f47e87bb))
+- Worker pool: ifFree work whose thread ends runs on the request thread (#383) ([24f3138](https://github.com/yannicschuller/flowplan/commit/24f31382c570cf8f91efea2bf11cf3d22ca96e87))
+- Opening a database: built and serialised in a worker thread when one is free (#383) ([e8a1ed6](https://github.com/yannicschuller/flowplan/commit/e8a1ed6ef4ef6929798d4621a32e5cecc083b04c))
+- MCP query_database in a worker thread when one is free (#383) ([6e5589b](https://github.com/yannicschuller/flowplan/commit/6e5589bcdf995d16e17580eedec071d93e9f831b))
+- Search in a worker thread when one is free (#383) ([13cde69](https://github.com/yannicschuller/flowplan/commit/13cde69e1beccb7d8358178bfeaf7a1d650f2fc2))
+- SQLite rows as fast objects: built from arrays in column order (#383) ([52fdc2e](https://github.com/yannicschuller/flowplan/commit/52fdc2e53f6e09e9d257ebca85d779a497fc2fd4))
+- Image markup: pinch to zoom and pan, a visible "Markieren" button (#404) ([31959a2](https://github.com/yannicschuller/flowplan/commit/31959a2c877891b176c53355628459a29da8b847))
+- Help docs: changing the e-mail address ([9175038](https://github.com/yannicschuller/flowplan/commit/9175038d20a11d880c084ae0974bd7cdfd48085a))
+- Help docs: file previews page, scripts in the HTML preview, notification sound ([1a536df](https://github.com/yannicschuller/flowplan/commit/1a536df528e55a54dcd08bcaa324bb16f48c30f0))
+- Read-only viewer for CSV and XLSX files (#402) ([f84d8ea](https://github.com/yannicschuller/flowplan/commit/f84d8ea81276746d948dead741e100cd9284b978))
+- AI writing assistant: closes once its actions ran (#400) ([07db71b](https://github.com/yannicschuller/flowplan/commit/07db71b009e752effe0620dfbb651b6b24cde3c3))
+- Notifications: a short sound in the open app (#401) ([fdbcbb3](https://github.com/yannicschuller/flowplan/commit/fdbcbb351fa6b2fdb0cf6069a78c614f755ad438))
+- HTML preview: tidy the comment on scripts (#398) ([eaa1b0f](https://github.com/yannicschuller/flowplan/commit/eaa1b0f08d4ac4b2a49415d335411e4f63698846))
+- HTML preview: run scripts on request, isolated (#398) ([6f7a59d](https://github.com/yannicschuller/flowplan/commit/6f7a59d62c96bb9b6175d44917e1bacb684ec8b0))
+- Help docs: document scanning on Android ([bfc993d](https://github.com/yannicschuller/flowplan/commit/bfc993df7caf72393277c0a2c8c73eba5e335064))
+- HTML preview: the size limit from FLOWPLAN_HTML_PREVIEW_MB (#398) ([b9f800d](https://github.com/yannicschuller/flowplan/commit/b9f800dc998f767f7d8a4f623ee1dea4a42be7ab))
+- AI writing assistant: step aside for "KI-Aktionen" (#400) ([cbeb563](https://github.com/yannicschuller/flowplan/commit/cbeb56309597693feb29d387723a801b7b4bc09e))
+- Gallery: the HTML preview dialog is not in a scene yet ([766b2c5](https://github.com/yannicschuller/flowplan/commit/766b2c5d54aceb5ec931316a7351f0a72ea2f607))
+- Help docs: HTML preview, dark whiteboard canvas ([b10328b](https://github.com/yannicschuller/flowplan/commit/b10328b3d27d633a1c73ae7d873589f4f9896c13))
+- Whiteboard: dark canvas in dark mode (#399) ([5ed1e0a](https://github.com/yannicschuller/flowplan/commit/5ed1e0a9c4601f89d3fe068ecbbced7daeaa0868))
+- Sandboxed viewer for uploaded HTML files (#398) ([6cc97d6](https://github.com/yannicschuller/flowplan/commit/6cc97d68453c9fe4eefd7451a021631ca9160bd4))
+- Browser specs: published records beside the view, layout saved via API ([a5750f8](https://github.com/yannicschuller/flowplan/commit/a5750f8ec50fbe7c15b69e6813d008c6d86dfc1a))
+- Bootstrap cache test: space changes move the workspace's page version ([3c52548](https://github.com/yannicschuller/flowplan/commit/3c52548dec51f295a9b223f54cb48632a3cc399e))
+- Live signal: moving, renaming or restyling a space tells the other tabs ([dbd57ce](https://github.com/yannicschuller/flowplan/commit/dbd57ceb81ab411dcaee782027ef36bd3575a478))
+- Record links: ask for the database once before calling a record gone ([bb1dd2c](https://github.com/yannicschuller/flowplan/commit/bb1dd2c0694e033f22b5dd3d90d0be338e2a156e))
+- Timeline: titles on phones in two lines, beside-labels clear of arrows ([97a4ae0](https://github.com/yannicschuller/flowplan/commit/97a4ae0e1c35d14bcab0b3a7bfccf40d88cf9a89))
+- Help docs: FLOWPLAN_WORKERS ([c5d2f97](https://github.com/yannicschuller/flowplan/commit/c5d2f97fb04879a0a8894beaafead0681f575ff1))
+- Ask AI on phones: the greeting from the top, without the hint in the short sheet ([da11085](https://github.com/yannicschuller/flowplan/commit/da11085bf482666e79b6f22b09d23468d11408f5))
+- Ask AI: a failed answer keeps its own quiet error box; spec shots of the details ([8e9eb17](https://github.com/yannicschuller/flowplan/commit/8e9eb1746a15d9543e40fa2f691c5304cda3a5ea))
+- Help docs: AI model per person, desktop passkeys ([fc376d3](https://github.com/yannicschuller/flowplan/commit/fc376d3c30594371a0da2eb071cd9959e65acad6))
+- Mac desktop app: passkeys from the iCloud Keychain through the browser ([dbb41b2](https://github.com/yannicschuller/flowplan/commit/dbb41b267ceb21a8d29f6b7b8201e37324182003))
+- Worker threads: AsyncLocalStorage on globalThis, as Next.js's server has it (#383) ([a129507](https://github.com/yannicschuller/flowplan/commit/a129507549c120b0157b0b8322ba4cb87ec1d7f2))
+- Worker threads: English texts of the new messages (#383) ([7d6f9e9](https://github.com/yannicschuller/flowplan/commit/7d6f9e94ec338e6467bf4f1e439e447443081e98))
+- Server-side database queries: filters in SQL, only the page computed (#383) ([5c6cbbf](https://github.com/yannicschuller/flowplan/commit/5c6cbbf9acc60eb86ce32c509194a302db914c7a))
+- AI model per person: English, French and Chinese error texts ([e7a73bf](https://github.com/yannicschuller/flowplan/commit/e7a73bf98f1c38bc37d2ce5682c2466bee40e2a7))
+- Ask AI: browser spec for the greeting, suggestions, composer pills and phone sheet ([7569a4f](https://github.com/yannicschuller/flowplan/commit/7569a4fa7b27d6447148249f0811d15a7ea3455c))
+- Ask AI: chat with suggestions – greeting, composer box with pills, quiet sources ([88637fb](https://github.com/yannicschuller/flowplan/commit/88637fba26dedeadf38a1672a2af4f7018c8db09))
+- Worker threads: .env.example and the database architecture notes (#383) ([a469fe5](https://github.com/yannicschuller/flowplan/commit/a469fe5894e80a481c7e0b136f46f06c87ddb6df))
+- AI model per person: browser spec (Opus for one person, Haiku for the rest) ([d1d284d](https://github.com/yannicschuller/flowplan/commit/d1d284ddc4bf82f4b5c4de3562352c341864305e))
+- AI model per person: French and Chinese texts ([15702cd](https://github.com/yannicschuller/flowplan/commit/15702cdab7188327ddd287ebc45974fd8a17a84a))
+- Worker threads: metrics, standalone check, type fixes (#383) ([a49fcd3](https://github.com/yannicschuller/flowplan/commit/a49fcd3aca2989c97268a8d6b2a4432c4bb00dc9))
+- AI: model and quota per person and group (Administration → Benutzer) ([b031512](https://github.com/yannicschuller/flowplan/commit/b03151243f26f89ca00fd43a0bfc70593352568a))
+- Desktop sign-in page: the code wraps and has a copy button ([aca8e8a](https://github.com/yannicschuller/flowplan/commit/aca8e8a5272453a60f97486f5d1942a192cc0a27))
+- Exports and import reading in worker threads (#383) ([8f9b485](https://github.com/yannicschuller/flowplan/commit/8f9b485d0884939238beb2226cf82253d77b08d1))
+- AI quotas: the usage card lines up with its header and tables ([26f42be](https://github.com/yannicschuller/flowplan/commit/26f42becc45dddf79ed1f70cd9c18ab72db07427))
+- Help docs: timeline arrows, shifting, hierarchy and groups (#394, #395) ([cf0b48c](https://github.com/yannicschuller/flowplan/commit/cf0b48cae4749933f3e9d2fd2c664cc846f186a2))
+- SDK: timeline settings and the unlink/restore commands (#394 #395) ([387e991](https://github.com/yannicschuller/flowplan/commit/387e991aedac919ca4ec56688267960a250b73f5))
+- Help docs: removing old cover images (#396) ([4e009f8](https://github.com/yannicschuller/flowplan/commit/4e009f877b5430721105c1030e9f76800f03b6ab))
+- Timeline: one arrowhead size, coloured bars keep their colour on hover (#394 #395) ([66e1f8f](https://github.com/yannicschuller/flowplan/commit/66e1f8f1004f3d0fb441c7e91b901942efeb63b6))
+- Timeline: browser specs for arrows, shift modes with undo and the hierarchy (#394 #395) ([a6cc528](https://github.com/yannicschuller/flowplan/commit/a6cc52892677cdecc29c1995d571494a4e0dfbee))
+- Gallery: cover picker scene with a former, unused cover (#396) ([f719ada](https://github.com/yannicschuller/flowplan/commit/f719ada4fa1d2467c7ffa69acdea0923ed72654b))
+- Timeline settings: French and Chinese texts (#394 #395) ([7258895](https://github.com/yannicschuller/flowplan/commit/725889561d2f0fd8a5cdfa56c6b14c3d60dd5d58))
+- Timeline: per-view arrow and hierarchy settings (WIP, #394 #395) ([3d08bea](https://github.com/yannicschuller/flowplan/commit/3d08beae287e22d77daebff3ee719aa8dd2872e0))
+- Cover dialog: remove images no longer used (#396) ([d72418d](https://github.com/yannicschuller/flowplan/commit/d72418d40d1fb9acac634fb6b583aad95a01dbdc))
+- Help docs: live updates without reloading (#383) ([9ff286d](https://github.com/yannicschuller/flowplan/commit/9ff286d5baa7a5868838ea65171847e1b07eff26))
+- Workspace live signal instead of polling, cheap 304 before building (#383) ([424c133](https://github.com/yannicschuller/flowplan/commit/424c13301ebc5e86dfc5a46b739de84057c07b76))
+- CI: start a fresh Next build cache (v2) ([8f9d2f5](https://github.com/yannicschuller/flowplan/commit/8f9d2f5297b5e7ac857df11be55e811188d568ec))
+- Quality: JS budgets after trimming the shell (about 3 % above the new values) ([4efaf86](https://github.com/yannicschuller/flowplan/commit/4efaf8620afed6fbee66444525963ee2c956b177))
+- Image: one API route and shared server chunks – standalone 435 → 278 MB ([19f5a94](https://github.com/yannicschuller/flowplan/commit/19f5a94d7ab4891d6619c85427ee8ae256a2d4cd))
+- Client JS: the root page's sign-in loads only for visitors (-15 KB shell) ([1f4a55c](https://github.com/yannicschuller/flowplan/commit/1f4a55c4e9482b7367c36fdbb6dac38e71402fa7))
+- Client JS: embedded whiteboards load their renderer on use (-43 KB document) ([bf8aded](https://github.com/yannicschuller/flowplan/commit/bf8aded7c30e54c8b8d12027cf17de750f6d29b4))
+- Client JS: the database view loads with the first database (-121 KB shell) ([415c387](https://github.com/yannicschuller/flowplan/commit/415c38779463460a3760d37b645fa1eeae02c2a2))
+- Client JS: icons only in the weights the app draws (-75 KB shell) ([2155ecc](https://github.com/yannicschuller/flowplan/commit/2155ecc9884d543c791cecdb2b040acf87ca045a))
+- Help docs: side panel and PDF side panel (#392) ([05ae635](https://github.com/yannicschuller/flowplan/commit/05ae635753d692a18ead00287315ef02d2c57c68))
+- Side panel: records beside the view (#392), PDFs beside the page ([a6b52c9](https://github.com/yannicschuller/flowplan/commit/a6b52c9c784b23bb250bafeb09326e4963004139))
+- Help docs: #384, #387, #389, #390, #393, #329 ([8762527](https://github.com/yannicschuller/flowplan/commit/8762527d7092946f1695270f3d227f295463fc5b))
+- Quality: JS budgets after #329, #390 and #393 (measured +1-5 KB in the shell) ([c6b51bd](https://github.com/yannicschuller/flowplan/commit/c6b51bd587b99d76df434064de8f9af1782c3e04))
+- Timeline: ranges, continuous zoom, free scrolling, milestones (#390) ([6ff5d4a](https://github.com/yannicschuller/flowplan/commit/6ff5d4a03b27f4e62c7386e2162d69ed62f58bae))
+- Library: books and chapters open as overviews, a small "New book" dialog (#329) ([7403a38](https://github.com/yannicschuller/flowplan/commit/7403a38e6e360126f385ddb7edfca974e409e22b))
+- Published pages: theme button, back to the view, record title in the path (#393) ([1793cfc](https://github.com/yannicschuller/flowplan/commit/1793cfc962bf8ae5eec13584d813f7c92fecaaf1))
+- Drawing viewer for DXF and DWG files (#384) ([973afd1](https://github.com/yannicschuller/flowplan/commit/973afd11f072dbd93a23a5946fcd921d6c1ae25e))
+- S3_LOCAL_CACHE: keep only part of the files locally, the bucket holds them all (#389) ([c36b007](https://github.com/yannicschuller/flowplan/commit/c36b007a4b53028f6fcd138084e4923f31184a97))
+- Gallery: list the emoji suggestions popup as not yet covered (#388) ([3411327](https://github.com/yannicschuller/flowplan/commit/34113270f68e1f75f5a7d148643c78bda21a2c5a))
+- Gallery: list the emoji suggestions popup as not yet covered (#388) ([3150841](https://github.com/yannicschuller/flowplan/commit/3150841729d76ea84919b08460c7695621f5034d))
+- Text comments in the margin beside their passage (#387) ([e7e598b](https://github.com/yannicschuller/flowplan/commit/e7e598b8e0bb8e14e7ab9a745c04257133500c68))
+- Shared and published database pages use the full width, like in the app (#391) ([d24ab5b](https://github.com/yannicschuller/flowplan/commit/d24ab5b9fb8fa7aaa42b34f054e1aa455c40f7a5))
+- help-docs: features of this instance (#386), emojis with ":" (#388) ([cc07d31](https://github.com/yannicschuller/flowplan/commit/cc07d312a4ae0054eab6dc64fd9f009f4e054c83))
+- Editor: the image annotator loads when an image is annotated ([b974623](https://github.com/yannicschuller/flowplan/commit/b97462324d7964f6e8ae61c103c0a6903638a1bd))
+- Editor: emoji suggestions after ":" (#388) ([f45282f](https://github.com/yannicschuller/flowplan/commit/f45282f380056d2e45285c03d00a8a9a804a8188))
+- Switch features off for the whole instance (#386) ([67ead07](https://github.com/yannicschuller/flowplan/commit/67ead07beb515206eadcaa40b6e29263c747271c))
+- help-docs: widgets 2026 ([772c998](https://github.com/yannicschuller/flowplan/commit/772c9986a8a1d6c3a8a57559a1643462f91abde8))
+- Form responses: strictly increasing positions, so responses of the same millisecond keep their order ([fe0c95f](https://github.com/yannicschuller/flowplan/commit/fe0c95fceb6bfe7635860afc7dfc1983c6eb5128))
+- Opening a database: keep the records' content (#383) ([58a1848](https://github.com/yannicschuller/flowplan/commit/58a18487219d065462a516dd5569c312f92a8410))
+- Widgets 2026 (server): workspace colours, four new kinds, iOS widget push, multi-profile devices ([54d9656](https://github.com/yannicschuller/flowplan/commit/54d9656c8815a296a13922b7a1f58617be174db9))
+- help-docs: 3D and CAD files (#384) ([10e1d47](https://github.com/yannicschuller/flowplan/commit/10e1d47af64caf17a6c82bd713a42fb6840184e8))
+- 3D viewer for STL, OBJ, glTF/GLB, 3MF, STEP and IGES files (#384) ([8b58c1c](https://github.com/yannicschuller/flowplan/commit/8b58c1cc323b6b4fd40d0f81ee1e5f4dc08a655f))
+- Opening a database: one copy per record, not two (#383) ([7a8ee70](https://github.com/yannicschuller/flowplan/commit/7a8ee70da8a6c155b113b2a86c1a7ba583270738))
+- Sidebar, favorites, recent pages: emoji icons are no longer clipped ([90e0969](https://github.com/yannicschuller/flowplan/commit/90e09696a8e1b26c2bf84b4a57755a3c2ea64469))
+- Opening a database: slim related data, kept record previews (#383) ([1550158](https://github.com/yannicschuller/flowplan/commit/155015898e5093db359f8ef3d0938584927d7754))
+- Kept roles and page lists: less memory per person (#383) ([800bac0](https://github.com/yannicschuller/flowplan/commit/800bac0004ce2bf9fa02b80399eaf1faa515a7b2))
+- Bootstrap: page list and members kept across requests, cheap 304 (#383) ([3152822](https://github.com/yannicschuller/flowplan/commit/3152822147fbd36a40307e6fc34b51569d8f1569))
+- Form designer: one notice above the questions instead of one per question, options in one row (#385) ([a866cc0](https://github.com/yannicschuller/flowplan/commit/a866cc04ae8a5517da7de34f0feae75b88dbdc0c))
+- help-docs: form suggestion lists (#385) ([fab5a96](https://github.com/yannicschuller/flowplan/commit/fab5a96a0b1f77666bf4599b06ec280750d9af98))
+- help-docs: templates leave people out (#345) ([a7468c5](https://github.com/yannicschuller/flowplan/commit/a7468c56fe5d57c9c9ae8e274d842e56ab9b533c))
+- Forms: fixed suggestion lists and a visible members-only hint (#385) ([ede28ce](https://github.com/yannicschuller/flowplan/commit/ede28ce2eba7f5a156e9300e5ccfd15fa6e3e166))
+- Roles of all pages of a workspace at once (#383) ([e54736f](https://github.com/yannicschuller/flowplan/commit/e54736fa2f4741d0b294bde707b327f2db54cf1d))
+- Marketplace: every published package leaves people out (#345) ([24394db](https://github.com/yannicschuller/flowplan/commit/24394dbec4c35644cfb64b0b4d7e8ff6f1d12093))
+- Load test: idle tabs (--kind idle) and the cost of a 304 in the probe (#383) ([8cbca79](https://github.com/yannicschuller/flowplan/commit/8cbca79834d8a8aca3ace1a65dff7d3908ca8ed8))
+- help-docs: how Flowplan uses the SQLite file (#383) ([1cc1b37](https://github.com/yannicschuller/flowplan/commit/1cc1b37a08995f0bd3d982de0d6813e43928b640))
+- Library test: index all 1,000 pages before measuring the search (#383) ([a283834](https://github.com/yannicschuller/flowplan/commit/a283834d4c219a414649ee45dd8d32f62288ca71))
+- help-docs: AI quotas (#382) ([7253fb1](https://github.com/yannicschuller/flowplan/commit/7253fb1529959678a9141dcbece0b52f8dde508d))
+- marketplace-study test: portable cells update (PostgreSQL has no json_set) ([4c94179](https://github.com/yannicschuller/flowplan/commit/4c9417949589d968bcf50207ebdc7d0edf0a4402))
+- AI quotas: limits per instance, group and person, remaining usage for everyone (#382) ([3b4986f](https://github.com/yannicschuller/flowplan/commit/3b4986faaa51d28b1d2eced9125e91ea82dbbbad))
+- help-docs: flashcard decks in the marketplace (#345) ([83e95a3](https://github.com/yannicschuller/flowplan/commit/83e95a3124b4fd7e9736ae63637a4617b6c35b9b))
+- Schema 107: backlinks from a links table instead of a full scan (#383) ([31f5a6a](https://github.com/yannicschuller/flowplan/commit/31f5a6a9043c5f78d70952cdb02523499a2282df))
+- Flashcard decks as marketplace templates, README flashcard screenshots (#345) ([137756a](https://github.com/yannicschuller/flowplan/commit/137756a36cb00d87937a49e9beb179a7c4fd4cf2))
+- Search: slim candidates, snippets for the returned hits only (#383) ([806c08c](https://github.com/yannicschuller/flowplan/commit/806c08c5134d4c4c2499b16dee16ab5a3fecf352))
+- Page presence in memory instead of a write per page GET (#383) ([45458f7](https://github.com/yannicschuller/flowplan/commit/45458f73c7e12ca3db7550fe66a355226916b252))
+- SQLite rows without a copy (#383) ([b5f6e16](https://github.com/yannicschuller/flowplan/commit/b5f6e1647b2870cd10c6d427eb457a4d68771f37))
+- Remember encryptedSpace and the record grants within a request (#383) ([c92f07f](https://github.com/yannicschuller/flowplan/commit/c92f07fe6033160f302e0245ecba8af9c21e5026))
+- Schema 106: indexes for permission checks and the page tree (#383) ([fe0a7fa](https://github.com/yannicschuller/flowplan/commit/fe0a7fa366dea7d08e0ec7089311a82c6b5dd418))
+- SQLite: synchronous=NORMAL, a larger cache, mmap, PRAGMA optimize (#383) ([1d72e91](https://github.com/yannicschuller/flowplan/commit/1d72e912723686acd9a4988f3ba8f1d0285ebccb))
+- Pause the timed refresh in hidden tabs (#383) ([a5eee5b](https://github.com/yannicschuller/flowplan/commit/a5eee5b5479469d2a2f44c7c7c1dea954ec693d8))
+- Quality: budgets with the offline page builder in the shell and the features switch (#370, #378) ([fdfc479](https://github.com/yannicschuller/flowplan/commit/fdfc47957b0a17139b6e1ec4412f25106fe8af93))
+- Fill the missing French and Chinese UI texts (#339) ([e44f5e0](https://github.com/yannicschuller/flowplan/commit/e44f5e0976f2d36d183fb602943953a10c800ad8))
+- Offline: the builder of pages made offline is in the shell again ([7319d85](https://github.com/yannicschuller/flowplan/commit/7319d85fea25baf346df2f83a8c6e8419231362a))
+- Offline: fetch the code for pages made offline in the background after start ([fc5fde5](https://github.com/yannicschuller/flowplan/commit/fc5fde5992946914e304dad516c58a61390e89b8))
+- French: starter content hint with vous (#381) ([92b07d3](https://github.com/yannicschuller/flowplan/commit/92b07d3850e258e8265dd07caf5fa9fa739c0908))
+- French: starter content hint with vous (#381) ([23f7739](https://github.com/yannicschuller/flowplan/commit/23f7739964434a67a6753d233760504cf96d48a3))
+- Next.js 16.4.6 (#348) ([51ff270](https://github.com/yannicschuller/flowplan/commit/51ff270e465b684fbc46411cff5b50cc5fbb2502))
+- help-docs: show and hide features (#378) ([911bb79](https://github.com/yannicschuller/flowplan/commit/911bb7930ffae42d6897ba3b3a9e4296e6ed63c0))
+- Quality: JS budgets for offline creation, the library and app passkeys in the shell ([de07fcb](https://github.com/yannicschuller/flowplan/commit/de07fcb3148e5db14f14f11c7ca6b4801344b488))
+- help-docs: automation tasks (#380), starter content (#381) ([e20b325](https://github.com/yannicschuller/flowplan/commit/e20b325b07c66832118458ebe6169b17eea56e6a))
+- Features: unique card anchors, server-only schema, light/dark spec shots (#378) ([f798a5b](https://github.com/yannicschuller/flowplan/commit/f798a5be9565373e5a1231adfdb652584e288abb))
+- Workspace shell: the ink model loads with the first notebook to send, database kinds on their own ([ed7c304](https://github.com/yannicschuller/flowplan/commit/ed7c304d9552f37400053b2e8d3a5d22018e413a))
+- Nothing moves under a finger on touch screens (#377) ([bb0b431](https://github.com/yannicschuller/flowplan/commit/bb0b431d80e9dfbe0754791a8a7d74c745e27cf5))
+- Starter content for new accounts (#381) ([7076793](https://github.com/yannicschuller/flowplan/commit/7076793437d3261c4fcdad404d36b2253702d087))
+- Automations: "Aufgabe erstellen" – a task in the record or a task database (#380) ([df993f7](https://github.com/yannicschuller/flowplan/commit/df993f775ca703a5400f8c9563c6e5f4e9a62720))
+- Load offline page data on demand; library test counts statements only with metrics ([d8fef73](https://github.com/yannicschuller/flowplan/commit/d8fef737b6b7fbf28464348e38e2e771e8b62e8a))
+- Features: switch off unused ones per person, admin default for new accounts (#378) ([b2c54fd](https://github.com/yannicschuller/flowplan/commit/b2c54fd07662081c788fd911f6f60a11c8b0b5e6))
+- help-docs; desktop-sign-in spec sets the instance up itself ([c66e653](https://github.com/yannicschuller/flowplan/commit/c66e6530950837c47c56aad3be3da205ef7b2f9c))
+- Password eye button: "Show characters" instead of "Show password" (#372) ([379be7a](https://github.com/yannicschuller/flowplan/commit/379be7af115680b98974d2f641d77968d6615219))
+- Library: all shelves in the main navigation, search grouped by level (#329) ([3cbfc88](https://github.com/yannicschuller/flowplan/commit/3cbfc88f9cc1b2e11d4b1ed96eceeb203e6dfd07))
+- Forms: suggest earlier answers while typing a text question (#374) ([2a14aa2](https://github.com/yannicschuller/flowplan/commit/2a14aa264a4ee02b5d810f2bc0c76f00b803ecb4))
+- Add a passkey from the phone and desktop apps with a one-time link ([8f179b6](https://github.com/yannicschuller/flowplan/commit/8f179b64d717c6feecc6cb8047194cc1b2f9b08f))
+- password-forms test: the shared PasswordInput counts as a password field (#372) ([c84d403](https://github.com/yannicschuller/flowplan/commit/c84d40366a99497d41950f49d9313f3233091c93))
+- Workflows: a placeholder alone on its line is Markdown in "Append to journal day" (#376) ([d1c5d1c](https://github.com/yannicschuller/flowplan/commit/d1c5d1c48fb552c31f90ad495e41329024084253))
+- Image occlusion: pinch zoom in the card, Anki's text shapes as texts on the picture (#343) ([7f364a0](https://github.com/yannicschuller/flowplan/commit/7f364a01753781f2eb4c897ec59ee50a6f0c9b1f))
+- AI flashcards: document-side decks and "Lernkarten erstellen" in the PDF viewer (#342) ([7c6179a](https://github.com/yannicschuller/flowplan/commit/7c6179a65318cde46c8618420f4040f19208c5a0))
+- Offline: new pages, databases, boards, notebooks, template pages and uploads wait on the device (#370) ([023c8f3](https://github.com/yannicschuller/flowplan/commit/023c8f363e7de24c7987d44ffbec9baba121e33c))
+- Password fields: an eye button shows or hides what was typed (#372) ([6abb1a0](https://github.com/yannicschuller/flowplan/commit/6abb1a09350f3bf219c4fa1ca6d25b110e3b316e))
+- Offline: one set of database setups for the server and the device (#370) ([a3a6e19](https://github.com/yannicschuller/flowplan/commit/a3a6e19a0161f2f7a1b4a1286ad51eaafeb1295a))
+- Offline: the server takes ids chosen by the device (#370) ([9f62f81](https://github.com/yannicschuller/flowplan/commit/9f62f812e6617cb55fcd313f06dca33771c9d50d))
+- FSRS optimisation: on the server, per sub-deck and card type, fsrs-rs's initialisation, workload (#344) ([661f08d](https://github.com/yannicschuller/flowplan/commit/661f08d3343b7b4a40d395dca831a322e068a3d8))
+- Anki import: sub-decks as databases of their own, suspended new cards (#341) ([b9e9fff](https://github.com/yannicschuller/flowplan/commit/b9e9fffb8a1d69db8cddd1e6671ea7c386ba6765))
+- Docs links: French and Chinese first steps, restore page (#367, #349) ([09bbd44](https://github.com/yannicschuller/flowplan/commit/09bbd4420a7c112dbd7c66e86144c77f507de5ca))
+- help-docs: flashcards, card types, calendar on the phone ([9916bac](https://github.com/yannicschuller/flowplan/commit/9916bacb997003ceada9df4d6c510cede440718e))
+- Browser specs: view-switch click checks the cross-fade at the press, not a fixed delay ([79f44e7](https://github.com/yannicschuller/flowplan/commit/79f44e7922c74d14986cab4b8dea5c48fa820a61))
+- New page dialog: the template tile reads "Template", long labels wrap (#371) ([9ca159c](https://github.com/yannicschuller/flowplan/commit/9ca159c1e1759d57f6c14f71fd10511c2552432f))
+- SDK: regenerate after the study queue's streak (#346) ([81702bb](https://github.com/yannicschuller/flowplan/commit/81702bb59a16d25f5d50330ed941c5e92888ca95))
+- Design review: Databases – phone calendar, chart width, dialog focus and smaller fixes ([3580846](https://github.com/yannicschuller/flowplan/commit/3580846bb97a52407f30a8133ccfc6cdf069cfbf))
+- Design review: Databases – flashcard pages and dialogs (#346) ([d648c71](https://github.com/yannicschuller/flowplan/commit/d648c7131a81f622b1fb352848a34954412706a5))
+- Design review: Databases – calmer session end: rating cells, equal buttons (#346) ([836c0e0](https://github.com/yannicschuller/flowplan/commit/836c0e0bb5c579b7a523a6973d1c500e97521cf6))
+- Design review: Databases – flashcard focus mode (#346) ([716e063](https://github.com/yannicschuller/flowplan/commit/716e063dbe75c2b2952ca01f366d5cd1b696c821))
+- Databases: changing a record moves the database up in Recently updated (#369) ([f5ce122](https://github.com/yannicschuller/flowplan/commit/f5ce122915beba76fabcca152ba2bc1b86e6e94f))
+- help-docs: sharing (#340), drawing block (#322) ([8e0a65b](https://github.com/yannicschuller/flowplan/commit/8e0a65b5e457260882030c1cfede2f36f4daeb5a))
+- Public flashcards: "In Flowplan lernen" starts the session of the view (#340) ([ab85fed](https://github.com/yannicschuller/flowplan/commit/ab85fed7b8f3d40267c78cc717b7aa5224849858))
+- Drawing block: a touch while the block is out of sight does not end drawing (#322) ([66706c7](https://github.com/yannicschuller/flowplan/commit/66706c79c2d4f5061ec89546177364570ee46f69))
+- Drawing block: a block flung out of sight no longer traps touches (#322) ([f6957ec](https://github.com/yannicschuller/flowplan/commit/f6957ec4fe92c22f15f4a83c6a5d6c4aeeed644d))
+- Database views: clicks right after switching reach the new view (#338) ([7816289](https://github.com/yannicschuller/flowplan/commit/7816289fc0b4d277563b6975d684918364bad3ca))
+- Browser specs: restore the instance's AI settings after each test (#336) ([2224d36](https://github.com/yannicschuller/flowplan/commit/2224d363639f4a302f775a64bdfeceab8de725c3))
+- Help docs after the app passkey docs ([828c0fb](https://github.com/yannicschuller/flowplan/commit/828c0fb091b2f87777708b05dc561703008f172d))
+- App: passkeys are added in the browser ([bbde91c](https://github.com/yannicschuller/flowplan/commit/bbde91c540dcec39f07d919f3a52c5f259f40579))
+- Help docs after the troubleshooting page ([5ceceeb](https://github.com/yannicschuller/flowplan/commit/5ceceebf3456f003027227ae2e4f36da61a2ce51))
+- CI: report AI help docs that are out of date with flowplan-docs (#368) ([0ea3f8a](https://github.com/yannicschuller/flowplan/commit/0ea3f8a48439f9a15e5a066eb8d458090efc2504))
+- Litestream: detect a stuck replica earlier, by its memory (#335) ([aa217fc](https://github.com/yannicschuller/flowplan/commit/aa217fce3d4d548ae0cee84669ee6c1c682f8763))
+- Litestream: FLOWPLAN_LITESTREAM_LOG_LEVEL sets how much it logs ([154558c](https://github.com/yannicschuller/flowplan/commit/154558cf7966eb69d95b38a0aa521bcc908d1d2d))
+- Site media: check the screenshot pipeline weekly (#363) ([87b424f](https://github.com/yannicschuller/flowplan/commit/87b424fc75ea40db0a4fe73544c56f1c17857930))
+
+</details>
+
 ## v0.10.1 – 2026-11-18
 
 ### Bug fixes
