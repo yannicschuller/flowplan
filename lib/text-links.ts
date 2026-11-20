@@ -14,6 +14,7 @@
 // links of deleted ones; drainTextLinks() reads the marked sources again
 // before backlinks are looked up. Schema 108's data step marks them all once.
 import { all, one, run, transaction } from "./db";
+import { readerThread } from "./db-driver/context";
 
 // The characters of a page or record id (UUIDs); an id with others is
 // looked up by the scan (lib/text-backlinks.ts).
@@ -31,8 +32,12 @@ export function linkTargets(html: string): string[] {
 
 const BATCH = 200;
 // Reads the marked sources again: the table is current afterwards. Cheap
-// when nothing is marked (one indexed read, no write).
+// when nothing is marked (one indexed read, no write). A worker thread
+// (lib/worker-pool.ts) only reads: it takes the table as the request
+// thread left it – opening a database drains it there before handing the
+// work over (lib/page-open.ts); typing elsewhere marks sources all the time.
 export async function drainTextLinks() {
+  if (readerThread()) return;
   for (;;) {
     if (!(await one("SELECT 1 AS dirty FROM text_link_dirty LIMIT 1"))) return;
     await transaction(async () => {

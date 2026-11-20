@@ -113,6 +113,21 @@ test("a record preview to be made anew (a write): built on the request thread, t
   assert.equal(text(opened), text(first));
 });
 
+test("backlinks written meanwhile: the request thread brings their table up to date, the worker builds the answer", async () => {
+  await run("UPDATE documents SET html=? WHERE page_id=?", `<p><a href="/#page=${table}">Aufgaben</a></p>`, doc);
+  assert.ok(await one("SELECT 1 FROM text_link_dirty LIMIT 1"), "the change is marked");
+  const reader = { ...owner, apiScope: "write" } as Identity;
+  // The worker's part never writes for it (it would run again here).
+  await pool.offThread("page.database", [reader, table, [], {}], async () => {
+    throw new Error("ran on the request thread");
+  });
+  assert.ok(await one("SELECT 1 FROM text_link_dirty LIMIT 1"), "still marked");
+  const opened = (await ranInWorker(() => withReadMemo(() => openDatabase(reader, table, true))))!;
+  assert.equal(await one("SELECT 1 FROM text_link_dirty LIMIT 1"), undefined);
+  assert.ok(JSON.parse(text(opened)).backlinks.some((b: { id: string }) => b.id === doc));
+  assert.equal(text(opened), await here(reader));
+});
+
 test("not a database or no access: as before; without workers on the request thread", async () => {
   assert.equal(await withReadMemo(() => openDatabase(owner, doc, true)), null);
   await assert.rejects(

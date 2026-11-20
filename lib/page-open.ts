@@ -17,7 +17,9 @@
 // the request thread, where their answer is kept for the cheap 304
 // (lib/kept-answers.ts). A journal lock or an encrypted space are built as
 // before; no free thread, or work that would write on the way (a record
-// preview made anew): the same function on the request thread.
+// preview made anew): the same function on the request thread. The links
+// table of the backlinks, which typing elsewhere keeps marking, is brought
+// up to date here first (lib/text-links.ts).
 import { pageData } from "./api";
 import { requirePage } from "./permissions";
 import { notePresence, pagePresence } from "./page-presence";
@@ -26,6 +28,7 @@ import { lockingJournal } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { contentTag } from "./etag";
 import { offThread } from "./worker-pool";
+import { drainTextLinks } from "./text-links";
 import type { Identity } from "./types";
 
 // `body`: the JSON as UTF-8 – encoded in the worker, and moved to the
@@ -51,5 +54,8 @@ export async function openDatabase(user: Identity, pageId: string, presence: boo
   const present = await pagePresence(pageId, Date.now(), user.id);
   if (presence) await notePresence(pageId, user.id);
   const { page: _page, ...activity } = (await withActivity(user, { page }, true)) as Record<string, unknown>;
+  // The backlinks' table brought up to date here (it writes; the worker
+  // takes it as it is).
+  await drainTextLinks();
   return await offThread("page.database", [user, pageId, present, activity], () => openedDatabaseJson(user, pageId, present, activity), { ifFree: true });
 }
