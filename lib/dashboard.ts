@@ -6,9 +6,8 @@
 import { all, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
-import { visibleRows } from "./row-access";
 import { visibleFields } from "./field-access";
-import { queryRows } from "./database";
+import { queryDatabaseRows } from "./database-query";
 import { relatedData } from "./related-data";
 import { computeMetric } from "./dashboard-metric";
 import { defaultChart, type ChartConfig } from "./database-chart";
@@ -18,7 +17,7 @@ import { markdownToHtml } from "./markdown-import";
 import { escaped } from "./document-server";
 import { ct } from "./content-locale";
 import { parseTiles, tilesSchema, type Tile } from "./dashboard-schema";
-import type { Field, Identity, Page, Role, Row, View } from "./types";
+import type { Field, Identity, Page, Role, View } from "./types";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 
 export async function dashboardTiles(pageId: string): Promise<Tile[]> {
@@ -100,11 +99,9 @@ async function tileData(user: Identity, dashboard: Page, tile: Tile, cache: { lo
       const db = page && await databaseOf(page.id);
       if (!page || !db) return unavailable;
       const source = db.views.find((v) => v.id === tile.view && v.type !== "form") || allRecords;
-      const rows = (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? ORDER BY position", page.id)).map(
-        (r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row,
-      );
       const { related, relatedSchemas } = await relatedData(user, page);
-      const shown = queryRows(await visibleRows(user, page, rows), db.fields, source, "", related, relatedSchemas);
+      // The view's filter on the server (lib/database-query.ts).
+      const shown = (await queryDatabaseRows(user, page, db.fields, source, { related: { related, relatedSchemas } })).rows;
       // Only the properties this person may read: names, choices and
       // formulas of hidden ones stay out (lib/field-access.ts).
       const fields = await visibleFields(user, page, db.fields);
