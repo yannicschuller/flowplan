@@ -17,6 +17,11 @@ const exact: Record<string, string> = {
   "Diese Ansichtsart ist auf dieser Instanz ausgeschaltet.": "This view type is switched off on this instance.",
   "Formulare sind auf dieser Instanz ausgeschaltet.": "Forms are switched off on this instance.",
   "Besprechungen sind auf dieser Instanz ausgeschaltet.": "Meetings are switched off on this instance.",
+  // Worker threads (lib/worker-pool.ts, #383).
+  "Der Server ist gerade ausgelastet. Bitte versuche es gleich noch einmal.": "The server is busy right now. Please try again in a moment.",
+  "Zeitüberschreitung bei der Hintergrundarbeit.": "The background work timed out.",
+  "Der Server wird gerade neu gestartet. Bitte versuche es gleich noch einmal.": "The server is restarting. Please try again in a moment.",
+  "Der Worker-Thread wurde beendet.": "The worker thread ended.",
   // AI quotas (lib/ai/quota.ts, #382).
   "Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise).": "Cost limits need prices per model (Administration → AI → Prices).",
   "Unbekannte Rolle.": "Unknown role.",
