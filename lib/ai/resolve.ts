@@ -18,8 +18,11 @@ import { isIP } from "node:net";
 import { mapAsync } from "../each-async";
 import { tokenAiAllowed } from "./token-access";
 import { moduleOff } from "../instance-modules";
+import { modelPolicyFor } from "./model-policy";
 
-export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user" } | { ok: false; reason: AiReason };
+// assigned: the model is the one the administration set for this person
+// (their own rule, a group or a role – lib/ai/model-policy.ts).
+export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user"; assigned?: boolean } | { ok: false; reason: AiReason };
 type Options = {
   // The workspace the feature works in: guests of it are judged by the guest switch.
   workspaceId?: string;
@@ -125,13 +128,18 @@ export async function draftProviderConfig(user: Identity, scope: "instance" | "u
   return { kind, baseUrl, model: "", apiKey, trusted };
 }
 // Which provider applies: the person's own when they chose it, else the
-// instance's, else their own as the only one there is.
+// instance's, else their own as the only one there is. The instance's with
+// the model the administration set for this person (lib/ai/model-policy.ts)
+// – here, so it holds for every feature.
 async function provider(user: Identity): Promise<AiResolution> {
   const own = await userAiSettings(user.id);
   const mine = await userProviderConfig(user);
   const instance = await instanceProviderConfig();
   if (own.source === "user" && mine.ok) return { ...mine, source: "user" };
-  if (instance.ok) return { ...instance, source: "instance" };
+  if (instance.ok) {
+    const policy = await modelPolicyFor(user);
+    return { ok: true, config: { ...instance.config, model: policy.model || instance.config.model }, source: "instance", assigned: policy.source !== "instance" };
+  }
   if (mine.ok) return { ...mine, source: "user" };
   return { ok: false, reason: !mine.ok && mine.reason === "key-unreadable" ? mine.reason : !instance.ok ? instance.reason : "no-provider" };
 }
@@ -193,7 +201,7 @@ export async function aiStatus(user: Identity, workspaceId?: string, visiblePage
   return {
     enabled,
     features,
-    provider: config && resolved?.ok ? { kind: config.kind, model: config.model, host, source: resolved.source, local: isLocalProvider(config) } : null,
+    provider: config && resolved?.ok ? { kind: config.kind, model: config.model, host, source: resolved.source, local: isLocalProvider(config), ...(resolved.assigned ? { assigned: true } : {}) } : null,
     userProviders: !user.demo && !user.apiScope && instance.enabled && instance.userProviders,
     scope: own.scope,
     excludedPages: enabled ? excluded : [],

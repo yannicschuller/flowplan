@@ -895,6 +895,14 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
             {status.provider && ` · ${status.provider.source === "user" ? t("dein eigener", "your own") : t("der Instanz", "the instance's")}`}
           </span>
         </SettingRow>
+        {status.provider?.source === "instance" && status.provider.model && (
+          <SettingRow
+            label={t("Modell", "Model")}
+            description={status.provider.assigned ? t("Von der Administration festgelegt.", "Set by the administration.") : t("Der Standard der Instanz.", "The instance default.")}
+          >
+            <span className="setting-value">{status.provider.model}</span>
+          </SettingRow>
+        )}
         {blocked?.reason && (
           <SettingRow label={t("Status", "Status")}>
             <span className="setting-value">{aiReasonText(blocked.reason, t)}</span>

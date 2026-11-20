@@ -770,6 +770,8 @@ function eventText(e: MonitoringEvent, t: T): { title: string; detail?: string }
         "admin.quota": t("Kontingent", "Quota"),
         "admin.userLimits": t("Grenzen je Person", "Limits per person"),
         "admin.ai": t("KI", "AI"),
+        "admin.aiQuotas": t("KI-Kontingente", "AI quotas"),
+        "admin.aiRule": t("KI-Modell und -Kontingent einer Person oder Gruppe", "AI model and quota of a person or group"),
         "admin.modulesOff": t("Funktionen dieser Instanz", "Features of this instance"),
         "admin.ops.alerts": t("Warnungen per Webhook", "Alerts by webhook"),
         "admin.ops.alerts.test": t("Testwarnung", "Test alert"),

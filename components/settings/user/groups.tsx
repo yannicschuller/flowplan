@@ -12,6 +12,11 @@ import { SsoMappings } from "../../sso-mappings";
 import { CONTROL, EmptyState, SaveState, SettingGroup, SettingRow, useSaveState } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
 import { useSsoVia } from "./sso-via";
+import dynamic from "next/dynamic";
+
+// The group's AI (model and quota, lib/ai/model-policy.ts) – for the
+// instance's administrators only, loaded when the dialog opens.
+const AiRulePanel = dynamic(() => import("../admin/ai-rule").then((m) => m.AiRulePanel), { ssr: false });
 
 function SpaceAccess({ space: s }: { space: Space }) {
   const t = useT();
@@ -208,6 +213,7 @@ export default function GroupsSection() {
           ))}
           {!shown.length && <li className="ws-note">{t("Niemand heißt so.", "Nobody is called that.")}</li>}
         </ul>
+        {groupId && boot.user.isAdmin && <AiRulePanel scope="group" target={groupId} name={groups.find((g) => g.id === groupId)?.name || t("Gruppe", "Group")} className="ws-ai-rule" />}
       </Modal>
     </>
   );

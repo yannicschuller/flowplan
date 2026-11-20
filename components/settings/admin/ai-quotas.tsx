@@ -12,6 +12,7 @@ import { api, reportError } from "../../ui";
 import { Select } from "../../select";
 import { ResponsiveTable, SaveState, SettingGroup, SettingRow, Switch, useSaveState } from "../../settings-ui";
 import { NumberInput } from "./parts";
+import { LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { AdminQuotaView } from "@/lib/ai/quota";
 import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaRule } from "@/lib/ai/quota-shared";
@@ -19,18 +20,8 @@ import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaRule } fro
 type T = (de: string, en: string) => string;
 type Person = AdminQuotaView["people"][number];
 
-// i18n-table: 1 – [German, English] pairs
-const PERIODS: Record<QuotaPeriod, readonly [string, string]> = {
-  day: ["Tag", "Day"],
-  week: ["Woche", "Week"],
-  month: ["Monat", "Month"],
-  year: ["Jahr", "Year"],
-};
-// i18n-table: 1 – [German, English] pairs
-const ROLES: Record<string, readonly [string, string]> = {
-  admin: ["Administratoren", "Administrators"],
-  guest: ["Gäste (nur Gastzugänge)", "Guests (guest access only)"],
-};
+const PERIODS = PERIOD_NAMES;
+const ROLES = ROLE_NAMES;
 // i18n-table: 1 – [German, English] pairs
 const SOURCES: Record<string, readonly [string, string]> = {
   user: ["eigene Grenze", "own limit"],
@@ -65,6 +56,12 @@ export function AiQuotasSection() {
       await api("/api/command", { action: "admin.aiQuotas", ...patch });
       await load();
     });
+  // One row's model or both of its rules (admin.aiRule, lib/ai/admin-rule.ts).
+  const saveRule = (scope: string, target: string, patch: { model?: string | null; quota?: null }) =>
+    void run(async () => {
+      await api("/api/command", { action: "admin.aiRule", scope, target, ...patch });
+      await load();
+    });
   if (!view)
     return (
       <SettingGroup id="quotas" title={t("Kontingente", "Quotas")}>
@@ -78,7 +75,7 @@ export function AiQuotasSection() {
   return (
     <>
       <QuotaSettings view={view} save={save} status={status} />
-      <QuotaLimitsTable view={view} save={save} />
+      <QuotaLimitsTable view={view} save={save} saveRule={saveRule} />
       <SettingGroup
         id="quota-usage"
         title={t("Nutzung und Grenzen", "Usage and limits")}
@@ -243,34 +240,10 @@ function QuotaSettings({ view, save, status }: { view: AdminQuotaView; save: (pa
   );
 }
 
-function LimitInput({ value, unit, label, onCommit }: { value: number | null | undefined; unit: "tokens" | "cost"; label: string; onCommit: (v: number | null) => void }) {
-  const t = useT();
-  const [raw, setRaw] = useState(value === null || value === undefined ? "" : String(value));
-  useEffect(() => setRaw(value === null || value === undefined ? "" : String(value)), [value]);
-  const commit = () => {
-    const text = raw.trim().replace(",", ".");
-    const next = text === "" ? null : Number(text);
-    if (next !== null && (!Number.isFinite(next) || next < 0)) return setRaw(value === null || value === undefined ? "" : String(value));
-    if ((next ?? null) !== (value ?? null)) onCommit(next === null ? null : unit === "tokens" ? Math.round(next) : Math.round(next * 100) / 100);
-  };
-  return (
-    <input
-      type="number"
-      inputMode="decimal"
-      className="ai-quota-limit"
-      min={0}
-      step={unit === "tokens" ? 1000 : 0.01}
-      placeholder={t("ohne", "none")}
-      aria-label={label}
-      value={raw}
-      onChange={(e) => setRaw(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-    />
-  );
-}
-
-function QuotaLimitsTable({ view, save }: { view: AdminQuotaView; save: (patch: { rules: QuotaRule[] }) => void }) {
+// A row of the limits table; inherit: only a model is set for it, its
+// limits come from elsewhere (no quota rule) until one is entered.
+type LimitRow = QuotaRule & { inherit?: boolean };
+function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save: (patch: { rules: QuotaRule[] }) => void; saveRule: (scope: string, target: string, patch: { model?: string | null; quota?: null }) => void }) {
   const t = useT();
   const rules = view.rules;
   const unit = view.settings.unit;
@@ -293,14 +266,18 @@ function QuotaLimitsTable({ view, save }: { view: AdminQuotaView; save: (patch: 
             ? groupName(r.target)
             : personName(r.target);
   const order = ["instance", "default", "role", "group", "user"];
-  const rows: QuotaRule[] = [
+  const modelOnly: LimitRow[] = view.model.rules.filter((m) => !rules.some((r) => r.scope === m.scope && r.target === m.target)).map((m) => ({ scope: m.scope, target: m.target, exempt: false, limits: {}, inherit: true }));
+  const rows: LimitRow[] = [
     rules.find((r) => r.scope === "instance") ?? { scope: "instance", target: "", exempt: false, limits: {} },
     rules.find((r) => r.scope === "default") ?? { scope: "default", target: "", exempt: false, limits: {} },
-    ...rules.filter((r) => r.scope !== "instance" && r.scope !== "default").sort((a, b) => order.indexOf(a.scope) - order.indexOf(b.scope) || name(a).localeCompare(name(b))),
+    ...[...rules.filter((r) => r.scope !== "instance" && r.scope !== "default"), ...modelOnly].sort((a, b) => order.indexOf(a.scope) - order.indexOf(b.scope) || name(a).localeCompare(name(b))),
   ];
   const key = (r: Pick<QuotaRule, "scope" | "target">) => `${r.scope}|${r.target}`;
-  const commit = (next: QuotaRule[]) => save({ rules: next.filter((r) => r.exempt || QUOTA_PERIODS.some((p) => typeof r.limits[p] === "number") || (r.scope !== "instance" && r.scope !== "default")) });
-  const change = (rule: QuotaRule, patch: Partial<QuotaRule>) => commit(rows.map((r) => (key(r) === key(rule) ? { ...r, ...patch } : r)));
+  const hasNumbers = (r: QuotaRule) => QUOTA_PERIODS.some((p) => typeof r.limits[p] === "number");
+  const commit = (next: LimitRow[]) =>
+    save({ rules: next.filter((r) => (r.inherit ? r.exempt || hasNumbers(r) : r.exempt || hasNumbers(r) || (r.scope !== "instance" && r.scope !== "default"))).map((r) => ({ scope: r.scope, target: r.target, exempt: r.exempt, limits: r.limits })) });
+  const change = (rule: LimitRow, patch: Partial<QuotaRule>) => commit(rows.map((r) => (key(r) === key(rule) ? { ...r, ...patch, inherit: false } : r)));
+  const modelOf = (r: Pick<QuotaRule, "scope" | "target">) => view.model.rules.find((m) => m.scope === r.scope && m.target === r.target);
   const setLimit = (rule: QuotaRule, period: QuotaPeriod, v: number | null) => {
     const limits: QuotaLimits = { ...rule.limits };
     if (v === null) delete limits[period];
@@ -333,8 +310,18 @@ function QuotaLimitsTable({ view, save }: { view: AdminQuotaView; save: (patch: 
             ...QUOTA_PERIODS.map((p) => ({
               key: p,
               header: unit === "cost" ? t(`${PERIODS[p][0]} (${view.currency})`, `${PERIODS[p][1]} (${view.currency})`) : t(`${PERIODS[p][0]} (Tokens)`, `${PERIODS[p][1]} (tokens)`),
-              render: (r: QuotaRule) => (r.exempt ? <span className="muted">–</span> : <LimitInput value={r.limits[p]} unit={unit} label={`${name(r)}: ${t(PERIODS[p][0], PERIODS[p][1])}`} onCommit={(v) => setLimit(r, p, v)} />),
+              render: (r: LimitRow) =>
+                r.exempt ? (
+                  <span className="muted">–</span>
+                ) : (
+                  <LimitInput value={r.limits[p]} unit={unit} placeholder={r.inherit ? t("geerbt", "inherited") : undefined} label={`${name(r)}: ${t(PERIODS[p][0], PERIODS[p][1])}`} onCommit={(v) => setLimit(r, p, v)} />
+                ),
             })),
+            {
+              key: "model",
+              header: t("Modell", "Model"),
+              render: (r) => <ModelCell view={view} rule={r} label={name(r)} own={modelOf(r)} onChange={(model) => saveRule(r.scope, r.target, { model })} />,
+            },
             {
               key: "exempt",
               header: t("Ausgenommen", "Exempt"),
@@ -348,7 +335,7 @@ function QuotaLimitsTable({ view, save }: { view: AdminQuotaView; save: (patch: 
               header: "",
               render: (r) =>
                 r.scope === "instance" || r.scope === "default" ? null : (
-                  <button type="button" className="icon-button" aria-label={t(`Grenze für ${name(r)} entfernen`, `Remove the limit for ${name(r)}`)} onClick={() => commit(rows.filter((x) => key(x) !== key(r)))}>
+                  <button type="button" className="icon-button" aria-label={t(`Grenze für ${name(r)} entfernen`, `Remove the limit for ${name(r)}`)} onClick={() => (modelOf(r) ? saveRule(r.scope, r.target, { quota: null, model: null }) : commit(rows.filter((x) => key(x) !== key(r))))}>
                     <Trash size={16} />
                   </button>
                 ),
@@ -356,6 +343,12 @@ function QuotaLimitsTable({ view, save }: { view: AdminQuotaView; save: (patch: 
           ]}
         />
       </div>
+      <p className="ai-quota-model-note muted">
+        {t(
+          `Modell: Eine Person nutzt ihr eigenes Modell, sonst das leistungsfähigste ihrer Gruppen und Rollen (das teuerste laut Preisliste), sonst den Standard der Instanz (${view.model.provider?.model || "–"}). Nur für den Anbieter der Instanz; eigene Anbieter und die KI auf dem Gerät wählen selbst.`,
+          `Model: a person uses their own model, else the most capable of their groups and roles (the most expensive by the price list), else the instance default (${view.model.provider?.model || "–"}). Only for the instance's provider; own providers and on-device AI choose their own.`,
+        )}
+      </p>
       <SettingRow id={groupId} label={t("Gruppe oder Rolle hinzufügen", "Add a group or role")} description={t("Gruppen der Arbeitsbereiche – auch die aus SSO-, SCIM- und LDAP-Gruppen über die SSO-Zuordnungen.", "Workspace groups – also those filled from SSO, SCIM and LDAP groups through the SSO mappings.")}>
         <Select
           id={groupId}
@@ -432,6 +425,7 @@ function PeopleTable({ view, amount }: { view: AdminQuotaView; amount: (n: numbe
             { key: "limit", header: t("Grenze", "Limit"), align: "end", render: (p) => (p.exempt ? t("ausgenommen", "exempt") : p.limit === null ? "–" : amount(p.limit)) },
             { key: "left", header: t("Übrig", "Left||remaining"), align: "end", render: (p) => (p.exempt || p.limit === null ? "–" : amount(Math.max(0, p.limit - p.used))) },
             { key: "source", header: t("Woher", "From"), hideOnPhone: true, render: (p) => sourceLabel(p, t) },
+            { key: "model", header: t("Modell", "Model"), hideOnPhone: true, render: (p) => (p.model ? <span title={modelSource(p.model, t)}>{p.model.model}</span> : "–") },
           ]}
         />
       </div>
@@ -442,3 +436,39 @@ const sourceLabel = (p: Person, t: T) => {
   const s = SOURCES[p.exempt ? "exempt" : p.source];
   return s ? t(s[0], s[1]) : p.source;
 };
+
+// The model of a row of the limits table: the instance's default for the
+// instance and the default per person, a choice for roles, groups and people.
+function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView; rule: QuotaRule; label: string; own?: AdminQuotaView["model"]["rules"][number]; onChange: (model: string | null) => void }) {
+  const t = useT();
+  const fallback = view.model.provider?.model || "";
+  if (rule.scope === "instance") return <span className="muted">–</span>;
+  if (rule.scope === "default" || !view.model.provider) return <span className="muted">{fallback || "–"}</span>;
+  const value = !own ? "inherit" : own.model === "" ? "default" : `m:${own.model}`;
+  const options = [...new Set([...view.model.options, ...(own?.model ? [own.model] : [])])].filter((m) => m !== fallback || own?.model === m);
+  return (
+    <Select
+      className="ai-quota-model"
+      aria-label={t(`Modell für ${label}`, `Model for ${label}`)}
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === "inherit" ? null : v === "default" ? "" : v.slice(2));
+      }}
+    >
+      {rule.scope === "user" ? (
+        <>
+          <option value="inherit">{t("Geerbt", "Inherited")}</option>
+          <option value="default">{t(`Standard der Instanz (${fallback})`, `Instance default (${fallback})`)}</option>
+        </>
+      ) : (
+        <option value="inherit">{t(`Standard der Instanz (${fallback})`, `Instance default (${fallback})`)}</option>
+      )}
+      {options.map((m) => (
+        <option key={m} value={`m:${m}`}>
+          {own?.model === m && !own.active ? t(`${m} (anderer Anbieter – gilt nicht)`, `${m} (other provider – does not apply)`) : m}
+        </option>
+      ))}
+    </Select>
+  );
+}
