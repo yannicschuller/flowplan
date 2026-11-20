@@ -1395,10 +1395,9 @@ export default function DatabaseTimeline({
                 {redundant.length > 0 && (
                   <div className="timeline-redundant" role="note">
                     <p>
-                      {t(
-                        `${redundant.length === 1 ? "Eine Verknüpfung ergibt" : `${redundant.length} Verknüpfungen ergeben`} sich schon aus anderen:`,
-                        `${redundant.length === 1 ? "One link follows" : `${redundant.length} links follow`} from others already:`,
-                      )}
+                      {redundant.length === 1
+                        ? t("Eine Verknüpfung ergibt sich schon aus anderen:", "One link already follows from others:")
+                        : t(`${redundant.length} Verknüpfungen ergeben sich schon aus anderen:`, `${redundant.length} links already follow from others:`)}
                     </p>
                     <ul>
                       {redundant.slice(0, 5).map((r) => (
