@@ -3,7 +3,8 @@ import { requireModule } from "@/lib/instance-modules";
 import { e2eBuild } from "@/lib/e2e-build";
 import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
 import { CSV_FORMULA } from "@/lib/cell-text";
-import { jsonWithTag } from "@/lib/etag";
+import { jsonTextWithTag, jsonWithTag } from "@/lib/etag";
+import { openDatabase } from "@/lib/page-open";
 import { bootstrapResponse } from "@/lib/bootstrap-pages";
 import { keepAnswer, keptNotModified, trackedAnswer } from "@/lib/kept-answers";
 import { linkTargets } from "@/lib/link-targets";
@@ -854,6 +855,11 @@ async function handleGET(
           if (presence) await notePresence(path[1], user.id);
           return unchanged;
         }
+      }
+      // Opening a database: built in a worker thread when one is free (lib/page-open.ts).
+      if (visit && path.length === 2) {
+        const opened = await openDatabase(user, path[1], presence);
+        if (opened) return jsonTextWithTag(req, opened.body as Uint8Array<ArrayBuffer>, {}, opened.etag);
       }
       const tracked = await trackedAnswer(async () => await withActivity(user, await pageData(user, path[1], { presence }), visit));
       const response = jsonWithTag(req, tracked.value);

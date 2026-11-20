@@ -115,6 +115,7 @@ type Job = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   here: () => Promise<unknown>;
+  quiet?: boolean;
 };
 type Slot = { worker: Worker; job: Job | null; ready: boolean; timer: ReturnType<typeof setTimeout> | null; idle: ReturnType<typeof setTimeout> | null };
 type Pool = {
@@ -161,8 +162,10 @@ function spawn(p: Pool): Slot | null {
     finish(p, slot);
     if ("error" in message && message.error.kind === "write") {
       // Some path of the job writes after all: done here, as before the
-      // workers, and named in the log so that it can be fixed.
-      console.warn(`Worker job ${job.name} tried to write (${message.error.message}); it ran on the request thread instead.`);
+      // workers, and named in the log so that it can be fixed – unless
+      // the job expects it now and then (ifFree: a record preview made
+      // anew while a database opens).
+      if (!job.quiet) console.warn(`Worker job ${job.name} tried to write (${message.error.message}); it ran on the request thread instead.`);
       job.here().then(job.resolve, job.reject);
     } else if ("error" in message) job.reject(reviveError(message.error));
     else
@@ -293,6 +296,7 @@ export function offThread<T>(name: WorkerJobName, args: unknown[], here: () => P
     resolve: resolve as (value: unknown) => void,
     reject,
     here: here as () => Promise<unknown>,
+    quiet: options.ifFree,
   });
   if (options.ifFree) {
     const free = p.queue.length ? undefined : [...p.slots].find((slot) => slot.ready && !slot.job);
