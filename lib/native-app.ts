@@ -116,6 +116,9 @@ type FlowplanDesktop = {
   // page's own WebAuthn, Windows Hello over the app (Windows) – or
   // "browser", the hand-off to the system browser (macOS, Linux).
   passkeys?: "window" | "browser";
+  // The operating system (desktop newer than 1.3.12): "darwin", "win32" or
+  // "linux". Older apps: the user agent tells (desktopOnMac).
+  os?: string;
   // "Im Marketplace veröffentlichen …" (desktop newer than 1.3.7): the page
   // arms its next window.open to the marketplace (the configured origin),
   // which then opens in a window of the app with window.opener for the
@@ -142,6 +145,32 @@ export function desktopPasskeysInWindow(
   agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
 ): boolean {
   return /FlowplanDesktop\//.test(agent) && app?.passkeys === "window";
+}
+// The desktop app on a Mac: the bridge says so (os, desktop newer than
+// 1.3.12), older apps by their user agent (Electron's "Macintosh").
+export function desktopOnMac(
+  app: { os?: unknown } | undefined = desktopApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  if (!/FlowplanDesktop\//.test(agent)) return false;
+  if (typeof app?.os === "string" && app.os) return app.os === "darwin";
+  return /\bMacintosh\b|\bMac OS X\b/.test(agent);
+}
+// How the sign-in page offers passkeys in the desktop app: "browser" – the
+// hand-off only (macOS without Touch ID, Linux, older apps); "window" – the
+// page's own WebAuthn, Windows Hello over the app (#165); "keychain" – a Mac
+// whose window has Touch ID (#356): that authenticator only sees passkeys
+// made in the app, never the iCloud Keychain, so "Mit Passkey anmelden" is
+// the hand-off (the browser has the Keychain) and the app's Touch ID the
+// second way. null: not the desktop app.
+export type DesktopPasskeySignIn = "browser" | "window" | "keychain";
+export function desktopPasskeySignIn(
+  app: { passkeys?: unknown; os?: unknown } | undefined = desktopApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): DesktopPasskeySignIn | null {
+  if (!/FlowplanDesktop\//.test(agent)) return null;
+  if (!desktopPasskeysInWindow(app, agent)) return "browser";
+  return desktopOnMac(app, agent) ? "keychain" : "window";
 }
 // The desktop app where its window cannot create or use passkeys (macOS and
 // Linux, and older apps): Electron offers no authenticator there, so

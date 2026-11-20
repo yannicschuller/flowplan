@@ -38817,6 +38817,38 @@ html.native-app body {
   font-size: 12px;
   color: var(--muted);
 }
+/* The Mac app: "Mit Passkey anmelden" opens the browser for the Keychain. */
+.login-way-note {
+  margin: -4px 0 2px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+/* The Mac app's own Touch ID passkey: the second way, a quiet line. */
+.login-column .login-app-passkey {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.login-app-passkey .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 4px 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+}
+/* An unknown passkey in the desktop app: the browser as the next step. */
+.login-column .error .login-error-next {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: inherit;
+}
 .login-password-link.text-button {
   justify-self: center;
   display: inline-flex;

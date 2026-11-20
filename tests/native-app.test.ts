@@ -5,7 +5,9 @@ import {
   appPasskeysInBrowser,
   appProfilesAction,
   armDesktopMarketplace,
+  desktopOnMac,
   desktopPageLink,
+  desktopPasskeySignIn,
   desktopPasskeysInBrowser,
   desktopPasskeysInWindow,
   desktopPasskeyLink,
@@ -101,14 +103,55 @@ test("passkeys in the desktop app's window only where the app says so – Window
   // there "Im Browser anmelden" – the hand-off after all.
   const { readFileSync } = await import("node:fs");
   const login = readFileSync(new URL("../components/login.tsx", import.meta.url), "utf8");
-  assert.match(login, /setPasskeyInApp\(desktopPasskeysInWindow\(\) && browserSupportsWebAuthn\(\)\)/);
-  assert.match(login, /passkeyHandOff = desktopApp && !passkeyInApp/);
+  assert.match(login, /setPasskeyInApp\(desktopPasskeys !== null && desktopPasskeys !== "browser" && browserSupportsWebAuthn\(\)\)/);
+  assert.match(login, /passkeyHandOff = desktopApp && \(!passkeyInApp \|\| passkeyKeychain\)/);
   assert.match(login, /\{passkeyHandOff && \(\s*<a/);
   assert.match(login, /const passkeyButton = localLogin && passkeys && \(!desktopApp \|\| passkeyInApp\);/);
-  assert.match(login, /\{passkeyButton && \(\s*<button className=\{wayClass\("passkey"\)\} onClick=\{passkey\}/);
-  assert.match(login, /passkeyInApp && passkeyFallback && \([\s\S]{0,200}href="\/api\/auth\/desktop"\s*onClick=\{handOff\("passkey"\)\}/);
+  assert.match(login, /\{passkeyButton && !passkeyTouchId && \(\s*<button className=\{wayClass\("passkey"\)\} onClick=\{passkey\}/);
+  assert.match(login, /passkeyInApp && passkeyFallback === "failed" && !passkeyKeychain && \([\s\S]{0,200}\{browserPasskeyLink\}/);
+  assert.match(login, /const browserPasskeyLink = \(\s*<a\s*href="\/api\/auth\/desktop"\s*onClick=\{handOff\("passkey"\)\}/);
   // SSO keeps going to the browser in every app.
   assert.match(login, /href=\{desktopApp \? "\/api\/auth\/desktop\?via=sso"/);
+});
+
+test("the Mac app signs in with the Keychain through the browser first, its own Touch ID second", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Electron/45.0.0 Safari/537.36 FlowplanDesktop/1.3.12";
+  const windows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Electron/45.0.0 Safari/537.36 FlowplanDesktop/1.3.12";
+  const linux = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Electron/45.0.0 Safari/537.36 FlowplanDesktop/1.3.12";
+  // The bridge's os wins; older apps without it: the user agent.
+  assert.equal(desktopOnMac({ os: "darwin" }, mac), true);
+  assert.equal(desktopOnMac({}, mac), true);
+  assert.equal(desktopOnMac(undefined, mac), true);
+  assert.equal(desktopOnMac({ os: "win32" }, mac), false, "the bridge decides");
+  assert.equal(desktopOnMac({ os: "darwin" }, windows), true, "the bridge decides");
+  assert.equal(desktopOnMac({}, windows), false);
+  assert.equal(desktopOnMac({}, linux), false);
+  // Not the desktop app: Safari on a Mac, the iPad app (which names itself a Mac).
+  assert.equal(desktopOnMac({ os: "darwin" }, mac.replace(/ Electron\S+| FlowplanDesktop\S+/g, "")), false);
+  assert.equal(desktopOnMac(undefined, ipad), false);
+  // The sign-in: Touch ID in the Mac app's window is the second way.
+  assert.equal(desktopPasskeySignIn({ passkeys: "window", os: "darwin" }, mac), "keychain");
+  assert.equal(desktopPasskeySignIn({ passkeys: "window" }, mac), "keychain", "1.3.12 and older: the user agent");
+  assert.equal(desktopPasskeySignIn({ passkeys: "browser", os: "darwin" }, mac), "browser");
+  assert.equal(desktopPasskeySignIn({ passkeys: "window", os: "win32" }, windows), "window", "Windows unchanged");
+  assert.equal(desktopPasskeySignIn({ passkeys: "window" }, windows), "window");
+  assert.equal(desktopPasskeySignIn({ passkeys: "window", os: "linux" }, linux), "window", "FLOWPLAN_PASSKEYS=window on Linux");
+  assert.equal(desktopPasskeySignIn({ passkeys: "browser" }, linux), "browser");
+  assert.equal(desktopPasskeySignIn({}, windows), "browser", "older apps");
+  assert.equal(desktopPasskeySignIn({ passkeys: "window" }, safari), null);
+  assert.equal(desktopPasskeySignIn(undefined, iphone), null);
+  // The page: the hand-off with its note on the Mac, Touch ID as a quiet
+  // line below it, and an unknown passkey links to the browser in the error.
+  const login = readFileSync(new URL("../components/login.tsx", import.meta.url), "utf8");
+  assert.match(login, /setPasskeyKeychain\(desktopPasskeys === "keychain" && browserSupportsWebAuthn\(\)\)/);
+  assert.match(login, /\{passkeyHandOff && desktopMac && \(\s*<p id=\{keychainNote\}/);
+  assert.match(login, /const passkeyTouchId = passkeyButton && passkeyKeychain;/);
+  assert.match(login, /\{passkeyTouchId && \([\s\S]{0,300}onClick=\{passkey\}[\s\S]{0,200}"Mit Touch ID dieser App"/);
+  assert.match(login, /setPasskeyFallback\(\(e as \{ status\?: number \}\)\.status === 401 \? "unknown" : "failed"\)/);
+  assert.match(login, /passkeyFallback === "unknown" && \([\s\S]{0,300}"Passkey aus dem Schlüsselbund\?"[\s\S]{0,200}\{browserPasskeyLink\}/);
+  // The server's answer for an unknown passkey is the 401 this looks for.
+  const auth = readFileSync(new URL("../lib/local-auth.ts", import.meta.url), "utf8");
+  assert.match(auth, /new HttpError\(401, t\("Dieser Passkey ist hier nicht bekannt\."/);
 });
 
 test("publishing to the marketplace: the hand-over only where the window can have an opener", () => {

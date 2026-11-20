@@ -20,7 +20,7 @@ import { LegalFooter } from "./legal-footer";
 import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
 import { startAppSignIn } from "@/lib/app-sign-in";
-import { appDeviceKey, desktopPasskeysInWindow } from "@/lib/native-app";
+import { appDeviceKey, desktopOnMac, desktopPasskeySignIn } from "@/lib/native-app";
 import { AuthLayout } from "./auth-layout";
 import {
   availableSignInWays,
@@ -91,7 +91,9 @@ async function post(path: string, body?: unknown) {
     // The table of server messages is large and only needed after a failure:
     // loaded then, so it stays out of the sign-in page's script.
     const { serverMessage } = await import("@/lib/i18n-errors");
-    throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
+    // The status goes along: a passkey the instance does not know (401)
+    // leads to the browser in the desktop app.
+    throw Object.assign(new Error(serverMessage((data as { error?: string }).error) || response.statusText), { status: response.status });
   }
   return data;
 }
@@ -148,9 +150,20 @@ export default function Login({
   // over the app, so the page's own button signs in; when that fails or is
   // cancelled, "Im Browser anmelden" hands over to the browser after all.
   const [passkeyInApp, setPasskeyInApp] = useState(false);
-  const [passkeyFallback, setPasskeyFallback] = useState(false);
-  // The app's hand-off for passkeys: everywhere in the apps but there.
-  const passkeyHandOff = desktopApp && !passkeyInApp;
+  // The Mac app with Touch ID in its window (#356): that authenticator only
+  // knows passkeys made in the app, never the iCloud Keychain – so "Mit
+  // Passkey anmelden" stays the hand-off (the browser has the Keychain) and
+  // "Mit Touch ID dieser App" is the second way.
+  const [passkeyKeychain, setPasskeyKeychain] = useState(false);
+  // The desktop app on a Mac: the hand-off says it is for the Keychain.
+  const [desktopMac, setDesktopMac] = useState(false);
+  const keychainNote = useId();
+  // After a failed passkey in the window: "failed" offers the browser under
+  // the buttons, "unknown" (the instance does not know the passkey) right
+  // in the error.
+  const [passkeyFallback, setPasskeyFallback] = useState<"" | "failed" | "unknown">("");
+  // The app's hand-off for passkeys: everywhere in the apps but Windows.
+  const passkeyHandOff = desktopApp && (!passkeyInApp || passkeyKeychain);
   // In the apps the hand-off (passkey, SSO) and a password sign-in with
   // the app's device key stay signed in anyway; an older app without a key
   // signs in with the password like a browser and gets the box for it.
@@ -199,7 +212,10 @@ export default function Login({
     };
     update();
     setPasskeys(browserSupportsWebAuthn());
-    setPasskeyInApp(desktopPasskeysInWindow() && browserSupportsWebAuthn());
+    const desktopPasskeys = desktopPasskeySignIn();
+    setPasskeyInApp(desktopPasskeys !== null && desktopPasskeys !== "browser" && browserSupportsWebAuthn());
+    setPasskeyKeychain(desktopPasskeys === "keychain" && browserSupportsWebAuthn());
+    setDesktopMac(desktopOnMac());
     // Back from SSO with an error: the way before it comes first again.
     if (error) undoAttempt();
     else
@@ -238,6 +254,8 @@ export default function Login({
   const run = async (key: string, action: () => Promise<void>) => {
     setBusy(key);
     setMessage("");
+    // The link in the error goes with the error; the line under the buttons stays.
+    setPasskeyFallback((was) => (was === "unknown" ? "failed" : was));
     try {
       await action();
     } catch (e) {
@@ -320,8 +338,11 @@ export default function Login({
       try {
         await signInWithPasskey();
       } catch (e) {
-        // In the Windows app: Windows Hello cancelled or failing – the browser is offered.
-        if (passkeyInApp) setPasskeyFallback(true);
+        // In the desktop app (Windows Hello, the Mac's Touch ID) cancelled
+        // or failing – the browser is offered; for a passkey the instance
+        // does not know (one from the app, the Keychain's is in the browser)
+        // right in the error.
+        if (passkeyInApp) setPasskeyFallback((e as { status?: number }).status === 401 ? "unknown" : "failed");
         throw e;
       }
     });
@@ -360,6 +381,8 @@ export default function Login({
   };
   // The ways this instance and this browser offer, the fastest first.
   const passkeyButton = localLogin && passkeys && (!desktopApp || passkeyInApp);
+  // On the Mac: the hand-off first, the window's Touch ID as the second way.
+  const passkeyTouchId = passkeyButton && passkeyKeychain;
   const choice = chooseSignInWays(
     availableSignInWays({ proxy: !!proxyName, sso: configured, passkey: localLogin && (passkeyHandOff || passkeyButton), password: passwordForm }),
     lastWay,
@@ -422,6 +445,21 @@ export default function Login({
       {lastUsedHint("proxy")}
     </>
   );
+  // The browser hand-off after a passkey in the window did not work.
+  const browserPasskeyLink = (
+    <a
+      href="/api/auth/desktop"
+      onClick={handOff("passkey")}
+      aria-busy={handingOff === "passkey" || undefined}
+      title={t(
+        "Öffnet die Anmeldung im Browser – dort kannst du deinen Passkey verwenden",
+        "Opens the sign-in in your browser, where you can use your passkey",
+      )}
+    >
+      {t("Im Browser anmelden", "Sign in in the browser")}
+      {handingOff === "passkey" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
+    </a>
+  );
   const passkeyWay = localLogin && (
     <>
       {passkeyHandOff && (
@@ -430,7 +468,7 @@ export default function Login({
           href="/api/auth/desktop"
           onClick={handOff("passkey")}
           aria-busy={handingOff === "passkey" || undefined}
-          aria-describedby={describedBy("passkey")}
+          aria-describedby={[describedBy("passkey"), desktopMac ? keychainNote : undefined].filter(Boolean).join(" ") || undefined}
           title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}
         >
           {handingOff === "passkey" ? <SpinnerGap size={19} className="spin" /> : <Fingerprint size={19} />}
@@ -438,28 +476,31 @@ export default function Login({
           <ArrowSquareOut size={16} />
         </a>
       )}
-      {passkeyButton && (
+      {passkeyHandOff && desktopMac && (
+        <p id={keychainNote} className="login-way-note" data-keychain-note="">
+          {t("Öffnet deinen Browser – für Passkeys aus dem Schlüsselbund", "Opens your browser – for passkeys from the Keychain")}
+        </p>
+      )}
+      {passkeyButton && !passkeyTouchId && (
         <button className={wayClass("passkey")} onClick={passkey} disabled={!!busy} aria-describedby={describedBy("passkey")}>
           {busy === "passkey" ? <SpinnerGap className="spin" /> : <Fingerprint size={19} />}
           {t("Mit Passkey anmelden", "Sign in with a passkey")}
         </button>
       )}
       {lastUsedHint("passkey")}
-      {passkeyInApp && passkeyFallback && (
+      {passkeyTouchId && (
+        <p className="login-browser login-app-passkey">
+          {t("Passkey in dieser App angelegt?", "Passkey created in this app?")}{" "}
+          <button type="button" className="text-button" onClick={passkey} disabled={!!busy} data-app-passkey="">
+            {busy === "passkey" ? <SpinnerGap size={14} className="spin" /> : <Fingerprint size={14} />}
+            {t("Mit Touch ID dieser App", "With this app's Touch ID")}
+          </button>
+        </p>
+      )}
+      {/* On the Mac the hand-off is right above: no second link for a cancelled prompt. */}
+      {passkeyInApp && passkeyFallback === "failed" && !passkeyKeychain && (
         <p className="login-browser" data-passkey-fallback="">
-          {t("Passkey hat nicht geklappt?", "Passkey didn't work?")}{" "}
-          <a
-            href="/api/auth/desktop"
-            onClick={handOff("passkey")}
-            aria-busy={handingOff === "passkey" || undefined}
-            title={t(
-              "Öffnet die Anmeldung im Browser – dort kannst du deinen Passkey verwenden",
-              "Opens the sign-in in your browser, where you can use your passkey",
-            )}
-          >
-            {t("Im Browser anmelden", "Sign in in the browser")}
-            {handingOff === "passkey" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
-          </a>
+          {t("Passkey hat nicht geklappt?", "Passkey didn't work?")} {browserPasskeyLink}
         </p>
       )}
     </>
@@ -589,6 +630,14 @@ export default function Login({
           {message && (
             <div role="alert" className="error">
               {message}
+              {passkeyInApp && passkeyFallback === "unknown" && (
+                <span className="login-browser login-error-next" data-passkey-fallback="">
+                  {passkeyKeychain
+                    ? t("Passkey aus dem Schlüsselbund?", "Passkey from the Keychain?")
+                    : t("Passkey woanders gespeichert?", "Passkey saved elsewhere?")}{" "}
+                  {browserPasskeyLink}
+                </span>
+              )}
             </div>
           )}
           {desktopRequest && !notice && (

@@ -156,8 +156,10 @@ test("published databases show calendar, timeline and chart views", async ({
   );
   await visitor.getByRole("link", { name: "Vorheriger Monat" }).click();
   await day("12").getByRole("link", { name: "Umsetzung" }).click();
+  // On wide windows the record opens beside the view (#392): its title is
+  // the panel's heading and the record's own – one of them is enough.
   await expect(
-    visitor.getByRole("heading", { name: "Umsetzung", exact: true }),
+    visitor.getByRole("heading", { name: "Umsetzung", exact: true }).first(),
   ).toBeVisible();
 
   // The app's timeline, read-only (#390): title links and bars.

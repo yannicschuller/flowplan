@@ -122,6 +122,92 @@ test("the Windows desktop app signs in with passkeys in its window", async ({ br
   await other.close();
 });
 
+// The Mac app with Touch ID in its window (#356): its authenticator never
+// sees the iCloud Keychain, so "Mit Passkey anmelden" stays the browser
+// hand-off – said under the button – and the app's own Touch ID passkey is
+// the second way. A passkey from the window the instance does not know
+// ("Dieser Passkey ist hier nicht bekannt.") links to the browser in the error.
+test("the Mac desktop app signs in with the Keychain through the browser, Touch ID second", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers it.");
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await setUp(browser, origin);
+  const agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Electron/45.0.0 Safari/537.36 FlowplanDesktop/1.3.13";
+  const app = await browser.newContext({ userAgent: agent });
+  // The app's bridge (flowplan-desktop preload.js); Touch ID answers with a
+  // passkey made in the app that this instance does not know.
+  await app.addInitScript(() => {
+    Object.defineProperty(window, "FlowplanDesktop", { value: Object.freeze({ platform: "desktop", version: "1.3.13", passkeys: "window", os: "darwin" }) });
+    (window as unknown as { asked: number }).asked = 0;
+    const bytes = (text: string) => new TextEncoder().encode(text).buffer;
+    navigator.credentials.get = async () => {
+      (window as unknown as { asked: number }).asked++;
+      return {
+        id: "YXBwLW9ubHktcGFzc2tleQ",
+        rawId: bytes("app-only-passkey"),
+        type: "public-key",
+        authenticatorAttachment: "platform",
+        response: { authenticatorData: bytes("a"), clientDataJSON: bytes("{}"), signature: bytes("s"), userHandle: null },
+        getClientExtensionResults: () => ({}),
+      } as unknown as Credential;
+    };
+  });
+  const page = await app.newPage();
+  await page.goto(origin + "/");
+  const handOff = page.getByRole("link", { name: "Mit Passkey anmelden" });
+  await expect(handOff).toHaveAttribute("href", "/api/auth/desktop");
+  await expect(page.locator("[data-keychain-note]")).toHaveText("Öffnet deinen Browser – für Passkeys aus dem Schlüsselbund");
+  await expect(handOff).toHaveAccessibleDescription(/Öffnet deinen Browser – für Passkeys aus dem Schlüsselbund/);
+  await expect(page.getByRole("button", { name: "Mit Passkey anmelden" })).toHaveCount(0);
+  const touchId = page.getByRole("button", { name: "Mit Touch ID dieser App" });
+  await expect(touchId).toBeVisible();
+  await expect(page.locator("[data-passkey-fallback]")).toHaveCount(0);
+  await touchId.click();
+  const alert = page.locator(".login-column .error[role=alert]");
+  await expect(alert).toContainText("Dieser Passkey ist hier nicht bekannt.");
+  await expect(alert).toContainText("Passkey aus dem Schlüsselbund?");
+  await expect(alert.getByRole("link", { name: "Im Browser anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  expect(await page.evaluate(() => (window as unknown as { asked: number }).asked)).toBe(1);
+  await app.close();
+
+  // The Mac app without Touch ID: the hand-off with its note, nothing else.
+  const plain = await browser.newContext({ userAgent: agent });
+  await plain.addInitScript(() => {
+    Object.defineProperty(window, "FlowplanDesktop", { value: Object.freeze({ platform: "desktop", version: "1.3.13", passkeys: "browser", os: "darwin" }) });
+  });
+  const mac = await plain.newPage();
+  await mac.goto(origin + "/");
+  await expect(mac.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  await expect(mac.locator("[data-keychain-note]")).toBeVisible();
+  await expect(mac.getByRole("button", { name: "Mit Touch ID dieser App" })).toHaveCount(0);
+  await plain.close();
+
+  // Windows: the page's own button, no note; an unknown passkey links to the browser in the error.
+  const windows = await browser.newContext({ userAgent: agent.replace("Macintosh; Intel Mac OS X 10_15_7", "Windows NT 10.0; Win64; x64") });
+  await windows.addInitScript(() => {
+    Object.defineProperty(window, "FlowplanDesktop", { value: Object.freeze({ platform: "desktop", version: "1.3.13", passkeys: "window", os: "win32" }) });
+    const bytes = (text: string) => new TextEncoder().encode(text).buffer;
+    navigator.credentials.get = async () =>
+      ({
+        id: "YXBwLW9ubHktcGFzc2tleQ",
+        rawId: bytes("app-only-passkey"),
+        type: "public-key",
+        authenticatorAttachment: "platform",
+        response: { authenticatorData: bytes("a"), clientDataJSON: bytes("{}"), signature: bytes("s"), userHandle: null },
+        getClientExtensionResults: () => ({}),
+      }) as unknown as Credential;
+  });
+  const win = await windows.newPage();
+  await win.goto(origin + "/");
+  await expect(win.locator("[data-keychain-note]")).toHaveCount(0);
+  await expect(win.getByRole("button", { name: "Mit Touch ID dieser App" })).toHaveCount(0);
+  await win.getByRole("button", { name: "Mit Passkey anmelden" }).click();
+  const winAlert = win.locator(".login-column .error[role=alert]");
+  await expect(winAlert).toContainText("Dieser Passkey ist hier nicht bekannt.");
+  await expect(winAlert).toContainText("Passkey woanders gespeichert?");
+  await expect(winAlert.getByRole("link", { name: "Im Browser anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  await windows.close();
+});
+
 // The iOS and Android apps (FlowplanMobile/) hand over the same way.
 test("the mobile app signs in with passkeys and SSO through the browser", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "One run covers it.");
