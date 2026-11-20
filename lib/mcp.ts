@@ -45,6 +45,7 @@ import { buildInfo } from "./build-info";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 import { workflowTools } from "./workflows/mcp-tools";
+import { offThread } from "./worker-pool";
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 // Answers longer than this are cut, so one call cannot flood the client.
@@ -294,7 +295,7 @@ function recordProperties(cells: Record<string, unknown>, fields: Field[], peopl
   }
   return out;
 }
-async function queryDatabase(
+export async function queryDatabase(
   user: Identity,
   args: { databaseId: string; query?: string; viewId?: string; limit?: number; offset?: number },
 ) {
@@ -1026,7 +1027,9 @@ const tools: Tool[] = [
     }),
     write: false,
     thirdParty: true,
-    run: queryDatabase as Tool["run"],
+    // In a worker thread when one is free (#383 wave 3): it only reads.
+    run: ((user: Identity, args: Parameters<typeof queryDatabase>[1]) =>
+      offThread("mcp.query_database", [user, args], () => queryDatabase(user, args), { ifFree: true })) as Tool["run"],
   },
   {
     name: "get_record",

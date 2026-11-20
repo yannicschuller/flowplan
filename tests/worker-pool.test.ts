@@ -284,3 +284,94 @@ test("without a worker script the jobs run on the request thread", async (t) => 
     process.env.FLOWPLAN_WORKERS = "2";
   }
 });
+
+// ifFree (#383 wave 3): short work goes to a started, free thread or runs
+// here at once – it never waits for a thread to start or behind a job.
+test("ifFree: only a started, free thread; otherwise here, and a thread is started while the loop is busy", async (t) => {
+  await pool.resetWorkerPool(fake);
+  process.env.FLOWPLAN_WORKERS = "1";
+  t.after(async () => {
+    process.env.FLOWPLAN_WORKERS = "2";
+    pool.markLoopBusy(false);
+    await pool.resetWorkerPool();
+  });
+  const quick = (what: object) => pool.offThread("export.docx", [what], async () => "here", { ifFree: true });
+  // No thread, the loop idle: here, nothing started.
+  pool.markLoopBusy(false);
+  assert.equal(await quick({ echo: "a" }), "here");
+  assert.equal(pool.workerPoolState().started, 0);
+  // The loop busy: still here, and one thread starts (only one at a time).
+  pool.markLoopBusy(true);
+  assert.equal(await quick({ echo: "b" }), "here");
+  assert.equal(await quick({ echo: "c" }), "here");
+  assert.equal(pool.workerPoolState().started, 1);
+  // Once it is ready, the work goes there.
+  for (let i = 0; i < 100 && (await quick({ echo: "d" })) === "here"; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+  const before = pool.workerPoolState().completed;
+  assert.deepEqual(((await quick({ echo: "e" })) as unknown as { echo: string }).echo, "e");
+  assert.equal(pool.workerPoolState().completed, before + 1);
+  // The thread busy with another job: here, without waiting for it.
+  const long = job({ sleep: 200, echo: "lang" });
+  const started = performance.now();
+  assert.equal(await quick({ echo: "f" }), "here");
+  assert.ok(performance.now() - started < 150);
+  assert.equal(((await long) as { echo: string }).echo, "lang");
+  // Errors keep their kind; a write runs again here, and so does work
+  // whose thread ended.
+  await assert.rejects(quick({ http: [403, "Keine Berechtigung."] }), (e: unknown) => e instanceof HttpError && e.status === 403);
+  assert.equal(await quick({ write: true }), "here");
+  assert.equal(await quick({ exit: true }), "here");
+  // While stopping: here rather than 503 (no request is refused for it).
+  const stopped = pool.stopWorkers(Date.now());
+  assert.equal(await quick({ echo: "g" }), "here");
+  await stopped;
+});
+
+test("the search gives in a worker thread what it gives on the request thread", async () => {
+  const { searchWorkspace, refreshSearchIndex } = await import("../lib/search-index");
+  for (let i = 0; i < 5; i++) await write(await page(`Lieferkette ${i}`, "document", root), `<p>Die Lieferkette für Bericht ${i} und Schrauben.</p>`);
+  await refreshSearchIndex();
+  // A started thread (any job), then the search moves there.
+  await exportJira(owner, { pageId: child });
+  const search = (person: Identity, query: string, options: Parameters<typeof searchWorkspace>[3] = {}) =>
+    pool.offThread("search.workspace", [person, wid, query, { ...options, refresh: false }], () => searchWorkspace(person, wid, query, { ...options, refresh: false }), { ifFree: true });
+  for (const [person, query, options] of [
+    [owner, "Lieferkette", {}],
+    [owner, "Schrauben", { kind: "document" }],
+    [owner, "Li", {}],
+    [owner, "type:document Bericht", {}],
+    [owner, "Lieferkette", { sort: "edited" }],
+    [stranger, "Lieferkette", {}],
+  ] as [Identity, string, Parameters<typeof searchWorkspace>[3]][]) {
+    const here = await inThread(() => searchWorkspace(person, wid, query, options));
+    const there = await inWorker(() => search(person, query, options));
+    assert.deepEqual(there, here, `${query} ${JSON.stringify(options)}`);
+  }
+  assert.ok((await searchWorkspace(owner, wid, "Lieferkette")).length >= 5);
+});
+
+test("MCP query_database gives in a worker thread what it gives on the request thread", async () => {
+  const { queryDatabase } = await import("../lib/mcp");
+  const schema = await database(table);
+  await command(owner, {
+    action: "database.update",
+    pageId: table,
+    version: schema.version,
+    fields: schema.fields,
+    views: [...schema.views, { id: "big", name: "Groß", type: "table", filters: [{ field: "amount", op: "gt", value: "20" }], sorts: [{ field: "amount", direction: "desc" }] }],
+  });
+  await exportJira(owner, { pageId: child });
+  const query = (person: Identity, args: Parameters<typeof queryDatabase>[1]) =>
+    pool.offThread("mcp.query_database", [person, args], () => queryDatabase(person, args), { ifFree: true });
+  for (const args of [{ databaseId: table }, { databaseId: table, viewId: "big", limit: 10, offset: 5 }, { databaseId: table, query: "Eintrag 1" }]) {
+    const here = await inThread(() => queryDatabase(owner, args));
+    const there = await inWorker(() => query(owner, args));
+    assert.deepEqual(there, here, JSON.stringify(args));
+  }
+  assert.ok(((await queryDatabase(owner, { databaseId: table, viewId: "big" })) as { total: number }).total > 0);
+  // No access: the same error from the worker.
+  const refusal = async (fn: () => Promise<unknown>) => await fn().then(() => null, (e: unknown) => (e instanceof HttpError ? [e.status, e.message] : String(e)));
+  const here = await inThread(() => refusal(() => queryDatabase(stranger, { databaseId: table })));
+  assert.ok(here);
+  assert.deepEqual(await refusal(() => query(stranger, { databaseId: table })), here);
+});

@@ -9,6 +9,9 @@ import { exportPrintHtml } from "./export-pdf";
 import { exportJira } from "./export-jira";
 import { exportConfluence } from "./export-confluence";
 import { parseImportData } from "./importers/parse-transfer";
+import { searchWorkspace } from "./search-index";
+import { queryDatabase } from "./mcp";
+import { openedDatabaseJson } from "./page-open";
 
 export const workerJobs = {
   "export.markdown": exportMarkdown,
@@ -18,5 +21,11 @@ export const workerJobs = {
   "export.jira": exportJira,
   "export.confluence": exportConfluence,
   "import.parse": parseImportData,
+  // The quick search (#383 wave 3), when a thread is free (offThread ifFree).
+  "search.workspace": searchWorkspace,
+  // MCP query_database (#383 wave 3), the same way.
+  "mcp.query_database": queryDatabase,
+  // Opening a database (#383 wave 3, lib/page-open.ts), the same way.
+  "page.database": openedDatabaseJson,
 } as const;
 export type WorkerJobName = keyof typeof workerJobs;

@@ -3,7 +3,8 @@ import { requireModule } from "@/lib/instance-modules";
 import { e2eBuild } from "@/lib/e2e-build";
 import { e2eFailure, failForE2e } from "@/lib/e2e-failure";
 import { CSV_FORMULA } from "@/lib/cell-text";
-import { jsonWithTag } from "@/lib/etag";
+import { jsonTextWithTag, jsonWithTag } from "@/lib/etag";
+import { openDatabase } from "@/lib/page-open";
 import { bootstrapResponse } from "@/lib/bootstrap-pages";
 import { keepAnswer, keptNotModified, trackedAnswer } from "@/lib/kept-answers";
 import { linkTargets } from "@/lib/link-targets";
@@ -99,7 +100,8 @@ import {
 } from "@/lib/permissions";
 import { one, all, run, id, audit, sql } from "@/lib/db";
 import type { Page } from "@/lib/types";
-import { searchWorkspace, recentlyVisited } from "@/lib/search-index";
+import { searchWorkspace, recentlyVisited, refreshSearchIndex } from "@/lib/search-index";
+import { offThread } from "@/lib/worker-pool";
 import { recordSearchVisit } from "@/lib/search-visits";
 import { COLLECTION_RESULTS, COLLECTION_RESULTS_MAX, listCollections, previewQuery, runCollection } from "@/lib/collections";
 import { tagListing } from "@/lib/page-properties-server";
@@ -854,6 +856,11 @@ async function handleGET(
           return unchanged;
         }
       }
+      // Opening a database: built in a worker thread when one is free (lib/page-open.ts).
+      if (visit && path.length === 2) {
+        const opened = await openDatabase(user, path[1], presence);
+        if (opened) return jsonTextWithTag(req, opened.body as Uint8Array<ArrayBuffer>, {}, opened.etag);
+      }
       const tracked = await trackedAnswer(async () => await withActivity(user, await pageData(user, path[1], { presence }), visit));
       const response = jsonWithTag(req, tracked.value);
       return key ? keepAnswer(key, tracked, response) : response;
@@ -912,22 +919,28 @@ async function handleGET(
     if (path[0] === "search") {
       const wid = url.searchParams.get("workspace") || "";
       await requireMember(user, wid);
+      const query = url.searchParams.get("q") || "";
+      const options = {
+        kind: z
+          .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
+          .catch("all")
+          .parse(url.searchParams.get("kind") || "all"),
+        spaceId: url.searchParams.get("space")
+          ? z.uuid().parse(url.searchParams.get("space"))
+          : undefined,
+        // "Ohne Journaltage"
+        excludeDays: url.searchParams.get("days") === "0",
+        // For created:today and the like (#86).
+        timeZone: url.searchParams.get("tz") || undefined,
+        // Best match (default), last change or creation (#243).
+        sort: z.enum(["relevance", "edited", "created"]).catch("relevance").parse(url.searchParams.get("sort") || "relevance"),
+        refresh: false,
+      };
+      // The index brought up to date here (it writes), the search itself
+      // in a worker thread when one is free (#383 wave 3, lib/worker-pool.ts).
+      await refreshSearchIndex();
       return NextResponse.json(
-        await searchWorkspace(user, wid, url.searchParams.get("q") || "", {
-          kind: z
-            .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
-            .catch("all")
-            .parse(url.searchParams.get("kind") || "all"),
-          spaceId: url.searchParams.get("space")
-            ? z.uuid().parse(url.searchParams.get("space"))
-            : undefined,
-          // "Ohne Journaltage"
-          excludeDays: url.searchParams.get("days") === "0",
-          // For created:today and the like (#86).
-          timeZone: url.searchParams.get("tz") || undefined,
-          // Best match (default), last change or creation (#243).
-          sort: z.enum(["relevance", "edited", "created"]).catch("relevance").parse(url.searchParams.get("sort") || "relevance"),
-        }),
+        await offThread("search.workspace", [user, wid, query, options], () => searchWorkspace(user, wid, query, options), { ifFree: true }),
         { headers: { "Cache-Control": "no-store" } },
       );
     }

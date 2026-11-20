@@ -36,3 +36,41 @@ test("rows are plain objects of their own", { skip: sqliteOnly }, () => {
   ]);
   assert.notEqual(sqliteOne("SELECT * FROM t383 WHERE id=?", "a"), sqliteOne("SELECT * FROM t383 WHERE id=?", "a"));
 });
+
+// Wave 3: the rows are built from arrays, one property per column in the
+// columns' order (every row of a statement has the same shape).
+test("rows keep the columns' order, names and values", { skip: sqliteOnly }, () => {
+  sqliteRun("CREATE TABLE IF NOT EXISTS t383b(z TEXT,a INTEGER,m REAL,b BLOB)");
+  sqliteRun("DELETE FROM t383b");
+  sqliteRun("INSERT INTO t383b VALUES('z',1,1.5,x'0102'),(NULL,NULL,NULL,NULL)");
+  const rows = sqliteAll<Record<string, unknown>>("SELECT * FROM t383b ORDER BY a IS NULL");
+  assert.deepStrictEqual(Object.keys(rows[0]), ["z", "a", "m", "b"]);
+  assert.equal(rows[0].z, "z");
+  assert.equal(rows[0].a, 1);
+  assert.equal(rows[0].m, 1.5);
+  assert.deepStrictEqual([...(rows[0].b as Uint8Array)], [1, 2]);
+  assert.deepStrictEqual(rows[1], { z: null, a: null, m: null, b: null });
+  // Aliases, and a name that comes twice keeps its last value (as
+  // node:sqlite's own objects did).
+  assert.deepStrictEqual(sqliteOne("SELECT 1 x,2 x,3 y"), { x: 2, y: 3 });
+  assert.deepStrictEqual(sqliteAll("SELECT a n,z FROM t383b WHERE a=?", 1), [{ n: 1, z: "z" }]);
+  // A column called __proto__ stays a property.
+  const odd = sqliteOne<Record<string, unknown>>('SELECT 1 "__proto__",2 x')!;
+  assert.equal(Object.getPrototypeOf(odd), Object.prototype);
+  assert.deepStrictEqual(Object.keys(odd), ["__proto__", "x"]);
+  // RETURNING through sqliteAll/sqliteOne.
+  assert.deepStrictEqual(sqliteAll("INSERT INTO t383b(z,a) VALUES('r',7) RETURNING z,a"), [{ z: "r", a: 7 }]);
+  // Statements without rows.
+  assert.deepStrictEqual(sqliteAll("SELECT * FROM t383b WHERE a=-1"), []);
+});
+
+test("a cached SELECT * follows a column added later", { skip: sqliteOnly }, async () => {
+  const { db } = await import("../lib/db");
+  sqliteRun("CREATE TABLE IF NOT EXISTS t383c(id TEXT)");
+  sqliteRun("INSERT INTO t383c VALUES('a')");
+  assert.deepStrictEqual(sqliteOne("SELECT * FROM t383c"), { id: "a" });
+  // Past run() (which forgets the cached statements): straight on the connection.
+  db().exec("ALTER TABLE t383c ADD COLUMN extra TEXT DEFAULT 'e'");
+  assert.deepStrictEqual(sqliteOne("SELECT * FROM t383c"), { id: "a", extra: "e" });
+  assert.deepStrictEqual(sqliteAll("SELECT * FROM t383c"), [{ id: "a", extra: "e" }]);
+});

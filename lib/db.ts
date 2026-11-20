@@ -2427,7 +2427,7 @@ const STATEMENT_CACHE_SIZE = 500;
 // `writes`: what a write changes, with what its triggers and foreign keys
 // change in turn; null: not known (counts as everything). Both worked out
 // once per statement, when first needed (lib/kept-answers.ts).
-type Cached = { statement: StatementSync; reads: boolean; tables?: readonly string[]; writes?: readonly string[] | null };
+type Cached = { statement: StatementSync; reads: boolean; names: string[] | null; tables?: readonly string[]; writes?: readonly string[] | null };
 function statementCaches() {
   return ((globalThis as { flowplanStatements?: WeakMap<DatabaseSync, Map<string, Cached>> }).flowplanStatements ??= new WeakMap());
 }
@@ -2445,7 +2445,13 @@ function statement(sql: string): Cached {
     cache.set(sql, cached);
     return cached;
   }
-  cached = { statement: d.prepare(sql), reads: READ_ONLY.test(sql) };
+  const prepared = d.prepare(sql);
+  // Rows come as arrays and are built into objects here (rowObject below);
+  // not for a column called __proto__ (an assignment would not make it a
+  // property).
+  const arrays = typeof (prepared as { setReturnArrays?: unknown }).setReturnArrays === "function" && !columnNames(prepared).includes("__proto__");
+  if (arrays) (prepared as StatementSync & { setReturnArrays(on: boolean): void }).setReturnArrays(true);
+  cached = { statement: prepared, reads: READ_ONLY.test(sql), names: arrays ? columnNames(prepared) : null };
   cache.set(sql, cached);
   if (cache.size > STATEMENT_CACHE_SIZE) cache.delete(cache.keys().next().value!);
   return cached;
@@ -2639,7 +2645,30 @@ const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 // before at more than twice the cost: plain objects for the rest of the code
 // (React's serialisation to the client, deepStrictEqual, hasOwnProperty),
 // still one object per row and call, owned by the caller.
+//
+// Faster still (#383, wave 3): the statement returns each row as an array
+// and the object is built here, one property after the other in the order
+// of the columns. Every row of a statement then has the same shape (V8's
+// fast properties), where an object without a prototype and one whose
+// prototype was set afterwards are dictionaries: reading their properties,
+// copying them (`{ ...row }`) and JSON.stringify() cost two to three times
+// as much. A column name that comes twice keeps its last value, as
+// node:sqlite's own objects do.
 const asPlain = (row: object) => Object.setPrototypeOf(row, Object.prototype) as object;
+function columnNames(statement: StatementSync): string[] {
+  return (statement as StatementSync & { columns(): { name: string }[] }).columns().map((c) => c.name);
+}
+function rowObject(cached: Cached, row: unknown): object {
+  if (!cached.names) return asPlain(row as object);
+  const values = row as unknown[];
+  // The columns of a statement changed with the schema (SQLite prepares it
+  // anew by itself): their names once more.
+  if (values.length !== cached.names.length) cached.names = columnNames(cached.statement);
+  const names = cached.names;
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i < names.length; i++) out[names[i]] = values[i];
+  return out;
+}
 // The synchronous SQLite statements behind the asynchronous SQLite driver
 // (lib/db-driver/sqlite.ts) – only for it and SQLite-only code (the
 // migrations, the file checks). Everything else uses one/all/run below.
@@ -2654,21 +2683,21 @@ export function sqliteOne<T = Record<string, unknown>>(sql: string, ...params: P
     noteNotificationInsert(sql, params);
   }
   if (runtimeMetricsOn) noteStatement(start);
-  return row ? (asPlain(row) as T) : undefined;
+  return row ? (rowObject(cached, row) as T) : undefined;
 }
 export function sqliteAll<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
-  const rows = cached.statement.all(...params) as T[];
-  for (const row of rows) asPlain(row as object);
+  const rows = cached.statement.all(...params) as unknown[];
+  for (let i = 0; i < rows.length; i++) rows[i] = rowObject(cached, rows[i]);
   noteStatementRead(cached, sql);
   if (!cached.reads) {
     noteWrite(statementWrites(cached, sql));
     noteNotificationInsert(sql, params);
   }
   if (runtimeMetricsOn) noteStatement(start);
-  return rows;
+  return rows as T[];
 }
 export function sqliteRun(sql: string, ...params: Param[]) {
   const start = runtimeMetricsOn ? performance.now() : 0;

@@ -355,12 +355,14 @@ export async function searchWorkspace(
   rawQuery: string,
   // excludeDays: "Ohne Journaltage" – no hits on journal days at all.
   // spaceIds: only in these spaces (the shelves of the library, #329).
-  options: { kind?: SearchKind; spaceId?: string; spaceIds?: readonly string[]; excludeDays?: boolean; timeZone?: string; sort?: SearchSort } = {},
+  // refresh: false – the caller brought the index up to date (a worker
+  // thread, which only reads, gets the search after that).
+  options: { kind?: SearchKind; spaceId?: string; spaceIds?: readonly string[]; excludeDays?: boolean; timeZone?: string; sort?: SearchSort; refresh?: boolean } = {},
 ): Promise<SearchResult[]> {
   if (options.spaceIds && !options.spaceIds.length) return [];
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
-  await refreshSearchIndex();
+  if (options.refresh !== false) await refreshSearchIndex();
   // OR, NOT, parentheses, created_by:, created:, type:, in:, title: (#86,
   // lib/collection-query.ts): the pages and records that match, as a
   // collection finds them, latest change first. Queries the search knew

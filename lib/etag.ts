@@ -15,7 +15,7 @@
 // its last answer was read from (lib/kept-answers.ts).
 import { createHash } from "node:crypto";
 
-export function contentTag(body: string) {
+export function contentTag(body: string | Uint8Array) {
   return `W/"${createHash("sha256").update(body).digest("base64url").slice(0, 32)}"`;
 }
 // Whether an If-None-Match header names this tag (a list, or "*").
@@ -27,8 +27,10 @@ export function tagMatches(header: string | null, tag: string) {
     .some((t) => t === "*" || t === tag || t.replace(/^W\//, "") === tag.replace(/^W\//, ""));
 }
 export function jsonWithTag(req: Request, data: unknown, init: { headers?: Record<string, string> } = {}) {
-  const body = JSON.stringify(data);
-  const tag = contentTag(body);
+  return jsonTextWithTag(req, JSON.stringify(data), init);
+}
+// The same for an answer serialised already (and its tag, when known).
+export function jsonTextWithTag(req: Request, body: string | Uint8Array<ArrayBuffer>, init: { headers?: Record<string, string> } = {}, tag = contentTag(body)) {
   const headers = new Headers({ "Cache-Control": "no-store", ...init.headers, ETag: tag });
   if (tagMatches(req.headers.get("if-none-match"), tag)) return new Response(null, { status: 304, headers });
   headers.set("Content-Type", "application/json");
