@@ -316,9 +316,11 @@ test("ifFree: only a started, free thread; otherwise here, and a thread is start
   assert.equal(await quick({ echo: "f" }), "here");
   assert.ok(performance.now() - started < 150);
   assert.equal(((await long) as { echo: string }).echo, "lang");
-  // Errors keep their kind; a write runs again here.
+  // Errors keep their kind; a write runs again here, and so does work
+  // whose thread ended.
   await assert.rejects(quick({ http: [403, "Keine Berechtigung."] }), (e: unknown) => e instanceof HttpError && e.status === 403);
   assert.equal(await quick({ write: true }), "here");
+  assert.equal(await quick({ exit: true }), "here");
   // While stopping: here rather than 503 (no request is refused for it).
   const stopped = pool.stopWorkers(Date.now());
   assert.equal(await quick({ echo: "g" }), "here");

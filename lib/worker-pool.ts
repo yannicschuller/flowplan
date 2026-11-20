@@ -2,7 +2,9 @@
 // (Markdown/ZIP, EPUB, PDF, Word, Jira, Confluence) and the reading of
 // imports run in worker threads, so the one event loop that answers every
 // request keeps turning while they work. A space export held it for 15–20 s
-// before – every other request of the instance waited.
+// before – every other request of the instance waited. Shorter work of
+// busy requests – the search, MCP query_database, opening a database –
+// goes to a thread only when one is free (offThread ifFree, wave 3).
 //
 // A small pool per process (cluster instances and the single container
 // alike): FLOWPLAN_WORKERS threads (default: the cores the process may use
@@ -190,7 +192,9 @@ function spawn(p: Pool): Slot | null {
       for (const waiting of p.queue.splice(0)) waiting.here().then(waiting.resolve, waiting.reject);
       return;
     }
-    job?.reject(error instanceof Error ? error : new Error(String(error)));
+    // A request's short work (ifFree) runs here instead, as without workers.
+    if (job?.quiet) job.here().then(job.resolve, job.reject);
+    else job?.reject(error instanceof Error ? error : new Error(String(error)));
     pump(p);
   });
   worker.on("exit", () => {
@@ -199,7 +203,8 @@ function spawn(p: Pool): Slot | null {
     slot.job = null;
     if (slot.timer) clearTimeout(slot.timer);
     if (slot.idle) clearTimeout(slot.idle);
-    job?.reject(new Error("Der Worker-Thread wurde beendet."));
+    if (job?.quiet) job.here().then(job.resolve, job.reject);
+    else job?.reject(new Error("Der Worker-Thread wurde beendet."));
     pump(p);
   });
   return slot;
