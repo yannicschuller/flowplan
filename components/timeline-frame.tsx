@@ -676,7 +676,9 @@ export function TimelineArrows({
     >
       <defs>
         {(["ok", "conflict", "critical"] as const).map((kind) => (
-          <marker key={kind} id={`timeline-arrow-${id}-${kind}`} className={kind} viewBox="0 0 8 8" refX="2" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+          // One size for every arrow (a thicker line in front or on the
+          // critical path keeps the head of a thin one).
+          <marker key={kind} id={`timeline-arrow-${id}-${kind}`} className={kind} viewBox="0 0 8 8" refX="2" refY="4" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
             <path d="M0 0 L8 4 L0 8 z" />
           </marker>
         ))}

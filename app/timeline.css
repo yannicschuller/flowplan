@@ -283,6 +283,12 @@
 .timeline-range.colored .timeline-range-body {
   color: var(--opt-fg);
 }
+/* Hovered: a tint over the option's colour, not the plain hover grey. */
+@media (hover: hover) {
+  .timeline-range.colored .timeline-range-body:hover {
+    background: color-mix(in srgb, var(--opt-fg) 10%, transparent);
+  }
+}
 .timeline-range.colored .timeline-range-detail {
   color: color-mix(in srgb, var(--opt-fg) 75%, var(--opt-bg));
 }
