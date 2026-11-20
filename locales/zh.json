@@ -6550,6 +6550,7 @@
   "Mark page as a chapter": "将页面标记为章节",
   "Mark page as a chapter …": "将页面标记为章节 …",
   "Mark today": "标记今天",
+  "Mark up": "标注",
   "Mark up and copy image (with an image selected)": "标注和复制图片（选中图片时）",
   "Mark up image": "标注图片",
   "Mark up image (double-click)": "标注图片（双击）",
@@ -13981,6 +13982,7 @@
   "Zoom in": "放大",
   "Zoom in (+)": "放大 (+)",
   "Zoom in / out": "放大 / 缩小",
+  "Zoom level": "缩放级别",
   "Zoom out": "缩小",
   "Zoom out (−)": "缩小 (−)"
 }

@@ -2,8 +2,9 @@
 // pinch (ctrl + wheel, Safari's gesture events) or steps (buttons, keys).
 // Pure, for the tests; notebooks and the PDF viewer use it
 // (components/notebook/use-pinch-zoom.ts), the picture of an image
-// occlusion card zooms inside its frame (components/study/occlusion-zoom.ts,
-// the "frame" functions at the end).
+// occlusion card (components/study/occlusion-zoom.ts) and the image being
+// marked up (components/image-annotator.tsx, lib/image-markup-view.ts) zoom
+// inside their frame (the "frame" functions at the end).
 //
 // A pinch is measured against its start: the factor is the distance of the
 // fingers now over their distance when the second one landed – never the
@@ -107,6 +108,20 @@ export function framePinch(start: FrameView & { mid: XY }, mid: XY, factor: numb
   const scale = clampZoom(start.scale * factor, limits);
   const local = { x: (start.mid.x - start.pan.x) / start.scale, y: (start.mid.y - start.pan.y) / start.scale };
   return { scale, pan: clampPan(pinchTranslate(local, { x: 0, y: 0 }, mid, scale), scale, size) };
+}
+// Zooming by `factor` with `at` (frame pixels) kept in place: a wheel
+// notch, a key or a button.
+export const frameZoom = (view: FrameView, at: XY, factor: number, limits: ZoomLimits, size: Size): FrameView =>
+  framePinch({ ...view, mid: at }, at, factor, limits, size);
+// A point of the frame (its pixels) in the content's own pixels, and back.
+export const toContent = (view: FrameView, p: XY): XY => ({ x: (p.x - view.pan.x) / view.scale, y: (p.y - view.pan.y) / view.scale });
+export const toFrame = (view: FrameView, p: XY): XY => ({ x: p.x * view.scale + view.pan.x, y: p.y * view.scale + view.pan.y });
+// The same part of the content in a frame of another size (the window was
+// resized).
+export function resizeView(view: FrameView, from: Size, to: Size): FrameView {
+  if (!from.width || !from.height) return FRAME_VIEW;
+  const pan = { x: (view.pan.x * to.width) / from.width, y: (view.pan.y * to.height) / from.height };
+  return { scale: view.scale, pan: clampPan(pan, view.scale, to) };
 }
 // One finger moving a zoomed picture by `delta` from where it started.
 export const framePan = (start: FrameView, delta: XY, size: Size): FrameView => ({

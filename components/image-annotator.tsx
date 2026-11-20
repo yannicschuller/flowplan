@@ -4,6 +4,14 @@
 // pixels, so they stay sharp at any size. Saving writes a new image with the
 // markings; the original and the shapes stay on the image, so the markings
 // can be changed or removed later without loss.
+//
+// The image can be zoomed (fit … 8×) and panned inside its frame
+// (lib/image-markup-view.ts, lib/pinch-zoom.ts): two fingers pinch and pan,
+// ⌘/Ctrl + wheel and a trackpad pinch zoom around the pointer, a plain
+// wheel or two-finger scroll pans, the keys + / − / 0 zoom and fit. The view
+// is only drawn – markings are always kept in image pixels. With pen-only
+// drawing (lib/stylus.ts, shared with PDFs and whiteboards) one finger pans
+// and never draws; without it one finger draws and two zoom.
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -13,13 +21,17 @@ import {
   Circle,
   Eraser,
   HighlighterCircle,
+  MagnifyingGlassMinus,
+  MagnifyingGlassPlus,
   PencilSimple,
   Square,
   TextT,
   Trash,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { drawsWith, isEraser, notePen, onPencilAction, penOnlySetting, samples } from "@/lib/stylus";
+import { drawsWith, isEraser, notePen, notePenActivity, onPencilAction, palmLikely, penOnlySetting, samples } from "@/lib/stylus";
+import { FRAME_VIEW, distance, frameZoom, framePan, framePinch, midpoint, pinchFactor, resizeView, settleView, wheelFactor, type FrameView, type XY } from "@/lib/pinch-zoom";
+import { MARKUP_ZOOM, clampView, imageToScreen, pixelScale, screenToImage, stepView, wheelPan } from "@/lib/image-markup-view";
 import { Modal } from "./ui";
 import { shortcutLetter } from "@/lib/keymap";
 
@@ -33,6 +45,13 @@ export type Shape =
 const COLORS = ["#e03131", "#f08c00", "#fab005", "#2f9e44", "#1c7ed6", "#212529", "#ffffff"];
 const WIDTHS = [1, 2, 4];
 const MAX_SHAPES = 500;
+// A finger that moves less than this (screen pixels) taps.
+const TAP_MOVE = 10;
+
+type Layout = { fit: number; width: number; height: number };
+type Gesture =
+  | { kind: "pinch"; start: FrameView & { mid: XY; distance: number } }
+  | { kind: "pan"; id: number; from: XY; view: FrameView; moved: boolean };
 
 // Parses stored markings; anything unexpected is dropped.
 export function parseShapes(value: unknown): Shape[] {
@@ -160,11 +179,31 @@ export function ImageAnnotator({
     [tool, setTool] = useState<Tool>("pen"),
     [color, setColor] = useState(COLORS[0]),
     [width, setWidth] = useState(2),
-    [draft, setDraft] = useState<Shape | null>(null),
-    [typing, setTyping] = useState<{ at: Point; screen: Point; text: string } | null>(null),
+    [draft, setDraftState] = useState<Shape | null>(null),
+    [typing, setTyping] = useState<{ at: Point; text: string } | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [scale, setScale] = useState(1);
+  // How the image fits the dialog, and the zoom and pan inside that frame.
+  const [layout, setLayout] = useState<Layout>({ fit: 1, width: 0, height: 0 });
+  const [view, setView] = useState<FrameView>(FRAME_VIEW);
+  const viewRef = useRef(view);
+  // The shape being drawn, current between renders (pointer events come
+  // faster than React renders: no point of a stroke is lost).
+  const draftRef = useRef<Shape | null>(null);
+  const setDraft = (next: Shape | null) => {
+    draftRef.current = next;
+    setDraftState(next);
+  };
+  const layoutRef = useRef(layout);
+  const apply = useCallback((next: FrameView) => {
+    viewRef.current = next;
+    setView(next);
+  }, []);
+  // Fingers on the stage (canvas pixels) and the gesture they make.
+  const touches = useRef(new Map<number, XY>());
+  const gesture = useRef<Gesture | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const activePen = useRef(false);
   // Pen-only drawing (lib/stylus.ts): once a pen draws, fingers do not.
   const penOnly = useRef(penOnlySetting() === "on");
   const erasing = useRef(false);
@@ -182,37 +221,66 @@ export function ImageAnnotator({
     img.src = base;
   }, [base]);
 
-  // The canvas shows the photo as large as the dialog allows.
+  // The canvas shows the photo as large as the dialog allows (the frame);
+  // zoomed, it shows a part of it.
   const unit = image.current ? Math.max(1, Math.min(image.current.naturalWidth, image.current.naturalHeight) / 500) : 1;
-  const paint = useCallback(() => {
-    const el = canvas.current,
-      img = image.current;
-    if (!el || !img) return;
-    const maxW = Math.min(window.innerWidth - 80, 1100),
-      maxH = window.innerHeight - 260;
-    const s = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight);
-    setScale(s);
-    const ratio = window.devicePixelRatio || 1;
-    el.width = Math.round(img.naturalWidth * s * ratio);
-    el.height = Math.round(img.naturalHeight * s * ratio);
-    el.style.width = `${Math.round(img.naturalWidth * s)}px`;
-    el.style.height = `${Math.round(img.naturalHeight * s)}px`;
-    const ctx = el.getContext("2d")!;
-    ctx.setTransform(s * ratio, 0, 0, s * ratio, 0, 0);
-    ctx.drawImage(img, 0, 0);
-    drawShapes(ctx, draft ? [...shapes, draft] : shapes, unit);
-  }, [shapes, draft, unit]);
   useEffect(() => {
     if (!ready) return;
-    paint();
-    window.addEventListener("resize", paint);
-    return () => window.removeEventListener("resize", paint);
-  }, [ready, paint]);
+    const measure = () => {
+      const img = image.current;
+      if (!img) return;
+      // Within the stage (its padding: 8 px) and the dialog (at most 85 % of
+      // the window high), below the tools (one or two rows) and the title and
+      // above the buttons.
+      const box = stage.current,
+        tools = box?.parentElement?.querySelector(".annotator-tools");
+      const maxW = Math.min(window.innerWidth - 80, 1100, box ? box.clientWidth - 16 : Infinity),
+        maxH = window.innerHeight * 0.85 - 200 - (tools?.getBoundingClientRect().height ?? 40);
+      const fit = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight);
+      const next = { fit, width: Math.round(img.naturalWidth * fit), height: Math.round(img.naturalHeight * fit) };
+      const before = layoutRef.current;
+      if (before.fit === next.fit && before.width === next.width && before.height === next.height) return;
+      if (before.width) apply(resizeView(viewRef.current, before, next));
+      layoutRef.current = next;
+      setLayout(next);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [ready, apply]);
+  useEffect(() => {
+    const el = canvas.current,
+      img = image.current;
+    if (!ready || !el || !img || !layout.width) return;
+    const ratio = window.devicePixelRatio || 1;
+    const w = Math.round(layout.width * ratio),
+      h = Math.round(layout.height * ratio);
+    if (el.width !== w || el.height !== h) {
+      el.width = w;
+      el.height = h;
+      el.style.width = `${layout.width}px`;
+      el.style.height = `${layout.height}px`;
+    }
+    const ctx = el.getContext("2d")!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const k = pixelScale(view, layout.fit) * ratio;
+    ctx.setTransform(k, 0, 0, k, view.pan.x * ratio, view.pan.y * ratio);
+    ctx.drawImage(img, 0, 0);
+    drawShapes(ctx, draft ? [...shapes, draft] : shapes, unit);
+  }, [ready, layout, view, shapes, draft, unit]);
 
-  const point = (event: React.PointerEvent): Point => {
+  const size = () => ({ width: layoutRef.current.width, height: layoutRef.current.height });
+  // A point of the screen on the canvas (CSS pixels from its top left).
+  const local = (clientX: number, clientY: number): XY => {
     const rect = canvas.current!.getBoundingClientRect();
-    return [(event.clientX - rect.left) / scale, (event.clientY - rect.top) / scale];
+    return { x: clientX - rect.left, y: clientY - rect.top };
   };
+  const toImage = (clientX: number, clientY: number): Point => {
+    const p = screenToImage(viewRef.current, layoutRef.current.fit, local(clientX, clientY));
+    return [p.x, p.y];
+  };
+  const point = (event: React.PointerEvent): Point => toImage(event.clientX, event.clientY);
   const add = (shape: Shape) => {
     setShapes((list) => [...list, shape].slice(-MAX_SHAPES));
     setUndone([]);
@@ -238,53 +306,125 @@ export function ImageAnnotator({
       }),
   );
   function erase(points: Point[]) {
-    const tolerance = 8 / scale;
+    const tolerance = 8 / pixelScale(viewRef.current, layoutRef.current.fit);
     setShapes((list) => {
       const kept = list.filter((shape) => !points.some((p) => shapeHit(shape, p, tolerance + shape.width)));
       if (kept.length !== list.length) setUndone((u) => [...u, ...list.filter((shape) => !kept.includes(shape))]);
       return kept.length === list.length ? list : kept;
     });
   }
-  function onDown(event: React.PointerEvent) {
-    if (!ready || (active.current !== null && active.current !== event.pointerId)) return;
+  function placeText(event: React.PointerEvent) {
+    commitText();
+    setTyping({ at: point(event), text: "" });
+  }
+  // Two fingers: from now on they zoom and pan.
+  function startPinch() {
+    const [a, b] = [...touches.current.values()];
+    gesture.current = { kind: "pinch", start: { ...viewRef.current, mid: midpoint(a, b), distance: distance(a, b) } };
+  }
+  // A drawing or erasing pointer stops (a second finger came).
+  function stopDrawing() {
+    active.current = null;
+    erasing.current = false;
+    activePen.current = false;
+    setDraft(null);
+  }
+  function onDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!ready || !canvas.current || (event.target as Element).closest("input")) return;
+    notePenActivity(event);
     if (notePen(event)) penOnly.current = true;
-    if (!drawsWith(event, penOnly.current) && tool !== "text") return;
+    if (event.pointerType === "touch") {
+      // The hand holding the pen, while it draws or a moment after: nothing.
+      if (activePen.current || palmLikely(event)) return;
+      touches.current.set(event.pointerId, local(event.clientX, event.clientY));
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      if (touches.current.size >= 2) {
+        event.preventDefault();
+        // A stroke the first finger began is no stroke.
+        if (active.current !== null) stopDrawing();
+        if (touches.current.size === 2) startPinch();
+        return;
+      }
+      // Pen-only: a finger pans (and taps text in place).
+      if (!drawsWith(event, penOnly.current)) {
+        event.preventDefault();
+        gesture.current = { kind: "pan", id: event.pointerId, from: local(event.clientX, event.clientY), view: viewRef.current, moved: false };
+        return;
+      }
+    }
+    if (event.target !== canvas.current) return;
+    if (active.current !== null && active.current !== event.pointerId) return;
     event.preventDefault();
     const p = point(event);
     if (tool === "eraser" || isEraser(event)) {
-      (event.target as Element).setPointerCapture(event.pointerId);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
       active.current = event.pointerId;
+      activePen.current = event.pointerType === "pen";
       erasing.current = true;
       erase([p]);
       return;
     }
-    if (tool === "text") {
-      commitText();
-      const rect = canvas.current!.getBoundingClientRect();
-      setTyping({ at: p, screen: [event.clientX - rect.left, event.clientY - rect.top], text: "" });
-      return;
-    }
-    (event.target as Element).setPointerCapture(event.pointerId);
+    if (tool === "text") return placeText(event);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     active.current = event.pointerId;
+    activePen.current = event.pointerType === "pen";
     setDraft(tool === "pen" || tool === "marker" ? { type: tool, color, width, points: [p] } : { type: tool, color, width, from: p, to: p });
   }
-  function onMove(event: React.PointerEvent) {
-    if (active.current !== null && active.current !== event.pointerId) return;
-    const all = () => {
-      const rect = canvas.current!.getBoundingClientRect();
-      return samples(event).map((s): Point => [(s.clientX - rect.left) / scale, (s.clientY - rect.top) / scale]);
-    };
+  function onMove(event: React.PointerEvent<HTMLDivElement>) {
+    notePenActivity(event);
+    if (!canvas.current) return;
+    if (touches.current.has(event.pointerId)) {
+      const now = local(event.clientX, event.clientY);
+      touches.current.set(event.pointerId, now);
+      const g = gesture.current;
+      if (g?.kind === "pinch") {
+        const [a, b] = [...touches.current.values()];
+        apply(framePinch(g.start, midpoint(a, b), pinchFactor(g.start.distance, distance(a, b)), MARKUP_ZOOM, size()));
+        return;
+      }
+      if (g?.kind === "pan") {
+        if (g.id !== event.pointerId) return;
+        const delta = { x: now.x - g.from.x, y: now.y - g.from.y };
+        if (Math.hypot(delta.x, delta.y) > TAP_MOVE) g.moved = true;
+        apply(framePan(g.view, delta, size()));
+        return;
+      }
+    }
+    if (active.current === null || active.current !== event.pointerId) return;
+    const all = () => samples(event).map((s): Point => toImage(s.clientX, s.clientY));
     if (erasing.current) return erase(all());
+    const draft = draftRef.current;
     if (!draft) return;
     const p = point(event);
     // Every point the pen measured since the last event: smooth fast strokes.
     if (draft.type === "pen" || draft.type === "marker") setDraft({ ...draft, points: [...draft.points, ...all()] });
     else if (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") setDraft({ ...draft, to: p });
   }
-  function onUp(event: React.PointerEvent) {
-    if (active.current !== null && active.current !== event.pointerId) return;
+  function onUp(event: React.PointerEvent<HTMLDivElement>) {
+    notePenActivity(event);
+    if (touches.current.delete(event.pointerId)) {
+      const g = gesture.current;
+      if (g?.kind === "pinch") {
+        if (touches.current.size >= 2) return startPinch();
+        // Hardly zoomed is not zoomed; a finger left on the screen pans on.
+        const settled = settleView(viewRef.current, MARKUP_ZOOM);
+        apply(settled);
+        const [rest] = [...touches.current.entries()];
+        gesture.current = rest ? { kind: "pan", id: rest[0], from: rest[1], view: settled, moved: true } : null;
+        return;
+      }
+      if (g?.kind === "pan") {
+        if (g.id !== event.pointerId) return;
+        gesture.current = null;
+        if (!g.moved && event.type === "pointerup" && tool === "text" && event.target === canvas.current) placeText(event);
+        return;
+      }
+    }
+    if (active.current === null || active.current !== event.pointerId) return;
     active.current = null;
+    activePen.current = false;
     erasing.current = false;
+    const draft = draftRef.current;
     if (!draft) return;
     const tiny =
       (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") &&
@@ -292,6 +432,63 @@ export function ImageAnnotator({
     if (!tiny) add(draft);
     setDraft(null);
   }
+  // Zooming with the wheel, a trackpad and Safari's gesture events.
+  useEffect(() => {
+    const box = stage.current;
+    if (!ready || !box) return;
+    const at = (event: { clientX: number; clientY: number }) => {
+      const rect = canvas.current?.getBoundingClientRect();
+      return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : { x: 0, y: 0 };
+    };
+    const frame = () => ({ width: layoutRef.current.width, height: layoutRef.current.height });
+    const show = (next: FrameView) => {
+      viewRef.current = next;
+      setView(next);
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        show(frameZoom(viewRef.current, at(event), wheelFactor(event.deltaY, event.deltaMode), MARKUP_ZOOM, frame()));
+      } else if (viewRef.current.scale > 1) {
+        event.preventDefault();
+        show(wheelPan(viewRef.current, event.deltaX, event.deltaY, event.deltaMode, frame()));
+      }
+    };
+    // Safari (trackpad on the Mac): `scale` counts from the gesture's start.
+    // On iOS fingers are handled as pointers; the page itself never zooms.
+    type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
+    let start: (FrameView & { mid: XY }) | null = null;
+    const onGestureStart = (event: Event) => {
+      event.preventDefault();
+      start = touches.current.size ? null : { ...viewRef.current, mid: at(event as GestureEvent) };
+    };
+    const onGestureChange = (event: Event) => {
+      event.preventDefault();
+      if (start) show(framePinch(start, start.mid, (event as GestureEvent).scale || 1, MARKUP_ZOOM, frame()));
+    };
+    const onGestureEnd = (event: Event) => {
+      event.preventDefault();
+      start = null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (event.touches.length > 1 && event.cancelable) event.preventDefault();
+    };
+    const options = { passive: false } as const;
+    box.addEventListener("wheel", onWheel, options);
+    box.addEventListener("gesturestart", onGestureStart, options);
+    box.addEventListener("gesturechange", onGestureChange, options);
+    box.addEventListener("gestureend", onGestureEnd, options);
+    box.addEventListener("touchmove", onTouchMove, options);
+    return () => {
+      box.removeEventListener("wheel", onWheel);
+      box.removeEventListener("gesturestart", onGestureStart);
+      box.removeEventListener("gesturechange", onGestureChange);
+      box.removeEventListener("gestureend", onGestureEnd);
+      box.removeEventListener("touchmove", onTouchMove);
+    };
+  }, [ready]);
+  const zoomBy = (direction: 1 | -1) => apply(stepView(viewRef.current, direction, size()));
+  const fitView = () => apply(clampView(FRAME_VIEW, size()));
   function undo() {
     setShapes((list) => {
       if (!list.length) return list;
@@ -313,7 +510,15 @@ export function ImageAnnotator({
         event.preventDefault();
         if (event.shiftKey) redo();
         else undo();
+        return;
       }
+      // + / − / 0: zoom in, out and fit (not while typing in a field).
+      if (event.metaKey || event.ctrlKey || event.altKey || (event.target as Element | null)?.closest?.("input, textarea, [contenteditable=true]")) return;
+      if (event.key === "+" || event.key === "=") zoomBy(1);
+      else if (event.key === "-" || event.key === "−") zoomBy(-1);
+      else if (event.key === "0") fitView();
+      else return;
+      event.preventDefault();
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
@@ -343,6 +548,13 @@ export function ImageAnnotator({
     }
   }
 
+  // A single key in a title, where keyboard hints are shown.
+  const plainKey = (key: string) => (keyHints.visible ? ` (${key})` : "");
+  // Where the text being typed sits on the canvas (it follows the view).
+  const textAt = ([x, y]: Point) => {
+    const at = imageToScreen(view, layout.fit, { x, y });
+    return { left: at.x, top: at.y };
+  };
   const tools: [Tool, string, React.ReactNode][] = [
     ["pen", t("Stift", "Pen"), <PencilSimple key="p" size={18} />],
     ["marker", t("Textmarker", "Highlighter"), <HighlighterCircle key="m" size={18} />],
@@ -421,8 +633,40 @@ export function ImageAnnotator({
               <Trash size={18} />
             </button>
           </div>
+          <div className="annotator-zoom" role="group" aria-label={t("Zoom", "Zoom")}>
+            <button
+              type="button"
+              aria-label={t("Verkleinern", "Zoom out")}
+              title={t("Verkleinern", "Zoom out") + plainKey("−")}
+              disabled={view.scale <= MARKUP_ZOOM.min}
+              onClick={() => zoomBy(-1)}
+            >
+              <MagnifyingGlassMinus size={18} />
+            </button>
+            <span className="annotator-zoom-value" role="status" aria-label={t("Zoomstufe", "Zoom level")}>
+              {Math.round(view.scale * 100)} %
+            </span>
+            <button
+              type="button"
+              aria-label={t("Vergrößern", "Zoom in")}
+              title={t("Vergrößern", "Zoom in") + plainKey("+")}
+              disabled={view.scale >= MARKUP_ZOOM.max}
+              onClick={() => zoomBy(1)}
+            >
+              <MagnifyingGlassPlus size={18} />
+            </button>
+            <button
+              type="button"
+              className="annotator-fit"
+              title={t("Ganzes Bild zeigen", "Show the whole image") + plainKey("0")}
+              disabled={view.scale === 1 && !view.pan.x && !view.pan.y}
+              onClick={fitView}
+            >
+              {t("Einpassen", "Fit")}
+            </button>
+          </div>
         </div>
-        <div className="annotator-stage">
+        <div ref={stage} className="annotator-stage" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
           {failed ? (
             <p role="alert" className="field-error">
               {t("Das Bild konnte nicht geladen werden.", "The image could not be loaded.")}
@@ -433,17 +677,14 @@ export function ImageAnnotator({
                 ref={canvas}
                 aria-label={t("Bild zum Markieren", "Image to mark up")}
                 data-tool={tool}
-                onPointerDown={onDown}
-                onPointerMove={onMove}
-                onPointerUp={onUp}
-                onPointerCancel={onUp}
+                data-zoomed={view.scale > 1 ? "" : undefined}
               />
               {typing && (
                 <input
                   autoFocus
                   className="annotator-text"
                   aria-label={t("Text auf dem Bild", "Text on the image")}
-                  style={{ left: typing.screen[0], top: typing.screen[1], color }}
+                  style={{ ...textAt(typing.at), color }}
                   value={typing.text}
                   maxLength={200}
                   onChange={(e) => setTyping({ ...typing, text: e.target.value })}

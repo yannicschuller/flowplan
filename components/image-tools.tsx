@@ -2,7 +2,8 @@
 // The tools of an image in a document (#240), as in Notion: pointing at an
 // image (on touch screens: tapping it, which selects it) shows a small bar
 // in its top right corner – comment, caption, replace, download, full
-// screen and "…" with alignment, marking up, copying the image or a link to
+// screen, "Markieren" (#404: visible, as it is how a pen writes on a
+// worksheet; also double click and in "…") and "…" with alignment, marking up, copying the image or a link to
 // it, the masks of a flashcard (image occlusion, in records' documents), and
 // deleting. It replaces the "Add caption" button under the image
 // (#241) and the image buttons of the formatting toolbar, so they stay
@@ -34,6 +35,8 @@ import { editCaption } from "./block-captions-view";
 import { imageAlign } from "@/lib/document-schema";
 
 type Shown = { pos: number; src: string; alt: string };
+// From this width of the image on, "Markieren" is spelled out in its bar.
+const MARKUP_LABEL_MIN = 340;
 
 // The image node a DOM element belongs to, with its position.
 function imageAtDom(editor: Editor, element: Element): Shown | null {
@@ -224,6 +227,20 @@ export function ImageTools({
             })}
           {button(t("Herunterladen", "Download"), <DownloadSimple size={16} />, () => download(shown))}
           {button(t("Vollbild", "Full screen"), <ArrowsOut size={16} />, () => setViewer(shown))}
+          {editable && (
+            <button
+              type="button"
+              className="image-tools-markup"
+              aria-label={t("Bild markieren", "Mark up image")}
+              title={t("Bild markieren (Doppelklick)", "Mark up image (double-click)")}
+              onMouseDown={keep}
+              onClick={() => onAnnotate(shown.pos)}
+            >
+              <PencilSimpleLine size={16} />
+              {/* Narrow images (phones) keep the bar on the picture: the icon alone. */}
+              {box.width >= MARKUP_LABEL_MIN && <span>{t("Markieren", "Mark up")}</span>}
+            </button>
+          )}
           {editable &&
             button(
               t("Weitere Bildaktionen", "More image actions"),

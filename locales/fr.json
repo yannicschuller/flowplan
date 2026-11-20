@@ -6550,6 +6550,7 @@
   "Mark page as a chapter": "Marquer la page comme chapitre",
   "Mark page as a chapter …": "Marquer la page comme chapitre …",
   "Mark today": "Marquer aujourd’hui",
+  "Mark up": "Annoter",
   "Mark up and copy image (with an image selected)": "Annoter et copier l’image (image sélectionnée)",
   "Mark up image": "Annoter l’image",
   "Mark up image (double-click)": "Annoter l’image (double-clic)",
@@ -13981,6 +13982,7 @@
   "Zoom in": "Zoom avant",
   "Zoom in (+)": "Zoom avant (+)",
   "Zoom in / out": "Agrandir / réduire",
+  "Zoom level": "Niveau de zoom",
   "Zoom out": "Zoom arrière",
   "Zoom out (−)": "Zoom arrière (−)"
 }
