@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as Y from "yjs";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-worker-pool-"));
 process.env.APP_URL = "https://flowplan.example.test";
@@ -28,7 +29,6 @@ const { HttpError } = await import("../lib/auth");
 const { z } = await import("zod");
 const pool = await import("../lib/worker-pool");
 const { readExportZip } = await import("./helpers/read-export-zip");
-const Y = await import("yjs");
 
 async function person(name: string): Promise<Identity> {
   const uid = id();

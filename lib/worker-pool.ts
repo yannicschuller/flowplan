@@ -69,7 +69,7 @@ export function reviveError(error: SerializedError): Error {
   if (error.kind === "http") return new HttpError(error.status, error.message);
   if (error.kind === "zod") return new z.ZodError(error.issues as z.core.$ZodIssue[]);
   const revived = new Error(error.message);
-  if (error.stack) revived.stack = error.stack;
+  if (error.kind === "error" && error.stack) revived.stack = error.stack;
   return revived;
 }
 // Buffers cross the thread as Uint8Arrays: back to Buffers (also in plain
