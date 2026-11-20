@@ -1008,6 +1008,18 @@ export const Media = Node.create({
         title: (el as HTMLElement).getAttribute("data-title") || "",
       }),
     },
+    // A spreadsheet (#402: .csv, .xlsx – an .xls only for download) as a
+    // card that opens the read-only table viewer
+    // (components/sheet-viewer.tsx); the address in the inner link as above.
+    {
+      tag: "div[data-sheet-file]",
+      priority: 60,
+      getAttrs: (el) => ({
+        src: (el as HTMLElement).querySelector("a[href]")?.getAttribute("href") || "",
+        kind: "sheet",
+        title: (el as HTMLElement).getAttribute("data-title") || "",
+      }),
+    },
   ],
   renderHTML: ({ node }) => {
     const { src, kind, title } = node.attrs;
@@ -1070,6 +1082,16 @@ export const Media = Node.create({
           class: "html-block",
         },
         ["a", { href: src }, title || "HTML"],
+      ];
+    if (kind === "sheet" && /^\/api\/files\/[a-f0-9-]+$/.test(src))
+      return [
+        "div",
+        {
+          "data-sheet-file": "true",
+          "data-title": title || "CSV",
+          class: "sheet-block",
+        },
+        ["a", { href: src }, title || "CSV"],
       ];
     return ["p", {}, "Medium nicht verfügbar"];
   },

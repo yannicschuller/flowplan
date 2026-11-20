@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { PdfThumbnail, openPdfPanel } from "./pdf-viewer";
 import { isDrawingFormat, isModelName, modelFormatOf } from "@/lib/model-formats";
 import { isHtmlName } from "@/lib/html-files";
+import { isPreviewableSheet, isSheetName, sheetKindOf } from "@/lib/sheet-files";
 import { Modal } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -12,8 +13,10 @@ import {
   Cube,
   File as FileIcon,
   FileAudio,
+  FileCsv,
   FileHtml,
   FileVideo,
+  FileXls,
   Images,
   SidebarSimple,
   Trash,
@@ -253,6 +256,7 @@ export function MediaLibrary({
               data-pdf={item.kind === "pdf" ? item.name : undefined}
               data-model={item.kind === "model" || isModelName(item.name) ? item.name : undefined}
               data-html={isHtmlName(item.name) ? item.name : undefined}
+              data-sheet={isPreviewableSheet(item.name) ? item.name : undefined}
             >
               {item.kind === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -269,6 +273,8 @@ export function MediaLibrary({
                 <Cube size={36} weight="duotone" />
               ) : isHtmlName(item.name) ? (
                 <FileHtml size={36} weight="duotone" />
+              ) : isSheetName(item.name) ? (
+                sheetKindOf(item.name) === "csv" ? <FileCsv size={36} weight="duotone" /> : <FileXls size={36} weight="duotone" />
               ) : (
                 <FileIcon size={36} />
               )}

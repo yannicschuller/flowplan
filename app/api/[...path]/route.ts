@@ -46,6 +46,7 @@ import * as exportJira from "../export/jira/handler";
 import * as exportPdf from "../export/pdf/handler";
 import * as filesIdHtml from "../files/[id]/html/handler";
 import * as filesIdInk from "../files/[id]/ink/handler";
+import * as filesIdSheet from "../files/[id]/sheet/handler";
 import * as formsTokenFontsFontId from "../forms/[token]/fonts/[fontId]/handler";
 import * as formsToken from "../forms/[token]/handler";
 import * as formsTokenSuggestions from "../forms/[token]/suggestions/handler";
@@ -80,6 +81,7 @@ import * as setupRestore from "../setup/restore/handler";
 import * as shareTokenBoard from "../share/[token]/board/handler";
 import * as shareTokenFilesFileIdHtml from "../share/[token]/files/[fileId]/html/handler";
 import * as shareTokenFilesFileIdInk from "../share/[token]/files/[fileId]/ink/handler";
+import * as shareTokenFilesFileIdSheet from "../share/[token]/files/[fileId]/sheet/handler";
 import * as shareTokenFilesFileId from "../share/[token]/files/[fileId]/handler";
 import * as shareTokenFiles from "../share/[token]/files/handler";
 import * as shareTokenFontsFontId from "../share/[token]/fonts/[fontId]/handler";
@@ -128,6 +130,7 @@ const routes = apiRoutes([
   ["export/pdf", exportPdf],
   ["files/[id]/html", filesIdHtml],
   ["files/[id]/ink", filesIdInk],
+  ["files/[id]/sheet", filesIdSheet],
   ["forms/[token]/fonts/[fontId]", formsTokenFontsFontId],
   ["forms/[token]", formsToken],
   ["forms/[token]/suggestions", formsTokenSuggestions],
@@ -162,6 +165,7 @@ const routes = apiRoutes([
   ["share/[token]/board", shareTokenBoard],
   ["share/[token]/files/[fileId]/html", shareTokenFilesFileIdHtml],
   ["share/[token]/files/[fileId]/ink", shareTokenFilesFileIdInk],
+  ["share/[token]/files/[fileId]/sheet", shareTokenFilesFileIdSheet],
   ["share/[token]/files/[fileId]", shareTokenFilesFileId],
   ["share/[token]/files", shareTokenFiles],
   ["share/[token]/fonts/[fontId]", shareTokenFontsFontId],

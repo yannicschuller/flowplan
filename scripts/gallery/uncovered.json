@@ -55,6 +55,7 @@
     "components/settings/admin/users.tsx",
     "components/settings/user/groups.tsx",
     "components/settings/user/tags.tsx",
+    "components/sheet-viewer-dialog.tsx",
     "components/side-panel.tsx",
     "components/sign-in-methods.tsx",
     "components/study/ai-cards.tsx",

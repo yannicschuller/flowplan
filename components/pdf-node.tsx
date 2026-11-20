@@ -11,6 +11,7 @@ import { Blueprint, Cube, FileHtml, FilePdf } from "@phosphor-icons/react";
 import { PdfThumbnail, openPdf } from "./pdf-viewer";
 import { openModel } from "./model-viewer";
 import { openHtml } from "./html-viewer";
+import { SheetCard } from "./sheet-card";
 import { MODEL_FORMAT_LABELS, isDrawingFormat, modelFormatOf } from "@/lib/model-formats";
 import { useT } from "./i18n";
 
@@ -100,10 +101,12 @@ export function withPdfView<T extends TiptapNode>(media: T): T {
       const pdf = ReactNodeViewRenderer(PdfCard);
       const model = ReactNodeViewRenderer(ModelCard);
       const html = ReactNodeViewRenderer(HtmlCard);
+      const sheet = ReactNodeViewRenderer(SheetCard);
       return (props) => {
         if (props.node.attrs.kind === "pdf") return pdf(props);
         if (props.node.attrs.kind === "model") return model(props);
         if (props.node.attrs.kind === "html") return html(props);
+        if (props.node.attrs.kind === "sheet") return sheet(props);
         // Everything else exactly as the schema renders it.
         const spec = props.node.type.spec.toDOM!(props.node);
         const { dom } = DOMSerializer.renderSpec(document, spec);
