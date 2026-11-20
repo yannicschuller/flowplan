@@ -237,8 +237,11 @@ test("the published timeline shows the app's layout read-only with the view's wi
     await expect(timeline.locator(`[data-row-id="${f.rows.early.id}"] .timeline-range`)).toHaveClass(/clipped-start/);
     await expect(timeline.getByRole("button", { name: "Zum Zeitraum springen" })).toHaveCount(1);
     await expect(timeline.getByRole("link", { name: "Rohbau: 2026-12-07 – 2027-01-22" })).toBeVisible();
-    // Arrows and the critical path as configured; no editing.
-    await expect(timeline.locator(".timeline-dependencies > path")).toHaveCount(3);
+    // Arrows and the critical path as configured; no editing. On a phone
+    // only the first weeks are in sight: arrows with both ends out of
+    // sight are not drawn (#395).
+    if (info.project.name === "mobile") await expect.poll(() => timeline.locator(".timeline-dependencies > path").count()).toBeGreaterThanOrEqual(1);
+    else await expect(timeline.locator(".timeline-dependencies > path")).toHaveCount(3);
     // Milestones: one day and marked by the checkbox; public properties
     // beside the title.
     await expect(timeline.locator(`[data-row-id="${f.rows.topping.id}"] .timeline-range`)).toHaveClass(/milestone/);
@@ -256,7 +259,7 @@ test("the published timeline shows the app's layout read-only with the view's wi
       await visitor.screenshot({ path: `test-results/timeline-range/${info.project.name}-public-${scheme}.png`, fullPage: true, animations: "disabled" });
     }
     await timeline.getByRole("link", { name: "Rohbau: 2026-12-07 – 2027-01-22" }).click();
-    await expect(visitor.getByRole("heading", { name: "Rohbau" })).toBeVisible();
+    await expect(visitor.getByRole("heading", { name: "Rohbau", exact: true })).toBeVisible();
     await context.close();
     expect(errors).toEqual([]);
   } finally {

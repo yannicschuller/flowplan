@@ -28,12 +28,44 @@ export const timelineSchema = z.object({
   dependencyField: z.string().max(200).optional(),
   // Which ends of predecessor and successor are linked (default finish-start).
   dependencyType: z.enum(["fs", "ss", "ff", "sf"]).optional(),
-  // "Nachfolger mitverschieben": moving a record moves everything that
-  // waits for it by the same number of days.
+  // "Nachfolger mitverschieben" before 0.10.2: moving a record moves
+  // everything that waits for it by the same number of days. Read as
+  // shiftMode "keep" (true) or "off" (lib/timeline-plan.ts shiftModeOf);
+  // saving the settings writes shiftMode instead.
   moveSuccessors: z.boolean().optional(),
+  // What a moved record does to the records waiting for it (#395):
+  // "overlap" moves them only as far as a link needs (slack stays),
+  // "keep" moves them by the same days (the gaps stay), "off" leaves them.
+  shiftMode: z.enum(["overlap", "keep", "off"]).optional(),
+  // Records moved along never start or end on a Saturday or Sunday.
+  avoidWeekends: z.boolean().optional(),
   // Highlights the records without slack (critical path).
   criticalPath: z.boolean().optional(),
+  // Arrows (#395): which are drawn (the dependencies and the critical path
+  // stay either way), how they cross bars they do not link, their shape.
+  // Unset: all, opaque, curved – as before; new views start transparent
+  // and orthogonal (NEW_TIMELINE).
+  arrowVisibility: z.enum(["all", "critical", "selected", "hidden"]).optional(),
+  arrowOverlap: z.enum(["opaque", "transparent", "behind"]).optional(),
+  arrowRouting: z.enum(["curved", "orthogonal"]).optional(),
+  // Hierarchy (#394): a self-relation holding each record's parent. Parents
+  // get a summary bar from the earliest start to the latest end below them.
+  hierarchyField: z.string().max(200).optional(),
+  // The parent's own stored dates as a faint line under its summary bar
+  // when they differ.
+  summaryBaseline: z.boolean().optional(),
+  // A select or multi-select whose option colours fill the bars.
+  colorField: z.string().max(200).optional(),
+  // Only the milestone property makes milestones; one-day records stay bars.
+  milestoneOnlyField: z.boolean().optional(),
 });
+// What a timeline view created from 0.10.2 on starts with (#395).
+export const NEW_TIMELINE: TimelineConfig = {
+  scale: "month",
+  showWeekends: true,
+  arrowOverlap: "transparent",
+  arrowRouting: "orthogonal",
+};
 export type DependencyType = NonNullable<TimelineConfig["dependencyType"]>;
 export const dependencyTypes: { id: DependencyType; label: () => string }[] = [
   { id: "fs", label: () => tr("Ende → Anfang", "End → start") },

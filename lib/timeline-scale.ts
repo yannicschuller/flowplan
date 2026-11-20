@@ -289,8 +289,10 @@ export function outsideLabel(bar: { left: number; width: number }, name: string,
 // A record shown as a milestone (◆): one day long, or marked by the
 // view's checkbox property (then on its last day).
 export const MILESTONE_SIZE = 18;
-export function milestoneDay(range: { start: number; end: number }, flagged: boolean) {
-  return flagged ? range.end : range.start === range.end ? range.start : null;
+// With `onlyFlagged` ("Nur das Meilensteinfeld macht Meilensteine", #394)
+// one-day records stay bars.
+export function milestoneDay(range: { start: number; end: number }, flagged: boolean, onlyFlagged = false) {
+  return flagged ? range.end : !onlyFlagged && range.start === range.end ? range.start : null;
 }
 // The diamond's box, centred on its day; null outside the window.
 export function milestoneBox(day: number, period: { start: number; end: number; dayWidth: number }) {
@@ -317,6 +319,106 @@ export function arrowPath(a: ArrowBox, b: ArrowBox, type: LinkType) {
     out = fromEnd ? bend : -bend,
     into = toStart ? -bend : bend;
   return `M ${x1} ${y1} C ${x1 + out} ${y1}, ${x2 + into} ${y2}, ${x2 + (toStart ? -6 : 6)} ${y2}`;
+}
+
+// Orthogonal arrows (#395), as in most planning tools: out of the linked
+// end, along a short stub, down (or up) to the other row and into the
+// linked end of the other bar. When the other bar's end lies on the wrong
+// side of the stub (a successor starting before its predecessor ends), the
+// line turns in the gap above (or below) the other bar and comes back: an
+// elbow. Corners are rounded a little.
+export const ARROW_STUB = 10;
+type Point = { x: number; y: number };
+export function orthogonalPoints(a: ArrowBox, b: ArrowBox, type: LinkType, stub = ARROW_STUB): Point[] {
+  const fromEnd = type === "fs" || type === "ff",
+    toStart = type === "fs" || type === "ss";
+  const out = fromEnd ? 1 : -1,
+    into = toStart ? 1 : -1;
+  const x1 = fromEnd ? a.right : a.left,
+    y1 = a.top + a.height / 2,
+    x2 = toStart ? b.left : b.right,
+    y2 = b.top + b.height / 2;
+  // The arrowhead takes the last 6 px.
+  const tip = { x: x2 - into * 6, y: y2 };
+  const sx = x1 + out * stub,
+    ex = x2 - into * stub;
+  if (Math.abs(y2 - y1) < 1) return [{ x: x1, y: y1 }, tip];
+  // Room for a horizontal entry: down at the stub, then into the end.
+  if (into * (tip.x - sx) >= 4) return [{ x: x1, y: y1 }, { x: sx, y: y1 }, { x: sx, y: y2 }, tip];
+  const down = y2 > y1 ? 1 : -1;
+  // The other bar starts right where this one ends (the usual end → start
+  // link a day later): straight down onto it, just inside its linked end.
+  if (out === into && into * (x2 - x1) >= -1) {
+    const vx = into > 0 ? Math.max(sx, x2 + 6) : Math.min(sx, x2 - 6);
+    if (vx >= b.left + 2 && vx <= b.right - 2) {
+      const edge = down > 0 ? b.top : b.top + b.height;
+      return [{ x: x1, y: y1 }, { x: vx, y: y1 }, { x: vx, y: edge - down * 6 }];
+    }
+  }
+  const ym = y2 - down * (b.height / 2 + Math.max(4, Math.min(9, Math.abs(y2 - y1) / 2 - b.height / 2)));
+  return [{ x: x1, y: y1 }, { x: sx, y: y1 }, { x: sx, y: ym }, { x: ex, y: ym }, { x: ex, y: y2 }, tip];
+}
+// A polyline with corners rounded by up to `radius` px.
+export function roundedPath(points: Point[], radius = 4) {
+  if (!points.length) return "";
+  const f = (n: number) => Math.round(n * 10) / 10;
+  let d = `M ${f(points[0].x)} ${f(points[0].y)}`;
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i],
+      prev = points[i - 1],
+      next = points[i + 1];
+    if (!next) {
+      d += ` L ${f(p.x)} ${f(p.y)}`;
+      break;
+    }
+    const inLen = Math.hypot(p.x - prev.x, p.y - prev.y),
+      outLen = Math.hypot(next.x - p.x, next.y - p.y);
+    const r = Math.min(radius, inLen / 2, outLen / 2);
+    if (r < 0.5) {
+      d += ` L ${f(p.x)} ${f(p.y)}`;
+      continue;
+    }
+    const a = { x: p.x - ((p.x - prev.x) / inLen) * r, y: p.y - ((p.y - prev.y) / inLen) * r },
+      b = { x: p.x + ((next.x - p.x) / outLen) * r, y: p.y + ((next.y - p.y) / outLen) * r };
+    d += ` L ${f(a.x)} ${f(a.y)} Q ${f(p.x)} ${f(p.y)} ${f(b.x)} ${f(b.y)}`;
+  }
+  return d;
+}
+// The arrow between two bars, for a routing; `view` is the visible part of
+// the lanes (grid coordinates). When one end lies outside it (scrolled
+// away, or the bar outside the window: null), only a short stub with the
+// arrowhead is drawn at the end that is in sight – into the successor, or
+// out of the predecessor towards the edge (#395); both ends out of sight:
+// nothing.
+export const STUB_LENGTH = 22;
+export function arrowGeometry(
+  a: ArrowBox | null,
+  b: ArrowBox | null,
+  type: LinkType,
+  routing: "curved" | "orthogonal",
+  view?: { left: number; right: number },
+): { d: string; stub: boolean } | null {
+  const fromEnd = type === "fs" || type === "ff",
+    toStart = type === "fs" || type === "ss";
+  const port = (box: ArrowBox | null, end: boolean) => (box ? (end ? box.right : box.left) : null);
+  const x1 = port(a, fromEnd),
+    x2 = port(b, !toStart);
+  const inside = (x: number | null) => x !== null && (!view || (x >= view.left - 2 && x <= view.right + 2));
+  const aIn = inside(x1),
+    bIn = inside(x2);
+  if (!aIn && !bIn) return null;
+  if (aIn && bIn) return { d: routing === "orthogonal" ? roundedPath(orthogonalPoints(a!, b!, type)) : arrowPath(a!, b!, type), stub: false };
+  const clamp = (x: number) => (view ? Math.min(view.right, Math.max(view.left, x)) : x);
+  if (bIn) {
+    // The predecessor is out of sight: a stub into the successor.
+    const into = toStart ? 1 : -1,
+      y = b!.top + b!.height / 2;
+    return { d: `M ${clamp(x2! - into * STUB_LENGTH)} ${y} L ${x2! - into * 6} ${y}`, stub: true };
+  }
+  // The successor is out of sight: a stub out of the predecessor towards it.
+  const y = a!.top + a!.height / 2,
+    out = fromEnd ? 1 : -1;
+  return { d: `M ${x1} ${y} L ${clamp(x1! + out * STUB_LENGTH)} ${y}`, stub: true };
 }
 
 // The scroll position of a view, remembered on this device: the first

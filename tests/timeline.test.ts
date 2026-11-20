@@ -923,3 +923,126 @@ test("dragging a bar onto another links them; successors can move along", async 
   await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cyclic, after: [c] }), a);
   await assert.rejects(async () => await schedule(a, 1), /Zyklische/);
 });
+
+test("shift modes, weekends, removing links and restoring moved records (#395)", async () => {
+  const owner = await user();
+  const wid = await createWorkspace(owner.id, "Shifts");
+  const act = async (input: Record<string, unknown>) => (await command(owner, input)) as { id: string };
+  const pid = (await act({
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: (await bootstrap(owner, wid)).spaces[0].id,
+    title: "Plan",
+    kind: "database",
+  })).id;
+  const fields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "start", name: "Beginn", type: "date" },
+    { id: "end", name: "Ende", type: "date" },
+    { id: "after", name: "Wartet auf", type: "relation", relationPage: pid },
+  ];
+  const timeline = async (extra: Record<string, unknown> = {}) =>
+    await command(owner, {
+      action: "database.update",
+      pageId: pid,
+      version: (await database(pid)).version,
+      fields,
+      views: [
+        {
+          id: "t",
+          name: "Timeline",
+          type: "timeline",
+          filters: [],
+          sorts: [],
+          dateField: "start",
+          endDateField: "end",
+          timeline: { scale: "month", showWeekends: true, dependencyField: "after", ...extra },
+        },
+      ],
+    });
+  await timeline({ shiftMode: "overlap" });
+  const row = async (title: string, start: string, end: string, after: string[] = []) =>
+    (await act({ action: "row.create", pageId: pid, cells: { title, start, end, after } })).id;
+  // 2026-11-02 is a Monday. a → b (two days of slack) → c.
+  const a = await row("A", "2026-11-02", "2026-11-04"),
+    b = await row("B", "2026-11-09", "2026-11-10", [a]),
+    c = await row("C", "2026-11-11", "2026-11-13", [b]);
+  const current = async (rid: string) => (await rows(pid)).find((x) => x.id === rid)!;
+  const period = async (rid: string) => {
+    const cells = (await current(rid)).cells;
+    return `${cells.start}..${cells.end}`;
+  };
+  const schedule = async (rid: string, days: number) =>
+    (await command(owner, {
+      action: "row.schedule",
+      pageId: pid,
+      viewId: "t",
+      version: (await database(pid)).version,
+      rowId: rid,
+      rowVersion: (await current(rid)).version,
+      change: { operation: "move", days },
+    })) as { moved: number };
+  // "Nur bei Überschneidung": two days later uses up the slack, nothing moves.
+  assert.equal((await schedule(a, 2)).moved, 0);
+  assert.equal(await period(b), "2026-11-09..2026-11-10");
+  // Two more: a ends on Sunday, b still starts on Monday – no move needed.
+  assert.equal((await schedule(a, 2)).moved, 0);
+  // One more: b moves just far enough (the day after a's end), c follows.
+  assert.equal((await schedule(a, 1)).moved, 2);
+  assert.deepEqual([await period(a), await period(b), await period(c)], ["2026-11-07..2026-11-09", "2026-11-10..2026-11-11", "2026-11-12..2026-11-14"]);
+  // Earlier: nothing moves back.
+  assert.equal((await schedule(a, -4)).moved, 0);
+  assert.equal(await period(b), "2026-11-10..2026-11-11");
+  // Off weekends: a ends on Friday the 13th, b would start on Saturday and
+  // goes to Monday with its two working days; c (Thu-Sat: two working
+  // days) follows on Wednesday.
+  await timeline({ shiftMode: "overlap", avoidWeekends: true });
+  assert.equal((await schedule(a, 8)).moved, 2);
+  assert.deepEqual([await period(a), await period(b), await period(c)], ["2026-11-11..2026-11-13", "2026-11-16..2026-11-17", "2026-11-18..2026-11-19"]);
+  // "Aus": nothing follows; "Abstände halten" moves all by the same days.
+  await timeline({ shiftMode: "off" });
+  assert.equal((await schedule(a, 1)).moved, 0);
+  await timeline({ shiftMode: "keep" });
+  assert.equal((await schedule(a, -1)).moved, 2);
+  assert.deepEqual([await period(a), await period(b), await period(c)], ["2026-11-11..2026-11-13", "2026-11-15..2026-11-16", "2026-11-17..2026-11-18"]);
+
+  // Restoring: every record back in one step, refused once one changed.
+  const before = await Promise.all([a, b, c].map(current));
+  await command(owner, {
+    action: "timeline.restore",
+    pageId: pid,
+    viewId: "t",
+    rows: before.map((r) => ({ rowId: r.id, rowVersion: r.version, start: "2026-11-02", end: r.id === c ? "" : "2026-11-03" })),
+  });
+  assert.deepEqual([await period(a), await period(b), await period(c)], ["2026-11-02..2026-11-03", "2026-11-02..2026-11-03", "2026-11-02.."]);
+  await assert.rejects(
+    async () => await command(owner, { action: "timeline.restore", pageId: pid, viewId: "t", rows: [{ rowId: a, rowVersion: before[0].version, start: "2026-11-02", end: null }] }),
+    /geändert/,
+  );
+  await assert.rejects(
+    async () => await command(owner, { action: "timeline.restore", pageId: pid, viewId: "t", rows: [{ rowId: a, rowVersion: (await current(a)).version, start: "morgen", end: null }] }),
+    /Ungültiges Datum/,
+  );
+
+  // Resolve all, off weekends.
+  await timeline({ shiftMode: "off", avoidWeekends: true });
+  const set = async (rid: string, start: string, end: string) =>
+    await command(owner, { action: "row.update", pageId: pid, rowId: rid, version: (await current(rid)).version, cells: { start, end } });
+  await set(a, "2026-11-02", "2026-11-06");
+  await set(b, "2026-11-03", "2026-11-04");
+  await set(c, "2026-11-20", "2026-11-23");
+  assert.equal(((await command(owner, { action: "timeline.cascade", pageId: pid, viewId: "t", version: (await database(pid)).version })) as { moved: number }).moved, 1);
+  assert.equal(await period(b), "2026-11-09..2026-11-10");
+
+  // The × at an arrow: the link goes, a missing one is no error.
+  const unlink = async (from: string, to: string) =>
+    (await command(owner, { action: "timeline.unlink", pageId: pid, viewId: "t", version: (await database(pid)).version, from, to })) as { removed: boolean };
+  assert.equal((await unlink(a, b)).removed, true);
+  assert.deepEqual((await current(b)).cells.after, []);
+  assert.equal((await unlink(a, b)).removed, false);
+  const reader = await user();
+  await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+  await assert.rejects(async () => await command(reader, { action: "timeline.unlink", pageId: pid, viewId: "t", version: (await database(pid)).version, from: b, to: c }));
+  await assert.rejects(async () => await command(reader, { action: "timeline.restore", pageId: pid, viewId: "t", rows: [{ rowId: c, rowVersion: (await current(c)).version, start: "2026-11-02", end: null }] }));
+  assert.deepEqual((await current(c)).cells.after, [b]);
+});

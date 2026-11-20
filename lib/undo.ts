@@ -11,6 +11,7 @@ import { cellText } from "./cell-text";
 import { isEmptyValue } from "./empty-value";
 import { tr } from "./locale-tag";
 import { subtree, type Command, type PageLike } from "./optimistic-commands";
+import { scheduleFields } from "./database-timeline";
 import type { Bootstrap, Page } from "./types";
 
 export type UndoState = { boot: Bootstrap; data: PageLike | null };
@@ -60,7 +61,7 @@ function topmost(pages: Page[], ids: string[]) {
 const rowsLabel = (n: number) => (n === 1 ? tr("1 Eintrag", "1 record") : tr(`${n} Einträge`, `${n} records`));
 const pagesLabel = (n: number) => (n === 1 ? tr("1 Seite", "1 page") : tr(`${n} Seiten`, `${n} pages`));
 
-export function undoFor(b: Command, before: UndoState, openPageId?: string | null): UndoPlan | null {
+export function undoFor(b: Command, before: UndoState, openPageId?: string | null, result?: unknown): UndoPlan | null {
   const pageId = str(b.pageId);
   const pages = before.boot.pages;
   const data = before.data && before.data.page.id === pageId ? before.data : null;
@@ -253,6 +254,57 @@ export function undoFor(b: Command, before: UndoState, openPageId?: string | nul
             version: now.data?.page.id === pageId && now.data.database ? now.data.database.version : data.database!.version + 1,
             fields,
             views,
+          },
+        ],
+      };
+    }
+    case "row.schedule":
+    case "timeline.cascade": {
+      // Records moved along in a timeline (#395): one undo puts every
+      // moved record back, the one dragged included.
+      const moved = Number((result as { moved?: unknown } | undefined)?.moved) || 0;
+      // A conflict resolved by its button counts the record it moved.
+      const count = moved + (b.action === "row.schedule" && b.resolve === true ? 1 : 0);
+      const viewId = str(b.viewId);
+      const view = data?.database?.views.find((v) => v.id === viewId);
+      if (!pageId || !viewId || !count || !data?.rows || !data.database || view?.type !== "timeline") return null;
+      const { start, end } = scheduleFields(data.database.fields, view);
+      if (!start) return null;
+      const old = new Map(data.rows.map((r) => [r.id, r.cells]));
+      return {
+        message:
+          count === 1
+            ? tr("1 abhängiger Eintrag verschoben", "1 dependent record moved")
+            : tr(`${count} abhängige Einträge verschoben`, `${count} dependent records moved`),
+        commands: (now) => {
+          const rows = now.data?.page.id === pageId ? now.data.rows || [] : [];
+          const date = (cells: Record<string, unknown> | undefined, id?: string) => {
+            const v = id ? cells?.[id] : undefined;
+            return typeof v === "string" ? v : null;
+          };
+          const back = rows
+            .filter((r) => old.has(r.id))
+            .filter((r) => date(r.cells, start.id) !== date(old.get(r.id), start.id) || (!!end && date(r.cells, end.id) !== date(old.get(r.id), end.id)))
+            .map((r) => ({ rowId: r.id, rowVersion: r.version, start: date(old.get(r.id), start.id), end: end ? date(old.get(r.id), end.id) : null }));
+          return back.length ? [{ action: "timeline.restore", pageId, viewId, rows: back }] : [];
+        },
+      };
+    }
+    case "timeline.unlink": {
+      const viewId = str(b.viewId),
+        from = str(b.from),
+        to = str(b.to);
+      if (!pageId || !viewId || !from || !to || !(result as { removed?: unknown } | undefined)?.removed) return null;
+      return {
+        message: tr("Abhängigkeit entfernt", "Dependency removed"),
+        commands: (now) => [
+          {
+            action: "timeline.link",
+            pageId,
+            viewId,
+            version: now.data?.page.id === pageId && now.data.database ? now.data.database.version : b.version,
+            from,
+            to,
           },
         ],
       };

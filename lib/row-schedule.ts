@@ -4,15 +4,14 @@ import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess, assertRowsWritable } from "./row-access";
 import {
-  cascadeShifts,
   createsCycle,
+  dateDay,
   dependencyFields,
   rowRange,
   scheduleFields,
   schedulePatch,
-  successorShifts,
-  type DependencyType,
 } from "./database-timeline";
+import { followShifts, linkedDelta, planInputs, planShifts, rangePatch, shiftModeOf } from "./timeline-plan";
 import { calendarChangeSchema, calendarPatch } from "./database-calendar";
 import { assertNoNewTimes } from "./database-operations";
 import type { Field, Identity, View } from "./types";
@@ -28,15 +27,7 @@ const changeSchema = z.discriminatedUnion("operation", [
     days: z.number().int().min(-366000).max(366000),
   }),
 ]);
-// Days the side of a predecessor that its successors are linked to moved:
-// the start for "ss" and "sf", the end for "fs" and "ff" (the default).
-export function linkedDelta(
-  type: DependencyType | undefined,
-  before: { start: number; end: number },
-  after: { start: number; end: number },
-) {
-  return type === "ss" || type === "sf" ? after.start - before.start : after.end - before.end;
-}
+export { linkedDelta };
 // Executes inside the command transaction, including linked-view mutations.
 export async function scheduleRow(
   user: Identity,
@@ -92,30 +83,33 @@ export async function scheduleRow(
   assertNoNewTimes(db.fields, patch, cells);
   const nextCells = JSON.stringify({ ...cells, ...patch });
   if (nextCells.length > 200000) throw new HttpError(413, "Datensatz zu groß.");
-  // "Nachfolger mitverschieben": what waits for the record moves along by
-  // as many days as the linked end of the record moved – its start for
-  // start-based links (ss, sf), its end for end-based ones (fs, ff).
+  // What waits for the record follows it under the view's shift mode
+  // (#395, lib/timeline-plan.ts): only as far as a link needs ("overlap"),
+  // or by as many days as the linked end of the record moved ("keep", the
+  // old "Nachfolger mitverschieben") – its start for start-based links
+  // (ss, sf), its end for end-based ones (fs, ff) –, optionally off
+  // weekends.
   let moved = 0;
-  if (view.type === "timeline" && view.timeline?.moveSuccessors) {
+  if (view.type === "timeline" && shiftModeOf(view.timeline) !== "off") {
     const field = dependencyFields(db.fields, pageId).find(
       (f) => f.id === view.timeline?.dependencyField,
     );
     const { start, end } = scheduleFields(db.fields, view);
     const before = rowRange({ cells }, start, end),
       after = rowRange({ cells: JSON.parse(nextCells) }, start, end);
-    const days = before && after ? linkedDelta(view.timeline.dependencyType, before, after) : 0;
-    if (field && days) {
+    const days = before && after ? linkedDelta(view.timeline?.dependencyType, before, after) : 0;
+    if (field && after && (days || shiftModeOf(view.timeline) === "overlap")) {
       const rows = (await all<{ id: string; cells: string }>(
         "SELECT id,cells FROM rows WHERE page_id=?",
         pageId,
       )).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) as Record<string, unknown> }));
-      const shifts = successorShifts(rows, field, start, end, rid, days);
+      const shifts = followShifts(rows, field, start, end, view.timeline, { id: rid, range: after }, days);
       if (!shifts)
         throw new HttpError(409, "Zyklische Abhängigkeiten lassen sich nicht auflösen.");
       await assertRowsWritable(user, page, shifts.keys());
-      for (const [sid, shift] of shifts) {
+      for (const [sid, target] of shifts) {
         const successor = rows.find((r) => r.id === sid)!;
-        const next = { ...successor.cells, ...schedulePatch(successor, db.fields, view, { operation: "move", days: shift }) };
+        const next = { ...successor.cells, ...rangePatch(successor, db.fields, view, rowRange(successor, start, end)!, target) };
         await run(
           "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
           JSON.stringify(next), nowText(),
@@ -187,6 +181,102 @@ export async function linkTimeline(
   return { ok: true, added: true };
 }
 
+// The × at the end of an arrow (#395): `to` no longer waits for `from`.
+export async function unlinkTimeline(user: Identity, pageId: string, input: Record<string, unknown>) {
+  const page = await requirePage(user, pageId, true);
+  if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+  const stored = await one<{ fields: string; views: string; version: number }>("SELECT * FROM databases WHERE page_id=?", pageId);
+  if (!stored) throw new HttpError(400, "Datenbank fehlt.");
+  if (input.version !== stored.version) throw new HttpError(409, "Die Ansicht wurde inzwischen geändert. Bitte neu laden.");
+  const fields = JSON.parse(stored.fields) as Field[],
+    view = (JSON.parse(stored.views) as View[]).find((v) => v.id === input.viewId);
+  if (!view || view.type !== "timeline") throw new HttpError(400, "Timeline-Ansicht fehlt.");
+  const field = dependencyFields(fields, pageId).find((f) => f.id === view.timeline?.dependencyField);
+  if (!field) throw new HttpError(400, "Keine Abhängigkeiten eingerichtet.");
+  const from = z.string().uuid().parse(input.from),
+    to = z.string().uuid().parse(input.to);
+  const target = await one<{ id: string; cells: string; version: number; access: string; created_by: string }>(
+    "SELECT id,cells,version,access,created_by FROM rows WHERE id=? AND page_id=?",
+    to,
+    pageId,
+  );
+  if (!target) throw new HttpError(404, "Datensatz fehlt.");
+  await assertRowAccess(user, page, target, true);
+  const cells = JSON.parse(target.cells) as Record<string, unknown>;
+  const current = Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : [];
+  if (!current.includes(from)) return { ok: true, removed: false };
+  const next = { ...cells, [field.id]: current.filter((v) => v !== from) };
+  await run(
+    "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+    JSON.stringify(next),
+    nowText(),
+    user.id,
+    to,
+  );
+  await rowChanged(user, page, to, cells, next, fields);
+  return { ok: true, removed: true };
+}
+
+// "Rückgängig" after records moved along (#395, lib/undo.ts): the start
+// and end of each record back to what they were, in one step. Each record
+// carries the version it had after the move; one changed since is refused
+// (409), so a later edit is never overwritten.
+const restoreSchema = z
+  .array(
+    z.object({
+      rowId: z.string().uuid(),
+      rowVersion: z.number().int(),
+      start: z.string().max(40).nullable(),
+      end: z.string().max(40).nullable(),
+    }),
+  )
+  .min(1)
+  .max(2000);
+export async function restoreTimeline(user: Identity, pageId: string, input: Record<string, unknown>) {
+  const page = await requirePage(user, pageId, true);
+  if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+  const stored = await one<{ fields: string; views: string; version: number }>("SELECT * FROM databases WHERE page_id=?", pageId);
+  if (!stored) throw new HttpError(400, "Datenbank fehlt.");
+  const fields = JSON.parse(stored.fields) as Field[],
+    view = (JSON.parse(stored.views) as View[]).find((v) => v.id === input.viewId);
+  if (!view || view.type !== "timeline") throw new HttpError(400, "Timeline-Ansicht fehlt.");
+  const { start, end, invalidEnd } = scheduleFields(fields, view);
+  if (!start || invalidEnd) throw new HttpError(400, "Gültige, unterschiedliche Datumsfelder für Beginn und Ende auswählen.");
+  const entries = restoreSchema.parse(input.rows);
+  const value = (v: string | null) => {
+    if (v === null || v === "") return v ?? null;
+    if (dateDay(v) === null) throw new HttpError(400, "Ungültiges Datum.");
+    return v;
+  };
+  const rows = [];
+  for (const entry of entries) {
+    const row = await one<{ id: string; cells: string; version: number; access: string; created_by: string }>(
+      "SELECT id,cells,version,access,created_by FROM rows WHERE id=? AND page_id=?",
+      entry.rowId,
+      pageId,
+    );
+    if (!row) throw new HttpError(404, "Datensatz fehlt.");
+    if (row.version !== entry.rowVersion)
+      throw new HttpError(409, "Datensatz wurde inzwischen geändert. Dein Entwurf bleibt erhalten.");
+    rows.push({ row, entry });
+  }
+  await assertRowsWritable(user, page, rows.map((r) => r.row.id));
+  for (const { row, entry } of rows) {
+    const cells = JSON.parse(row.cells) as Record<string, unknown>;
+    const next = { ...cells, [start.id]: value(entry.start), ...(end ? { [end.id]: value(entry.end) } : {}) };
+    assertNoNewTimes(fields, { [start.id]: next[start.id], ...(end ? { [end.id]: next[end.id] } : {}) }, cells);
+    await run(
+      "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+      JSON.stringify(next),
+      nowText(),
+      user.id,
+      row.id,
+    );
+    await rowChanged(user, page, row.id, cells, next, fields);
+  }
+  return { ok: true, restored: rows.length };
+}
+
 // Resolves every dependency conflict of a timeline view in one transaction.
 export async function cascadeTimeline(
   user: Identity,
@@ -223,22 +313,24 @@ export async function cascadeTimeline(
     cells: JSON.parse(r.cells) as Record<string, unknown>,
   }));
   const { start, end } = scheduleFields(fields, view);
-  const shifts = cascadeShifts(
-    rows,
-    field,
-    start,
-    end,
-    view.timeline?.dependencyType,
-  );
+  // Every record as far as its links need, off weekends when the view asks.
+  const { ranges, predecessors } = planInputs(rows, field, start, end);
+  const shifts = planShifts({
+    ranges,
+    predecessors,
+    type: view.timeline?.dependencyType,
+    scope: "all",
+    avoidWeekends: !!view.timeline?.avoidWeekends,
+  });
   if (!shifts)
     throw new HttpError(
       409,
       "Zyklische Abhängigkeiten lassen sich nicht auflösen.",
     );
   await assertRowsWritable(user, page, shifts.keys());
-  for (const [rid, days] of shifts) {
+  for (const [rid, target] of shifts) {
     const row = rows.find((r) => r.id === rid)!;
-    const next = { ...row.cells, ...schedulePatch(row, fields, view, { operation: "move", days }) };
+    const next = { ...row.cells, ...rangePatch(row, fields, view, ranges.get(rid)!, target) };
     await run(
       "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
       JSON.stringify(next), nowText(),

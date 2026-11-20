@@ -58,7 +58,7 @@ import { plainClick, relationClick } from "@/lib/related-record";
 import { RelatedRecord, useRelatedRecord } from "./related-record";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { leaveTo } from "@/lib/history-nav";
-import { scheduleFields } from "@/lib/database-timeline";
+import { NEW_TIMELINE, scheduleFields } from "@/lib/database-timeline";
 import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, usePointerDrag, type DragPoint, type RecordDropDetail } from "./pointer-drag";
 import { keyboardStep, nearestIndex, placementIn, slotFor, type KeyPosition } from "@/lib/pointer-drag";
 import { Reactions } from "./reactions";
@@ -4296,6 +4296,7 @@ export default function DatabaseView({
           version={data.database.version}
           editable={editable}
           viewEditable={viewEditable}
+          selectedId={dockedId}
           onOpen={setRowId}
           onView={updateView}
           onSchedule={(input) => rowChange(input, (sent) => mutate({ pageId: page.id, ...sent }))}
@@ -5983,6 +5984,8 @@ export default function DatabaseView({
                 type: viewType,
                 filters: [],
                 sorts: [],
+                // New timelines draw calm arrows (#395).
+                ...(viewType === "timeline" ? { timeline: NEW_TIMELINE } : {}),
               },
             ]);
             if (r) {

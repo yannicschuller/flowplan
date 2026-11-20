@@ -8,6 +8,7 @@ import "./whiteboard-racks.css";
 import "./contacts.css";
 import "./page-properties.css";
 import "./option-colors.css";
+import "./timeline.css";
 import "./collections.css";
 import "./library.css";
 import "./instance-move.css";

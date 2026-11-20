@@ -1575,7 +1575,7 @@ export default function WorkspaceApp({
           throw e;
         }
         // lib/undo.ts loads with the first change (not with the app).
-        const plan = undoing.has(b) || !UNDOABLE.has(String(b.action)) ? null : (await import("@/lib/undo")).undoFor(b, before, openBefore);
+        const plan = undoing.has(b) || !UNDOABLE.has(String(b.action)) ? null : (await import("@/lib/undo")).undoFor(b, before, openBefore, result);
         if (plan) showUndo(plan.message, () => undoRef.current(plan));
         await refresh();
         return result;
@@ -8157,4 +8157,4 @@ const undoing = new WeakSet<object>();
 // The commands lib/undo.ts may offer to take back.
 // The journal used last on this device ("Journal: Heute").
 const LAST_JOURNAL = "flowplan:last-journal";
-const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve", "row.template.apply"]);
+const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve", "row.template.apply", "row.schedule", "timeline.cascade", "timeline.unlink"]);

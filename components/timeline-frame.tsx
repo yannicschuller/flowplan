@@ -7,8 +7,9 @@
 // only for the visible part, and the remembered scroll position.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { distance, midpoint, pinchFactor, wheelFactor } from "@/lib/pinch-zoom";
+import { readCollapsed, writeCollapsed } from "@/lib/timeline-tree";
 import {
-  arrowPath,
+  arrowGeometry,
   arrowStep,
   axisSegments,
   clampDay,
@@ -351,7 +352,19 @@ function segmentLabel(s: AxisSegment, tag: string, t: Translate, width: number, 
   return format(s.start, tag, top ? { month: "long", year: "numeric" } : { month: width >= 70 ? "long" : "short" });
 }
 // The two rows of the axis, for the visible part (plus a screen either side).
-export function TimelineAxis({ frame, tag, t }: { frame: TimelineFrame; tag: string; t: Translate }) {
+// `highlight`: the days of the bar under the pointer or being dragged,
+// marked in the axis with its first and last day (#395).
+export function TimelineAxis({
+  frame,
+  tag,
+  t,
+  highlight,
+}: {
+  frame: TimelineFrame;
+  tag: string;
+  t: Translate;
+  highlight?: { start: number; end: number } | null;
+}) {
   const view = useViewport(frame);
   const { window: w, dayWidth } = frame;
   const from = w.start + (view.left - view.width) / dayWidth,
@@ -385,6 +398,16 @@ export function TimelineAxis({ frame, tag, t }: { frame: TimelineFrame; tag: str
           </span>
         );
       })}
+      {highlight && highlight.end + 1 > w.start && highlight.start < w.end && (
+        <span
+          className="timeline-axis-highlight"
+          aria-hidden="true"
+          style={{ left: (Math.max(highlight.start, w.start) - w.start) * dayWidth, width: (Math.min(highlight.end + 1, w.end) - Math.max(highlight.start, w.start)) * dayWidth }}
+        >
+          <span className="timeline-axis-day start">{format(highlight.start, tag, { day: "numeric", month: "short" })}</span>
+          {highlight.end > highlight.start && <span className="timeline-axis-day end">{format(highlight.end, tag, { day: "numeric", month: "short" })}</span>}
+        </span>
+      )}
     </div>
   );
 }
@@ -492,8 +515,9 @@ export function barPlacement(
   range: { start: number; end: number },
   flagged: boolean,
   period: { start: number; end: number; dayWidth: number },
+  onlyFlagged = false,
 ) {
-  const day = milestoneDay(range, flagged);
+  const day = milestoneDay(range, flagged, onlyFlagged);
   return day !== null
     ? { box: milestoneBox(day, period), milestone: true }
     : { box: clipRange(range.start, range.end, period), milestone: false };
@@ -521,68 +545,376 @@ export function timelineKey(event: React.KeyboardEvent, frame: TimelineFrame) {
   run();
 }
 
-export type TimelineArrow = { key: string; d: string; conflict: boolean; critical?: boolean; fresh?: boolean };
-// Arrows between the rendered bars of `root` (bars carry data-row-id on
-// their .timeline-entry). `box` measures a bar inside the root.
-export function measureArrows(
+// ---- dependency arrows (#395) ----
+// Which arrows are drawn, how they cross bars they do not link and their
+// shape (lib/timeline-plan.ts timelineSettings).
+export type ArrowSettings = {
+  visibility: "all" | "critical" | "selected" | "hidden";
+  overlap: "opaque" | "transparent" | "behind";
+  routing: "curved" | "orthogonal";
+};
+export const DEFAULT_ARROWS: ArrowSettings = { visibility: "all", overlap: "opaque", routing: "curved" };
+// A link between two shown lines (rows, or the collapsed line a hidden
+// record shows on) with the boxes of their bars; null: the line has no bar
+// in the window.
+export type MeasuredLink = {
+  key: string;
+  from: string;
+  to: string;
+  a: ArrowBox | null;
+  b: ArrowBox | null;
+  conflict: boolean;
+  critical: boolean;
+  fresh?: boolean;
+};
+export type ArrowObstacle = { x: number; y: number; width: number; height: number };
+type BoxOf = (el: HTMLElement, origin: DOMRect) => { x: number; y: number };
+const round = (n: number) => Math.round(n * 10) / 10;
+// The bars of the lines (`data-line-id` on .timeline-entry) the links join.
+export function measureLinks(
   root: HTMLElement,
-  links: { from: string; to: string; shift: number }[],
-  type: LinkType,
-  critical: Set<string>,
-  cyclic: Set<string>,
-  box: (el: HTMLElement, origin: DOMRect) => { x: number; y: number },
-): TimelineArrow[] {
-  const next: TimelineArrow[] = [];
-  if (!links.length) return next;
+  links: { key: string; from: string; to: string; conflict: boolean; critical: boolean; fresh?: boolean }[],
+  boxOf: BoxOf,
+): MeasuredLink[] {
+  if (!links.length) return [];
   const origin = root.getBoundingClientRect();
-  const bar = (id: string): ArrowBox | undefined => {
-    const el = root.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"] .timeline-range`);
-    if (!el) return undefined;
-    const at = box(el, origin);
-    return { left: at.x, right: at.x + el.offsetWidth, top: at.y, height: el.offsetHeight };
+  const boxes = new Map<string, ArrowBox | null | undefined>();
+  const bar = (id: string) => {
+    if (boxes.has(id)) return boxes.get(id);
+    const line = root.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(id)}"]`);
+    const el = line?.querySelector<HTMLElement>(":scope > .timeline-lane > .timeline-range");
+    let value: ArrowBox | null | undefined = line ? null : undefined;
+    if (el) {
+      const at = boxOf(el, origin);
+      value = { left: round(at.x), right: round(at.x + el.offsetWidth), top: round(at.y), height: el.offsetHeight };
+    }
+    boxes.set(id, value);
+    return value;
   };
+  const out: MeasuredLink[] = [];
   for (const link of links) {
     const a = bar(link.from),
       b = bar(link.to);
-    if (!a || !b) continue;
-    next.push({
-      key: `${link.from}>${link.to}`,
-      d: arrowPath(a, b, type),
-      conflict: link.shift > 0 || cyclic.has(link.to),
-      critical: critical.has(link.from) && critical.has(link.to),
-    });
+    if (a === undefined || b === undefined || (!a && !b)) continue;
+    out.push({ ...link, a, b });
   }
-  return next;
+  return out;
 }
+// Bars and the titles beside them, which "Transparent" arrows cross faintly.
+export function measureObstacles(root: HTMLElement, boxOf: BoxOf): ArrowObstacle[] {
+  const origin = root.getBoundingClientRect();
+  return [...root.querySelectorAll<HTMLElement>(".timeline-range, .timeline-range-label")]
+    .filter((el) => el.offsetWidth > 0)
+    .map((el) => {
+      const at = boxOf(el, origin);
+      return { x: round(at.x), y: round(at.y), width: el.offsetWidth, height: el.offsetHeight };
+    });
+}
+// The arrows: drawn for the visible part (an end out of sight becomes a
+// stub), filtered by the view's choice, the hovered or selected record's
+// own ones in front (`focus`, a line id) and the others dimmed; a hovered
+// arrow (`hovered`, its key) alone in front. `onHover` makes them
+// hoverable.
 export function TimelineArrows({
   id,
-  arrows,
+  frame,
+  links,
+  obstacles = [],
+  type,
+  settings = DEFAULT_ARROWS,
+  focus,
+  hovered,
+  onHover,
   linking,
 }: {
   id: string;
-  arrows: TimelineArrow[];
+  frame: TimelineFrame;
+  links: MeasuredLink[];
+  obstacles?: ArrowObstacle[];
+  type: LinkType;
+  settings?: ArrowSettings;
+  focus?: string | null;
+  hovered?: string | null;
+  onHover?: (key: string | null) => void;
   linking?: { x1: number; y1: number; x2: number; y2: number } | null;
 }) {
-  if (!arrows.length && !linking) return null;
+  const view = useViewport(frame);
+  const visible = { left: view.left + frame.lane.label, right: view.left + view.width };
+  const touches = (l: MeasuredLink) => !!focus && (l.from === focus || l.to === focus);
+  const shown =
+    settings.visibility === "hidden"
+      ? []
+      : links.filter(
+          (l) =>
+            settings.visibility === "all" ||
+            l.key === hovered ||
+            touches(l) ||
+            (settings.visibility === "critical" && l.critical),
+        );
+  const drawn = shown
+    .map((l) => ({ link: l, geometry: arrowGeometry(l.a, l.b, type, settings.routing, visible) }))
+    .filter((x): x is { link: MeasuredLink; geometry: { d: string; stub: boolean } } => !!x.geometry);
+  if (!drawn.length && !linking) return null;
+  const hoveredShown = !!hovered && drawn.some((x) => x.link.key === hovered);
+  const focusShown = !hoveredShown && drawn.some((x) => touches(x.link));
+  const inFront = (l: MeasuredLink) => (hoveredShown ? l.key === hovered : focusShown && touches(l));
+  const mask = settings.overlap === "transparent" ? `timeline-mask-${id}` : null;
   return (
-    <svg className="timeline-dependencies" aria-hidden="true">
+    <>
+    {onHover && drawn.length > 0 && (
+      // Below the bars: arrows are hovered between them, never over the
+      // handles at a bar's ends.
+      <svg className="timeline-arrow-hits" aria-hidden="true">
+        {drawn.map(({ link, geometry }) => (
+          <path key={link.key} d={geometry.d} onPointerEnter={() => onHover(link.key)} onPointerLeave={() => onHover(null)} />
+        ))}
+      </svg>
+    )}
+    <svg
+      className={`timeline-dependencies${settings.overlap === "behind" ? " is-behind" : ""}${hoveredShown || focusShown ? " has-focus" : ""}`}
+      aria-hidden="true"
+    >
       <defs>
-        {(["ok", "conflict"] as const).map((kind) => (
-          <marker key={kind} id={`timeline-arrow-${id}-${kind}`} className={kind} viewBox="0 0 8 8" refX="2" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+        {(["ok", "conflict", "critical"] as const).map((kind) => (
+          // One size for every arrow (a thicker line in front or on the
+          // critical path keeps the head of a thin one).
+          <marker key={kind} id={`timeline-arrow-${id}-${kind}`} className={kind} viewBox="0 0 8 8" refX="2" refY="4" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
             <path d="M0 0 L8 4 L0 8 z" />
           </marker>
         ))}
+        {mask && (
+          <mask id={mask} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+            <rect x="0" y="0" width="100%" height="100%" fill="white" />
+            {obstacles.map((o, i) => (
+              <rect key={i} x={o.x} y={o.y} width={o.width} height={o.height} fill="rgb(64,64,64)" />
+            ))}
+          </mask>
+        )}
       </defs>
-      {arrows.map((arrow) => (
-        <path
-          key={arrow.key}
-          d={arrow.d}
-          pathLength={arrow.fresh && !arrow.conflict ? 1 : undefined}
-          className={[arrow.conflict ? "conflict" : arrow.critical ? "critical" : "", arrow.fresh ? "is-new" : ""].filter(Boolean).join(" ") || undefined}
-          markerEnd={`url(#timeline-arrow-${id}-${arrow.conflict ? "conflict" : "ok"})`}
-        />
-      ))}
+      {drawn.map(({ link, geometry }) => {
+        const front = inFront(link);
+        return (
+          <path
+            key={link.key}
+            d={geometry.d}
+            data-link={link.key}
+            pathLength={link.fresh && !link.conflict && !geometry.stub ? 1 : undefined}
+            mask={mask && !front ? `url(#${mask})` : undefined}
+            className={
+              [
+                link.conflict ? "conflict" : link.critical ? "critical" : "",
+                link.fresh && !geometry.stub ? "is-new" : "",
+                geometry.stub ? "stub" : "",
+                front ? "is-focus" : hoveredShown || focusShown ? "is-dimmed" : "",
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
+            markerEnd={`url(#timeline-arrow-${id}-${link.conflict ? "conflict" : link.critical ? "critical" : "ok"})`}
+          />
+        );
+      })}
       {linking && <path className="linking" d={`M ${linking.x1} ${linking.y1} L ${linking.x2} ${linking.y2}`} markerEnd={`url(#timeline-arrow-${id}-ok)`} />}
     </svg>
+    </>
   );
 }
+
+// ---- rows out of sight (#395) ----
+// A small ← or → at the edge of the lanes in a row whose bar is scrolled
+// out of sight (or outside the window: `text` then says so); it jumps there.
+export function OffscreenChip({
+  frame,
+  range,
+  label,
+  text,
+  title,
+  tag,
+}: {
+  frame: TimelineFrame;
+  tag: string;
+  range: { start: number; end: number };
+  // The accessible name.
+  label: string;
+  // Visible text after the arrow (default: the first day).
+  text?: string;
+  title?: string;
+}) {
+  const view = useViewport(frame);
+  const { window: w, dayWidth, lane } = frame;
+  const first = w.start + view.left / dayWidth,
+    last = w.start + (view.left + lane.width) / dayWidth;
+  const side = range.end + 1 <= first ? "left" : range.start >= last ? "right" : null;
+  if (!side) return null;
+  return (
+    <button
+      type="button"
+      className={`timeline-offscreen ${side}`}
+      style={{ left: side === "left" ? view.left + 6 : view.left + lane.width - 6 }}
+      aria-label={label}
+      title={title || label}
+      onClick={() => frame.goTo(range.start - 2)}
+    >
+      <span aria-hidden="true">{side === "left" ? "←" : "→"}</span>
+      {text ?? format(range.start, tag, { day: "numeric", month: "short" })}
+    </button>
+  );
+}
+
+// ---- outline (#394) ----
+// Collapsed parents and groups (remembered per view on this device when
+// `storageId` is given) and the motion of opening and closing them: rows
+// that appear grow from nothing below their parent and fade in, rows that
+// go fold away, the rows below move along (about 220 ms, ease-out); the
+// arrows are measured again on every frame meanwhile (`onFrame`). Instant
+// when `motion()` says no (reduced motion) or many rows change at once.
+const FOLD_MS = 220;
+const FOLD_EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+export function useOutline({
+  storageId,
+  grid,
+  motion,
+  lines,
+  onFrame,
+}: {
+  storageId?: string;
+  grid: React.RefObject<HTMLElement | null>;
+  motion: () => boolean;
+  // The line ids shown for a collapsed set.
+  lines: (collapsed: ReadonlySet<string>) => string[];
+  onFrame: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => (storageId ? readCollapsed(storage(), storageId) : new Set()));
+  const current = useRef(collapsed);
+  current.current = collapsed;
+  const entering = useRef<string[] | null>(null);
+  const busyUntil = useRef(0);
+  const frameRef = useRef(onFrame);
+  frameRef.current = onFrame;
+  const follow = () => {
+    const until = performance.now() + FOLD_MS + 40;
+    busyUntil.current = Date.now() + FOLD_MS + 80;
+    const tick = () => {
+      frameRef.current();
+      if (performance.now() < until) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  const commit = (next: Set<string>) => {
+    setCollapsed(next);
+    if (storageId) writeCollapsed(storage(), storageId, next);
+  };
+  function change(next: Set<string>) {
+    const root = grid.current;
+    const before = lines(current.current),
+      after = lines(next);
+    const was = new Set(before),
+      will = new Set(after);
+    const gone = before.filter((id) => !will.has(id)),
+      added = after.filter((id) => !was.has(id));
+    if (!root || !motion() || gone.length + added.length > 150 || typeof root.animate !== "function") {
+      commit(next);
+      return;
+    }
+    entering.current = added;
+    const leaving = gone
+      .map((id) => root.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(id)}"]`))
+      .filter((el): el is HTMLElement => !!el);
+    if (!leaving.length) {
+      commit(next);
+      return;
+    }
+    follow();
+    let left = leaving.length,
+      finished = false;
+    const done = () => {
+      if (finished || --left > 0) return;
+      finished = true;
+      commit(next);
+      // Rows still there afterwards (another change came between) come back.
+      requestAnimationFrame(() => {
+        for (const el of leaving)
+          if (el.isConnected) {
+            for (const a of el.getAnimations()) a.cancel();
+            delete el.dataset.folding;
+          }
+      });
+    };
+    for (const el of leaving) {
+      const height = el.offsetHeight;
+      el.dataset.folding = "";
+      const a = el.animate(
+        [
+          { height: `${height}px`, opacity: 1, transform: "none" },
+          { height: "0px", opacity: 0, transform: "translateY(-8px)" },
+        ],
+        { duration: FOLD_MS, easing: FOLD_EASE, fill: "forwards" },
+      );
+      a.onfinish = done;
+      a.oncancel = done;
+    }
+  }
+  useLayoutEffect(() => {
+    const ids = entering.current,
+      root = grid.current;
+    entering.current = null;
+    if (!ids?.length || !root) return;
+    let started = false;
+    for (const id of ids) {
+      const el = root.querySelector<HTMLElement>(`[data-line-id="${CSS.escape(id)}"]`);
+      if (!el) continue;
+      started = true;
+      const height = el.offsetHeight;
+      el.dataset.folding = "";
+      const a = el.animate(
+        [
+          { height: "0px", opacity: 0, transform: "translateY(-8px)" },
+          { height: `${height}px`, opacity: 1, transform: "none" },
+        ],
+        { duration: FOLD_MS, easing: FOLD_EASE },
+      );
+      a.onfinish = a.oncancel = () => delete el.dataset.folding;
+    }
+    if (started) follow();
+  });
+  return {
+    collapsed,
+    toggle: (id: string) => {
+      const next = new Set(current.current);
+      if (!next.delete(id)) next.add(id);
+      change(next);
+    },
+    set: (ids: Iterable<string>) => change(new Set(ids)),
+    // Rows are folding: other glides keep still.
+    moving: () => Date.now() < busyUntil.current,
+  };
+}
+// ▾/▸ before a parent's or group's name.
+export function OutlineToggle({
+  name,
+  collapsed,
+  onToggle,
+  t,
+}: {
+  name: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  t: Translate;
+}) {
+  return (
+    <button
+      type="button"
+      className="timeline-outline-toggle"
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? t(`${name} aufklappen`, `Expand ${name}`) : t(`${name} zuklappen`, `Collapse ${name}`)}
+      title={collapsed ? t("Aufklappen", "Expand") : t("Zuklappen", "Collapse")}
+      onClick={onToggle}
+    >
+      <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+    </button>
+  );
+}
+// Where a summary bar's or milestone's title goes: right of it, or left
+// where the window ends.
+export const besideLabel = (box: { left: number; width: number }, width: number) =>
+  width - box.left - box.width >= 120 || box.left < 120 ? "right" : "left";

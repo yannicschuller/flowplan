@@ -1,0 +1,337 @@
+/* The database timeline's arrows, outline and colours (#394, #395):
+   components/database-timeline.tsx, components/public-timeline.tsx and
+   the shared parts in components/timeline-frame.tsx. The grid itself is in
+   globals.css. */
+
+/* ---- arrows ---- */
+.timeline-dependencies > path {
+  transition:
+    opacity 0.15s ease-out,
+    stroke-width 0.15s ease-out;
+}
+.timeline-dependencies marker.critical path {
+  fill: #d9480f;
+}
+/* The hovered or chosen record's arrows in front, the others faint. */
+.timeline-dependencies > path.is-focus {
+  stroke-width: 2.5;
+}
+.timeline-dependencies > path.critical.is-focus {
+  stroke-width: 3;
+}
+.timeline-dependencies > path.is-dimmed {
+  opacity: 0.15;
+}
+/* "Hinter Balken": painted before the rows, so bars cover them. */
+.timeline-dependencies.is-behind {
+  z-index: 0;
+}
+/* An end out of sight: a short dashed stub. */
+.timeline-dependencies > path.stub {
+  stroke-dasharray: 3 2;
+}
+/* Hovering arrows: the lanes let the pointer through to the arrows below
+   the bars; everything in a lane takes it again. */
+.timeline-arrow-hits {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.timeline-arrow-hits path {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 10;
+  pointer-events: stroke;
+  cursor: default;
+}
+.timeline-grid .timeline-lane {
+  pointer-events: none;
+}
+.timeline-grid .timeline-lane > :not(.timeline-today) {
+  pointer-events: auto;
+}
+.timeline-range.link-hover {
+  outline: 2px solid color-mix(in srgb, var(--blue) 70%, transparent);
+  outline-offset: 1px;
+}
+/* The × at an arrow's end removes the link. */
+.timeline-unlink {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  translate: 0 -50%;
+  border-radius: 50%;
+  border: 1px solid #cf4850;
+  background: var(--bg);
+  color: #cf4850;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+.timeline-unlink:hover,
+.timeline-unlink:focus-visible {
+  background: #cf4850;
+  color: #fff;
+}
+
+/* ---- the days of the bar under the pointer, in the axis ---- */
+.timeline-axis > .timeline-axis-highlight {
+  top: 23px;
+  height: 23px;
+  overflow: visible;
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  border-inline: 1px solid color-mix(in srgb, var(--blue) 60%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.timeline-axis-day {
+  position: absolute;
+  top: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+}
+.timeline-axis-day.start {
+  right: calc(100% - 1px);
+}
+.timeline-axis-day.end {
+  left: calc(100% - 1px);
+}
+
+/* ---- rows whose bar is out of sight ---- */
+.timeline-offscreen {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  height: 22px;
+  padding: 0 8px;
+  translate: 0 -50%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.timeline-offscreen.right {
+  translate: -100% -50%;
+}
+.timeline-offscreen:hover,
+.timeline-offscreen:focus-visible {
+  color: var(--text);
+  border-color: var(--blue);
+}
+
+/* ---- outline: indentation, ▾/▸, groups ---- */
+.timeline-entry-label.timeline-outline {
+  padding-left: calc(3px + var(--timeline-depth, 0) * 14px);
+}
+.timeline-outline-toggle,
+.timeline-outline-spacer {
+  flex: none;
+  width: 18px;
+  height: 22px;
+}
+.timeline-outline-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.timeline-outline-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.timeline-entry.is-parent .timeline-name {
+  font-weight: 600;
+}
+.timeline-group .timeline-entry-label,
+.timeline-group .timeline-lane {
+  background-color: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.timeline-group .timeline-entry-label {
+  background-color: var(--surface);
+}
+.timeline-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.timeline-group-count {
+  flex: none;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.timeline-heading > strong {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.timeline-outline-all {
+  display: inline-flex;
+  margin-left: auto;
+  font-weight: 400;
+}
+.timeline-outline-all .icon-button {
+  width: 26px;
+  height: 26px;
+}
+/* Opening and closing (useOutline): the row's height runs to or from 0. */
+.timeline-entry[data-folding] {
+  overflow: clip;
+  min-height: 0;
+}
+.timeline-entry[data-folding] .timeline-lane {
+  min-height: 0;
+}
+
+/* ---- summary bars: a thin dark bar with points at both ends ---- */
+.timeline-range.summary {
+  --summary: color-mix(in srgb, var(--text) 80%, var(--bg));
+  top: 16px;
+  height: 14px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.timeline-range.summary::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--summary);
+  pointer-events: none;
+}
+.timeline-range.summary .timeline-range-body {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border-radius: 2px;
+}
+.timeline-range.summary .timeline-range-body::before,
+.timeline-range.summary .timeline-range-body::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  width: 7px;
+  height: 6px;
+  background: var(--summary);
+}
+.timeline-range.summary .timeline-range-body::before {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.timeline-range.summary .timeline-range-body::after {
+  right: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+.timeline-range.summary.clipped-start .timeline-range-body::before,
+.timeline-range.summary.clipped-end .timeline-range-body::after {
+  display: none;
+}
+.timeline-range.summary .timeline-range-label {
+  top: 3px;
+  font-weight: 600;
+}
+.timeline-range.summary.label-right .timeline-range-label {
+  left: calc(100% + 8px);
+}
+.timeline-range.summary.label-left .timeline-range-label {
+  right: calc(100% + 8px);
+}
+/* The parent's own stored dates, when they differ. */
+.timeline-baseline {
+  position: absolute;
+  bottom: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+/* ---- "Farbe nach": the option's colour (app/option-colors.css) ---- */
+.timeline-range.colored {
+  background: var(--opt-bg);
+  border-color: color-mix(in srgb, var(--opt-fg) 30%, transparent);
+}
+.timeline-range.colored .timeline-range-body {
+  color: var(--opt-fg);
+}
+/* Hovered: a tint over the option's colour, not the plain hover grey. */
+@media (hover: hover) {
+  .timeline-range.colored .timeline-range-body:hover {
+    background: color-mix(in srgb, var(--opt-fg) 10%, transparent);
+  }
+}
+.timeline-range.colored .timeline-range-detail {
+  color: color-mix(in srgb, var(--opt-fg) 75%, var(--opt-bg));
+}
+[data-theme="dark"] .timeline-range.colored {
+  --opt-fg: #f4f4f6;
+}
+.timeline-range.colored.critical {
+  border-color: #d9480f;
+  box-shadow: inset 0 0 0 1px #d9480f;
+}
+.timeline-range.milestone.colored {
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.timeline-range.milestone.colored::before {
+  background: color-mix(in srgb, var(--opt-fg) 70%, var(--opt-bg));
+}
+
+/* ---- the hint on links other links imply ---- */
+.timeline-redundant {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  color: var(--secondary);
+  font-size: 12px;
+}
+.timeline-redundant p {
+  margin: 0;
+}
+.timeline-redundant ul {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.timeline-redundant li span {
+  margin-right: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-dependencies > path {
+    transition: none;
+  }
+}

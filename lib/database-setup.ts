@@ -77,6 +77,8 @@ export const defaultViews = (tr: Translate): View[] => [
     filters: [],
     sorts: [],
     dateField: "date",
+    // Calm arrows in new timelines (#395, NEW_TIMELINE).
+    timeline: { scale: "month", showWeekends: true, arrowOverlap: "transparent", arrowRouting: "orthogonal" },
   },
   { id: "list", name: tr("Liste", "List"), type: "list", filters: [], sorts: [] },
   { id: "form", name: tr("Formular", "Form"), type: "form", filters: [], sorts: [] },
