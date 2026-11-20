@@ -138,7 +138,7 @@ test("published databases show their board, gallery and list views", async ({
   );
   await visitor.locator(".public-list .record-list-item").click();
   await expect(
-    visitor.getByRole("heading", { name: "Umsetzung" }),
+    visitor.getByRole("heading", { name: "Umsetzung", exact: true }),
   ).toBeVisible();
   await visitorContext.close();
   expect(errors).toEqual([]);

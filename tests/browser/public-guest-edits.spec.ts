@@ -80,8 +80,10 @@ test("guests with edit links change relations and files and move calendar entrie
     includeChildren: true,
     name: "Team",
   });
+  // The record's own page: on wide windows a record opens beside the view
+  // instead (#392, tests/browser/side-panel.spec.ts).
   const visitor = await browser.newContext({
-    viewport: page.viewportSize()!,
+    viewport: testInfo.project.name === "mobile" ? page.viewportSize()! : { width: 980, height: 900 },
     isMobile: testInfo.project.name === "mobile",
   });
   try {
@@ -101,7 +103,7 @@ test("guests with edit links change relations and files and move calendar entrie
     await expect(day("10")).not.toContainText("Review");
     // The record page edits the relation and attaches a file.
     await day("17").getByRole("link", { name: "Review" }).click();
-    await expect(guest.getByRole("heading", { name: "Review" })).toBeVisible();
+    await expect(guest.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
     // The record page is rendered on the server: a click before hydration
     // is lost (slow on the dev server), so it is repeated until the form
     // is open.

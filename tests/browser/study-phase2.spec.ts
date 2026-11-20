@@ -210,7 +210,10 @@ test("#study lists the due decks, the widget counts them, the journal shows what
     appearance: { header: { type: "none", value: "", position: 50 }, density: "comfortable", background: "none", icon: "", width: "normal" },
   };
   await command({ action: "home.save", workspaceId: boot.workspace.id, layout });
+  // Saved through the API, not the editor: the open start page learns it
+  // on its next load.
   await page.goto("/#home");
+  await page.reload();
   const widget = page.locator('[data-widget-id="cards"]');
   await expect(widget.getByRole("heading", { name: "Fällige Karten" })).toBeVisible();
   await expect(widget.locator(".home-study-decks")).toContainText(`Alpha ${stamp}`);

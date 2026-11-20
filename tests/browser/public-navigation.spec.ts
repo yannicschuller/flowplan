@@ -46,7 +46,9 @@ test("published databases: theme button, back to the view, record title in the p
   const token = (await read()).page.public_token;
   const shot = (name: string) => `test-results/public-navigation/${testInfo.project.name}-${name}.png`;
 
-  const visitorContext = await browser.newContext();
+  // The record's own page with "← Back": on wide windows a record opens
+  // beside the view instead (#392, tests/browser/side-panel.spec.ts).
+  const visitorContext = await browser.newContext({ viewport: { width: 980, height: 900 } });
   const visitor = await visitorContext.newPage();
   visitor.on("pageerror", (e) => errors.push(e.message));
   await visitor.goto(`${origin}/share/${token}`);

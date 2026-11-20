@@ -137,7 +137,8 @@ test("owners reorder spaces with the menu; the order holds in settings and for o
   await expect(page.getByRole("button", { name: "Gamma nach oben", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Alpha nach oben", exact: true }).click();
   await expect.poll(async () => (await items.allTextContents()).filter((n) => n !== "Hidden")).toEqual(["Gamma", "Alpha", "Beta"]);
-  expect(await items.allTextContents()).toEqual(storedOrder(f.wid));
+  // The list moves at once; the server stores it a moment later.
+  await expect.poll(() => storedOrder(f.wid)).toEqual(await items.allTextContents());
   // The editor's private space never moved.
   expect(hiddenPosition(f.spaces.Hidden)).toBe(hiddenBefore);
   await expect(page.getByRole("button", { name: "Alpha nach unten", exact: true })).toBeEnabled();
