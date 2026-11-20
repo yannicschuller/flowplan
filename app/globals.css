@@ -28144,57 +28144,13 @@ h3 .block-reactions {
 .ai-ask {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
-.ai-ask-bar,
 .ai-database-creator-actions,
 .ai-field-run {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-.ai-ask-bar > :first-child {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-/* The ask window's head: where to look, the provider, a fresh start – one
-   row, wrapping on narrow screens. */
-.ai-ask .ai-ask-bar {
-  gap: 10px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-}
-.ai-ask-scope {
-  position: relative;
-  display: flex;
-  align-items: center;
-  max-width: 420px;
-}
-.ai-ask-scope > svg {
-  position: absolute;
-  left: 11px;
-  z-index: 1;
-  color: var(--muted);
-  pointer-events: none;
-}
-.ai-ask-scope .fp-select {
-  width: 100%;
-  padding-left: 32px;
-}
-.ai-ask .ai-provider-chip {
-  flex: 0 1 auto;
-  min-width: 0;
-  height: 30px;
-  padding: 0 11px;
-  background: var(--surface);
-}
-.ai-ask .ai-provider-chip > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ai-ask-new {
-  margin-left: auto;
 }
 /* "KI fragen" as a panel (#59, components/ai-ask.tsx): from 768 px the app
    shell's third column on the right – the page narrows beside it, nothing is
@@ -28229,80 +28185,582 @@ h3 .block-reactions {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
+  letter-spacing: -0.005em;
 }
 .ask-panel-icon {
   flex: none;
-  color: var(--accent-strong);
+  color: var(--blue);
 }
-.ask-panel .ai-ask-log {
+.ask-panel-head .icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--muted);
+}
+@media (hover: hover) {
+  .ask-panel-head .icon-button:hover {
+    color: var(--text);
+  }
+}
+/* "+ Neu": a fresh conversation, once there is one. */
+.ask-panel-new {
+  flex: none;
+  gap: 4px;
+  height: 28px;
+  margin-right: 2px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+@media (hover: hover) {
+  .ask-panel-new:hover:not(:disabled) {
+    color: var(--text);
+  }
+}
+/* The conversation, and before it the greeting with suggestions. Spacing
+   on a 4/8 px scale; answers keep a readable line length. */
+.ai-ask-log {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 20px;
   min-height: 0;
-  max-height: none;
+  overflow-y: auto;
   overscroll-behavior: contain;
+  margin: 0 -16px;
+  padding: 24px 16px 16px;
 }
-.ask-panel .ai-ask-scope {
-  flex: 1 1 100%;
-  max-width: none;
-}
-.ask-panel .ai-provider-chip {
-  flex: 0 1 auto;
-}
-.ask-panel .ai-ask-composer textarea {
-  max-height: 30dvh;
-}
-.ai-ask-answer-tools {
+.ai-ask-empty {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  flex-direction: column;
+  margin: auto 0;
+  padding: 8px 4px 16px;
+  max-width: 480px;
 }
-.ai-ask-answer-tools:empty {
-  display: none;
+.ai-ask-greeting {
+  margin: 0;
+  color: var(--text);
+  font: 400 34px/1.1 var(--font-display);
+  letter-spacing: -0.01em;
 }
-.ai-ask-answer-tools .ai-ask-actions {
-  margin-top: 0;
+.ai-ask-lead {
+  margin: 6px 0 0;
+  color: var(--secondary);
+  font-size: 15px;
+  line-height: 1.45;
 }
-/* "Diese Seite" (#135): the open page goes along with the question. */
-.ai-ask-context {
-  display: flex;
-  align-items: center;
+.ai-ask-hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.ai-ask-suggestions {
+  display: grid;
   gap: 8px;
-  min-width: 0;
-  margin-bottom: -4px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
 }
-.ai-ask-page-chip {
+.ai-ask-suggestion {
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.35;
+  text-align: left;
+  transition:
+    border-color var(--motion-fast, 0.15s) ease,
+    background-color var(--motion-fast, 0.15s) ease;
+}
+.ai-ask-suggestion-icon {
   display: inline-flex;
   flex: none;
   align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  transition: color var(--motion-fast, 0.15s) ease;
+}
+.ai-ask-suggestion-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+@media (hover: hover) {
+  .ai-ask-suggestion:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--blue) 30%, var(--border));
+    background: color-mix(in srgb, var(--blue) 4%, var(--bg));
+  }
+  .ai-ask-suggestion:hover:not(:disabled) .ai-ask-suggestion-icon {
+    color: var(--blue);
+  }
+}
+/* The person's question: a soft accent-tinted bubble on the right. */
+.ai-ask-question {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 8px 14px;
+  border-radius: 18px 18px 6px 18px;
+  background: color-mix(in srgb, var(--blue) 9%, var(--bg));
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+:root[data-theme="dark"] .ai-ask-question {
+  background: color-mix(in srgb, var(--blue) 16%, var(--bg));
+}
+/* The answer: no bubble, the text at a calm size and line height. */
+.ai-ask-answer {
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.ai-ask-answer + .ai-ask-question {
+  margin-top: 8px;
+}
+.ai-ask-text p {
+  margin: 0 0 8px;
+}
+.ai-ask-answer-tools {
+  display: flex;
+  gap: 2px;
+  margin: 8px 0 0 -6px;
+}
+.ai-ask-tool.icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--muted);
+}
+@media (hover: hover) {
+  .ai-ask-tool.icon-button:hover:not(:disabled) {
+    color: var(--text);
+  }
+}
+/* An error in the conversation, with the retry right beside it. */
+.ai-ask-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--signal) 30%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--signal) 6%, var(--bg));
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.ai-ask-error > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--signal);
+}
+.ai-ask-error > p {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+}
+.ai-ask-error > .button {
+  margin-left: auto;
+}
+/* Sources: small quiet cards under the answer. */
+.ai-ask-sources {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-ask-sources li {
+  min-width: 0;
+  animation: ai-chip-in 180ms ease-out both;
+}
+.ai-source-chip {
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: left;
+}
+@media (hover: hover) {
+  .ai-source-chip:hover {
+    background: var(--surface);
+  }
+}
+.ai-source-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+}
+.ai-source-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ai-source-chip .ai-source-title {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-source-meta {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ai-source-chip small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+}
+.ai-source-chip .ai-source-workspace {
+  flex: none;
+}
+.ai-source-open {
+  flex: none;
+  color: var(--muted);
+  opacity: 0.6;
+}
+.ai-source-chip:hover .ai-source-open {
+  opacity: 1;
+}
+/* The composer: one floating box with the question, the page that goes
+   along, where to look, the model and the round send button. */
+.ai-ask-composer {
+  flex: none;
+  padding-top: 8px;
+}
+.ai-ask-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 8px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px #1d1a140a,
+    0 10px 28px -14px #1d1a1430;
+  cursor: text;
+  transition:
+    border-color var(--motion-fast, 0.15s) ease,
+    box-shadow var(--motion-fast, 0.15s) ease;
+}
+.ai-ask-box:focus-within {
+  border-color: color-mix(in srgb, var(--blue) 50%, var(--border));
+  box-shadow:
+    0 0 0 3px var(--focus-ring),
+    0 10px 28px -14px #1d1a1430;
+}
+:root[data-theme="dark"] .ai-ask-box {
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px #0006,
+    0 12px 32px -14px #000c;
+}
+:root[data-theme="dark"] .ai-ask-box:focus-within {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--blue) 22%, transparent),
+    0 12px 32px -14px #000c;
+}
+.ai-ask-box textarea {
+  display: block;
+  width: 100%;
+  height: var(--ask-field-height, auto);
+  min-height: 24px;
+  max-height: min(200px, 30dvh);
+  margin: 0;
+  padding: 0 6px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14.5px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+.ai-ask-box textarea:focus {
+  box-shadow: none;
+}
+.ai-ask-box textarea::placeholder {
+  color: var(--muted);
+}
+/* "Diese Seite" (#135): the open page goes along – an attachment above
+   the question, switched off to a dashed "+ Diese Seite". */
+.ai-ask-page-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
   gap: 5px;
-  height: 26px;
-  padding: 0 10px;
+  max-width: 100%;
+  height: 24px;
+  margin-left: -4px;
+  padding: 0 8px;
   border: 1px dashed var(--border);
-  border-radius: 999px;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
-.ai-ask-page-chip:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--hover);
-}
 .ai-ask-page-chip.active {
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
-  background: color-mix(in srgb, var(--accent-strong) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 20%, transparent);
+  background: color-mix(in srgb, var(--blue) 8%, var(--bg));
   color: var(--accent-strong);
 }
-.ai-ask-context-title {
+.ai-ask-page-chip > svg {
+  flex: none;
+}
+.ai-ask-page-chip-label {
+  flex: none;
+}
+.ai-ask-page-chip-title {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
-  white-space: nowrap;
+  color: var(--secondary);
+  font-weight: 400;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-ask-page-chip-title::before {
+  content: "·";
+  margin-right: 5px;
+  color: var(--muted);
+}
+.ai-ask-page-chip-x {
+  margin-left: 1px;
+  opacity: 0.6;
+}
+@media (hover: hover) {
+  .ai-ask-page-chip:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--hover);
+  }
+  .ai-ask-page-chip.active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--blue) 13%, var(--bg));
+    color: var(--accent-strong);
+  }
+  .ai-ask-page-chip.active:hover .ai-ask-page-chip-x {
+    opacity: 1;
+  }
+}
+/* The row at the bottom of the box: small quiet pills, send on the right. */
+.ai-ask-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-left: -6px;
+}
+.ai-ask-scope {
+  position: relative;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+.ai-ask-scope > svg {
+  position: absolute;
+  left: 9px;
+  z-index: 1;
+  color: var(--muted);
+  pointer-events: none;
+}
+.ai-ask-scope .fp-select.ai-ask-pill,
+.ai-ask-model .ask-disclosure-button {
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ai-ask-scope .fp-select.ai-ask-pill {
+  max-width: 100%;
+  padding-left: 26px;
+}
+.ai-ask-scope .fp-select.ai-ask-pill:focus-within,
+.ai-ask-model .ask-disclosure-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-border);
+}
+@media (hover: hover) {
+  .ai-ask-scope .fp-select.ai-ask-pill:hover,
+  .ai-ask-model .ask-disclosure-button:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}
+.ai-ask-model.open .ask-disclosure-button {
+  background: var(--hover);
+  color: var(--text);
+}
+.ai-ask-scope .fp-select-caret,
+.ai-ask-model .ask-disclosure-button > svg {
+  flex: none;
+  color: var(--muted);
+}
+.ai-ask-model {
+  flex: none;
+}
+.ai-ask-local-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+.ai-ask-send {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--on-accent);
+  transition:
+    background-color var(--motion-fast, 0.15s) ease,
+    color var(--motion-fast, 0.15s) ease;
+}
+@media (hover: hover) {
+  .ai-ask-send:hover:not(:disabled) {
+    background: var(--primary-hover, var(--accent-strong));
+  }
+}
+.ai-ask-send:disabled {
+  background: var(--hover);
+  color: var(--muted);
+  opacity: 1;
+  cursor: default;
+}
+.ai-ask-send.stop {
+  background: var(--text);
+  color: var(--bg);
+}
+/* Small things that show more above them: the model's details, the full
+   privacy note (components/ai-ask.tsx Disclosure). */
+.ask-disclosure-body {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  animation: menu-in var(--motion-fast) var(--ease-standard) both;
+}
+.ask-disclosure-body[hidden] {
+  display: none;
+}
+.ask-disclosure-body p {
+  margin: 0;
+}
+:root[data-theme="dark"] .ask-disclosure-body {
+  background: var(--surface);
+}
+.ai-ask-model-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0 0 8px;
+}
+.ai-ask-model-facts dt {
+  color: var(--muted);
+}
+.ai-ask-model-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.ai-ask-model-facts code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.ai-ask-model-note {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+/* One quiet line under the composer; the full text on demand. */
+.ai-ask-note {
+  position: relative;
+  display: flex;
+  flex: none;
+  justify-content: center;
+  margin-top: 8px;
+}
+.ai-ask-note .ask-disclosure-button {
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.ai-ask-note .ask-disclosure-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-ask-note .ask-disclosure-button > svg {
+  flex: none;
+}
+@media (hover: hover) {
+  .ai-ask-note .ask-disclosure-button:hover {
+    background: none;
+    color: var(--secondary);
+  }
 }
 .ai-ask-page-note {
   margin: 6px 0 0;
@@ -28437,17 +28895,16 @@ h3 .block-reactions {
     width: 40px;
     height: 40px;
   }
-  /* The question and its button side by side: more room for the answer. */
-  .ask-panel .ai-ask-composer {
-    flex-direction: row;
-    align-items: flex-end;
+  .ask-panel .ai-ask-log {
+    margin: 0 calc(-14px - var(--safe-right)) 0 calc(-14px - var(--safe-left));
+    padding: 20px calc(14px + var(--safe-right)) 12px calc(14px + var(--safe-left));
   }
-  .ask-panel .ai-ask-composer textarea {
-    flex: 1;
-    width: auto;
+  .ai-ask-greeting {
+    font-size: 30px;
   }
-  .ask-panel .ai-ask-note {
-    font-size: 11px;
+  /* 16 px: iOS zooms into smaller fields. */
+  .ai-ask-box textarea {
+    font-size: 16px;
   }
   /* The on-screen keyboard: the sheet fills what it leaves visible (the
      variables come from components/ai-ask.tsx). */
@@ -28468,7 +28925,7 @@ h3 .block-reactions {
     clip-path: inset(0 0 -100vh round 16px 16px 0 0);
   }
   .ask-keyboard .ask-panel .ai-ask-note,
-  .ask-keyboard .ask-panel .ai-ask-empty {
+  .ask-keyboard .ask-panel .ai-ask-hint {
     display: none;
   }
   .ask-panel-pill {
@@ -28530,29 +28987,6 @@ h3 .block-reactions {
     display: none !important;
   }
 }
-@media (max-width: 560px) {
-  .ai-ask .ai-ask-scope {
-    max-width: none;
-    flex: 1 1 100%;
-  }
-  .ai-ask .ai-provider-chip {
-    flex: 1 1 0;
-  }
-  .ai-ask-composer textarea {
-    width: 100%;
-    flex: none;
-  }
-  .ai-ask-new {
-    flex: none;
-  }
-  .ai-ask-composer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .ai-ask-composer > .button {
-    align-self: flex-end;
-  }
-}
 .ai-provider-chip {
   display: inline-flex;
   align-items: center;
@@ -28571,44 +29005,6 @@ h3 .block-reactions {
   color: var(--accent-strong);
   border-color: var(--blue-light);
   background: var(--blue-light);
-}
-.ai-ask-log {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-height: min(56vh, 560px);
-  min-height: 160px;
-  overflow-y: auto;
-  padding: 4px 2px;
-}
-.ai-ask-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin: auto;
-  max-width: 420px;
-  text-align: center;
-  color: var(--muted);
-}
-.ai-ask-question {
-  align-self: flex-end;
-  max-width: 85%;
-  padding: 8px 12px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.ai-ask-answer {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.ai-ask-answer.error .ai-ask-text {
-  color: var(--signal);
-}
-.ai-ask-text p {
-  margin: 0 0 8px;
 }
 /* AI answers as Markdown (components/ai-markdown.tsx). */
 .ai-md {
@@ -28744,44 +29140,6 @@ h3 .block-reactions {
   background: var(--blue);
   color: var(--on-accent);
 }
-.ai-ask-sources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 4px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.ai-ask-sources li {
-  min-width: 0;
-  max-width: 100%;
-  animation: ai-chip-in 180ms ease-out both;
-}
-.ai-source-chip {
-  max-width: 100%;
-  padding: 4px 9px 4px 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  font-size: 12.5px;
-}
-.ai-source-chip:hover {
-  background: var(--hover);
-}
-.ai-source-chip .ai-source-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 220px;
-}
-.ai-source-chip small {
-  color: var(--muted);
-}
-.ai-source-chip .ai-source-workspace {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--surface);
-}
 /* The uncited sources behind "5 weitere Quellen ▾" (#180). */
 .ai-ask-sources-toggle {
   display: inline-flex;
@@ -28803,9 +29161,6 @@ h3 .block-reactions {
 }
 .ai-ask-sources-toggle[aria-expanded="true"] svg {
   transform: rotate(180deg);
-}
-.ai-ask-actions {
-  margin-top: 8px;
 }
 /* AI actions: the preview with checkboxes (components/ai-actions.tsx). */
 .ai-action-list {
@@ -29011,21 +29366,6 @@ h3 .block-reactions {
   border-radius: 1px;
   background: var(--blue);
   animation: ai-ask-caret 1s steps(2, start) infinite;
-}
-.ai-ask-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-.ai-ask-composer textarea {
-  flex: 1;
-  min-width: 0;
-  resize: vertical;
-  max-height: 200px;
-}
-.ai-ask-note {
-  margin: 0;
-  font-size: 12px;
 }
 .ai-field-editor {
   display: flex;

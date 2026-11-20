@@ -14,9 +14,13 @@
 // AI may read it). Under such an answer, people who may edit the page can
 // put it in as suggested changes ("Als Änderungsvorschlag einfügen",
 // lib/ai/page-edit.ts) – accepted or rejected one by one in the document.
+// The layout ("Chat mit Vorschlägen"): a quiet header, before the first
+// question a greeting with a few questions that fit what is open
+// (lib/ai/ask-suggestions.ts), the conversation as chat, and at the bottom
+// one composer box with the question, where to look, the model and send.
 import { AiQuotaNote } from "./ai-quota";
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, FileText, Lifebuoy, MagnifyingGlass, PaperPlaneRight, PencilLine, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowClockwise, ArrowSquareOut, ArrowUp, CalendarCheck, CaretDown, Check, Copy, FileText, Info, Lifebuoy, ListBullets, ListChecks, MagnifyingGlass, PencilLine, Plus, PushPin, PushPinSlash, Sparkle, Stop, Warning, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { Select } from "./select";
@@ -27,9 +31,10 @@ import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { useMedia } from "./use-media";
 import { addBackCloser } from "@/lib/app-back";
 import { ASK_DEFAULT, ASK_MIN, ASK_OVERLAY_MEDIA, ASK_SHEET_BELOW, askMax, clampAsk } from "@/lib/ask-panel";
-import { askAi, aiPageReadable, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, splitSources, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
-import type { AiStatus } from "@/lib/ai/features";
-import type { Space } from "@/lib/types";
+import { askAi, aiPageReadable, aiUsable, citationParts, helpSourceUrl, splitSources, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
+import { AI_PROVIDER_NAMES, AI_PROVIDER_NAMES_EN, type AiStatus } from "@/lib/ai/features";
+import { askSuggestions, firstName, modelDisplayName, recentAskPages, type AskSuggestion } from "@/lib/ai/ask-suggestions";
+import type { Page, Space } from "@/lib/types";
 
 type Message = {
   role: "user" | "assistant";
@@ -43,7 +48,7 @@ type Message = {
   suggest?: { busy?: boolean; text?: string; error?: boolean };
 };
 // The open page as the panel knows it.
-export type AskCurrentPage = { id: string; title: string; kind?: string; editable?: boolean; encrypted?: boolean };
+export type AskCurrentPage = { id: string; title: string; kind?: string; editable?: boolean; encrypted?: boolean; hasDate?: boolean };
 type Stored = { messages: Message[]; scope: string; across?: boolean };
 const storageKey = (workspaceId: string) => `flowplan-ask:${workspaceId}`;
 const MAX_TURNS = 20;
@@ -99,6 +104,9 @@ export function AskPanel({
   onWidth,
   pinned,
   onPinned,
+  userName = "",
+  pages = [],
+  recentVisits = [],
 }: {
   // Shown: the person opened it and has not closed it.
   open: boolean;
@@ -118,6 +126,10 @@ export function AskPanel({
   // Narrow windows: docked beside the page instead of over it.
   pinned: boolean;
   onPinned: (pinned: boolean) => void;
+  // For the greeting and the suggestions before the first question.
+  userName?: string;
+  pages?: Page[];
+  recentVisits?: { pageId: string; seenAt: number }[];
 }) {
   const t = useT();
   const headingId = useId();
@@ -236,7 +248,10 @@ export function AskPanel({
     return () => clearTimeout(timer);
   }, [copied]);
 
-  const scopeValue = (): AskScope =>
+  // Where to look and whether the open page goes along – the state, or what
+  // a suggestion asks for (it sets both before it sends).
+  type Target = { scope: string; across: boolean; withPage: boolean };
+  const scopeOf = ({ scope, across }: Target): AskScope =>
     across
       ? { kind: "all" }
       : scope === "help"
@@ -245,14 +260,16 @@ export function AskPanel({
 
   // The open page can go along: a document or database the AI may read,
   // not in an end-to-end encrypted space, not for help-only or every workspace.
-  const pageOffered =
-    !!currentPage && !currentPage.encrypted && ["document", "database", undefined].includes(currentPage.kind) && aiPageReadable(ai, currentPage.id) && !across && scope !== "help";
+  const pageReadable = !!currentPage && !currentPage.encrypted && ["document", "database", undefined].includes(currentPage.kind) && aiPageReadable(ai, currentPage.id);
+  const offeredFor = (target: Target) => pageReadable && !target.across && target.scope !== "help";
+  const pageOffered = offeredFor({ scope, across, withPage });
   const attached = pageOffered && withPage ? currentPage : null;
 
   // `before`: the conversation to continue (a retry leaves out the failed turn).
-  async function send(text = question.trim(), before = messages) {
+  async function send(text = question.trim(), before = messages, target: Target = { scope, across, withPage }) {
     if (!text || busy) return;
-    const page = attached ? { id: attached.id, title: attached.title } : undefined;
+    const going = offeredFor(target) && target.withPage ? currentPage : null;
+    const page = going ? { id: going.id, title: going.title } : undefined;
     const history = before.filter((m) => !m.error && !m.streaming).map((m) => ({ role: m.role, content: m.content }));
     if (text === question.trim()) setQuestion("");
     setBusy(true);
@@ -274,7 +291,7 @@ export function AskPanel({
         workspaceId,
         question: text,
         history,
-        scope: scopeValue(),
+        scope: scopeOf(target),
         ...(page ? { page: { pageId: page.id } } : {}),
         signal: abort.signal,
         onSources: (sources) => update({ sources }),
@@ -330,6 +347,52 @@ export function AskPanel({
     void send(asked.content, messages.slice(0, -2));
   };
 
+  // Before the first question: a few that fit what is open and what the
+  // person looked at last (no request, lib/ai/ask-suggestions.ts).
+  const recent = useMemo(
+    () => (messages.length ? [] : recentAskPages(pages, recentVisits, { exclude: currentPage?.id, readable: (id) => aiPageReadable(ai, id) })),
+    [messages.length, pages, recentVisits, currentPage?.id, ai],
+  );
+  const suggestions = messages.length
+    ? []
+    : askSuggestions({
+        page: pageReadable && currentPage ? { id: currentPage.id, title: currentPage.title, kind: currentPage.kind, hasDate: currentPage.hasDate } : null,
+        recent,
+        help: true,
+      });
+  const suggestionText = (s: AskSuggestion) =>
+    s.kind === "summarize"
+      ? t(`Fasse „${s.title}“ zusammen`, `Summarise “${s.title}”`)
+      : s.kind === "due"
+        ? t("Was ist diese Woche fällig?", "What is due this week?")
+        : s.kind === "recent"
+          ? t(`Was steht in „${s.title}“?`, `What is in “${s.title}”?`)
+          : t("Wie teile ich eine Seite öffentlich?", "How do I share a page publicly?");
+  // A suggestion is sent right away, looking where it belongs: the open page
+  // (and it goes along) for summaries and due dates, the help for the help
+  // question, the whole workspace for a page looked at recently.
+  const sendSuggestion = (s: AskSuggestion) => {
+    const target: Target =
+      s.kind === "help"
+        ? { scope: "help", across: false, withPage }
+        : s.kind === "recent"
+          ? { scope: "workspace", across: false, withPage: false }
+          : { scope: `page:${s.pageId}`, across: false, withPage: true };
+    setScope(target.scope);
+    setAcross(false);
+    setWithPage(target.withPage);
+    void send(suggestionText(s), messages, target);
+    field.current?.focus({ preventScroll: true });
+  };
+
+  // The question field grows with its text up to a limit (CSS), then scrolls.
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.removeProperty("--ask-field-height");
+    el.style.setProperty("--ask-field-height", `${el.scrollHeight}px`);
+  }, [question, visible]);
+
   // Pages and records open in the main area – the panel stays (on phones the
   // sheet makes room); help sections on docs.flowplan.org.
   const openPage = (pageId: string, rowId?: string) => {
@@ -343,6 +406,7 @@ export function AskPanel({
   };
   const provider = ai?.provider;
   const last = messages[messages.length - 1];
+  const name = firstName(userName);
   return (
     <>
       <aside
@@ -371,8 +435,25 @@ export function AskPanel({
           hint={t("Ziehen zum Ändern, Doppelklick setzt zurück", "Drag to resize, double-click to reset")}
         />
         <header className="ask-panel-head">
-          <Sparkle size={17} aria-hidden="true" className="ask-panel-icon" />
+          <Sparkle size={16} weight="fill" aria-hidden="true" className="ask-panel-icon" />
           <h2 id={headingId}>{t("KI fragen", "Ask AI")}</h2>
+          {!!messages.length && (
+            <button
+              type="button"
+              className="ask-panel-new"
+              aria-label={t("Neues Gespräch", "New conversation")}
+              title={t("Neues Gespräch", "New conversation")}
+              disabled={busy}
+              onClick={() => {
+                setMessages([]);
+                setQuestion("");
+                field.current?.focus();
+              }}
+            >
+              <Plus size={14} weight="bold" aria-hidden="true" />
+              <span>{t("Neu", "New")}</span>
+            </button>
+          )}
           {narrowWindow && (
             <button
               type="button"
@@ -386,62 +467,19 @@ export function AskPanel({
               }
               onClick={() => onPinned(!pinned)}
             >
-              {pinned ? <PushPinSlash size={17} /> : <PushPin size={17} />}
+              {pinned ? <PushPinSlash size={16} /> : <PushPin size={16} />}
             </button>
           )}
           {sheet && (
             <button type="button" className="icon-button" aria-label={t("Verkleinern", "Minimise")} title={t("Verkleinern – die Antwort läuft weiter", "Minimise – the answer keeps going")} onClick={() => setMinimised(true)}>
-              <CaretDown size={18} />
+              <CaretDown size={17} />
             </button>
           )}
-          <button type="button" className="icon-button" aria-label={t("„KI fragen“ schließen", "Close “Ask AI”")} onClick={onClose}>
-            <X size={18} />
+          <button type="button" className="icon-button" aria-label={t("„KI fragen“ schließen", "Close “Ask AI”")} title={t("Schließen", "Close")} onClick={onClose}>
+            <X size={17} />
           </button>
         </header>
         {provider?.source === "instance" && <AiQuotaNote />}
-        <div className="ai-ask-bar">
-          <div className="ai-ask-scope">
-            <MagnifyingGlass size={15} aria-hidden="true" />
-            <Select
-              aria-label={t("Wo soll gesucht werden?", "Where to look?")}
-              value={across ? "all" : scope}
-              onChange={(e) => {
-                const value = e.target.value;
-                setAcross(value === "all");
-                if (value !== "all") setScope(value);
-              }}
-              disabled={busy}
-            >
-              <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
-              {currentPage && <option value={`page:${currentPage.id}`}>{t(`„${currentPage.title}“ und Unterseiten`, `“${currentPage.title}” and sub-pages`)}</option>}
-              {spaces.map((s) => (
-                <option key={s.id} value={`space:${s.id}`}>
-                  {t(`Bereich: ${s.name}`, `Space: ${s.name}`)}
-                </option>
-              ))}
-              <option value="all">{t("Alle meine Arbeitsbereiche", "All my workspaces")}</option>
-              <option value="help">{t("Nur Flowplan-Hilfe", "Only the Flowplan help")}</option>
-            </Select>
-          </div>
-          <span
-            className={`ai-provider-chip${provider?.local ? " local" : ""}`}
-            title={provider?.local ? t("Texte bleiben auf diesem Server.", "Text stays on this server.") : t("Texte gehen an diesen Anbieter.", "Text goes to this provider.")}
-          >
-            <Sparkle size={13} aria-hidden="true" /> <span>{aiProviderLabel(provider ?? null, t)}</span>
-          </span>
-          <button
-            type="button"
-            className="button compact ai-ask-new"
-            disabled={busy || !messages.length}
-            onClick={() => {
-              setMessages([]);
-              setQuestion("");
-              field.current?.focus();
-            }}
-          >
-            <ChatCircleDots size={15} aria-hidden="true" /> {t("Neues Gespräch", "New conversation")}
-          </button>
-        </div>
         <div
           className="ai-ask-log"
           aria-live="polite"
@@ -454,8 +492,28 @@ export function AskPanel({
         >
           {!messages.length && (
             <div className="ai-ask-empty">
-              <Sparkle size={26} />
-              <p>{t("Frag nach Inhalten deiner Seiten und Datenbanken – oder wie etwas in Flowplan geht. Antworten nennen ihre Quellen – findet die KI nichts, sagt sie das.", "Ask about the content of your pages and databases – or how something works in Flowplan. Answers name their sources – if the AI finds nothing, it says so.")}</p>
+              <h3 className="ai-ask-greeting">{name ? t(`Hallo ${name}`, `Hi ${name}`) : t("Hallo", "Hi")}</h3>
+              <p className="ai-ask-lead">{t("Was möchtest du wissen?", "What would you like to know?")}</p>
+              <p className="ai-ask-hint">
+                {t(
+                  "Frag nach Inhalten deiner Seiten und Datenbanken – oder wie etwas in Flowplan geht. Antworten nennen ihre Quellen.",
+                  "Ask about the content of your pages and databases – or how something works in Flowplan. Answers name their sources.",
+                )}
+              </p>
+              {!!suggestions.length && (
+                <ul className="ai-ask-suggestions" aria-label={t("Vorschläge", "Suggestions")}>
+                  {suggestions.map((s) => (
+                    <li key={`${s.kind}:${"pageId" in s ? s.pageId : ""}`}>
+                      <button type="button" className="ai-ask-suggestion" disabled={busy} onClick={() => sendSuggestion(s)}>
+                        <span className="ai-ask-suggestion-icon" aria-hidden="true">
+                          {s.kind === "summarize" ? <ListBullets size={15} /> : s.kind === "due" ? <CalendarCheck size={15} /> : s.kind === "recent" ? <FileText size={15} /> : <Lifebuoy size={15} />}
+                        </span>
+                        <span className="ai-ask-suggestion-text">{suggestionText(s)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           {messages.map((m, i) =>
@@ -467,6 +525,16 @@ export function AskPanel({
               <div key={i} className={`ai-ask-answer${m.streaming ? " streaming" : ""}${m.error ? " error" : ""}`}>
                 {m.streaming && !m.content ? (
                   <p className="ai-ask-thinking">{t("Sucht im Arbeitsbereich …", "Searching the workspace …")}</p>
+                ) : m.error ? (
+                  <div className="ai-ask-error" role="alert">
+                    <Warning size={16} aria-hidden="true" />
+                    <p>{m.content}</p>
+                    {i === messages.length - 1 && !busy && (
+                      <button type="button" className="button compact" onClick={retry}>
+                        <ArrowClockwise size={14} aria-hidden="true" /> {t("Erneut versuchen", "Try again")}
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <AnswerText text={m.content} sources={m.sources || []} onOpen={openSource} streaming={!!m.streaming} />
                 )}
@@ -478,31 +546,40 @@ export function AskPanel({
                     {t(`„${m.page.title}“ war zu lang für die KI – nur der Anfang ging mit.`, `“${m.page.title}” was too long for the AI – only its beginning went along.`)}
                   </p>
                 )}
-                {!m.streaming && (
+                {!m.streaming && !m.error && !!m.content && (
                   <div className="ai-ask-answer-tools">
-                    {m.error && i === messages.length - 1 && !busy && (
-                      <button type="button" className="button compact" onClick={retry}>
-                        <ArrowClockwise size={14} aria-hidden="true" /> {t("Erneut versuchen", "Try again")}
-                      </button>
-                    )}
-                    {!m.error && m.content && (
+                    <button
+                      type="button"
+                      className="icon-button ai-ask-tool"
+                      aria-label={copied === i ? t("Kopiert", "Copied") : t("Kopieren", "Copy")}
+                      title={copied === i ? t("Kopiert", "Copied") : t("Kopieren", "Copy")}
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(m.content).then(
+                          () => setCopied(i),
+                          () => {},
+                        );
+                      }}
+                    >
+                      {copied === i ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+                    </button>
+                    {m.page && currentPage?.id === m.page.id && currentPage.editable && (
                       <button
                         type="button"
-                        className="button compact"
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(m.content).then(
-                            () => setCopied(i),
-                            () => {},
-                          );
-                        }}
+                        className="icon-button ai-ask-tool ai-ask-suggest"
+                        disabled={!!m.suggest?.busy}
+                        aria-label={m.suggest?.busy ? t("Schlägt vor …", "Suggesting …") : t("Als Änderungsvorschlag einfügen", "Suggest as changes")}
+                        title={t("Die Antwort als Änderungsvorschläge in die Seite einfügen – nichts wird überschrieben.", "Put the answer into the page as suggested changes – nothing is overwritten.")}
+                        onClick={() => void suggest(i)}
                       >
-                        {copied === i ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />} {copied === i ? t("Kopiert", "Copied") : t("Kopieren", "Copy")}
+                        <PencilLine size={15} aria-hidden="true" />
                       </button>
                     )}
-                    {!m.error && m.content && aiUsable(ai, "actions") && (
+                    {aiUsable(ai, "actions") && (
                       <button
                         type="button"
-                        className="button compact ai-ask-actions"
+                        className="icon-button ai-ask-tool ai-ask-actions"
+                        aria-label={t("Aktionen vorschlagen", "Propose actions")}
+                        title={t("Aktionen vorschlagen – Aufgaben, Termine oder Seiten aus der Antwort", "Propose actions – tasks, events or pages from the answer")}
                         onClick={() =>
                           setActions({
                             instruction: messages[i - 1]?.content || t("Was lässt sich aus dieser Antwort anlegen?", "What can be created from this answer?"),
@@ -512,23 +589,17 @@ export function AskPanel({
                           })
                         }
                       >
-                        <Sparkle size={14} weight="fill" aria-hidden="true" /> {t("Aktionen vorschlagen", "Propose actions")}
-                      </button>
-                    )}
-                    {!m.error && m.content && m.page && currentPage?.id === m.page.id && currentPage.editable && (
-                      <button
-                        type="button"
-                        className="button compact ai-ask-suggest"
-                        disabled={!!m.suggest?.busy}
-                        title={t("Die Antwort als Änderungsvorschläge in die Seite einfügen – nichts wird überschrieben.", "Put the answer into the page as suggested changes – nothing is overwritten.")}
-                        onClick={() => void suggest(i)}
-                      >
-                        <PencilLine size={14} aria-hidden="true" /> {m.suggest?.busy ? t("Schlägt vor …", "Suggesting …") : t("Als Änderungsvorschlag einfügen", "Suggest as changes")}
+                        <ListChecks size={15} aria-hidden="true" />
                       </button>
                     )}
                   </div>
                 )}
-                {m.suggest?.text && (
+                {m.suggest?.busy && (
+                  <p className="ai-ask-suggest-result" role="status">
+                    <PencilLine size={13} aria-hidden="true" /> {t("Schlägt Änderungen vor …", "Suggesting changes …")}
+                  </p>
+                )}
+                {m.suggest?.text && !m.suggest.busy && (
                   <p className={`ai-ask-suggest-result${m.suggest.error ? " error" : ""}`} role="status">
                     {m.suggest.error ? <X size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />} {m.suggest.text}
                   </p>
@@ -537,27 +608,6 @@ export function AskPanel({
             ),
           )}
         </div>
-        {pageOffered && currentPage && (
-          <div className="ai-ask-context">
-            <button
-              type="button"
-              className={`ai-ask-page-chip${withPage ? " active" : ""}`}
-              aria-pressed={withPage}
-              disabled={busy}
-              title={
-                withPage
-                  ? t(`„${currentPage.title}“ geht vollständig mit an die KI. Klicken, um die Seite nicht mitzuschicken.`, `“${currentPage.title}” goes to the AI in full. Click to leave the page out.`)
-                  : t(`„${currentPage.title}“ mitschicken`, `Include “${currentPage.title}”`)
-              }
-              onClick={() => setWithPage((on) => !on)}
-            >
-              <FileText size={14} aria-hidden="true" />
-              <span>{t("Diese Seite", "This page")}</span>
-              {withPage && <Check size={12} weight="bold" aria-hidden="true" />}
-            </button>
-            {withPage && <small className="muted ai-ask-context-title">{currentPage.title}</small>}
-          </div>
-        )}
         <form
           className="ai-ask-composer"
           onSubmit={(e) => {
@@ -565,37 +615,132 @@ export function AskPanel({
             void send();
           }}
         >
-          <textarea
-            ref={field}
-            rows={2}
-            maxLength={2000}
-            aria-label={t("Deine Frage", "Your question")}
-            placeholder={t("Was möchtest du wissen?", "What would you like to know?")}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          {busy ? (
-            <button type="button" className="button" onClick={() => controller.current?.abort()}>
-              <Stop size={15} /> {t("Stopp", "Stop")}
-            </button>
-          ) : (
-            <button className="button primary" disabled={!question.trim()}>
-              <PaperPlaneRight size={15} /> {t("Fragen", "Ask")}
-            </button>
-          )}
+          <div className="ai-ask-box" onClick={(e) => e.target === e.currentTarget && field.current?.focus()}>
+            {pageOffered && currentPage && (
+              <button
+                type="button"
+                className={`ai-ask-page-chip${withPage ? " active" : ""}`}
+                aria-pressed={withPage}
+                aria-label={t("Diese Seite", "This page")}
+                disabled={busy}
+                title={
+                  withPage
+                    ? t(`„${currentPage.title}“ geht vollständig mit an die KI. Klicken, um die Seite nicht mitzuschicken.`, `“${currentPage.title}” goes to the AI in full. Click to leave the page out.`)
+                    : t(`„${currentPage.title}“ mitschicken`, `Include “${currentPage.title}”`)
+                }
+                onClick={() => setWithPage((on) => !on)}
+              >
+                {withPage ? <FileText size={13} weight="fill" aria-hidden="true" /> : <Plus size={12} weight="bold" aria-hidden="true" />}
+                <span className="ai-ask-page-chip-label">{t("Diese Seite", "This page")}</span>
+                {withPage && <span className="ai-ask-page-chip-title">{currentPage.title}</span>}
+                {withPage && <X size={11} weight="bold" aria-hidden="true" className="ai-ask-page-chip-x" />}
+              </button>
+            )}
+            <textarea
+              ref={field}
+              rows={1}
+              maxLength={2000}
+              aria-label={t("Deine Frage", "Your question")}
+              placeholder={t("Frag etwas …", "Ask something …")}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            <div className="ai-ask-tools">
+              <span className="ai-ask-scope" title={t("Wo soll gesucht werden?", "Where to look?")}>
+                <MagnifyingGlass size={13} aria-hidden="true" />
+                <Select
+                  className="ai-ask-pill"
+                  aria-label={t("Wo soll gesucht werden?", "Where to look?")}
+                  value={across ? "all" : scope}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setAcross(value === "all");
+                    if (value !== "all") setScope(value);
+                  }}
+                  disabled={busy}
+                >
+                  <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
+                  {currentPage && <option value={`page:${currentPage.id}`}>{t(`„${currentPage.title}“ und Unterseiten`, `“${currentPage.title}” and sub-pages`)}</option>}
+                  {spaces.map((s) => (
+                    <option key={s.id} value={`space:${s.id}`}>
+                      {t(`Bereich: ${s.name}`, `Space: ${s.name}`)}
+                    </option>
+                  ))}
+                  <option value="all">{t("Alle meine Arbeitsbereiche", "All my workspaces")}</option>
+                  <option value="help">{t("Nur Flowplan-Hilfe", "Only the Flowplan help")}</option>
+                </Select>
+              </span>
+              {provider && (
+                <Disclosure
+                  className="ai-ask-model"
+                  label={
+                    <>
+                      {provider.local && <span className="ai-ask-local-dot" aria-hidden="true" />}
+                      <span>{modelDisplayName(provider.model) || t(AI_PROVIDER_NAMES[provider.kind], AI_PROVIDER_NAMES_EN[provider.kind])}</span>
+                      <CaretDown size={11} aria-hidden="true" />
+                    </>
+                  }
+                  buttonLabel={t(`Modell: ${modelDisplayName(provider.model) || provider.kind}`, `Model: ${modelDisplayName(provider.model) || provider.kind}`)}
+                >
+                  <dl className="ai-ask-model-facts">
+                    <dt>{t("Anbieter", "Provider")}</dt>
+                    <dd>{t(AI_PROVIDER_NAMES[provider.kind], AI_PROVIDER_NAMES_EN[provider.kind])}</dd>
+                    {!!provider.model && (
+                      <>
+                        <dt>{t("Modell", "Model")}</dt>
+                        <dd>
+                          <code>{provider.model}</code>
+                        </dd>
+                      </>
+                    )}
+                    {!!provider.host && (
+                      <>
+                        <dt>{t("Adresse", "Address")}</dt>
+                        <dd>{provider.host}</dd>
+                      </>
+                    )}
+                  </dl>
+                  <p className={`ai-ask-model-note${provider.local ? " local" : ""}`}>
+                    {provider.local ? t("Texte bleiben auf diesem Server.", "Text stays on this server.") : t("Texte gehen an diesen Anbieter.", "Text goes to this provider.")}{" "}
+                    {provider.source === "user" ? t("Dein eigener Anbieter (Einstellungen → KI).", "Your own provider (Settings → AI).") : t("Von der Administration eingerichtet.", "Set up by the administration.")}
+                  </p>
+                </Disclosure>
+              )}
+              {busy ? (
+                <button type="button" className="ai-ask-send stop" aria-label={t("Stopp", "Stop")} title={t("Stopp", "Stop")} onClick={() => controller.current?.abort()}>
+                  <Stop size={14} weight="fill" aria-hidden="true" />
+                </button>
+              ) : (
+                <button className="ai-ask-send" aria-label={t("Fragen", "Ask")} title={t("Fragen (Enter) – neue Zeile mit Umschalt+Enter", "Ask (Enter) – new line with Shift+Enter")} disabled={!question.trim()}>
+                  <ArrowUp size={16} weight="bold" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
         </form>
-        <p className="muted ai-ask-note">
-          {t(
-            "Die KI liest nur, was du lesen darfst und für die KI freigegeben ist. Das Gespräch bleibt nur in diesem Browser-Tab und wird nicht auf dem Server gespeichert.",
-            "The AI only reads what you may read and what is open to the AI. The conversation stays in this browser tab only and is not stored on the server.",
-          )}
-        </p>
+        <Disclosure
+          className="ai-ask-note"
+          label={
+            <>
+              <Info size={13} aria-hidden="true" />
+              <span>{t("Liest nur, was du lesen darfst · bleibt in diesem Tab", "Reads only what you may read · stays in this tab")}</span>
+            </>
+          }
+          buttonLabel={t("Datenschutz: Liest nur, was du lesen darfst · bleibt in diesem Tab", "Privacy: Reads only what you may read · stays in this tab")}
+        >
+          <p>
+            {t(
+              "Die KI liest nur, was du lesen darfst und für die KI freigegeben ist. Das Gespräch bleibt nur in diesem Browser-Tab und wird nicht auf dem Server gespeichert.",
+              "The AI only reads what you may read and what is open to the AI. The conversation stays in this browser tab only and is not stored on the server.",
+            )}
+          </p>
+        </Disclosure>
         <AiActionsPanel
           workspaceId={workspaceId}
           request={actions}
@@ -613,6 +758,43 @@ export function AskPanel({
         </button>
       )}
     </>
+  );
+}
+
+// A small button that shows more above it (the model's details, the full
+// privacy note): a disclosure – aria-expanded and aria-controls – that closes
+// with Escape (without closing the panel), a click elsewhere or a second click.
+function Disclosure({ className, label, buttonLabel, children }: { className: string; label: ReactNode; buttonLabel: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const wrap = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  return (
+    <div
+      ref={wrap}
+      className={`ask-disclosure ${className}${open ? " open" : ""}`}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        wrap.current?.querySelector("button")?.focus();
+      }}
+    >
+      <button type="button" className="ask-disclosure-button" aria-expanded={open} aria-controls={id} aria-label={buttonLabel} onClick={() => setOpen((v) => !v)}>
+        {label}
+      </button>
+      <div id={id} className="ask-disclosure-body" hidden={!open}>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -634,13 +816,21 @@ function SourceList({ text, sources, workspaceId, onOpen }: { text: string; sour
           <li key={s.n} style={{ animationDelay: `${(hidden.includes(s) ? hidden.indexOf(s) : n) * 40}ms` }}>
             <button type="button" className={`ai-source-chip${s.kind === "help" ? " help" : ""}`} onClick={() => onOpen(s)} title={s.pageTitle ? t(`Eintrag in ${s.pageTitle}`, `Record in ${s.pageTitle}`) : s.kind === "help" ? t("In der Flowplan-Hilfe öffnen", "Open in the Flowplan help") : undefined}>
               <span className="ai-cite-number">{s.n}</span>
-              {s.kind === "help" ? <Lifebuoy size={14} aria-hidden="true" /> : <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} />}
-              <span className="ai-source-title">{s.title}</span>
-              {s.pageTitle && <small>{s.pageTitle}</small>}
-              {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
-              {s.kind === "help" && <small className="ai-source-workspace">{t("Flowplan-Hilfe", "Flowplan help")}</small>}
-              {s.kind === "page" && <small className="ai-source-workspace">{t("Diese Seite", "This page")}</small>}
-              <ArrowSquareOut size={13} />
+              <span className="ai-source-icon" aria-hidden="true">
+                {s.kind === "help" ? <Lifebuoy size={14} /> : <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} size={14} />}
+              </span>
+              <span className="ai-source-text">
+                <span className="ai-source-title">{s.title}</span>
+                {(s.pageTitle || (s.workspaceName && s.workspaceId !== workspaceId) || s.kind === "help" || s.kind === "page") && (
+                  <span className="ai-source-meta">
+                    {s.pageTitle && <small>{s.pageTitle}</small>}
+                    {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
+                    {s.kind === "help" && <small className="ai-source-workspace">{t("Flowplan-Hilfe", "Flowplan help")}</small>}
+                    {s.kind === "page" && <small className="ai-source-workspace">{t("Diese Seite", "This page")}</small>}
+                  </span>
+                )}
+              </span>
+              <ArrowSquareOut size={13} className="ai-source-open" aria-hidden="true" />
             </button>
           </li>
         ))}

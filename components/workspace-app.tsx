@@ -6988,6 +6988,9 @@ export default function WorkspaceApp({
           workspaceId={boot.workspace.id}
           ai={uiAi}
           spaces={boot.spaces}
+          userName={boot.user.name}
+          pages={boot.pages}
+          recentVisits={boot.recentVisits}
           currentPage={
             screen === "page" && data
               ? {
@@ -6997,6 +7000,8 @@ export default function WorkspaceApp({
                   // Suggested changes need edit rights (checked again on the server).
                   editable: mayEdit && data.page.kind === "document",
                   encrypted: !!data.encrypted,
+                  // "Was ist diese Woche fällig?" needs a date to look at.
+                  hasDate: data.page.kind === "database" && !!data.database?.fields.some((f) => f.type === "date"),
                 }
               : null
           }
