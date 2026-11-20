@@ -116,6 +116,23 @@ test("the tree: a new page, a rename, a permission", async () => {
   for (const t of [ownerTab, memberTab, otherTab]) t.take();
 });
 
+test("the tree: a space moved, renamed or given another icon (schema 118)", async () => {
+  await drain();
+  await run("UPDATE spaces SET position=? WHERE id=?", 7, team);
+  await settle();
+  assert.ok(parts(memberTab.take()).includes("tree"), "moved");
+  assert.deepEqual(otherTab.take(), [], "not another workspace's tabs");
+  await drain();
+  await run("UPDATE spaces SET name=? WHERE id=?", "Team neu", team);
+  await settle();
+  assert.ok(parts(memberTab.take()).includes("tree"), "renamed");
+  await drain();
+  await run("UPDATE spaces SET icon=? WHERE id=?", "star", team);
+  await settle();
+  assert.ok(parts(memberTab.take()).includes("tree"), "icon");
+  await drain();
+});
+
 test("notifications: to the recipient's tabs only, from wherever they are inserted", async () => {
   await drain();
   await run("INSERT INTO notifications(id,user_id,body,kind) VALUES(?,?,?,'mention')", id(), member.id, "Hallo");

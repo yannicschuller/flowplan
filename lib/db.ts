@@ -40,7 +40,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 117;
+export const SCHEMA_VERSION = 118;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1631,11 +1631,28 @@ function migrate(d: DatabaseSync) {
   migrateNotebookAttachments(d);
   // Schema 117 – the AI model per person, group and role (lib/ai/model-policy.ts).
   migrateAiModelRules(d);
+  // Schema 118 – a change of a space (order, name, icon) moves its
+  // workspace's "pages:" version: the live signal tells the other tabs.
+  migrateSpaceVersions(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 118 – what the sidebar shows of a space (its place in the order,
+// name, icon, colour, …) moves "pages:<workspace>" (lib/cache-versions.ts)
+// like a page does: the workspace's live signal (lib/workspace-live.ts) then
+// tells the other members' tabs to fetch the sidebar again. Before, a space
+// moved or renamed by someone else showed up only with the minute's safety
+// refresh. An older version does not move the version (the others then wait
+// for that refresh), hence the number.
+function migrateSpaceVersions(d: DatabaseSync) {
+  const pages = (workspace: string) =>
+    `INSERT INTO cache_versions(name,version) SELECT 'pages:'||COALESCE(${workspace},''),0 WHERE NOT EXISTS(SELECT 1 FROM cache_versions WHERE name='pages:'||COALESCE(${workspace},'')); UPDATE cache_versions SET version=(random() % 9007199254740991) WHERE name='pages:'||COALESCE(${workspace},'');`;
+  d.exec(`CREATE TRIGGER IF NOT EXISTS cache_spaces_list_insert AFTER INSERT ON spaces BEGIN ${pages("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_spaces_list_update AFTER UPDATE ON spaces BEGIN ${pages("NEW.workspace_id")} END;
+    CREATE TRIGGER IF NOT EXISTS cache_spaces_list_delete AFTER DELETE ON spaces BEGIN ${pages("OLD.workspace_id")} END;`);
 }
 // Schema 117 – the AI model per person, workspace group and role
 // (lib/ai/model-policy.ts): ai_model_rules holds, per level (scope 'role',
