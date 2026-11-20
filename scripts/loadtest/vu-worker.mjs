@@ -9,7 +9,9 @@
 //   (components/editor.tsx): the live channel (server-sent events,
 //   /api/documents/live), keystrokes at a human rate as Yjs updates sent
 //   with document.sync 80 ms after typing (one request in flight, the rest
-//   batched), and cursor updates (/api/presence). Editors of the same
+//   batched), and cursor updates (/api/presence; --presence poll and push
+//   do what the web editor does, lib/collaboration-cursors.ts, before and
+//   since #383 wave 4). Editors of the same
 //   document run in the same worker, so the time from one editor's save to
 //   the update arriving at the others (fan-out) can be measured;
 // - "idle" users are a signed-in tab nobody touches
@@ -20,7 +22,11 @@
 //   workspace's live signal (/api/live, components/use-workspace-signals.ts):
 //   the stream open, the bootstrap or the page only when a signal names it,
 //   the bootstrap every 60 s as the safety net and the page every 30 s
-//   (it keeps the tab present on the page).
+//   (it keeps the tab present on the page);
+// - "board" users have a whiteboard open (components/whiteboard): the live
+//   cursors' stream (/api/whiteboards/:id/cursors) and their pointer moving
+//   in bursts, sent up to ~15 times a second (/api/whiteboards/:id/cursor;
+//   with --presence push only while someone else has the board open).
 import { parentPort, workerData } from "node:worker_threads";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
@@ -65,10 +71,10 @@ async function request(name, path, { method = "GET", body, cookie, token, json =
         origin,
         ...(cookie ? { cookie } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(body ? { "content-type": "application/json" } : {}),
+        ...(body !== undefined ? { "content-type": "application/json" } : {}),
         ...headers,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(TIMEOUT),
     });
     const data = json ? await response.json().catch(() => null) : await response.arrayBuffer();
@@ -230,6 +236,7 @@ async function liveChannel(vu, state) {
           } catch {
             continue;
           }
+          state.onLive?.(message);
           if (message.type === "update" && message.update) {
             const at = sentAt.get(message.update);
             if (at !== undefined) record("fanout", performance.now() - at);
@@ -286,17 +293,27 @@ async function editorLoop(vu) {
     inflight = false;
     if (pending.length && vu.alive) timer = setTimeout(sync, 80);
   };
+  let cursorText = null;
+  const cursorBody = () => {
+    const pos = cursorText ? Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(cursorText, cursorText.length)) : null;
+    return { clientId: state.clientId, pageId: state.pageId, generation: state.generation, sequence: ++sequence, cursor: pos && { anchor: pos, head: pos } };
+  };
+  // --presence on: one request per keystroke (at most every 80 ms).
   const presence = async (text) => {
+    cursorText = text;
     if (presenceBusy || performance.now() - presenceAt < 80) return;
     presenceBusy = true;
     presenceAt = performance.now();
-    const pos = Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(text, text.length));
-    await request("presence", "/api/presence", {
-      method: "POST",
-      cookie: vu.user.cookie,
-      body: { clientId: state.clientId, pageId: state.pageId, generation: state.generation, sequence: ++sequence, cursor: { anchor: pos, head: pos } },
-    });
+    await request("presence", "/api/presence", { method: "POST", cookie: vu.user.cookie, body: cursorBody() });
     presenceBusy = false;
+  };
+  // --presence poll|push: the web editor's scheduling
+  // (lib/collaboration-cursors.ts), with the live channel open.
+  const cursors = options.presenceMode === "poll" || options.presenceMode === "push" ? editorCursors(vu, state, cursorBody) : null;
+  const moved = (text) => {
+    cursorText = text;
+    if (cursors) cursors.changed();
+    else if (options.presence) void presence(text);
   };
 
   // Human typing: bursts of 10–40 characters at ~5 per second, a pause of
@@ -316,13 +333,178 @@ async function editorLoop(vu) {
       text.insert(text.length, i === 0 ? " " : String.fromCharCode(97 + Math.floor(Math.random() * 26)));
       typed++;
       if (!timer && !inflight) timer = setTimeout(sync, 80);
-      if (options.presence) void presence(text);
+      moved(text);
       await sleep(options.keystrokeMs * (0.6 + Math.random() * 0.8));
     }
     await sleep(2000 + Math.random() * 4000);
   }
   clearTimeout(timer);
+  cursors?.stop();
   doc.destroy();
+}
+
+// The cursors of the web editor (lib/collaboration-cursors.ts, the live
+// channel open): a move goes out 40 ms later, at most every 80 ms, one
+// request in flight. poll (v0.11): every move; with others every second;
+// every "presence" signal asks. push (#383 wave 4): moves only while
+// someone else is there (the channel's "audience" signal, or their cursor
+// shown); the others' cursors come with the channel ("cursor"), a new one
+// gets this cursor at once; with others a heartbeat every 5 s. Alone both
+// send a heartbeat every 20 s.
+function editorCursors(vu, state, body) {
+  const push = options.presenceMode === "push";
+  const peers = new Map(); // id → deadline
+  let audience = true,
+    busy = false,
+    pending = false,
+    timer = null,
+    scheduledAt = Infinity,
+    nextSend = 0,
+    stopped = false;
+  const others = () => {
+    const now = performance.now();
+    for (const [id, deadline] of peers) if (deadline <= now) peers.delete(id);
+    return peers.size > 0;
+  };
+  const wanted = () => !push || audience || others();
+  const idle = () => (others() ? (push ? 5000 : 1000) : 20000);
+  function schedule(delay = 40) {
+    if (stopped || !vu.alive) return;
+    if (busy) {
+      pending = true;
+      return;
+    }
+    const wait = Math.max(delay, nextSend - performance.now());
+    if (scheduledAt <= performance.now() + wait) return;
+    clearTimeout(timer);
+    scheduledAt = performance.now() + wait;
+    timer = setTimeout(send, wait);
+  }
+  async function send() {
+    scheduledAt = Infinity;
+    if (busy || stopped || !vu.alive) return;
+    busy = true;
+    pending = false;
+    nextSend = performance.now() + 80;
+    const result = await request("presence", "/api/presence", { method: "POST", cookie: vu.user.cookie, json: true, body: body() });
+    if (result.ok && Array.isArray(result.data?.peers)) {
+      peers.clear();
+      for (const p of result.data.peers) peers.set(p.id, performance.now() + Math.min(15000, p.expiresInMs));
+    }
+    busy = false;
+    schedule(pending ? 40 : result.ok ? idle() : 3000);
+  }
+  state.onLive = (message) => {
+    if (message.type === "presence") schedule(0);
+    else if (push && message.type === "audience") {
+      audience = message.others !== false;
+      if (audience) schedule(0);
+    } else if (push && message.type === "cursor" && message.peer) {
+      const known = peers.has(message.peer.id);
+      if (message.peer.cursor) peers.set(message.peer.id, performance.now() + Math.min(15000, message.peer.expiresInMs));
+      else peers.delete(message.peer.id);
+      if (!known && message.peer.cursor) schedule(0);
+    }
+  };
+  schedule(0);
+  return {
+    changed: () => wanted() && schedule(),
+    stop: () => {
+      stopped = true;
+      clearTimeout(timer);
+    },
+  };
+}
+
+// --- Whiteboards (live cursors) -------------------------------------------
+// components/whiteboard/whiteboard.tsx: the pointer goes out at most every
+// 66 ms; with --presence push only while the stream says someone else has
+// the board open, and as it then is when someone arrives.
+async function boardLoop(vu) {
+  await sleep(Math.random() * options.rampMs);
+  const push = options.presenceMode === "push";
+  let audience = true,
+    latest,
+    shown = false,
+    queued,
+    timer = null,
+    lastSent = 0;
+  const path = `/api/whiteboards/${vu.boardId}/cursor`;
+  const flush = () => {
+    timer = null;
+    if (queued === undefined) return;
+    const point = queued;
+    queued = undefined;
+    lastSent = performance.now();
+    shown = point !== null;
+    void request("board.cursor", path, { method: "POST", cookie: vu.user.cookie, body: point });
+  };
+  const queue = (point) => {
+    latest = point;
+    if (push && !audience) return;
+    queued = point;
+    if (timer) return;
+    timer = setTimeout(flush, point === null ? 0 : Math.max(0, 66 - (performance.now() - lastSent)));
+  };
+  void (async () => {
+    while (vu.alive) {
+      const controller = new AbortController();
+      vu.abortLive = () => controller.abort();
+      try {
+        const response = await fetch(`${origin}/api/whiteboards/${vu.boardId}/cursors`, { headers: { origin, cookie: vu.user.cookie, accept: "text/event-stream" }, signal: controller.signal });
+        if (!response.ok) {
+          record("sse.connect", 0, classify(response.status));
+          await sleep(2000);
+          continue;
+        }
+        record("sse.connect", 0);
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for await (const chunk of response.body) {
+          buffer += decoder.decode(chunk, { stream: true });
+          let end;
+          while ((end = buffer.indexOf("\n\n")) >= 0) {
+            const event = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            if (!event.startsWith("data: ")) continue;
+            let message;
+            try {
+              message = JSON.parse(event.slice(6));
+            } catch {
+              continue;
+            }
+            if (message.type === "cursor") record("board.received", 0);
+            else if (message.type === "audience") {
+              const before = audience;
+              audience = message.others !== false;
+              if (push && audience && !before && latest !== undefined && (latest || shown)) queue(latest);
+            }
+          }
+        }
+        if (vu.alive) record("sse.connect", 0, "closed");
+      } catch {
+        if (!vu.alive) return;
+        record("sse.connect", 0, "network");
+        await sleep(1000);
+      }
+    }
+  })();
+  // Bursts of 2–8 s of moving (a pointer event every 33 ms), then 3–10 s
+  // still; now and then the pointer leaves the board.
+  let x = Math.random() * 1000,
+    y = Math.random() * 800;
+  while (vu.alive) {
+    const until = performance.now() + 2000 + Math.random() * 6000;
+    while (vu.alive && performance.now() < until) {
+      x += (Math.random() - 0.5) * 30;
+      y += (Math.random() - 0.5) * 30;
+      queue({ x: Math.round(x), y: Math.round(y) });
+      await sleep(33);
+    }
+    if (Math.random() < 0.3) queue(null);
+    await sleep(3000 + Math.random() * 7000);
+  }
+  clearTimeout(timer);
 }
 
 // --- Idle tabs ---------------------------------------------------------------
@@ -447,7 +629,7 @@ function setVUs(list) {
     if (!running.has(v.id)) {
       const vu = { ...v, user: seed.users[v.userIndex], alive: true };
       vus.push(vu);
-      void (v.kind === "editor" ? editorLoop(vu) : v.kind === "idle" ? idleLoop(vu) : readerLoop(vu));
+      void (v.kind === "editor" ? editorLoop(vu) : v.kind === "idle" ? idleLoop(vu) : v.kind === "board" ? boardLoop(vu) : readerLoop(vu));
     }
 }
 parentPort.on("message", (msg) => {

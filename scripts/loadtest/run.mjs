@@ -20,7 +20,17 @@ const { values: opt } = parseArgs({
     "editor-share": { type: "string", default: "0.15" },
     coeditors: { type: "string", default: "5" },
     keystroke: { type: "string", default: "200" },
+    // on: a cursor request per keystroke (the earlier model); poll: what
+    // the web editor of v0.11 does (also asks every second while others are
+    // there and on every signal); push: what it does since #383 wave 4 (the
+    // others' cursors come with the live channel, nothing is sent while
+    // nobody else has the document or board open). poll and push need the
+    // server version they model; off: no cursors.
     presence: { type: "string", default: "on" },
+    // Board VUs: every n-th VU moves its pointer on a whiteboard (live
+    // cursors, /api/whiteboards/:id/cursor); --board-peers share a board.
+    "board-share": { type: "string", default: "0" },
+    "board-peers": { type: "string", default: "2" },
     heavy: { type: "string", default: "none" },
     "heavy-interval": { type: "string", default: "20" },
     "import-rows": { type: "string", default: "2000" },
@@ -55,6 +65,7 @@ const options = {
   timeout: Number(opt.timeout),
   keystrokeMs: Number(opt.keystroke),
   presence: opt.presence !== "off",
+  presenceMode: opt.presence,
   rampMs: SETTLE,
   mix: opt.mix,
   idleMs: Number(opt["idle-interval"]) * 1000,
@@ -62,9 +73,12 @@ const options = {
   idleDbEvery: Number(opt["idle-db-every"]),
 };
 if (!["poll", "push"].includes(opt["idle-mode"])) throw new Error(`unknown --idle-mode: ${opt["idle-mode"]}`);
+if (!["on", "off", "poll", "push"].includes(opt.presence)) throw new Error(`unknown --presence: ${opt.presence}`);
 if (!["mixed", "idle"].includes(opt.kind)) throw new Error(`unknown --kind: ${opt.kind}`);
 const editorEvery = Number(opt["editor-share"]) > 0 ? Math.max(1, Math.round(1 / Number(opt["editor-share"]))) : Infinity;
 const coeditors = Number(opt.coeditors);
+const boardEvery = Number(opt["board-share"]) > 0 ? Math.max(2, Math.round(1 / Number(opt["board-share"]))) : Infinity;
+const boardPeers = Math.max(1, Number(opt["board-peers"]));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // --- Server metrics ----------------------------------------------------------
@@ -132,12 +146,17 @@ function plan(n) {
     for (let i = 0; i < n; i++) lists[i % workers.length].push({ id: i, kind: "idle", userIndex: i % seed.users.length });
     return lists;
   }
-  let editor = 0;
+  let editor = 0,
+    board = 0;
   for (let i = 0; i < n; i++) {
     const userIndex = i % seed.users.length;
     if (i % editorEvery === editorEvery - 1) {
       const docIndex = Math.floor(editor++ / coeditors) % seed.docIds.length;
       lists[docIndex % workers.length].push({ id: i, kind: "editor", userIndex, docId: seed.docIds[docIndex] });
+    } else if (boardEvery !== Infinity && i % boardEvery === Math.floor(boardEvery / 2)) {
+      if (!seed.boardIds?.length) throw new Error("--board-share needs a seed with whiteboards (seed.mjs --boards)");
+      const boardIndex = Math.floor(board++ / boardPeers) % seed.boardIds.length;
+      lists[i % workers.length].push({ id: i, kind: "board", userIndex, boardId: seed.boardIds[boardIndex] });
     } else lists[i % workers.length].push({ id: i, kind: "reader", userIndex });
   }
   return lists;
@@ -214,8 +233,8 @@ function merge(results) {
   return out;
 }
 const READS = new Set(["bootstrap", "page.open", "db.open", "db.query", "search", "editor.open", "idle.bootstrap", "idle.page", "idle.bootstrap.304", "idle.page.304", "idle.signal.bootstrap", "idle.signal.page", "idle.signal.bootstrap.304", "idle.signal.page.304"]);
-const WRITES = new Set(["row.update", "row.create", "page.create", "comment.create", "doc.sync", "presence"]);
-const NOT_REQUESTS = new Set(["fanout", "fanout.unmatched", "sse.connect", "signal"]);
+const WRITES = new Set(["row.update", "row.create", "page.create", "comment.create", "doc.sync", "presence", "board.cursor"]);
+const NOT_REQUESTS = new Set(["fanout", "fanout.unmatched", "sse.connect", "signal", "board.received"]);
 const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
 
 // --- Service times (--probe N) ------------------------------------------------

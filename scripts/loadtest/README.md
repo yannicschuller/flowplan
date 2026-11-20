@@ -40,7 +40,20 @@ own dependencies. Nothing to install.
     80 ms after typing (one request in flight, the rest batched) and send
     cursor updates (`/api/presence`). `--coeditors` editors share a
     document; the time from one editor's save to the update arriving at the
-    others is reported as `fanout`.
+    others is reported as `fanout`. `--presence` chooses how the cursors
+    go: `on` (default) one request per keystroke, as in the earlier runs;
+    `poll` what the web editor of v0.11 does (`lib/collaboration-cursors.ts`:
+    also every second while others are there, and on every "presence"
+    signal); `push` what it does since #383 wave 4 (the others' cursors
+    arrive with the live channel, moves are sent only while someone else has
+    the document open, a heartbeat every 5 s with others). `poll` and `push`
+    model a client version: run each against the server it belongs to.
+  - **board users** (`--board-share`, default 0) have a whiteboard open
+    (`components/whiteboard`): the live cursors' stream and the pointer
+    moving in bursts of 2–8 s, sent up to ~15 times a second
+    (`/api/whiteboards/:id/cursor`); `--board-peers` (2) share a board. With
+    `--presence push` the pointer is sent only while someone else has the
+    board open. Needs a seed with whiteboards (`seed.mjs --boards`, 20).
   - **idle tabs** (`--kind idle`: every VU is one) do what a signed-in tab
     does while nobody touches it (`components/workspace-app.tsx`): every
     `--idle-interval` s (10) the bootstrap and the open page (a document;
@@ -100,7 +113,7 @@ both above this). Profile the server with `serve.mjs --cpu-prof`; the
 `.cpuprofile` is written to `<work>/profiles` when the server stops.
 
 Seeder options: `--users` (400), `--docs` (300), `--records` (3000),
-`--spaces` (6), `--related` (two more databases, projects and customers,
+`--spaces` (6), `--boards` (20), `--related` (two more databases, projects and customers,
 that every task links to – the related data of a database open). The
 larger seed of #383: `--docs 2000 --records 5000 --related`.
 
