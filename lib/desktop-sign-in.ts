@@ -59,8 +59,14 @@ const escape = (value: string) =>
 // A small page of its own: API answers carry no app shell.
 export function desktopPage(
   locale: Locale,
-  { title, text, body = "", refresh }: { title: string; text: string; body?: string; refresh?: string },
+  { title, text, body = "", refresh, copyScript = false }: { title: string; text: string; body?: string; refresh?: string; copyScript?: boolean },
 ) {
+  // The copy button (data-copy) needs a few lines of script: allowed by a
+  // nonce of this response only, nothing else may run.
+  const nonce = copyScript ? randomBytes(16).toString("base64") : "";
+  const script = copyScript
+    ? `<script nonce="${nonce}">document.querySelectorAll("[data-copy]").forEach(function(b){b.addEventListener("click",function(){var t=document.getElementById(b.getAttribute("data-copy"));if(!t)return;var done=function(){b.textContent=b.getAttribute("data-done");setTimeout(function(){b.textContent=b.getAttribute("data-label")},2000)};var pick=function(){var r=document.createRange();r.selectNodeContents(t);var s=getSelection();s.removeAllRanges();s.addRange(r)};if(navigator.clipboard){navigator.clipboard.writeText(t.textContent).then(done,pick)}else{pick()}})})</script>`
+    : "";
   return new Response(
     `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${refresh ? `<meta http-equiv="refresh" content="0;url=${escape(refresh)}">` : ""}<title>${escape(title)}</title><style>
 :root{color-scheme:light dark;--bg:#f7f6f3;--card:#fff;--text:#1f1e1c;--muted:#6b6862;--line:#e4e1db;--accent:#2f6fec}
@@ -70,12 +76,16 @@ main{width:100%;max-width:420px;background:var(--card);border:1px solid var(--li
 h1{font-size:20px;margin:0 0 8px}p{margin:0 0 20px;color:var(--muted)}form{margin:0}
 .button{display:block;width:100%;text-align:center;border:0;border-radius:9px;padding:11px 14px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;background:var(--accent);color:#fff}
 small{display:block;margin-top:14px;color:var(--muted)}
-</style></head><body><main><h1>${escape(title)}</h1><p>${escape(text)}</p>${body}</main></body></html>`,
+.code-hint{margin:20px 0 0}.code-row{display:flex;gap:8px;align-items:stretch;margin-top:8px}
+code{flex:1;min-width:0;display:block;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text);overflow-wrap:anywhere;word-break:break-all;user-select:all}
+.copy{flex:none;border:1px solid var(--line);border-radius:9px;padding:0 12px;background:transparent;color:var(--text);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+.copy:hover{border-color:var(--accent)}
+</style></head><body><main><h1>${escape(title)}</h1><p>${escape(text)}</p>${body}</main>${script}</body></html>`,
     {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
-        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+        "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline';${copyScript ? ` script-src 'nonce-${nonce}';` : ""} form-action 'self'; frame-ancestors 'none'; base-uri 'none'`,
         "Referrer-Policy": "no-referrer",
       },
     },

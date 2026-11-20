@@ -486,8 +486,9 @@ async function handlePOST(
         ),
         // The code is also shown as text: on Linux without a flowplan://
         // handler (bare AppImage) the app offers a field to paste it into.
-        body: `<a class="button" href="${escapeHtml(link)}">${say("Flowplan-App öffnen", "Open the Flowplan app")}</a><small>${say("Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute.", "You can close this window afterwards. The link is valid for one minute.")}</small><p class="code-hint"><small>${say("Öffnet sich die App nicht, kopiere diesen Code in das Feld „Code einfügen“ der App:", "If the app does not open, copy this code into the app's “Paste code” field:")}</small><br><code>${escapeHtml(code)}</code></p>`,
+        body: `<a class="button" href="${escapeHtml(link)}">${say("Flowplan-App öffnen", "Open the Flowplan app")}</a><small>${say("Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute.", "You can close this window afterwards. The link is valid for one minute.")}</small><p class="code-hint"><small>${say("Öffnet sich die App nicht, kopiere diesen Code in das Feld „Code einfügen“ der App:", "If the app does not open, copy this code into the app's “Paste code” field:")}</small></p><div class="code-row"><code id="code">${escapeHtml(code)}</code><button type="button" class="copy" data-copy="code" data-label="${say("Kopieren", "Copy")}" data-done="${say("Kopiert", "Copied")}">${say("Kopieren", "Copy")}</button></div>`,
         refresh: link,
+        copyScript: true,
       });
     }
     if (action === "desktop-redeem") {
