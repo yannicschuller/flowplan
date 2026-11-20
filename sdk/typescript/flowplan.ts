@@ -4649,6 +4649,37 @@ export class FlowplanClient {
     return this.request("GET", `/api/files/${encodeURIComponent(fileId)}/html`, {}, options);
   }
 
+  /** Cells of a spreadsheet file — The same access as the download. Only files named `.csv` or `.xlsx`, up to 20 MB (larger: 413; `.xls` and other files: 415; an unreadable file: 422). The names of the workbook's visible sheets and, of sheet `sheet` (from 0), the first 5,000 rows and 200 columns as the text the spreadsheet shows: numbers as stored, numbers with a date format as ISO dates, booleans as TRUE/FALSE, formulas as their saved value; `truncated` says more was left out. A CSV's delimiter is guessed; its encoding is UTF-8 (with or without byte order mark), UTF-16 with one, else Windows-1252. (GET /api/files/{fileId}/sheet) */
+  async sheetPreview(fileId: string, query?: { sheet?: number }, options?: RequestOptions): Promise<{
+    kind: "csv" | "xlsx";
+    sheets: string[];
+    sheet: number;
+    rows: string[][];
+    columns: number;
+    truncated: boolean;
+    limits: {
+      rows: number;
+      columns: number;
+    };
+    delimiter?: string;
+    encoding?: string;
+  }> {
+    return this.json<{
+    kind: "csv" | "xlsx";
+    sheets: string[];
+    sheet: number;
+    rows: string[][];
+    columns: number;
+    truncated: boolean;
+    limits: {
+      rows: number;
+      columns: number;
+    };
+    delimiter?: string;
+    encoding?: string;
+  }>("GET", `/api/files/${encodeURIComponent(fileId)}/sheet`, { query }, options);
+  }
+
   /** Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload) */
   async uploadFile(form: {
     pageId: string;

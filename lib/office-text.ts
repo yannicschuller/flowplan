@@ -24,14 +24,17 @@ const entities: Record<string, string> = {
   quot: '"',
   apos: "'",
 };
-const decode = (text: string) =>
+// XML text with its entities resolved; also for the spreadsheet preview
+// (lib/sheet-xlsx.ts, #402). A reference to no character stays as it is.
+export const decode = (text: string) =>
   text.replace(/&(#x?[0-9a-f]+|\w+);/gi, (match, code: string) => {
-    if (code[0] === "#")
-      return String.fromCodePoint(
+    if (code[0] === "#") {
+      const point =
         code[1] === "x" || code[1] === "X"
           ? parseInt(code.slice(2), 16)
-          : Number(code.slice(1)),
-      );
+          : Number(code.slice(1));
+      return point <= 0x10ffff ? String.fromCodePoint(point) : match;
+    }
     return entities[code] ?? match;
   });
 // Text runs of the given element names, joined per paragraph.

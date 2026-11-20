@@ -1,0 +1,285 @@
+/* ---------- Spreadsheet viewer (#402, components/sheet-viewer-dialog.tsx) ----------
+   Loaded with the viewer, on top of the 3D viewer's frame (viewer3d.css).
+   Rows have one fixed height (the dialog's ROW): only those in view are
+   rendered, the spacers above and below take the others' room. Column
+   widths (--w), the table's width and the spacers' heights are custom
+   properties set from script. */
+.sheet-viewer:focus {
+  outline: none;
+}
+.sheet-viewer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.sheet-viewer-filter {
+  display: flex;
+  flex: 0 1 320px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--secondary);
+}
+.sheet-viewer-filter:focus-within {
+  border-color: var(--blue);
+  outline: 2px solid color-mix(in srgb, var(--blue) 25%, transparent);
+}
+.sheet-viewer-search,
+.sheet-viewer-search:focus {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.sheet-viewer-count {
+  margin-left: auto;
+  color: var(--secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sheet-viewer-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.sheet-viewer-note svg {
+  flex-shrink: 0;
+}
+.sheet-viewer-stage {
+  background: var(--bg);
+}
+.sheet-viewer-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.sheet-viewer-scroll:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.sheet-viewer-problem {
+  flex-direction: column;
+  gap: 14px;
+}
+.sheet-viewer-problem p {
+  max-width: 420px;
+  margin: 0;
+}
+.sheet-viewer-empty {
+  position: sticky;
+  left: 0;
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--secondary);
+  font-size: 14px;
+}
+
+/* The grid: fixed layout, one height per row, no wrapping. */
+.sheet-grid {
+  width: var(--sheet-width, auto);
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-grid col {
+  width: var(--w, 96px);
+}
+.sheet-grid col.sheet-col-number {
+  width: 48px;
+}
+.sheet-grid tr {
+  height: 28px;
+}
+.sheet-grid th,
+.sheet-grid td {
+  height: 28px;
+  padding: 0 8px;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 27px;
+}
+.sheet-grid td {
+  color: var(--text);
+}
+.sheet-grid td.is-number {
+  text-align: right;
+}
+.sheet-grid tbody tr:hover > td {
+  background: var(--hover);
+}
+/* Column letters and the header row stay on top, row numbers on the left. */
+.sheet-letters th,
+.sheet-head th,
+.sheet-grid .sheet-number {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface);
+  color: var(--secondary);
+  font-weight: 500;
+}
+.sheet-letters th {
+  top: 0;
+  z-index: 2;
+  padding: 0;
+  text-align: center;
+}
+.sheet-head th {
+  top: 28px;
+  z-index: 2;
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: color-mix(in srgb, var(--text) 30%, var(--border));
+}
+.sheet-grid .sheet-number {
+  left: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  text-align: right;
+}
+.sheet-letters .sheet-corner,
+.sheet-head .sheet-number {
+  left: 0;
+  z-index: 3;
+}
+.sheet-letters button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sheet-letters button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.sheet-letters button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.sheet-letters th[aria-sort="ascending"],
+.sheet-letters th[aria-sort="descending"] {
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+/* The rows not rendered. */
+.sheet-grid tr.sheet-spacer {
+  height: auto;
+}
+.sheet-grid .sheet-spacer td {
+  height: 0;
+  padding: 0;
+  border: 0;
+}
+.sheet-grid .sheet-spacer-before td {
+  height: var(--sheet-before, 0);
+}
+.sheet-grid .sheet-spacer-after td {
+  height: var(--sheet-after, 0);
+}
+
+/* Sheet tabs below, as in a spreadsheet. */
+.sheet-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 0 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.sheet-tab {
+  flex-shrink: 0;
+  max-width: 220px;
+  height: 36px;
+  padding: 0 14px;
+  overflow: hidden;
+  border: 0;
+  border-top: 2px solid transparent;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sheet-tab:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.sheet-tab[aria-selected="true"] {
+  border-top-color: var(--blue);
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+}
+.sheet-tab:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+@media (max-width: 600px) {
+  .sheet-viewer-tools {
+    padding: 6px 10px;
+  }
+  .sheet-viewer-filter {
+    flex: 1 1 100%;
+    order: 0;
+  }
+  .sheet-viewer-header {
+    order: 1;
+  }
+  .sheet-viewer-count {
+    order: 2;
+  }
+  .sheet-viewer-note {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .sheet-grid {
+    font-size: 12px;
+  }
+  .sheet-tabs {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
