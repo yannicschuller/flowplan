@@ -3,7 +3,8 @@ import { test, expect } from "@playwright/test";
 // The HTML viewer (#398): an uploaded HTML file becomes a card in the
 // document; its preview shows the page in an empty sandbox – the content is
 // there, its script never runs, nothing is loaded from elsewhere – with the
-// note and the download.
+// note and the download. "Skripte ausführen" runs the file's scripts in a
+// sandbox of their own: no access to the app, its cookies or the network.
 
 // A page whose script would change its own and the app's title and the
 // text, and whose inline handler would too.
@@ -11,11 +12,20 @@ const FILE = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Original-Titel</title>
 <style>h1 { color: rgb(200, 30, 30); }</style>
 <link rel="stylesheet" href="https://example.com/fremd.css">
-<script>document.title = "Skript lief"; try { parent.document.title = "Skript lief"; } catch (e) {} document.addEventListener("DOMContentLoaded", () => { document.getElementById("flag").textContent = "verändert"; });</script>
+<script>document.title = "Skript lief"; try { parent.document.title = "Skript lief"; } catch (e) {}
+document.addEventListener("securitypolicyviolation", (e) => { if (e.violatedDirective.startsWith("connect-src")) document.getElementById("netz-csp").textContent = e.violatedDirective; });
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("flag").textContent = "verändert";
+  const probe = (id, f) => { const el = document.getElementById(id); try { el.textContent = "offen: " + f(); } catch (e) { el.textContent = "gesperrt: " + e.name; } };
+  probe("eltern", () => parent.document.title);
+  probe("keks", () => document.cookie);
+  fetch("/api/bootstrap", { credentials: "include" }).then(() => { document.getElementById("netz").textContent = "offen"; }, (e) => { document.getElementById("netz").textContent = "gesperrt: " + e.name; });
+});</script>
 </head><body>
 <h1>Grüße aus der Datei</h1>
 <p id="flag">unverändert</p>
-<img src="https://example.com/fremd.png" alt="extern" onerror="document.getElementById('flag').textContent = 'onerror'">
+<p id="eltern">-</p><p id="keks">-</p><p id="netz">-</p><p id="netz-csp">-</p><p id="bild">-</p>
+<img src="https://example.com/fremd.png" alt="extern" onerror="document.getElementById('bild').textContent = 'onerror'">
 <form action="https://example.com/"><button>Senden</button></form>
 </body></html>`;
 
@@ -107,6 +117,7 @@ test("an HTML file opens in a sandboxed preview: content shown, script not run",
   // … but no script ran: the text, the page's title and the app's title
   // are as they were.
   await expect(inside.locator("#flag")).toHaveText("unverändert");
+  for (const probe of ["#eltern", "#keks", "#netz", "#bild"]) await expect(inside.locator(probe)).toHaveText("-");
   const child = page.frames().find((f) => /\/api\/files\/[\w-]+\/html$/.test(f.url()));
   expect(child).toBeTruthy();
   expect(await child!.title()).toBe("Original-Titel");
@@ -116,6 +127,43 @@ test("an HTML file opens in a sandboxed preview: content shown, script not run",
   // stopped each request before it left the browser.
   expect(external).toEqual([]);
   for (const reason of blocked) expect(reason).toMatch(/csp/i);
+
+  // Run scripts: the frame reloads with allow-scripts alone and the
+  // policy that runs inline scripts only.
+  const run = viewer.getByRole("button", { name: "Skripte ausführen" });
+  await expect(run).toBeVisible();
+  await expect(viewer).toContainText("ohne Zugriff auf Flowplan");
+  const scripted = page.waitForResponse((r) => /\/api\/files\/[\w-]+\/html\?scripts=1$/.test(r.url()));
+  await run.click();
+  const scriptedHeaders = (await scripted).headers();
+  expect(scriptedHeaders["content-security-policy"]).toContain("script-src 'unsafe-inline'");
+  expect(scriptedHeaders["content-security-policy"]).toContain("connect-src 'none'");
+  expect(scriptedHeaders["content-security-policy"]).toMatch(/(^|; )sandbox allow-scripts(;|$)/);
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(frame).toHaveAttribute("src", /\/html\?scripts=1$/);
+  await expect(viewer).toContainText("Skripte laufen abgeschottet, ohne Netzwerk.");
+  // The script ran …
+  await expect(inside.locator("#flag")).toHaveText("verändert", { timeout: 10_000 });
+  await expect(inside.locator("#bild")).toHaveText("onerror");
+  // … in an origin of its own: the app's document, the cookies and the
+  // network are out of reach.
+  await expect(inside.locator("#eltern")).toHaveText(/^gesperrt: SecurityError$/);
+  await expect(inside.locator("#keks")).toHaveText(/^gesperrt: SecurityError$/);
+  await expect(inside.locator("#netz")).toHaveText(/^gesperrt: TypeError$/);
+  await expect(inside.locator("#netz-csp")).toHaveText(/^connect-src/);
+  const running = page.frames().find((f) => /\/html\?scripts=1$/.test(f.url()));
+  expect(running).toBeTruthy();
+  expect(await running!.title()).toBe("Skript lief");
+  expect(await page.title()).toBe(appTitle);
+  expect(external).toEqual([]);
+  for (const reason of blocked) expect(reason).toMatch(/csp/i);
+
+  // Stop scripts: inert again.
+  await viewer.getByRole("button", { name: "Skripte anhalten" }).click();
+  await expect(frame).toHaveAttribute("sandbox", "");
+  await expect(viewer).toContainText("Skripte und externe Inhalte sind abgeschaltet.");
+  await expect(inside.getByRole("heading", { name: "Grüße aus der Datei" })).toBeVisible({ timeout: 10_000 });
+  await expect(inside.locator("#flag")).toHaveText("unverändert");
 
   await page.keyboard.press("Escape");
   if (await viewer.isVisible()) await viewer.getByRole("button", { name: "Schließen" }).click();

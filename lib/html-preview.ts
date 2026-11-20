@@ -1,5 +1,6 @@
 // The HTML preview (#398): the bytes of an uploaded .html/.htm file as a
-// page that can show but never do anything. The app frames it in an
+// page that can show but never do anything – unless the viewer asks for its
+// scripts (?scripts=1, see below). The app frames it in an
 // <iframe sandbox=""> (components/html-viewer-dialog.tsx); the response's
 // own policy sandboxes it as well, so the address opened directly is just
 // as inert: no scripts, no forms, no popups, no navigating the app, and
@@ -23,6 +24,27 @@ export function htmlPreviewLimit(raw = process.env.FLOWPLAN_HTML_PREVIEW_MB) {
 
 export const HTML_PREVIEW_CSP =
   "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox";
+
+// "Run scripts" (#398), per opening of the viewer: the frame becomes
+// <iframe sandbox="allow-scripts"> and loads the preview with ?scripts=1,
+// whose policy lets the file's own inline scripts run and nothing else –
+// no script from elsewhere, no request of any kind (connect-src, images
+// only data:/blob:), no forms. The sandbox keeps the page's origin opaque
+// (never allow-same-origin): no access to the app, its cookies or storage,
+// no popups, no navigating the app, no dialogs.
+export const HTML_PREVIEW_SCRIPTS_CSP =
+  "default-src 'none'; script-src 'unsafe-inline'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts";
+// The frame's sandbox tokens with scripts on – exactly this one.
+export const HTML_PREVIEW_SCRIPTS_SANDBOX = "allow-scripts";
+
+// FLOWPLAN_HTML_PREVIEW_SCRIPTS: on unless 0/false/off. Off, the viewer
+// shows no button (it learns so from X-Flowplan-Preview-Scripts on its HEAD
+// request) and ?scripts=1 is ignored: the page comes with the scriptless
+// policy, as shown by default.
+export function htmlPreviewScriptsAllowed(raw = process.env.FLOWPLAN_HTML_PREVIEW_SCRIPTS) {
+  return !/^(0|false|off|no)$/i.test((raw ?? "").trim());
+}
+export const HTML_PREVIEW_SCRIPTS_HEADER = "X-Flowplan-Preview-Scripts";
 
 // The character set to declare: a byte order mark, else a <meta charset>
 // (or http-equiv Content-Type) in the first 1024 bytes the browser's
@@ -67,12 +89,15 @@ export async function htmlPreviewResponse(req: Request, file: { id: string; name
     // as the character set needs.
     const head = req.method === "HEAD";
     const bytes = head ? (await handle.read(Buffer.alloc(1024), 0, 1024, 0)).buffer.subarray(0, Math.min(size, 1024)) : await handle.readFile();
+    const allowed = htmlPreviewScriptsAllowed();
+    const scripts = allowed && new URL(req.url).searchParams.get("scripts") === "1";
     return new Response(head ? null : new Uint8Array(bytes), {
       headers: {
         "Content-Type": `text/html; charset=${htmlCharset(bytes)}`,
         "Content-Length": String(head ? size : bytes.length),
         "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-        "Content-Security-Policy": HTML_PREVIEW_CSP,
+        "Content-Security-Policy": scripts ? HTML_PREVIEW_SCRIPTS_CSP : HTML_PREVIEW_CSP,
+        [HTML_PREVIEW_SCRIPTS_HEADER]: allowed ? "allowed" : "off",
         "X-Content-Type-Options": "nosniff",
         "Cross-Origin-Resource-Policy": "same-origin",
         "Referrer-Policy": "no-referrer",
