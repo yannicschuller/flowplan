@@ -181,7 +181,7 @@ test("hierarchy: summary bars from the children, collapsing with arrows on the p
     const timeline = page.locator(".timeline-view");
     // Children below their parents, indented.
     await expect(timeline.locator(".timeline-entry .timeline-name")).toHaveText(["Phase 1", "Konzept", "Umsetzung", "Phase 2", "Abnahme"]);
-    await expect(timeline.locator(`[data-row-id="${a.id}"] .timeline-entry-label`)).toHaveCSS("padding-left", "17px");
+    await expect(timeline.locator(`[data-row-id="${a.id}"] .timeline-entry-label`)).toHaveCSS("padding-left", info.project.name === "mobile" ? "8px" : "17px");
     // Summary bars: from the earliest start to the latest end below.
     await expect(page.getByRole("button", { name: "Phase 1: 2026-11-02 bis 2026-11-13 (aus 2 Untereinträgen)", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Phase 2: 2026-11-16 bis 2026-11-16 (aus 1 Untereinträgen)", exact: true })).toBeVisible();

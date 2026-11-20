@@ -3824,6 +3824,9 @@ tr:hover .row-open,
   position: relative;
   width: calc(200px + var(--timeline-width));
   --timeline-label: 200px;
+  /* A title beside its bar keeps clear of the arrows' 10 px stubs and
+     their corners (lib/timeline-scale.ts ARROW_STUB). */
+  --timeline-label-gap: 17px;
 }
 .timeline-dependencies {
   position: absolute;
@@ -4057,7 +4060,7 @@ tr:hover .row-open,
   padding: 0;
 }
 .timeline-range.milestone.label-right .timeline-range-label {
-  left: calc(100% + 6px);
+  left: calc(100% + var(--timeline-label-gap));
 }
 .timeline-range.milestone .timeline-link-handle {
   right: -9px;
@@ -4114,10 +4117,10 @@ tr:hover .row-open,
   pointer-events: none;
 }
 .timeline-range.label-right .timeline-range-label {
-  left: calc(100% + 10px);
+  left: calc(100% + var(--timeline-label-gap));
 }
 .timeline-range.label-left .timeline-range-label {
-  right: calc(100% + 8px);
+  right: calc(100% + var(--timeline-label-gap));
 }
 /* The hint on holding a bar is for touch screens. */
 @media (hover: hover) and (pointer: fine) {

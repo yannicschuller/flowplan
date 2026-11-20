@@ -277,12 +277,14 @@ export function stickyLabelLeft(segmentLeft: number, segmentRight: number, visib
 }
 
 // Where a bar's title goes: inside when it fits, else beside the bar where
-// there is room for it (estimated at 11 px text, about 6.3 px a letter).
+// there is room for it (estimated at 11 px text, about 6.3 px a letter),
+// with the gap that keeps it clear of the arrows (--timeline-label-gap).
+export const BESIDE_GAP = 17;
 export function outsideLabel(bar: { left: number; width: number }, name: string, lane: number): "right" | "left" | null {
   const text = Math.min(name.length * 6.3, 220);
   if (bar.width >= text + 26) return null;
-  if (lane - bar.left - bar.width >= text + 16) return "right";
-  if (bar.left >= text + 16) return "left";
+  if (lane - bar.left - bar.width >= text + BESIDE_GAP + 6) return "right";
+  if (bar.left >= text + BESIDE_GAP + 6) return "left";
   return null;
 }
 
