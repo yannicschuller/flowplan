@@ -33,6 +33,7 @@ import {
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 import type { Field, Row } from "@/lib/types";
 import { useBoard } from "./board-context";
+import { useBoardColors } from "./board-colors";
 
 type Bound = { fields: Field[]; rows: Row[]; readOnly: Set<string>; canEdit: boolean };
 // The records of a bound timeline, refreshed while the board is visible.
@@ -72,6 +73,7 @@ type Drag = { bar: string; operation: BarChange["operation"]; x: number; y: numb
 export function TimelineItemView({ item, transform }: { item: WhiteboardItem; transform: string }) {
   const t = useT();
   const board = useBoard();
+  const colors = useBoardColors();
   const stored = useMemo(() => parseTimeline(item.timeline), [item.timeline]);
   const source = stored?.source;
   const bound = useBoundRecords(board && source ? source.pageId : undefined);
@@ -90,14 +92,14 @@ export function TimelineItemView({ item, transform }: { item: WhiteboardItem; tr
     return timelineLayout(item, moved, { today: data.today === false ? undefined : today, locale: LOCALE_TAG, weekLabel: t("KW", "W") });
   }, [data, drag, item, today, t]);
   const background = useMemo(
-    () => (shown ? timelineBackground(item, shown, item.text || "") : ""),
-    [shown, item],
+    () => (shown ? colors.markup(timelineBackground(item, shown, item.text || ""), [], colors.fill("#ffffff")) : ""),
+    [shown, item, colors],
   );
   if (!data || !shown)
     return (
       <g transform={transform}>
-        <rect width={item.w} height={item.h} rx={8} fill="#f8f9fa" stroke="#adb5bd" strokeDasharray="6 4" />
-        <text x={12} y={24} fontSize={13} fill="#868e96">
+        <rect width={item.w} height={item.h} rx={8} fill={colors.fill("#f8f9fa")} stroke={colors.line("#adb5bd")} strokeDasharray="6 4" />
+        <text x={12} y={24} fontSize={13} fill={colors.text("#868e96", colors.fill("#f8f9fa"))}>
           {t("Zeitleiste ohne gültige Daten", "Timeline without valid data")}
         </text>
       </g>
@@ -168,7 +170,7 @@ export function TimelineItemView({ item, transform }: { item: WhiteboardItem; tr
           onPointerCancel={end}
         >
           <title>{`${bar.title} · ${bar.start} – ${bar.end}`}</title>
-          <g dangerouslySetInnerHTML={{ __html: barSvg(bar) }} />
+          <g dangerouslySetInnerHTML={{ __html: colors.markup(barSvg(bar)) }} />
           {editable && (
             <>
               <rect className="wb-timeline-grip" x={bar.x} y={bar.y} width={Math.min(8, bar.w / 3)} height={bar.h} onPointerDown={(e) => begin(e, bar, "resize-start")} />

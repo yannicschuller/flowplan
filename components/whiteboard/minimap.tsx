@@ -6,6 +6,7 @@ import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { useT } from "../i18n";
 import { contentBounds } from "@/lib/whiteboard-geometry";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
+import { useBoardColors } from "./board-colors";
 
 type View = { x: number; y: number; zoom: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -29,6 +30,7 @@ export function Minimap({
   small?: boolean;
 }) {
   const t = useT();
+  const colors = useBoardColors();
   const ref = useRef<SVGSVGElement>(null);
   const dragging = useRef(false);
   const content = contentBounds(items, byId);
@@ -93,7 +95,7 @@ export function Minimap({
             item.type === "frame"
               ? "var(--wb-mini-frame)"
               : item.type === "sticky"
-                ? item.fill || "#fff6b6"
+                ? colors.fill(item.fill || "#fff6b6")
                 : item.type === "pen"
                   ? "transparent"
                   : "var(--wb-mini-item)";

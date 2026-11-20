@@ -18,6 +18,7 @@ import {
 import { useT } from "../i18n";
 import { SHEET_HANDLE } from "../sheet-drag";
 import { WhiteboardDefs, WhiteboardShape, type PageRef, type RowCard } from "./render";
+import { useBoardColors } from "./board-colors";
 import { connectorPoint, type WhiteboardItem } from "@/lib/whiteboard-model";
 import { frameMembers } from "@/lib/whiteboard-frames";
 
@@ -36,10 +37,11 @@ const FrameThumb = memo(function FrameThumb({
 }) {
   const members = frameMembers(frame, items, (end) => connectorPoint(end, byId));
   const shown = items.filter((i) => members.has(i.id) && i.type !== "comment" && i.type !== "frame").slice(0, 300);
+  const colors = useBoardColors();
   return (
     <svg className="wb-frame-thumb" viewBox={`${frame.x} ${frame.y} ${Math.max(1, frame.w)} ${Math.max(1, frame.h)}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <WhiteboardDefs />
-      <rect x={frame.x} y={frame.y} width={frame.w} height={frame.h} fill={frame.fill && frame.fill !== "transparent" ? frame.fill : "#ffffff"} />
+      <rect x={frame.x} y={frame.y} width={frame.w} height={frame.h} fill={colors.fill(frame.fill && frame.fill !== "transparent" ? frame.fill : "#ffffff")} />
       {shown.map((item) => (
         <g key={item.id} className={`wb-${item.type}`}>
           <WhiteboardShape item={item} items={byId} pages={pages} cards={cards} />

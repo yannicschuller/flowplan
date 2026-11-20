@@ -1,7 +1,8 @@
 /* Whiteboard: navigation, structure, content and presentation features
-   (components/whiteboard/board-extras.tsx and the files it uses). The board
-   itself stays light in dark mode like before; panels and dialogs follow
-   the theme through the usual variables. */
+   (components/whiteboard/board-extras.tsx and the files it uses). Panels
+   and dialogs follow the theme through the usual variables; the canvas
+   follows it too unless the person keeps it light (#399, "Dark canvas" at
+   the end of this file). */
 
 /* ---------- Rich text, tags, links ---------- */
 .wb-rich {
@@ -904,4 +905,67 @@ p.wb-frame-notes {
   .wb-embed-bar {
     height: 32px;
   }
+}
+
+/* ---------- Dark canvas (#399) ----------
+   In dark mode the canvas is dark unless the person keeps it light
+   (Settings → Appearance & language, lib/whiteboard-canvas-pref.ts); the
+   class comes from components/whiteboard/board-colors.tsx. The elements'
+   own colours are mapped in script (lib/whiteboard-display-colors.ts);
+   these rules give the canvas, its grid and the parts styled here the
+   theme's colours. Exports draw a light copy. */
+.wb-connector-label {
+  color: #1f2937;
+}
+.whiteboard.wb-dark-canvas,
+.wb-static.wb-dark-canvas,
+.wb-template-card .wb-static.wb-dark-canvas,
+.whiteboard-embed:has(.wb-static.wb-dark-canvas) {
+  background: var(--bg);
+}
+.wb-dark-canvas .wb-grid-dot {
+  fill: color-mix(in srgb, var(--text) 22%, var(--bg));
+}
+.wb-dark-canvas .wb-frame-title {
+  color: var(--secondary);
+}
+.wb-dark-canvas .wb-connector-label {
+  color: var(--text);
+}
+.wb-dark-canvas .wb-card-body {
+  color: var(--text);
+}
+.wb-dark-canvas .wb-card-body small {
+  color: var(--muted);
+}
+.wb-dark-canvas .wb-card-excerpt {
+  color: var(--secondary);
+}
+.wb-dark-canvas .wb-row-props span {
+  background: var(--hover);
+  color: var(--secondary);
+}
+.wb-dark-canvas .wb-cell {
+  border-color: var(--border);
+  color: var(--text);
+}
+.wb-dark-canvas .wb-cell.head {
+  background: var(--hover);
+}
+.wb-dark-canvas .wb-cell-editor {
+  background: var(--surface);
+}
+.wb-dark-canvas .wb-handle {
+  fill: var(--bg);
+}
+.wb-dark-canvas .wb-cable-label span {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.wb-dark-canvas .wb-minimap {
+  --wb-mini-frame: var(--surface);
+  --wb-mini-item: #5c5a66;
+  --wb-mini-line: var(--muted);
+  background: var(--bg);
 }

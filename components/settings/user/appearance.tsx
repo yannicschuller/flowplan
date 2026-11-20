@@ -45,6 +45,8 @@ import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import { commentMargin, setCommentMarginLocal, useCommentMargin } from "@/lib/comment-margin-pref-client";
+import type { WhiteboardCanvasPref } from "@/lib/whiteboard-canvas-pref";
+import { setWhiteboardCanvasLocal, useWhiteboardCanvas, whiteboardCanvas } from "@/lib/whiteboard-canvas-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import type { StartScreen } from "@/lib/start-screen";
 import { setStartScreenLocal, startScreen as startScreenNow, useStartScreen } from "@/lib/start-screen-client";
@@ -176,6 +178,20 @@ export default function AppearanceSection() {
       }
     });
   };
+  const canvas = useWhiteboardCanvas();
+  const [canvasStatus, runCanvas] = useSaveState();
+  const chooseCanvas = (value: WhiteboardCanvasPref) => {
+    const before = whiteboardCanvas();
+    setWhiteboardCanvasLocal(value);
+    void runCanvas(async () => {
+      try {
+        await mutate({ action: "profile.whiteboardCanvas", whiteboardCanvas: value });
+      } catch (e) {
+        setWhiteboardCanvasLocal(before);
+        throw e;
+      }
+    });
+  };
   const start = useStartScreen(boot.startScreen);
   const [startStatus, runStart] = useSaveState();
   const chooseStart = (value: StartScreen) => {
@@ -247,6 +263,28 @@ export default function AppearanceSection() {
               <input type="radio" name="profile-theme" checked={theme === "dark"} onChange={() => setTheme("dark")} />
               <Moon size={15} aria-hidden /> {t("Dunkel", "Dark")}
             </label>
+          </div>
+        </SettingRow>
+        <SettingRow
+          anchor="whiteboard-canvas"
+          label={t("Whiteboard-Fläche", "Whiteboard canvas")}
+          description={t(
+            "Im Dunkelmodus ist die Fläche der Whiteboards dunkel: Schwarze Striche und Texte erscheinen hell, helle Notizen und Formen gedämpft. Nur die Anzeige ändert sich – gespeicherte Farben, die Ansicht der anderen und Exporte bleiben, wie sie sind. Gilt auf allen Geräten.",
+            "In dark mode the whiteboard canvas is dark: black strokes and text appear light, light notes and shapes toned down. Only the display changes – stored colours, what others see and exports stay as they are. Applies on all devices.",
+          )}
+        >
+          <SaveState status={canvasStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Whiteboard-Fläche", "Whiteboard canvas")}>
+            {(
+              [
+                ["theme", t("Folgt dem Farbschema", "Follows the colour scheme")],
+                ["light", t("Immer hell", "Always light")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={canvas === value}>
+                <input type="radio" name="whiteboard-canvas" checked={canvas === value} onChange={() => chooseCanvas(value)} /> {label}
+              </label>
+            ))}
           </div>
         </SettingRow>
         <SettingRow

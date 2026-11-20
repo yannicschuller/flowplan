@@ -89,6 +89,9 @@ export type BoardApi = {
   toWorld: (x: number, y: number) => Point;
   center: () => Point;
   svg: RefObject<SVGSVGElement | null>;
+  // Runs a copy of the board's drawing while it is drawn light (#399: the
+  // exports stay light on the dark canvas).
+  lightCopy: <T>(copy: () => T) => T;
   container: RefObject<HTMLDivElement | null>;
   pages: PageRef[];
   rowCards: Map<string, RowCard>;
@@ -660,6 +663,7 @@ export function useBoardExtras(api: BoardApi) {
           selection={selection}
           title={api.title}
           svg={() => api.svg.current}
+          lightCopy={api.lightCopy}
           onClose={() => setExportScope(null)}
           onError={api.onError}
         />

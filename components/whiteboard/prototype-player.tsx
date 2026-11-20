@@ -12,6 +12,7 @@ import type { WhiteboardItem } from "@/lib/whiteboard-model";
 import { linkTarget } from "@/lib/whiteboard-diagram-model";
 import { followLink, frameContents, hotspots, prototypeFrames } from "@/lib/whiteboard-prototype";
 import { WhiteboardDefs, WhiteboardShape, type PageRef } from "./render";
+import { useBoardColors } from "./board-colors";
 
 export function PrototypePlayer({
   items,
@@ -25,6 +26,7 @@ export function PrototypePlayer({
   onClose: () => void;
 }) {
   const t = useT();
+  const colors = useBoardColors();
   const frames = useMemo(() => prototypeFrames(items), [items]);
   const frameIds = useMemo(() => new Set(frames.map((f) => f.id)), [frames]);
   const first = start && frameIds.has(start) ? start : frames[0]?.id;
@@ -104,7 +106,7 @@ export function PrototypePlayer({
           }}
         >
           <WhiteboardDefs />
-          <rect x={current.x} y={current.y} width={current.w} height={current.h} fill={current.fill && current.fill !== "transparent" ? current.fill : "#ffffff"} />
+          <rect x={current.x} y={current.y} width={current.w} height={current.h} fill={colors.fill(current.fill && current.fill !== "transparent" ? current.fill : "#ffffff")} />
           {content.map((item) => (
             <g key={item.id} className={`wb-${item.type}`}>
               <WhiteboardShape item={{ ...item, proto: undefined }} items={map} pages={pages} />
