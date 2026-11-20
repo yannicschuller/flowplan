@@ -26,6 +26,7 @@
 // refused with 503, running ones get until the shutdown deadline.
 import { SHARE_ENV, Worker, isMainThread, type WorkerOptions } from "node:worker_threads";
 import { availableParallelism } from "node:os";
+import { performance } from "node:perf_hooks";
 import { z } from "zod";
 import { HttpError } from "./auth";
 import { contentLocale } from "./content-locale";
@@ -206,6 +207,11 @@ function finish(p: Pool, slot: Slot) {
   slot.timer = null;
   slot.job = null;
   p.completed++;
+  park(p, slot);
+}
+// A thread without a job: it does not keep the process alive and ends
+// after IDLE_MS.
+function park(p: Pool, slot: Slot) {
   slot.worker.unref();
   if (slot.idle) clearTimeout(slot.idle);
   slot.idle = setTimeout(() => {
@@ -266,26 +272,65 @@ function pump(p: Pool) {
 // Runs a job of lib/worker-jobs.ts in a worker thread; `here` is the same
 // work on this thread (no workers, inside the caller's transaction, or
 // already in a worker). Arguments and results must be structured-cloneable.
-export function offThread<T>(name: WorkerJobName, args: unknown[], here: () => Promise<T>, options: { timeoutMs?: number } = {}): Promise<T> {
+//
+// `ifFree` (#383 wave 3): work of a request that takes some milliseconds
+// (the search) – worth moving only when it does not wait for it. It goes
+// to a thread that has started and is free right now; otherwise it runs
+// here at once, and while this thread is busy (loopBusy) a thread is
+// started for the next time. No request waits for a thread to start or
+// behind a long export.
+export function offThread<T>(name: WorkerJobName, args: unknown[], here: () => Promise<T>, options: { timeoutMs?: number; ifFree?: boolean } = {}): Promise<T> {
   const p = pool();
   if (!isMainThread || p.broken || currentTx() || workerCount() === 0) return here();
-  if (p.stopping) return Promise.reject(new HttpError(503, STOPPING_MESSAGE));
+  if (p.stopping) return options.ifFree ? here() : Promise.reject(new HttpError(503, STOPPING_MESSAGE));
   const limit = workerCount();
+  const job = (resolve: (value: T) => void, reject: (error: Error) => void): Job => ({
+    id: p.next++,
+    name,
+    args,
+    locale: contentLocale(),
+    timeoutMs: options.timeoutMs ?? DEFAULT_JOB_MS,
+    resolve: resolve as (value: unknown) => void,
+    reject,
+    here: here as () => Promise<unknown>,
+  });
+  if (options.ifFree) {
+    const free = p.queue.length ? undefined : [...p.slots].find((slot) => slot.ready && !slot.job);
+    if (!free) {
+      // One thread starting at a time, only up to the limit.
+      if (p.slots.size < limit && ![...p.slots].some((slot) => !slot.ready) && loopBusy()) {
+        const slot = spawn(p);
+        if (slot) park(p, slot);
+      }
+      return here();
+    }
+    return new Promise<T>((resolve, reject) => start(p, free, job(resolve, reject)));
+  }
   const busy = [...p.slots].filter((slot) => slot.job).length;
   if (busy >= limit && p.queue.length >= limit * QUEUE_PER_WORKER) return Promise.reject(new HttpError(503, BUSY_MESSAGE));
   return new Promise<T>((resolve, reject) => {
-    p.queue.push({
-      id: p.next++,
-      name,
-      args,
-      locale: contentLocale(),
-      timeoutMs: options.timeoutMs ?? DEFAULT_JOB_MS,
-      resolve: resolve as (value: unknown) => void,
-      reject,
-      here: here as () => Promise<unknown>,
-    });
+    p.queue.push(job(resolve, reject));
     pump(p);
   });
+}
+
+// Whether the request thread was busy lately: its event loop utilisation
+// over the last second or more at BUSY_LOOP or above.
+const BUSY_LOOP = 0.3;
+const loop = { at: 0, last: performance.eventLoopUtilization(), busy: false };
+export function loopBusy(now = performance.now()) {
+  if (now - loop.at >= 1000) {
+    const current = performance.eventLoopUtilization();
+    loop.busy = performance.eventLoopUtilization(current, loop.last).utilization >= BUSY_LOOP;
+    loop.last = current;
+    loop.at = now;
+  }
+  return loop.busy;
+}
+// Tests: count the loop as busy (or not) until the next second.
+export function markLoopBusy(busy: boolean) {
+  loop.busy = busy;
+  loop.at = performance.now();
 }
 
 // Ends the pool: waiting jobs are refused, running ones may finish until
