@@ -52,6 +52,9 @@ test("timeline dependencies draw arrows, flag conflicts and move successors", as
         sorts: [],
         dateField: "start",
         endDateField: "end",
+        // All records in sight, also on a phone: arrows with both ends
+        // out of sight are not drawn (#395).
+        timeline: { scale: "month", showWeekends: true, range: "fit" },
       },
     ],
   });
