@@ -162,9 +162,9 @@ export type LitestreamIncident = {
   since: number;
   checkedAt: number;
   // What found it first: old L0 files in the bucket, or Litestream's
-  // climbing memory. Missing in incidents stored before 0.10.2 ("l0").
+  // climbing memory. Missing in incidents stored before 0.11.0 ("l0").
   cause?: "l0" | "memory";
-  // The last bucket check found old L0 files (missing before 0.10.2: true),
+  // The last bucket check found old L0 files (missing before 0.11.0: true),
   // and the last memory sample still climbed (null otherwise). The incident
   // ends when neither holds.
   l0?: boolean;

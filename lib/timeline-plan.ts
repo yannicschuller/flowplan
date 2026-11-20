@@ -26,7 +26,7 @@ export function shiftModeOf(config: Pick<TimelineConfig, "shiftMode" | "moveSucc
   return config?.shiftMode ?? (config?.moveSuccessors ? "keep" : "off");
 }
 // The settings as the timeline uses them; unset values keep the look the
-// view had before 0.10.2.
+// view had before 0.11.0.
 export function timelineSettings(config: TimelineConfig | undefined) {
   return {
     shiftMode: shiftModeOf(config),
@@ -148,7 +148,7 @@ export function planShifts({
     if (!allowed.has(id)) continue;
     const base = ranges.get(id)!;
     let next = keep ? shifted(base, keep) : base;
-    // "keep" moves by the same days as before 0.10.2; links are only looked
+    // "keep" moves by the same days as before 0.11.0; links are only looked
     // at when the weekends could have stretched a predecessor.
     if (!keep || avoidWeekends) next = shifted(next, needed(id, next));
     if (avoidWeekends && (next.start !== base.start || next.end !== base.end))

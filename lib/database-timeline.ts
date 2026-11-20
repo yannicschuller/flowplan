@@ -5,7 +5,7 @@ import { clipRange, periodBounds, SCALE_DAY_WIDTH } from "./timeline-scale";
 export { clipRange };
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const timelineSchema = z.object({
-  // Zoom presets (#390); day, two weeks and five years since 0.10.2.
+  // Zoom presets (#390); day, two weeks and five years since 0.11.0.
   scale: z.enum(["day", "week", "twoWeeks", "month", "quarter", "year", "fiveYears"]),
   // The window (#390): a saved range or "fit" (all shown records). Without
   // it the grid starts with today's period and grows while scrolling.
@@ -28,7 +28,7 @@ export const timelineSchema = z.object({
   dependencyField: z.string().max(200).optional(),
   // Which ends of predecessor and successor are linked (default finish-start).
   dependencyType: z.enum(["fs", "ss", "ff", "sf"]).optional(),
-  // "Nachfolger mitverschieben" before 0.10.2: moving a record moves
+  // "Nachfolger mitverschieben" before 0.11.0: moving a record moves
   // everything that waits for it by the same number of days. Read as
   // shiftMode "keep" (true) or "off" (lib/timeline-plan.ts shiftModeOf);
   // saving the settings writes shiftMode instead.
@@ -59,7 +59,7 @@ export const timelineSchema = z.object({
   // Only the milestone property makes milestones; one-day records stay bars.
   milestoneOnlyField: z.boolean().optional(),
 });
-// What a timeline view created from 0.10.2 on starts with (#395).
+// What a timeline view created from 0.11.0 on starts with (#395).
 export const NEW_TIMELINE: TimelineConfig = {
   scale: "month",
   showWeekends: true,

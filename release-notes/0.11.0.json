@@ -1,0 +1,161 @@
+{
+  "features": [
+    {
+      "de": "Dateivorschau: 3D- und CAD-Dateien (STL, OBJ, glTF/GLB, 3MF, STEP, IGES), 2D-Zeichnungen (DXF, DWG), Tabellen (CSV, XLSX) und hochgeladene HTML-Dateien öffnen direkt in Flowplan – HTML abgeschottet, Skripte nur auf Wunsch.",
+      "en": "File previews: 3D and CAD files (STL, OBJ, glTF/GLB, 3MF, STEP, IGES), 2D drawings (DXF, DWG), spreadsheets (CSV, XLSX) and uploaded HTML files open right in Flowplan – HTML isolated, scripts only on request.",
+      "issues": [384, 398, 402]
+    },
+    {
+      "de": "Zeitleiste: Zeiträume, stufenloser Zoom, freies Scrollen, Meilensteine, Pfeile und Hierarchie pro Ansicht einstellbar.",
+      "en": "Timeline: ranges, continuous zoom, free scrolling, milestones, and arrows and hierarchy set per view.",
+      "issues": [390, 394, 395]
+    },
+    {
+      "de": "Seitenleiste: Datensätze neben der Ansicht und PDFs neben der Seite öffnen – mit Anmerkungen und Ausschnitten ins Notizbuch.",
+      "en": "Side panel: open records beside the view and PDFs beside the page – with annotations and snippets into a notebook.",
+      "issues": [392]
+    },
+    {
+      "de": "Kommentare zu Textstellen stehen am Rand neben ihrer Passage.",
+      "en": "Comments on text sit in the margin beside their passage.",
+      "issues": [387]
+    },
+    {
+      "de": "KI: Modell und Kontingent pro Person und Gruppe (Administration → Benutzer), Grenzen für die ganze Instanz, und jeder sieht sein verbleibendes Kontingent.",
+      "en": "AI: model and quota per person and group (Administration → Users), limits for the whole instance, and everyone sees what is left.",
+      "issues": [382]
+    },
+    {
+      "de": "„KI fragen“ als Chat mit Begrüßung, Vorschlägen und Eingabefeld mit Optionen.",
+      "en": "\"Ask AI\" as a chat with a greeting, suggestions and an input box with options."
+    },
+    {
+      "de": "Funktionen ein- und ausblenden: pro Person, mit einer Vorgabe für neue Konten, oder für die ganze Instanz.",
+      "en": "Show and hide features: per person, with a default for new accounts, or for the whole instance.",
+      "issues": [378, 386]
+    },
+    {
+      "de": "Offline: neue Seiten, Datenbanken, Boards, Notizbücher, Vorlagenseiten und Uploads warten auf dem Gerät, bis die Verbindung zurück ist.",
+      "en": "Offline: new pages, databases, boards, notebooks, template pages and uploads wait on the device until the connection is back.",
+      "issues": [370]
+    },
+    {
+      "de": "Automationen: „Aufgabe erstellen“ legt eine Aufgabe im Datensatz oder in einer Aufgabendatenbank an.",
+      "en": "Automations: \"Create task\" adds a task to the record or to a task database.",
+      "issues": [380]
+    },
+    {
+      "de": "Startinhalte für neue Konten.",
+      "en": "Starter content for new accounts.",
+      "issues": [381]
+    },
+    {
+      "de": "Lernkarten: Anki-Unterstapel als eigene Datenbanken, KI-Lernkarten direkt aus dem PDF-Viewer, Bildverdeckung mit Zoom, Gedächtnismodell pro Unterstapel und Kartentyp, Stapel als Vorlagen im Marktplatz.",
+      "en": "Flashcards: Anki sub-decks as databases of their own, AI flashcards right from the PDF viewer, image occlusion with zoom, a memory model per sub-deck and card type, decks as marketplace templates.",
+      "issues": [341, 342, 343, 344, 345]
+    },
+    {
+      "de": "Whiteboards folgen dem Dark Mode; wer lieber eine helle Fläche hat, stellt „Immer hell“ ein.",
+      "en": "Whiteboards follow dark mode; anyone who prefers a light canvas picks \"Always light\".",
+      "issues": [399]
+    },
+    {
+      "de": "Ein kurzer Ton bei neuen Benachrichtigungen im geöffneten Flowplan (abschaltbar).",
+      "en": "A short sound for new notifications while Flowplan is open (can be switched off).",
+      "issues": [401]
+    },
+    {
+      "de": "Bilder markieren: mit zwei Fingern zoomen und verschieben, ein sichtbarer „Markieren“-Knopf.",
+      "en": "Image markup: pinch to zoom and pan, a visible \"Mark up\" button.",
+      "issues": [404]
+    },
+    {
+      "de": "Formulare schlagen frühere Antworten beim Tippen vor und kennen feste Vorschlagslisten.",
+      "en": "Forms suggest earlier answers while typing and support fixed suggestion lists.",
+      "issues": [374, 385]
+    },
+    {
+      "de": "Emoji-Vorschläge nach „:“ im Editor, und Passwortfelder mit Auge-Knopf.",
+      "en": "Emoji suggestions after \":\" in the editor, and password fields with an eye button.",
+      "issues": [388, 372]
+    },
+    {
+      "de": "S3-Speicher: auf Wunsch nur einen Teil der Dateien lokal zwischenspeichern, der Bucket hat alle.",
+      "en": "S3 storage: optionally cache only part of the files locally, the bucket holds them all.",
+      "issues": [389]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Deutlich schneller mit vielen Leuten: Live-Signal statt Abfragen, Suche, Exporte und das Öffnen großer Datenbanken in Hintergrund-Threads, Filter direkt in SQL, weniger Speicher pro Person.",
+      "en": "Much faster with many people: a live signal instead of polling, search, exports and opening large databases in background threads, filters in SQL, less memory per person.",
+      "issues": [383]
+    },
+    {
+      "de": "Kleineres Image (435 → 278 MB) und weniger JavaScript beim Laden der App.",
+      "en": "A smaller image (435 → 278 MB) and less JavaScript when the app loads."
+    },
+    {
+      "de": "Bibliothek: alle Regale in der Navigation, Bücher und Kapitel öffnen als Übersicht.",
+      "en": "Library: all shelves in the navigation, books and chapters open as overviews.",
+      "issues": [329]
+    },
+    {
+      "de": "Veröffentlichte und geteilte Seiten: volle Breite für Datenbanken, Theme-Knopf, zurück zur Ansicht.",
+      "en": "Published and shared pages: full width for databases, a theme button, back to the view.",
+      "issues": [391, 393]
+    },
+    {
+      "de": "Der KI-Schreibassistent macht Platz für „KI-Aktionen“ und schließt sich, wenn sie ausgeführt sind.",
+      "en": "The AI writing assistant makes room for \"AI actions\" and closes once they ran.",
+      "issues": [400]
+    },
+    {
+      "de": "Marktplatz-Pakete und Vorlagen enthalten keine Personen mehr.",
+      "en": "Marketplace packages and templates leave people out.",
+      "issues": [345]
+    },
+    {
+      "de": "Litestream: eine festhängende Replik wird früher erkannt; wie viel es protokolliert, ist einstellbar.",
+      "en": "Litestream: a stuck replica is detected earlier; how much it logs can be set.",
+      "issues": [335]
+    },
+    {
+      "de": "Desktop-App auf dem Mac: Passkeys aus dem iCloud-Schlüsselbund über den Browser; Passkeys auch aus der iPhone- und Android-App hinzufügen.",
+      "en": "Mac desktop app: passkeys from the iCloud Keychain through the browser; passkeys can also be added from the phone apps."
+    },
+    {
+      "de": "Fehlende französische und chinesische Texte ergänzt.",
+      "en": "Missing French and Chinese texts filled in.",
+      "issues": [339]
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Auf Touchscreens springt nichts mehr unter dem Finger weg; Zeichenblöcke halten keine Berührungen mehr fest.",
+      "en": "Nothing moves under your finger on touch screens any more; drawing blocks no longer trap touches.",
+      "issues": [377, 322]
+    },
+    {
+      "de": "Klicks direkt nach dem Wechsel einer Datenbankansicht kommen in der neuen Ansicht an.",
+      "en": "Clicks right after switching a database view reach the new view.",
+      "issues": [338]
+    },
+    {
+      "de": "Verschieben, Umbenennen oder Umgestalten eines Bereichs erscheint sofort in anderen Tabs.",
+      "en": "Moving, renaming or restyling a space shows up in other tabs at once."
+    },
+    {
+      "de": "Ein Link auf einen Datensatz meldet ihn nicht mehr vorschnell als nicht verfügbar.",
+      "en": "A link to a record no longer reports it as gone too early."
+    },
+    {
+      "de": "Zeitleiste auf dem Handy: Titel in zwei Zeilen, Beschriftungen überdecken keine Pfeile.",
+      "en": "Timeline on phones: titles in two lines, labels clear of the arrows."
+    },
+    {
+      "de": "Emoji-Symbole in Seitenleiste, Favoriten und zuletzt besuchten Seiten werden nicht mehr abgeschnitten.",
+      "en": "Emoji icons in the sidebar, favorites and recent pages are no longer clipped."
+    }
+  ]
+}
