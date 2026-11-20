@@ -851,6 +851,23 @@ async driver and blocked the event loop; it is gone. `one()` of `lib/db.ts`
 adds about a microsecond on SQLite (two promise layers) – a request with
 50 statements pays well under 0.1 ms.
 
+### Worker threads that read (#383)
+
+Exports and the reading of imports run in worker threads
+(`lib/worker-pool.ts`, `FLOWPLAN_WORKERS`). A worker thread is a reader
+(`readerThread()` in `lib/db-driver/context.ts`, set by its `workerData`):
+on SQLite it opens the file read-only – a WAL reader beside the main
+thread's connection, whose `tx()` is a deferred `BEGIN` (a snapshot that
+never waits for, or blocks, the main thread's `BEGIN IMMEDIATE`); on
+PostgreSQL a pool of 2 with `default_transaction_read_only=on`. It runs no
+opening steps, migrations or maintenance, and writes nothing: `audit()`
+collects its entries for the main thread (`collectingAudits`), a write
+that slips through fails (read-only) and the job runs again on the main
+thread. Work inside a transaction of the caller stays on the main thread,
+since a worker would not see its uncommitted writes. Before each job the
+worker counts an unknown write, so nothing remembered from an earlier job
+(read memo, kept answers) is used.
+
 ## 8. What Redis/cluster mode needs from this layer
 
 (Written before phase 3a; what was built: §14.)
