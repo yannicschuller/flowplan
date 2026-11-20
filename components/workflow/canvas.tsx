@@ -16,14 +16,12 @@ import {
   Controls,
   EdgeLabelRenderer,
   MiniMap,
-  applyNodeChanges,
   getBezierPath,
   useReactFlow,
   type Connection,
   type Edge,
   type EdgeProps,
-  type NodeChange,
-  type NodeSelectionChange,
+  type NodeChangeset,
 } from "@xyflow/react";
 import { Plus } from "@phosphor-icons/react";
 import { useLocale } from "../i18n";
@@ -178,13 +176,14 @@ function Flow(props: CanvasProps) {
   }, [graph, editable, props.onInsert, t, selectedEdge]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<CardNode>[]) => {
-      setNodes((ns) => applyNodeChanges(changes, ns));
+    (changes: NodeChangeset<CardNode>) => {
+      setNodes((ns) => changes.applyTo(ns));
       // Selection by the person (click, Enter, Esc, the pane): the panel follows.
-      const picked = changes.find((c): c is NodeSelectionChange => c.type === "select" && c.selected);
+      const selects = changes.getByType("select");
+      const picked = selects.find((c) => c.selected);
       if (picked) props.onSelect(picked.id);
-      else if (changes.some((c) => c.type === "select" && !c.selected && c.id === selected)) props.onSelect(null);
-      const moves = changes.flatMap((c) => (c.type === "position" && c.position && !c.dragging ? [{ id: c.id, x: Math.round(c.position.x), y: Math.round(c.position.y) }] : []));
+      else if (selects.some((c) => !c.selected && c.id === selected)) props.onSelect(null);
+      const moves = changes.getByType("position").flatMap((c) => (c.position && !c.dragging ? [{ id: c.id, x: Math.round(c.position.x), y: Math.round(c.position.y) }] : []));
       if (moves.length && editable) props.onMove(moves);
     },
     [editable, props, selected],
@@ -216,7 +215,7 @@ function Flow(props: CanvasProps) {
     } else if (k === "a" && editable) props.onAppend(id || null);
     else if (k === "c" && id && editable) props.onConnectDialog(id);
     else if (k === "l") props.onList();
-    else if (k === "f") void flow.fitView({ padding: 0.2, duration: 0 });
+    else if (k === "f") void flow.fitView({ padding: "8%", duration: 0 });
     else if (e.key === "Escape" && selected) props.onSelect(null);
     else return;
     e.preventDefault();
@@ -227,7 +226,7 @@ function Flow(props: CanvasProps) {
   useEffect(() => {
     if (fitted.current || !nodes.length || !nodes.every((n) => n.measured)) return;
     fitted.current = true;
-    void flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 0 });
+    void flow.fitView({ padding: "10%", maxZoom: 1.1, duration: 0 });
   }, [nodes, flow]);
   return (
     <div className="wf-canvas" ref={wrapper} onKeyDown={key}>
