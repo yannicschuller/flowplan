@@ -18,7 +18,7 @@ lever on one host.
 ```
                  :3000 (one port)
                       │
-        processes.mjs (supervisor, node:cluster primary, ~45 MB)
+        processes.mjs (supervisor, node:cluster primary, ~53 MB)
         ├─ round robin of connections
         ├─ IPC hub: bus fan-out, shared limit windows, AI slots, "ask"
         ├─ start order, respawn with backoff, ordered shutdown
@@ -31,14 +31,14 @@ lever on one host.
 - `FLOWPLAN_PROCESSES` – in line with `FLOWPLAN_WORKERS` (threads). Unset or
   `1`: `server.js` as today (the entrypoint does not even start the
   supervisor). A number 2–16, or `auto` = the cores the container may use
-  (cgroup CPU quota, at most 8).
+  (cgroup CPU quota, at most 8). Default stays 1 (§9).
 - `scripts/processes.mjs` is copied to `/app/processes.mjs` next to
   `server.js` (image and release archives). `docker/entrypoint.sh` runs
   `node processes.mjs` instead of `node server.js` when the setting is > 1,
   in every path (with and without Litestream). Installs without Docker
   start `node processes.mjs` themselves. With N = 1 `processes.mjs` just
   loads `server.js` in its own process.
-- The supervisor is plain JavaScript and loads none of Flowplan. It starts
+- The supervisor is plain JavaScript and loads none of Flowplan (~53 MB RSS). It starts
   process 1 alone; process 1 opens the database (migrations, data steps,
   a staged restore) and sends `ready` (instrumentation.ts →
   `announceReady`); only then the others start. So migrations run once and
@@ -251,7 +251,8 @@ the container restarts as it would today.
 ## 6. Turning it on
 
 - Docker: `FLOWPLAN_PROCESSES=auto` (or a number) and restart. Memory: see §8;
-  give the container about 300 MB more per process.
+  give the container about 400 MB more per process (idle), and plan for
+  each process growing under load like a single one does.
 - Helm: `env: { FLOWPLAN_PROCESSES: "2" }` with a CPU request of 2.
 - Release archive / YunoHost: `FLOWPLAN_PROCESSES=… node processes.mjs`.
 - `FLOWPLAN_PROCESS_BALANCE=os` hands connections out by the kernel.
@@ -266,4 +267,74 @@ respawn, ordered shutdown with 143, process 1 failing before ready).
 
 ## 8. Measurements
 
-(Filled in after the load test.)
+scripts/loadtest on this 4 vCPU box, the default seed (400 accounts, 300
+documents, 3,000 records, 20 boards), the default mix with 15 % editors
+(`--presence push`, the wave 4 client), think time 1.5 s, 60 s per step,
+`serve.mjs --processes N --data-from <seeded copy>` so every run starts
+from the same data. Node 24.22, interleaved rounds (order rotated each
+round), medians of 3 rounds. **The load generator (2 worker threads) runs
+on the same 4 vCPUs** and another agent's test runs shared the machine
+during some rounds (load average 2–9 from outside at times): absolute
+numbers are noisy, the comparison within a round is the useful part, and
+beyond ~250 % server CPU the generator itself competes for the cores.
+
+| processes | VUs | req/s | read p50/p95/p99 ms | write p95 ms | fan-out p95 ms | err % | server CPU % | RSS total MB |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 40 | 52.6 | 20/68/108 | 23 | 22 | 0 | 57 | 1157 |
+| 2 | 40 | 50.2 | 19/60/89 | 21 | 21 | 0 | 61 | 1449 |
+| 3 | 40 | 51.0 | 19/62/94 | 20 | 20 | 0 | 70 | 1869 |
+| 4 | 40 | 51.0 | 18/61/91 | 18 | 19 | 0 | 68 | 2295 |
+| 1 | 100 | 133.3 | 34/132/238 | 68 | 64 | 0 | 111 | 1406 |
+| 2 | 100 | 131.6 | 26/98/166 | 46 | 46 | 0 | 124 | 1764 |
+| 3 | 100 | 133.2 | 26/91/145 | 35 | 36 | 0 | 137 | 2492 |
+| 4 | 100 | 133.1 | 27/92/160 | 36 | 39 | 0 | 152 | 3017 |
+| 1 | 200 | 174.1 | 498/1620/2250 | 919 | 11285 | 0 | 182 | 1877 |
+| 2 | 200 | 212.4 | 279/972/1548 | 458 | 3871 | 0 | 225 | 2261 |
+| 3 | 200 | 241.4 | 180/570/937 | 294 | 1492 | 0 | 243 | 3115 |
+| 4 | 200 | 244.7 | 151/536/904 | 281 | 1258 | 0 | 264 | 3974 |
+
+300 VUs (2 rounds each): 1 process 201 req/s, read p95 3210 ms, **5 %
+errors** (timeouts); 2: 224 req/s, 2146 ms; 3: 257 req/s, 1663 ms; 4:
+275 req/s, 1453 ms, no errors with 2–4. Here the server uses ~2.9 of the
+4 cores and the generator the rest – the box, not Flowplan, is the limit.
+
+- **The knee** (read p95 > 500 ms or write p95 > 1 s): 1 process between
+  100 and 200 VUs (at 200: p95 1.6 s, the fan-out of editors' saves 11 s);
+  3–4 processes at about 200 VUs (p95 540–570 ms, writes 280–290 ms,
+  fan-out 1.3–1.5 s); 2 processes in between. Throughput at saturation
+  +40 % (174 → 245 req/s at 200 VUs, 201 → 275 at 300) on a box that also
+  runs the generator; a separate generator would show more.
+- Below the knee (40, 100 VUs) throughput is the offered load either way;
+  latencies drop a little (read p95 132 → 92 ms, write p95 68 → 36 ms at
+  100 VUs) at ~35 % more CPU in total (four event loops, four sets of
+  timers and caches).
+- Write contention across processes on SQLite did not show: write p95
+  falls with more processes at every step; no SQLITE_BUSY errors.
+- Node 22 (one round, 1 vs 4 processes): 200 VUs 148 → 220 req/s, read p95
+  2139 → 925 ms; at 100 VUs 135 / 133 req/s, read p95 148 / 119 ms. About
+  10 % more CPU than Node 24 for the same load (single process 122 vs 111 %
+  at 100 VUs) and a worse single-process saturation (148 vs 174 req/s);
+  the gain from processes is the same or larger.
+- Balancing (one round, 4 processes): round robin 241 req/s, read p95
+  567 ms at 200 VUs; kernel (`os`) 252 req/s, 456 ms – within the noise of
+  one round. Round robin stays the default (even by construction); `os` is
+  the option for many short connections.
+- **Idle tabs** (`--kind idle --idle-mode push`, 300 tabs, 2 rounds):
+  1 process 29 ms CPU per tab and minute (15 % of a core in total), RSS
+  631 MB; 4 processes 46 ms per tab and minute (23 %), RSS 1.9 GB. The 304
+  shares are the same (no writes, so `data_version` stays). Idle cost per
+  tab rises ~55 %: four processes' own timers, metrics and GC, and every
+  process building its own cached answers once.
+- Memory: after start process 1 ~370 MB, the others ~300 MB each, the
+  supervisor ~53 MB. Under load each grows like a single process does
+  (~1 GB each at 200 busy VUs; 1.9 GB → 4.0 GB total for 1 → 4).
+
+## 9. Recommendation
+
+Keep the default at 1. Multi-process pays off only when one process is the
+limit – a host with spare cores and more than ~100 busy people at once
+(several hundred real users); below that it costs memory (+300–450 MB per
+process) and idle CPU for nothing. For those installs: `FLOWPLAN_PROCESSES=auto`
+(or the cores minus one when the box also runs PostgreSQL or a proxy) is
+safe with SQLite and Litestream. A later default could be `auto` only when
+the container has ≥ 4 GB and ≥ 4 cores; that is the maintainer's call.

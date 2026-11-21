@@ -263,7 +263,7 @@ scratch:
 # throttling slows live editing for everyone on the pod.
 # Several Flowplan processes per pod (env FLOWPLAN_PROCESSES: a number or
 # "auto"; docs/architecture/multi-process.md): one per requested core, and
-# about 300 MB of memory more per process. More pods (cluster mode) scale
+# about 400 MB of memory more per process. More pods (cluster mode) scale
 # the same way; in cluster mode every process counts as an instance (its own
 # PostgreSQL pool, FLOWPLAN_PG_POOL connections each).
 resources:
