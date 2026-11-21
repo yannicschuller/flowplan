@@ -61,52 +61,52 @@ const journalId = (await act({ action: "page.create", workspaceId: wid, spaceId:
 const journal = async () => (await one<Page>("SELECT * FROM pages WHERE id=?", journalId))!;
 
 test("day boundaries follow the time zone", async () => {
-  assert.deepEqual(dayBounds("2026-11-05", "Europe/Berlin"), { start: Date.parse("2026-11-04T23:00:00Z"), end: Date.parse("2026-11-05T23:00:00Z") });
+  assert.deepEqual(dayBounds("2036-11-05", "Europe/Berlin"), { start: Date.parse("2036-11-04T23:00:00Z"), end: Date.parse("2036-11-05T23:00:00Z") });
   // Summer time ends on 25 October 2026 in Berlin: that day has 25 hours.
   const fall = dayBounds("2026-10-25", "Europe/Berlin");
   assert.equal(fall.end - fall.start, 25 * 3600_000);
   const late = await create(tasks, "Spät erledigt");
   await setStatus(tasks, late, "Erledigt");
   // 00:30 in Berlin on the 5th is still the 4th in UTC and in New York.
-  await doneAt(late, "2026-11-04T23:30:00Z");
-  assert.deepEqual(await titles(owner, "2026-11-05", "Europe/Berlin"), ["Spät erledigt"]);
-  assert.deepEqual(await titles(owner, "2026-11-04", "Europe/Berlin"), []);
-  assert.deepEqual(await titles(owner, "2026-11-04", "UTC"), ["Spät erledigt"]);
-  assert.deepEqual(await titles(owner, "2026-11-04", "America/New_York"), ["Spät erledigt"]);
+  await doneAt(late, "2036-11-04T23:30:00Z");
+  assert.deepEqual(await titles(owner, "2036-11-05", "Europe/Berlin"), ["Spät erledigt"]);
+  assert.deepEqual(await titles(owner, "2036-11-04", "Europe/Berlin"), []);
+  assert.deepEqual(await titles(owner, "2036-11-04", "UTC"), ["Spät erledigt"]);
+  assert.deepEqual(await titles(owner, "2036-11-04", "America/New_York"), ["Spät erledigt"]);
   // An unknown zone counts as UTC.
-  assert.deepEqual(await titles(owner, "2026-11-04", "Mars/Olympus"), ["Spät erledigt"]);
-  const [item] = (await completedOn(owner, wid, "2026-11-05", "Europe/Berlin")).items;
+  assert.deepEqual(await titles(owner, "2036-11-04", "Mars/Olympus"), ["Spät erledigt"]);
+  const [item] = (await completedOn(owner, wid, "2036-11-05", "Europe/Berlin")).items;
   assert.deepEqual(
     { pageId: item.pageId, rowId: item.rowId, database: item.database, at: item.at },
-    { pageId: tasks, rowId: late, database: "Aufgaben", at: Date.parse("2026-11-04T23:30:00Z") },
+    { pageId: tasks, rowId: late, database: "Aufgaben", at: Date.parse("2036-11-04T23:30:00Z") },
   );
 });
 
 test("the journal day lists them; reopening removes a record, done again moves it to that day", async () => {
-  const { dayId } = await rollJournal(owner, await journal(), "2026-11-06", "2026-11-06");
+  const { dayId } = await rollJournal(owner, await journal(), "2036-11-06", "2036-11-06");
   const report = await create(tasks, "Bericht");
   await setStatus(tasks, report, "Erledigt");
-  await doneAt(report, "2026-11-06T09:15:00Z");
+  await doneAt(report, "2036-11-06T09:15:00Z");
   const list = async () => (await journalDayCompleted(owner, dayId, "Europe/Berlin")).items.map((i) => i.title);
   assert.deepEqual(await list(), ["Bericht"]);
   // Ticked off again: gone at once, nothing was copied into the day.
   await setStatus(tasks, report, "Offen");
   assert.deepEqual(await list(), []);
-  await movedLog(report, 0, "2026-11-06T18:00:00Z");
+  await movedLog(report, 0, "2036-11-06T18:00:00Z");
   assert.deepEqual(await list(), []);
   assert.doesNotMatch(String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", dayId))?.html || ""), /Bericht/);
   // Done once more, later: it belongs to the day of its latest completion.
   await setStatus(tasks, report, "Erledigt");
-  await doneAt(report, "2026-11-07T08:00:00Z");
+  await doneAt(report, "2036-11-07T08:00:00Z");
   assert.deepEqual(await list(), []);
-  assert.deepEqual(await titles(owner, "2026-11-07", "Europe/Berlin"), ["Bericht"]);
+  assert.deepEqual(await titles(owner, "2036-11-07", "Europe/Berlin"), ["Bericht"]);
   // Reopened once more: gone from that day as well.
   await setStatus(tasks, report, "Offen");
-  assert.deepEqual(await titles(owner, "2026-11-07", "Europe/Berlin"), []);
+  assert.deepEqual(await titles(owner, "2036-11-07", "Europe/Berlin"), []);
 });
 
 test("a checkbox done rule counts as well; databases on the day page itself are left out", async () => {
-  const { dayId } = await rollJournal(owner, await journal(), "2026-11-08", "2026-11-08");
+  const { dayId } = await rollJournal(owner, await journal(), "2036-11-08", "2036-11-08");
   const checks = (await act({ action: "page.create", workspaceId: wid, spaceId: space, kind: "database", title: "Checkliste", databaseKind: "empty" })).id as string;
   await act({
     action: "database.update",
@@ -120,18 +120,18 @@ test("a checkbox done rule counts as well; databases on the day page itself are 
   });
   const row = (await act({ action: "row.create", pageId: checks, cells: { title: "Häkchen", ok: false } })).id as string;
   await act({ action: "row.update", pageId: checks, rowId: row, version: await version(row), cells: { ok: true } });
-  await doneAt(row, "2026-11-08T10:00:00Z");
+  await doneAt(row, "2036-11-08T10:00:00Z");
   const inline = await tasksDatabase("Auf dem Tag", space, dayId);
   const there = await create(inline, "Steht schon da");
   await setStatus(inline, there, "Erledigt");
-  await doneAt(there, "2026-11-08T11:00:00Z");
+  await doneAt(there, "2036-11-08T11:00:00Z");
   assert.deepEqual((await journalDayCompleted(owner, dayId, "UTC")).items.map((i) => i.title), ["Häkchen"]);
   // Without the day to leave out, the inline database counts like any other.
-  assert.deepEqual(await titles(owner, "2026-11-08", "UTC"), ["Häkchen", "Steht schon da"]);
+  assert.deepEqual(await titles(owner, "2036-11-08", "UTC"), ["Häkchen", "Steht schon da"]);
 });
 
 test("only records the reader may see", async () => {
-  const date = "2026-11-10";
+  const date = "2036-11-10";
   const { dayId } = await rollJournal(owner, await journal(), date, date);
   const shared = await create(tasks, "Für alle");
   await setStatus(tasks, shared, "Erledigt");
@@ -178,7 +178,7 @@ test("only records the reader may see", async () => {
 });
 
 test("switched off in the journal settings, the day lists nothing", async () => {
-  const date = "2026-11-12";
+  const date = "2036-11-12";
   const { dayId } = await rollJournal(owner, await journal(), date, date);
   const row = await create(tasks, "Schalter");
   await setStatus(tasks, row, "Erledigt");
@@ -225,7 +225,7 @@ const listed = async (user: Identity, date: string, mine: boolean) =>
 const cellsOf = async (rowId: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells) as Record<string, unknown>;
 
 test("the status log records who completed; mine: done by me or assigned to me", async () => {
-  const date = "2026-11-20";
+  const date = "2036-11-20";
   // Done by the member, assigned to nobody.
   const byMember = await teamRow("Vom Mitglied", {}, member);
   await setStatus(team, byMember, "Erledigt", member);
@@ -264,7 +264,7 @@ test("the status log records who completed; mine: done by me or assigned to me",
 });
 
 test("entries from before schema 96 have no user: mine only by the assignment", async () => {
-  const date = "2026-11-21";
+  const date = "2036-11-21";
   const old = await teamRow("Alt, ohne Zuweisung", {}, member);
   await setStatus(team, old, "Erledigt", member);
   await doneAt(old, `${date}T08:00:00Z`);
@@ -278,7 +278,7 @@ test("entries from before schema 96 have no user: mine only by the assignment", 
 });
 
 test("share links and the Git connection record nobody; an automation its creator", async () => {
-  const date = "2026-11-22";
+  const date = "2036-11-22";
   const page = (await one<Page>("SELECT * FROM pages WHERE id=?", team))!;
   const fields = (await database(team)).fields;
   const complete = async (rowId: string, who: Identity | null | "system") => {
@@ -333,7 +333,7 @@ test("share links and the Git connection record nobody; an automation its creato
 });
 
 test("the day follows the reader's choice “Alle / Nur meine”, “Nur meine” by default", async () => {
-  const date = "2026-11-23";
+  const date = "2036-11-23";
   const { dayId } = await rollJournal(owner, await journal(), date, date);
   const mineToo = await teamRow("Meins auch", {}, member);
   await setStatus(team, mineToo, "Erledigt", member);
