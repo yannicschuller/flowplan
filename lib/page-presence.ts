@@ -10,9 +10,16 @@
 // saw stays in memory as well, and is written to the `presence` table at
 // most every WRITE_EVERY ms per person and page, so the others see it; the
 // table is read alongside. A single instance never touches the table.
+//
+// Several processes on one host (FLOWPLAN_PROCESSES, without cluster mode):
+// no table either – what one process saw goes to the others over the bus
+// ("presence"), at most every WRITE_EVERY ms per person and page, and they
+// keep it in their memory alongside their own.
 import { all, noteNamesRead, noteNamesWritten, run, sql } from "./db";
 import { keepUntil } from "./read-memo";
 import { clusterMode } from "./cluster/config";
+import { onBus, publish } from "./cluster/bus";
+import { multiProcess } from "./cluster/processes";
 
 export const PRESENT_MS = 45_000;
 const WRITE_EVERY = 15_000;
@@ -34,20 +41,51 @@ function sweep(now: number) {
   for (const [key, at] of written()) if (now - at > PRESENT_MS) written().delete(key);
 }
 
-// The person asked for the page now.
-export async function notePresence(pageId: string, userId: string, now = Date.now()) {
+// Notes `userId` on the page as of `at`; true when they were not there.
+function seenAt(pageId: string, userId: string, at: number, now: number) {
   sweep(now);
   const seen = seenByPage().get(pageId) ?? seenByPage().set(pageId, new Map()).get(pageId)!;
   const before = seen.get(userId);
-  seen.set(userId, now);
+  if (before !== undefined && before >= at) return false;
+  seen.set(userId, at);
   // Someone new on the page: kept answers of the page are outdated
   // (lib/kept-answers.ts); a renewal changes nothing they show.
-  if (before === undefined || now - before > PRESENT_MS) noteNamesWritten([presenceName(pageId)]);
-  if (!clusterMode()) return;
+  const arrived = before === undefined || now - before > PRESENT_MS;
+  if (arrived) noteNamesWritten([presenceName(pageId)]);
+  return arrived;
+}
+const shared = globalThis as { flowplanPresenceBus?: boolean };
+function listen() {
+  if (shared.flowplanPresenceBus) return;
+  shared.flowplanPresenceBus = true;
+  onBus("presence", (payload) => {
+    const m = payload as { p?: unknown; u?: unknown; at?: unknown; gone?: unknown };
+    if (typeof m?.p !== "string") return;
+    if (m.gone) {
+      seenByPage().delete(m.p);
+      noteNamesWritten([presenceName(m.p)]);
+      return;
+    }
+    const now = Date.now();
+    // Never ahead of this process's clock (the same host: the same clock).
+    if (typeof m.u === "string" && typeof m.at === "number" && m.at > now - PRESENT_MS) seenAt(m.p, m.u, Math.min(m.at, now), now);
+  });
+}
+if (multiProcess() && !clusterMode()) listen();
+
+// The person asked for the page now.
+export async function notePresence(pageId: string, userId: string, now = Date.now()) {
+  seenAt(pageId, userId, now, now);
+  const localPeers = !clusterMode() && multiProcess();
+  if (!clusterMode() && !localPeers) return;
   const key = `${pageId}\u0000${userId}`;
   const last = written().get(key);
   if (last !== undefined && now - last < WRITE_EVERY) return;
   written().set(key, now);
+  if (localPeers) {
+    publish("presence", { p: pageId, u: userId, at: now });
+    return;
+  }
   await run(
     "INSERT INTO presence VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET seen=excluded.seen",
     pageId,
@@ -86,5 +124,6 @@ export async function pagePresence(pageId: string, now = Date.now(), viewer?: st
 export function forgetPagePresence(pageId: string) {
   seenByPage().delete(pageId);
   noteNamesWritten([presenceName(pageId)]);
+  if (!clusterMode() && multiProcess()) publish("presence", { p: pageId, gone: true });
 }
 const presenceName = (pageId: string) => `~presence:${pageId}`;

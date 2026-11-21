@@ -36,7 +36,8 @@ import { all, lockFor, one, run, transaction } from "./db";
 import { afterTransaction } from "./db-driver/context";
 import { redactSecrets } from "./ai/redact";
 import { buildInfo } from "./build-info";
-import { clusterMode, instanceId } from "./cluster/config";
+import { instanceId } from "./cluster/config";
+import { hasPeers } from "./cluster/processes";
 import { requestContext, roleOf, type CallerRole } from "./request-context";
 import type { ErrorGroupView, ErrorKind, ErrorOccurrence, StackFrame } from "./error-report";
 
@@ -306,7 +307,7 @@ export async function flushErrorDetails(now = Date.now()): Promise<void> {
 }
 async function writePending(items: Pending[], now: number) {
   const build = buildInfo();
-  const node = clusterMode() ? instanceId() : "";
+  const node = hasPeers() ? instanceId() : "";
   const groups = new Map<string, Group>();
   for (const item of items) {
     const d = describe(item.error, item.status);

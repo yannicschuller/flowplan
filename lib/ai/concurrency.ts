@@ -14,9 +14,15 @@
 // on its own, as a single container does (fail open, logged once until
 // Redis answers again) and asks Redis again after DOWN_MS – a request never
 // waits for an absent Redis longer than ANSWER_MS.
+//
+// Several processes on one host (FLOWPLAN_PROCESSES, without cluster mode):
+// the supervisor (scripts/processes.mjs) keeps the slots instead of Redis,
+// with the same expiry and renewal; the slots of a process that ended go
+// back at once. No answer within ANSWER_MS: this process counts on its own.
 import { randomUUID } from "node:crypto";
 import { clusterMode, redisPrefix } from "../cluster/config";
 import { redis } from "../cluster/bus";
+import { callIpc, multiProcess } from "../cluster/processes";
 
 export const SLOT_TTL_MS = 120_000;
 const RENEW_MS = 30_000;
@@ -69,7 +75,7 @@ function redisFailed(error: unknown) {
 // The function returned gives it back (call it once the answer ended;
 // further calls do nothing).
 export async function takeAiSlot(userId: string, max: number, now = Date.now()): Promise<(() => void) | null> {
-  if (!clusterMode()) return takeLocal(userId, max);
+  if (!clusterMode()) return multiProcess() ? await takeShared(userId, max) : takeLocal(userId, max);
   const s = state();
   if (s.redisDown && Date.now() - s.downAt < DOWN_MS) return takeLocal(userId, max);
   const key = keyOf(userId);
@@ -114,5 +120,27 @@ export async function takeAiSlot(userId: string, max: number, now = Date.now()):
     void redis()
       .command("ZREM", key, slot)
       .catch(() => {});
+  };
+}
+
+// The supervisor's slots (several processes on one host).
+async function takeShared(userId: string, max: number): Promise<(() => void) | null> {
+  const key = keyOf(userId);
+  const slot = randomUUID();
+  let taken: boolean;
+  try {
+    taken = Number(await callIpc<number>("ai-take", { key, max, ttl: SLOT_TTL_MS, slot }, ANSWER_MS)) === 1;
+  } catch {
+    return takeLocal(userId, max);
+  }
+  if (!taken) return null;
+  const renew = setInterval(() => void callIpc("ai-renew", { key, slot, ttl: SLOT_TTL_MS }, ANSWER_MS).catch(() => {}), RENEW_MS);
+  renew.unref?.();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    clearInterval(renew);
+    void callIpc("ai-release", { key, slot }, ANSWER_MS).catch(() => {});
   };
 }

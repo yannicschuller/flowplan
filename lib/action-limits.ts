@@ -12,9 +12,15 @@
 // instances a key gets at most its limit plus about one action per
 // instance in flight – not N times the limit. If Redis is away, each
 // instance keeps counting on its own (logged), as a single container does.
+//
+// Several processes on one host (FLOWPLAN_PROCESSES, without cluster mode):
+// the same, with the supervisor (scripts/processes.mjs) keeping the shared
+// window instead of Redis: across N processes a key gets at most its limit
+// plus about one action per process in flight.
 import { HttpError } from "./auth";
 import { clusterMode, instanceId, redisPrefix } from "./cluster/config";
 import { onBus, publish, redis } from "./cluster/bus";
+import { callIpc, multiProcess } from "./cluster/processes";
 
 const hits = new Map<string, number[]>();
 // Refused until (ms), from the shared count (cluster mode).
@@ -54,8 +60,10 @@ function listen() {
 
 function share(key: string, max: number, windowMs: number, now: number) {
   listen();
-  const job = redis()
-    .eval(SHARED_WINDOW, [`${redisPrefix()}limit:${key}`], [now, windowMs, max, `${now}:${instanceId()}:${sequence++}`])
+  const counted = clusterMode()
+    ? redis().eval(SHARED_WINDOW, [`${redisPrefix()}limit:${key}`], [now, windowMs, max, `${now}:${instanceId()}:${sequence++}`])
+    : callIpc<number>("limit", { key, now, windowMs, max });
+  const job = counted
     .then((answer) => {
       const until = Number(answer) || 0;
       if (until > Date.now()) {
@@ -64,7 +72,8 @@ function share(key: string, max: number, windowMs: number, now: number) {
       }
     })
     .catch((error) => {
-      if (failures++ % 100 === 0) console.error("Rate limits: Redis unavailable, counting per instance", (error as Error).message);
+      if (failures++ % 100 === 0)
+        console.error(clusterMode() ? "Rate limits: Redis unavailable, counting per instance" : "Rate limits: the supervisor did not answer, counting per process", (error as Error).message);
     })
     .finally(() => pending.delete(job));
   pending.add(job);
@@ -89,7 +98,7 @@ export function allow(key: string, max: number, windowMs: number, now = Date.now
   recent.push(now);
   hits.set(key, recent);
   if (hits.size > 10_000) for (const [k, list] of hits) if (!list.some((at) => at > now - windowMs)) hits.delete(k);
-  if (clusterMode()) share(key, max, windowMs, now);
+  if (clusterMode() || multiProcess()) share(key, max, windowMs, now);
   return true;
 }
 export function requireAllowed(key: string, max: number, windowMs: number) {

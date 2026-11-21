@@ -15,8 +15,9 @@
 // Everything lives in the database (background_jobs), so in cluster mode
 // any instance answers: the job runs on one instance, which marks its row
 // alive every 15 s; a job of another process not marked for a minute
-// counts as interrupted (its instance stopped or crashed). Outside cluster
-// mode there is no other process: a job of an earlier one is interrupted.
+// counts as interrupted (its instance stopped or crashed). The same with
+// several processes on one host (FLOWPLAN_PROCESSES). Otherwise there is no
+// other process: a job of an earlier one is interrupted.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -24,7 +25,8 @@ import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import type { Identity } from "./types";
 import { enterArea, shiftArea } from "./server-metrics";
-import { clusterMode, instanceId } from "./cluster/config";
+import { instanceId } from "./cluster/config";
+import { hasPeers } from "./cluster/processes";
 import { captureJobError } from "./error-details";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
@@ -44,7 +46,7 @@ const aliveTimers = () => (alive.flowplanJobsAlive ??= new Map());
 
 // Whether a row in state "running" no longer runs anywhere.
 const isInterrupted = (job: { status: string; boot: string; updated_at: number | string }, now: number) =>
-  job.status === "running" && job.boot !== BOOT && (!clusterMode() || now - Number(job.updated_at) > JOB_ALIVE_LIMIT);
+  job.status === "running" && job.boot !== BOOT && (!hasPeers() || now - Number(job.updated_at) > JOB_ALIVE_LIMIT);
 
 const current = new AsyncLocalStorage<{ id: string; reported: number }>();
 
