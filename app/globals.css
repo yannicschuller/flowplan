@@ -1926,15 +1926,24 @@ kbd,
 /* Compact tables as in Notion (#240): rows of about 35 px, the header
    left-aligned, a table only as wide as its content (a new one starts with
    columns of a useful width; dragged widths stay as they were). */
+/* The grid with separate borders (#419): each cell draws its right and
+   bottom edge, the table its top and left. WebKit (iPhone, iPad) left out
+   the collapsed borders of a table wide enough to scroll in its wrapper
+   (the cells are position: relative); separate borders it always paints. */
 .document-editor table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   table-layout: fixed;
   width: auto;
   margin: 15px 0 20px;
 }
 .document-editor td,
 .document-editor th {
-  border: 1px solid var(--border);
+  border: 0 solid var(--border);
+  border-right-width: 1px;
+  border-bottom-width: 1px;
   padding: 6px 8px;
   vertical-align: top;
   min-width: 120px;
