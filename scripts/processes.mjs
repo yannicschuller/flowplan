@@ -50,6 +50,7 @@ const readText = (path) => {
 };
 // The cores this container may use: the CPU quota of its cgroup (v2 or v1),
 // at most the cores of the host.
+/** @param {(path: string) => string | null} [read] @param {number} [cores] */
 export function usableCores(read = readText, cores = availableParallelism()) {
   let quota = null;
   const v2 = read("/sys/fs/cgroup/cpu.max");
@@ -64,6 +65,7 @@ export function usableCores(read = readText, cores = availableParallelism()) {
   return Math.max(1, quota ? Math.min(cores, Math.ceil(quota - 0.05)) : cores);
 }
 // How many processes FLOWPLAN_PROCESSES asks for (1: no supervisor).
+/** @param {Record<string, string | undefined>} [env] @param {number} [cores] */
 export function processCount(env = process.env, cores = usableCores()) {
   const raw = String(env.FLOWPLAN_PROCESSES ?? "").trim().toLowerCase();
   if (!raw) return 1;
@@ -73,6 +75,7 @@ export function processCount(env = process.env, cores = usableCores()) {
   return 1;
 }
 // Worker threads per process: FLOWPLAN_WORKERS counts for the host.
+/** @param {Record<string, string | undefined>} [env] @param {number} [cores] @param {number} [n] */
 export function workersPerProcess(env = process.env, cores = usableCores(), n = 1) {
   const raw = String(env.FLOWPLAN_WORKERS ?? "").trim();
   if (/^\d+$/.test(raw)) return Number(raw) === 0 ? 0 : Math.max(1, Math.floor(Number(raw) / n));
@@ -156,6 +159,7 @@ function procStat(pid) {
 
 /* ---------- The supervisor ---------- */
 
+/** @param {string} entry @param {number} n @param {Record<string, string | undefined>} [env] */
 export function supervise(entry, n, env = process.env) {
   const cores = usableCores();
   const threads = workersPerProcess(env, cores, n);
