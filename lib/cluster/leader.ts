@@ -6,7 +6,9 @@
 // database, PostgreSQL frees it and the next instance to try takes over
 // (within FLOWPLAN_LEADER_INTERVAL, default 5 s). No Redis needed for it.
 //
-// Outside cluster mode this process is the only one and always leads.
+// Outside cluster mode this process is the only one and always leads – or,
+// with several processes on the host (FLOWPLAN_PROCESSES), process 1 leads
+// and the others never do (lib/cluster/processes.ts).
 // Workers run each round through leaderDuty():
 //
 //   setInterval(() => void leaderDuty("reminders", async () => { … }), 60_000);
@@ -24,6 +26,7 @@
 import { clusterMode, instanceId } from "./config";
 import { postgresSchema } from "../db-driver/context";
 import { dutySessionGeneration, dutySessionQuery, sessionGeneration, sessionQuery } from "./pg-session";
+import { primaryProcess } from "./processes";
 
 type State = {
   leader: boolean;
@@ -50,7 +53,7 @@ export const leaderLockKey = () => `flowplan:leader:${postgresSchema()}`;
 export const dutyLockKey = (name: string) => `flowplan:duty:${postgresSchema()}:${name}`;
 
 export function isLeader(): boolean {
-  if (!clusterMode()) return true;
+  if (!clusterMode()) return primaryProcess();
   return state().leader;
 }
 export function leaderSince() {
@@ -133,11 +136,11 @@ export async function electionRound() {
 // Runs one round of a singleton duty – on the leader only, fenced (see the
 // top of this file). Returns fn's result, or undefined when the round was
 // left out. Outside cluster mode fn runs as before (and counts for the
-// shutdown's wait).
+// shutdown's wait) – in process 1 only when the host runs several.
 export async function leaderDuty<T>(name: string, fn: () => Promise<T>): Promise<T | undefined> {
   const s = state();
   if (s.stopped) return undefined;
-  if (!clusterMode()) return await track(s, fn);
+  if (!clusterMode()) return primaryProcess() ? await track(s, fn) : undefined;
   if (!s.leader || s.term === null) return undefined;
   // The duty locks are re-entrant within a session: a round of this
   // process still running is checked here.

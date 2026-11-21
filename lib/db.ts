@@ -7,6 +7,7 @@ import { restorePendingIntoPostgres } from "./db-restore";
 import { ensureCurrentPostgresSchema } from "./db-driver/pg-current";
 import { clusterMode } from "./cluster/config";
 import { deferRestoreToLeader } from "./cluster/duties";
+import { restoreAtThisStart } from "./cluster/processes";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
@@ -2268,7 +2269,7 @@ dbContext.hooks.open = async (backend) => {
     // must not keep the remaining steps from running. Cluster mode: only
     // the leader restores (lib/cluster/duties.ts) – later, once elected.
     if (clusterMode()) deferRestoreToLeader();
-    else await restorePendingIntoPostgres().catch((error) => console.error("Wiederherstellung fehlgeschlagen", error));
+    else if (restoreAtThisStart()) await restorePendingIntoPostgres().catch((error) => console.error("Wiederherstellung fehlgeschlagen", error));
     await setupStorage();
     // The search's trigram indexes and the vector index (when the server has
     // pg_trgm and pgvector): what the translated schema leaves to them.
@@ -2319,7 +2320,9 @@ export function db() {
     /* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data",
   );
   mkdirSync(dir, { recursive: true });
-  const restored = applyPendingRestore(dir, { dumps: false });
+  // Several processes on the host: only process 1 at the host's start
+  // (lib/cluster/processes.ts) – the others have the file open otherwise.
+  const restored = restoreAtThisStart() ? applyPendingRestore(dir, { dumps: false }) : null;
   if (restored)
     console.log(`Instanz wiederhergestellt; vorheriger Stand in ${restored}`);
   const d = new DatabaseSync(resolve(dir, "flowplan.sqlite"));

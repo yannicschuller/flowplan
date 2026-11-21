@@ -25,7 +25,8 @@
 // that and ends with process.exit(143); holding that call until Flowplan's
 // tasks are done keeps both.
 import { clusterMode, instanceId, requireClusterConfig } from "./config";
-import { closeBus, startBus } from "./bus";
+import { closeBus, startBus, startLocalBus } from "./bus";
+import { multiProcess, primaryProcess, processIndex, processTotal } from "./processes";
 import { resignLeadership, startLeaderElection, stopDuties, waitForDuties } from "./leader";
 import { startHeartbeat, stopHeartbeat } from "./instances";
 import { closeSession } from "./pg-session";
@@ -126,9 +127,16 @@ export async function startInstance(options: { pool?: () => { total: number; idl
     });
   holdExit();
   if (!cluster) {
+    // Several processes on this host (FLOWPLAN_PROCESSES): the bus between
+    // them (lib/cluster/processes.ts).
+    if (multiProcess()) {
+      console.log(`Process ${processIndex()} of ${processTotal()} (${primaryProcess() ? "primary: timed jobs and requests" : "requests"}), instance ${instanceId()}`);
+      startLocalBus();
+    }
     // PostgreSQL without cluster mode: warns when a second instance runs
-    // against the same database (lib/cluster/single-instance.ts).
-    startSingleInstanceGuard();
+    // against the same database (lib/cluster/single-instance.ts) – process 1
+    // of the host checks for all of them.
+    if (primaryProcess()) startSingleInstanceGuard();
     return;
   }
   console.log(`Cluster mode: instance ${instanceId()}`);
