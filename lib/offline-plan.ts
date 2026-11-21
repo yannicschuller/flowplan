@@ -61,10 +61,15 @@ export type RecordPlanInput = {
   full: boolean;
   // Also store records never opened on this device.
   includeRecords: boolean;
+  // Databases kept offline (#417, lib/offline-keep.ts): their records are
+  // added without includeRecords too, and before all others.
+  kept?: string[];
 };
 // Record documents: changed ones are fetched again, records that are gone
-// or hidden now are dropped; with includeRecords every record is stored.
-export function planRecords({ keys, rows, changedRows, full, includeRecords }: RecordPlanInput) {
+// or hidden now are dropped; with includeRecords every record is stored,
+// those of kept databases always and first.
+export function planRecords({ keys, rows, changedRows, full, includeRecords, kept = [] }: RecordPlanInput) {
+  const keep = new Set(kept.map((id) => id.toLowerCase()));
   const drop: string[] = [];
   const stored = new Set<string>();
   for (const key of keys) {
@@ -77,16 +82,19 @@ export function planRecords({ keys, rows, changedRows, full, includeRecords }: R
     else if (ROW_EXACT.test(key)) stored.add(`${page}/${row}`);
   }
   const refresh: string[] = [];
+  const first: string[] = [];
   const add: string[] = [];
   for (const [page, list] of Object.entries(rows)) {
     const changed = new Set((changedRows[page] || []).map((id) => id.toLowerCase()));
+    const isKept = keep.has(page.toLowerCase());
     for (const row of list) {
       const has = stored.has(`${page.toLowerCase()}/${row.toLowerCase()}`);
       if (has && (full || changed.has(row.toLowerCase()))) refresh.push(rowUrl(page, row));
+      else if (!has && isKept) first.push(rowUrl(page, row));
       else if (!has && includeRecords) add.push(rowUrl(page, row));
     }
   }
-  return { refresh, add, drop };
+  return { refresh, add: [...first, ...add], drop };
 }
 
 export type FilePlanInput = {
@@ -98,13 +106,16 @@ export type FilePlanInput = {
   // cards): added without includeRecords too – a card without its picture
   // cannot be studied.
   cards?: string[];
+  // Files of kept items (#417): added without includeRecords too, first.
+  kept?: string[];
 };
 // Files: those no stored page refers to any more are dropped; with
 // includeRecords the referred ones not yet stored are added (the cards'
-// always).
-export function planFiles({ keys, referenced, includeRecords, cards = [] }: FilePlanInput) {
-  const wanted = new Set([...referenced, ...cards].map((id) => id.toLowerCase()));
-  const always = new Set(cards.map((id) => id.toLowerCase()));
+// and kept items' always, kept ones first).
+export function planFiles({ keys, referenced, includeRecords, cards = [], kept = [] }: FilePlanInput) {
+  const keep = new Set(kept.map((id) => id.toLowerCase()));
+  const wanted = new Set([...kept, ...referenced, ...cards].map((id) => id.toLowerCase()));
+  const always = new Set([...cards, ...kept].map((id) => id.toLowerCase()));
   const stored = new Set<string>();
   const drop: string[] = [];
   for (const key of keys) {
@@ -113,7 +124,8 @@ export function planFiles({ keys, referenced, includeRecords, cards = [] }: File
     if (!wanted.has(file)) drop.push(key);
     else stored.add(file);
   }
-  const add = [...wanted].filter((id) => !stored.has(id) && (includeRecords || always.has(id))).map(fileUrl);
+  const missing = [...wanted].filter((id) => !stored.has(id) && (includeRecords || always.has(id)));
+  const add = [...missing.filter((id) => keep.has(id)), ...missing.filter((id) => !keep.has(id))].map(fileUrl);
   return { add, drop };
 }
 

@@ -6,5 +6,5 @@ import { useUserSettings } from "../user-context";
 
 export default function DevicesSection() {
   const { boot } = useUserSettings();
-  return <OfflineSettings userId={boot.user.id} workspaceId={boot.workspace.id} />;
+  return <OfflineSettings userId={boot.user.id} workspaceId={boot.workspace.id} spaces={boot.spaces} pages={boot.pages} />;
 }

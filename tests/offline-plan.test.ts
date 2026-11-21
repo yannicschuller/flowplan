@@ -98,3 +98,24 @@ test("study: recent decks fetched every time, others dropped", () => {
   assert.ok(plan.planPages({ ...pageInput, keys: studyInput.keys }).drop.includes(`/api/pages/${a}/study?offline=1`) === false);
   assert.ok(plan.planPages({ ...pageInput, keys: studyInput.keys, readable: [c, d] }).drop.includes(`/api/pages/${a}/study?offline=1`));
 });
+
+test("kept items (#417): their records and files come without includeRecords, and first", () => {
+  // c is kept: its missing record r3 is added although includeRecords is off.
+  assert.deepEqual(plan.planRecords({ ...recordInput, includeRecords: false, kept: [c.toUpperCase()] }).add, [`/api/pages/${c}/rows/${r3}`]);
+  // With includeRecords the kept database's records lead.
+  const rows = { [a]: [r1], [c]: [r3] };
+  const mixed = plan.planRecords({ ...recordInput, keys: [], rows, kept: [c] });
+  assert.deepEqual(mixed.add, [`/api/pages/${c}/rows/${r3}`, `/api/pages/${a}/rows/${r1}`]);
+  // Kept files: added without includeRecords, before the others.
+  assert.deepEqual(plan.planFiles({ ...fileInput, includeRecords: false, kept: [f3] }).add, [`/api/files/${f3}`]);
+  assert.deepEqual(plan.planFiles({ keys: [], referenced: [f1, f2, f3], includeRecords: true, kept: [f3] }).add, [f3, f1, f2].map(plan.fileUrl));
+  // A kept file is never dropped as unreferenced.
+  assert.deepEqual(plan.planFiles({ keys: [`/api/files/${f2}`], referenced: [], includeRecords: false, kept: [f2] }).drop, []);
+  // The service worker plans the same way.
+  const context: Record<string, unknown> = { self: { addEventListener() {}, location: { origin: "https://example.test" } } };
+  runInNewContext(`${readFileSync("public/sw.js", "utf8")}\nself.offlinePlan = offlinePlan;`, context);
+  const worker = (context.self as { offlinePlan: typeof plan }).offlinePlan;
+  const same = (x: unknown, y: unknown) => assert.deepEqual(JSON.parse(JSON.stringify(x)), JSON.parse(JSON.stringify(y)));
+  same(worker.planRecords({ ...recordInput, keys: [], rows, kept: [c] }), mixed);
+  same(worker.planFiles({ keys: [], referenced: [f1, f2, f3], includeRecords: true, kept: [f3] }), plan.planFiles({ keys: [], referenced: [f1, f2, f3], includeRecords: true, kept: [f3] }));
+});

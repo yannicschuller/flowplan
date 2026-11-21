@@ -26477,6 +26477,29 @@ h3 .block-reactions {
 .setting-rows > .setting-note.settings-loading {
   color: var(--muted);
 }
+/* Offline & Geräte (#417): the storage budget's meter and the storage per
+   space with "Keep offline" per space. */
+.setting-rows > .offline-budget {
+  padding: 0 22px 14px;
+}
+.setting-rows > .offline-spaces {
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+.offline-spaces .responsive-table {
+  width: 100%;
+}
+.offline-spaces > .setting-note {
+  margin: 10px 0 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.offline-online-only {
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
 /* A percentage width in the auto-sized control column resolves to the
    input's minimum: the fixed widths apply directly. */
 .settings-body .setting-control > input.control-sm {

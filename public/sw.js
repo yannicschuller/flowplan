@@ -170,7 +170,9 @@ function notificationTarget(value) {
    refresh as components/offline.ts while no window is open, through the
    same endpoints. Only changed pages and records are fetched again; pages
    gone or no longer readable are dropped with their records and files.
-   Records never opened are added only while the app is open. */
+   Records never opened are added only while the app is open – also those
+   of items kept offline (#417), so their order and the budget are kept by
+   the window's refresh alone (components/offline.ts). */
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const PAGE_KEY = new RegExp(`^/api/pages/(${UUID})(?:[/?]|$)`, "i");
 const PAGE_EXACT = new RegExp(`^/api/pages/(${UUID})$`, "i");
@@ -201,7 +203,8 @@ const offlinePlan = {
       .map((id) => `/api/pages/${id}`);
     return { fetch, drop };
   },
-  planRecords({ keys, rows, changedRows, full, includeRecords }) {
+  planRecords({ keys, rows, changedRows, full, includeRecords, kept = [] }) {
+    const keep = new Set(kept.map((id) => id.toLowerCase()));
     const drop = [];
     const stored = new Set();
     for (const key of keys) {
@@ -214,20 +217,24 @@ const offlinePlan = {
       else if (ROW_EXACT.test(key)) stored.add(`${page}/${row}`);
     }
     const refresh = [];
+    const first = [];
     const add = [];
     for (const [page, list] of Object.entries(rows)) {
       const changed = new Set((changedRows[page] || []).map((id) => id.toLowerCase()));
+      const isKept = keep.has(page.toLowerCase());
       for (const row of list) {
         const has = stored.has(`${page.toLowerCase()}/${row.toLowerCase()}`);
         if (has && (full || changed.has(row.toLowerCase()))) refresh.push(`/api/pages/${page}/rows/${row}`);
+        else if (!has && isKept) first.push(`/api/pages/${page}/rows/${row}`);
         else if (!has && includeRecords) add.push(`/api/pages/${page}/rows/${row}`);
       }
     }
-    return { refresh, add, drop };
+    return { refresh, add: [...first, ...add], drop };
   },
-  planFiles({ keys, referenced, includeRecords, cards = [] }) {
-    const wanted = new Set([...referenced, ...cards].map((id) => id.toLowerCase()));
-    const always = new Set(cards.map((id) => id.toLowerCase()));
+  planFiles({ keys, referenced, includeRecords, cards = [], kept = [] }) {
+    const keep = new Set(kept.map((id) => id.toLowerCase()));
+    const wanted = new Set([...kept, ...referenced, ...cards].map((id) => id.toLowerCase()));
+    const always = new Set([...cards, ...kept].map((id) => id.toLowerCase()));
     const stored = new Set();
     const drop = [];
     for (const key of keys) {
@@ -236,7 +243,8 @@ const offlinePlan = {
       if (!wanted.has(file)) drop.push(key);
       else stored.add(file);
     }
-    const add = [...wanted].filter((id) => !stored.has(id) && (includeRecords || always.has(id))).map((id) => `/api/files/${id}`);
+    const missing = [...wanted].filter((id) => !stored.has(id) && (includeRecords || always.has(id)));
+    const add = [...missing.filter((id) => keep.has(id)), ...missing.filter((id) => !keep.has(id))].map((id) => `/api/files/${id}`);
     return { add, drop };
   },
   planStudy({ keys, decks }) {

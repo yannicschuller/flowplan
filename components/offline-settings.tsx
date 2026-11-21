@@ -5,34 +5,50 @@ import { friendlyError } from "./ui";
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "./page-activity";
 import {
+  CONTROL,
+  ResponsiveTable,
   SettingGroup,
   SettingRow,
   StatusBadge,
+  Switch,
   SwitchRow,
+  UsageMeter,
 } from "./settings-ui";
 import { bytes } from "./admin-storage";
 import {
   OFFLINE_CHANGED,
-  RECORD_LIMIT,
+  budgetOf,
   disableOffline,
   enableOffline,
   offlineMarker,
+  offlinePlatform,
   offlineSupported,
+  persistOffline,
   refreshOffline,
+  setOfflineBudget,
+  setOfflineKeep,
   setOfflineRecords,
   type OfflineMarker,
+  type OfflinePersistence,
 } from "./offline";
 import { offlineUnsupportedReason } from "@/lib/native-app";
 import { appOfflineBridge } from "@/lib/offline-store";
+import { budgetChoices, defaultBudget, isKept, type KeepItem, type SpaceUsage } from "@/lib/offline-keep";
+import type { Page, Space } from "@/lib/types";
 
 // Settings → Offline & Geräte. Opt-in per device: the copies contain the
 // workspace's private content.
 export function OfflineSettings({
   userId,
   workspaceId,
+  spaces = [],
+  pages = [],
 }: {
   userId: string;
   workspaceId: string;
+  // For the storage per space and the kept items (#417).
+  spaces?: Space[];
+  pages?: Page[];
 }) {
   const t = useT();
   const locale = useLocale();
@@ -42,7 +58,9 @@ export function OfflineSettings({
     [progress, setProgress] = useState<[number, number] | null>(null),
     [message, setMessage] = useState(""),
     // The iPhone and iPad app keeps the copy (lib/offline-store.ts).
-    [inApp, setInApp] = useState(false);
+    [inApp, setInApp] = useState(false),
+    // Persistent storage (#417): asked for when offline use is on.
+    [persisted, setPersisted] = useState<OfflinePersistence>("unknown");
   const load = useCallback(
     () =>
       void offlineMarker().then((m) =>
@@ -61,6 +79,9 @@ export function OfflineSettings({
     return () => window.removeEventListener(OFFLINE_CHANGED, load);
   }, [load]);
   const enabled = !!marker;
+  useEffect(() => {
+    if (enabled) void persistOffline({ ask: false }).then(setPersisted);
+  }, [enabled, marker?.lastRefresh]);
 
   const pagesText = (n: number) =>
     t(
@@ -149,6 +170,46 @@ export function OfflineSettings({
       setBusy(false);
     }
   }
+  // The budget for record contents and files on this device and the items
+  // kept offline (#417): the copy follows at once (only what changed).
+  async function follow() {
+    if (!navigator.onLine) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await refreshOffline({ again: true, onProgress: (done, total) => setProgress([done, total]) });
+      setMessage(
+        result.status === "signed-out"
+          ? t(
+              "Du wurdest abgemeldet – melde dich erneut an, um die Offline-Kopie zu aktualisieren.",
+              "You were signed out – sign in again to update the offline copy.",
+            )
+          : result.status === "incomplete"
+            ? t(
+                "Nicht alle Seiten konnten aktualisiert werden – sie werden beim nächsten Mal nachgeholt.",
+                "Not every page could be updated – they follow next time.",
+              )
+            : t("Offline-Kopie ist auf dem neuesten Stand.", "Offline copy is up to date."),
+      );
+    } catch (error) {
+      setMessage(friendlyError(error));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+      load();
+    }
+  }
+  async function budget(value: number) {
+    setMarker((m) => (m ? { ...m, budget: value } : m));
+    await setOfflineBudget(value);
+    load();
+    await follow();
+  }
+  async function keep(item: KeepItem, on: boolean) {
+    await setOfflineKeep(item, on);
+    load();
+    await follow();
+  }
   async function disable() {
     setBusy(true);
     try {
@@ -165,6 +226,14 @@ export function OfflineSettings({
     }
   }
   const updated = marker?.lastRefresh;
+  // #417: the budget, the kept pages and the storage per space.
+  const platform = offlinePlatform();
+  const limit = budgetOf(marker);
+  const keptPages = (marker?.keep || []).filter((item) => item.kind === "page");
+  const empty: SpaceUsage = { pages: 0, records: 0, files: 0 };
+  const spaceRows = spaces
+    .filter((sp) => !sp.deleted_at)
+    .map((sp) => ({ id: sp.id, name: sp.name, encrypted: !!(sp as { encrypted?: number }).encrypted, usage: marker?.spaces?.[sp.id] || empty }));
   // The app's own files (#47): stored completely for this version or not yet.
   const appState = ({ app }: OfflineMarker) =>
     !app
@@ -272,19 +341,122 @@ export function OfflineSettings({
                 {t("Jetzt aktualisieren", "Update now")}
               </button>
             </SettingRow>
+            {persisted !== "unknown" && (
+              <SettingRow
+                label={t("Speicher auf diesem Gerät", "Storage on this device")}
+                description={
+                  <span data-testid="offline-persisted">
+                    {persisted === "persisted"
+                      ? t("Dauerhaft gespeichert", "Stored permanently")
+                      : t("Kann vom Browser bei Platzmangel gelöscht werden", "May be cleared by the browser when space runs low")}
+                  </span>
+                }
+              >
+                <StatusBadge tone={persisted === "persisted" ? "ok" : "warn"}>
+                  {persisted === "persisted" ? t("Dauerhaft", "Permanent") : t("Vorläufig", "Temporary")}
+                </StatusBadge>
+              </SettingRow>
+            )}
+            <SettingRow
+              label={t("Speicherbudget", "Storage budget")}
+              description={t(
+                `Für Eintragsinhalte und Dateien auf diesem Gerät – zuerst für das, was du offline behältst. Standard hier: ${bytes(defaultBudget(platform))}. Der freie Platz des Geräts begrenzt es zusätzlich.`,
+                `For record contents and files on this device – first for what you keep offline. Default here: ${bytes(defaultBudget(platform))}. The device's free space limits it as well.`,
+              )}
+            >
+              <select
+                className={CONTROL.sm}
+                aria-label={t("Speicherbudget", "Storage budget")}
+                value={limit}
+                disabled={busy}
+                onChange={(e) => void budget(Number(e.currentTarget.value))}
+              >
+                {budgetChoices(platform).map((choice) => (
+                  <option key={choice} value={choice}>
+                    {bytes(choice)}
+                  </option>
+                ))}
+              </select>
+            </SettingRow>
+            <div className="offline-budget" data-testid="offline-budget">
+              <UsageMeter used={Math.min(marker.budgetUsed ?? 0, limit)} limit={limit} label={t("Im Speicherbudget belegt", "Used of the storage budget")} format={bytes} />
+            </div>
             <SwitchRow
               label={t(
                 "Auch Eintragsinhalte und Dateien speichern",
                 "Also store record contents and files",
               )}
               description={t(
-                `Höchstens ${bytes(RECORD_LIMIT)}; sonst nur, was du schon geöffnet hast.`,
-                `At most ${bytes(RECORD_LIMIT)}; otherwise only what you have opened.`,
+                `Alle, bis zum Speicherbudget (${bytes(limit)}); sonst nur, was du schon geöffnet hast oder offline behältst.`,
+                `All of them, up to the storage budget (${bytes(limit)}); otherwise only what you have opened or keep offline.`,
               )}
               checked={!!marker.includeRecords}
               disabled={busy}
               onChange={(on) => void records(on)}
             />
+            <SettingRow
+              label={t("Offline behalten", "Keep offline")}
+              description={t(
+                "Bereiche, Seiten mit ihren Unterseiten und Datenbanken, deren Eintragsinhalte und Dateien dieses Gerät immer speichert – auch nie geöffnete. Wähle sie unten oder im Menü „⋯“ eines Bereichs oder einer Seite.",
+                "Spaces, pages with their sub-pages and databases whose record contents and files this device always stores – even ones never opened. Choose them below or in the “⋯” menu of a space or page.",
+              )}
+            >
+              {null}
+            </SettingRow>
+            {keptPages.map((item) => {
+              const page = pages.find((p) => p.id === item.id);
+              return (
+                <SettingRow
+                  key={item.id}
+                  label={page ? page.title || t("Ohne Titel", "Untitled") : t("Seite nicht mehr lesbar", "Page no longer readable")}
+                  description={
+                    page?.kind === "database"
+                      ? t("Datenbank mit allen Einträgen", "Database with every record")
+                      : t("Seite mit ihren Unterseiten", "Page with its sub-pages")
+                  }
+                >
+                  <button className="button" disabled={busy} onClick={() => void keep(item, false)}>
+                    {t("Nicht mehr offline behalten", "Stop keeping offline")}
+                  </button>
+                </SettingRow>
+              );
+            })}
+            <div className="offline-spaces" data-testid="offline-spaces">
+              <ResponsiveTable
+                label={t("Speicher je Bereich", "Storage per space")}
+                rows={spaceRows}
+                rowKey={(row) => row.id}
+                columns={[
+                  { key: "name", header: t("Bereich", "Space"), primary: true, render: (row) => row.name },
+                  { key: "pages", header: t("Seiten", "Pages"), align: "end", render: (row) => bytes(row.usage.pages) },
+                  { key: "records", header: t("Einträge", "Records"), align: "end", render: (row) => bytes(row.usage.records) },
+                  { key: "files", header: t("Dateien", "Files"), align: "end", render: (row) => bytes(row.usage.files) },
+                  {
+                    key: "keep",
+                    header: t("Offline behalten", "Keep offline"),
+                    render: (row) =>
+                      row.encrypted ? (
+                        <span className="offline-online-only" title={t("Verschlüsselte Bereiche bleiben nur online.", "Encrypted spaces stay online-only.")}>
+                          {t("Nur online", "Online only")}
+                        </span>
+                      ) : (
+                        <Switch
+                          checked={isKept(marker.keep, { kind: "space", id: row.id })}
+                          disabled={busy}
+                          label={t(`${row.name} offline behalten`, `Keep ${row.name} offline`)}
+                          onChange={(on) => void keep({ kind: "space", id: row.id }, on)}
+                        />
+                      ),
+                  },
+                ]}
+              />
+              <p className="setting-note" data-testid="offline-budget-left">
+                {t(
+                  `Noch frei im Speicherbudget: ${bytes(Math.max(0, limit - (marker.budgetUsed ?? 0)))} von ${bytes(limit)}`,
+                  `Left in the storage budget: ${bytes(Math.max(0, limit - (marker.budgetUsed ?? 0)))} of ${bytes(limit)}`,
+                )}
+              </p>
+            </div>
             <SettingRow
               label={t("Offline-Kopien entfernen", "Remove offline copies")}
               description={t(

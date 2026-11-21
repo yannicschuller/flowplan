@@ -11,6 +11,7 @@ import {
   OFFLINE_CHANGED,
   offlineMarker,
   offlineSupported,
+  persistOffline,
   refreshOffline,
   registerPeriodicSync,
   type OfflineMarker,
@@ -59,7 +60,12 @@ export function useOfflineRefresh(userId: string, online: boolean, quiet: boolea
     // page and files are stored again before they are needed offline.
     const start = setTimeout(() => {
       const build = document.querySelector<HTMLMetaElement>(`meta[name="${BUILD_META}"]`)?.content;
-      void offlineMarker().then((current) => run(build && current?.app?.build && current.app.build !== build ? 0 : 5 * MINUTE));
+      void offlineMarker().then((current) => {
+        // Persistent storage on every start while offline use is on (#417):
+        // the browser may have refused it before, or the person cleared it.
+        if (current?.user === userId) void persistOffline();
+        return run(build && current?.app?.build && current.app.build !== build ? 0 : 5 * MINUTE);
+      });
       void registerPeriodicSync();
     }, 3000);
     const back = () => void run(0);

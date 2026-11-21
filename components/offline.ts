@@ -31,9 +31,25 @@ import {
 } from "@/lib/offline-assets";
 import { installAppOffline } from "@/lib/offline-app";
 import { DATA_CACHE, OFFLINE_CHANGED, OFFLINE_MARKER, SETTINGS_CACHE, appOfflineBridge, offlineStore, type OfflineCache, type OfflineStore } from "@/lib/offline-store";
+import {
+  keptPageIds,
+  offlineBudget,
+  planRelease,
+  planRoom,
+  planTrim,
+  rowPage,
+  toggleKeep,
+  usageBySpace,
+  type BudgetEntry,
+  type KeepItem,
+  type OfflinePlatform,
+  type SpaceUsage,
+  type TreePage,
+} from "@/lib/offline-keep";
+import { desktopApp, inDesktopApp } from "@/lib/native-app";
+import { isPendingFile, isPendingPage } from "@/lib/offline-pending";
+import { queueKey } from "@/lib/offline-queue";
 
-// Record documents and files never opened here: at most this much.
-export const RECORD_LIMIT = 200 * 1024 * 1024;
 export const PERIODIC_SYNC_TAG = "flowplan-offline";
 // Requests of a refresh carry this header: the service worker passes them
 // to the network (no stored copy as answer) and pages skip presence.
@@ -54,6 +70,17 @@ export type OfflineMarker = {
   // many of its files are stored, and whether "/" (the app's page) belongs
   // to that build. "space": the device has no room for them.
   app?: OfflineApp;
+  // #417 (lib/offline-keep.ts): the budget chosen on this device for
+  // record contents and files (bytes; the platform's default otherwise),
+  // the items kept offline and those switched off since the last refresh,
+  // the bytes counted against the budget and the storage per space.
+  budget?: number;
+  keep?: KeepItem[];
+  released?: KeepItem[];
+  budgetUsed?: number;
+  spaces?: Record<string, SpaceUsage>;
+  // The budget was lowered: the next refresh frees what is over it.
+  trim?: boolean;
 };
 export type OfflineApp = {
   build: string;
@@ -75,6 +102,31 @@ const browserSupported = () =>
   "serviceWorker" in navigator &&
   "caches" in window;
 export const offlineSupported = () => !!appOfflineBridge() || browserSupported();
+// Which default budget applies (lib/offline-keep.ts): the iPhone and iPad
+// app, the desktop app, or a browser (the installed web app included).
+export function offlinePlatform(): OfflinePlatform {
+  if (appOfflineBridge()) return "app";
+  return inDesktopApp() || !!desktopApp() ? "desktop" : "browser";
+}
+export const budgetOf = (marker: Pick<OfflineMarker, "budget"> | null | undefined) => offlineBudget(marker?.budget, offlinePlatform());
+
+// Persistent storage (#417): asked for when offline use is switched on and
+// on every start while it is on, so the browser does not clear the copy
+// when the disk runs low. The iPhone and iPad app keeps the copy in its own
+// storage, which iOS does not clear. "unknown": the browser cannot say.
+export type OfflinePersistence = "persisted" | "best-effort" | "unknown";
+export async function persistOffline({ ask = true }: { ask?: boolean } = {}): Promise<OfflinePersistence> {
+  if (appOfflineBridge()) return "persisted";
+  const storage = typeof navigator === "undefined" ? undefined : navigator.storage;
+  if (!storage?.persisted) return "unknown";
+  try {
+    if (await storage.persisted()) return "persisted";
+    if (!ask || !storage.persist) return "best-effort";
+    return (await storage.persist()) ? "persisted" : "best-effort";
+  } catch {
+    return "unknown";
+  }
+}
 // The copy's storage; supported() first.
 const store = () => offlineStore() as OfflineStore;
 
@@ -149,6 +201,7 @@ export async function enableOffline(
     includeRecords: previous?.user === userId ? (previous.includeRecords ?? includeRecords) : includeRecords,
   });
   await notifyWorker();
+  await persistOffline();
   // The app's files follow with the refresh: all of them, not only the
   // ones this page loaded (#47).
   const result = await refreshOffline({ full: true, onProgress });
@@ -157,16 +210,110 @@ export async function enableOffline(
 }
 
 // Record contents and files never opened: on or off for this device. Off
-// removes them (opened ones come back the next time they are opened).
+// removes them (opened ones come back the next time they are opened) –
+// except those of kept items and those with changes not sent yet.
 export async function setOfflineRecords(on: boolean) {
   const marker = await offlineMarker();
   if (!marker) return;
   await writeMarker({ ...marker, includeRecords: on });
   if (!on) {
     const data = await store().open(DATA_CACHE);
-    for (const key of await data.keys()) if (isRowKey(key) || isFileKey(key)) await data.delete(key);
-    await writeMarker({ ...marker, includeRecords: false, bytes: await cacheBytes(data) });
+    const keys = await data.keys();
+    const tree = await storedTree(data, marker.workspace);
+    const kept = keptPageIds(marker.keep, tree.pages, tree.encrypted);
+    const refs = await scanRefs(data, keys);
+    const locked = lockedKeys(marker.user);
+    for (const key of keys)
+      if ((isRowKey(key) || isFileKey(key)) && !locked(key) && !keptKey(key, kept, refs.referrers)) await data.delete(key);
+    await writeMarker({ ...((await offlineMarker()) || marker), includeRecords: false, bytes: await cacheBytes(data) });
   }
+}
+// The budget for record contents and files on this device (bytes, one of
+// budgetChoices()). A smaller one frees the rest with the next refresh.
+export async function setOfflineBudget(budget: number) {
+  const marker = await offlineMarker();
+  if (marker) await writeMarker({ ...marker, budget, trim: marker.trim || budget < budgetOf(marker) });
+}
+// "Keep offline" for a space or a page (with every page below it) on this
+// device. Off: what only it kept is freed with the next refresh.
+export async function setOfflineKeep(item: KeepItem, on: boolean) {
+  const marker = await offlineMarker();
+  if (marker) await writeMarker({ ...marker, ...toggleKeep(marker, item, on) });
+}
+
+// The page tree of the stored workspace (its bootstrap answer): which
+// space each page belongs to, and the encrypted spaces.
+type Tree = { pages: TreePage[]; encrypted: Set<string>; spaces: { id: string }[] };
+function treeOf(boot: unknown): Tree {
+  const data = (boot || {}) as { pages?: TreePage[]; spaces?: { id: string; encrypted?: number }[] };
+  const pages = Array.isArray(data.pages) ? data.pages.filter((p) => p && typeof p.id === "string" && typeof p.space_id === "string") : [];
+  const spaces = Array.isArray(data.spaces) ? data.spaces.filter((sp) => sp && typeof sp.id === "string") : [];
+  return { pages, spaces, encrypted: new Set(spaces.filter((sp) => sp.encrypted).map((sp) => sp.id)) };
+}
+async function storedTree(data: OfflineCache, workspace?: string): Promise<Tree> {
+  try {
+    const answer = (workspace && (await data.match(`/api/bootstrap?workspace=${workspace}`))) || (await data.match("/api/bootstrap"));
+    return treeOf(answer ? await answer.json() : null);
+  } catch {
+    return treeOf(null);
+  }
+}
+// Which stored page and record answers refer to which files (file id →
+// page ids; "cards" for a flashcard deck's pictures).
+async function scanRefs(data: OfflineCache, keys: string[]) {
+  const referrers = new Map<string, Set<string>>();
+  const referenced = new Set<string>(),
+    cards = new Set<string>();
+  for (const key of keys) {
+    if (!key.startsWith("/api/pages/") && !key.startsWith("/api/bootstrap")) continue;
+    try {
+      const page = isStudyKey(key) ? "cards" : (/^\/api\/pages\/([0-9a-f-]{36})/i.exec(key)?.[1]?.toLowerCase() ?? "");
+      for (const ref of fileRefs((await (await data.match(key))?.text()) || "")) {
+        (isStudyKey(key) ? cards : referenced).add(ref);
+        if (!page) continue;
+        const set = referrers.get(ref) || new Set<string>();
+        set.add(page);
+        referrers.set(ref, set);
+      }
+    } catch {}
+  }
+  return { referrers, referenced, cards };
+}
+// A record of a kept database, or a file a kept page or record refers to.
+function keptKey(key: string, kept: ReadonlySet<string>, referrers: ReadonlyMap<string, ReadonlySet<string>>) {
+  const page = rowPage(key);
+  if (page) return kept.has(page);
+  const file = /^\/api\/files\/([0-9a-f-]{36})/i.exec(key)?.[1]?.toLowerCase();
+  return !!file && [...(referrers.get(file) || [])].some((p) => kept.has(p));
+}
+// Entries the cleanup never drops: records and files with changes on this
+// device that are not sent yet (the offline queue, its failed changes and
+// conflicts) and anything of a page made offline. Their content waits in
+// the queue and IndexedDB (components/offline-uploads.ts), not in the copy –
+// this only keeps the copy they are shown with.
+function lockedKeys(userId: string): (key: string) => boolean {
+  const rows = new Set<string>(),
+    pages = new Set<string>(),
+    files = new Set<string>();
+  try {
+    const key = queueKey(userId);
+    for (const name of [key, `${key}:failed`, `${key}:conflicts`]) {
+      const list = JSON.parse(localStorage.getItem(name) || "[]");
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        const change = (item && typeof item === "object" && "change" in item ? item.change : item) as { pageId?: unknown; rowId?: unknown; fileId?: unknown } | null;
+        if (typeof change?.pageId === "string" && typeof change.rowId === "string") rows.add(`${change.pageId}/${change.rowId}`.toLowerCase());
+        if (typeof change?.pageId === "string" && !change.rowId) pages.add(change.pageId.toLowerCase());
+        if (typeof change?.fileId === "string") files.add(change.fileId.toLowerCase());
+      }
+    }
+  } catch {}
+  return (key) => {
+    const row = /^\/api\/pages\/([0-9a-f-]{36})\/rows\/([0-9a-f-]{36})/i.exec(key);
+    if (row) return rows.has(`${row[1]}/${row[2]}`.toLowerCase()) || pages.has(row[1].toLowerCase()) || isPendingPage(row[1]);
+    const file = /^\/api\/files\/([0-9a-f-]{36})/i.exec(key)?.[1]?.toLowerCase();
+    return !!file && (files.has(file) || isPendingFile(file));
+  };
 }
 
 async function entryBytes(response: Response | undefined) {
@@ -297,10 +444,13 @@ let running: Promise<RefreshResult> | null = null;
 // Brings the device copy up to date. Without full only what changed since
 // the last refresh is fetched (GET /api/offline/changes); full fetches every
 // readable page again (first copy, "Update now").
+// `again`: a refresh already running read the settings before a change
+// (budget, kept items, #417) – one more follows it.
 export function refreshOffline(
-  options: { full?: boolean; onProgress?: (done: number, total: number) => void } = {},
+  options: { full?: boolean; again?: boolean; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<RefreshResult> {
   if (!offlineSupported()) return Promise.resolve({ status: "disabled", fetched: 0, dropped: 0 });
+  if (running && options.again) return running.catch(() => undefined).then(() => refreshOffline({ ...options, again: false }));
   if (running) return running;
   const run = async () => {
     // One refresh at a time across tabs and the service worker.
@@ -442,7 +592,9 @@ async function refreshNow({
       if (!(await live())) return { ...result, status: "disabled" };
     }
 
-    // 2. Record documents of the stored databases.
+    // 2. Record documents of the stored databases. Kept items (#417) come
+    // first: their records and files are stored even when never opened,
+    // ahead of "Also store record contents and files", within the budget.
     keys = await data.keys();
     const rows: Record<string, string[]> = {};
     for (const key of keys.filter(isPageKey)) {
@@ -452,33 +604,74 @@ async function refreshNow({
       } catch {}
     }
     const includeRecords = !!marker.includeRecords;
-    const records = planRecords({ keys, rows, changedRows: changes.rows, full: everything, includeRecords });
+    const tree = treeOf(bootData);
+    const kept = keptPageIds(marker.keep, tree.pages, tree.encrypted);
+    const budget = budgetOf(marker);
+    const locked = lockedKeys(marker.user);
+    const records = planRecords({ keys, rows, changedRows: changes.rows, full: everything, includeRecords, kept: [...kept] });
     for (const key of records.drop) await drop(key);
-    const sizes = new Map<string, number>();
-    let extraBytes = 0;
-    if (includeRecords)
-      for (const key of keys.filter((k) => isRowKey(k) || isFileKey(k))) {
-        const size = await entryBytes(await data.match(key));
-        sizes.set(key, size);
-        extraBytes += size;
-      }
     total += records.refresh.length;
     progress();
     await inQueue(records.refresh, fetchInto);
-    // Records never opened, within the limit.
-    const fits = async (size: number) => {
-      if (extraBytes + size > RECORD_LIMIT) return false;
-      const estimate = await copies.estimate();
-      return !estimate?.quota || estimate.quota - (estimate.usage || 0) > size + 20 * 1024 * 1024;
+    // What counts against the budget: the records and files of kept items,
+    // and with "Also store record contents and files" all of them.
+    keys = await data.keys();
+    let refs = await scanRefs(data, keys);
+    // Switched off since the last refresh: what only those items kept goes.
+    const released = marker.released || [];
+    if (released.length && !includeRecords) {
+      const freed = keptPageIds(released, tree.pages, tree.encrypted);
+      for (const key of planRelease({ keys, released: freed, kept, referrers: refs.referrers, locked })) await drop(key);
+      keys = await data.keys();
+      refs = await scanRefs(data, keys);
+    }
+    const budgeted = new Map<string, BudgetEntry>();
+    let used = 0;
+    const count = (key: string, size: number) => {
+      const isKept = keptKey(key, kept, refs.referrers);
+      if (!isKept && !includeRecords) return;
+      budgeted.set(key, { key, size, kept: isKept, locked: locked(key) });
+      used += size;
     };
-    if (includeRecords && records.add.length) {
+    if (includeRecords || kept.size)
+      for (const key of keys.filter((k) => isRowKey(k) || isFileKey(k))) count(key, await entryBytes(await data.match(key)));
+    const forget = async (key: string) => {
+      const entry = budgeted.get(key);
+      if (entry) {
+        budgeted.delete(key);
+        used -= entry.size;
+      }
+      await drop(key);
+    };
+    // A smaller budget chosen since the last refresh: the rest goes,
+    // outside kept items first (otherwise nothing stored is taken away).
+    if (marker.trim) for (const key of planTrim(budgeted.values(), budget)) await forget(key);
+    // Room for one more entry: within the budget – a kept one by dropping
+    // entries outside kept items – and within the browser's room.
+    const room = async (size: number, isKept: boolean, counted: boolean) => {
+      if (counted) {
+        const plan = planRoom({ entries: budgeted.values(), used, budget, size, kept: isKept });
+        if (!plan.fits) return false;
+        for (const key of plan.drop) await forget(key);
+      }
+      return fitsQuota(size, await copies.estimate());
+    };
+    if (records.add.length) {
       total += records.add.length;
       progress();
       await inQueue(records.add, async (url) => {
-        if (extraBytes < RECORD_LIMIT) {
+        const isKept = kept.has(rowPage(url) || "");
+        // Full: nothing more unless a kept record can make room.
+        if (used < budget || (isKept && [...budgeted.values()].some((e) => !e.kept && !e.locked))) {
           const before = result.fetched;
           await fetchInto(url);
-          if (result.fetched > before) extraBytes += await entryBytes(await data.match(url));
+          if (result.fetched > before) {
+            const size = await entryBytes(await data.match(url));
+            if (await room(size, isKept, true)) {
+              budgeted.set(url, { key: url, size, kept: isKept });
+              used += size;
+            } else await drop(url);
+          }
         } else {
           done++;
           progress();
@@ -497,36 +690,37 @@ async function refreshNow({
       await inQueue(study.fetch, fetchInto);
     }
 
-    // 3. Files: drop the ones no stored page refers to, add the others.
+    // 3. Files: drop the ones no stored page refers to, add the others –
+    // those of kept items first.
     keys = await data.keys();
-    const referenced = new Set<string>(),
-      cards = new Set<string>();
-    for (const key of keys) {
-      if (!key.startsWith("/api/pages/") && !key.startsWith("/api/bootstrap")) continue;
-      try {
-        for (const ref of fileRefs((await (await data.match(key))?.text()) || "")) (isStudyKey(key) ? cards : referenced).add(ref);
-      } catch {}
-    }
-    const files = planFiles({ keys, referenced: [...referenced], includeRecords, cards: [...cards] });
-    for (const key of files.drop) {
-      extraBytes -= sizes.get(key) || 0;
-      await drop(key);
-    }
+    refs = await scanRefs(data, keys);
+    const keptFiles = [...refs.referrers].filter(([, pages]) => [...pages].some((p) => kept.has(p))).map(([file]) => file);
+    const keptFileSet = new Set(keptFiles);
+    for (const entry of budgeted.values()) if (isFileKey(entry.key) && keptKey(entry.key, kept, refs.referrers)) entry.kept = true;
+    const files = planFiles({ keys, referenced: [...refs.referenced], includeRecords, cards: [...refs.cards], kept: keptFiles });
+    for (const key of files.drop) await forget(key);
     if (files.add.length) {
       total += files.add.length;
       progress();
       await inQueue(files.add, async (url) => {
         try {
-          if (extraBytes < RECORD_LIMIT) {
+          const id = url.slice("/api/files/".length).toLowerCase();
+          const isKept = keptFileSet.has(id);
+          // A flashcard deck's pictures without "Also store …": outside the budget.
+          const counted = isKept || includeRecords;
+          if (!counted || used < budget || (isKept && [...budgeted.values()].some((e) => !e.kept && !e.locked))) {
             const response = await fetch(url, { cache: "no-store", credentials: "same-origin", headers: { [OFFLINE_HEADER]: "1" } });
             if (response.status === 401) throw new SignedOut();
             const length = Number(response.headers.get("content-length")) || 0;
-            if (!response.ok || !(await fits(length))) await response.body?.cancel();
+            if (!response.ok || (length && !(await room(length, isKept, counted)))) await response.body?.cancel();
             else {
               const blob = await response.blob();
-              if ((await fits(blob.size)) && (await live())) {
+              if ((length || (await room(blob.size, isKept, counted))) && (await live())) {
                 await data.put(url, new Response(blob, { status: response.status, headers: response.headers }));
-                extraBytes += blob.size;
+                if (counted) {
+                  budgeted.set(url, { key: url, size: blob.size, kept: isKept });
+                  used += blob.size;
+                }
                 result.fetched++;
               }
             }
@@ -540,13 +734,26 @@ async function refreshNow({
       });
     }
     if (!(await live())) return { ...result, status: "disabled" };
-    const pageCount = (await data.keys()).filter(isPageKey).length;
+    // Storage per space, for Settings → Offline & devices.
+    const sizes: [string, number][] = [];
+    for (const key of await data.keys()) sizes.push([key, await entryBytes(await data.match(key))]);
+    const spaceOf = new Map(tree.pages.map((p) => [p.id.toLowerCase(), p.space_id]));
+    const fileOwner = new Map([...refs.referrers].map(([file, pages]) => [file, [...pages].find((p) => kept.has(p)) || [...pages][0]]));
+    const pageCount = sizes.filter(([key]) => isPageKey(key)).length;
     const current = (await offlineMarker()) || marker;
+    // Released items are handled now (with "Also store …" on there is
+    // nothing to free); ones switched off meanwhile stay for the next run.
+    const handled = released;
     await writeMarker({
       ...current,
       workspace: workspaceId,
       pages: pageCount,
-      bytes: await cacheBytes(data),
+      bytes: sizes.reduce((sum, [, size]) => sum + size, 0),
+      budgetUsed: used,
+      spaces: usageBySpace({ sizes, spaceOf, fileOwner }),
+      released: (current.released || []).filter((item) => !handled.some((h) => h.kind === item.kind && h.id === item.id)),
+      // The budget chosen meanwhile may be smaller again.
+      trim: current.budget === marker.budget ? undefined : current.trim,
       ...(app ? { app } : {}),
       // An incomplete run keeps the old position, so nothing is skipped.
       ...(incomplete ? {} : { lastRefresh: Date.now(), cursor: changes.now }),

@@ -107,6 +107,7 @@ import {
   registerServiceWorker,
 } from "./offline";
 import { useOfflineRefresh } from "./offline-refresh";
+import { useOfflineKeep } from "./use-offline-keep";
 import { joinRefusalText } from "./join-refusal";
 import { useAppOfflineOffer } from "./app-offline-offer";
 import { appCopyUnreachable, offlineStore } from "@/lib/offline-store";
@@ -325,7 +326,7 @@ import { templateCategories } from "@/lib/template-categories";
 import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
-import { Books, CalendarX, Compass, LockKey, Storefront } from "@phosphor-icons/react";
+import { Books, CalendarX, CloudCheck, Compass, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { WorkspaceFavicon } from "./workspace-favicon";
@@ -2313,6 +2314,8 @@ export default function WorkspaceApp({
   // The iPhone, iPad and Android app offers offline use once and switches it
   // on through the page (lib/app-offline-offer.ts).
   const appOfflineNotice = useAppOfflineOffer(boot.user.id, boot.workspace.id, !!boot.workspace.guest, !!boot.user.demo);
+  // "Offline behalten" in the space and page menus while offline use is on (#417).
+  const offlineKeep = useOfflineKeep(boot.user.id);
   // The service worker serves offline copies once enabled in the settings.
   useEffect(() => {
     void registerServiceWorker()
@@ -4794,6 +4797,28 @@ export default function WorkspaceApp({
                             <ArrowsInSimple />
                             {t("Alle zuklappen", "Collapse all")}
                           </Dropdown.Item>
+                          {/* Its record contents and files on this device too (#417). */}
+                          {offlineKeep.enabled && (
+                            <>
+                              <Dropdown.Separator className="dropdown-separator" />
+                              {(space as { encrypted?: number }).encrypted ? (
+                                <Dropdown.Item className="dropdown-item" disabled>
+                                  <CloudCheck />
+                                  {t("Offline behalten", "Keep offline")}
+                                  <small className="dropdown-hint">{t("Verschlüsselte Bereiche bleiben nur online.", "Encrypted spaces stay online-only.")}</small>
+                                </Dropdown.Item>
+                              ) : (
+                                <Dropdown.CheckboxItem
+                                  className="dropdown-item"
+                                  checked={offlineKeep.kept({ kind: "space", id: space.id })}
+                                  onSelect={() => void offlineKeep.toggle({ kind: "space", id: space.id }, !offlineKeep.kept({ kind: "space", id: space.id }))}
+                                >
+                                  <CloudCheck />
+                                  {t("Offline behalten", "Keep offline")}{" "}{offlineKeep.kept({ kind: "space", id: space.id }) ? "✓" : ""}
+                                </Dropdown.CheckboxItem>
+                              )}
+                            </>
+                          )}
                           {reorderable && (
                             <>
                               <Dropdown.Separator className="dropdown-separator" />
@@ -5510,6 +5535,30 @@ export default function WorkspaceApp({
                             : t("Als Markdown anzeigen", "View as Markdown")}
                       </PageMenu.Item>
                     )}
+                    {/* The page with every page below it – a database with its records – and their files on this device (#417). */}
+                    {offlineKeep.enabled && !isPendingPage(data.page.id) &&
+                      (data.encrypted ? (
+                        <PageMenu.Item className="dropdown-item" disabled>
+                          <CloudCheck />
+                          {t("Offline behalten", "Keep offline")}
+                          <small className="dropdown-hint">{t("Verschlüsselte Bereiche bleiben nur online.", "Encrypted spaces stay online-only.")}</small>
+                        </PageMenu.Item>
+                      ) : offlineKeep.kept({ kind: "space", id: data.page.space_id }) ? (
+                        <PageMenu.CheckboxItem className="dropdown-item" checked disabled>
+                          <CloudCheck />
+                          {t("Offline behalten", "Keep offline")} ✓
+                          <small className="dropdown-hint">{t("Der ganze Bereich wird offline behalten.", "The whole space is kept offline.")}</small>
+                        </PageMenu.CheckboxItem>
+                      ) : (
+                        <PageMenu.CheckboxItem
+                          className="dropdown-item"
+                          checked={offlineKeep.kept({ kind: "page", id: data.page.id })}
+                          onSelect={() => void offlineKeep.toggle({ kind: "page", id: data.page.id }, !offlineKeep.kept({ kind: "page", id: data.page.id }))}
+                        >
+                          <CloudCheck />
+                          {t("Offline behalten", "Keep offline")}{" "}{offlineKeep.kept({ kind: "page", id: data.page.id }) ? "✓" : ""}
+                        </PageMenu.CheckboxItem>
+                      ))}
                     <PageMenu.Item className="dropdown-item" onSelect={() => openPageReview(data.page.id)}>
                       <UserCheck />
                       {t("Besitzer und Prüfung …", "Owner and review …")}
