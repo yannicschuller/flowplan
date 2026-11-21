@@ -5,12 +5,13 @@
 // lib/workflows/placeholders.ts) – and stored with ids. The {} button or
 // typing "{{" opens the picker: the outputs of the nodes before this one,
 // with the value of the last test where there is one, and the built-ins.
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { BracketsCurly } from "@phosphor-icons/react";
 import { useLocale } from "../i18n";
 import { BUILTIN_ROOTS, formatTemplate, fromDisplay, type PathKey } from "@/lib/workflows/placeholders";
 import { innermostLoops, upstreamNodes, type WorkflowGraph } from "@/lib/workflows/graph";
 import { ChipText } from "./chips";
+import { PickerList, type PickerItem } from "../placeholder-picker";
 import type { OutputField, OutputType } from "@/lib/workflows/catalog";
 import { displayContext, orderedNodes, outputTree, showText, type Workspace, useStableT } from "./model";
 
@@ -36,7 +37,7 @@ const TYPE_TEXT: Record<OutputType, [string, string]> = {
   object: ["Gruppe", "Group"],
   file: ["Datei", "File"],
 };
-type Item = { id: string; group: string; label: string; depth: number; type: OutputType; stored: string; example?: string };
+type Item = Omit<PickerItem, "detail"> & { depth: number; type: OutputType };
 
 const sample = (v: unknown) => {
   if (v === undefined || v === null || v === "") return undefined;
@@ -233,83 +234,22 @@ export function TemplateInput({
   );
 }
 
-// The picker: a search field and a list box (arrows, Enter, Esc).
+// The picker: the outputs and built-ins in the shared list (search, arrows,
+// Enter, Esc; components/placeholder-picker.tsx).
 export function PlaceholderPicker({ ctx, onPick, onClose }: { ctx: PickerContext; onPick: (stored: string) => void; onClose: () => void }) {
   const t = useStableT();
   const [query, setQuery] = useState("");
-  const items = usePickerItems(ctx, query);
-  const [active, setActive] = useState(0);
-  const list = useId();
-  const search = useRef<HTMLInputElement>(null);
-  useEffect(() => search.current?.focus(), []);
-  useEffect(() => setActive(0), [query]);
-  // A block, not an arrow's value: newer Chromium (Electron 45, Chrome 156)
-  // returns a Promise from scrollIntoView, and an effect's return value is
-  // its cleanup – React called the Promise when the picker closed (#182).
-  useEffect(() => {
-    document.getElementById(`${list}-${active}`)?.scrollIntoView({ block: "nearest" });
-  }, [active, list]);
-  const key = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") setActive((a) => Math.min(items.length - 1, a + 1));
-    else if (e.key === "ArrowUp") setActive((a) => Math.max(0, a - 1));
-    else if (e.key === "Enter" && items[active]) onPick(items[active].stored);
-    else if (e.key === "Escape") onClose();
-    else return;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  let group = "";
+  const found = usePickerItems(ctx, query);
+  const items = useMemo(() => found.map((item): PickerItem => ({ ...item, detail: t(TYPE_TEXT[item.type][0], TYPE_TEXT[item.type][1]) })), [found, t]);
   return (
-    <div className="wf-picker" role="dialog" aria-label={t("Platzhalter wählen", "Choose a placeholder")}>
-      <input
-        ref={search}
-        type="search"
-        role="combobox"
-        aria-expanded="true"
-        aria-controls={list}
-        aria-activedescendant={items[active] ? `${list}-${active}` : undefined}
-        aria-label={t("Platzhalter suchen", "Search placeholders")}
-        placeholder={t("Suchen …", "Search …")}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={key}
-      />
-      <ul id={list} role="listbox" aria-label={t("Platzhalter", "Placeholders")}>
-        {items.map((item, i) => {
-          const head = item.group !== group;
-          group = item.group;
-          return (
-            <li key={item.id} role="presentation">
-              {head && (
-                <div className="wf-picker-group" aria-hidden>
-                  {item.group}
-                </div>
-              )}
-              <div
-                id={`${list}-${i}`}
-                role="option"
-                aria-selected={i === active}
-                className={i === active ? "active" : ""}
-                style={{ paddingInlineStart: 10 + item.depth * 14 }}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => onPick(item.stored)}
-              >
-                <span className="wf-picker-label">{item.label}</span>
-                <span className="wf-picker-type">{t(TYPE_TEXT[item.type][0], TYPE_TEXT[item.type][1])}</span>
-                {item.example && <span className="wf-picker-example">{item.example}</span>}
-                <span className="sr-only">{` – ${item.group}`}</span>
-              </div>
-            </li>
-          );
-        })}
-        {!items.length && (
-          <li role="presentation" className="muted wf-picker-empty">
-            {t("Nichts gefunden. Platzhalter gibt es von Knoten vor diesem.", "Nothing found. Placeholders come from the nodes before this one.")}
-          </li>
-        )}
-      </ul>
-      <p className="wf-picker-hint muted">{t("Filter hinter |, z. B. „| kürzen: 140“ oder „| datum: \"dd.MM.yyyy\"“", "Filters after |, e.g. “| truncate: 140” or “| date: \"yyyy-MM-dd\"”")}</p>
-    </div>
+    <PickerList
+      items={items}
+      query={query}
+      onQuery={setQuery}
+      onPick={onPick}
+      onClose={onClose}
+      empty={t("Nichts gefunden. Platzhalter gibt es von Knoten vor diesem.", "Nothing found. Placeholders come from the nodes before this one.")}
+      hint={t("Filter hinter |, z. B. „| kürzen: 140“ oder „| datum: \"dd.MM.yyyy\"“", "Filters after |, e.g. “| truncate: 140” or “| date: \"yyyy-MM-dd\"”")}
+    />
   );
 }

@@ -71,7 +71,8 @@ export const automationAction = z.discriminatedUnion("type", [
   }),
   // "Aufgabe erstellen" (#380), as the person who set the rule up
   // (lib/automation-task.ts): a task item in the triggering record's
-  // document ("document", below `heading` if given) or a new record in a
+  // document ("document", below `heading` if given – it takes the same
+  // placeholders as `text`, #413) or a new record in a
   // task database ("database"). Once per record and rule; scheduled rules
   // once per date, into a database only. `text` takes the placeholders of
   // record templates ("{{Titel}} nachfassen"); `assignee`: "" (nobody), a

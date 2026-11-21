@@ -1,13 +1,15 @@
 "use client";
 // "Aufgabe erstellen" of a database rule (#380, lib/automation-task.ts): a
 // task in the triggering record's document or a new record in a task
-// database – text with placeholders, person, due date relative to the run,
-// and for a database the properties it fills.
+// database – text with placeholders (and a heading with them, #413; both
+// with the placeholder picker), person, due date relative to the run, and
+// for a database the properties it fills.
 import { useEffect, useState, type ReactNode } from "react";
 import { Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
 import { Select } from "./select";
+import { RuleTextInput } from "./rule-text-input";
 import { dueField, type DatabaseSettings, type TaskAction } from "@/lib/database-settings-schema";
 import { serverMessage } from "@/lib/i18n-errors";
 import type { Database, Field, Page, User } from "@/lib/types";
@@ -147,17 +149,17 @@ export function TaskActionFields({
           </button>
         )}
       </div>
-      <label className="automation-row">
-        <span>{t("Aufgabe", "Task")}</span>
-        <input
-          aria-label={t("Aufgabe: Text", "Task: text")}
-          value={action.text}
-          maxLength={300}
-          aria-invalid={!action.text.trim() || undefined}
-          placeholder={t("z. B. Nachfassen: {{Titel}}", "e.g. Follow up: {{Title}}")}
-          onChange={(e) => onChange({ ...action, text: e.target.value })}
-        />
-      </label>
+      <RuleTextInput
+        label={t("Aufgabe", "Task")}
+        inputLabel={t("Aufgabe: Text", "Task: text")}
+        value={action.text}
+        maxLength={300}
+        invalid={!action.text.trim()}
+        placeholder={t("z. B. Nachfassen: {{Titel}}", "e.g. Follow up: {{Title}}")}
+        fields={fields}
+        scheduled={scheduled}
+        onChange={(text) => onChange({ ...action, text })}
+      />
       <label className="automation-row">
         <span>{t("Person", "Person")}</span>
         <Select aria-label={t("Person der Aufgabe", "Person of the task")} value={action.assignee} onChange={(e) => onChange({ ...action, assignee: e.target.value })}>
@@ -191,10 +193,16 @@ export function TaskActionFields({
         <small className="muted">{scheduled ? t("Tage nach dem Termin (0 = am Tag selbst)", "days after the run (0 = the same day)") : t("Tage nach dem Auslösen (0 = am selben Tag)", "days after it triggers (0 = the same day)")}</small>
       </label>
       {!intoDatabase ? (
-        <label className="automation-row">
-          <span>{t("Unter der Überschrift", "Below the heading")}</span>
-          <input aria-label={t("Unter der Überschrift", "Below the heading")} value={action.heading} maxLength={200} placeholder={t("optional, z. B. Aufgaben", "optional, e.g. Tasks")} onChange={(e) => onChange({ ...action, heading: e.target.value })} />
-        </label>
+        <RuleTextInput
+          label={t("Unter der Überschrift", "Below the heading")}
+          inputLabel={t("Unter der Überschrift", "Below the heading")}
+          value={action.heading}
+          maxLength={200}
+          placeholder={t("optional, z. B. Aufgaben", "optional, e.g. Tasks")}
+          fields={fields}
+          scheduled={scheduled}
+          onChange={(heading) => onChange({ ...action, heading })}
+        />
       ) : (
         <>
           <label className="automation-row">

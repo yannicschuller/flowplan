@@ -74,7 +74,6 @@
     "components/workflow/chips.tsx",
     "components/workflow/config-form.tsx",
     "components/workflow/start.tsx",
-    "components/workflow/template-input.tsx",
     "components/workspace-lifecycle.tsx"
   ]
 }
