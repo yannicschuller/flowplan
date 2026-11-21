@@ -29,6 +29,13 @@ await run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", wid, r
 const as = (who: Identity) => async (body: Record<string, unknown>): Promise<any> => await command(who, body);
 const act = as(owner);
 const zone = "Europe/Berlin";
+// A study day starts at 04:00 in the zone (lib/study-day.ts). A learning card
+// due in a few minutes belongs to the next study day when the test runs just
+// before 04:00 – so tests that count today's cards run at a fixed midday.
+const atMidday = (t: { mock: { timers: { enable: (o: { apis: ["Date"]; now: number }) => void } } }) =>
+  // Midday of the current study day in Berlin (10:00 or 11:00 UTC), so the
+  // clock stays close to the real one the database's timestamps use.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse(`${new Date(Date.now() - 4 * 3600_000).toISOString().slice(0, 10)}T10:30:00Z`) });
 
 async function deck(title: string, settings: Record<string, unknown> = {}) {
   const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title })).id as string;
@@ -58,12 +65,14 @@ const queue = async (who: Identity, pageId: string, more: Record<string, unknown
 const rate = async (who: Identity, pageId: string, c: { rowId: string; sub: string }, rating: number, more: Record<string, unknown> = {}) =>
   (await command(who, { action: "study.review", pageId, rowId: c.rowId, sub: c.sub, rating, id: randomUUID(), zone, ...more })) as any;
 
-test("a deck derives cards from its records and studies them with daily limits", async () => {
+test("a deck derives cards from its records and studies them with daily limits", async (t) => {
   const pageId = await deck("Spanisch", { newPerDay: 2 });
   await card(pageId, "hola", "hallo", { tags: ["A"] });
   await card(pageId, "perro", "Hund");
   await card(pageId, "gato", "Katze", { tags: ["A"] });
   await card(pageId, "leer", "");
+  // The cards keep their real creation order; studying runs at midday.
+  atMidday(t);
   const first = await queue(owner, pageId);
   assert.equal(first.configured, true);
   // The record without a back is no card.
@@ -152,7 +161,8 @@ test("the back from the record's document below its first rule", async () => {
   assert.doesNotMatch(c.back.html, /<hr/);
 });
 
-test("reading is enough to study; the mapping needs write access; read tokens do not rate", async () => {
+test("reading is enough to study; the mapping needs write access; read tokens do not rate", async (t) => {
+  atMidday(t);
   const pageId = await deck("Rechte");
   await card(pageId, "sí", "ja");
   const q = await queue(reader, pageId);
