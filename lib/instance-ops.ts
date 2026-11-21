@@ -13,6 +13,7 @@ import { runtimeMetricLines, runtimeMetricsOn } from "./runtime-metrics";
 import { clusterMode, instanceId } from "./cluster/config";
 import { isLeader, skippedDuties } from "./cluster/leader";
 import { liveStreamCount } from "./cluster/runtime";
+import { multiProcess, processIndex, processTable } from "./cluster/processes";
 import { poolStats } from "./db-driver";
 import { workerPoolState } from "./worker-pool";
 import { mapAsync } from "./each-async";
@@ -166,7 +167,11 @@ export async function setWorkspaceQuota(workspaceId: string, quotaMb: number | n
 export async function prometheusMetrics() {
   const cluster = clusterMode();
   const shared = !cluster || isLeader();
-  const own: Record<string, string> = cluster ? { instance_id: instanceId() } : {};
+  // Several processes on one host (FLOWPLAN_PROCESSES): a scrape reaches one
+  // of them; what is its own carries its number, the installation's figures
+  // are the same from each, and the supervisor's table (flowplan_host_*)
+  // covers all processes in every scrape.
+  const own: Record<string, string> = { ...(cluster ? { instance_id: instanceId() } : {}), ...(multiProcess() ? { process: String(processIndex()) } : {}) };
   const m = await instanceMetrics({ shared }),
     lines: string[] = [];
   const metric = (
@@ -297,6 +302,16 @@ export async function prometheusMetrics() {
     processGauge("live_streams", "Open server-sent event streams (live editing, cursors) on this pod.", liveStreamCount());
     processGauge("storage_uploads_in_flight", "Files being written to the bucket right now.", uploadsInFlightCount());
     metric("leader_skipped_rounds_total", "Leader rounds left out (another round of the duty still running, or a newer term).", "counter", [[{}, skippedDuties()]], true);
+  }
+  const table = await processTable();
+  if (table) {
+    const rows = table.filter((p) => p.role !== "supervisor");
+    gauge("host_processes", "Flowplan processes the supervisor runs on this host (FLOWPLAN_PROCESSES).", rows.length);
+    gauge("host_processes_running", "Of them running now.", rows.filter((p) => p.running).length);
+    const of = (p: (typeof table)[number]) => ({ process: String(p.index), role: p.role });
+    metric("host_process_resident_memory_bytes", "Resident memory of each process of the host (0: the supervisor).", "gauge", table.filter((p) => p.rss !== null).map((p) => [of(p), p.rss!]));
+    metric("host_process_cpu_seconds_total", "CPU time of each process of the host since it started.", "counter", table.filter((p) => p.cpuSeconds !== null).map((p) => [of(p), p.cpuSeconds!]));
+    metric("host_process_restarts_total", "How often the supervisor started each process again.", "counter", rows.map((p) => [of(p), p.restarts]));
   }
   // Worker threads of this process (lib/worker-pool.ts, FLOWPLAN_WORKERS).
   const workers = workerPoolState();
