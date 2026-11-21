@@ -162,10 +162,15 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
         )}
         {result.restart && (
           <p className="callout">
-            {t(
-              "Litestream läuft: Bitte den Container jetzt neu starten (docker compose restart). Beim Start wird die Sicherung übernommen.",
-              "Litestream is running: please restart the container now (docker compose restart). The backup is applied on start.",
-            )}
+            {result.restartFor === "processes"
+              ? t(
+                  "Flowplan läuft in mehreren Prozessen: Bitte den Container jetzt neu starten (docker compose restart). Beim Start wird die Sicherung übernommen.",
+                  "Flowplan runs in several processes: please restart the container now (docker compose restart). The backup is applied on start.",
+                )
+              : t(
+                  "Litestream läuft: Bitte den Container jetzt neu starten (docker compose restart). Beim Start wird die Sicherung übernommen.",
+                  "Litestream is running: please restart the container now (docker compose restart). The backup is applied on start.",
+                )}
           </p>
         )}
         {result.keyHint && (

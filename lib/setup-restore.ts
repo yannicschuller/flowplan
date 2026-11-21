@@ -34,12 +34,13 @@ import { BACKUP_FILE } from "./backup-copy";
 import { DELETED_UPLOADS, newestDeleted, parseDeleted, type DeletedCopy } from "./deleted-uploads";
 import { HostKeyError, connectSftp, remoteDirectory, remotePath, sftpDownload, sftpHost, sftpList, type SftpLogin, type SftpSession } from "./sftp";
 import { storageConfig } from "./storage";
+import { answerPeers, askPeers, multiProcess } from "./cluster/processes";
 
 const dataDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
 const UPLOAD = /^[A-Za-z0-9_-]{1,100}$/;
 export const SETUP_RESTORE_LIMIT = INSTANCE_ARCHIVE_LIMIT;
 
-export type RestoreResult = Summary & { missingFiles: number; restart: boolean; keyHint: boolean };
+export type RestoreResult = Summary & { missingFiles: number; restart: boolean; restartFor?: "litestream" | "processes"; keyHint: boolean };
 export type RestoreProgress = {
   source: "upload" | "s3" | "sftp";
   phase: "connect" | "download" | "check" | "files" | "apply" | "done" | "error";
@@ -81,6 +82,10 @@ export async function requireSetupRestore(token: unknown) {
   if (!setupAllowed(token) || (!localLoginEnabled() && !setupToken()))
     throw new HttpError(403, "Diese Instanz wird mit einem Einrichtungslink eingerichtet. Frag die Person, die sie betreibt.");
 }
+// The swap of the file needs a restart of the container with Litestream
+// (it replicates the file that is open) and with several processes
+// (FLOWPLAN_PROCESSES: the others have it open).
+const restartNeeded = () => process.env.FLOWPLAN_LITESTREAM_ACTIVE === "1" || multiProcess();
 export function setupRestoreStatus() {
   return {
     progress: runtime.flowplanSetupRestore ?? null,
@@ -94,6 +99,17 @@ export function setupRestoreStatus() {
       }
     })(),
   };
+}
+
+// The status as the browser polls it: with several processes on the host
+// (FLOWPLAN_PROCESSES) the poll may reach another process than the one
+// restoring – that one's progress then.
+answerPeers("setup-restore", () => runtime.flowplanSetupRestore ?? null);
+export async function sharedSetupRestoreStatus() {
+  const status = setupRestoreStatus();
+  if (status.progress || !multiProcess()) return status;
+  const [progress] = await askPeers<RestoreProgress>("setup-restore");
+  return { ...status, progress: progress ?? null };
 }
 
 // ---- The file ----
@@ -203,11 +219,12 @@ export async function restoreBackupFile(path: string, keys: Key[], progress: Res
       throw new HttpError(403, "Diese Instanz ist schon eingerichtet. Wiederherstellen geht hier nur über die Administration.");
     }
     progress.phase = "apply";
-    const restart = process.env.FLOWPLAN_LITESTREAM_ACTIVE === "1";
+    const restart = restartNeeded();
     if (!restart) await reopenDatabase();
     const keyHint = keys.length > 0 && !setupRestoreStatus().encryption;
     await audit("", "instance.restore.setup", "", JSON.stringify({ ...summary, missingFiles, source: progress.source, restart }));
-    return { ...summary, missingFiles, restart, keyHint };
+    const restartFor = !restart ? undefined : process.env.FLOWPLAN_LITESTREAM_ACTIVE === "1" ? ("litestream" as const) : ("processes" as const);
+    return { ...summary, missingFiles, restart, restartFor, keyHint };
   } finally {
     rmSync(plain, { force: true });
     rmSync(staging, { recursive: true, force: true });
