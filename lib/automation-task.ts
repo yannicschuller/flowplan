@@ -86,7 +86,7 @@ export async function runTaskActions(input: TaskRun): Promise<number> {
     const text = (await taskText(input, action, record)) || ruleName(rule);
     const assignee = await assigneeOf(input, action, record);
     const due = action.due === null ? null : Temporal.PlainDate.from(input.day || new Date().toISOString().slice(0, 10)).add({ days: action.due }).toString();
-    if (action.target === "document") await intoDocument(input, owner, record!, text, assignee, due, action.heading);
+    if (action.target === "document") await intoDocument(input, owner, record!, text, assignee, due, await taskHeading(input, action, record));
     else await intoDatabase(input, owner, action, text, assignee, due);
     made++;
   }
@@ -95,12 +95,18 @@ export async function runTaskActions(input: TaskRun): Promise<number> {
 
 // The text with the record's values for its placeholders ({{Titel}},
 // {{Status}}, {{Heute}} …), as record templates fill them; one line.
-async function taskText(input: TaskRun, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) {
-  if (!action.text.includes("{{")) return action.text.replace(/\s+/g, " ").trim();
+// The heading the task goes below takes them as well (#413): "{{Status}}"
+// files each task below the heading of the record's status.
+// A heading without placeholders stays exactly as written.
+const taskText = (input: TaskRun, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) => filled(input, action.text, record, 300);
+const taskHeading = async (input: TaskRun, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) =>
+  action.heading.includes("{{") ? await filled(input, action.heading, record, 200) : action.heading;
+async function filled(input: TaskRun, template: string, record: (Row & { cells: Record<string, unknown> }) | null, max: number) {
+  if (!template.includes("{{")) return template.replace(/\s+/g, " ").trim();
   const now = new Date().toISOString().slice(0, 19).replace("T", " ");
   const source = record || { id: "", page_id: input.page.id, created_by: "", updated_by: "", created_at: now, updated_at: now, cells: {} };
-  const text = await withPlaceholders(input.page, input.fields, source, input.actor, input.zone, (resolve) => mapPlaceholders(action.text, resolve));
-  return text.replace(/\s+/g, " ").trim().slice(0, 300);
+  const text = await withPlaceholders(input.page, input.fields, source, input.actor, input.zone, (resolve) => mapPlaceholders(template, resolve));
+  return text.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 // The task's person: a member of the workspace, or nobody.

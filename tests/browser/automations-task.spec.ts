@@ -52,14 +52,14 @@ test("rules create tasks in the record and in a task database", async ({ page },
   await dialog.getByLabel("Aktion", { exact: true }).selectOption("task");
   await expect(dialog.getByLabel("Wohin kommt die Aufgabe?")).toHaveValue("document");
   // An empty text is refused before saving.
-  const text = dialog.getByLabel("Aufgabe: Text");
+  const text = dialog.getByLabel("Aufgabe: Text", { exact: true });
   await text.fill("");
   await dialog.getByRole("button", { name: "Regel speichern" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Die Aufgabe braucht einen Text.");
   await text.fill("Rückmeldung zu {{Name}} einholen");
   await dialog.getByLabel("Person der Aufgabe").selectOption("@actor");
   await dialog.getByLabel("Fällig in Tagen").fill("2");
-  await dialog.getByLabel("Unter der Überschrift").fill("Nächste Schritte");
+  await dialog.getByLabel("Unter der Überschrift", { exact: true }).fill("Nächste Schritte");
   await shoot(page, info, "document");
   await dialog.getByRole("button", { name: "Regel speichern" }).click();
   await expect(dialog.getByText("Status → Erledigt → Aufgabe „Rückmeldung zu {{Name}} einholen“ im Eintrag · fällig +2 Tage")).toBeVisible();
@@ -71,7 +71,7 @@ test("rules create tasks in the record and in a task database", async ({ page },
   await dialog.getByLabel("Wohin kommt die Aufgabe?").selectOption("database");
   await dialog.getByRole("button", { name: "Regel speichern" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Wähle eine Datenbank für die Aufgabe.");
-  await dialog.getByLabel("Aufgabe: Text").fill("Prüfen: {{Name}}");
+  await dialog.getByLabel("Aufgabe: Text", { exact: true }).fill("Prüfen: {{Name}}");
   await dialog.getByLabel("Person der Aufgabe").selectOption("@actor");
   await dialog.getByLabel("Datenbank der Aufgabe").selectOption(todos);
   // The task database's properties: person, due date, the link back.

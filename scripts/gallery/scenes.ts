@@ -783,6 +783,24 @@ const databaseScenes: Scene[] = [
     },
   },
   {
+    id: "database-automation-placeholders",
+    group: "Databases",
+    title: "Placeholder picker of a rule",
+    path: dbPath,
+    // The picker of the workflow editor in "Aufgabe erstellen" (#413).
+    covers: ["components/placeholder-picker.tsx"],
+    steps: async (page) => {
+      await button(page, "Weitere Werkzeuge").first().click();
+      await menu(page).getByRole("menuitem", { name: "Automationen", exact: true }).click();
+      await waitDialog(page, /^Automationen ·/);
+      const rules = dialog(page, /^Automationen ·/).first();
+      await button(rules, "Eigene Regel").click();
+      await rules.getByLabel("Aktion", { exact: true }).selectOption("task");
+      await button(rules, "Platzhalter einfügen in „Aufgabe: Text“").click();
+      await page.getByRole("listbox", { name: "Platzhalter" }).waitFor();
+    },
+  },
+  {
     id: "database-export",
     group: "Databases",
     title: "Export menu",

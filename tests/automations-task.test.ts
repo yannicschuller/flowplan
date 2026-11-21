@@ -84,6 +84,20 @@ test("into the record's document: task item with person, due date and heading; o
   assert.equal((await html(rid)).match(/data-type="taskItem"/g)?.length, 1);
 });
 
+test("the heading takes placeholders too (#413); without any it stays as written", async () => {
+  await rules([{ id: "head", name: "By status", trigger: { type: "changed", field: "status" }, actions: [task({ text: "Look at {{Title}}", due: null, heading: "Status: {{Status}}" })] }]);
+  const rid = (await act({ action: "row.create", pageId: tickets, cells: { title: "Scanner", status: "Open" } })).id;
+  await update(rid, { status: "Doing" });
+  const doc = await html(rid);
+  assert.match(doc, /<h2[^>]*>Status: Doing<\/h2>/);
+  assert.match(doc, /Look at Scanner/);
+  // An unknown name stays as typed (as in the text).
+  await rules([{ id: "head2", name: "Unknown", trigger: { type: "changed", field: "status" }, actions: [task({ text: "Other {{Title}}", due: null, heading: "{{Nope}} list" })] }]);
+  const rid2 = (await act({ action: "row.create", pageId: tickets, cells: { title: "Lamp", status: "Open" } })).id;
+  await update(rid2, { status: "Done" });
+  assert.match(await html(rid2), /<h2[^>]*>\{\{Nope\}\} list<\/h2>/);
+});
+
 test("people: who triggered it, the creator, a fixed member, nobody", async () => {
   const run1 = async (assignee: string) => {
     await rules([{ id: `p-${assignee || "none"}`, name: "People", trigger: { type: "created" }, actions: [task({ assignee, due: null, text: "Check {{Title}}" })] }]);

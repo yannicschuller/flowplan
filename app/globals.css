@@ -30785,6 +30785,86 @@ tr:hover .row-open-mark,
 .automation-row > .automation-word {
   flex: none;
 }
+/* The placeholder picker (components/placeholder-picker.tsx): workflows
+   and the database rules (#413). Options below a parent are indented. */
+.wf-picker {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  inset-inline: 0;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.wf-picker input[type="search"] {
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+.wf-picker ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.wf-picker-group {
+  padding: 8px 6px 3px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.wf-picker [role="option"] {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.wf-picker [role="option"].wf-picker-depth-1 {
+  padding-inline-start: 24px;
+}
+.wf-picker [role="option"].wf-picker-depth-2 {
+  padding-inline-start: 38px;
+}
+.wf-picker [role="option"].active {
+  background: var(--blue-light);
+}
+.wf-picker-label {
+  flex: 1;
+  min-width: 0;
+}
+.wf-picker-type {
+  font-size: 11px;
+  color: var(--muted);
+}
+.wf-picker-example {
+  max-width: 40%;
+  font-size: 11.5px;
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wf-picker-empty {
+  padding: 8px;
+  font-size: 13px;
+}
+.wf-picker-hint {
+  margin: 0;
+  font-size: 11.5px;
+}
+
 /* "Aufgabe erstellen" (#380): label and field on one line, the field
    takes the rest; the hint below the number. */
 .automation-task label.automation-row > small {
@@ -30792,6 +30872,26 @@ tr:hover .row-open-mark,
 }
 .automation-task > p.error {
   margin: 0;
+}
+/* A rule's text with the placeholder picker (#413, components/rule-text-
+   input.tsx): like the labels above, the {} button beside the field, the
+   picker below it. */
+.automation-create .automation-text > span {
+  flex: 0 1 160px;
+  font-weight: 500;
+}
+.automation-text-field {
+  position: relative;
+}
+.automation-text-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.automation-text-row > input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 /* "Wiederkehrende Aufgabe": the choice, then the rule as one sentence
    ("alle [1] Wochen · Mo Di … · gerechnet ab [Start ▾]") that wraps as a
