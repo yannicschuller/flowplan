@@ -195,8 +195,10 @@ export type RelayStatus = "ok" | "gone" | "forbidden" | "invalid" | "rate_limite
 // the settings (lib/push-test.ts): unreachable (timeout, refused, redirect),
 // signature (401: the relay could not verify this instance's key), blocked
 // (403), rejected (another 4xx; httpStatus says which), upstream (APNs/FCM
-// failed, 502 or per message), response (an unexpected answer), off.
-export type RelayFailure = "unreachable" | "signature" | "blocked" | "rejected" | "upstream" | "response" | "off";
+// failed, per message), keys (502 instance_keys_unavailable: the relay could
+// not fetch this instance's /.well-known/flowplan-push), response (an
+// unexpected answer), off.
+export type RelayFailure = "unreachable" | "signature" | "blocked" | "rejected" | "upstream" | "keys" | "response" | "off";
 export type RelayResult = { status: RelayStatus; retryAfter?: number; reason?: RelayFailure; httpStatus?: number };
 // Sends one batch (1–100 messages); results in message order. Never throws.
 export type RelaySender = (messages: RelayMessage[]) => Promise<RelayResult[]>;
@@ -267,6 +269,16 @@ export const sendToRelay: RelaySender = async (messages) => {
       return failed("rate_limited", retrySeconds(response.headers.get("retry-after")));
     }
     if (!response.ok) {
+      // The relay's error code (§6.6), read only where it tells two causes
+      // apart: a 502 is either the instance's keys (fetched from
+      // APP_URL/.well-known/flowplan-push) or Apple/Google (#414).
+      let code = "";
+      if (response.status === 502) {
+        try {
+          const body = JSON.parse(await readLimited(response)) as { error?: unknown };
+          if (typeof body.error === "string") code = body.error;
+        } catch {}
+      }
       await response.body?.cancel().catch(() => {});
       // Whole-request errors (§6.6) never drop registrations – a fault of
       // this instance (400, 413, 415), a key the relay does not know yet
@@ -279,11 +291,11 @@ export const sendToRelay: RelaySender = async (messages) => {
         409: "request replayed",
         413: "request too large",
         415: "not JSON",
-        502: "upstream push service failed",
+        502: code === "instance_keys_unavailable" ? "the relay could not fetch /.well-known/flowplan-push from APP_URL" : "upstream push service failed",
       };
       warnOnce(`the relay answered HTTP ${response.status}${reasons[response.status] ? ` (${reasons[response.status]})` : ""}`);
       const reason: RelayFailure =
-        response.status === 401 ? "signature" : response.status === 403 ? "blocked" : response.status === 502 ? "upstream" : response.status >= 500 ? "unreachable" : "rejected";
+        response.status === 401 ? "signature" : response.status === 403 ? "blocked" : response.status === 502 ? (code === "instance_keys_unavailable" ? "keys" : "upstream") : response.status >= 500 ? "unreachable" : "rejected";
       return failed("error", undefined, reason, response.status);
     }
     const parsed = resultsSchema.safeParse(JSON.parse(await readLimited(response)));

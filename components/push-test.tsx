@@ -83,6 +83,13 @@ export function statusText(t: Translate, target: PushTestTarget, report: PushTes
       return t("Das Relay hat unerwartet geantwortet. Später erneut versuchen.", "The relay answered unexpectedly. Try again later.");
     case "relay-upstream":
       return t("Apple bzw. Google hat die Benachrichtigung nicht angenommen (Fehler über das Relay). Später erneut versuchen.", "Apple/Google did not accept the notification (error from the relay). Try again later.");
+    case "relay-keys": {
+      const origin = report.relay.instance || (typeof window === "undefined" ? "" : window.location.origin);
+      return t(
+        `Das Relay konnte die Schlüssel dieser Instanz nicht abrufen. ${origin}/.well-known/flowplan-push muss aus dem Internet erreichbar sein – nicht nur im eigenen Netz, ohne Anmeldung, Zugriffsschutz oder Bot-Prüfung davor.`,
+        `The relay could not fetch this instance's keys. ${origin}/.well-known/flowplan-push must be reachable from the internet – not only on your own network, and without a login, access restriction or bot check in front of it.`,
+      );
+    }
     case "relay-rate-limited":
       return t(`Das Relay drosselt gerade – in ${detail || "60"} Sekunden erneut versuchen.`, `The relay is throttling – try again in ${detail || "60"} seconds.`);
     case "relay-registration":

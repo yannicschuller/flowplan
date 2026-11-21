@@ -730,7 +730,7 @@ async function flushPushTests(send: Sender, sendExpo: ExpoSender, sendRelay: Rel
         default: {
           const reason = result.reason ?? "unreachable";
           const status =
-            reason === "signature" ? "relay-signature" : reason === "blocked" ? "relay-blocked" : reason === "upstream" ? "relay-upstream" : reason === "rejected" ? "relay-rejected" : reason === "response" ? "relay-unexpected" : reason === "off" ? "relay-off" : "relay-unreachable";
+            reason === "signature" ? "relay-signature" : reason === "blocked" ? "relay-blocked" : reason === "upstream" ? "relay-upstream" : reason === "keys" ? "relay-keys" : reason === "rejected" ? "relay-rejected" : reason === "response" ? "relay-unexpected" : reason === "off" ? "relay-off" : "relay-unreachable";
           await testResult(job, status, "relay", result.httpStatus ? `HTTP ${result.httpStatus}` : null);
         }
       }

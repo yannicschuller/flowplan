@@ -46,6 +46,8 @@ export type PushTestStatus =
   | "relay-rejected"
   | "relay-unexpected"
   | "relay-upstream"
+  // The relay could not fetch this instance's keys (#414).
+  | "relay-keys"
   | "relay-rate-limited"
   | "relay-registration"
   | "expo-gone"

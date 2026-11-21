@@ -227,6 +227,17 @@ test("every target through its real channel, the outcome per target, no inbox en
   assert.equal(report.diagnostics, undefined);
 });
 
+test("a 502 because the relay could not fetch this instance's keys is told apart from Apple/Google (#414)", async () => {
+  const { user, token } = await account("relay-keys", { groups: ["flowplan-admins"] });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Xiaomi", relayToken: relayToken(), publicKey: deviceKey() });
+  const flush = () => flushPushQueue(async () => assert.fail("no Web Push"), async () => assert.fail("no Expo"), sendToRelay);
+  relayAnswer = { status: 502, json: { error: "instance_keys_unavailable" } };
+  const report = await quietly(() => sendTestPush(user, token, { flush }));
+  assert.equal(report.targets[0].status, "relay-keys");
+  // The registration stays: the device is fine, the instance is not reachable.
+  assert.ok(await one("SELECT 1 FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id));
+});
+
 test("relay failures of the whole request become actionable codes", async () => {
   const { user, token } = await account("relay-errors", { groups: ["flowplan-admins"] });
   const device = { relay: relayToken(), key: deviceKey() };
