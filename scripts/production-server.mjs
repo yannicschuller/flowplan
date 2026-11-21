@@ -47,7 +47,11 @@ export async function startProductionServer({ env = {} } = {}) {
   }
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ["server.js"], {
+  // FLOWPLAN_PROCESSES > 1 (in `env` or the environment): several
+  // processes behind the port, as the image starts them (scripts/processes.mjs).
+  const processes = String(env.FLOWPLAN_PROCESSES ?? process.env.FLOWPLAN_PROCESSES ?? "").trim();
+  const several = processes !== "" && processes !== "1";
+  const child = spawn(process.execPath, several ? [join(root, "scripts/processes.mjs"), "server.js"] : ["server.js"], {
     cwd: app,
     env: {
       ...process.env,

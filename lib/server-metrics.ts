@@ -33,7 +33,8 @@ import { all, one, run, sqliteCacheBytes } from "./db";
 import { activeRecently, diskUsage } from "./metrics";
 import { liveHubCounts } from "./document-live";
 import { workspaceLiveCount } from "./workspace-live";
-import { clusterMode, instanceId } from "./cluster/config";
+import { instanceId } from "./cluster/config";
+import { hasPeers, primaryProcess, processTable } from "./cluster/processes";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -276,7 +277,12 @@ export async function refreshSizes(measure: () => Promise<{ databaseBytes: numbe
   }
 }
 
-const instanceKey = () => (clusterMode() ? instanceId() : "");
+const instanceKey = () => (hasPeers() ? instanceId() : "");
+// Several processes on one host (FLOWPLAN_PROCESSES): the container's
+// figures – its CPU and memory limits, the memory of its cgroup – come with
+// process 1's row only; the others write 0 there (their own CPU time and
+// RSS as always), so the sums over the rows of a minute count the host once.
+const hostRow = () => primaryProcess();
 const MINUTE_FLOOR = (ms: number) => Math.floor(ms / MINUTE) * MINUTE;
 
 // Takes and writes one sample (the metrics worker, once a minute), and
@@ -290,12 +296,12 @@ export async function recordServerSample(now = Date.now()) {
     instanceKey(),
     Math.round(x.wallMs),
     Math.round(x.cpuUs),
-    Math.round(x.cpuLimit * 1000),
+    hostRow() ? Math.round(x.cpuLimit * 1000) : 0,
     x.cpuLimited ? 1 : 0,
     x.rss,
-    x.memLimit,
+    hostRow() ? x.memLimit : 0,
     x.memLimited ? 1 : 0,
-    x.cgroupMem,
+    hostRow() || x.cgroupMem === null ? x.cgroupMem : 0,
     x.heapUsed,
     x.heapTotal,
     x.external,
@@ -447,7 +453,7 @@ export async function serverNow(now = Date.now()) {
   // Live connections are event streams too: the larger count, not the sum.
   const live = Math.max(x.connections, x.streams);
   const known = x.heapTotal + x.external;
-  const instances = clusterMode()
+  const instances = hasPeers()
     ? await all<{ instance: string; at: number; rss: number; mem_limit: number; cpu_us: number; wall_ms: number; cpu_limit: number; connections: number; documents: number }>(
         "SELECT m.instance,m.at,m.rss,m.mem_limit,m.cpu_us,m.wall_ms,m.cpu_limit,m.connections,m.documents FROM metrics_server m WHERE m.at=(SELECT MAX(at) FROM metrics_server WHERE instance=m.instance) AND m.at>=?",
         now - 5 * MINUTE,
@@ -479,6 +485,18 @@ export async function serverNow(now = Date.now()) {
     live: { documents: x.documents, connections: x.connections, streams: x.streams, estimatedBytes: live * CONNECTION_BYTES_ESTIMATE },
     disk: { total: x.diskTotal, free: x.diskFree, database: x.databaseBytes, uploads: x.uploadBytes },
     instances: instances.map((i) => ({ id: i.instance, at: i.at, rss: i.rss, memLimit: i.mem_limit, cores: i.wall_ms ? i.cpu_us / 1000 / i.wall_ms : 0, cpuLimit: i.cpu_limit / 1000, connections: i.connections, documents: i.documents })),
+    // Several processes on this host (FLOWPLAN_PROCESSES): the supervisor's
+    // table – each process with its memory, CPU since its start and restarts.
+    processes: ((await processTable()) ?? []).map((p) => ({
+      index: p.index,
+      role: p.role,
+      pid: p.pid,
+      running: p.running,
+      rss: p.rss,
+      cores: p.cpuSeconds !== null && p.startedAt ? p.cpuSeconds / Math.max(1, (now - p.startedAt) / 1000) : null,
+      restarts: p.restarts,
+      lastExit: p.lastExit,
+    })),
   };
 }
 export type ServerNow = Awaited<ReturnType<typeof serverNow>>;

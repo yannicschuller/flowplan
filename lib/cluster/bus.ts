@@ -8,10 +8,19 @@
 // stays the source of truth, and a missed message is caught up by the
 // clients' "check" (they fetch the current state).
 //
-// Single container (no cluster mode): publish() does nothing, there is no
+// Several processes on one host (FLOWPLAN_PROCESSES, scripts/processes.mjs,
+// lib/cluster/processes.ts): the same messages go over the IPC channel to
+// the supervisor, which hands them to the other processes – the same
+// semantics (best effort, `origin` passed to the handlers, the sender
+// delivers locally first). In cluster mode each process is an instance of
+// its own on Redis, IPC is not used for the bus: Redis already reaches the
+// processes next to it, and one transport means no message twice.
+//
+// Single process (no cluster mode): publish() does nothing, there is no
 // other instance.
 import { clusterMode, instanceId, redisPrefix } from "./config";
 import { RedisClient } from "./redis";
+import { multiProcess, onIpc, sendIpc } from "./processes";
 
 type Handler = (payload: unknown, origin: string) => void;
 type State = {
@@ -22,10 +31,11 @@ type State = {
   published: number;
   received: number;
   failed: number;
+  ipc: boolean;
 };
 const holder = globalThis as unknown as { flowplanBus?: State };
 const state = (): State =>
-  (holder.flowplanBus ??= { commands: null, subscriber: null, handlers: new Map(), subscribed: null, published: 0, received: 0, failed: 0 });
+  (holder.flowplanBus ??= { commands: null, subscriber: null, handlers: new Map(), subscribed: null, published: 0, received: 0, failed: 0, ipc: false });
 
 const busChannel = () => `${redisPrefix()}bus`;
 
@@ -53,14 +63,7 @@ export function startBus(): Promise<unknown> {
       } catch {
         return;
       }
-      if (!message || message.o === instanceId()) return;
-      s.received++;
-      for (const handler of s.handlers.get(message.t) ?? [])
-        try {
-          handler(message.p, message.o);
-        } catch (error) {
-          console.error(`Cluster bus: handler for ${message.t} failed`, error);
-        }
+      deliver(s, message);
     })
     .catch((error) => {
       s.subscribed = null;
@@ -68,18 +71,46 @@ export function startBus(): Promise<unknown> {
     }));
 }
 
+function deliver(s: State, message: { o: string; t: string; p: unknown }) {
+  if (!message || typeof message.t !== "string" || message.o === instanceId()) return;
+  s.received++;
+  for (const handler of s.handlers.get(message.t) ?? [])
+    try {
+      handler(message.p, message.o);
+    } catch (error) {
+      console.error(`Cluster bus: handler for ${message.t} failed`, error);
+    }
+}
+// The other processes of this host (not in cluster mode, see the top).
+function localBus() {
+  const s = state();
+  if (s.ipc || clusterMode() || !multiProcess()) return;
+  s.ipc = true;
+  onIpc("bus", (message) => deliver(s, message as unknown as { o: string; t: string; p: unknown }));
+}
+export const startLocalBus = localBus;
+
 // Handles messages of `topic` from the other instances.
 export function onBus(topic: string, handler: Handler) {
   const s = state();
+  localBus();
   let set = s.handlers.get(topic);
   if (!set) s.handlers.set(topic, (set = new Set()));
   set.add(handler);
   return () => set.delete(handler);
 }
 
-// Sends to the other instances (fire and forget; cluster mode only).
+// Sends to the other instances (fire and forget; cluster mode, or the
+// other processes of this host).
 export function publish(topic: string, payload: unknown) {
-  if (!clusterMode()) return;
+  if (!clusterMode()) {
+    if (!multiProcess()) return;
+    const s = state();
+    localBus();
+    s.published++;
+    if (!sendIpc({ fp: "bus", o: instanceId(), t: topic, p: payload })) s.failed++;
+    return;
+  }
   const s = state();
   s.published++;
   void redis()
@@ -93,6 +124,7 @@ export function publish(topic: string, payload: unknown) {
 export function busStats() {
   const s = state();
   return {
+    transport: clusterMode() ? ("redis" as const) : multiProcess() ? ("ipc" as const) : null,
     connected: !!s.commands?.connected,
     subscribed: !!s.subscriber?.connected,
     published: s.published,

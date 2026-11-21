@@ -31,9 +31,13 @@ export const logFileEnabled = (env: Record<string, string | undefined> = process
 // The name the files of this container or pod carry: FLOWPLAN_INSTANCE_ID
 // when set, else the host name – the same after a restart of the process
 // in its container, another one for every other container or pod sharing
-// the data folder (cluster mode on one volume).
+// the data folder (cluster mode on one volume). The processes 2 … n of a
+// host with several (FLOWPLAN_PROCESSES) keep their log apart: "-p2"; only
+// process 1 tracks restarts (instrumentation.ts).
 export function fileKey(env: Record<string, string | undefined> = process.env) {
-  return ((env.FLOWPLAN_INSTANCE_ID?.trim() || hostname()).slice(0, 60) || "flowplan").replace(/[^A-Za-z0-9_.-]/g, "_");
+  const index = Number(env.FLOWPLAN_PROCESS_INDEX);
+  const p = Number(env.FLOWPLAN_PROCESSES_TOTAL) > 1 && Number.isInteger(index) && index > 1 ? `-p${index}` : "";
+  return `${((env.FLOWPLAN_INSTANCE_ID?.trim() || hostname()).slice(0, 60) || "flowplan").replace(/[^A-Za-z0-9_.-]/g, "_")}${p}`;
 }
 
 const holder = globalThis as unknown as { flowplanRunId?: string };

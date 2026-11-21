@@ -23,7 +23,7 @@ import {
   probeSftp,
   requireSetupRestore,
   restoreUpload,
-  setupRestoreStatus,
+  sharedSetupRestoreStatus,
   startRemoteRestore,
   uploadTarget,
 } from "@/lib/setup-restore";
@@ -55,7 +55,7 @@ async function guard(req: Request) {
 export async function GET(req: Request) {
   try {
     await guard(req);
-    return Response.json(setupRestoreStatus(), { headers });
+    return Response.json(await sharedSetupRestoreStatus(), { headers });
   } catch (e) {
     return failure(e);
   }

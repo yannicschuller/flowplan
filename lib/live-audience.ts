@@ -19,7 +19,7 @@
 // lean towards "someone is there", which only means cursors go out as
 // before.
 import { onBus, publish } from "./cluster/bus";
-import { clusterMode } from "./cluster/config";
+import { hasPeers } from "./cluster/processes";
 
 type Tell = (others: boolean) => void;
 type Entry = { id: string; tell: Tell; told?: boolean };
@@ -83,7 +83,7 @@ if (!hub.flowplanAudienceBus) {
   });
 }
 function refreshLater() {
-  if (hub.flowplanAudienceTimer || !clusterMode()) return;
+  if (hub.flowplanAudienceTimer || !hasPeers()) return;
   hub.flowplanAudienceTimer = setInterval(() => {
     let any = false;
     for (const [name, r] of rooms)

@@ -54,11 +54,15 @@ export function requireClusterConfig(env: Record<string, string | undefined> = p
 
 // This process: FLOWPLAN_INSTANCE_ID, else the host name (the pod name on
 // Kubernetes, the container id with Docker) and a random suffix, so a
-// restarted container is a new instance.
+// restarted container is a new instance. One of several processes of the
+// host (FLOWPLAN_PROCESSES, lib/cluster/processes.ts) adds its number:
+// "-p2".
 const holder = globalThis as unknown as { flowplanInstanceId?: string };
 export function instanceId(): string {
+  const index = Number(process.env.FLOWPLAN_PROCESS_INDEX);
+  const p = Number(process.env.FLOWPLAN_PROCESSES_TOTAL) > 1 && Number.isInteger(index) && index > 0 ? `-p${index}` : "";
   return (holder.flowplanInstanceId ??= (
-    process.env.FLOWPLAN_INSTANCE_ID?.trim() || `${hostname().slice(0, 40)}-${randomBytes(3).toString("hex")}`
+    process.env.FLOWPLAN_INSTANCE_ID?.trim() ? `${process.env.FLOWPLAN_INSTANCE_ID.trim()}${p}` : `${hostname().slice(0, 40)}${p}-${randomBytes(3).toString("hex")}`
   ).replace(/[^A-Za-z0-9_.:-]/g, "_"));
 }
 

@@ -46,14 +46,22 @@ if [ "$(id -u)" = 0 ]; then
   export HOME
   exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$0" "$@"
 fi
+# Several Flowplan processes behind the one port (FLOWPLAN_PROCESSES, #383,
+# docs/architecture/multi-process.md): processes.mjs supervises them; unset
+# or 1 starts server.js itself, exactly as before.
+app_main=server.js
+case "${FLOWPLAN_PROCESSES:-1}" in
+  1 | "") ;;
+  *) if [ -f processes.mjs ]; then app_main=processes.mjs; fi ;;
+esac
 # The app under `litestream replicate -exec` while Litestream's output is
 # copied to the log file (ls_log_open below): the app writes to the
 # container's own stdout/stderr again (kept on fds 3 and 4), not through
 # Litestream's copy – it saves its own lines (lib/restarts/log-file.ts).
 # After the user switch: Litestream already runs as that user.
 if [ "${1:-}" = --exec-app ]; then
-  if { true >&3 && true >&4; } 2> /dev/null; then exec node server.js >&3 2>&4 3>&- 4>&-; fi
-  exec node server.js
+  if { true >&3 && true >&4; } 2> /dev/null; then exec node "$app_main" >&3 2>&4 3>&- 4>&-; fi
+  exec node "$app_main"
 fi
 if [ -n "${PUID:-}${PGID:-}" ] && [ "${PUID:-1000}:${PGID:-${PUID:-1000}}" != "$(id -u):$(id -g)" ]; then
   echo "PUID/PGID are ignored: the container was started as UID $(id -u), GID $(id -g) (user:, --user or runAsUser). PUID/PGID need the image's default start: remove user:, or set only user: \"${PUID:-1000}:${PGID:-${PUID:-1000}}\"." >&2
@@ -426,7 +434,7 @@ supervise() {
   forwarded=
   trap 'signal=TERM' TERM
   trap 'signal=INT' INT
-  node server.js 6>&- &
+  node "$app_main" 6>&- &
   app=$!
   while kill -0 "$app" 2> /dev/null; do
     if [ -n "$signal" ] && [ -z "$forwarded" ]; then
@@ -570,7 +578,7 @@ if [ -n "$LITESTREAM" ]; then
     exec 3>&1 4>&2
     exec litestream replicate -config /etc/litestream.yml -exec "sh $0 --exec-app" >&6 2>&6 6>&-
   fi
-  exec litestream replicate -config /etc/litestream.yml -exec "node server.js"
+  exec litestream replicate -config /etc/litestream.yml -exec "node $app_main"
 fi
 if [ -n "$OVERLAP" ]; then supervise ""; fi
-exec node server.js
+exec node "$app_main"

@@ -117,6 +117,16 @@ Seeder options: `--users` (400), `--docs` (300), `--records` (3000),
 that every task links to – the related data of a database open). The
 larger seed of #383: `--docs 2000 --records 5000 --related`.
 
+## Several processes on one host (FLOWPLAN_PROCESSES)
+
+`serve.mjs --processes N` (or `auto`) starts the build behind
+`scripts/processes.mjs` as the image does with `FLOWPLAN_PROCESSES=N`;
+`server.pid` is then the supervisor's and `run.mjs --pid` adds up the CPU
+and memory of its child processes. `--balance os` lets the kernel hand out
+the connections. For interleaved comparisons, seed once, stop the server,
+keep the data directory aside and start every run with
+`serve.mjs --data-from <that copy>`. Results: docs/architecture/multi-process.md §8.
+
 ## Cluster mode (PostgreSQL, several instances)
 
 `scripts/load-test-cluster.mjs` runs the same ramp against 1, 2, …

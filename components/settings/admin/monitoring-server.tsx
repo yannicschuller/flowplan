@@ -208,7 +208,26 @@ export function ServerCard({ s, range }: { s: MonitoringServer; range: "1h" | "2
           <ChartTable
             caption={t("Instanzen", "Instances")}
             head={[t("Instanz", "Instance"), "CPU", "RAM", t("Verbindungen", "Connections")]}
-            rows={s.now.instances.map((i) => [i.id, `${num(i.cores, 2)} / ${num(i.cpuLimit, 1)}`, `${bytes(i.rss)} / ${bytes(i.memLimit)}`, num(i.connections)])}
+            rows={s.now.instances.map((i) => [
+              i.id,
+              // Several processes on one host: the limits come with process 1's row.
+              i.cpuLimit ? `${num(i.cores, 2)} / ${num(i.cpuLimit, 1)}` : num(i.cores, 2),
+              i.memLimit ? `${bytes(i.rss)} / ${bytes(i.memLimit)}` : bytes(i.rss),
+              num(i.connections),
+            ])}
+          />
+        )}
+        {s.now.processes.length > 0 && (
+          <ChartTable
+            caption={t("Prozesse", "Processes")}
+            head={[t("Prozess", "Process"), "PID", "CPU", "RAM", t("Neustarts", "Restarts")]}
+            rows={s.now.processes.map((p) => [
+              p.role === "supervisor" ? t("Steuerung", "Supervisor") : p.role === "primary" ? `${p.index} · ${t("Hauptprozess", "Primary process")}` : String(p.index),
+              p.pid === null ? "–" : String(p.pid),
+              p.cores === null ? "–" : num(p.cores, 2),
+              p.rss === null ? "–" : bytes(p.rss),
+              p.lastExit && p.restarts ? `${num(p.restarts)} (${p.lastExit})` : num(p.restarts),
+            ])}
           />
         )}
       </div>

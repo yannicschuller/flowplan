@@ -28,7 +28,7 @@
 // each instance publishes what it saw on the bus (lib/cluster/bus.ts) and
 // delivers what the others saw to its own listeners.
 import { onBus, publish } from "./cluster/bus";
-import { clusterMode } from "./cluster/config";
+import { hasPeers } from "./cluster/processes";
 import { all, sql, writeGeneration } from "./db";
 import { dbContext } from "./db-driver/context";
 import { pageRole } from "./permissions";
@@ -73,7 +73,7 @@ const state = (hub.flowplanWorkspaceLive ??= {
 });
 
 // Something to look at: listeners here, or other instances to tell.
-const needed = () => state.listeners.size > 0 || clusterMode();
+const needed = () => state.listeners.size > 0 || hasPeers();
 function ensureTimer() {
   if (!state.bus) {
     state.bus = true;
@@ -159,7 +159,7 @@ async function round() {
     }
     const remote = state.remote;
     state.remote = empty();
-    if (clusterMode() && (local.trees.size || local.people.size || local.pages.size || versions))
+    if (hasPeers() && (local.trees.size || local.people.size || local.pages.size || versions))
       publish("workspace", { trees: [...local.trees], people: [...local.people], pages: [...local.pages], versions } satisfies BusMessage);
     const merged = { trees: new Set([...local.trees, ...remote.trees]), people: new Set([...local.people, ...remote.people]), pages: new Set([...local.pages, ...remote.pages]) };
     if (merged.trees.size || merged.people.size || merged.pages.size) await deliver(merged);

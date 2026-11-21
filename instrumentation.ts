@@ -23,9 +23,15 @@ export async function register() {
     // this run writes anything (lib/restarts/tracker.ts).
     const { installLogCapture } = await import("./lib/restarts/log-file");
     installLogCapture();
+    // Several processes on this host (FLOWPLAN_PROCESSES, scripts/processes.mjs):
+    // process 1 runs what must run once per host – the restart history, the
+    // setup checks and every timed job below; the others only answer
+    // requests (lib/cluster/processes.ts, docs/architecture/multi-process.md).
+    const { primaryProcess, announceReady } = await import("./lib/cluster/processes");
+    const primary = primaryProcess();
     const { buildInfo, versionLine } = await import("./lib/build-info");
     const { startRestartTracker, setTrackerInstance } = await import("./lib/restarts/tracker");
-    startRestartTracker({ version: buildInfo().version || null });
+    if (primary) startRestartTracker({ version: buildInfo().version || null });
     // What is running, as the first line Flowplan writes (#194).
     console.log(versionLine());
     // Cluster mode (FLOWPLAN_CLUSTER=1): PostgreSQL, Redis and S3 are
@@ -35,6 +41,22 @@ export async function register() {
     const { startInstance } = await import("./lib/cluster/runtime");
     const { poolStats } = await import("./lib/db-driver");
     await startInstance({ pool: poolStats, version: buildInfo().version || null });
+    // Event-loop delay and SQLite time for load tests (FLOWPLAN_METRICS_LOOP=1).
+    const { startRuntimeMetrics } = await import("./lib/runtime-metrics");
+    startRuntimeMetrics();
+    // Catalogues of further languages for server-side texts (lib/i18n-catalogs.ts).
+    await import("./lib/i18n-catalogs-server");
+    if (!primary) {
+      // Requests per minute and this process's CPU and memory (lib/metrics.ts).
+      const { startMetricsWorker } = await import("./lib/metrics-worker");
+      startMetricsWorker();
+      return;
+    }
+    // The database opened (and migrated) before the other processes of the
+    // host start (they wait for this; nothing waits outside a group).
+    const { startOpening } = await import("./lib/db-driver");
+    await startOpening();
+    announceReady();
     // The previous run's end into the restart history, then every five
     // minutes runs of other containers on this data folder that went stale.
     const { instanceId } = await import("./lib/cluster/config");
@@ -56,8 +78,6 @@ export async function register() {
     // SMTP/LDAP certificates not verified on purpose (#286): never silent.
     const { warnUnverifiedTlsOnce } = await import("./lib/tls-trust");
     warnUnverifiedTlsOnce();
-    // Catalogues of further languages for server-side texts (lib/i18n-catalogs.ts).
-    await import("./lib/i18n-catalogs-server");
     const { startPushWorker, dispatchPush } = await import("./lib/push");
     startPushWorker();
     const { startReminderWorker } = await import("./lib/date-reminders");
@@ -134,9 +154,6 @@ export async function register() {
     // (lib/metrics.ts; FLOWPLAN_METRICS=off switches them off).
     const { startMetricsWorker } = await import("./lib/metrics-worker");
     startMetricsWorker();
-    // Event-loop delay and SQLite time for load tests (FLOWPLAN_METRICS_LOOP=1).
-    const { startRuntimeMetrics } = await import("./lib/runtime-metrics");
-    startRuntimeMetrics();
   }
 }
 
