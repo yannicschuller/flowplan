@@ -149,7 +149,7 @@ test("the link to the new address changes nothing until its button is pressed", 
     // Used once: a second time it says so.
     await page.goto(`${origin}/email-change?token=${token}`);
     await page.getByRole("button", { name: "Adresse bestätigen" }).click();
-    await expect(page.getByRole("alert")).toContainText("abgelaufen oder wurde schon benutzt");
+    await expect(page.locator(".error[role=alert]")).toContainText("abgelaufen oder wurde schon benutzt");
     expect(errors).toEqual([]);
   } finally {
     await context.close();

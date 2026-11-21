@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 
 // The QR code of a form's link (#415): next to "Formularlink kopieren", a
@@ -52,24 +53,19 @@ test("the form's QR code opens in a dialog with SVG and PNG downloads", async ({
   await expect(pngLink).toHaveAttribute("type", "image/png");
   await expect(pngLink).toHaveAttribute("href", /^blob:/);
   await expect(pngLink).toHaveAttribute("download", /^Einkaufsliste-.*-qr\.png$/);
-  const svgFile = await svgLink.evaluate(async (a: HTMLAnchorElement) => {
-    const blob = await (await fetch(a.href)).blob();
-    return { type: blob.type, text: await blob.text() };
-  });
-  expect(svgFile.type).toBe("image/svg+xml");
-  expect(svgFile.text).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
-  const png = await pngLink.evaluate(async (a: HTMLAnchorElement) => {
-    const blob = await (await fetch(a.href)).blob();
-    const bitmap = await createImageBitmap(blob);
-    return { type: blob.type, width: bitmap.width, height: bitmap.height };
-  });
-  expect(png.type).toBe("image/png");
-  expect(png.width).toBeGreaterThanOrEqual(1024);
-  expect(png.height).toBe(png.width);
-
-  // A real download keeps the file name.
-  const [download] = await Promise.all([page.waitForEvent("download"), svgLink.click()]);
-  expect(download.suggestedFilename()).toMatch(/-qr\.svg$/);
+  // The files as a download (the page's CSP has no blob: for fetch).
+  const [svgDownload] = await Promise.all([page.waitForEvent("download"), svgLink.click()]);
+  expect(svgDownload.suggestedFilename()).toMatch(/-qr\.svg$/);
+  const svgText = readFileSync((await svgDownload.path())!, "utf8");
+  expect(svgText).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  const [pngDownload] = await Promise.all([page.waitForEvent("download"), pngLink.click()]);
+  expect(pngDownload.suggestedFilename()).toMatch(/-qr\.png$/);
+  const pngBytes = readFileSync((await pngDownload.path())!);
+  // PNG signature, then IHDR's width and height.
+  expect(pngBytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  const width = pngBytes.readUInt32BE(16), height = pngBytes.readUInt32BE(20);
+  expect(width).toBeGreaterThanOrEqual(1024);
+  expect(height).toBe(width);
 
   await expect(dialog.getByRole("button", { name: "Drucken", exact: true })).toBeEnabled();
   // No style attributes in the dialog's code (strict CSP).
