@@ -8,7 +8,7 @@
 // "Mit E-Mail und Passwort" opens the form in place – on phones at the
 // bottom, in reach of the thumb.
 import { BrandMark } from "./brand-mark";
-import { loginReturnPath } from "@/lib/page-location";
+import { formReturnPath, loginReturnPath } from "@/lib/page-location";
 import { lazy, Suspense, useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { PlainHttpNote, SetupTokenNote } from "./plain-http-note";
@@ -206,7 +206,9 @@ export default function Login({
     const update = () => {
       // Through an invitation link for several people, SSO comes back to it.
       const join = new URLSearchParams(location.search).get("join");
-      const back = encodeURIComponent(desktopReturn || loginReturnPath(join ? `/?join=${join}` : `/${location.hash}`));
+      // A form that asked for a sign-in comes back to it (#416).
+      const form = formReturnPath(new URLSearchParams(location.search).get("form"));
+      const back = encodeURIComponent(desktopReturn || form || loginReturnPath(join ? `/?join=${join}` : `/${location.hash}`));
       setLoginUrl(`/api/auth/login?returnTo=${back}`);
       setProxyUrl(`/api/auth/proxy-login?returnTo=${back}`);
     };
@@ -242,6 +244,8 @@ export default function Login({
     // The way that signed in comes first next time on this device.
     if (usedWay.current) writeLastSignIn(usedWay.current);
     if (desktopRequest) return void location.assign(desktopRequest);
+    const form = formReturnPath(new URLSearchParams(location.search).get("form"));
+    if (form) return void location.assign(form);
     const path = loginReturnPath(`/${location.hash}`);
     const query = new URLSearchParams(location.search);
     const invite = registered && query.get("invite");

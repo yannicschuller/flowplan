@@ -184,3 +184,14 @@ test("a library's book or chapter opened in the editor (#329): edit only alone",
   for (const bad of [`#page=${pageId}&edit=0`, `#page=${pageId}&edit=1&row=${rowId}`, `#page=${pageId}&edit=1&block=b1`, `#page=${pageId}&edit=1&edit=1`])
     assert.equal(parsePageLocation(bad), null, bad);
 });
+
+test("a form that asks for a sign-in is a way back after it, nothing else under /forms (#416)", async () => {
+  const { loginReturnPath, formReturnPath } = await import("../lib/page-location");
+  const token = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  assert.equal(formReturnPath(token), `/forms/${token}`);
+  assert.equal(loginReturnPath(`/forms/${token}`), `/forms/${token}`);
+  for (const bad of ["../x", `${token}/x`, "//evil.example", "", null, `${token}?a=1`])
+    assert.equal(formReturnPath(bad), "", String(bad));
+  assert.equal(loginReturnPath("/forms/../admin"), "/");
+  assert.equal(loginReturnPath(`/forms/${token}//evil`), "/");
+});

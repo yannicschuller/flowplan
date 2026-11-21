@@ -62,8 +62,10 @@ export default async function FormPage({
             : t("Formular konnte nicht geladen werden.", "The form could not be loaded.")}
         </p>
         {e instanceof HttpError && e.status === 401 && (
-          <a className="button primary" href="/api/auth/login">
-            {t("Mit SSO anmelden", "Sign in with SSO")}
+          // The sign-in page with every way this instance offers (password,
+          // passkey, SSO, LDAP); afterwards back to this form (#416).
+          <a className="button primary" href={`/login?form=${encodeURIComponent(token)}`}>
+            {t("Anmelden", "Sign in")}
           </a>
         )}
       </main>

@@ -106,6 +106,10 @@ export function notificationUrl(notification: {
 }
 
 /** OIDC return paths are limited to the application root and validated hash targets. */
+const FORM_RETURN = /^\/forms\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// The way back to a form after signing in: "/forms/<token>", or "" if the
+// value is no form token.
+export const formReturnPath = (token: unknown) => (typeof token === "string" && FORM_RETURN.test(`/forms/${token}`) ? `/forms/${token}` : "");
 export function loginReturnPath(value: unknown): string {
   if (value === "/#inbox") return value;
   // An invitation link for several people (#320, lib/invite-links.ts).
@@ -117,6 +121,8 @@ export function loginReturnPath(value: unknown): string {
   // Content shared from another app waits for the sign-in.
   if (typeof value === "string" && /^\/share-target\?[^#\\]{0,4000}$/.test(value) && !value.includes("//"))
     return value;
+  // A form that asks for a sign-in (app/forms/[token], #416).
+  if (typeof value === "string" && FORM_RETURN.test(value)) return value;
   if (typeof value !== "string" || !value.startsWith("/#")) return "/";
   const target = parsePageLocation(value.slice(1));
   return target ? `/${pageLocationHash(target)}` : "/";
