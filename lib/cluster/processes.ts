@@ -110,8 +110,6 @@ function listen() {
         console.error(`Processes: handler for ${message.fp} failed`, error);
       }
   });
-  // The channel itself must not keep a stopping process alive.
-  (process as unknown as { channel?: { unref?: () => void } }).channel?.unref?.();
 }
 
 // Sends to the supervisor (fire and forget). False when there is no channel.

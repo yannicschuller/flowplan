@@ -275,6 +275,9 @@ export function supervise(entry, n, env = process.env) {
     e.startedAt = Date.now();
     e.ready = false;
     worker.on("message", (message) => onMessage(index, worker, message));
+    // A process that ends while node:cluster still writes to it (a listen
+    // answered as it dies): EPIPE on its channel, not a crash of the supervisor.
+    worker.on("error", (error) => console.error(`Processes: channel of process ${index}: ${error?.message || error}`));
     worker.on("exit", (code, signal) => {
       if (e.worker !== worker) return;
       const ran = Date.now() - (e.startedAt ?? Date.now());
