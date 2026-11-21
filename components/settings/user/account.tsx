@@ -8,7 +8,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "../../i18n";
 import { Avatar } from "../../ui";
 import { DangerZone, SettingGroup, SettingRow, StatusBadge, UsageMeter } from "../../settings-ui";
-import { PasskeysRow, PasswordRow, ProfileNameRow } from "../../account-security";
+import { EmailChangeRow, PasskeysRow, PasswordRow, ProfileNameRow } from "../../account-security";
 import { TwoFactorSettings } from "../../two-factor";
 import { DeleteOwnAccount } from "../../delete-own-account";
 import { MySessions } from "../../my-sessions";
@@ -39,7 +39,10 @@ export default function AccountSection() {
           <StatusBadge tone="info">{local ? (boot.ssoLinked ? t("E-Mail-Konto · SSO", "E-mail account · SSO") : t("E-Mail-Konto", "E-mail account")) : boot.ldapAccount ? "LDAP" : "SSO"}</StatusBadge>
         </div>
         {local ? (
-          <ProfileNameRow name={boot.user.name} onRenamed={onRefresh} />
+          <>
+            <ProfileNameRow name={boot.user.name} onRenamed={onRefresh} />
+            {!demo && <EmailChangeRow />}
+          </>
         ) : (
           <SettingRow label={t("Name und E-Mail", "Name and e-mail")} description={t("Werden von deinem Identitätsanbieter übernommen und lassen sich nur dort ändern.", "Come from your identity provider and can only be changed there.")}>
             {null}

@@ -910,3 +910,19 @@
 .ux-sso-groups code {
   font-size: 12px;
 }
+/* "E-Mail ändern …" in the account's panel (#405): field and buttons on one line, wrapping on phones. */
+.ux-email-change {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.ux-email-input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.ux-email-error {
+  flex: 1 1 100%;
+  font-size: 13px;
+}

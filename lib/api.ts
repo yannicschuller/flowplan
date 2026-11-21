@@ -125,6 +125,7 @@ import { templateFromSaved } from "./journal-saved-template";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
+import { adminChangeEmail } from "./email-change";
 import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { cleanRecordOrder, parseRecordLayout, recordLayoutSchema } from "./record-layout";
@@ -4114,6 +4115,12 @@ async function runCommand(
         await adminResetTwoFactor(uuid.parse(b.userId));
         securityEvent("admin.user", { actorId: user.id, detail: `two-factor reset ${b.userId}` });
         break;
+      // Without e-mail (#405, lib/email-change.ts): the address of an
+      // account with e-mail and password, in the activity log with both.
+      case "admin.changeEmail":
+        requireAdmin(user);
+        result = await adminChangeEmail(user, uuid.parse(b.userId), b, contentLocale());
+        break;
       case "admin.resetLink":
         requireAdmin(user);
         result = { url: await adminResetLink(uuid.parse(b.userId)) };
@@ -4152,6 +4159,8 @@ async function runCommand(
       await setFollowing(user, createdId, true);
     if (
       ![
+        // Written with the old and new address (lib/email-change.ts).
+        "admin.changeEmail",
         "document.sync",
         "document.markdown",
         "row.document.sync",

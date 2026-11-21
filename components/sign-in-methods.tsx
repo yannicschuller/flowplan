@@ -30,7 +30,17 @@ export async function post<T = Overview>(path: string, body?: unknown): Promise<
 }
 export type Confirm = { password?: string; code?: string; passkey?: unknown };
 // What a confirmed step does, with the confirmation it got.
-export type Pending = { title: string; text: string; danger?: boolean; link?: boolean; button: string; newPassword?: boolean; run: (confirm: Confirm, extra: { next?: string }) => Promise<string | void> };
+// newEmail: the dialog asks for a new e-mail address too ("E-Mail ändern …", #405).
+export type Pending = {
+  title: string;
+  text: string;
+  danger?: boolean;
+  link?: boolean;
+  button: string;
+  newPassword?: boolean;
+  newEmail?: boolean;
+  run: (confirm: Confirm, extra: { next?: string; email?: string }) => Promise<string | void>;
+};
 
 export function SignInMethods({ onChanged }: { onChanged?: () => unknown }) {
   const t = useT();
@@ -224,13 +234,14 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
     setBusy(key);
     setError("");
     try {
-      let next: string | undefined;
+      let next: string | undefined, email: string | undefined;
       if (pending.newPassword && form) {
         const data = new FormData(form);
         next = String(data.get("next") || "");
         if (next !== String(data.get("repeat") || "")) throw new Error(t("Die beiden Passwörter sind nicht gleich.", "The two passwords differ."));
       }
-      const text = await pending.run(await confirm(), { next });
+      if (pending.newEmail && form) email = String(new FormData(form).get("email") || "").trim();
+      const text = await pending.run(await confirm(), { next, email });
       if (text) onDone(text);
     } catch (e) {
       setError((e as Error).message);
@@ -261,6 +272,12 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
     <Modal open onClose={() => !busy && onClose()} title={pending.title} className="step-up-dialog">
       <form method="post" action="/api/auth/no-script" className="account-form step-up-form" onSubmit={submit}>
         <p className="muted">{pending.text}</p>
+        {pending.newEmail && (
+          <label>
+            {t("Neue E-Mail-Adresse", "New e-mail address")}
+            <input className={CONTROL.lg} name="email" type="email" autoComplete="email" required maxLength={200} autoFocus />
+          </label>
+        )}
         {pending.newPassword && (
           <>
             <label>
@@ -278,13 +295,13 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
           {methods.password && !useCode && (
             <label>
               {t("Aktuelles Passwort", "Current password")}
-              <PasswordInput className={CONTROL.lg} name="password" autoComplete="current-password" required maxLength={200} autoFocus={!pending.newPassword} />
+              <PasswordInput className={CONTROL.lg} name="password" autoComplete="current-password" required maxLength={200} autoFocus={!pending.newPassword && !pending.newEmail} />
             </label>
           )}
           {methods.code && useCode && (
             <label>
               {t("Code aus der Authenticator-App oder Wiederherstellungscode", "Code from the authenticator app or recovery code")}
-              <input className={CONTROL.lg} name="code" inputMode="text" autoComplete="one-time-code" required maxLength={40} autoFocus={!pending.newPassword} />
+              <input className={CONTROL.lg} name="code" inputMode="text" autoComplete="one-time-code" required maxLength={40} autoFocus={!pending.newPassword && !pending.newEmail} />
             </label>
           )}
           {methods.password && methods.code && (
@@ -306,13 +323,13 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
           </p>
         )}
         <div className="account-form-actions">
-          {(asks || methods.recentOk || (pending.newPassword && !passkeys)) && (
+          {(asks || methods.recentOk || ((pending.newPassword || pending.newEmail) && !passkeys)) && (
             <button className={`button ${pending.danger ? "danger-solid" : "primary"}`} disabled={!!busy}>
               {busy === "form" ? <SpinnerGap className="spin" aria-hidden /> : pending.link ? <LinkSimple size={16} aria-hidden /> : null} {pending.button}
             </button>
           )}
           {passkeys && (
-            <button type="button" className={`button${asks || methods.recentOk ? "" : pending.danger ? " danger-solid" : " primary"}`} disabled={!!busy} onClick={() => void (pending.newPassword ? passkeyWithForm() : passkey())}>
+            <button type="button" className={`button${asks || methods.recentOk ? "" : pending.danger ? " danger-solid" : " primary"}`} disabled={!!busy} onClick={() => void (pending.newPassword || pending.newEmail ? passkeyWithForm() : passkey())}>
               {busy === "passkey" ? <SpinnerGap className="spin" aria-hidden /> : <Fingerprint size={16} aria-hidden />} {t("Mit Passkey bestätigen", "Confirm with passkey")}
             </button>
           )}
@@ -323,7 +340,7 @@ export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: P
       </form>
     </Modal>
   );
-  // A new password confirmed by a passkey: the form's fields go along.
+  // A new password (or address) confirmed by a passkey: the form's fields go along.
   function passkeyWithForm() {
     const form = document.querySelector<HTMLFormElement>(".step-up-form");
     if (form && !form.reportValidity()) return;

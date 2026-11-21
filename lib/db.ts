@@ -40,7 +40,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 118;
+export const SCHEMA_VERSION = 119;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1646,11 +1646,24 @@ function migrate(d: DatabaseSync) {
   // Schema 118 – a change of a space (order, name, icon) moves its
   // workspace's "pages:" version: the live signal tells the other tabs.
   migrateSpaceVersions(d);
+  // Schema 119 – a pending change of the e-mail address (#405,
+  // lib/email-change.ts): the new address on its links in auth_tokens.
+  migrateEmailChange(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 119 – changing one's own e-mail address (#405, lib/email-change.ts):
+// auth_tokens.email, the new address a pending change waits for. Its two
+// links (kinds 'email-change' to the new address, 'email-cancel' to the
+// old one) carry it; the account's address changes only when the first is
+// opened. An older version ignores the column (and the kinds), but its
+// link would then confirm nothing – hence the number.
+function migrateEmailChange(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(auth_tokens)").all() as { name: string }[]).some((c) => c.name === "email"))
+    d.exec("ALTER TABLE auth_tokens ADD COLUMN email TEXT");
 }
 // Schema 118 – what the sidebar shows of a space (its place in the order,
 // name, icon, colour, …) moves "pages:<workspace>" (lib/cache-versions.ts)

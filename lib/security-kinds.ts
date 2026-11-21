@@ -29,6 +29,10 @@ export const securityKinds = {
   "account.sso_unlinked": { severity: "warn", de: "SSO-Konto getrennt", en: "SSO identity disconnected" },
   "account.sso_link_refused": { severity: "warn", de: "SSO-Verbindung abgelehnt", en: "SSO connection refused" },
   "account.password_removed": { severity: "warn", de: "Passwort entfernt (nur SSO)", en: "Password removed (SSO only)" },
+  // Changing the e-mail address (#405, lib/email-change.ts).
+  "account.email_change_requested": { severity: "info", de: "Änderung der E-Mail-Adresse angefordert", en: "E-mail address change requested" },
+  "account.email_change_cancelled": { severity: "info", de: "Änderung der E-Mail-Adresse abgebrochen", en: "E-mail address change cancelled" },
+  "account.email_changed": { severity: "warn", de: "E-Mail-Adresse geändert", en: "E-mail address changed" },
   "admin.merge": { severity: "critical", de: "Konten zusammengeführt", en: "Accounts merged" },
   "admin.granted": { severity: "critical", de: "Adminrechte vergeben", en: "Admin rights granted" },
   "admin.revoked": { severity: "warn", de: "Adminrechte entzogen", en: "Admin rights removed" },
