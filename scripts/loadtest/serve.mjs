@@ -7,6 +7,8 @@
 // --processes n (or "auto"): n processes behind the port (FLOWPLAN_PROCESSES,
 // scripts/processes.mjs, #383 wave 5); server.pid is then the supervisor's
 // pid and run.mjs --pid counts its child processes too.
+// --data-from <dir>: the data directory starts as a copy of <dir> (a seeded
+// instance kept aside, so interleaved runs start from the same state).
 //
 // Writes <work>/server.pid; stops the server on SIGINT/SIGTERM. The data
 // directory is <work>/data – delete <work> afterwards.
@@ -24,6 +26,7 @@ const { values: opt } = parseArgs({
     fresh: { type: "boolean", default: true },
     processes: { type: "string", default: "1" },
     balance: { type: "string", default: "" },
+    "data-from": { type: "string", default: "" },
   },
 });
 if (!opt.work) throw new Error("--work <directory> is required");
@@ -35,6 +38,10 @@ const work = resolve(opt.work),
   data = join(work, "data");
 if (opt.fresh) rmSync(work, { recursive: true, force: true });
 mkdirSync(data, { recursive: true });
+if (opt["data-from"]) {
+  rmSync(data, { recursive: true, force: true });
+  cpSync(resolve(opt["data-from"]), data, { recursive: true });
+}
 if (!existsSync(app)) {
   mkdirSync(app);
   // Like the image: server.js with .next/static and public next to it; the
