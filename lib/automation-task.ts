@@ -26,7 +26,8 @@ import { requirePage } from "./permissions";
 import { Temporal } from "./date-values";
 import { isEncryptedPage } from "./e2ee-server";
 import { databaseSettings } from "./database-settings";
-import { dueField, type Automation, type TaskAction } from "./database-settings-schema";
+import { type Automation, type TaskAction } from "./database-settings-schema";
+import { taskFields } from "./task-database-fields";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { withPlaceholders } from "./record-template-apply";
 import { mapPlaceholders } from "./record-placeholders";
@@ -191,9 +192,11 @@ async function intoDatabase(input: TaskRun, owner: Identity, action: TaskAction,
   const settings = await databaseSettings(stored.id);
   const cells: Record<string, unknown> = {};
   if (fields[0]) cells[fields[0].id] = text;
-  const personField = fields.find((f) => f.id === action.personField && f.type === "person") || fields.find((f) => f.type === "person");
+  // The chosen properties, else the task database's own (lib/task-database-fields.ts).
+  const fallback = taskFields(fields, settings);
+  const personField = fields.find((f) => f.id === action.personField && f.type === "person") || fallback.person;
   if (assignee && personField) cells[personField.id] = assignee.id;
-  const dateField = fields.find((f) => f.id === action.dueField && f.type === "date") || dueField(fields, settings);
+  const dateField = fields.find((f) => f.id === action.dueField && f.type === "date") || fallback.due;
   if (due && dateField) cells[dateField.id] = due;
   for (const [fieldId, value] of Object.entries(action.values)) {
     const field = fields.find((f) => f.id === fieldId);

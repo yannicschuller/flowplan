@@ -1255,6 +1255,13 @@ const exact: Record<string, string> = {
   "E-Book überschreitet 100 MB.": "The e-book exceeds 100 MB.",
   "Tabelle zu groß (höchstens 200 Spalten und 5.000 Zeilen).": "Table too large (at most 200 columns and 5,000 rows).",
   "Die Tabelle ist zu groß für eine Datenbank (höchstens 80 Spalten und 5.000 Zeilen).": "The table is too large for a database (at most 80 columns and 5,000 rows).",
+  // Tasks of a document into a database (#420, lib/tasks-to-database.ts)
+  "Aufgaben aus verschlüsselten Bereichen lassen sich nicht in eine Datenbank verschieben – der Server kann ihren Inhalt nicht lesen.": "Tasks from encrypted spaces cannot be moved into a database – the server cannot read their content.",
+  "Die Datenbank liegt in einem verschlüsselten Bereich, dort kann der Server nichts schreiben.": "The database is in an encrypted space, where the server cannot write anything.",
+  "Das Dokument enthält keine Aufgaben.": "The document has no tasks.",
+  "Zu viele Aufgaben auf einmal (höchstens 1.000).": "Too many tasks at once (at most 1,000).",
+  "Das Dokument lässt sich so nicht ändern.": "The document cannot be changed this way.",
+  "Mindestens ein Eintrag ist für dich schreibgeschützt.": "At least one record is read-only for you.",
   // Page owners and reviews, scheduled rules, repeating records
   "Besitzer muss Mitglied des Arbeitsbereichs sein.": "The owner must be a member of the workspace.",
   "Der Besitzer hat keinen Zugriff auf diese Seite.": "The owner has no access to this page.",

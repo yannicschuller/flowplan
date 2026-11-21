@@ -1818,6 +1818,41 @@ CommandWhiteboardToRecordsResult = TypedDict("CommandWhiteboardToRecordsResult",
     "records": Required[list[dict[str, Any]]],
 }, total=False)
 
+# Move the tasks of a document into a database. Needs edit rights on the document and the database (same workspace, no encrypted space). Every task item becomes a record (sub-tasks too, linked to their parent's record through `parentField`, the database's parent property, or flat without it): its line the title, its further blocks the record's document; closed tasks take `doneValue` of the select `statusField` (or tick a checkbox), the others `openValue`; the due date goes to `dueField`, the first @mentioned member to `personField` (and leaves the title). Records are created like `row.create` (field rights, defaults, the default record template). `document`: `link` (default) replaces each task by a link to its record, `remove` removes the tasks, `keep` leaves the document as it is. All in one transaction. The answer's `rowIds` and `restore` are what `page.tasksToDatabase.undo` takes.
+CommandPageTasksToDatabase = TypedDict("CommandPageTasksToDatabase", {
+    "action": Required[Literal["page.tasksToDatabase"]],
+    "pageId": Required[str],
+    "databaseId": Required[str],
+    "statusField": str,
+    "doneValue": str,
+    "openValue": str,
+    "dueField": str,
+    "personField": str,
+    "parentField": str,
+    "document": Literal["link", "remove", "keep"],
+}, total=False)
+
+CommandPageTasksToDatabaseResult = TypedDict("CommandPageTasksToDatabaseResult", {
+    "databaseId": Required[str],
+    "rowIds": Required[list[str]],
+    "done": Required[int],
+    "document": Required[Literal["link", "remove", "keep"]],
+    "restore": Required[list[dict[str, Any]]],
+}, total=False)
+
+# Undo moving the tasks of a document into a database. Puts the task lists of `restore` back where they were (in place of the links, else beside their neighbour, else at the end) and moves the records of `rowIds` that you created to the database's trash.
+CommandPageTasksToDatabaseUndo = TypedDict("CommandPageTasksToDatabaseUndo", {
+    "action": Required[Literal["page.tasksToDatabase.undo"]],
+    "pageId": Required[str],
+    "databaseId": Required[str],
+    "rowIds": Required[list[str]],
+    "restore": list[dict[str, Any]],
+}, total=False)
+
+CommandPageTasksToDatabaseUndoResult = TypedDict("CommandPageTasksToDatabaseUndoResult", {
+    "removed": Required[int],
+}, total=False)
+
 # Add several records at once. Needs edit rights on the database. Values are checked like every edit: numbers, checkboxes and dates must fit their property, or the whole call is refused (400). Values of select and multi-select properties that are not options yet become new options (a different letter case takes the existing option's spelling); at most 100 new options per call. `newOptions` lists what was added. A date with a time for a date property without time (`noTime: true`) keeps only its day, counted in `timeZone` (IANA, default UTC). `documents` (optional) gives records their document as HTML, by the index of the record (sanitized like every document; `null` for none).
 CommandRowsImport = TypedDict("CommandRowsImport", {
     "action": Required[Literal["rows.import"]],
@@ -2129,7 +2164,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

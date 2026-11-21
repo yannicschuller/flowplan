@@ -159,6 +159,7 @@ import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
 import { mutateLinkedDatabase } from "./linked-databases";
 import { notesToRecords } from "./whiteboard-to-records";
+import { tasksToDatabase, undoTasksToDatabase } from "./tasks-to-database";
 import {
   manageSpace,
   duplicateSpace,
@@ -2006,6 +2007,16 @@ async function runCommand(
         result = { id: created, view, fields: converted.fields.length, rows: converted.rows.length };
         break;
       }
+      // "Aufgaben in Datenbank verschieben" (#420, lib/tasks-to-database.ts):
+      // the document's tasks become records; "Rückgängig" takes it back.
+      case "page.tasksToDatabase":
+        result = await tasksToDatabase(user, b, afterCommit);
+        await recordPageEdit(user, pid());
+        break;
+      case "page.tasksToDatabase.undo":
+        result = await undoTasksToDatabase(user, b, afterCommit);
+        await recordPageEdit(user, pid());
+        break;
       case "mention.link": {
         afterCommit.push(
           await linkMention(

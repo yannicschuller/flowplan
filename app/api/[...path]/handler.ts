@@ -122,6 +122,7 @@ import { endMySessions, mySessions } from "@/lib/my-sessions";
 import { sessionSettings } from "@/lib/session-policy";
 import { mySecurity } from "@/lib/my-security";
 import { pageToRecordPlan } from "@/lib/page-to-record";
+import { tasksToDatabasePlan } from "@/lib/tasks-to-database";
 import { recordToPagePlan } from "@/lib/record-to-page";
 import { importTracker } from "@/lib/tracker-import";
 import { trackJob } from "@/lib/background-jobs";
@@ -613,6 +614,9 @@ async function handleGET(
       const { page, ...rest } = plan;
       return NextResponse.json({ ...rest, title: page.title }, { headers: { "Cache-Control": "no-store" } });
     }
+    // The tasks of a document and the databases they can move to (#420).
+    if (path.length === 3 && path[0] === "pages" && path[2] === "tasks-to-database")
+      return NextResponse.json(await tasksToDatabasePlan(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
     // What turning a record into a page would change (confirmation).
     if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "to-page") {
       const plan = await recordToPagePlan(user, z.uuid().parse(path[1]), z.uuid().parse(path[3]));

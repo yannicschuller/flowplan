@@ -26404,6 +26404,53 @@ h3 .block-reactions {
   font-size: 13px;
 }
 
+/* Moving a document's tasks into a database (#420): the mapping as rows of
+   name and choice, the document options below, then the preview. */
+.tasks-to-database fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  min-width: 0;
+}
+.tasks-to-database legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tasks-to-database-map > label {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.6fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.tasks-to-database-map > label > span:first-child {
+  font-size: 13px;
+  color: var(--secondary);
+}
+.tasks-to-database-map > p {
+  margin: 0;
+}
+.tasks-to-database-mode .checkbox-label {
+  margin: 0;
+}
+.tasks-to-database .transfer-target small {
+  margin-left: auto;
+}
+.tasks-to-database-preview {
+  margin: 0;
+  font-weight: 600;
+}
+@media (max-width: 520px) {
+  .tasks-to-database-map > label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
 /* Sign-in: "Stay signed in" and "Forgot password?" on one line. */
 .login-options {
   display: flex;

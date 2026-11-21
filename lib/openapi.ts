@@ -40,6 +40,7 @@ import { studySettingsSchema } from "./study-schema";
 import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
 import { MAX_COMBOS, SHORTCUT_ACTIONS } from "./keymap";
 import { toRecordsInput } from "./whiteboard-ai";
+import { tasksToDatabaseInput } from "./tasks-to-database-schema";
 import { workflowEdgeSchema, workflowNodeSchema, workflowSettingsSchema } from "./workflows/graph";
 import { actionSchemas, dataRequestSchema, MAX_ITEMS, MAX_WIDGET_BYTES, MAX_WIDGETS, widgetActions, widgetConfigs, widgetKinds } from "./mobile-widget-schema";
 
@@ -84,7 +85,7 @@ export const commandActionNames = [
   "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "file.delete", "files.deleteUnused", "file.restore", "file.purge", "page.duplicate", "page.move", "page.moveCheck", "page.import",
   "pages.bulk", "page.follow", "page.collapseProperties", "database.collapseRecordProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
-  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "task.add", "tasks.seen", "synced.create", "table.toDatabase", "mention.link",
+  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "task.add", "tasks.seen", "synced.create", "table.toDatabase", "page.tasksToDatabase", "page.tasksToDatabase.undo", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "journal.completedMine", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
@@ -1102,6 +1103,36 @@ export const commandActions: ActionDoc[] = [
       "Needs edit rights on the whiteboard and the database (same workspace). Each note becomes a record: its first line the title, further lines the record's document; optionally its colour a select option (`colorField`, `colorOptions`) and its author a person (`personField`). Values are checked like every edit. At most 100 records per call; `rowId` makes it idempotent (an existing record answers `created: false`). The whiteboard itself is not changed – the app replaces or links the notes with record cards.",
     input: toRecordsInput,
     result: z.object({ records: z.array(z.object({ itemId: z.string(), rowId: uuid, created: z.boolean() })) }),
+  },
+  {
+    action: "page.tasksToDatabase",
+    summary: "Move the tasks of a document into a database",
+    description:
+      "Needs edit rights on the document and the database (same workspace, no encrypted space). Every task item becomes a record (sub-tasks too, linked to their parent's record through `parentField`, the database's parent property, or flat without it): its line the title, its further blocks the record's document; closed tasks take `doneValue` of the select `statusField` (or tick a checkbox), the others `openValue`; the due date goes to `dueField`, the first @mentioned member to `personField` (and leaves the title). Records are created like `row.create` (field rights, defaults, the default record template). `document`: `link` (default) replaces each task by a link to its record, `remove` removes the tasks, `keep` leaves the document as it is. All in one transaction. The answer's `rowIds` and `restore` are what `page.tasksToDatabase.undo` takes.",
+    input: tasksToDatabaseInput,
+    result: z.object({
+      databaseId: uuid,
+      rowIds: z.array(uuid),
+      done: z.number().int(),
+      document: z.enum(["link", "remove", "keep"]),
+      restore: z.array(z.object({}).passthrough()),
+    }),
+  },
+  {
+    action: "page.tasksToDatabase.undo",
+    summary: "Undo moving the tasks of a document into a database",
+    description:
+      "Puts the task lists of `restore` back where they were (in place of the links, else beside their neighbour, else at the end) and moves the records of `rowIds` that you created to the database's trash.",
+    // The document nodes as the command answered them (ProseMirror JSON; the
+    // server checks them against the document schema).
+    input: z.object({
+      action: z.literal("page.tasksToDatabase.undo"),
+      pageId: uuid,
+      databaseId: uuid,
+      rowIds: z.array(uuid).max(1000),
+      restore: z.array(z.object({}).passthrough()).max(1000).optional(),
+    }),
+    result: z.object({ removed: z.number().int() }),
   },
   {
     action: "rows.import",

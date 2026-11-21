@@ -59,6 +59,7 @@
     "components/side-panel.tsx",
     "components/sign-in-methods.tsx",
     "components/study/ai-cards.tsx",
+    "components/tasks-to-database.tsx",
     "components/timeline-frame.tsx",
     "components/version-changes.tsx",
     "components/viewer2d/dialog.tsx",

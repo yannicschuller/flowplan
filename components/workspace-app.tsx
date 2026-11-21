@@ -326,7 +326,7 @@ import { templateCategories } from "@/lib/template-categories";
 import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
-import { Books, CalendarX, CloudCheck, Compass, LockKey, Storefront } from "@phosphor-icons/react";
+import { Books, CalendarX, CloudCheck, Compass, ListChecks, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { WorkspaceFavicon } from "./workspace-favicon";
@@ -412,6 +412,8 @@ const SettingsLoading = () => (
 );
 const Settings = dynamic(() => loadView(() => import("./settings")), { ssr: false, loading: SettingsLoading });
 const Admin = dynamic(() => loadView(() => import("./admin")), { ssr: false, loading: SettingsLoading });
+// "Aufgaben in Datenbank verschieben …" (#420), loaded when it opens.
+const TasksToDatabase = dynamic(() => import("./tasks-to-database"), { ssr: false });
 // Opened by an action: the presentation (KaTeX and the read-only document
 // renderer), the Ask panel, the AI summary, the space manager.
 const Presentation = dynamic(() => loadView(() => import("./presentation").then((m) => ({ default: m.Presentation }))), { ssr: false });
@@ -624,6 +626,7 @@ export default function WorkspaceApp({
     // Raised to open the start page's editor (command palette).
     [customizeHome, setCustomizeHome] = useState(0),
     [toRecord, setToRecord] = useState(false),
+    [tasksToDatabase, setTasksToDatabase] = useState(false),
     [parent, setParent] = useState<string | null>(null),
     [parentRow, setParentRow] = useState<string | null>(null),
     [spaceId, setSpaceId] = useState(initial.spaces[0]?.id || ""),
@@ -5454,6 +5457,9 @@ export default function WorkspaceApp({
                         {t("In Datenbank verschieben …", "Move into database …")}
                       </PageMenu.Item>
                     )}
+                    {data.page.kind === "document" && editable && !data.locked && !data.encrypted && !data.draft && !data.offlineNew && (
+                      <TasksMenuItem readHtml={readHtml} onSelect={() => setTasksToDatabase(true)} />
+                    )}
                     {!data.encrypted && (
                       <PageMenu.Item
                         className="dropdown-item"
@@ -7238,6 +7244,15 @@ export default function WorkspaceApp({
           }}
         />
       )}
+      {tasksToDatabase && pageId && (
+        <TasksToDatabase
+          pageId={pageId}
+          act={act}
+          onClose={() => setTasksToDatabase(false)}
+          onError={notifyError}
+          onDone={() => setTasksToDatabase(false)}
+        />
+      )}
       {capture && (
         <QuickCapture
           workspaceId={boot.workspace.id}
@@ -8224,4 +8239,16 @@ const undoing = new WeakSet<object>();
 // The commands lib/undo.ts may offer to take back.
 // The journal used last on this device ("Journal: Heute").
 const LAST_JOURNAL = "flowplan:last-journal";
-const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve", "row.template.apply", "row.schedule", "timeline.cascade", "timeline.unlink"]);
+// The page menu's "Aufgaben in Datenbank verschieben …" (#420): only for a
+// document with task items – read from its text when the menu opens.
+function TasksMenuItem({ readHtml, onSelect }: { readHtml: () => string; onSelect: () => void }) {
+  const t = useT();
+  if (!readHtml().includes('data-type="taskItem"')) return null;
+  return (
+    <PageMenu.Item className="dropdown-item" onSelect={onSelect}>
+      <ListChecks />
+      {t("Aufgaben in Datenbank verschieben …", "Move tasks to a database …")}
+    </PageMenu.Item>
+  );
+}
+const UNDOABLE = new Set(["page.delete", "page.tasksToDatabase", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve", "row.template.apply", "row.schedule", "timeline.cascade", "timeline.unlink"]);

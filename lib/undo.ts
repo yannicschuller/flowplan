@@ -108,6 +108,20 @@ export function undoFor(b: Command, before: UndoState, openPageId?: string | nul
       }
       return null;
     }
+    // The tasks of a document moved into a database (#420): the task lists
+    // back into the document, the new records into the trash – one step.
+    case "page.tasksToDatabase": {
+      const done = result as { databaseId?: unknown; rowIds?: unknown; restore?: unknown } | undefined;
+      const databaseId = str(done?.databaseId);
+      const rowIds = Array.isArray(done?.rowIds) ? done.rowIds.filter((x): x is string => typeof x === "string") : [];
+      if (!pageId || !databaseId || !rowIds.length) return null;
+      const name = title(pages.find((p) => p.id === databaseId));
+      const n = rowIds.length;
+      return {
+        message: n === 1 ? tr(`1 Aufgabe nach „${name}“ verschoben`, `1 task moved to “${name}”`) : tr(`${n} Aufgaben nach „${name}“ verschoben`, `${n} tasks moved to “${name}”`),
+        commands: () => [{ action: "page.tasksToDatabase.undo", pageId, databaseId, rowIds, restore: Array.isArray(done?.restore) ? done.restore : [] }],
+      };
+    }
     case "row.delete": {
       const rowId = str(b.rowId);
       if (!pageId || !rowId) return null;
