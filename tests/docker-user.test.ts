@@ -220,7 +220,7 @@ test("the user switch comes before everything else in the entrypoint", () => {
     return i;
   };
   const exec = at('exec setpriv --reuid="$uid"');
-  for (const later of ["restore-pending/READY", "litestream restore", "exec node server.js", "RENDER_EXTERNAL_URL", ".write-test"]) assert.ok(at(later) > exec, later);
+  for (const later of ["restore-pending/READY", "litestream restore", `exec node "$app_main"`, "RENDER_EXTERNAL_URL", ".write-test"]) assert.ok(at(later) > exec, later);
 });
 
 test("the default start (root) with PUID=0 or PGID=0: refused, nothing runs, nothing changes owner", () => {

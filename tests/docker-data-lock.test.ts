@@ -101,8 +101,8 @@ async function until(what: string, ok: () => boolean, ms = 8000) {
 }
 
 type Run = { child: ChildProcess; exit: Promise<number | null>; output: () => string };
-function start(b: Box, shell = "sh"): Run {
-  const child = spawn(shell, [b.script], { env: b.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
+function start(b: Box, shell = "sh", cwd?: string): Run {
+  const child = spawn(shell, [b.script], { env: b.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"], cwd });
   let out = "";
   child.stdout!.on("data", (d) => (out += d));
   child.stderr!.on("data", (d) => (out += d));
@@ -154,6 +154,21 @@ test("lock free with Litestream: restore under the lock, then exec replicate -ex
   assert.equal(await run.exit, 0);
   assert.equal(spawnSync("flock", ["-n", join(b.data, ".flowplan.lock"), "true"]).status, 0, "the lock goes back with the container");
 });
+
+// FLOWPLAN_PROCESSES > 1 (#383): processes.mjs next to server.js instead of
+// server.js, on every path; unset or 1 keeps server.js.
+for (const [processes, main] of [["3", "processes.mjs"], ["auto", "processes.mjs"], ["1", "server.js"]] as const)
+  for (const litestream of [false, true])
+    test(`FLOWPLAN_PROCESSES=${processes}${litestream ? " with Litestream" : ""}: node ${main}`, { skip }, async () => {
+      const b = box({ ...(litestream ? withS3 : {}), FLOWPLAN_PROCESSES: processes });
+      writeFileSync(join(b.dir, "processes.mjs"), "");
+      const run = start(b, "sh", b.dir);
+      await until("node", () => has(b, /^node /));
+      assert.ok(lines(b).some((l) => l.startsWith(`node ${main}`)), lines(b).join("\n"));
+      if (litestream) assert.ok(has(b, /^litestream replicate .*-exec/), lines(b).join("\n"));
+      run.child.kill("SIGTERM");
+      assert.equal(await run.exit, 0);
+    });
 
 test("lock free without Litestream: the lock is taken, node runs as before", { skip }, async () => {
   const b = box();
