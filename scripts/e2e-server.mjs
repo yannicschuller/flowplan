@@ -4,6 +4,8 @@
 // goes to a file next to the data directory (<data dir>.log), for CI to show
 // when a spec failed.
 // Usage: PORT=3800 FLOWPLAN_DATA_DIR=/tmp/flowplan-inline-e2e.x node scripts/e2e-server.mjs
+// FLOWPLAN_PROCESSES=3 runs it as three processes behind the port
+// (scripts/processes.mjs), as the image does with that setting.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +26,8 @@ rmSync(data, { recursive: true, force: true });
 mkdirSync(data, { recursive: true });
 const log = openSync(`${data}.log`, "w");
 const origin = `http://127.0.0.1:${port}`;
-const child = spawn(process.execPath, ["server.js"], {
+const several = !["", "1"].includes(String(process.env.FLOWPLAN_PROCESSES ?? "").trim());
+const child = spawn(process.execPath, several ? [join(root, "scripts/processes.mjs"), "server.js"] : ["server.js"], {
   cwd: app,
   env: {
     ...process.env,

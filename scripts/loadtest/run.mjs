@@ -5,7 +5,7 @@
 // FLOWPLAN_METRICS_LOOP=1 on the server – event-loop delay and utilisation,
 // time spent in SQLite, CPU and memory of the server process.
 import { Worker } from "node:worker_threads";
-import { readFileSync, writeFileSync, statSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, statSync, existsSync } from "node:fs";
 import { loadavg, cpus, totalmem } from "node:os";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -91,23 +91,41 @@ async function scrape() {
     for (const line of (await r.text()).split("\n")) {
       if (!line || line.startsWith("#")) continue;
       const i = line.lastIndexOf(" ");
-      m[line.slice(0, i)] = Number(line.slice(i + 1));
+      // Several processes (FLOWPLAN_PROCESSES): a scrape reaches one of
+      // them, its own figures carry process="n" – read like one process's.
+      const key = line.slice(0, i).replace(/,?process="\d+"/, "").replace("{,", "{").replace("{}", "");
+      m[key] = Number(line.slice(i + 1));
     }
     return m;
   } catch {
     return null;
   }
 }
-// CPU (user+system ticks) and RSS of a local server process from /proc.
+// CPU (user+system ticks) and RSS of a local server process from /proc –
+// with its child processes (several processes behind one port,
+// serve.mjs --processes): their sum. A child that ended takes its CPU time
+// with it, so a step with a restart reads low.
+function children(pid) {
+  try {
+    return readdirSync(`/proc/${pid}/task`).flatMap((t) => readFileSync(`/proc/${pid}/task/${t}/children`, "utf8").trim().split(/\s+/).filter(Boolean));
+  } catch {
+    return [];
+  }
+}
 function procStat() {
   if (!opt.pid) return null;
-  try {
-    const stat = readFileSync(`/proc/${opt.pid}/stat`, "utf8").split(") ")[1].split(" ");
-    const status = readFileSync(`/proc/${opt.pid}/status`, "utf8");
-    return { cpu: (Number(stat[11]) + Number(stat[12])) / 100, rss: Number(/VmRSS:\s+(\d+)/.exec(status)?.[1] || 0) * 1024, at: Date.now() };
-  } catch {
-    return null;
-  }
+  let cpu = 0,
+    rss = 0,
+    found = false;
+  for (const pid of [opt.pid, ...children(opt.pid)])
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1].split(" ");
+      const status = readFileSync(`/proc/${pid}/status`, "utf8");
+      cpu += (Number(stat[11]) + Number(stat[12])) / 100;
+      rss += Number(/VmRSS:\s+(\d+)/.exec(status)?.[1] || 0) * 1024;
+      found = true;
+    } catch {}
+  return found ? { cpu, rss, at: Date.now() } : null;
 }
 function fileSizes() {
   if (!opt.data) return {};

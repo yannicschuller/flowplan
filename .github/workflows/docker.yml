@@ -196,7 +196,8 @@ jobs:
   # A release also gets the app as plain archives, one per platform:
   # flowplan-<version>-linux-<amd64|arm64>.tar.gz with a .sha256 next to it,
   # attached to the GitHub release. They hold the image's /app (the Next.js
-  # standalone build, static files, scripts) and run with `node server.js` on
+  # standalone build, static files, scripts) and run with `node server.js`
+  # (several processes: `FLOWPLAN_PROCESSES=… node processes.mjs`) on
   # Node.js 26 – for installs without Docker such as the YunoHost package
   # (yannicschuller/flowplan_ynh). Taken from the published image, so the
   # archive is exactly what the image runs; a rebuild (version given)

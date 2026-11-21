@@ -144,6 +144,10 @@ COPY --from=build --chown=node:node /app/public ./public
 # The curated release notes for "Neu in Flowplan" (#223; next.config.ts also
 # traces them into the standalone output).
 COPY --from=build --chown=node:node /app/release-notes ./release-notes
+# Several Flowplan processes behind one port (FLOWPLAN_PROCESSES, #383):
+# the supervisor next to server.js; docker/entrypoint.sh starts it instead
+# of server.js when FLOWPLAN_PROCESSES is more than 1.
+COPY --chmod=644 scripts/processes.mjs /app/processes.mjs
 # Emergency decryption of encrypted backups and objects (docs: storage).
 COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
 # Instance move without the web interface (docs: Instanz umziehen):
