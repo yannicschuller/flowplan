@@ -3,7 +3,8 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { formSuggestSource } from "./form-suggest-input";
-import { Article, ChartBar, Copy, Info, ListBullets, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
+import { Article, ChartBar, Copy, Info, ListBullets, QrCode, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
+import { FormQrDialog } from "./form-qr";
 import { Modal, requireConnection } from "./ui";
 import { FormFlow, FormThanks } from "./form-flow";
 import { FormConditionEditor, FormFollowUpSettings, fieldTarget, type ConditionTarget } from "./form-logic-editor";
@@ -68,6 +69,7 @@ export default function DatabaseForm({
   const [sent, setSent] = useState<Record<string, unknown> | null>(null),
     [done, setDone] = useState(false),
     [design, setDesign] = useState(false),
+    [qr, setQr] = useState(false),
     [builder, setBuilder] = useState(false),
     [draft, setDraft] = useState(config),
     [busy, setBusy] = useState(false);
@@ -317,17 +319,31 @@ export default function DatabaseForm({
             </fieldset>
           )}
           {!!form?.enabled && (
-            <button
-              className="button"
-              onClick={() =>
-                navigator.clipboard.writeText(
-                  `${location.origin}/forms/${form.token}`,
-                )
-              }
-            >
-              <Copy />
-              {t("Formularlink kopieren", "Copy form link")}
-            </button>
+            <div className="form-link-actions">
+              <button
+                className="button"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    `${location.origin}/forms/${form.token}`,
+                  )
+                }
+              >
+                <Copy />
+                {t("Formularlink kopieren", "Copy form link")}
+              </button>
+              <button className="button" onClick={() => setQr(true)}>
+                <QrCode />
+                {t("QR-Code", "QR code")}
+              </button>
+              {qr && (
+                <FormQrDialog
+                  open
+                  onClose={() => setQr(false)}
+                  url={`${location.origin}/forms/${form.token}`}
+                  title={config.title || page.title}
+                />
+              )}
+            </div>
           )}
         </div>
       )}

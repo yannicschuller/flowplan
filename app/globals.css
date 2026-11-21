@@ -4222,6 +4222,61 @@ tr:hover .row-open,
   margin-top: 30px;
   padding-top: 20px;
 }
+/* "Formularlink kopieren" and "QR-Code" side by side; the QR code of the
+   form's link (components/form-qr.tsx, #415): dark on a white tile, in dark
+   mode too, printed as a sheet with the title and the link. */
+.form-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.form-qr-sheet {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.form-qr-title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.form-qr-code {
+  width: 260px;
+  height: 260px;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.form-qr-link {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.form-qr-actions {
+  flex-wrap: wrap;
+}
+@media print {
+  .form-qr-sheet {
+    gap: 8mm;
+    padding-top: 20mm;
+    color: #000;
+  }
+  .form-qr-title {
+    font-size: 24pt;
+  }
+  .form-qr-code {
+    width: 120mm;
+    height: 120mm;
+    border: 0;
+    border-radius: 0;
+  }
+  .form-qr-link {
+    color: #000;
+    font-size: 12pt;
+  }
+}
 .empty-state {
   padding: 70px 20px;
   text-align: center;

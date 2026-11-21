@@ -1,6 +1,8 @@
-// A small QR code encoder for the setup of authenticator apps: byte mode,
-// error correction level M, versions 1–10 (up to 213 bytes – an otpauth://
-// link needs about 120). Follows ISO/IEC 18004; no dependency.
+// A small QR code encoder for the setup of authenticator apps, CalDAV
+// profiles, contacts and form links (#415): byte mode, error correction
+// level M (also fine for print), versions 1–10 (up to 213 bytes – an
+// otpauth:// link needs about 120). Follows ISO/IEC 18004; no dependency,
+// no Node API – it runs in the browser as well.
 // qrModules() returns the dark modules row by row, qrPath() an SVG path.
 
 // Error correction codewords per block and number of blocks, level M.
@@ -62,7 +64,7 @@ function alignmentPositions(version: number, size: number) {
 }
 
 export function qrModules(text: string): boolean[][] {
-  const bytes = [...Buffer.from(text, "utf8")];
+  const bytes = [...new TextEncoder().encode(text)];
   let version = 1;
   const countBits = (v: number) => (v < 10 ? 8 : 16);
   while (version <= MAX_VERSION && 4 + countBits(version) + bytes.length * 8 > dataCodewords(version) * 8) version++;
@@ -263,4 +265,13 @@ export function qrPath(modules: boolean[][]) {
     }),
   );
   return d;
+}
+
+// A standalone SVG file of the code: dark on a white tile with the quiet
+// zone of four modules the standard asks for.
+export const QR_QUIET_ZONE = 4;
+export function qrSvg(modules: boolean[][], pixelsPerModule = 8) {
+  const total = modules.length + 2 * QR_QUIET_ZONE,
+    side = total * pixelsPerModule;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${side}" height="${side}" viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges"><rect width="${total}" height="${total}" fill="#fff"/><path transform="translate(${QR_QUIET_ZONE} ${QR_QUIET_ZONE})" d="${qrPath(modules)}" fill="#000"/></svg>`;
 }

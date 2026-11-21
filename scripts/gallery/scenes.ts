@@ -681,6 +681,19 @@ const databaseScenes: Scene[] = [
       },
     }),
   ),
+  // The QR code of the form's link (#415): the seeded form is enabled.
+  {
+    id: "database-form-qr",
+    group: "Databases",
+    title: "Form QR code",
+    covers: ["components/form-qr.tsx"],
+    path: dbPath,
+    steps: async (page) => {
+      await openView(page, "Formular");
+      await button(page, "QR-Code").click();
+      await waitDialog(page, "QR-Code des Formulars");
+    },
+  },
   {
     id: "database-view-settings",
     group: "Databases",
