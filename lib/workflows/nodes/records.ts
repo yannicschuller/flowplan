@@ -23,6 +23,7 @@ import { coerceToField, compareNumberText } from "../values";
 import { dateOnly } from "../../date-values";
 import { databaseFields, recordValue, refId } from "./data";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
+import { withDefaults } from "../../field-defaults";
 
 type Cells = Record<string, unknown>;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -174,7 +175,8 @@ async function legacyCreate(ctx: NodeRun): Promise<{ port: string; output: unkno
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
     rid,
     c.database,
-    JSON.stringify(cells),
+    // Properties without a value get their default (#411), as with row.create.
+    JSON.stringify(withDefaults(await databaseFields(c.database), cells, { creator: who.id, timeZone: ctx.scope.timeZone })),
     Date.now() + (ctx.legacy?.created.n ?? 0),
     who.id,
     who.id,

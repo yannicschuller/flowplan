@@ -17,6 +17,7 @@ import { stripCells, unwritableFieldIds } from "./field-access";
 import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync } from "./each-async";
+import { withDefaults } from "./field-defaults";
 
 const rank: Record<string, number> = { viewer: 1, commenter: 1, editor: 2, owner: 3 };
 const writable = async (user: Identity, page: Page) =>
@@ -117,7 +118,8 @@ export async function captureRecord(user: Identity, raw: unknown) {
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
     rid,
     page.id,
-    JSON.stringify(cells),
+    // Properties without a value get their default (#411).
+    JSON.stringify(withDefaults(fields, cells, { creator: user.id })),
     Date.now(),
     user.id,
     user.id,

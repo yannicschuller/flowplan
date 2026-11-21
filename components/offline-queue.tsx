@@ -30,6 +30,7 @@ import {
 } from "@/lib/offline-create";
 import { setKick, setPending, setPreview, setUploader } from "@/lib/offline-pending";
 import { cellText } from "@/lib/cell-text";
+import { browserZone } from "@/lib/date-values";
 import { endedSession, friendlyError, Modal, sessionEnded } from "./ui";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf, newIdempotencyKey } from "@/lib/idempotency-key";
 import { primePlaceholder } from "./image-placeholder";
@@ -431,6 +432,9 @@ export function useOfflineQueue({
               rowId: change.rowId,
               cells: change.cells,
               templateId: null,
+              // Defaults "Heute"/"Jetzt" as of when the record was made (#411).
+              createdAt: change.at,
+              timeZone: browserZone(),
             }, key);
           else if (change.kind === "capture")
             await post({
