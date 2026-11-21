@@ -33,6 +33,8 @@ cpSync(join(root, ".next/static"), join(app, ".next/static"), {
   recursive: true,
 });
 cpSync(join(root, "public"), join(app, "public"), { recursive: true });
+// The supervisor of several processes, where the image puts it (#383).
+cpSync(join(root, "scripts/processes.mjs"), join(app, "processes.mjs"));
 const metricsToken = randomBytes(24).toString("hex");
 const port = 3200 + Math.floor(Math.random() * 500);
 const origin = `http://127.0.0.1:${port}`;
@@ -42,8 +44,8 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures++;
 };
 
-async function start(dataDir) {
-  const child = spawn(process.execPath, ["server.js"], {
+async function start(dataDir, processes = 1) {
+  const child = spawn(process.execPath, [processes > 1 ? "processes.mjs" : "server.js"], {
     cwd: app,
     env: {
       ...process.env,
@@ -59,6 +61,7 @@ async function start(dataDir) {
       // FLOWPLAN_E2E_BUILD left and refuses it all the same.
       FLOWPLAN_E2E_BUILD: "1",
       FLOWPLAN_E2E_DEMO: "1",
+      ...(processes > 1 ? { FLOWPLAN_PROCESSES: String(processes) } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -372,6 +375,30 @@ try {
   const restoredFile = await fetch(`${origin}${file.url}`, { headers });
   check("Upload im Backup vorhanden", restoredFile.ok);
   await stop(server);
+
+  // Several processes behind the port (FLOWPLAN_PROCESSES=3, processes.mjs
+  // as the image starts it, #383): all three answer, a write through one is
+  // read through the others, SIGTERM ends them all with 143.
+  server = await start(backup, 3);
+  const metricsOf = async () => await (await fetch(`${origin}/api/metrics`, { headers: { authorization: `Bearer ${metricsToken}`, connection: "close" } })).text();
+  let running = 0;
+  for (let i = 0; i < 50 && running !== 3; i++) {
+    running = Number(/^flowplan_host_processes_running (\d+)$/m.exec(await metricsOf())?.[1] || 0);
+    if (running !== 3) await new Promise((r) => setTimeout(r, 200));
+  }
+  const answered = new Set();
+  for (let i = 0; i < 9; i++) answered.add(/^flowplan_uptime_seconds\{process="(\d+)"\}/m.exec(await metricsOf())?.[1]);
+  check("Drei Prozesse hinter einem Port", running === 3 && answered.size === 3, `${running} laufen, Antworten von ${[...answered].join(",")}`);
+  const renamed = await fetch(`${origin}/api/command`, {
+    method: "POST",
+    headers: { ...headers, connection: "close" },
+    body: JSON.stringify({ action: "page.update", pageId: created.id, patch: { title: "Mehrere Prozesse" } }),
+  });
+  const titles = [];
+  for (let i = 0; i < 6; i++) titles.push((await (await fetch(`${origin}/api/pages/${created.id}`, { headers: { ...headers, connection: "close" } })).json())?.page?.title);
+  check("Schreiben in einem Prozess, Lesen in allen", renamed.ok && titles.every((t) => t === "Mehrere Prozesse"), titles.join(" | "));
+  const ended = await stop(server);
+  check("SIGTERM beendet alle Prozesse", ended.code === 143, JSON.stringify(ended));
 } catch (error) {
   console.error(error);
   failures++;
