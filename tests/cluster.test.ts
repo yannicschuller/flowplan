@@ -259,6 +259,12 @@ test("two instances: one leader, heartbeats of both, live updates and rate limit
   await a.send({ op: "publish", key, update: "AAEC" });
   const event = await b.waitFor((m) => typeof m.event === "string" && (m.event as string).includes("AAEC"));
   assert.match(event.event as string, /"type":"update","update":"AAEC"/);
+  // Who else has the document open counts across instances
+  // (lib/live-audience.ts): b's editor alone, then a's arrives.
+  assert.ok(b.messages.some((m) => m.event === 'data: {"type":"audience","others":false}'));
+  await a.send({ op: "watch", key, client: "tab-on-a" });
+  await a.waitFor((m) => m.event === 'data: {"type":"audience","others":true}');
+  await b.waitFor((m) => m.event === 'data: {"type":"audience","others":true}');
 
   // A limit of 6 per minute holds across both: at most one more (the
   // action of the second instance in flight when it learns of it).

@@ -115,7 +115,7 @@ import { useHiddenModules } from "@/lib/feature-modules-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
-import { setLiveState, THREADS_EVENT, threadsKey } from "@/lib/live-state";
+import { CURSOR_EVENT, setAudience, setLiveState, THREADS_EVENT, threadsKey, type LiveCursor } from "@/lib/live-state";
 import { sameAsServer } from "@/lib/yjs-compare";
 import { RemoteSelection } from "@/lib/remote-selection";
 import {
@@ -1485,7 +1485,7 @@ export default function DocumentEditor({
     const source = new EventSource(`/api/documents/live?${params}`);
     const key = `${pageId}:${rowId || ""}:${generation}`;
     source.onmessage = (event) => {
-      let message: { type: string; update?: string };
+      let message: { type: string; update?: string; others?: boolean; peer?: LiveCursor["peer"] };
       try {
         message = JSON.parse(event.data);
       } catch {
@@ -1510,6 +1510,11 @@ export default function DocumentEditor({
         void sync();
       } else if (message.type === "presence")
         window.dispatchEvent(new CustomEvent("flowplan:presence", { detail: key }));
+      // Someone else's cursor (lib/collaboration-cursors.ts draws it), and
+      // whether anyone else is here at all.
+      else if (message.type === "cursor" && message.peer)
+        window.dispatchEvent(new CustomEvent<LiveCursor>(CURSOR_EVENT, { detail: { key, peer: message.peer } }));
+      else if (message.type === "audience") setAudience(key, message.others !== false);
       // The comment threads changed (components/inline-comments.tsx).
       else if (message.type === "threads")
         window.dispatchEvent(new CustomEvent(THREADS_EVENT, { detail: threadsKey(pageId, rowId) }));

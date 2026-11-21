@@ -31,6 +31,8 @@ const { values: opt } = parseArgs({
     docs: { type: "string", default: "300" },
     records: { type: "string", default: "3000" },
     spaces: { type: "string", default: "6" },
+    // Whiteboards for the board VUs (run.mjs --board-share): live cursors.
+    boards: { type: "string", default: "20" },
     // Two related databases (projects, customers) the task database links
     // to – one relation each – as the database open and its related data
     // see them in bigger workspaces (#383). Off by default: the numbers
@@ -219,6 +221,10 @@ await pool(
   },
 );
 console.log(`${N_DOCS} documents (${Date.now() - t0} ms)`);
+// Whiteboards (empty: the board VUs only move their cursors on them).
+const boardIds = [];
+for (let i = 0; i < Number(opt.boards); i++)
+  boardIds.push((await command({ action: "page.create", workspaceId, spaceId: spaceIds[i % spaceIds.length], title: `Board ${i}`, kind: "whiteboard" })).id);
 
 // --- Accounts, sessions, tokens (straight into the database) -----------------
 // SQLite: the instance's file; PostgreSQL (--database): its schema.
@@ -277,6 +283,6 @@ const rows = (await call(`/api/pages/${db.id}`)).rows.map((r) => ({
 }));
 writeFileSync(
   opt.out,
-  JSON.stringify({ origin, workspaceId, spaceIds, databaseId: db.id, importDatabaseId: importDb.id, rows, docIds, users, admin: { email: adminEmail, cookie: adminCookie } }, null, 1),
+  JSON.stringify({ origin, workspaceId, spaceIds, databaseId: db.id, importDatabaseId: importDb.id, rows, docIds, boardIds, users, admin: { email: adminEmail, cookie: adminCookie } }, null, 1),
 );
 console.log(`seed written to ${opt.out} (${Date.now() - t0} ms)`);

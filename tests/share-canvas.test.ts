@@ -229,13 +229,23 @@ test("guest pointers are named after the link; members appear under a pseudonym"
   const token = await share(board, "editor");
   const { moveCursor } = await import("../lib/whiteboard-presence");
   const events: string[] = [];
+  const { watchBoard } = await import("../lib/whiteboard-presence");
   const stop = canvas.watchSharedBoard(token, board, id(), (e) => events.push(e));
+  // Alone on the board, then a member arrives (#383): only whether, no names.
+  const memberStop = watchBoard(board, owner.id, () => {});
   moveCursor(board, { id: owner.id, name: owner.name }, { x: 5, y: 5 });
   await canvas.sharedBoardCursor(token, { pageId: board, clientId: id(), point: { x: 1, y: 2 } });
+  memberStop();
   stop();
   const text = events.join("");
   assert.ok(text.includes("member:") && !text.includes(owner.id));
   assert.ok(text.includes("Gast · Workshop"));
+  const audience = events.filter((e) => e.includes('"audience"'));
+  assert.deepEqual(audience.map((e) => JSON.parse(e.slice(6))), [
+    { type: "audience", others: false },
+    { type: "audience", others: true },
+    { type: "audience", others: false },
+  ]);
 });
 
 test("upload endpoints refuse share links of whiteboards and notebooks", async () => {

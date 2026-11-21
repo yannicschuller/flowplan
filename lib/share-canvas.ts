@@ -473,6 +473,8 @@ export function watchSharedBoard(token: string, pageId: string, clientId: string
     if (data.type === "snapshot") send(`data: ${JSON.stringify({ type: "snapshot", cursors: ((data.cursors as Props[]) || []).map(rename) })}\n\n`);
     else if (data.type === "cursor" || data.type === "leave") send(`data: ${JSON.stringify(rename(data))}\n\n`);
     // The board changed (no content in the signal): the guest syncs.
+    // Whether anyone else is on the board (no names): alone, the pointer stays home.
+    else if (data.type === "audience") send(`data: ${JSON.stringify({ type: "audience", others: data.others === true })}\n\n`);
     else if (data.type === "changed") send(`data: ${JSON.stringify({ type: "changed", ...(typeof data.from === "string" ? { from: data.from } : {}) })}\n\n`);
   });
 }

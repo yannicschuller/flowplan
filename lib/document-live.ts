@@ -6,6 +6,8 @@
 // the other instances (lib/cluster/bus.ts), whose hubs deliver it to theirs.
 import { onBus, publish } from "./cluster/bus";
 import { pagesChanged } from "./workspace-live";
+import { audienceEvent, documentRoom, joinAudience } from "./live-audience";
+import type { CursorPeer } from "./cursor-protocol";
 
 type Listener = { clientId: string; send: (event: string) => void };
 
@@ -48,6 +50,7 @@ type Signal =
   | { k: "update"; key: string; update: string; from?: string }
   | { k: "e2ee"; key: string; update: { seq: number; version: number; data: string }; from?: string }
   | { k: "presence"; key: string; from?: string }
+  | { k: "cursor"; key: string; peer: CursorPeer | { id: string; cursor: null }; from?: string; guests?: boolean }
   | { k: "changed"; pageId: string; rowId?: string | null; except?: string }
   | { k: "presenceFor"; pageId: string; rowId?: string | null; from?: string }
   | { k: "threads"; pageId: string; rowId?: string | null };
@@ -67,6 +70,13 @@ function deliver(signal: Signal) {
     }
     case "presence":
       return broadcast(signal.key, { type: "presence" }, signal.from);
+    case "cursor": {
+      // Guests on share links ask for their projection, as for "presence".
+      if (signal.guests) notifyPrefix(signal.key, "presence", signal.from);
+      const listeners = documents.get(signal.key);
+      if (listeners) send(listeners, { type: "cursor", peer: signal.peer }, signal.from);
+      return;
+    }
     case "changed":
       return changedHere(signal.pageId, signal.rowId, signal.except);
     case "presenceFor":
@@ -95,6 +105,15 @@ export function publishEncryptedUpdate(key: string, update: { seq: number; versi
 // Someone moved their cursor: the others ask for the current cursors.
 export function publishPresence(key: string, from?: string) {
   signal({ k: "presence", key, from });
+}
+
+// A member's cursor as it now is (lib/editor-presence.ts), to the others'
+// editors with it: they draw it without asking (cursor null: it went).
+// Sent for every accepted update, heartbeats too – each one renews the
+// cursor's lease with the others. `guests`: the text address changed, the
+// guests of share links ask again.
+export function publishCursor(key: string, peer: CursorPeer | { id: string; cursor: null }, from?: string, guests = false) {
+  signal({ k: "cursor", key, peer, from, ...(guests ? { guests } : {}) });
 }
 
 // Stored some other way (guest link, journal, version restore, linked
@@ -141,7 +160,10 @@ export function watchPrefix(pageId: string, rowId: string | null | undefined, cl
   const listener = { clientId, send: emit };
   listeners.add(listener);
   emit(`data: ${JSON.stringify({ type: "ready" })}\n\n`);
+  // A guest is an audience for the members' cursors (lib/live-audience.ts).
+  const leave = joinAudience(documentRoom(pageId, rowId), clientId);
   return () => {
+    leave();
     const set = prefixes.get(prefix);
     set?.delete(listener);
     if (set && !set.size) prefixes.delete(prefix);
@@ -182,7 +204,16 @@ export function watchDocument(key: string, clientId: string, send: (event: strin
   const listener = { clientId, send };
   listeners.add(listener);
   send(`data: ${JSON.stringify({ type: "ready" })}\n\n`);
+  // Whether anyone else has the page or record open live: alone, the
+  // editor keeps its cursor moves to itself (lib/collaboration-cursors.ts).
+  const [pageId, rowId] = key.split(":");
+  const leave = joinAudience(documentRoom(pageId, rowId), clientId, (others) => {
+    try {
+      send(audienceEvent(others));
+    } catch {}
+  });
   return () => {
+    leave();
     const set = documents.get(key);
     set?.delete(listener);
     if (set && !set.size) documents.delete(key);

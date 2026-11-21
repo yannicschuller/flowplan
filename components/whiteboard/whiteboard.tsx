@@ -722,12 +722,21 @@ export default function Whiteboard({
   }, []);
   const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSent = useRef(0);
+  // Whether anyone else has the board open (the stream's "audience" signal,
+  // lib/live-audience.ts; unknown counts as yes): alone, the pointer is not
+  // sent – nobody would see it – and goes out as it then is when someone
+  // arrives. `latest`: the pointer as it is (undefined: never on the board);
+  // `shown`: whether the last one sent was on the board.
+  const audience = useRef(true);
+  const latest = useRef<(Point & { laser?: boolean; view?: Presence["view"] }) | null | undefined>(undefined);
+  const shown = useRef(false);
   const flushCursor = useCallback(() => {
     sendTimer.current = null;
     const c = cursor.current;
     if (c === undefined) return;
     cursor.current = undefined;
     lastSent.current = Date.now();
+    shown.current = c !== null;
     void fetch(guest ? shareBoardUrl(guest) : `/api/whiteboards/${pageId}/cursor`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -737,6 +746,8 @@ export default function Whiteboard({
   }, [pageId, guest]);
   const queueCursor = useCallback(
     (point: (Point & { laser?: boolean; view?: Presence["view"] }) | null) => {
+      latest.current = point;
+      if (!audience.current) return;
       cursor.current = point;
       if (sendTimer.current) return;
       const wait = point === null ? 0 : Math.max(0, 66 - (Date.now() - lastSent.current));
@@ -785,6 +796,13 @@ export default function Whiteboard({
           if (data.from !== syncClient.current) syncNow.current();
           return;
         }
+        if (data.type === "audience") {
+          const before = audience.current;
+          audience.current = data.others !== false;
+          // Someone arrived: the pointer as it is now (or that it left).
+          if (audience.current && !before && latest.current !== undefined && (latest.current || shown.current)) queueCursor(latest.current);
+          return;
+        }
         if (data.type === "snapshot") {
           others.clear();
           data.cursors.forEach(take);
@@ -795,6 +813,8 @@ export default function Whiteboard({
       };
       source.onerror = () => {
         boardLive.current = false;
+        // Who else is there is not known while the stream is down.
+        audience.current = true;
         if (++failures >= 3) {
           source?.close();
           if (!guest) startPolling();
@@ -803,6 +823,7 @@ export default function Whiteboard({
     }
     return () => {
       boardLive.current = false;
+      audience.current = true;
       source?.close();
       if (poll) clearInterval(poll);
       if (sendTimer.current) clearTimeout(sendTimer.current);
@@ -813,7 +834,7 @@ export default function Whiteboard({
         keepalive: true,
       }).catch(() => {});
     };
-  }, [pageId, guest]);
+  }, [pageId, guest, queueCursor]);
 
   // ---- coordinates ----
   const toWorld = useCallback((clientX: number, clientY: number): Point => {

@@ -6,6 +6,12 @@
 // - the stored pages of a workspace under "pages:<workspace>" (any change
 //   of one of its pages), and what a person sees of them under that and
 //   "roles" (everything pageRole() reads);
+// - which of them a person may read under "roles" alone: a page saved,
+//   renamed, restyled or put into the trash changes the list's content but
+//   not who reads it – a page created, moved (workspace, space, parent,
+//   record) or deleted, and every change of rights, moves "roles" (the
+//   triggers of lib/db.ts migrateCacheVersions()). After a save the list is
+//   then the stored pages filtered by the kept ids, not pageRole() for each;
 // - the members of a workspace under "roles" (memberships, guests) and
 //   "people" (the names, addresses, avatars and the disabled state of
 //   accounts).
@@ -26,9 +32,15 @@ import type { Identity, Page } from "./types";
 
 export type Member = { id: string; name: string; email: string; disabled: number; avatar: string | null; role: string; guest: number };
 type Kept<T> = { list: T[]; json?: string };
+// Which pages a person reads, one bit per page: its place in the
+// workspace's page index (one per workspace and "roles" version, shared by
+// everyone) – a few hundred bytes per person instead of a set of ids.
+type Readable = { index: ReadonlyMap<string, number>; bits: Uint8Array };
 const store = globalThis as {
   flowplanWorkspacePages?: VersionedCache<readonly Page[]>;
   flowplanPageLists?: VersionedCache<Kept<Page>>;
+  flowplanReadablePages?: VersionedCache<Readable>;
+  flowplanPageIndexes?: VersionedCache<ReadonlyMap<string, number>>;
   flowplanMemberLists?: VersionedCache<Kept<Member>>;
 };
 // Stored rows shared by everyone: frozen, so a caller that changed one
@@ -36,6 +48,8 @@ const store = globalThis as {
 const workspacePages = (store.flowplanWorkspacePages ??= new VersionedCache<readonly Page[]>(50));
 // What one person sees of them (per workspace, person and guest state).
 const pageLists = (store.flowplanPageLists ??= new VersionedCache<Kept<Page>>(500));
+const readablePages = (store.flowplanReadablePages ??= new VersionedCache<Readable>(500));
+const pageIndexes = (store.flowplanPageIndexes ??= new VersionedCache<ReadonlyMap<string, number>>(50));
 const memberLists = (store.flowplanMemberLists ??= new VersionedCache<Kept<Member>>(50));
 // A kept part of an answer: where it is kept, under which version.
 type PartTag = { key: string; version: string };
@@ -51,11 +65,34 @@ async function storedPages(workspaceId: string) {
     workspaceId,
   )).map((p) => Object.freeze(p));
 }
-async function readable(user: Identity, pages: readonly Page[], workspaceId: string, guest: boolean) {
+// Workflow pages are not for guests (#168).
+const forGuest = (p: Page, guest: boolean) => !(guest && p.kind === "workflow");
+// The pages with a role for the person (a guest's workflow pages too: the
+// kept bits say who reads, not what a guest is shown).
+async function readable(user: Identity, pages: readonly Page[], workspaceId: string) {
   await workspaceRoles(user, workspaceId);
   const out: Page[] = [];
-  // Workflow pages are not for guests (#168).
-  for (const p of pages) if (!(guest && p.kind === "workflow") && (await pageRole(user, p))) out.push(p);
+  for (const p of pages) if (await pageRole(user, p)) out.push(p);
+  return out;
+}
+function readableBits(pages: readonly Page[], index: ReadonlyMap<string, number>): Readable {
+  const bits = new Uint8Array(Math.ceil(index.size / 8));
+  for (const p of pages) {
+    const i = index.get(p.id);
+    if (i !== undefined) bits[i >> 3] |= 1 << (i & 7);
+  }
+  return { index, bits };
+}
+// The stored pages a person reads, by the kept bits. A page without a
+// place in the index (none appears without moving "roles"; should one, it
+// is not guessed) is asked about on its own.
+async function fromBits(user: Identity, stored: readonly Page[], kept: Readable, guest: boolean) {
+  const out: Page[] = [];
+  for (const p of stored) {
+    if (!forGuest(p, guest)) continue;
+    const i = kept.index.get(p.id);
+    if (i === undefined ? await pageRole(user, p) : kept.bits[i >> 3] & (1 << (i & 7))) out.push(p);
+  }
   return out;
 }
 
@@ -65,17 +102,27 @@ async function readable(user: Identity, pages: readonly Page[], workspaceId: str
 export async function sidebarPages(user: Identity, workspaceId: string, guest: boolean): Promise<{ pages: Page[]; stored: readonly Page[]; tag: PartTag | null }> {
   if (inTransaction()) {
     const stored = await storedPages(workspaceId);
-    return { pages: await readable(user, stored, workspaceId, guest), stored, tag: null };
+    return { pages: (await readable(user, stored, workspaceId)).filter((p) => forGuest(p, guest)), stored, tag: null };
   }
   // The versions before anything is read (lib/cache-versions.ts).
   const pagesVersion = await cacheVersion(`pages:${workspaceId}`);
-  const version = `${pagesVersion}|${await cacheVersion("roles")}`;
+  const rolesVersion = await cacheVersion("roles");
+  const version = `${pagesVersion}|${rolesVersion}`;
   const key = `${workspaceId}:${user.id}:${guest ? 1 : 0}`;
   let stored = workspacePages.get(workspaceId, pagesVersion);
   if (!stored) workspacePages.set(workspaceId, pagesVersion, (stored = await storedPages(workspaceId)));
   const kept = pageLists.get(key, version);
   if (kept) return { pages: kept.list, stored, tag: { key, version } };
-  const pages = await readable(user, stored, workspaceId, guest);
+  const bits = readablePages.get(key, rolesVersion);
+  let pages: Page[];
+  if (bits) pages = await fromBits(user, stored, bits, guest);
+  else {
+    const read = await readable(user, stored, workspaceId);
+    pages = read.filter((p) => forGuest(p, guest));
+    let index = pageIndexes.get(workspaceId, rolesVersion);
+    if (!index) pageIndexes.set(workspaceId, rolesVersion, (index = new Map(stored.map((p, i) => [p.id, i]))));
+    readablePages.set(key, rolesVersion, readableBits(read, index));
+  }
   pageLists.set(key, version, { list: pages });
   return { pages, stored, tag: { key, version } };
 }

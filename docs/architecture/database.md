@@ -1314,10 +1314,14 @@ pod name).
 The in-process hubs stay the delivery to the instance's own server-sent
 event streams; each signal is delivered locally first and then published,
 the other instances deliver what they receive to their listeners:
-`lib/document-live.ts` (Yjs updates, encrypted updates, presence, "check"),
+`lib/document-live.ts` (Yjs updates, encrypted updates, members' cursors
+with every accepted presence update, presence, "check"),
 `lib/text-presence.ts` (cursors between members and guests, lease renewals
-included), `lib/whiteboard-presence.ts` (cursors, leaves, board signals)
-and the gathers of `lib/whiteboard-facilitation.ts`. Messages are signals,
+included), `lib/whiteboard-presence.ts` (cursors, leaves, board signals),
+`lib/live-audience.ts` (which ids each instance has in a document's or
+board's room – join, leave and every 20 s, forgotten after a minute; an
+instance answers a newcomer with its own ids at once) and the gathers of
+`lib/whiteboard-facilitation.ts`. Messages are signals,
 PostgreSQL stays the source of truth: a lost message is caught up by the
 clients' next "check". No sticky sessions are needed.
 

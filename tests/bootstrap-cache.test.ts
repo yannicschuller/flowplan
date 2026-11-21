@@ -52,7 +52,7 @@ async function moves(write: () => Promise<unknown>, expected: { roles: boolean; 
 }
 const forget = () => {
   const g = globalThis as unknown as Record<string, { clear(): void } | undefined>;
-  for (const name of ["flowplanRoles", "flowplanWorkspacePages", "flowplanPageLists", "flowplanMemberLists"]) g[name]?.clear();
+  for (const name of ["flowplanRoles", "flowplanWorkspacePages", "flowplanPageLists", "flowplanMemberLists", "flowplanReadablePages", "flowplanPageIndexes"]) g[name]?.clear();
 };
 const request = (tag?: string | null) => new Request("http://localhost/api/bootstrap", { headers: tag ? { "if-none-match": tag } : {} });
 // One GET as the route answers it (in a read memo, as every request).
@@ -250,4 +250,48 @@ test("a kept page is frozen: a caller that changed it would fail instead of chan
   await get(viewer);
   const answer = await withReadMemo(async () => await bootstrap(viewer, wid));
   assert.ok(Object.isFrozen(answer.pages[0]));
+});
+
+test("a saved page keeps who reads what: the list comes from the kept bits until roles move", async () => {
+  const kept = () => {
+    const cache = (globalThis as unknown as { flowplanReadablePages?: { entries: Map<string, { value: unknown }> } }).flowplanReadablePages;
+    return cache?.entries.get(`${wid}:${viewer.id}:0`)?.value;
+  };
+  forget();
+  await check(viewer, "start");
+  // check() computed the list once more from scratch: keep it again.
+  await get(viewer);
+  const bits = kept();
+  assert.ok(bits, "kept");
+  for (const [label, write] of [
+    ["title", () => run("UPDATE pages SET title='Saved' WHERE id=?", doc)],
+    ["content saved", () => run("UPDATE pages SET updated_at='2031-01-01 00:00:00' WHERE id=?", doc)],
+    ["trash", () => run("UPDATE pages SET deleted_at='2031-01-01 00:00:00' WHERE id=?", doc)],
+    ["back from the trash", () => run("UPDATE pages SET deleted_at=NULL WHERE id=?", doc)],
+    ["space renamed", () => run("UPDATE spaces SET name='Team 2' WHERE id=?", team)],
+  ] as const) {
+    await write();
+    const response = await get(viewer);
+    const body = JSON.parse(await response.text());
+    assert.equal(kept(), bits, `${label}: the same bits`);
+    const ids = (body.pages as { id: string }[]).map((p) => p.id);
+    assert.ok(ids.includes(doc) && !ids.includes(hidden), label);
+    assert.equal(body.pages.find((p: { id: string }) => p.id === doc).title, "Saved", `${label}: the list itself is current`);
+  }
+  // A new page, a move, a grant: computed anew.
+  for (const [label, write, shown] of [
+    ["new page", async () => await page({ title: "Newer" }), true],
+    ["moved into the private space", () => run("UPDATE pages SET space_id=? WHERE id=?", privateSpace, doc), false],
+    ["shared", () => run("INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,?,?)", doc, viewer.id, "", "viewer", "page", wid), true],
+  ] as const) {
+    const before = kept();
+    await write();
+    const response = await get(viewer);
+    const ids = (JSON.parse(await response.text()).pages as { id: string }[]).map((p) => p.id);
+    assert.notEqual(kept(), before, `${label}: computed anew`);
+    assert.equal(ids.includes(doc), shown, label);
+  }
+  await run("DELETE FROM grants WHERE resource_id=? AND user_id=?", doc, viewer.id);
+  await run("UPDATE pages SET space_id=? WHERE id=?", team, doc);
+  await check(viewer, "back");
 });

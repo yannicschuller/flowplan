@@ -21,10 +21,11 @@ const RETENTION_MS = 300_000;
 // the page – and the others then saw the cursor until its lease ran out.
 // The sequence stays: a request of the same tab, should it still be there
 // (a live channel that only reconnects), shows the cursor again. Returns
-// the document's key when a cursor went, for the others to hear about it.
+// the document's key and the cursor's id when a cursor went, for the
+// others to hear about it.
 export async function editorLeft(sessionToken: string, clientId: string) {
-  const row = await one<{ page_id: string; row_id: string | null; generation: string; cursor: string | null }>(
-    "SELECT page_id,row_id,generation,cursor FROM editor_presence WHERE session_token=? AND client_id=?",
+  const row = await one<{ id: string; page_id: string; row_id: string | null; generation: string; cursor: string | null }>(
+    "SELECT id,page_id,row_id,generation,cursor FROM editor_presence WHERE session_token=? AND client_id=?",
     sessionToken,
     clientId,
   );
@@ -33,7 +34,7 @@ export async function editorLeft(sessionToken: string, clientId: string) {
   if (row.cursor === null && !textGone) return null;
   if (row.cursor !== null)
     await run("UPDATE editor_presence SET cursor=NULL WHERE session_token=? AND client_id=?", sessionToken, clientId);
-  return documentKey(row.page_id, row.row_id, row.generation);
+  return { key: documentKey(row.page_id, row.row_id, row.generation), id: row.id };
 }
 export async function editorPresence(
   user: Identity,
@@ -67,6 +68,7 @@ export async function editorPresence(
     throw new HttpError(409, "Neue Dokumentversion verfügbar.");
   await run("DELETE FROM editor_presence WHERE seen<?", now - RETENTION_MS);
   const previous = await one<{
+    id: string;
     page_id: string;
     row_id: string | null;
     generation: string;
@@ -74,7 +76,7 @@ export async function editorPresence(
     cursor: string | null;
     sequence: number;
   }>(
-    "SELECT page_id,row_id,generation,seen,cursor,sequence FROM editor_presence WHERE session_token=? AND client_id=?",
+    "SELECT id,page_id,row_id,generation,seen,cursor,sequence FROM editor_presence WHERE session_token=? AND client_id=?",
     sessionToken,
     data.clientId,
   );
@@ -98,11 +100,12 @@ export async function editorPresence(
     ) >= 128
   )
     throw new HttpError(429, "Zu viele aktive Dokumentinstanzen.");
+  const presenceId = previous?.id ?? id();
   await run(
     `INSERT INTO editor_presence(id,session_token,client_id,page_id,row_id,generation,sequence,cursor,seen) VALUES(?,?,?,?,?,?,?,?,?)
     ON CONFLICT(session_token,client_id) DO UPDATE SET sequence=excluded.sequence,cursor=excluded.cursor,seen=excluded.seen
     WHERE excluded.sequence>editor_presence.sequence`,
-    id(),
+    presenceId,
     sessionToken,
     data.clientId,
     page.id,
@@ -132,7 +135,6 @@ export async function editorPresence(
     sessionToken,
     data.clientId,
   );
-  const cursor = data.cursor ? JSON.stringify(data.cursor) : null;
   // Guests on share links see members by text address, members see guests.
   const prefix = presencePrefix(page.id, data.rowId);
   const textChanged =
@@ -144,15 +146,20 @@ export async function editorPresence(
         : { id: data.clientId, text: null },
     );
   const guests = textPeers(prefix, data.clientId, "guest");
+  const accepted = data.sequence > (previous?.sequence ?? -1);
   return {
-    // Whether the others should hear about it: a new, moved or removed
-    // cursor (a heartbeat with the same position is no news).
-    // A cursor back after its lease ran out (a heartbeat while alone) is
-    // news as well: a newcomer did not see it.
-    changed:
-      textChanged ||
-      (data.sequence > (previous?.sequence ?? -1) &&
-        ((previous?.cursor ?? null) !== cursor || (!!cursor && !!previous && previous.seen <= now - CURSOR_LEASE_MS))),
+    // What the others' editors draw of this cursor (lib/document-live.ts
+    // publishCursor()): every accepted update – a heartbeat renews the
+    // lease there; null when the cursor went (or was not there).
+    peer: !accepted
+      ? undefined
+      : data.cursor
+        ? ({ id: presenceId, userId: user.id, name: user.name.slice(0, 100), cursor: data.cursor, expiresInMs: CURSOR_LEASE_MS } satisfies CursorPeer)
+        : previous?.cursor
+          ? { id: presenceId, cursor: null }
+          : undefined,
+    // The text address changed: the guests of share links ask again.
+    textChanged,
     key: documentKey(page.id, data.rowId, data.generation),
     clientId: data.clientId,
     peers: [

@@ -2,7 +2,7 @@
 // FLOWPLAN_CLUSTER=1 on the test's PostgreSQL schema and Redis, driven by
 // JSON lines on stdin; it answers and reports on stdout (one JSON per line).
 //
-//   {"op":"watch","key":"…"}             → {"event":"…"} for each SSE event
+//   {"op":"watch","key":"…","client"?:"…"} → {"event":"…"} for each SSE event
 //   {"op":"publish","key":"…","update":"…"}
 //   {"op":"allow","key":"…","max":n,"window":ms} → {"allowed":bool}
 //   {"op":"instances"}                    → {"instances":[…]}
@@ -31,12 +31,12 @@ const alive = setInterval(() => {}, 1000);
 
 for await (const line of createInterface({ input: process.stdin })) {
   if (!line.trim()) continue;
-  const command = JSON.parse(line) as { op: string; key?: string; update?: string; max?: number; window?: number; id?: number; name?: string; ms?: number };
+  const command = JSON.parse(line) as { op: string; key?: string; client?: string; update?: string; max?: number; window?: number; id?: number; name?: string; ms?: number };
   const reply = (data: object) => say({ id: command.id, ...data });
   try {
     switch (command.op) {
       case "watch":
-        watchDocument(command.key!, "test-client", (event) => say({ event: event.trim() }));
+        watchDocument(command.key!, command.client || "test-client", (event) => say({ event: event.trim() }));
         reply({ ok: true });
         break;
       case "publish":

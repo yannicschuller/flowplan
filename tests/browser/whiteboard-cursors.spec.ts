@@ -43,10 +43,24 @@ test("whiteboard cursors are live, leave with the person and point the way when 
   const other = await context.newPage();
 
   await page.goto(`/#page=${board.id}`);
-  await other.goto(`${origin}/#page=${board.id}`);
   const canvas = (p: typeof page) => p.locator("svg.wb-canvas");
   await expect(canvas(page)).toBeVisible();
+  // Alone on the board: the pointer stays home (nobody would see it, #383).
+  const sent: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.url().endsWith(`/api/whiteboards/${board.id}/cursor`)) sent.push(r.postData() || "");
+  });
+  const mine = (await canvas(page).boundingBox())!;
+  await page.waitForTimeout(500);
+  await page.mouse.move(mine.x + 120, mine.y + 120);
+  await page.mouse.move(mine.x + 160, mine.y + 150, { steps: 6 });
+  await page.waitForTimeout(400);
+  expect(sent).toEqual([]);
+  await other.goto(`${origin}/#page=${board.id}`);
   await expect(canvas(other)).toBeVisible();
+  // Someone arrived: the pointer as it is goes to them.
+  await expect(other.locator(".wb-cursor")).toHaveCount(1, { timeout: 5000 });
+  expect(sent.length).toBeGreaterThan(0);
 
   // Mira moves: her cursor shows up on the first screen quickly.
   const area = (await canvas(other).boundingBox())!;
