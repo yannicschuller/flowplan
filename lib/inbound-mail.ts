@@ -42,6 +42,7 @@ import { mailVerdict, sendgridVerdict, type MailVerdict } from "./mail-auth";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import { publishUpload } from "./storage";
+import { withDefaults } from "./field-defaults";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
 export const INBOUND_FILE_BYTES = 10 * 1024 * 1024;
@@ -662,7 +663,8 @@ async function storeMail(address: AddressRow, mail: InboundMail, from: string, m
       "INSERT INTO rows(id,page_id,cells,position,created_at,created_by,updated_by) VALUES(?,?,?,?,?,?,?)",
       rowId,
       target.id,
-      JSON.stringify(cells),
+      // Properties without a value get their default (#411).
+      JSON.stringify(withDefaults(fields, cells, { creator: user.id, now })),
       now,
       sqlTime(date),
       user.id,

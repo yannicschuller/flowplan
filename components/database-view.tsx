@@ -161,6 +161,8 @@ import {
 } from "@/lib/database-groups";
 import { CellInput, FieldLabel } from "./cell-input";
 import { FieldAccessEditor, FieldLock } from "./field-access-editor";
+import { FieldDefaultEditor } from "./field-default-editor";
+import { renameDefault } from "@/lib/field-defaults";
 import { describeRule } from "@/lib/field-access-rules";
 export { CellInput } from "./cell-input";
 import { AI_OUTPUT_TYPES, AiCellControl, AiFieldEditor, AiFillAll, AiFillDialog, unknownReferences, useAiDatabaseStatus } from "./ai-database";
@@ -2130,8 +2132,9 @@ export default function DatabaseView({
       action: "row.create",
       cells: withTemplate ? cells : { [fields[0].id]: newRecordTitle, ...cells },
       templateId,
-      // Dates of placeholders ({{Heute}}) in the person's time zone.
-      ...(withTemplate ? { timeZone: browserZone() } : {}),
+      // Dates of placeholders ({{Heute}}) and of "Heute" defaults (#411)
+      // in the person's time zone.
+      timeZone: browserZone(),
       ...(rawTemplate ? { rawTemplate: true } : {}),
     })) as { id: string } | null;
     if (r && open) {
@@ -5208,6 +5211,9 @@ export default function DatabaseView({
             if (["select", "multiselect"].includes(draft.type) && !draft.tagOptions && draft.options) {
               if (stored && ["select", "multiselect"].includes(stored.type) && !stored.tagOptions)
                 renames = optionRenames(stored.options || [], draft.options).map((r) => ({ field: draft.id, ...r }));
+              // A renamed option takes the default along (#411), also with
+              // "Nur Optionen speichern".
+              if (draft.defaultValue && renames.length) draft.defaultValue = renameDefault(draft.defaultValue, renames) as typeof draft.defaultValue;
               draft.options = cleanOptions(draft.options);
               // Colours of the options left (#242); `{}` clears them.
               if (draft.optionColors)
@@ -5276,6 +5282,8 @@ export default function DatabaseView({
                         type: e.target.value as FieldType,
                         parent: undefined,
                         ai: undefined,
+                        // Another type starts without a default (#411).
+                        defaultValue: e.target.value === f.type ? f.defaultValue : undefined,
                         ...(e.target.value === "id" && !f.prefix ? { prefix: suggestedPrefix(page.title) } : {}),
                       },
                 )
@@ -5833,6 +5841,16 @@ export default function DatabaseView({
               )}
             </>
           )}
+          <FieldDefaultEditor
+            draft={fieldDraft}
+            disabled={!editable || !allowFieldChanges || schemaBusy}
+            onChange={(value) =>
+              setFieldDraft((f) => {
+                const { defaultValue: _old, ...rest } = f;
+                return value ? { ...rest, defaultValue: value } : rest;
+              })
+            }
+          />
           <FieldAccessEditor
             draft={fieldDraft}
             groups={data.groups || []}

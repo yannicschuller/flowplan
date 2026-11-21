@@ -28,6 +28,7 @@ import { exportTitle, importDate } from "./zip-import";
 import type { Field, Identity, Page } from "./types";
 import { forEachAsync, mapAsync } from "./each-async";
 import { publishUpload } from "./storage";
+import { withDefaults } from "./field-defaults";
 
 export const MAX_MARKDOWN_RECORDS = 5000;
 const mimeTypes: Record<string, string> = {
@@ -349,7 +350,8 @@ export async function importMarkdownRecords(
         updated++;
         return;
       }
-      const serialized = JSON.stringify(cells);
+      // An import: only properties the file does not carry get their default (#411).
+      const serialized = JSON.stringify(withDefaults(next, cells, { creator: user.id, mode: "missing" }));
       if (serialized.length > 200000) throw new HttpError(413, `${file.path}: Datensatz zu groß.`);
       await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",

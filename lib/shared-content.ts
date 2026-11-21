@@ -32,6 +32,7 @@ import { rowChanged, rowCreated } from "./automations";
 import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
 import { flatMapAsync, mapAsync } from "./each-async";
 import { recordCells, recordFileIds, recordScope, recordSharePages, type RecordScope } from "./record-share";
+import { withDefaults } from "./field-defaults";
 
 // Properties with a read rule are never public (lib/field-access.ts).
 export const publicField = (f: Field) =>
@@ -561,7 +562,8 @@ export async function mutateSharedContent(token: string, input: unknown) {
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM rows WHERE page_id=?),NULL,NULL)",
         rid,
         s.page.id,
-        JSON.stringify(cells),
+        // Properties without a value get their default (#411); a guest is nobody's "Ersteller".
+        JSON.stringify(withDefaults(s.fields, cells, { creator: null })),
         s.page.id,
       );
       await run(

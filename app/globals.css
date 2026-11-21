@@ -40775,3 +40775,24 @@ a.favorite-nav.selected {
 .public-timeline-app a:is(.timeline-name, .timeline-range-body):hover {
   text-decoration: underline;
 }
+/* "Standardwert" in a property's settings (#411, components/field-default-editor.tsx). */
+.field-default {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.field-default legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+.field-default-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}

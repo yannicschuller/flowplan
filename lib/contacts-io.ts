@@ -33,6 +33,7 @@ import { MAX_VCARD_BYTES, parseVCards, serializeVCards, type VCardContact } from
 import type { Field, Identity, Page, Row } from "./types";
 import { mapAsync } from "./each-async";
 import { uploadSource } from "./storage";
+import { withDefaults } from "./field-defaults";
 
 const MAX_PHOTO = 256 * 1024;
 const fieldsOf = async (pageId: string) => JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
@@ -130,7 +131,8 @@ export async function importVCards(user: Identity, pageId: string, text: string)
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
         rid,
         page.id,
-        JSON.stringify(deriveContactCells(fields, {}, cells, Object.keys(cells))),
+        // An import: only properties the card does not carry get their default (#411).
+        JSON.stringify(withDefaults(fields, deriveContactCells(fields, {}, cells, Object.keys(cells)), { creator: user.id, mode: "missing" })),
         position++,
         user.id,
         user.id,

@@ -568,6 +568,14 @@ export type Field = {
       groups: string[];
     };
   };
+  defaultValue?: {
+    kind: "value";
+    value: string | number | boolean | string[];
+  } | {
+    kind: "now";
+  } | {
+    kind: "creator";
+  };
 };
 
 /** A view of a database (table, board, calendar, …). */
@@ -2823,6 +2831,14 @@ export type CommandDatabaseUpdate = {
         groups: string[];
       };
     };
+    defaultValue?: {
+      kind: "value";
+      value: string | number | boolean | string[];
+    } | {
+      kind: "now";
+    } | {
+      kind: "creator";
+    };
   })[];
   views?: ({
     id: string;
@@ -3001,7 +3017,7 @@ export type CommandDatabaseUpdateResult = {
   ok: true;
 };
 
-/** Create a record in a database */
+/** Create a record in a database. Properties without a value in `cells` (missing or empty) get their `defaultValue`, after the record template's values: a fixed value, `now` (today, or the current time for a date property with time) or `creator` (the calling person). Existing records never change. */
 export type CommandRowCreate = {
   action: "row.create";
   /** Page ID of the database */
@@ -3012,6 +3028,8 @@ export type CommandRowCreate = {
   templateId?: string;
   /** Own ID (idempotent: repeating the call is a no-op) */
   rowId?: string;
+  /** IANA time zone for the day of `now` defaults and template placeholders (default UTC) */
+  timeZone?: string;
 };
 
 export type CommandRowCreateResult = {

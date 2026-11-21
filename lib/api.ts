@@ -125,6 +125,8 @@ import { templateFromSaved } from "./journal-saved-template";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
+import { adminChangeEmail } from "./email-change";
+import { cleanDefaults, creationTime, withDefaults } from "./field-defaults";
 import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { cleanRecordOrder, parseRecordLayout, recordLayoutSchema } from "./record-layout";
@@ -2656,6 +2658,9 @@ async function runCommand(
         // Option colours (#242): new options get the next colour, renamed
         // ones keep theirs.
         colorOptions(fields, d.fields, optionRenamesSchema.parse(b.optionRenames ?? []));
+        // Defaults (#411): only where they fit the property; renamed
+        // options take theirs along.
+        cleanDefaults(fields, optionRenamesSchema.parse(b.optionRenames ?? []));
         await validateDatabaseRelations(user, await write(), fields, d.fields);
         await validateTicketPrefix(await write(), fields);
         for (const v of views) {
@@ -2775,10 +2780,14 @@ async function runCommand(
               typeof b.timeZone === "string" ? b.timeZone : undefined,
             )
           : {};
-        const cells = await contactCellsFor(pid(), (await database(pid())).fields, {}, {
-          ...fromTemplate,
-          ...given,
-        }, Object.keys(given));
+        // Properties still without a value get their default (#411); a
+        // record made offline counts "Heute"/"Jetzt" from when it was made.
+        const withDefault = withDefaults((await database(pid())).fields, { ...fromTemplate, ...given }, {
+          creator: user.id,
+          timeZone: typeof b.timeZone === "string" ? b.timeZone : undefined,
+          now: creationTime(b.createdAt),
+        });
+        const cells = await contactCellsFor(pid(), (await database(pid())).fields, {}, withDefault, Object.keys(given));
         // Aliases follow their limits (lib/aliases.ts).
         const aliasProperty = aliasField((await database(pid())).fields);
         if (aliasProperty && cells[aliasProperty.id] !== undefined)
@@ -2952,8 +2961,16 @@ async function runCommand(
             rid,
             pid(),
             // Tag-backed properties create missing tags where allowed (#79);
-            // names that may not become tags are left out.
-            JSON.stringify(await tagCells(user, await write(), importFields, cells, false)),
+            // names that may not become tags are left out. Properties the
+            // file has no column for get their default (#411); an empty
+            // value of a column stays empty.
+            JSON.stringify(
+              withDefaults(importFields, await tagCells(user, await write(), importFields, cells, false), {
+                creator: user.id,
+                timeZone: typeof b.timeZone === "string" ? b.timeZone : undefined,
+                mode: "missing",
+              }),
+            ),
             Date.now() + i,
             user.id,
             user.id,
@@ -4114,6 +4131,12 @@ async function runCommand(
         await adminResetTwoFactor(uuid.parse(b.userId));
         securityEvent("admin.user", { actorId: user.id, detail: `two-factor reset ${b.userId}` });
         break;
+      // Without e-mail (#405, lib/email-change.ts): the address of an
+      // account with e-mail and password, in the activity log with both.
+      case "admin.changeEmail":
+        requireAdmin(user);
+        result = await adminChangeEmail(user, uuid.parse(b.userId), b, contentLocale());
+        break;
       case "admin.resetLink":
         requireAdmin(user);
         result = { url: await adminResetLink(uuid.parse(b.userId)) };
@@ -4152,6 +4175,8 @@ async function runCommand(
       await setFollowing(user, createdId, true);
     if (
       ![
+        // Written with the old and new address (lib/email-change.ts).
+        "admin.changeEmail",
         "document.sync",
         "document.markdown",
         "row.document.sync",

@@ -182,6 +182,9 @@ export type Field = {
   // "multiselect": the workspace's tags are the options (issue #79,
   // lib/tag-fields.ts); cells keep the tag names, `options` mirrors them.
   tagOptions?: boolean;
+  // "Standardwert" (#411, lib/field-defaults.ts): a fixed value, "Heute"/
+  // "Jetzt" (dates) or "Ersteller" (people) for new records without a value.
+  defaultValue?: import("./field-defaults").FieldDefault;
 };
 export type Row = {
   id: string;

@@ -1,6 +1,6 @@
 "use client";
-// Settings → Konto & Sicherheit: the display name, the password and the
-// passkeys of an account with e-mail and password, as rows of the settings
+// Settings → Konto & Sicherheit: the display name, the e-mail address, the
+// password and the passkeys of an account with e-mail and password, as rows of the settings
 // cards (components/settings-ui.tsx). The authenticator app is in
 // components/two-factor.tsx; SSO accounts are managed by their provider.
 import { serverMessage } from "@/lib/server-message";
@@ -13,6 +13,8 @@ import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/brow
 import { useT } from "./i18n";
 import { CONTROL, SaveState, SettingRow, StatusBadge, useSaveState } from "./settings-ui";
 import { PasswordInput } from "./password-input";
+import { StepUpDialog, post as postStep } from "./sign-in-methods";
+import type { StepUpMethods } from "@/lib/step-up";
 
 type Passkey = { id: string; name: string; created_at: number; last_used_at: number | null };
 async function post<T = { ok: true; passkeys: Passkey[] }>(path: string, body?: unknown): Promise<T> {
@@ -383,5 +385,99 @@ export function PasskeysRow() {
         </div>
       )}
     </>
+  );
+}
+
+// The e-mail address of an account with e-mail and password (#405): "E-Mail
+// ändern …" asks for the new address and confirms the step like the other
+// sensitive ones (password, passkey or code); a link to the new address
+// makes the change. A pending change shows with "Abbrechen". Without e-mail
+// on the instance the administration changes it.
+type EmailChangeState = {
+  available: boolean;
+  mail: boolean;
+  pending: { email: string; expires: number } | null;
+  confirm: StepUpMethods;
+};
+export function EmailChangeRow() {
+  const t = useT();
+  const [state, setState] = useState<EmailChangeState | null>(null),
+    [open, setOpen] = useState(false),
+    [note, setNote] = useState<{ text: string; error?: boolean }>({ text: "" }),
+    [busy, setBusy] = useState(false);
+  useEffect(() => {
+    postStep<EmailChangeState>("email-change-status").then(setState, () => setState(null));
+  }, []);
+  if (!state?.available) return null;
+  const until = (ms: number) => new Date(ms).toLocaleString(LOCALE_TAG, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const cancel = async () => {
+    setBusy(true);
+    setNote({ text: "" });
+    try {
+      const next = await postStep<Omit<EmailChangeState, "confirm">>("email-change-cancel");
+      setState({ ...state, ...next });
+      setNote({ text: t("Änderung abgebrochen.", "Change cancelled.") });
+    } catch (e) {
+      setNote({ text: (e as Error).message, error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const description = state.pending
+    ? t(
+        `Wartet auf Bestätigung: ${state.pending.email}. Der Link im Postfach dieser Adresse gilt bis ${until(state.pending.expires)}.`,
+        `Waiting for confirmation: ${state.pending.email}. The link in that address's inbox is valid until ${until(state.pending.expires)}.`,
+      )
+    : state.mail
+      ? t("Damit meldest du dich an. Eine neue Adresse bestätigst du mit einem Link, den Flowplan an sie schickt.", "You sign in with it. You confirm a new address with a link Flowplan sends to it.")
+      : t("Diese Instanz versendet keine E-Mails – deine Adresse ändert die Administration für dich.", "This instance does not send e-mails – the administrators change your address for you.");
+  return (
+    <SettingRow anchor="email" label={t("E-Mail-Adresse", "E-mail address")} description={description}>
+      <Note text={note.text} error={note.error} />
+      {state.pending && (
+        <button type="button" className="button" disabled={busy} onClick={() => void cancel()}>
+          {t("Änderung abbrechen", "Cancel change")}
+        </button>
+      )}
+      {state.mail && (
+        <button
+          type="button"
+          className="button"
+          onClick={() => {
+            setNote({ text: "" });
+            setOpen(true);
+          }}
+        >
+          {t("E-Mail ändern …", "Change e-mail …")}
+        </button>
+      )}
+      {open && (
+        <StepUpDialog
+          pending={{
+            title: t("E-Mail-Adresse ändern", "Change e-mail address"),
+            text: t(
+              "Flowplan schickt einen Link an die neue Adresse; sie gilt erst, wenn du ihn innerhalb von 24 Stunden öffnest. Deine bisherige Adresse bekommt einen Hinweis. Du bleibst angemeldet.",
+              "Flowplan sends a link to the new address; it applies once you open the link within 24 hours. Your current address gets a notice. You stay signed in.",
+            ),
+            button: t("Link senden", "Send link"),
+            newEmail: true,
+            run: async (confirm, extra) => {
+              const next = await postStep<Omit<EmailChangeState, "confirm">>("email-change", { confirm, email: extra.email });
+              setState({ ...state, ...next });
+              return t(
+                `Link an ${next.pending?.email || extra.email} gesendet – bitte dort bestätigen.`,
+                `Link sent to ${next.pending?.email || extra.email} – please confirm it there.`,
+              );
+            },
+          }}
+          methods={state.confirm}
+          onClose={() => setOpen(false)}
+          onDone={(text) => {
+            setOpen(false);
+            setNote({ text });
+          }}
+        />
+      )}
+    </SettingRow>
   );
 }

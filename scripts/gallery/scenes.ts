@@ -1769,6 +1769,9 @@ const authScenes: Scene[] = [
   },
   { id: "register", group: "Auth", title: "Register", path: "/register", signedOut: true },
   { id: "reset", group: "Auth", title: "Reset password", path: "/reset", signedOut: true },
+  // The links of a change of the e-mail address (#405): nothing happens before the button.
+  { id: "email-change-confirm", group: "Auth", title: "Confirm new e-mail address", path: "/email-change?token=gallery-example", signedOut: true },
+  { id: "email-change-cancel", group: "Auth", title: "Cancel e-mail address change", path: "/email-change?token=gallery-example&cancel=1", signedOut: true },
 ];
 
 const publicScenes: Scene[] = [

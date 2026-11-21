@@ -77,6 +77,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "profil name anzeigename passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee grenzen speicher konto löschen", en: "profile name display name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee limits storage delete account" },
     entries: [
       { title: { de: "Anzeigename", en: "Display name" }, keywords: { de: "profil name", en: "profile name" }, anchor: "profile" },
+      { title: { de: "E-Mail-Adresse ändern", en: "Change e-mail address" }, keywords: { de: "email mail adresse ändern", en: "email mail address change" }, anchor: "email" },
       { title: { de: "Anmeldemethoden", en: "Sign-in methods" }, keywords: { de: "sso oidc verbinden trennen single sign-on passwort entfernen", en: "sso oidc connect disconnect link single sign-on remove password" }, anchor: "sign-in-methods", level: "normal" },
       { title: { de: "Passwort ändern", en: "Change password" }, anchor: "password" },
       { title: { de: "Passkeys", en: "Passkeys" }, anchor: "passkeys" },

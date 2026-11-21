@@ -3,7 +3,9 @@
 // connection is back. A change to a record that was changed elsewhere in
 // the meantime is merged field by field; fields changed on both sides and
 // records deleted elsewhere become conflicts the person resolves.
-import type { Row } from "./types";
+import type { Field, Row } from "./types";
+import { withDefaults } from "./field-defaults";
+import { browserZone } from "./date-values";
 
 // `key`: the Idempotency-Key the change is sent with, also on every later
 // attempt (lib/idempotency-key.ts) – the one of the online attempt that
@@ -105,10 +107,13 @@ const same = (a: unknown, b: unknown) =>
   JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 // The rows of a database as they look with the waiting changes applied.
+// With the database's properties, a record made offline shows the defaults
+// it gets once sent (#411, lib/field-defaults.ts), as of when it was made.
 export function applyQueue(
   rows: Row[],
   queue: QueuedChange[],
   pageId: string,
+  defaults?: { fields: Field[]; creator: string },
 ): Row[] {
   let result = rows;
   for (const change of queue) {
@@ -121,7 +126,7 @@ export function applyQueue(
         {
           id: change.rowId,
           page_id: pageId,
-          cells: change.cells,
+          cells: defaults ? withDefaults(defaults.fields, change.cells, { creator: defaults.creator, now: change.at, timeZone: browserZone() }) : change.cells,
           position: Number.MAX_SAFE_INTEGER,
           created_at: now,
           updated_at: now,

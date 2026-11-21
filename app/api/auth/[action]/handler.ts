@@ -52,6 +52,7 @@ import { readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { provesApp } from "@/lib/app-devices";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview, ssoOnlyAccount } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
+import { cancelEmailChange, cancelEmailChangeByLink, confirmEmailChange, emailChangeStatus, requestEmailChange } from "@/lib/email-change";
 import { portalAddress, proxyAuthConfig } from "@/lib/proxy-auth-config";
 export const runtime = "nodejs";
 import { oidcConfig as config, oidcFailure } from "@/lib/oidc";
@@ -570,6 +571,15 @@ async function handlePOST(
       await resetPassword(await body(), locale);
       return NextResponse.json({ ok: true });
     }
+    // ---- The links of a change of the e-mail address (#405, app/email-change):
+    // the one to the new address makes it, the one to the old cancels it ----
+    if (action === "email-confirm") {
+      const { email } = await confirmEmailChange(((await body()) as { token?: unknown }).token, locale);
+      return NextResponse.json({ ok: true, email });
+    }
+    if (action === "email-cancel") {
+      return NextResponse.json({ ok: true, cancelled: await cancelEmailChangeByLink(((await body()) as { token?: unknown }).token) });
+    }
     // ---- Passkeys: sign in ----
     if (action === "passkey-options") {
       const { options, token } = await passkeyLoginOptions();
@@ -639,7 +649,7 @@ async function handlePOST(
     // ---- Sign-in methods of the signed-in person (#101): SSO identities,
     // removing or setting the password; sensitive steps are confirmed
     // again (lib/step-up.ts) ----
-    if (["sign-in-methods", "confirm-passkey-options", "sso-link-start", "sso-unlink", "password-remove", "password-set", "journal-pin-reset"].includes(action)) {
+    if (["sign-in-methods", "confirm-passkey-options", "sso-link-start", "sso-unlink", "password-remove", "password-set", "journal-pin-reset", "email-change-status", "email-change", "email-change-cancel"].includes(action)) {
       const user = await currentUser();
       if (!user || user.demo || user.twoFactorSetup) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
@@ -651,6 +661,14 @@ async function handlePOST(
         const { options, token } = await passkeyConfirmOptions(user.id, locale);
         await rememberChallenge(token);
         return NextResponse.json(options);
+      }
+      // Profile → "E-Mail ändern …" (#405, lib/email-change.ts): the pending
+      // change, a new one after the confirmation, or cancelling it.
+      if (action === "email-change-status")
+        return NextResponse.json({ ...(await emailChangeStatus(user.id)), confirm: await stepUpMethods(user.id, sessionStart) }, { headers: { "Cache-Control": "no-store" } });
+      if (action === "email-change-cancel") {
+        await cancelEmailChange(user.id);
+        return NextResponse.json({ ok: true, ...(await emailChangeStatus(user.id)) });
       }
       const input = await body();
       const confirm = async () =>
@@ -696,6 +714,11 @@ async function handlePOST(
         const result = await command({ ...user, stepUp: true }, { action: "journal.lock", pageId, pin: null });
         after(dispatchPush);
         return NextResponse.json({ ok: true, ...(result && typeof result === "object" ? result : {}) });
+      }
+      if (action === "email-change") {
+        await confirm();
+        await requestEmailChange(user.id, input, locale, clientAddress(req.headers));
+        return NextResponse.json({ ok: true, ...(await emailChangeStatus(user.id)) });
       }
       if (action === "sso-unlink") {
         const { identityId } = z.object({ identityId: z.string().max(80) }).passthrough().parse(input);

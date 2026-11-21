@@ -18,6 +18,7 @@ import {
   CaretUp,
   CaretUpDown,
   DotsThree,
+  EnvelopeSimple,
   IdentificationCard,
   Key,
   LockOpen,
@@ -777,6 +778,11 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
   const names = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const memberOf = (usage?.memberOf || []).map((id) => names.get(id)).filter((n): n is string => !!n);
   const [resetLink, setResetLink] = useState("");
+  // "E-Mail ändern …" (#405): only without e-mail on the instance – with it,
+  // the person changes the address and confirms it by link.
+  const [newEmail, setNewEmail] = useState<string | null>(null),
+    [emailError, setEmailError] = useState(""),
+    [emailBusy, setEmailBusy] = useState(false);
   const [note, setNote] = useState("");
   const [plan, setPlan] = useState<{
     removed: { name: string }[];
@@ -798,6 +804,22 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
     storage: data.settings.defaultUserStorageMb ? `${data.settings.defaultUserStorageMb} MB` : t("unbegrenzt", "unlimited"),
     workspaces: data.settings.defaultUserWorkspaces ? String(data.settings.defaultUserWorkspaces) : t("unbegrenzt", "unlimited"),
     upload: `${data.settings.maxUploadMb} MB`,
+  };
+  const changeEmail = async () => {
+    const email = (newEmail || "").trim();
+    if (!email) return;
+    setEmailBusy(true);
+    setEmailError("");
+    try {
+      await mutate({ action: "admin.changeEmail", userId: u.id, email });
+      setNewEmail(null);
+      setNote(t(`E-Mail-Adresse geändert: ${email}`, `E-mail address changed: ${email}`));
+      await load();
+    } catch (e) {
+      setEmailError((e as Error).message);
+    } finally {
+      setEmailBusy(false);
+    }
   };
   const run = async (body: Record<string, unknown>, done?: string) => {
     setNote("");
@@ -939,6 +961,64 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
               >
                 <Key size={15} aria-hidden /> {t("Link erstellen", "Create link")}
               </button>
+            )}
+          </div>
+        )}
+        {local && !data.mail?.configured && (
+          <div className={`ux-row-item${newEmail !== null ? " wide" : ""}`}>
+            <span className="ux-row-text">
+              <strong>{t("E-Mail-Adresse ändern", "Change e-mail address")}</strong>
+              <small>
+                {t(
+                  "Ohne E-Mail-Versand änderst du sie hier. Die Person meldet sich danach mit der neuen Adresse an und bleibt angemeldet.",
+                  "Without e-mail you change it here. The person then signs in with the new address and stays signed in.",
+                )}
+              </small>
+            </span>
+            {newEmail === null ? (
+              <button
+                type="button"
+                className="button compact"
+                onClick={() => {
+                  setEmailError("");
+                  setNewEmail("");
+                }}
+              >
+                <EnvelopeSimple size={15} aria-hidden /> {t("E-Mail ändern …", "Change e-mail …")}
+              </button>
+            ) : (
+              <span className="ux-email-change">
+                <input
+                  className="ux-email-input"
+                  type="email"
+                  required
+                  maxLength={200}
+                  autoComplete="off"
+                  autoFocus
+                  aria-label={t(`Neue E-Mail-Adresse für ${u.name}`, `New e-mail address for ${u.name}`)}
+                  placeholder={u.email}
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Not the panel's form (limits) – this field's own change.
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void changeEmail();
+                    }
+                  }}
+                />
+                <button type="button" className="button compact primary" disabled={emailBusy || !newEmail.trim()} onClick={() => void changeEmail()}>
+                  {t("Ändern", "Change")}
+                </button>
+                <button type="button" className="button compact" disabled={emailBusy} onClick={() => setNewEmail(null)}>
+                  {t("Abbrechen", "Cancel")}
+                </button>
+                {emailError && (
+                  <span role="alert" className="error ux-email-error">
+                    {emailError}
+                  </span>
+                )}
+              </span>
             )}
           </div>
         )}

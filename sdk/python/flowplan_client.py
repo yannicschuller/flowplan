@@ -370,6 +370,7 @@ Field = TypedDict("Field", {
     "prefix": str,
     "ai": dict[str, Any],
     "access": dict[str, Any],
+    "defaultValue": dict[str, Any],
 }, total=False)
 
 # A view of a database (table, board, calendar, …).
@@ -1762,13 +1763,14 @@ CommandDatabaseUpdateResult = TypedDict("CommandDatabaseUpdateResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
-# Create a record in a database
+# Create a record in a database. Properties without a value in `cells` (missing or empty) get their `defaultValue`, after the record template's values: a fixed value, `now` (today, or the current time for a date property with time) or `creator` (the calling person). Existing records never change.
 CommandRowCreate = TypedDict("CommandRowCreate", {
     "action": Required[Literal["row.create"]],
     "pageId": Required[str],  # Page ID of the database
     "cells": dict[str, Any],  # Property values by property ID (the first property is the title). Text properties other than the title hold inline Markdown (#126): **bold**, _italic_ (or *italic*), ~~strike~~, `code`, [label](https://…) links (http, https and mailto only) and \n for a line break – no headings, lists or other blocks. A backslash keeps * _ ~ ` [ ] \ literal, so plain text is sent escaped. Records are read the same way; the title is plain text.
     "templateId": str,  # Record template to start from
     "rowId": str,  # Own ID (idempotent: repeating the call is a no-op)
+    "timeZone": str,  # IANA time zone for the day of `now` defaults and template placeholders (default UTC)
 }, total=False)
 
 CommandRowCreateResult = TypedDict("CommandRowCreateResult", {

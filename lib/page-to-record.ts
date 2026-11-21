@@ -25,6 +25,7 @@ import { pageTagNames } from "./page-properties-server";
 import { isTagField } from "./page-properties";
 import { findAsync } from "./each-async";
 import { dropLiveProjectionsOfRoot } from "./shared-live";
+import { withDefaults } from "./field-defaults";
 
 // What the move changes, for the confirmation.
 export async function pageToRecordPlan(user: Identity, pageId: string) {
@@ -115,7 +116,9 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
        VALUES(?,?,?,?,?,?,?,?,?)`,
       rid,
       database.id,
-      JSON.stringify(cells),
+      // Properties without a value get their default (#411); the page's
+      // author is the record's creator.
+      JSON.stringify(withDefaults(fields, cells, { creator: page.created_by || user.id })),
       Date.now(),
       page.created_by,
       user.id,

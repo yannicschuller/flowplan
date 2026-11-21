@@ -5832,6 +5832,7 @@ export default function WorkspaceApp({
                             data.rows,
                             offlineQueue.queue,
                             data.page.id,
+                            { fields: data.database.fields, creator: boot.user.id },
                           ),
                         }}
                         members={boot.members}

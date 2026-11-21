@@ -23,6 +23,7 @@ import { contentLocale, ct } from "./content-locale";
 import { translate } from "./i18n";
 import { mailConfig, queueFormConfirmationMail } from "./mail";
 import { allow, mailAllowed } from "./action-limits";
+import { withDefaults } from "./field-defaults";
 export async function formSettings(pageId: string) {
   const raw = await one<{
     token: string;
@@ -224,9 +225,12 @@ export async function saveFormSubmission(
   const rid = id();
   // Answers are plain text: formatted text properties (#126) store them
   // escaped, so "*" or "_" stay as typed.
-  const stored = { ...result.cells };
+  const escaped = { ...result.cells };
   for (const f of fields)
-    if (isFormattedText(f, fields) && typeof stored[f.id] === "string") stored[f.id] = escapeInline(stored[f.id] as string);
+    if (isFormattedText(f, fields) && typeof escaped[f.id] === "string") escaped[f.id] = escapeInline(escaped[f.id] as string);
+  // Questions hidden or left empty get the property's default (#411); "Ersteller"
+  // is the person who sends it (nobody for an anonymous answer).
+  const stored = withDefaults(fields, escaped, { creator: form?.anonymous ? null : user?.id || null });
   await run(
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
     rid,

@@ -1062,12 +1062,15 @@ export const commandActions: ActionDoc[] = [
   {
     action: "row.create",
     summary: "Create a record in a database",
+    description:
+      "Properties without a value in `cells` (missing or empty) get their `defaultValue`, after the record template's values: a fixed value, `now` (today, or the current time for a date property with time) or `creator` (the calling person). Existing records never change.",
     input: z.object({
       action: z.literal("row.create"),
       pageId: uuid.describe("Page ID of the database"),
       cells: cells.optional(),
       templateId: z.string().max(100).optional().describe("Record template to start from"),
       rowId: uuid.optional().describe("Own ID (idempotent: repeating the call is a no-op)"),
+      timeZone: z.string().max(100).optional().describe("IANA time zone for the day of `now` defaults and template placeholders (default UTC)"),
     }),
     result: idResult,
   },

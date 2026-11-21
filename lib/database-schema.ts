@@ -10,6 +10,7 @@ import { OPTION_COLORS } from "./option-colors";
 import { MAX_ORDERED_ROWS } from "./row-order";
 import { rollupAggregates } from "./rollups";
 import { calculationsSchema } from "./database-summary";
+import { fieldDefaultSchema } from "./field-defaults";
 const str = z.string().min(1).max(500);
 // Field-level permissions (lib/field-access.ts).
 const accessRule = z.union([
@@ -85,6 +86,9 @@ export const field = z.object({
     })
     .optional(),
   access: fieldAccess.optional(),
+  // "Standardwert" (#411, lib/field-defaults.ts): what a new record gets
+  // when it has no value for the property.
+  defaultValue: fieldDefaultSchema.optional(),
 });
 export const view = z
   .object({
