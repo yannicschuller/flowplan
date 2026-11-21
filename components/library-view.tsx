@@ -62,6 +62,7 @@ export default function LibraryView({
   workspaceOwner = false,
   onManageShelf,
   onShareBook,
+  onRename,
 }: {
   space: Space;
   // The workspace's live pages the person may see (titles decrypted).
@@ -82,6 +83,8 @@ export default function LibraryView({
   onManageShelf?: () => void;
   // "Wer sieht dieses Buch?": the book page's sharing.
   onShareBook?: (pageId: string) => void;
+  // Renames a book or chapter (#421): its page's title.
+  onRename?: (pageId: string, title: string) => Promise<unknown>;
 }) {
   const t = useT();
   const books = useMemo(() => libraryBooks(pages, space.id), [pages, space.id]);
@@ -119,7 +122,7 @@ export default function LibraryView({
       ) : (
         <>
           {book && chapter ? (
-            <ChapterHeader book={book} chapter={chapter} space={space} pages={pages} />
+            <ChapterHeader book={book} chapter={chapter} space={space} pages={pages} onRename={canEdit ? onRename : undefined} />
           ) : book ? (
             <BookHeader
               book={book}
@@ -128,6 +131,7 @@ export default function LibraryView({
               visits={visits}
               clock={clock}
               onShare={onShareBook && (manage || (!!userId && book.page.created_by === userId)) ? () => onShareBook(book.page.id) : undefined}
+              onRename={canEdit ? onRename : undefined}
             />
           ) : (
             <div className="utility-title library-title">
@@ -242,6 +246,7 @@ function BookHeader({
   visits,
   clock,
   onShare,
+  onRename,
 }: {
   book: LibraryBook<Page>;
   space: Space;
@@ -249,6 +254,7 @@ function BookHeader({
   visits: { pageId: string; seenAt: number }[];
   clock: number | null;
   onShare?: () => void;
+  onRename?: (pageId: string, title: string) => Promise<unknown>;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -264,7 +270,7 @@ function BookHeader({
       <span className="library-title-icon" aria-hidden>
         <PageIcon name={shownPageIcon(book.page.icon, book.page.kind)} size={34} />
       </span>
-      <h1>{untitled(t, book.page.title)}</h1>
+      <LibraryTitle page={book.page} onRename={onRename} label={t("Titel des Buchs", "Title of the book")} />
       <p>
         {pagesLabel(t, book.pages)}
         {book.chapters.length > 0 && ` · ${book.chapters.length === 1 ? t("1 Kapitel", "1 chapter") : t(`${book.chapters.length} Kapitel`, `${book.chapters.length} chapters`)}`}
@@ -297,7 +303,19 @@ function BookHeader({
   );
 }
 
-function ChapterHeader({ book, chapter, space, pages }: { book: LibraryBook<Page>; chapter: LibraryChapter<Page>; space: Space; pages: Page[] }) {
+function ChapterHeader({
+  book,
+  chapter,
+  space,
+  pages,
+  onRename,
+}: {
+  book: LibraryBook<Page>;
+  chapter: LibraryChapter<Page>;
+  space: Space;
+  pages: Page[];
+  onRename?: (pageId: string, title: string) => Promise<unknown>;
+}) {
   const t = useT();
   const start = useMemo(() => firstPage(pages, space.id, chapter.page.id), [pages, space.id, chapter.page.id]);
   const number = book.chapters.indexOf(chapter) + 1;
@@ -309,7 +327,7 @@ function ChapterHeader({ book, chapter, space, pages }: { book: LibraryBook<Page
       <span className="library-title-icon" aria-hidden>
         <PageIcon name={shownPageIcon(chapter.page.icon, chapter.page.kind)} size={34} />
       </span>
-      <h1>{untitled(t, chapter.page.title)}</h1>
+      <LibraryTitle page={chapter.page} onRename={onRename} label={t("Titel des Kapitels", "Title of the chapter")} />
       <p>
         {t(`Kapitel ${number}`, `Chapter ${number}`)}
         {" · "}
@@ -321,6 +339,67 @@ function ChapterHeader({ book, chapter, space, pages }: { book: LibraryBook<Page
             <BookOpen size={15} aria-hidden /> {t("Lesen beginnen", "Start reading")}
           </a>
         </div>
+      )}
+    </div>
+  );
+}
+
+// The title of a book or chapter, renamed in place (#421): the pencil (for
+// those who may edit) turns it into a field; Enter or leaving it saves, Esc
+// keeps the old title. An empty title is not saved.
+function LibraryTitle({ page, onRename, label }: { page: Page; onRename?: (pageId: string, title: string) => Promise<unknown>; label: string }) {
+  const t = useT();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const title = untitled(t, page.title);
+  const save = async () => {
+    const next = (draft ?? "").trim();
+    setDraft(null);
+    if (!onRename || !next || next === page.title) return;
+    setSaving(true);
+    try {
+      await onRename(page.id, next);
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (draft !== null)
+    return (
+      <h1 className="library-title-edit">
+        <input
+          className="library-title-input"
+          aria-label={label}
+          value={draft}
+          maxLength={500}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setDraft(null);
+            }
+          }}
+        />
+      </h1>
+    );
+  return (
+    <div className="library-title-text">
+      <h1>{title}</h1>
+      {onRename && (
+        <button
+          type="button"
+          className="icon-button library-rename"
+          disabled={saving}
+          title={t("Umbenennen", "Rename")}
+          aria-label={t(`${title} umbenennen`, `Rename ${title}`)}
+          onClick={() => setDraft(page.title)}
+        >
+          <PencilSimple size={18} aria-hidden />
+        </button>
       )}
     </div>
   );

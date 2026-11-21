@@ -176,3 +176,37 @@ test("a book's own text shows above its contents; links to the book land on the 
   await expect(page.getByRole("region", { name: "Über dieses Buch" })).toContainText("Neu ergänzt.");
   expect(errors).toEqual([]);
 });
+
+test("a book's and a chapter's title are renamed in place on their overviews (#421)", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const tag = `${info.project.name}${Date.now()}`;
+  const f = await setup(page, tag);
+  await page.goto(`/#library/${f.spaceId}/${f.book}`);
+  await expect(bookOverview(page, "Handbuch")).toBeVisible();
+  await page.getByRole("button", { name: "Handbuch umbenennen" }).click();
+  const field = page.getByRole("textbox", { name: "Titel des Buchs" });
+  await expect(field).toBeFocused();
+  // Esc keeps the old title.
+  await field.fill("Verworfen");
+  await field.press("Escape");
+  await expect(bookOverview(page, "Handbuch")).toBeVisible();
+  await page.getByRole("button", { name: "Handbuch umbenennen" }).click();
+  await page.getByRole("textbox", { name: "Titel des Buchs" }).fill(`Betriebshandbuch ${tag}`);
+  await page.getByRole("textbox", { name: "Titel des Buchs" }).press("Enter");
+  await expect(bookOverview(page, `Betriebshandbuch ${tag}`)).toBeVisible();
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/pages/${f.book}`)).json()).page.title)
+    .toBe(`Betriebshandbuch ${tag}`);
+  // The chapter, from its own overview.
+  await page.goto(`/#library/${f.spaceId}/${f.book}/${f.chapter}`);
+  await expect(bookOverview(page, "Grundlagen")).toBeVisible();
+  await page.getByRole("button", { name: "Grundlagen umbenennen" }).click();
+  await page.getByRole("textbox", { name: "Titel des Kapitels" }).fill("Einstieg");
+  await page.getByRole("textbox", { name: "Titel des Kapitels" }).blur();
+  await expect(bookOverview(page, "Einstieg")).toBeVisible();
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/pages/${f.chapter}`)).json()).page.title)
+    .toBe("Einstieg");
+  expect(errors).toEqual([]);
+});

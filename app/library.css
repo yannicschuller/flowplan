@@ -50,6 +50,38 @@
 .library-title h1 {
   overflow-wrap: anywhere;
 }
+/* Renaming a book or chapter in place (#421): the pencil beside the title,
+   quiet until the heading is pointed at or focused (always on touch). */
+.library-title-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.library-rename {
+  flex: none;
+  color: var(--muted);
+  opacity: 0;
+}
+.library-title-text:hover .library-rename,
+.library-rename:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .library-rename {
+    opacity: 1;
+  }
+}
+.library-title-input {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  padding: 0 6px;
+  margin-left: -7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+}
 .library-back {
   display: flex;
   align-items: center;

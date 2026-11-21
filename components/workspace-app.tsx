@@ -6243,6 +6243,7 @@ export default function WorkspaceApp({
                 clock={clock}
                 canEdit={canCreate}
                 onCreate={(parentId, title) => createLibraryPage(librarySpace.id, parentId, title)}
+                onRename={(pageId, title) => act({ action: "page.update", pageId, patch: { title } })}
                 userId={boot.user.id}
                 manage={manageableSpaces.has(librarySpace.id)}
                 workspaceOwner={boot.workspace.role === "owner"}
