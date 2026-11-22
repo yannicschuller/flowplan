@@ -214,7 +214,7 @@ export type FlowLayout = { width: number; height: number; nodes: FlowNode[]; lin
 export const FLOW_BAR = 14;
 const GAP = 18,
   PAD = 10,
-  INNER_WIDTH = 760;
+  INNER_WIDTH = 600;
 
 // Positions for the nodes and bands. `labelWidth` estimates how wide the
 // labels of the last column are (they stand right of their bars).
@@ -365,8 +365,8 @@ export function flowSvg(graph: Pick<FlowGraph, "flows" | "colors" | "order">, op
   if (!graph.flows.length)
     return `<svg class="flow-svg flow-empty" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 80" ${options.fixedSize ? 'width="640" height="80"' : 'width="100%"'} role="img" aria-label="${escape(label)}"><text class="flow-hint" x="320" y="44" text-anchor="middle" font-size="13" fill="#6b6b6b">${escape(t("Noch keine Flüsse – schreib z. B. „Lohn -> Budget: 2500“.", "No flows yet – write e.g. “Salary -> Budget: 2500”."))}</text></svg>`;
   const text = (n: FlowNode) => `${n.name}: ${format(n.value)}`;
-  // Width of a label at 12px: about 6.6px per character.
-  const layout = layoutFlow(graph, { palette: options.palette, labelWidth: (n) => text(n).length * 6.8 + 12 });
+  // Width of a label at 14px: about 7.7px per character.
+  const layout = layoutFlow(graph, { palette: options.palette, labelWidth: (n) => text(n).length * 7.9 + 12 });
   const { nodes, links } = layout;
   const parts: string[] = [];
   parts.push(`<title>${escape(label)}</title>`);
@@ -381,7 +381,7 @@ export function flowSvg(graph: Pick<FlowGraph, "flows" | "colors" | "order">, op
   parts.push('</g><g class="flow-nodes">');
   for (const n of nodes)
     parts.push(`<rect class="flow-node" x="${f(n.x)}" y="${f(n.y)}" width="${FLOW_BAR}" height="${f(n.height)}" rx="2" fill="${n.color}"><title>${escape(text(n))}</title></rect>`);
-  parts.push('</g><g class="flow-labels" font-size="12" fill="#1f2328" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" paint-order="stroke">');
+  parts.push('</g><g class="flow-labels" font-size="14" fill="#1f2328" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">');
   for (const n of nodes)
     parts.push(
       `<text class="flow-label" x="${f(n.x + FLOW_BAR + 6)}" y="${f(n.y + n.height / 2)}" dominant-baseline="middle"><tspan class="flow-name" font-weight="600">${escape(n.name)}:</tspan> <tspan class="flow-value">${escape(format(n.value))}</tspan></text>`,

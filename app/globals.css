@@ -23606,7 +23606,6 @@ h3 .block-reactions {
 }
 .flow-source textarea,
 .flow-unit input {
-  font-variant-ligatures: none;
   min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -23614,6 +23613,9 @@ h3 .block-reactions {
   background: var(--bg);
   color: var(--text);
   font: 13px/1.5 var(--font-mono);
+  /* "->" stays two characters, not a ligature arrow. */
+  font-variant-ligatures: none;
+  font-feature-settings: "calt" 0, "liga" 0;
 }
 .flow-source textarea {
   resize: vertical;
