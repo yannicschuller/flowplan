@@ -4,7 +4,8 @@
 // prompt at the caret (/ki, ⌘J on an empty line) or the summary of a voice
 // note. The answer streams into a preview – never straight into the
 // document – and is then inserted as blocks in one step: replacing the text,
-// below it, or discarded. In the Flowplan apps on Apple devices it runs on
+// below it, or discarded. "Umwandeln in" turns the selection into tasks or
+// a list right away, without AI (lib/ai/list-turn.ts, #431). In the Flowplan apps on Apple devices it runs on
 // the device where it can (lib/ai/device.ts), with the server as fallback
 // where the person may use it – in end-to-end encrypted spaces only there.
 // With "Mit bestehenden Seiten verlinken" (on unless switched off, remembered
@@ -36,6 +37,7 @@ import { DeviceAiError, deviceErrorText, deviceSummary, deviceSummaryFits, runOn
 import { DEVICE_LIMITS, deviceWriteFits, deviceWritePrompt } from "@/lib/ai/device-prompts";
 import type { WriteRequest } from "@/lib/ai/prompts";
 import { Select } from "./select";
+import { LIST_TURNS, listTurnTransaction, type ListKind } from "@/lib/ai/list-turn";
 
 export type AiWriterRequest =
   // Actions on selected text (or the current line).
@@ -105,6 +107,7 @@ export function AiWriter({
   const [instruction, setInstruction] = useState("");
   const [context, setContext] = useState(true);
   const [toneOpen, setToneOpen] = useState(false);
+  const [turnOpen, setTurnOpen] = useState(false);
   const [language, setLanguage] = useState<WriteLanguage>(() => defaultTranslateTarget(source, locale));
   const [place, setPlace] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
   // A prompt's answer goes in at the caret ("Einfügen"; an empty line is
@@ -313,6 +316,13 @@ export function AiWriter({
     if (tr) editor.view.dispatch(tr);
     close();
   }
+  // "Umwandeln in": list types change here, without AI (#431).
+  function turn(kind: ListKind) {
+    if (editor.isDestroyed) return;
+    const tr = listTurnTransaction(editor.state, aiTarget(editor.state) || request, kind);
+    if (tr) editor.view.dispatch(tr);
+    close();
+  }
   const submit = () => {
     const text = instruction.trim();
     if (!text) return;
@@ -443,6 +453,21 @@ export function AiWriter({
                   </button>
                 ),
               )}
+              <div className="ai-writer-sub">
+                <button type="button" role="menuitem" aria-expanded={turnOpen} onClick={() => setTurnOpen((v) => !v)}>
+                  <strong>{t("Umwandeln in", "Turn into")}</strong>
+                  <small>{t("Aufgaben oder Liste – ohne KI", "Tasks or a list – without AI")}</small>
+                </button>
+                {turnOpen && (
+                  <div className="ai-writer-chips" role="group" aria-label={t("Umwandeln in", "Turn into")}>
+                    {LIST_TURNS.map(([kind, de, en]) => (
+                      <button key={kind} type="button" className="chip" onClick={() => turn(kind)}>
+                        {t(de, en)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             {linkToggle}
             </>
