@@ -116,8 +116,16 @@ export function neutralizeTags(text: string, tags: readonly string[] = DATA_TAGS
 export const fence = (tag: string, content: string, attrs = "") => `<${tag}${attrs}>\n${neutralizeTags(content)}\n</${tag}>`;
 const attr = (value: string) => value.replace(/["\n\r]/g, " ").slice(0, 200);
 
+// The Markdown the editor turns into real blocks (lib/ai/insert.ts) – named
+// with its syntax, so a model knows a checklist is "- [ ]" (#431).
+export const MARKDOWN_SUBSET =
+  '"#"/"##"/"###" headings, "- " bulleted lists, "1. " numbered lists, "- [ ] " tasks to tick off ("- [x] " when done), "> " quotes, Markdown tables, ``` code blocks, **bold**, *italic*';
+// A free instruction may ask for another kind of block: the answer changes
+// the structure, not only the words (#431).
+export const BLOCK_TYPE_RULE =
+  'If the instruction asks for another form – e.g. tasks, a to-do list or a checklist to tick off, a numbered list, a heading, a quote, a table or code – change the block type itself and write that Markdown: every task as "- [ ] task" on a line of its own, every numbered item as "1. item", a heading as "## heading", a quote as "> text". Keep the wording of the items unless asked otherwise. Never answer with the original structure unchanged when another form is asked for.';
 const MARKDOWN_RULES = [
-  "Answer with the resulting text only, formatted as Markdown (headings, lists, tables, **bold**, code blocks where they help). Never use HTML.",
+  `Answer with the resulting text only, formatted as Markdown where it helps: ${MARKDOWN_SUBSET}. Never use HTML.`,
   'No preamble and no closing remark: never start with phrases like "Here is", "Hier ist", "Sure", "Gerne", and do not explain what you changed.',
   "Do not wrap the whole answer in a code block or in quotation marks.",
 ];
@@ -215,12 +223,12 @@ export function writePrompt(request: WriteRequest): AiRunInput {
       language = languageRule(textLanguage, "Write in the same language as the text.");
       break;
     case "custom":
-      task = "Apply the person's instruction (between <instruction> tags) to the text and answer with the resulting text.";
+      task = "Apply the person's instruction (between <instruction> tags) to the text and answer with the resulting text. " + BLOCK_TYPE_RULE;
       language = languageRule(textLanguage, "Write in the same language as the text unless the instruction asks for another one.");
       break;
     case "prompt":
       task =
-        "Write what the person asks for (between <instruction> tags). Your answer is inserted into their document at the cursor, so write the content itself, ready to use." +
+        "Write what the person asks for (between <instruction> tags). Your answer is inserted into their document at the cursor, so write the content itself, ready to use – tasks to tick off as \"- [ ] task\"." +
         (request.page ? " The current page is given between <page> tags as context; use it where it helps and stay consistent with it." : "");
       language = languageRule(
         guessLanguage(instruction) || (request.page ? guessLanguage(request.page.markdown) : null) || request.locale,

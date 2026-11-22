@@ -35,7 +35,7 @@ export const aiAnswerHref = (href: string, kind: "link" | "image") => (kind === 
 // `raw`: the Markdown as it is – blocks of a proposed page change
 // (lib/ai/page-edits.ts) are content, not an answer to clean up.
 export function aiMarkdownToHtml(markdown: string, links?: readonly LinkTarget[] | null, options: { raw?: boolean } = {}) {
-  const text = options.raw ? markdown.replace(/\r\n?/g, "\n") : cleanAnswer(markdown);
+  const text = options.raw ? markdown.replace(/\r\n?/g, "\n") : taskMarkers(cleanAnswer(markdown));
   return markdownToRawHtml(links ? expandLinkHandles(text, links) : text, (href, kind) => {
     if (kind === "image") return null;
     if (links) {
@@ -44,6 +44,31 @@ export function aiMarkdownToHtml(markdown: string, links?: readonly LinkTarget[]
     }
     return safeHref(href);
   });
+}
+
+// Checkboxes the way models write them besides "- [ ] " (#431): "- [] a",
+// "- [ ]a", "[ ] a" without a dash, "☐ a" / "- ☐ a", "1. [ ] a" (the editor
+// has no numbered tasks) – as Markdown tasks, so they become task items and
+// not bullets with brackets. Code blocks stay as they are.
+const BOX_OPEN = "☐□";
+const BOX_DONE = "☑☒";
+export function taskMarkers(markdown: string) {
+  let fence: string | null = null;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      if (marker && (!fence || marker[0] === fence[0])) {
+        fence = fence ? null : marker;
+        return line;
+      }
+      if (fence) return line;
+      return line
+        .replace(/^(\s*)(?:[-*+]|\d{1,3}[.)])\s+\[( |x|X)?\]\s*(?=\S)/, (_m, indent: string, mark?: string) => `${indent}- [${mark && mark !== " " ? "x" : " "}] `)
+        .replace(/^(\s*)\[( |x|X)?\]\s+(?=\S)/, (_m, indent: string, mark?: string) => `${indent}- [${mark && mark !== " " ? "x" : " "}] `)
+        .replace(new RegExp(`^(\\s*)(?:[-*+]\\s+)?([${BOX_OPEN}${BOX_DONE}])\\s*(?=\\S)`), (_m, indent: string, box: string) => `${indent}- [${BOX_DONE.includes(box) ? "x" : " "}] `);
+    })
+    .join("\n");
 }
 
 // "replace" the range, "below" it, or at the "top" of the document.
@@ -151,23 +176,37 @@ export function aiInsertTransaction(
 }
 
 // The selection as Markdown-ish text for the prompt: blocks on lines of
-// their own, list items with a dash.
+// their own, bulleted items with a dash, numbered items with their number,
+// tasks with their box, sub-items indented, quotes with "> " – so the model
+// sees which kind of block it works on (#431).
 export function selectionText(doc: ProseMirrorNode, from: number, to: number) {
   const lines: string[] = [];
-  doc.nodesBetween(from, to, (node, pos, parent) => {
+  doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isTextblock) return true;
     const start = Math.max(from, pos + 1),
       stop = Math.min(to, pos + 1 + node.content.size);
     const text = doc.textBetween(start, stop, " ", " ");
-    const type = parent?.type.name;
-    const prefix =
-      node.type.name === "heading"
-        ? "#".repeat(Number(node.attrs.level) || 1) + " "
-        : type === "listItem"
-          ? "- "
-          : type === "taskItem"
-            ? `- [${markdownSymbol(parent?.attrs)}] `
-            : "";
+    // The ancestors in order: a quote adds "> ", the list item holding the
+    // text its marker, outer items (and a later paragraph of the item) the
+    // marker's width as indent.
+    const $pos = doc.resolve(pos);
+    let prefix = "";
+    for (let depth = 1; depth <= $pos.depth; depth++) {
+      const ancestor = $pos.node(depth);
+      const name = ancestor.type.name;
+      if (name === "blockquote") prefix += "> ";
+      else if (name === "listItem" || name === "taskItem") {
+        const list = $pos.node(depth - 1);
+        const marker =
+          name === "taskItem"
+            ? `- [${markdownSymbol(ancestor.attrs)}] `
+            : list.type.name === "orderedList"
+              ? `${(Number(list.attrs.start) || 1) + $pos.index(depth - 1)}. `
+              : "- ";
+        prefix += depth === $pos.depth && $pos.index(depth) === 0 ? marker : " ".repeat(marker.length);
+      }
+    }
+    if (node.type.name === "heading") prefix += "#".repeat(Number(node.attrs.level) || 1) + " ";
     lines.push(node.type.name === "codeBlock" ? "```" + fenceLanguage(String(node.attrs.language || "")).replace(/^plaintext$/, "") + "\n" + text + "\n```" : prefix + text);
     return false;
   });
