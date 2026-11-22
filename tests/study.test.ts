@@ -10,6 +10,32 @@ import { randomUUID } from "node:crypto";
 import type { Identity } from "../lib/types";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-study-"));
+// A study day starts at 04:00 in the person's zone (lib/study-day.ts). A
+// learning card due in a few minutes, a sibling held back "for today" or the
+// streak belong to the next study day when the tests run just before 04:00
+// Berlin. So the whole file runs at least six hours before a study day ends:
+// close to that boundary, its clock jumps an hour past it. The clock keeps
+// running (cards keep their creation order) and never goes back, so rows the
+// database stamps with its own clock are never "from the future".
+const { studyClock } = await import("../lib/study-day");
+const RealDate = Date;
+const studyClockOffset = (() => {
+  const now = RealDate.now(),
+    { end } = studyClock(now, "Europe/Berlin");
+  return end - now < 6 * 3600_000 ? end + 3600_000 - now : 0;
+})();
+if (studyClockOffset) {
+  class StudyDate extends RealDate {
+    constructor(...args: ConstructorParameters<typeof RealDate> | []) {
+      if (args.length) super(...(args as ConstructorParameters<typeof RealDate>));
+      else super(RealDate.now() + studyClockOffset);
+    }
+    static override now() {
+      return RealDate.now() + studyClockOffset;
+    }
+  }
+  globalThis.Date = StudyDate as DateConstructor;
+}
 const { id, run, one, all } = await import("../lib/db");
 const { command, database, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
@@ -29,14 +55,6 @@ await run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", wid, r
 const as = (who: Identity) => async (body: Record<string, unknown>): Promise<any> => await command(who, body);
 const act = as(owner);
 const zone = "Europe/Berlin";
-// A study day starts at 04:00 in the zone (lib/study-day.ts). A learning card
-// due in a few minutes belongs to the next study day when the test runs just
-// before 04:00 – so tests that count today's cards run at a fixed midday.
-const atMidday = (t: { mock: { timers: { enable: (o: { apis: ["Date"]; now: number }) => void } } }) =>
-  // Midday of the current study day in Berlin (10:00 or 11:00 UTC), so the
-  // clock stays close to the real one the database's timestamps use.
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse(`${new Date(Date.now() - 4 * 3600_000).toISOString().slice(0, 10)}T10:30:00Z`) });
-
 async function deck(title: string, settings: Record<string, unknown> = {}) {
   const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title })).id as string;
   const db = await database(pageId);
@@ -65,14 +83,12 @@ const queue = async (who: Identity, pageId: string, more: Record<string, unknown
 const rate = async (who: Identity, pageId: string, c: { rowId: string; sub: string }, rating: number, more: Record<string, unknown> = {}) =>
   (await command(who, { action: "study.review", pageId, rowId: c.rowId, sub: c.sub, rating, id: randomUUID(), zone, ...more })) as any;
 
-test("a deck derives cards from its records and studies them with daily limits", async (t) => {
+test("a deck derives cards from its records and studies them with daily limits", async () => {
   const pageId = await deck("Spanisch", { newPerDay: 2 });
   await card(pageId, "hola", "hallo", { tags: ["A"] });
   await card(pageId, "perro", "Hund");
   await card(pageId, "gato", "Katze", { tags: ["A"] });
   await card(pageId, "leer", "");
-  // The cards keep their real creation order; studying runs at midday.
-  atMidday(t);
   const first = await queue(owner, pageId);
   assert.equal(first.configured, true);
   // The record without a back is no card.
@@ -161,8 +177,7 @@ test("the back from the record's document below its first rule", async () => {
   assert.doesNotMatch(c.back.html, /<hr/);
 });
 
-test("reading is enough to study; the mapping needs write access; read tokens do not rate", async (t) => {
-  atMidday(t);
+test("reading is enough to study; the mapping needs write access; read tokens do not rate", async () => {
   const pageId = await deck("Rechte");
   await card(pageId, "sí", "ja");
   const q = await queue(reader, pageId);
