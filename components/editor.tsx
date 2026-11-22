@@ -412,6 +412,8 @@ export default function DocumentEditor({
   const liveId = useMemo(() => crypto.randomUUID(), [pageId, rowId, generation]);
   const ready = useRef(false),
     dirty = useRef(false),
+    // The device refused to store this document (no room, #370).
+    notKept = useRef(false),
     inflight = useRef(false),
     // Live editing (lib/document-live.ts): local changes not yet stored,
     // whether the next save must carry the whole state (first save, after
@@ -1244,7 +1246,7 @@ export default function DocumentEditor({
           !transaction.getMeta("y-sync$")?.isChangeOrigin
         ) {
           dirty.current = true;
-          onStatus(navigator.onLine ? "unsaved" : "saved-offline");
+          onStatus(navigator.onLine ? "unsaved" : notKept.current ? "not-kept" : "saved-offline");
         }
         slashFollow.current(editor);
       },
@@ -1442,7 +1444,7 @@ export default function DocumentEditor({
       // Signed out: the banner says it once; the text stays here (IndexedDB).
       if (sessionEnded()) onStatus("unsaved");
       else {
-        onStatus(!navigator.onLine ? "saved-offline" : away ? "retrying" : "failed");
+        onStatus(!navigator.onLine ? (notKept.current ? "not-kept" : "saved-offline") : away ? "retrying" : "failed");
         if (!away) onError((e as Error).message);
       }
     } finally {
@@ -1580,8 +1582,14 @@ export default function DocumentEditor({
       `flowplan:${userId}:${pageId}:${rowId || "page"}:${generation}`,
       doc,
     );
-    persistence.whenSynced.then(() => {
-      if (!alive) return;
+    let started = false;
+    // `kept`: the device holds the document (IndexedDB). Without room (the
+    // device refuses to open the store, #370) the editor works in memory
+    // all the same and says the text lives only in this window until sent.
+    const start = (kept: boolean) => {
+      if (!alive || started) return;
+      started = true;
+      notKept.current = !kept;
       if (initial.current.state)
         Y.applyUpdate(doc, from64(initial.current.state), "remote");
       if (
@@ -1598,8 +1606,10 @@ export default function DocumentEditor({
       // right away (changes kept in IndexedDB, content set from the HTML):
       // opening an unchanged document asks nothing.
       dirty.current = editable && !sameAsServer(doc, initial.current.state);
-      onStatus(navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline");
-    });
+      onStatus(!kept && editable && (!navigator.onLine || isPendingPage(pageId) || !!draftRef.current) ? "not-kept" : navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline");
+    };
+    void persistence.whenSynced.then(() => start(true));
+    (persistence as unknown as { _db: Promise<unknown> })._db.catch(() => start(false));
     const update = (change: Uint8Array, origin: unknown) => {
       if (origin === "remote" || origin === persistence || !editable) return;
       if (touched.current) changedByUser.current = true;
@@ -1616,7 +1626,7 @@ export default function DocumentEditor({
       alive = false;
       ready.current = false;
       doc.off("update", update);
-      void persistence.destroy();
+      void persistence.destroy().catch(() => {});
     };
   }, [
     doc,

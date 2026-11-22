@@ -16,6 +16,9 @@ export const SAVE_STATUSES = [
   "uploading",
   "importing",
   "changes-saved",
+  // The device refuses to store the document (no room, #370): the changes
+  // live only in the open window until they are sent.
+  "not-kept",
 ] as const;
 export type SaveStatus = (typeof SAVE_STATUSES)[number];
 export const isSaveStatus = (value: unknown): value is SaveStatus =>
@@ -52,6 +55,8 @@ export function saveStatusLabel(status: SaveStatus, t: T): string {
       return t("Zeichnung wird importiert …", "Importing drawing …");
     case "changes-saved":
       return t("Änderungen gespeichert", "Changes saved");
+    case "not-kept":
+      return t("Nur in diesem Fenster – auf dem Gerät ist kein Platz", "Only in this window – no room on the device");
   }
 }
 

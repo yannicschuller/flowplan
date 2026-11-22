@@ -84,3 +84,27 @@ test("an upload's id from the device: new, the same upload again, someone else's
   await assert.rejects(claimFileId(owner, randomUUID(), fid), (e: { status?: number }) => e.status === 409);
   await assert.rejects(claimFileId(owner, pid, "nope"));
 });
+
+test("a record made offline gets a blank document with the generation the device chose; its offline text merges in (#370)", async () => {
+  const Y = await import("yjs");
+  const { rowDocumentData } = await import("../lib/row-documents");
+  const pid = (await create(owner, { kind: "database" })).id;
+  const rid = randomUUID();
+  await command(owner, { action: "row.create", pageId: pid, rowId: rid, cells: {}, templateId: null, documentGeneration: rid });
+  // Sent again (lost answer): still one record, the same document.
+  await command(owner, { action: "row.create", pageId: pid, rowId: rid, cells: {}, templateId: null, documentGeneration: randomUUID() });
+  assert.equal((await rowDocumentData(owner, pid, rid)).generation, rid);
+  // What was written offline, in a document of its own (no server state).
+  const offline = new Y.Doc();
+  const paragraph = new Y.XmlElement("paragraph");
+  paragraph.insert(0, [new Y.XmlText("Offline geschrieben")]);
+  offline.getXmlFragment("default").insert(0, [paragraph]);
+  await command(owner, { action: "row.document.sync", pageId: pid, rowId: rid, generation: rid, update: Buffer.from(Y.encodeStateAsUpdate(offline)).toString("base64") });
+  // The blank paragraph gives way: just the text.
+  assert.equal((await rowDocumentData(owner, pid, rid)).html, "<p>Offline geschrieben</p>");
+  // Without a device id the generation is not taken; not a UUID: refused.
+  const other = randomUUID();
+  assert.notEqual(await status(command(owner, { action: "row.create", pageId: pid, rowId: other, cells: {}, templateId: null, documentGeneration: "nope" })), 200);
+  const plain = (await command(owner, { action: "row.create", pageId: pid, cells: {}, templateId: null, documentGeneration: other })) as { id: string };
+  assert.notEqual((await rowDocumentData(owner, pid, plain.id)).generation, other);
+});

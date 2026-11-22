@@ -22,6 +22,7 @@ import {
   failChange,
   failedPageOf,
   pendingPageIds,
+  pendingRows,
   pendingUploads,
   renamePending,
   retryFailed,
@@ -34,7 +35,7 @@ import { browserZone } from "@/lib/date-values";
 import { endedSession, friendlyError, Modal, sessionEnded } from "./ui";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf, newIdempotencyKey } from "@/lib/idempotency-key";
 import { primePlaceholder } from "./image-placeholder";
-import { boardStore, documentStore, dropInk, dropStore, dropUpload, keepUpload, keptInk, keptUpload, keptUploads } from "./offline-uploads";
+import { boardStore, documentStore, dropInk, dropStore, dropUpload, keepUpload, keptInk, keptUpload, keptUploads, offlineRowGeneration, rowDocumentStore } from "./offline-uploads";
 import type { Field, Row } from "@/lib/types";
 
 class HttpFailure extends Error {
@@ -89,10 +90,18 @@ async function storedUpdate(name: string): Promise<Uint8Array | null> {
   const doc = new Y.Doc();
   const persistence = new IndexeddbPersistence(name, doc);
   try {
-    await persistence.whenSynced;
-    return doc.store.clients.size ? Y.encodeStateAsUpdate(doc) : null;
+    // A store the device refuses to open (no room, #370) holds nothing:
+    // the open editor sends what it has in memory instead.
+    const opened = await Promise.race([
+      persistence.whenSynced.then(() => true),
+      (persistence as unknown as { _db: Promise<unknown> })._db.then(
+        () => new Promise<boolean>(() => {}),
+        () => false,
+      ),
+    ]);
+    return opened && doc.store.clients.size ? Y.encodeStateAsUpdate(doc) : null;
   } finally {
-    await persistence.destroy();
+    await persistence.destroy().catch(() => {});
     doc.destroy();
   }
 }
@@ -136,7 +145,7 @@ export function useOfflineQueue({
   // and the uploads that wait, for the editor, board and notebook.
   const publish = useCallback(() => {
     const failedPages = failedRef.current.flatMap((f) => (f.change.kind === "page" && !f.change.created ? [f.change.pageId] : []));
-    setPending([...pendingPageIds(queueRef.current), ...failedPages], pendingUploads(queueRef.current));
+    setPending([...pendingPageIds(queueRef.current), ...failedPages], pendingUploads(queueRef.current), pendingRows(queueRef.current, failedRef.current));
   }, []);
   const store = useCallback(
     (next: QueuedChange[]) => {
@@ -291,6 +300,7 @@ export function useOfflineQueue({
     (removed: QueuedChange[]) => {
       for (const c of removed) {
         if (c.kind === "upload") void dropUpload(c.fileId);
+        if (c.kind === "create") dropStore(rowDocumentStore(userId, c.pageId, c.rowId));
         if (c.kind === "page") {
           dropStore(documentStore(userId, c.pageId));
           dropStore(boardStore(userId, c.pageId));
@@ -401,21 +411,50 @@ export function useOfflineQueue({
     },
     [userId, store, removeById, failById, sendUpload],
   );
+  // The document of a record made offline (#370), written in its editor
+  // (components/row-document.tsx) and kept in IndexedDB: sent right after
+  // the record is created. The record's document has the generation the
+  // device chose; one the server gave otherwise (an older server, a
+  // template) is asked for, and the content merges into it.
+  const sendRowDocument = useCallback(
+    async (pageId: string, rowId: string) => {
+      const name = rowDocumentStore(userId, pageId, rowId);
+      const update = await storedUpdate(name).catch(() => null);
+      if (!update) return;
+      const sync = (generation: string) => post({ action: "row.document.sync", pageId, rowId, generation, update: base64(update) });
+      try {
+        await sync(offlineRowGeneration(rowId));
+      } catch (e) {
+        if (!(e instanceof HttpFailure && e.status === 409)) throw e;
+        const response = await fetch(`/api/pages/${pageId}/rows/${rowId}`, { cache: "no-store" });
+        const document = (await answer(response, `/api/pages/${pageId}/rows/${rowId}`)) as { generation?: string };
+        if (!document.generation) throw new NotYet();
+        await sync(document.generation);
+      }
+    },
+    [userId],
+  );
   const flush = useCallback(async () => {
     if (running.current || !queueRef.current.length || !navigator.onLine || sessionEnded())
       return;
     running.current = true;
     setSyncing(true);
     const found: Conflict[] = [];
+    // A record that was created stays in the queue, marked `sent`, until
+    // the views have the server's rows (onSynced below): otherwise it
+    // would leave the view – and its open record, with an editor that
+    // still sends its text – for a moment in between.
+    const waiting = (c: QueuedChange) => !(c.kind === "create" && c.sent);
     try {
-      while (queueRef.current.length) {
-        const change = queueRef.current[0];
+      while (queueRef.current.some(waiting)) {
+        const index = queueRef.current.findIndex(waiting);
+        const change = queueRef.current[index];
         // Made in a page that failed: it fails along, unsent.
         const lost = failedPageOf(change, failedRef.current);
         if (lost) {
           const reason = failedRef.current.find((f) => f.change.kind === "page" && f.change.pageId === lost)?.reason || "";
           const before = failedRef.current.length;
-          const next = failChange(queueRef.current, failedRef.current, 0, reason, Date.now());
+          const next = failChange(queueRef.current, failedRef.current, index, reason, Date.now());
           store(next.queue);
           storeFailed(next.failed.map((f, i) => (i >= before ? { ...f, cause: lost } : f)));
           continue;
@@ -425,7 +464,7 @@ export function useOfflineQueue({
         try {
           if (change.kind === "page") await sendPage(change);
           else if (change.kind === "upload") await sendUpload(change);
-          else if (change.kind === "create")
+          else if (change.kind === "create") {
             await post({
               action: "row.create",
               pageId: change.pageId,
@@ -435,7 +474,26 @@ export function useOfflineQueue({
               // Defaults "Heute"/"Jetzt" as of when the record was made (#411).
               createdAt: change.at,
               timeZone: browserZone(),
+              // The document written offline goes on in the same store.
+              documentGeneration: offlineRowGeneration(change.rowId),
             }, key);
+            try {
+              await sendRowDocument(change.pageId, change.rowId);
+            } catch (e) {
+              if (offline(e)) throw e;
+              // The record is there; its text stays on this device (the
+              // record's editor sends it again when opened).
+              notify(
+                tr(
+                  `Der offline geschriebene Inhalt eines Eintrags konnte nicht gespeichert werden: ${friendlyError(e)}`,
+                  `The content written offline for a record could not be saved: ${friendlyError(e)}`,
+                ),
+                true,
+              );
+            }
+            store(queueRef.current.map((c) => (c.id === change.id ? { ...change, sent: true } : c)));
+            continue;
+          }
           else if (change.kind === "capture")
             await post({
               action: "capture.record",
@@ -492,6 +550,7 @@ export function useOfflineQueue({
             continue;
           }
           notify(tr(`Offline-Änderung verworfen: ${reason}`, `Offline change discarded: ${reason}`));
+          if (change.kind === "create") dropStore(rowDocumentStore(userId, change.pageId, change.rowId));
         }
         removeById(change.id);
       }
@@ -499,9 +558,14 @@ export function useOfflineQueue({
       running.current = false;
       setSyncing(false);
       if (found.length) storeConflicts((current) => [...current, ...found]);
-      await onSynced().catch(() => undefined);
+      const synced = await onSynced().then(
+        () => true,
+        () => false,
+      );
+      // The views have the created records now (else: after the next flush).
+      if (synced && !queueRef.current.every(waiting)) store(queueRef.current.filter(waiting));
     }
-  }, [store, storeFailed, storeConflicts, notify, onSynced, sendPage, sendUpload, failById, removeById]);
+  }, [store, storeFailed, storeConflicts, notify, onSynced, sendPage, sendUpload, sendRowDocument, failById, removeById, userId]);
   const retry = useCallback(
     (id: string) => {
       const next = retryFailed(queueRef.current, failedRef.current, id);

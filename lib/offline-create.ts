@@ -123,6 +123,11 @@ export function uploadRoom(queue: QueuedChange[], failed: FailedChange[], size: 
 export function pendingPageIds(queue: QueuedChange[]): Set<string> {
   return new Set(queue.flatMap((c) => (c.kind === "page" && !c.created ? [c.pageId] : [])));
 }
+// Records made offline that the server does not have yet: their creation
+// waits, or failed with the page it was made in (its content stays here).
+export function pendingRows(queue: QueuedChange[], failed: FailedChange[] = []): { pageId: string; rowId: string }[] {
+  return [...queue, ...failed.map((f) => f.change)].flatMap((c) => (c.kind === "create" && !c.sent ? [{ pageId: c.pageId, rowId: c.rowId }] : []));
+}
 export const pendingUploads = (queue: QueuedChange[]) => queue.filter((c): c is OfflineUploadChange => c.kind === "upload");
 
 // The pages a set of pages takes along: the changes made in them and, page
