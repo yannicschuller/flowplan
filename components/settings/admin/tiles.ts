@@ -94,7 +94,7 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       ),
       tone: s.extensions.domainsFailing ? "warn" : undefined,
       badge: s.extensions.domainsFailing
-        ? t(`DNS bei ${s.extensions.domainsFailing} Domain${s.extensions.domainsFailing === 1 ? "" : "s"} nicht bestätigt`, `DNS of ${s.extensions.domainsFailing} domain${s.extensions.domainsFailing === 1 ? "" : "s"} not confirmed`)
+        ? t(`DNS nicht bestätigt – Domains: ${s.extensions.domainsFailing}`, `DNS not confirmed – domains: ${s.extensions.domainsFailing}`)
         : undefined,
     },
     maintenance: {

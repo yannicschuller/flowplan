@@ -288,7 +288,7 @@ function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | 
           : t(`benachrichtigen: ${whoLabel(a.to, fields, members, t)}`, `notify: ${whoLabel(a.to, fields, members, t)}`),
     )
     .join(", ");
-  const only = rule.conditions.length ? t(` (mit ${rule.conditions.length} Bedingung${rule.conditions.length > 1 ? "en" : ""})`, ` (with ${rule.conditions.length} condition${rule.conditions.length > 1 ? "s" : ""})`) : "";
+  const only = rule.conditions.length ? t(` (Bedingungen: ${rule.conditions.length})`, ` (conditions: ${rule.conditions.length})`) : "";
   return `${when}${only} → ${then}`;
 }
 function valueLabel(value: unknown, members: Pick<User, "id" | "name">[], t: (de: string, en: string) => string) {
