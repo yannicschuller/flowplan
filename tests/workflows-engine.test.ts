@@ -537,7 +537,8 @@ test("a test run from the last event shows the tester only the properties their 
   assert.equal(out.changed.includes("salary"), false);
   assert.ok(out.changed.includes("status"));
   assert.equal("salary" in out.record.fields, false);
-  assert.doesNotMatch(JSON.stringify(out), /1111|2222/);
+  // Not as a value anywhere (random ids may contain the digits).
+  assert.doesNotMatch(JSON.stringify(out), /[:\[,]"?(1111|2222)"?[,\]}]/);
   await drainWorkflows();
   await act({ action: "workflow.pause", pageId });
 });
