@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { facts, factsJson } from "../lib/facts";
-import { LOCALES, textLocale } from "../lib/i18n";
+import { IN_TRANSLATION, LOCALES, textLocale } from "../lib/i18n";
 
 const root = new URL("..", import.meta.url);
 
@@ -38,6 +38,8 @@ test("every language has a catalogue and every catalogue a language", () => {
     .filter((name) => name.endsWith(".json"))
     .map((name) => name.replace(/\.json$/, ""))
     .sort();
-  assert.deepEqual(catalogues, LOCALES.filter((code) => code !== "de" && textLocale(code) === code).sort());
+  // Catalogues still being translated are not offered yet (IN_TRANSLATION).
+  assert.deepEqual(catalogues, [...LOCALES.filter((code) => code !== "de" && textLocale(code) === code), ...IN_TRANSLATION].sort());
+  for (const code of IN_TRANSLATION) assert.ok(!(LOCALES as readonly string[]).includes(code), `${code} is offered and in translation`);
   for (const code of LOCALES) assert.ok(code === "de" || catalogues.includes(textLocale(code)), code);
 });

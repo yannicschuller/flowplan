@@ -22,9 +22,11 @@ const source = readFileSync(join(root, "lib/i18n.ts"), "utf8");
 const block = source.match(/export const LANGUAGES = \{([\s\S]*?)\n\} as const;/)?.[1];
 if (!block) throw new Error("LANGUAGES not found in lib/i18n.ts");
 const languages = [...block.matchAll(/^\s*"?([a-z]{2}(?:-[A-Z]{2})?)"?: \{ name: "([^"]+)", tag: "[^"]+", flag: "([^"]+)" \}/gm)].map(([, code, name, flag]) => ({ code, name, flag }));
-// Catalogues that exist but are not offered in the app yet.
+// Catalogues that exist but are not offered in the app yet (IN_TRANSLATION
+// in lib/i18n.ts), with their own name and flag.
+const DRAFTS = { ru: { name: "Русский", flag: "🇷🇺" } };
 for (const code of coverage.keys())
-  if (!languages.some((l) => l.code === code)) languages.push({ code, name: code, flag: "🏳️", draft: true });
+  if (!languages.some((l) => l.code === code)) languages.push({ code, ...(DRAFTS[code] || { name: code, flag: "🏳️" }), draft: true });
 
 const TRANSLATE = "https://translate.flowplan.org";
 const number = (n, locale) => n.toLocaleString(locale === "de" ? "de-DE" : "en-GB");

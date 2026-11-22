@@ -585,11 +585,12 @@ Flowplan speaks German and English natively; every other language is a JSON cata
 <!-- i18n:start -->
 | Language | Code | Translated | Coverage |
 | --- | --- | ---: | --- |
-| 🇩🇪 Deutsch (in the code) | `de` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇬🇧 English (in the code) | `en` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇺🇸 English (US) (in the code) | `en-US` | 12,573 / 12,573 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇫🇷 Français | `fr` | 12,307 / 12,573 | [![Français](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=fr)](https://translate.flowplan.org/c/flowplan-web/fr) |
-| 🇨🇳 简体中文 | `zh` | 12,307 / 12,573 | [![简体中文](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=zh)](https://translate.flowplan.org/c/flowplan-web/zh) |
+| 🇩🇪 Deutsch (in the code) | `de` | 14,108 / 14,108 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇬🇧 English (in the code) | `en` | 14,108 / 14,108 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇺🇸 English (US) (in the code) | `en-US` | 14,108 / 14,108 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇫🇷 Français | `fr` | 14,104 / 14,108 | [![Français](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=fr)](https://translate.flowplan.org/c/flowplan-web/fr) |
+| 🇨🇳 简体中文 | `zh` | 14,104 / 14,108 | [![简体中文](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=zh)](https://translate.flowplan.org/c/flowplan-web/zh) |
+| 🇷🇺 Русский (not in the app yet) | `ru` | 0 / 14,108 | [![Русский](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=ru)](https://translate.flowplan.org/c/flowplan-web/ru) |
 
 Help translate on [translate.flowplan.org](https://translate.flowplan.org) – sign in with GitHub; every change arrives as a pull request.
 

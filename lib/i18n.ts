@@ -21,6 +21,11 @@ export const LANGUAGES = {
   zh: { name: "简体中文", tag: "zh-CN", flag: "🇨🇳" },
 } as const;
 export type Locale = keyof typeof LANGUAGES;
+// Catalogues being translated at translate.flowplan.org that are not offered
+// yet (#422): their file in locales/ gets every new text (npm run i18n), but
+// the language joins LANGUAGES only once most of it is translated (about
+// 80 %) – until then nobody sees a half-English interface.
+export const IN_TRANSLATION = ["ru"] as const;
 // The language of the texts: "en-US" → "en".
 export type TextLocale = Exclude<Locale, `${string}-${string}`>;
 // The language path of docs.flowplan.org for a UI language (#367): German,
