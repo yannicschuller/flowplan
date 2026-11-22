@@ -409,7 +409,7 @@ function LibraryTitle({ page, onRename, label }: { page: Page; onRename?: (pageI
 function hasContent(html: string) {
   if (!html.trim()) return false;
   const body = new DOMParser().parseFromString(html, "text/html").body;
-  return !!body.textContent?.trim() || !!body.querySelector("img, table, figure, iframe, video, audio, [data-mermaid], [data-drawio], [data-math]");
+  return !!body.textContent?.trim() || !!body.querySelector("img, table, figure, iframe, video, audio, [data-mermaid], [data-drawio], [data-flow-diagram], [data-math]");
 }
 // Texts fetched in this visit, by page: back on an overview the last one
 // shows at once while the current one loads.

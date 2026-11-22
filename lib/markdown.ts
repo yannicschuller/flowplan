@@ -141,6 +141,7 @@ export type MarkdownSource = {
   lossy: Set<string>;
 };
 export { BLOCK_MARKER } from "./markdown-html";
+import { flowFenceMeta } from "./flow-diagram";
 // Blocks Markdown holds completely (with their content).
 const MARKDOWN_BLOCKS = new Set([
   "paragraph",
@@ -150,6 +151,7 @@ const MARKDOWN_BLOCKS = new Set([
   "codeBlock",
   "mathBlock",
   "mermaidBlock",
+  "flowDiagram",
   "bulletList",
   "orderedList",
   "taskList",
@@ -442,6 +444,12 @@ export function htmlToMarkdown(
         return inTable
           ? inlineCode(String(node.attrs.source || ""), true)
           : fencedCode(String(node.attrs.source || ""), "mermaid");
+      // A flow diagram (#427) as a ```flow fence, its unit in the meta;
+      // the import makes it the block again (lib/markdown-html.ts).
+      case "flowDiagram":
+        return inTable
+          ? inlineCode(String(node.attrs.source || ""), true)
+          : fencedCode(String(node.attrs.source || ""), "flow", flowFenceMeta(String(node.attrs.unit || "")));
       case "image": {
         const url = context.url(String(node.attrs.src || "")),
           alt = String(node.attrs.alt || ct("Bild", "Image"));

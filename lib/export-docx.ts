@@ -462,6 +462,9 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         return codeParagraph(String(node.attrs.expression || ""), block);
       case "mermaidBlock":
         return codeParagraph(String(node.attrs.source || ""), block);
+      // A flow diagram (#427) as its text: Word gets no picture of it.
+      case "flowDiagram":
+        return codeParagraph(String(node.attrs.source || ""), block);
       case "functionPlot":
         return paragraph(run({ text: ct("Funktionsgraph (nur in Flowplan)", "Function plot (only in Flowplan)"), props: { i: true } }), paragraphProps(null, block));
       case "drawioBlock":

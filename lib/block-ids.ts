@@ -33,6 +33,7 @@ export const BLOCK_ID_TYPES = [
   "mermaidBlock",
   "drawioBlock",
   "functionPlot",
+  "flowDiagram",
   "metricBlock",
   "pluginBlock",
   "workflowButton",

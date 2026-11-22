@@ -11,6 +11,7 @@ import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes } from "./code-block-options";
 import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
+import { cleanFlowSource, cleanFlowUnit } from "./flow-diagram";
 import { isPageBreakStyle } from "./page-break-node";
 import { occlusionAttribute } from "./study-occlusion";
 import { MEETING_LANGUAGES } from "./meeting-core";
@@ -98,6 +99,9 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-drawio",
         "data-drawio-svg",
         "data-function-plot",
+        // A flow diagram's text and unit (#427), cut to their limits below.
+        "data-flow-diagram",
+        "data-flow-unit",
         "data-metric",
         "data-plugin",
         "data-plugin-type",
@@ -213,6 +217,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
           const masks = result.tagName === "img" ? occlusionAttribute(raw) : null;
           result.attribs = masks ? { ...rest, "data-occlusion": masks } : rest;
         }
+        if ("data-flow-diagram" in result.attribs || "data-flow-unit" in result.attribs) result.attribs = flowAttributes(result);
         return "data-drawio" in result.attribs || "data-drawio-svg" in result.attribs ? drawioAttributes(result) : result;
       },
       // Only the known providers' player URLs survive, not any page on
@@ -247,6 +252,12 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
     allowedSchemes: ["http", "https", "mailto"],
     allowProtocolRelative: false,
   });
+}
+// A flow diagram's source and unit only on its <div>, within their limits.
+function flowAttributes(result: sanitize.Tag): sanitize.Attributes {
+  const { "data-flow-diagram": source, "data-flow-unit": unit, ...rest } = result.attribs;
+  if (result.tagName !== "div" || source === undefined) return rest;
+  return { ...rest, "data-flow-diagram": cleanFlowSource(source), "data-flow-unit": cleanFlowUnit(unit) };
 }
 function drawioAttributes(result: sanitize.Tag): sanitize.Tag {
   const { "data-drawio": xml, "data-drawio-svg": svg, ...rest } = result.attribs;

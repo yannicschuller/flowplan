@@ -31,6 +31,7 @@ import { FlowCode, Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
 import { DrawioBlock } from "./drawio-node";
 import { FunctionPlot } from "./function-plot-node";
+import { FlowDiagram } from "./flow-diagram-node";
 import { MetricBlock } from "./metric-node";
 import { PluginBlock } from "./plugin-node";
 import { WorkflowButton } from "./workflow-button-node";
@@ -841,6 +842,7 @@ export const documentExtensions = [
   MermaidBlock,
   DrawioBlock,
   FunctionPlot,
+  FlowDiagram,
   MetricBlock,
   PluginBlock,
   WorkflowButton,

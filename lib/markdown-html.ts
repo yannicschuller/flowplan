@@ -9,6 +9,7 @@ import { footnoteText } from "./footnotes";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
+import { flowFenceUnit, isFlowSource } from "./flow-diagram";
 import { taskList } from "./task-list-html";
 import { splitTabs } from "./tabs-markdown";
 import { PAGE_BREAK_HTML } from "./page-break-node";
@@ -334,6 +335,9 @@ export function markdownToRawHtml(
         // A draw.io diagram as lib/markdown.ts writes it outside ZIP
         // exports: the block again, its picture drawn on the next edit.
         if (language === "drawio" && isDrawioXml(text)) return `<div class="drawio-block" data-drawio="${escaped(text)}" data-drawio-svg=""></div>`;
+        // A flow diagram (#427) as lib/markdown.ts writes it.
+        if (language === "flow" && isFlowSource(text))
+          return `<div class="flow-diagram" data-flow-diagram="${escaped(text)}" data-flow-unit="${escaped(flowFenceUnit(meta))}"></div>`;
         if (language === "mermaid" && options.source && !meta)
           return `<div class="mermaid-block" data-mermaid="${escaped(text)}">${escaped(text)}</div>`;
         // Older ids and aliases ("js", "py") as Shiki's ids (lib/code-languages.ts).
