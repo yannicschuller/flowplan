@@ -165,8 +165,45 @@ test("an HTML file opens in a sandboxed preview: content shown, script not run",
   await expect(inside.getByRole("heading", { name: "Grüße aus der Datei" })).toBeVisible({ timeout: 10_000 });
   await expect(inside.locator("#flag")).toHaveText("unverändert");
 
-  await page.keyboard.press("Escape");
-  if (await viewer.isVisible()) await viewer.getByRole("button", { name: "Schließen" }).click();
-  await expect(viewer).toBeHidden();
+  // "Bei dieser Datei immer zulassen" (#425): remembered in the account,
+  // so the next opening starts with scripts running; unticked, it asks again.
+  const close = async () => {
+    await page.keyboard.press("Escape");
+    if (await viewer.isVisible()) await viewer.getByRole("button", { name: "Schließen" }).click();
+    await expect(viewer).toBeHidden();
+  };
+  const always = viewer.getByRole("checkbox", { name: "Bei dieser Datei immer zulassen" });
+  await expect(always).not.toBeChecked();
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/command") && r.request().postDataJSON()?.action === "profile.htmlScripts");
+  await always.check();
+  expect((await saved).ok()).toBe(true);
+  await expect(always).toBeChecked();
+  // Ticking runs them right away.
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(viewer).toContainText("ändert sich die Datei, fragt Flowplan erneut");
+  await close();
+  await card.click();
+  await expect(viewer).toBeVisible();
+  await expect(always).toBeChecked();
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(frame).toHaveAttribute("src", /\/html\?scripts=1$/);
+  await expect(viewer).toContainText("Skripte laufen abgeschottet, ohne Netzwerk.");
+  await expect(inside.locator("#flag")).toHaveText("verändert", { timeout: 10_000 });
+  await expect(inside.locator("#netz")).toHaveText(/^gesperrt: TypeError$/);
+  // Unticked: forgotten; scripts keep running for this opening only.
+  const forgotten = page.waitForResponse((r) => r.url().endsWith("/api/command") && r.request().postDataJSON()?.action === "profile.htmlScripts");
+  await always.uncheck();
+  expect((await forgotten).ok()).toBe(true);
+  await expect(always).not.toBeChecked();
+  await expect(viewer).not.toContainText("ändert sich die Datei, fragt Flowplan erneut");
+  await close();
+  await card.click();
+  await expect(viewer).toBeVisible();
+  await expect(viewer).toContainText("Skripte und externe Inhalte sind abgeschaltet.");
+  await expect(frame).toHaveAttribute("sandbox", "");
+  await expect(always).not.toBeChecked();
+  await expect(inside.locator("#flag")).toHaveText("unverändert", { timeout: 10_000 });
+
+  await close();
   expect(errors).toEqual([]);
 });

@@ -2,7 +2,9 @@
 // file's bytes as a sandboxed page for the viewer's <iframe sandbox="">.
 // The same checks as its download (GET /api/files/<id>, lib/file-access.ts).
 //   GET    the page (413 above 5 MB, 415 for a file that is no HTML)
-//   HEAD   the same without the body (the viewer asks first)
+//   HEAD   the same without the body (the viewer asks first), and whether
+//          the person lets this file's scripts run whenever they open it
+//          (#425, X-Flowplan-Preview-Remembered, lib/html-scripts-trust.ts)
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -10,6 +12,7 @@ import { HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import { readableFile } from "@/lib/file-access";
 import { htmlPreviewResponse } from "@/lib/html-preview";
+import { htmlScriptsRemembered } from "@/lib/html-scripts-trust";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +23,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
   try {
     const user = await requireUser();
     const fileId = z.uuid().parse((await params).id);
-    return await htmlPreviewResponse(req, await readableFile(user, fileId));
+    return await htmlPreviewResponse(req, await readableFile(user, fileId), async () => await htmlScriptsRemembered(user, fileId));
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: "Datei fehlt." }, { status: 404 });
     if (!(e instanceof HttpError)) console.error(e);

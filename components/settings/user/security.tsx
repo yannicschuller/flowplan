@@ -3,7 +3,9 @@
 // well one's own account is protected, with the next step for each point;
 // what one has shared (links, public pages, people with access to one's
 // pages) to close right here; the latest sign-ins and changes; tips that fit
-// this account. Anchors: #settings/security/<checks|shared|activity|tips>.
+// this account; the HTML files whose scripts always run for this person
+// (#425, lib/html-scripts-trust.ts), to forget one or all.
+// Anchors: #settings/security/<checks|shared|html-scripts|activity|tips>.
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { CheckCircle, Circle, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
 import type { MySecurity, SecurityCheck } from "@/lib/my-security";
@@ -34,8 +36,9 @@ export default function SecuritySection() {
     void load();
   }, [load]);
   // Closing a link or an access: the existing commands, then a fresh check.
+  // An empty question: nothing to confirm (forgetting is undone by allowing again).
   const act = async (body: Record<string, unknown>, question: string) => {
-    if (!confirm(question)) return;
+    if (question && !confirm(question)) return;
     setBusy(true);
     try {
       await mutate(body);
@@ -51,9 +54,54 @@ export default function SecuritySection() {
     <div className="my-security" aria-busy={busy}>
       <Checks data={data} />
       <Shared data={data} act={act} busy={busy} />
+      <HtmlScripts data={data} act={act} busy={busy} />
       <Activity data={data} />
       <Tips data={data} />
     </div>
+  );
+}
+
+/* ---------- HTML files whose scripts always run (#425) ---------- */
+
+function HtmlScripts({ data, act, busy }: { data: MySecurity; act: Act; busy: boolean }) {
+  const t = useT();
+  const files = data.htmlScripts;
+  return (
+    <SettingGroup
+      id="html-scripts"
+      title={t("HTML-Dateien mit Skripten", "HTML files with scripts")}
+      description={t(
+        "Bei diesen Dateien hast du im Viewer „Bei dieser Datei immer zulassen“ gewählt: Ihre Skripte laufen beim Öffnen abgeschottet, auf all deinen Geräten. Ändert sich eine Datei, fragt Flowplan erneut.",
+        "For these files you chose “Always allow for this file” in the viewer: their scripts run isolated when opened, on all your devices. If a file changes, Flowplan asks again.",
+      )}
+      actions={
+        !!files.length && (
+          <button type="button" className="button" disabled={busy} onClick={() => void act({ action: "profile.htmlScriptsClear" }, t("Für alle diese Dateien wieder fragen?", "Ask again for all of these files?"))}>
+            {t("Alle entfernen", "Remove all")}
+          </button>
+        )
+      }
+    >
+      <ResponsiveTable
+        label={t("HTML-Dateien mit Skripten", "HTML files with scripts")}
+        rows={files}
+        rowKey={(f) => f.fileId}
+        empty={<p className="muted">{t("Keine Dateien – Skripte laufen nur, wenn du sie im Viewer startest.", "No files – scripts only run when you start them in the viewer.")}</p>}
+        columns={[
+          { key: "file", header: t("Datei", "File"), primary: true, render: (f) => (f.available ? f.name : <span className="muted">{t("Nicht mehr verfügbar", "No longer available")}</span>) },
+          { key: "page", header: t("Seite", "Page"), render: (f) => (f.available ? <a href={`#page=${f.pageId}`}>{f.page || t("Ohne Titel", "Untitled")}</a> : "") },
+          {
+            key: "action",
+            header: "",
+            render: (f) => (
+              <button type="button" className="text-button danger" disabled={busy} onClick={() => void act({ action: "profile.htmlScripts", fileId: f.fileId, allow: false }, "")}>
+                {t("Nicht mehr zulassen", "Stop allowing")}
+              </button>
+            ),
+          },
+        ]}
+      />
+    </SettingGroup>
   );
 }
 

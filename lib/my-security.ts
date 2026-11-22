@@ -1,8 +1,9 @@
 // Settings → Sicherheitscheck: the security of one's own account – what is
 // set up and what is missing (second factor, passkeys, recovery codes,
 // devices, tokens, notices), what one has shared (links, public pages,
-// people with access to one's pages) and the latest sign-ins and changes
-// of the account (lib/security-events.ts).
+// people with access to one's pages), the HTML files whose scripts always
+// run for one (#425, lib/html-scripts-trust.ts) and the latest sign-ins and
+// changes of the account (lib/security-events.ts).
 import { createHash } from "node:crypto";
 import { all, one } from "./db";
 import { HttpError, hash } from "./auth";
@@ -14,6 +15,7 @@ import { deviceLabel } from "./device-name";
 import { subjectHash } from "./security-events";
 import type { Identity } from "./types";
 import { ct } from "./content-locale";
+import { htmlScriptsList } from "./html-scripts-trust";
 
 const DAY = 86_400_000;
 export type CheckState = "ok" | "todo" | "info";
@@ -170,6 +172,7 @@ export async function mySecurity(user: Identity, currentToken: string | undefine
     ],
     published: published.map((p) => ({ pageId: p.id, page: p.title })),
     people,
+    htmlScripts: await htmlScriptsList(user),
     activity,
   };
 }
