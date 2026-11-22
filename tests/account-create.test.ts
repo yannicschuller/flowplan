@@ -149,7 +149,7 @@ test("with e-mail the link goes out, and opening it confirms the address", async
   const team = id();
   await run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", team, "Team", admin.id);
   await run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", team, admin.id, "owner");
-  await run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at,token) VALUES(?,?,?,?,?,0,?,?)", id(), team, "ada@example.test", "editor", admin.id, new Date().toISOString(), randomBytes(16).toString("hex"));
+  await run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at,token) VALUES(?,?,?,?,?,0,?,?)", id(), team, "ada@example.test", "editor", admin.id, Date.now(), randomBytes(16).toString("hex"));
   const created = await createAccount(admin, { name: "Ada", email: "ada@example.test", role: "admin" });
   assert.equal(created.mailed, true);
   assert.equal(created.url, undefined);
