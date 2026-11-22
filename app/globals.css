@@ -21943,6 +21943,57 @@ h3 .block-reactions {
     translate: 0 calc(8px * var(--motion-move));
   }
 }
+/* A page link that leads nowhere (components/page-missing.tsx). */
+.page-missing {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 72px 20px 48px;
+}
+.page-missing h3 {
+  font-size: 18px;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+.page-missing-reasons {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 4px 0 6px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.page-missing-reasons li {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.page-missing-reasons strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.page-missing-reasons a {
+  white-space: nowrap;
+  font-weight: 500;
+}
+.page-missing-reasons a:hover {
+  text-decoration: underline;
+}
+.page-missing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .page-missing {
+    padding: 40px 16px 32px;
+  }
+}
 /* Tasks of the other workspaces, below the current one's. */
 .my-tasks-others {
   margin-top: 36px;

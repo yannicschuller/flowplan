@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { BrandMark } from "@/components/brand-mark";
 import { serverT } from "@/lib/i18n-server";
+import { currentUser } from "@/lib/auth";
+import { HistoryBackLink } from "@/components/history-back-link";
 
 // Shown for unknown addresses and whenever a page calls notFound(), e.g. a
 // published page that is no longer public.
@@ -11,8 +13,19 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+// Whether a session is open – never an error for visitors (a broken or
+// expired cookie, a blocked address are just "signed out" here).
+async function signedIn() {
+  try {
+    return !!(await currentUser());
+  } catch {
+    return false;
+  }
+}
+
 export default async function NotFound() {
   const t = await serverT();
+  const user = await signedIn();
   return (
     <main className="not-found">
       <a className="not-found-brand" href="/">
@@ -40,20 +53,43 @@ export default async function NotFound() {
             {t("Die Adresse ist unvollständig oder falsch kopiert.", "The address is incomplete or copied wrongly.")}
           </li>
         </ul>
-        <p className="not-found-hint">
-          {t(
-            "Gehört die Seite zu deinem Arbeitsbereich? Nach der Anmeldung findest du sie über die Suche – sofern du sie sehen darfst.",
-            "Does the page belong to your workspace? After signing in, find it with the search – if you may see it.",
-          )}
-        </p>
-        <div className="not-found-actions">
-          <a className="button primary" href="/">
-            {t("Zur Startseite", "Go to the start page")}
-          </a>
-          <a className="button" href="/login">
-            {t("Anmelden", "Sign in")}
-          </a>
-        </div>
+        {user ? (
+          <>
+            <p className="not-found-hint">
+              {t(
+                "Gehört die Seite zu deinem Arbeitsbereich? Über die Suche findest du sie – sofern du sie sehen darfst.",
+                "Does the page belong to your workspace? Find it with the search – if you may see it.",
+              )}
+            </p>
+            <div className="not-found-actions">
+              <a className="button primary" href="/">
+                {t("Zur Startseite", "Go to the start page")}
+              </a>
+              <HistoryBackLink className="button">{t("Zurück", "Back")}</HistoryBackLink>
+              {/* The app opens its search for #search (components/workspace-app.tsx). */}
+              <a className="button" href="/#search">
+                {t("Suchen", "Search")}
+              </a>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="not-found-hint">
+              {t(
+                "Gehört die Seite zu deinem Arbeitsbereich? Nach der Anmeldung findest du sie über die Suche – sofern du sie sehen darfst.",
+                "Does the page belong to your workspace? After signing in, find it with the search – if you may see it.",
+              )}
+            </p>
+            <div className="not-found-actions">
+              <a className="button primary" href="/">
+                {t("Zur Startseite", "Go to the start page")}
+              </a>
+              <a className="button" href="/login">
+                {t("Anmelden", "Sign in")}
+              </a>
+            </div>
+          </>
+        )}
       </section>
     </main>
   );
