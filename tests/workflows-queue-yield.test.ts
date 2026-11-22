@@ -95,15 +95,21 @@ test("a backlog is drained in rounds that give the event loop back", { timeout: 
       await emitWorkflowEvent("manual", { workspaceId: wid, scopeId: pageId, actorId: owner.id, payload: { workflow: pageId, node: "n_trig00", inputs: { i: `R${i}` }, source: "api" }, checked: true });
   });
   last = performance.now();
+  const started = last;
   setImmediate(watch);
   const done = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workflow_runs WHERE page_id=? AND status='succeeded'", pageId))?.n || 0);
   const deadline = Date.now() + 100_000;
   while ((await done()) < RUNS && Date.now() < deadline) await sleep(20);
   watching = false;
+  const total = performance.now() - started;
   console.log(`${RUNS} runs: ${turns} turns of the event loop, held at most ${longest.toFixed(0)} ms`);
   assert.equal(await done(), RUNS);
   // Before: the whole backlog in one chain of microtasks (no turn in between, 1.5 s for 300 runs).
   assert.ok(turns > 10,`${turns} turns of the event loop while ${RUNS} runs were drained`);
-  assert.ok(longest < 1_000, `event loop held for ${longest.toFixed(0)} ms`);
+  // The longest hold is a small part of the whole drain. An absolute bound
+  // alone failed on a busy CI runner (one stall of 1.8 s in a 4.6 s drain,
+  // 50 turns), while the bug it guards against holds the loop for nearly all
+  // of it.
+  assert.ok(longest < Math.max(1_000, total / 2), `event loop held for ${longest.toFixed(0)} ms of ${total.toFixed(0)} ms`);
   await stopWorkflowWorker();
 });
