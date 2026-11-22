@@ -207,7 +207,7 @@ test("the quota in a person's details writes the rules of the limits table – n
   await command(admin, { action: "admin.aiQuotas", settings: { unit: "tokens", timeZone: "UTC" }, rules: [{ scope: "default", target: "", exempt: false, limits: { day: 1000 } }] });
   let view = await aiRuleView(admin, { scope: "user", target: ben.id });
   assert.equal(view.quota.own, null);
-  assert.deepEqual(view.quota.effective, { limits: { day: 1000 }, exempt: false, source: "default" });
+  assert.deepEqual(view.quota.effective, { limits: { day: 1000 }, exempt: false, source: "default", after: null });
   assert.equal(view.usage.find((u) => u.period === "day")?.limit, 1000);
   // Own limits: the same row the quota table shows and the check uses.
   view = (await rule("user", ben.id, { quota: { exempt: false, limits: { day: 50, month: 9000 } } })) as typeof view;
@@ -239,7 +239,7 @@ test("the quota in a person's details writes the rules of the limits table – n
   assert.equal((await quota.quotaRules()).find((r) => r.target === ben.id), undefined);
   // A group's limits and the usage of its members together.
   await rule("group", redaktion, { quota: { exempt: false, limits: { day: 700 } } });
-  assert.deepEqual(quota.personalLimits(await quota.quotaRules(), await quota.quotaPerson(cleo)), { limits: { day: 700 }, exempt: false, source: "group" });
+  assert.deepEqual(quota.personalLimits(await quota.quotaRules(), await quota.quotaPerson(cleo)), { limits: { day: 700 }, exempt: false, source: "group", after: null });
   await quota.recordQuotaUsage({ userId: cleo.id, kind: "person", model: "haiku", tokensIn: 10, tokensOut: 0 });
   await quota.recordQuotaUsage({ userId: dora.id, kind: "person", model: "haiku", tokensIn: 5, tokensOut: 0 });
   const group = await aiRuleView(admin, { scope: "group", target: redaktion });

@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 119;
+export const SCHEMA_VERSION = 120;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1657,11 +1657,33 @@ function migrate(d: DatabaseSync) {
   // Schema 119 – a pending change of the e-mail address (#405,
   // lib/email-change.ts): the new address on its links in auth_tokens.
   migrateEmailChange(d);
+  // Schema 120 – limits per group (lib/user-limits.ts) and the model after
+  // a used-up AI quota (lib/ai/quota.ts).
+  migrateGroupLimits(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 120 – limits per group and the model after a used-up AI quota:
+// - group_limits: storage, own workspaces and the largest upload (JSON, the
+//   fields of users.limits) for the members of a group – target a
+//   workspace group's id or "dir:<name>" for a directory group (SCIM, LDAP
+//   or the groups of an SSO sign-in, lib/person-groups.ts). A person gets
+//   their own value, else the most generous of their groups', else the
+//   instance's default (lib/user-limits.ts).
+// - ai_quota_rules.after_model/after_kind: once the personal limit of a
+//   rule is used up, requests continue with this model of the instance's
+//   provider (chosen for that provider kind) instead of being refused –
+//   counted, not limited; the instance ceiling still applies. NULL: AI
+//   stops (as before). An older version would ignore both, hence the
+//   number.
+function migrateGroupLimits(d: DatabaseSync) {
+  d.exec("CREATE TABLE IF NOT EXISTS group_limits(target TEXT PRIMARY KEY,limits TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL)");
+  const columns = (d.prepare("PRAGMA table_info(ai_quota_rules)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("after_model")) d.exec("ALTER TABLE ai_quota_rules ADD COLUMN after_model TEXT");
+  if (!columns.includes("after_kind")) d.exec("ALTER TABLE ai_quota_rules ADD COLUMN after_kind TEXT");
 }
 // Schema 119 – changing one's own e-mail address (#405, lib/email-change.ts):
 // auth_tokens.email, the new address a pending change waits for. Its two

@@ -28,7 +28,9 @@ const exact: Record<string, string> = {
   "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.": "Groups and roles have no “instance default” of their own – remove the model instead.",
   "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).": "Please set up an AI provider for the instance first (Administration → AI).",
   "Gruppe nicht gefunden.": "Group not found.",
+  "Bitte eine Adresse mit http:// oder https:// angeben.": "Please enter an address with http:// or https://.",
   "Eine Grenze ist doppelt eingetragen.": "A limit is entered twice.",
+  "Dieses Modell ist für die Instanz nicht vorgesehen.": "This model is not one of the instance's models.",
   "Unbekannte Zeitzone.": "Unknown time zone.",
   // Starter content for new accounts (lib/starter-content.ts, #381).
   "Ein Ende-zu-Ende-verschlüsselter Bereich kann kein Startinhalt sein.": "An end-to-end encrypted space cannot be starter content.",
@@ -1761,6 +1763,8 @@ const patterns: [RegExp, string][] = [
   [/^Dein Speicher ist voll \((.+) von (\d+) MB belegt\)\.$/, "Your storage is full ($1 of $2 MB used)."],
   [/^Dein Speicher reicht dafür nicht \((.+) von (\d+) MB belegt, benötigt zusätzlich (.+)\)\.$/, "Your storage is not enough for this ($1 of $2 MB used, $3 more needed)."],
   [/^Du kannst höchstens (\d+) eigene Arbeitsbereiche anlegen\.$/, "You can create at most $1 workspaces of your own."],
+  [/^Die Datei ist zu groß: Du kannst Dateien bis (\d+) MB hochladen\.$/, "The file is too large: you can upload files up to $1 MB."],
+  [/^Maximal (\d+) MB pro Datei\.$/, "At most $1 MB per file."],
   [/^Von „(.+)“ nach „(.+)“ ist im Workflow nicht vorgesehen\.$/, "Changing from “$1” to “$2” is not part of the workflow."],
   [/^„(.+)“ braucht: (.+)\.$/, "“$1” needs: $2."],
   [/^„(.+)“ dürfen nur Verantwortliche der Datenbank setzen\.$/, "Only owners of the database may set “$1”."],

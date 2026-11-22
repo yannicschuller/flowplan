@@ -12,7 +12,8 @@ import { api, reportError } from "../../ui";
 import { Select } from "../../select";
 import { ResponsiveTable, SaveState, SettingGroup, SettingRow, Switch, useSaveState } from "../../settings-ui";
 import { NumberInput } from "./parts";
-import { LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
+import { AfterSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
+import { DirectoryGroupInput, GroupOptions, groupLabel } from "./group-picker";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { AdminQuotaView } from "@/lib/ai/quota";
 import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaRule } from "@/lib/ai/quota-shared";
@@ -118,7 +119,7 @@ export function AiQuotasSection() {
             rowKey={(g) => g.id}
             empty={<p className="muted ai-quota-empty">{t("Keine Nutzung durch Gruppenmitglieder.", "No usage by group members.")}</p>}
             columns={[
-              { key: "name", header: t("Gruppe", "Group"), primary: true, render: (g) => `${g.workspace ?? "–"} · ${g.name}` },
+              { key: "name", header: t("Gruppe", "Group"), primary: true, render: (g) => groupLabel(g, t) },
               { key: "members", header: t("Mitglieder", "Members"), align: "end", render: (g) => String(g.members) },
               { key: "used", header: t("Verbraucht", "Used||quota"), align: "end", render: (g) => amount(g.used) },
               { key: "tokens", header: t("Tokens", "Tokens"), align: "end", hideOnPhone: true, render: (g) => g.tokens.toLocaleString(LOCALE_TAG) },
@@ -249,7 +250,7 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
   const unit = view.settings.unit;
   const groupName = (id: string) => {
     const g = view.groups.find((x) => x.id === id);
-    return g ? `${g.workspace ?? "–"} · ${g.name}` : t("Gelöschte Gruppe", "Deleted group");
+    return g ? groupLabel(g, t) : t("Gelöschte Gruppe", "Deleted group");
   };
   const personName = (id: string) => {
     const p = view.people.find((x) => x.id === id);
@@ -275,7 +276,7 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
   const key = (r: Pick<QuotaRule, "scope" | "target">) => `${r.scope}|${r.target}`;
   const hasNumbers = (r: QuotaRule) => QUOTA_PERIODS.some((p) => typeof r.limits[p] === "number");
   const commit = (next: LimitRow[]) =>
-    save({ rules: next.filter((r) => (r.inherit ? r.exempt || hasNumbers(r) : r.exempt || hasNumbers(r) || (r.scope !== "instance" && r.scope !== "default"))).map((r) => ({ scope: r.scope, target: r.target, exempt: r.exempt, limits: r.limits })) });
+    save({ rules: next.filter((r) => (r.inherit ? r.exempt || hasNumbers(r) : r.exempt || hasNumbers(r) || (r.scope !== "instance" && r.scope !== "default"))).map((r) => ({ scope: r.scope, target: r.target, exempt: r.exempt, limits: r.limits, after: r.after ?? null })) });
   const change = (rule: LimitRow, patch: Partial<QuotaRule>) => commit(rows.map((r) => (key(r) === key(rule) ? { ...r, ...patch, inherit: false } : r)));
   const modelOf = (r: Pick<QuotaRule, "scope" | "target">) => view.model.rules.find((m) => m.scope === r.scope && m.target === r.target);
   const setLimit = (rule: QuotaRule, period: QuotaPeriod, v: number | null) => {
@@ -296,8 +297,8 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
       id="quota-limits"
       title={t("Grenzen", "Limits")}
       description={t(
-        "Leer heißt: keine Grenze für diesen Zeitraum. Für eine Person gilt ihre eigene Grenze, sonst die höchste ihrer Gruppen und Rollen, sonst der Standard; die Grenze der ganzen Instanz gilt immer zusätzlich. „Ausgenommen“ hebt die persönlichen Grenzen auf.",
-        "Empty means: no limit for that period. A person gets their own limit, else the highest of their groups and roles, else the default; the whole instance's ceiling always applies on top. “Exempt” lifts the personal limits.",
+        "Leer heißt: keine Grenze für diesen Zeitraum. Für eine Person gilt ihre eigene Grenze, sonst die höchste ihrer Gruppen und Rollen, sonst der Standard; die Grenze der ganzen Instanz gilt immer zusätzlich. „Ausgenommen“ hebt die persönlichen Grenzen auf. „Danach“: ist die Grenze erreicht, ist KI aus – oder es geht mit einem anderen Modell weiter (gezählt, nicht begrenzt; die Grenze der Instanz gilt weiter).",
+        "Empty means: no limit for that period. A person gets their own limit, else the highest of their groups and roles, else the default; the whole instance's ceiling always applies on top. “Exempt” lifts the personal limits. “Afterwards”: once the limit is reached, AI is off – or goes on with another model (counted, not limited; the instance's ceiling still applies).",
       )}
     >
       <div className="mon-table ai-quota-limits">
@@ -321,6 +322,23 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
               key: "model",
               header: t("Modell", "Model"),
               render: (r) => <ModelCell view={view} rule={r} label={name(r)} own={modelOf(r)} onChange={(model) => saveRule(r.scope, r.target, { model })} />,
+            },
+            {
+              key: "after",
+              header: t("Danach", "Afterwards"),
+              render: (r) =>
+                r.scope === "instance" || r.exempt || !view.model.provider ? (
+                  <span className="muted">–</span>
+                ) : (
+                  <AfterSelect
+                    className="ai-quota-after"
+                    label={t(`${name(r)}: nach Erreichen des Kontingents`, `${name(r)}: once the quota is reached`)}
+                    value={r.after ?? null}
+                    active={!r.after || r.afterKind === view.model.provider.kind}
+                    options={view.model.options}
+                    onChange={(after) => change(r, { after })}
+                  />
+                ),
             },
             {
               key: "exempt",
@@ -349,12 +367,22 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
           `Model: a person uses their own model, else the most capable of their groups and roles (the most expensive by the price list), else the instance default (${view.model.provider?.model || "–"}). Only for the instance's provider; own providers and on-device AI choose their own.`,
         )}
       </p>
-      <SettingRow id={groupId} label={t("Gruppe oder Rolle hinzufügen", "Add a group or role")} description={t("Gruppen der Arbeitsbereiche – auch die aus SSO-, SCIM- und LDAP-Gruppen über die SSO-Zuordnungen.", "Workspace groups – also those filled from SSO, SCIM and LDAP groups through the SSO mappings.")}>
+      <SettingRow
+        id={groupId}
+        label={t("Gruppe oder Rolle hinzufügen", "Add a group or role")}
+        description={t(
+          "Gruppen der Arbeitsbereiche (auch über die SSO-Zuordnungen gefüllt) und Verzeichnisgruppen aus SCIM, LDAP und SSO direkt.",
+          "Workspace groups (also filled through the SSO mappings) and directory groups from SCIM, LDAP and SSO directly.",
+        )}
+      >
         <Select
           id={groupId}
           value=""
           onChange={(e) => {
-            const [scope, target] = e.target.value.split(":");
+            const value = e.target.value;
+            const split = value.indexOf(":");
+            const scope = value.slice(0, split),
+              target = value.slice(split + 1);
             if (scope === "role" || scope === "group") add(scope, target);
           }}
         >
@@ -366,15 +394,10 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
                 {t(ROLES[r][0], ROLES[r][1])}
               </option>
             ))}
-          {view.groups
-            .filter((g) => !free.has(`group|${g.id}`))
-            .map((g) => (
-              <option key={g.id} value={`group:${g.id}`}>
-                {`${g.workspace ?? "–"} · ${g.name}`}
-              </option>
-            ))}
+          <GroupOptions groups={view.groups} taken={new Set(view.groups.filter((g) => free.has(`group|${g.id}`)).map((g) => g.id))} prefix="group:" />
         </Select>
       </SettingRow>
+      <DirectoryGroupInput taken={new Set([...free].filter((k) => k.startsWith("group|")).map((k) => k.slice(6)))} onAdd={(key) => add("group", key)} />
       <SettingRow id={personId} label={t("Person hinzufügen", "Add a person")} description={t("Mehr, weniger oder ausgenommen – für einzelne Konten.", "More, less or exempt – for single accounts.")}>
         <Select id={personId} value="" onChange={(e) => add("user", e.target.value)}>
           <option value="">{t("Auswählen …", "Choose …")}</option>
@@ -424,7 +447,7 @@ function PeopleTable({ view, amount }: { view: AdminQuotaView; amount: (n: numbe
             { key: "used", header: t("Verbraucht", "Used||quota"), align: "end", render: (p) => amount(p.used) },
             { key: "limit", header: t("Grenze", "Limit"), align: "end", render: (p) => (p.exempt ? t("ausgenommen", "exempt") : p.limit === null ? "–" : amount(p.limit)) },
             { key: "left", header: t("Übrig", "Left||remaining"), align: "end", render: (p) => (p.exempt || p.limit === null ? "–" : amount(Math.max(0, p.limit - p.used))) },
-            { key: "source", header: t("Woher", "From"), hideOnPhone: true, render: (p) => sourceLabel(p, t) },
+            { key: "source", header: t("Woher", "From"), hideOnPhone: true, render: (p) => (p.after ? `${sourceLabel(p, t)} · ${t(`danach ${p.after}`, `then ${p.after}`)}` : sourceLabel(p, t)) },
             { key: "model", header: t("Modell", "Model"), hideOnPhone: true, render: (p) => (p.model ? <span title={modelSource(p.model, t)}>{p.model.model}</span> : "–") },
           ]}
         />

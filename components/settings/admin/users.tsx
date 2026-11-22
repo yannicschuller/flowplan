@@ -45,6 +45,7 @@ import { Select } from "../../select";
 import { EmptyState, NumberField, SaveState, StatusBadge, useSaveState, type Tone } from "../../settings-ui";
 import { AiUserSwitch } from "../../ai-settings";
 import { AiRulePanel } from "./ai-rule";
+import { groupLabel } from "./group-picker";
 import { useAdminData, type AdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, type StatusItem } from "./parts";
@@ -979,6 +980,23 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
     workspaces: data.settings.defaultUserWorkspaces ? String(data.settings.defaultUserWorkspaces) : t("unbegrenzt", "unlimited"),
     upload: `${data.settings.maxUploadMb} MB`,
   };
+  // Without an own value: what applies instead – a group's value (with the
+  // group, lib/user-limits.ts) or the instance's default.
+  const groupName = (key: string | null) => {
+    const g = key ? data.groupLimits?.groups.find((x) => x.id === key) : null;
+    return g ? groupLabel(g, t) : t("Gelöschte Gruppe", "Deleted group");
+  };
+  const fieldText = (field: "storageMb" | "workspaces" | "uploadMb", value: number) =>
+    field === "uploadMb" ? `${value} MB` : value === 0 ? t("unbegrenzt", "unlimited") : field === "storageMb" ? `${value} MB` : String(value);
+  const inheritedHint = (field: "storageMb" | "workspaces" | "uploadMb", fallback: string) => {
+    const source = usage?.sources?.[field];
+    if (source?.from === "group" && usage) {
+      const text = fieldText(field, usage.effective[field]);
+      return t(`Aus Gruppe ${groupName(source.group)}: ${text} (Standard: ${fallback})`, `From group ${groupName(source.group)}: ${text} (default: ${fallback})`);
+    }
+    return null;
+  };
+  const storageSource = usage?.sources?.storageMb;
   const changeEmail = async () => {
     const email = (newEmail || "").trim();
     if (!email) return;
@@ -1077,6 +1095,9 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             </strong>
           </div>
           <StorageBar usage={usage} wide />
+          {storageSource && storageSource.from !== "default" && (
+            <small className="limit-source">{storageSource.from === "group" ? t(`aus Gruppe ${groupName(storageSource.group)}`, `from group ${groupName(storageSource.group)}`) : t("eigene Grenze", "own limit")}</small>
+          )}
         </section>
       )}
       {(ssoGroups || identities.length > 0) && <SsoGroups report={ssoGroups} now={now} />}
@@ -1106,7 +1127,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             <StatusBadge tone={admin ? "info" : "off"}>{admin ? t("Admin", "Admin") : t("Mitglied", "Member")}</StatusBadge>
           )}
         </PanelRow>
-        <PanelRow label={t("Speicherlimit", "Storage limit")} htmlFor={`limit-storage-${u.id}`} hint={t(`Standard der Instanz: ${defaults.storage}`, `Instance default: ${defaults.storage}`)}>
+        <PanelRow label={t("Speicherlimit", "Storage limit")} htmlFor={`limit-storage-${u.id}`} hint={inheritedHint("storageMb", defaults.storage) ?? t(`Standard der Instanz: ${defaults.storage}`, `Instance default: ${defaults.storage}`)}>
           <NumberField id={`limit-storage-${u.id}`} label={t(`Speicher für ${u.name}`, `Storage for ${u.name}`)} value={limits.storageMb} unit="MB" placeholder={defaults.storage} onChange={(storageMb) => setLimits({ ...limits, storageMb })} />
         </PanelRow>
         <PanelRow
@@ -1241,7 +1262,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             <CaretRight size={12} aria-hidden className="ux-more-caret ux-flip" />
             {t(`Weitere: ${more}`, `More: ${more}`)}
           </summary>
-          <PanelRow label={t("Eigene Arbeitsbereiche", "Own workspaces")} htmlFor={`limit-workspaces-${u.id}`} hint={t(`Standard: ${defaults.workspaces}`, `Default: ${defaults.workspaces}`)}>
+          <PanelRow label={t("Eigene Arbeitsbereiche", "Own workspaces")} htmlFor={`limit-workspaces-${u.id}`} hint={inheritedHint("workspaces", defaults.workspaces) ?? t(`Standard: ${defaults.workspaces}`, `Default: ${defaults.workspaces}`)}>
             <NumberField
               id={`limit-workspaces-${u.id}`}
               label={t(`Eigene Arbeitsbereiche für ${u.name}`, `Own workspaces for ${u.name}`)}
@@ -1251,7 +1272,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
               onChange={(workspaces) => setLimits({ ...limits, workspaces })}
             />
           </PanelRow>
-          <PanelRow label={t("Größte Datei", "Largest file")} htmlFor={`limit-upload-${u.id}`} hint={t(`Standard: ${defaults.upload}`, `Default: ${defaults.upload}`)}>
+          <PanelRow label={t("Größte Datei", "Largest file")} htmlFor={`limit-upload-${u.id}`} hint={inheritedHint("uploadMb", defaults.upload) ?? t(`Standard: ${defaults.upload}`, `Default: ${defaults.upload}`)}>
             <NumberField
               id={`limit-upload-${u.id}`}
               label={t(`Größte Datei für ${u.name}`, `Largest file for ${u.name}`)}
@@ -1263,7 +1284,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
               onChange={(uploadMb) => setLimits({ ...limits, uploadMb })}
             />
           </PanelRow>
-          <p className="ux-more-note muted">{t("Leer = Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = instance default, 0 = unlimited. Admins are not limited.")}</p>
+          <p className="ux-more-note muted">{t("Leer = Wert der Gruppen oder Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = the groups' value or the instance default, 0 = unlimited. Admins are not limited.")}</p>
           <PanelRow
             label={t("Neuigkeiten nach Updates", "What’s new after updates")}
             htmlFor={`update-notes-${u.id}`}

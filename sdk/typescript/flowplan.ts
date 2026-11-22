@@ -4109,7 +4109,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/capture`, { query }, options);
   }
 
-  /** What is left of your AI quota — The AI quota the administration set (#382) for AI through the instance's provider: per period (calendar day, week, month, year in the quota's time zone) your personal limit and the instance's ceiling, what is used and left, and when it resets. In tokens (input and output together) or, with `unit: cost`, in the instance's `currency`. `applies: false`: no quota applies to you (none set, or your AI uses your own provider). `low`: some period passed the warning threshold `warnAt` (per cent); `blocked`: one is used up – AI requests through the instance are refused (429) until it resets. Tokens need the permission “AI and transcription”. Answered with `Cache-Control: no-store`. (GET /api/ai/quota) */
+  /** What is left of your AI quota — The AI quota the administration set (#382) for AI through the instance's provider: per period (calendar day, week, month, year in the quota's time zone) your personal limit and the instance's ceiling, what is used and left, and when it resets. In tokens (input and output together) or, with `unit: cost`, in the instance's `currency`. `applies: false`: no quota applies to you (none set, or your AI uses your own provider). `low`: some period passed the warning threshold `warnAt` (per cent); `blocked`: one is used up – AI requests through the instance are refused (429) until it resets. `after`: the model your requests go on with once your personal limit is used up (counted, not limited; null: they are refused) – then only the instance's ceiling blocks. Tokens need the permission “AI and transcription”. Answered with `Cache-Control: no-store`. (GET /api/ai/quota) */
   async aiQuota(options?: RequestOptions): Promise<{
     applies: boolean;
     unit: "tokens" | "cost";
@@ -4119,6 +4119,7 @@ export class FlowplanClient {
     exempt?: boolean;
     low: boolean;
     blocked: boolean;
+    after?: string | null;
     periods: ({
       level: "person" | "instance";
       period: "day" | "week" | "month" | "year";
@@ -4139,6 +4140,7 @@ export class FlowplanClient {
     exempt?: boolean;
     low: boolean;
     blocked: boolean;
+    after?: string | null;
     periods: ({
       level: "person" | "instance";
       period: "day" | "week" | "month" | "year";

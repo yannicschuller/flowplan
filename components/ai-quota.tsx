@@ -69,7 +69,8 @@ export function AiQuotaNote() {
   const t = useT();
   const s = useAiQuota();
   if (!s?.applies || !s.low) return null;
-  const p = tightest(s.periods);
+  // With a model to go on with, only the instance's ceiling warns.
+  const p = tightest(s.after ? s.periods.filter((x) => x.level === "instance") : s.periods);
   if (!p) return null;
   const name = t(PERIOD_NAMES[p.period][0], PERIOD_NAMES[p.period][1]);
   const left = p.limit > 0 ? Math.max(0, Math.round((p.left / p.limit) * 100)) : 0;
