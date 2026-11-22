@@ -79,7 +79,40 @@ test("notifications are shown in the reader's language", async () => {
   assert.equal(englishMessage("Heute fällig: Bericht (Plan) („Woche“)"), "Due today: Bericht (Plan) (“Woche”)");
 });
 
+test("server catalogues load on first use: English before, the language after, once", async () => {
+  const { ensureCatalog, catalogScript } = await import("../lib/i18n-catalogs-server");
+  const { registeredCatalog } = await import("../lib/i18n-catalogs");
+  // Nothing loaded at start (cleanup.mjs only sets up the loader) …
+  assert.equal(registeredCatalog("zh"), undefined);
+  // … a synchronous text before the catalogue is English, not an error …
+  const warn = console.warn;
+  const warned: string[] = [];
+  console.warn = (...args: unknown[]) => void warned.push(args.join(" "));
+  try {
+    assert.equal(translate("zh")("Anmelden", "Sign in"), "Sign in");
+    translate("zh")("Abmelden", "Sign out");
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(warned.length, 1, "logged once");
+  assert.match(warned[0], /"zh"/);
+  // … and the miss loads it; ensureCatalog hands out the same one.
+  const catalog = await ensureCatalog("zh");
+  assert.ok(catalog && registeredCatalog("zh") === catalog);
+  assert.equal(await ensureCatalog("zh-CN"), catalog);
+  assert.notEqual(translate("zh")("Anmelden", "Sign in"), "Sign in");
+  assert.equal(await ensureCatalog("de"), null);
+  assert.equal(await ensureCatalog("en-US"), null);
+  // The browser's script, versioned by its content.
+  const script = await catalogScript("zh");
+  assert.ok(script && /^[0-9a-f]{12}$/.test(script.version) && script.body.includes("flowplanCatalogs"));
+  assert.equal(await catalogScript("de"), null);
+  assert.equal(await catalogScript("xx"), null);
+});
+
 test("further languages come from catalogues keyed by the English text", async () => {
+  const { ensureCatalog } = await import("../lib/i18n-catalogs-server");
+  await ensureCatalog("fr");
   const t = translate("fr");
   assert.equal(t("Anmelden", "Sign in"), "Se connecter");
   // Texts with variables are matched as patterns, the values kept.
@@ -101,6 +134,7 @@ test("Russian is offered: its catalogue, ru-RU dates, the English docs", async (
   assert.equal(textLocale("ru"), "ru");
   assert.deepEqual([...IN_TRANSLATION], []);
   assert.equal(docsLanguage("ru"), "en");
+  await (await import("../lib/i18n-catalogs-server")).ensureCatalog("ru");
   const t = translate("ru");
   assert.equal(t("Anmelden", "Sign in"), "Войти");
   const { localizedMessage } = await import("../lib/i18n-errors");

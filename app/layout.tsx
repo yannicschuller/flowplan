@@ -104,7 +104,7 @@ export default async function RootLayout({
   const locale = await requestLocale();
   // The page's own scripts carry the nonce of the Content Security Policy (proxy.ts).
   const nonce = (await headers()).get("x-nonce") || undefined;
-  const catalog = catalogScript(locale);
+  const catalog = await catalogScript(locale);
   const build = runningBuild();
   return (
     <html lang={locale} suppressHydrationWarning>

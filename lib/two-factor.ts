@@ -26,6 +26,7 @@ import { codeAfterPasskey, hasPasskey, totpEnabled, twoFactorRequired } from "./
 import { instanceSettings } from "./instance-settings";
 import { queueLinkMail } from "./mail";
 import { translate, type Locale } from "./i18n";
+import { userLocale } from "./user-locale";
 import type { User } from "./types";
 
 const aad = (userId: string) => `totp:${userId}`;
@@ -285,7 +286,7 @@ export async function adminResetTwoFactor(userId: string) {
   const user = await one<User>("SELECT * FROM users WHERE id=?", userId);
   if (!user || !(await account(userId))) throw new HttpError(400, "Dieses Konto meldet sich über SSO an.");
   await removeTotp(userId);
-  const locale = ((await one<{ locale: string | null }>("SELECT locale FROM users WHERE id=?", userId))?.locale || "de") as Locale;
+  const locale = await userLocale(userId);
   const t = tr(locale);
   await queueLinkMail({
     to: (await account(userId))!.email,

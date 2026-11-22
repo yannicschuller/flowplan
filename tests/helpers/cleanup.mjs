@@ -6,9 +6,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { isMainThread } from "node:worker_threads";
 
-// The server's language catalogues (instrumentation.ts registers them in the
-// app) – in the test itself, not in worker threads (OCR), which load this
-// file without the TypeScript loader.
+// The server's language catalogues load on first use (instrumentation.ts
+// sets up the loader in the app; lib/i18n-catalogs-server.ts) – in the test
+// itself, not in worker threads (OCR), which load this file without the
+// TypeScript loader. A test that translates synchronously into fr, zh or ru
+// awaits ensureCatalog() first.
 if (isMainThread) await import("../../lib/i18n-catalogs-server.ts");
 
 // DATABASE_URL=postgres://…: this test file runs against PostgreSQL, in a

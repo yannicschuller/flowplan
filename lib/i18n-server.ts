@@ -4,13 +4,17 @@ import { LOCALE_COOKIE, pickLocale, translate, type Locale } from "./i18n";
 import { translateLabel } from "./i18n-labels";
 import { currentUser } from "./auth";
 import { fixedLanguage } from "./user-locale";
+import { ensureCatalog } from "./i18n-catalogs-server";
 
 // A language fixed in the profile wins: the cookie can be stale or doubled
-// (flowplan.org shares one with the website and the docs).
+// (flowplan.org shares one with the website and the docs). Its catalogue
+// is loaded on return, so translate(locale) and serverT() find it.
 export async function requestLocale(): Promise<Locale> {
   const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
   const fixed = await profileLanguage();
-  return fixed ?? pickLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get("accept-language"));
+  const locale = fixed ?? pickLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get("accept-language"));
+  await ensureCatalog(locale);
+  return locale;
 }
 async function profileLanguage() {
   try {

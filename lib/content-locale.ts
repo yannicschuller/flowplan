@@ -4,6 +4,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { LOCALE_COOKIE, pickLocale, translate, type Locale } from "./i18n";
 import { withReadMemo } from "./read-memo";
+import { ensureCatalog } from "./i18n-catalogs-server";
 
 const store = new AsyncLocalStorage<Locale>();
 export const contentLocale = (): Locale => store.getStore() ?? "de";
@@ -20,10 +21,14 @@ export function localeOfRequest(req: Request): Locale {
   return pickLocale(cookie, req.headers.get("accept-language"));
 }
 // Wraps a route handler so everything it creates follows the reader's
-// language. Permission lookups are remembered for the request
-// (lib/read-memo.ts).
+// language (its catalogue loaded first). Permission lookups are remembered
+// for the request (lib/read-memo.ts).
 export function withRequestLocale<A extends unknown[], R>(
   handler: (req: Request, ...rest: A) => Promise<R>,
 ) {
-  return async (req: Request, ...rest: A) => await withContentLocale(localeOfRequest(req), async () => await withReadMemo(() => handler(req, ...rest)));
+  return async (req: Request, ...rest: A) => {
+    const locale = localeOfRequest(req);
+    await ensureCatalog(locale);
+    return await withContentLocale(locale, async () => await withReadMemo(() => handler(req, ...rest)));
+  };
 }

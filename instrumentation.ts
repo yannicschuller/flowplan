@@ -44,7 +44,9 @@ export async function register() {
     // Event-loop delay and SQLite time for load tests (FLOWPLAN_METRICS_LOOP=1).
     const { startRuntimeMetrics } = await import("./lib/runtime-metrics");
     startRuntimeMetrics();
-    // Catalogues of further languages for server-side texts (lib/i18n-catalogs.ts).
+    // Catalogues of further languages for server-side texts: loaded on first
+    // use, not here (lib/i18n-catalogs-server.ts); this only sets up the
+    // loader, so a text that comes before its catalogue logs once.
     await import("./lib/i18n-catalogs-server");
     if (!primary) {
       // Requests per minute and this process's CPU and memory (lib/metrics.ts).

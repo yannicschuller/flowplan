@@ -5,7 +5,7 @@ import { catalogScript } from "@/lib/i18n-catalogs-server";
 export const runtime = "nodejs";
 
 export async function GET(req: Request, { params }: { params: Promise<{ locale: string }> }) {
-  const script = catalogScript((await params).locale);
+  const script = await catalogScript((await params).locale);
   if (!script) return new Response("Not found", { status: 404 });
   const current = new URL(req.url).searchParams.get("v") === script.version;
   return new Response(script.body, {

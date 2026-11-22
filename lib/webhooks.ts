@@ -53,6 +53,7 @@ import type { Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
 import { mentionEvent } from "./workflows/hooks";
 import { workersPaused } from "./instance-read-only";
+import { ensureCatalog } from "./i18n-catalogs-server";
 
 export const webhookEvents = {
   "row.created": "Neuer Eintrag in einer Datenbank",
@@ -440,6 +441,8 @@ async function deliver(delivery: Delivery): Promise<{ status: number | null; err
     body = delivery.body,
     method: "POST" | "PUT" = "POST";
   const config = parseConfig(delivery.config);
+  // The hook's language: the templates render synchronously.
+  await ensureCatalog(config.language);
   const options = { templates: parseTemplates(delivery.templates), config };
   const format = delivery.format;
   if (format === "json" || !envelope.notice) {
@@ -538,6 +541,7 @@ export async function testWebhook(user: Identity, input: unknown) {
   if (!hook) throw new HttpError(404, "Unbekannter Webhook.");
   const workspace = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", b.workspaceId);
   const lang = parseConfig(hook.config).language;
+  await ensureCatalog(lang);
   const deliveryId = await queueDelivery(hook, b.workspaceId, "test", { workspace: workspace?.name || "" }, () => ({
     ...sampleNotice("test", lang),
     title: workspace?.name || "Flowplan",

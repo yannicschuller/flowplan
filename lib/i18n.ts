@@ -7,8 +7,8 @@
 // browser; English for languages Flowplan does not speak.
 import { translateCatalog } from "./i18n-catalogs";
 
-// To add a language: its catalogue in locales/, an entry here and one in
-// lib/i18n-catalogs-server.ts. `tag` formats dates and numbers; `flag` stands for
+// To add a language: its catalogue in locales/, an entry here and a loader
+// in lib/i18n-catalogs-server.ts. `tag` formats dates and numbers; `flag` stands for
 // the language in the language menus (the country of `tag`). A regional
 // variant ("en-US") needs no catalogue: it shows the texts of its language
 // (textLocale) and differs only in `tag` – dates, numbers, the first day of

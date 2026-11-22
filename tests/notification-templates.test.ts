@@ -146,7 +146,9 @@ test("Matrix: HTML subset and plain body; Teams: Adaptive Card; Discord: embed",
   assert.equal((embed.fields as unknown[]).length, 2);
 });
 
-test("every event has a default template and a sample that renders in every format", () => {
+test("every event has a default template and a sample that renders in every format", async () => {
+  const { ensureCatalog } = await import("../lib/i18n-catalogs-server");
+  for (const lang of ["fr", "zh", "ru"]) await ensureCatalog(lang);
   for (const event of [...templates.noticeEvents, "test" as const])
     for (const lang of ["de", "en", "fr", "zh", "ru"] as const) {
       const sample = sampleNotice(event, lang);

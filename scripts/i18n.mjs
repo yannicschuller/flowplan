@@ -144,4 +144,4 @@ for (const name of catalogs) {
     if (args.includes("--missing")) for (const k of missing) console.log(`  missing: ${JSON.stringify(k)}  (${keys.get(k)})`);
   } else write(path, next);
 }
-if (added) console.log(`\nNext: add "${added}" to LANGUAGES in lib/i18n.ts and to serverCatalogs in lib/i18n-catalogs-server.ts.`);
+if (added) console.log(`\nNext: add "${added}" to LANGUAGES in lib/i18n.ts and to the loaders in lib/i18n-catalogs-server.ts.`);

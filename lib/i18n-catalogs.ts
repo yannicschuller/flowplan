@@ -5,18 +5,24 @@
 // t(`Gruppe ${name}`, `Group ${name}`) needs no change in the code. An
 // empty or missing translation shows the English text.
 //
-// The catalogues are not part of the shared JavaScript: the server registers
-// them at start (lib/i18n-catalogs-server.ts, instrumentation.ts) and a page
-// in such a language loads only its own one as /i18n/<code> before the app
+// The catalogues are not part of the shared JavaScript: the server loads
+// each on first use (lib/i18n-catalogs-server.ts) and a page in such a
+// language loads only its own one as /i18n/<code> before the app
 // (app/layout.tsx), so German and English pages carry none of them.
 export type Catalog = Record<string, string>;
 // One registry per process or page, whichever bundle reads it.
-const store = globalThis as unknown as { flowplanCatalogs?: Record<string, Catalog> };
+const store = globalThis as unknown as { flowplanCatalogs?: Record<string, Catalog>; flowplanCatalogMissing?: (locale: string) => void };
 const catalogs = (store.flowplanCatalogs ??= {});
 
 export function registerCatalog(locale: string, catalog: Catalog) {
   catalogs[locale] = catalog;
   compiled.delete(locale);
+}
+export const registeredCatalog = (locale: string): Catalog | undefined => catalogs[locale];
+// Told when a text needs a catalogue that is not registered (the server
+// loads it then; lib/i18n-catalogs-server.ts).
+export function setCatalogMissingHandler(handler: (locale: string) => void) {
+  store.flowplanCatalogMissing = handler;
 }
 
 type Pattern = { regex: RegExp; translation: string; strict: boolean };
@@ -50,7 +56,11 @@ function prepare(locale: string) {
 
 export function translateCatalog(locale: string, english: string): string {
   const catalog = catalogs[locale];
-  if (!catalog || !english) return english;
+  if (!catalog) {
+    if (english) store.flowplanCatalogMissing?.(locale);
+    return english;
+  }
+  if (!english) return english;
   const exact = catalog[english];
   if (exact) return exact;
   const { patterns, cache } = prepare(locale);

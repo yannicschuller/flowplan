@@ -43,6 +43,7 @@ import { occurrenceDates, parseRecurrence } from "./recurrence";
 import { relatedData } from "./related-data";
 import { hiddenRowIds, visibleRows } from "./row-access";
 import { fixedLanguage } from "./user-locale";
+import { ensureCatalog } from "./i18n-catalogs-server";
 import { personJobs } from "./background-jobs";
 import { activeAlerts, workerStatuses } from "./admin-ops";
 import { diskUsage, liveNumbers } from "./metrics";
@@ -78,7 +79,9 @@ export const writerOf = (user: Identity): Identity => ({ ...user, apiScope: "wri
 
 // The profile's language wins; then what the app sends.
 export async function widgetLocale(user: Pick<Identity, "id">, lang: string | null | undefined, acceptLanguage: string | null): Promise<Locale> {
-  return await fixedLanguage(user.id) ?? (isLocale(lang) ? lang : pickLocale(null, acceptLanguage));
+  const locale = (await fixedLanguage(user.id)) ?? (isLocale(lang) ? lang : pickLocale(null, acceptLanguage));
+  await ensureCatalog(locale);
+  return locale;
 }
 
 // Per person and minute: data refreshes of all widgets, option lists,

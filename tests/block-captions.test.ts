@@ -79,7 +79,7 @@ test("captions from other HTML: a figure around one block counts, its caption is
   assert.equal(captionText(null), "");
 });
 
-test("numbering: per kind in document order, only blocks with a caption, in the reader's language", () => {
+test("numbering: per kind in document order, only blocks with a caption, in the reader's language", async () => {
   const html =
     '<figure class="block-figure"><img src="/api/files/1"><figcaption>Eins</figcaption></figure>' +
     '<img src="/api/files/2">' +
@@ -91,6 +91,7 @@ test("numbering: per kind in document order, only blocks with a caption, in the 
   const tree = doc(html);
   const numbers = [...captionNumbers(tree).values()].map((n) => `${n.kind} ${n.number}`);
   assert.deepEqual(numbers, ["figure 1", "table 1", "figure 2", "listing 1", "table 2"]);
+  await (await import("../lib/i18n-catalogs-server")).ensureCatalog("fr");
   const de = translate("de"),
     en = translate("en"),
     fr = translate("fr");

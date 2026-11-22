@@ -15,6 +15,7 @@ import { cellText } from "./cell-text";
 import { formConfigSchema, orderedFormFields } from "./form-settings";
 import { contentLocale } from "./content-locale";
 import { translate, isLocale, type Locale } from "./i18n";
+import { ensureCatalog } from "./i18n-catalogs-server";
 import { queueCustomerMail } from "./mail";
 import type { Field, Identity, Page } from "./types";
 
@@ -214,6 +215,7 @@ export async function teamReply(user: Identity, pageId: string, rowId: string, i
   );
   if (ticket.email) {
     const locale: Locale = isLocale(ticket.locale) ? ticket.locale : "de";
+    await ensureCatalog(locale);
     const t = translate(locale);
     const fields = await fieldsOf(pageId);
     const cells = typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells;

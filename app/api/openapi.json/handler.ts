@@ -1,5 +1,6 @@
 import { identityFromRequest } from "@/lib/auth";
 import { pickLocale } from "@/lib/i18n";
+import { ensureCatalog } from "@/lib/i18n-catalogs-server";
 import { localizedMessage } from "@/lib/i18n-errors";
 import { apiDocsAllowed, publicApiDocs } from "@/lib/instance-disclosure";
 import { openApiDocument } from "@/lib/openapi";
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
   const identity = await identityFromRequest(request);
   if (!apiDocsAllowed(identity)) {
     const locale = pickLocale(null, request.headers.get("accept-language"));
+    await ensureCatalog(locale);
     return Response.json(
       { error: localizedMessage("Bitte melde dich an.", locale) },
       { status: 401, headers: { "Cache-Control": "no-store", "WWW-Authenticate": "Bearer" } },

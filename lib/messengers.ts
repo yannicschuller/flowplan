@@ -38,6 +38,7 @@ import { ct } from "./content-locale";
 import { pickLocale, translate, type Locale } from "./i18n";
 import { localizedMessage } from "./i18n-errors";
 import { userLocale } from "./user-locale";
+import { ensureCatalog } from "./i18n-catalogs-server";
 import { openSecret, sealSecret, keyHint } from "./ai/secrets";
 import { privateAddress } from "./safe-fetch";
 import { securityEvent } from "./security-events";
@@ -795,6 +796,7 @@ type TelegramUpdate = {
 // the language of their Telegram app.
 async function linkReply(result: LinkResult, languageCode: string | undefined) {
   const locale: Locale = result.status === "linked" ? (await userLocale(result.userId)) : pickLocale(null, languageCode);
+  await ensureCatalog(locale);
   const say = translate(locale);
   switch (result.status) {
     case "linked":

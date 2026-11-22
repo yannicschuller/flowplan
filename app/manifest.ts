@@ -1,11 +1,14 @@
 import type { MetadataRoute } from "next";
 import { cookies, headers } from "next/headers";
 import { LOCALE_COOKIE, pickLocale, translate } from "@/lib/i18n";
+import { ensureCatalog } from "@/lib/i18n-catalogs-server";
 
 // The web app manifest in the reader's language: name, description and the
 // shortcuts of the installed app (long press on its icon).
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
-  const t = translate(pickLocale((await cookies()).get(LOCALE_COOKIE)?.value, (await headers()).get("accept-language")));
+  const locale = pickLocale((await cookies()).get(LOCALE_COOKIE)?.value, (await headers()).get("accept-language"));
+  await ensureCatalog(locale);
+  const t = translate(locale);
   const icon = [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }];
   return {
     name: "Flowplan",
