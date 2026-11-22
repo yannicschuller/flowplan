@@ -1415,6 +1415,13 @@ function migrate(d: DatabaseSync) {
   // schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "modules"))
     d.exec("ALTER TABLE users ADD COLUMN modules TEXT");
+  // "Bei dieser Datei immer zulassen" per person (#425,
+  // lib/html-scripts-trust.ts): users.html_scripts, NULL = none, or the
+  // HTML files whose scripts run on opening as JSON (file id and content
+  // hash, at most 500). Only the viewer reads it – an older version
+  // ignores the column and asks every time – so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "html_scripts"))
+    d.exec("ALTER TABLE users ADD COLUMN html_scripts TEXT");
   // "Neuigkeiten nach Updates" per person (#223, lib/user-update-notes.ts):
   // users.update_notes (the level, NULL = all) and users.seen_version (the
   // last version whose notes were seen, NULL = not tracked yet). An older

@@ -118,6 +118,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Sicherheitscheck", en: "Security check" }, anchor: "checks" },
       { title: { de: "Was du geteilt hast", en: "What you shared" }, keywords: { de: "freigabelinks öffentliche seiten personen", en: "share links public pages people" }, anchor: "shared" },
+      { title: { de: "HTML-Dateien mit Skripten", en: "HTML files with scripts" }, keywords: { de: "html skripte immer zulassen vorschau", en: "html scripts always allow preview" }, anchor: "html-scripts" },
       { title: { de: "Anmeldungen & Änderungen", en: "Sign-ins & changes" }, anchor: "activity" },
       { title: { de: "Tipps", en: "Tips" }, anchor: "tips" },
     ],

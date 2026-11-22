@@ -45,6 +45,13 @@ export function htmlPreviewScriptsAllowed(raw = process.env.FLOWPLAN_HTML_PREVIE
   return !/^(0|false|off|no)$/i.test((raw ?? "").trim());
 }
 export const HTML_PREVIEW_SCRIPTS_HEADER = "X-Flowplan-Preview-Scripts";
+// "Bei dieser Datei immer zulassen" (#425, lib/html-scripts-trust.ts): only
+// the signed-in route (app/api/files/[id]/html) tells, on HEAD and only
+// while scripts are allowed, whether the person remembered this file with
+// its current content ("yes") or not ("no"). Without the header (shared
+// links, published pages) the viewer offers no box: guests decide per
+// opening.
+export const HTML_PREVIEW_REMEMBERED_HEADER = "X-Flowplan-Preview-Remembered";
 
 // The character set to declare: a byte order mark, else a <meta charset>
 // (or http-equiv Content-Type) in the first 1024 bytes the browser's
@@ -67,7 +74,12 @@ export function htmlCharset(bytes: Uint8Array): string {
   return "utf-8";
 }
 
-export async function htmlPreviewResponse(req: Request, file: { id: string; name: string; mime: string }) {
+export async function htmlPreviewResponse(
+  req: Request,
+  file: { id: string; name: string; mime: string },
+  // Asked only when the header is sent (see HTML_PREVIEW_REMEMBERED_HEADER).
+  remembered?: () => Promise<boolean>,
+) {
   // Only files named .html/.htm, stored as a download (as every HTML upload
   // is) – never a picture or a PDF that happens to be named so.
   if (!isHtmlName(file.name) || !/^(application\/octet-stream|text\/html)$/.test(file.mime))
@@ -91,6 +103,7 @@ export async function htmlPreviewResponse(req: Request, file: { id: string; name
     const bytes = head ? (await handle.read(Buffer.alloc(1024), 0, 1024, 0)).buffer.subarray(0, Math.min(size, 1024)) : await handle.readFile();
     const allowed = htmlPreviewScriptsAllowed();
     const scripts = allowed && new URL(req.url).searchParams.get("scripts") === "1";
+    const remember: Record<string, string> = allowed && head && remembered ? { [HTML_PREVIEW_REMEMBERED_HEADER]: (await remembered()) ? "yes" : "no" } : {};
     return new Response(head ? null : new Uint8Array(bytes), {
       headers: {
         "Content-Type": `text/html; charset=${htmlCharset(bytes)}`,
@@ -98,6 +111,7 @@ export async function htmlPreviewResponse(req: Request, file: { id: string; name
         "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
         "Content-Security-Policy": scripts ? HTML_PREVIEW_SCRIPTS_CSP : HTML_PREVIEW_CSP,
         [HTML_PREVIEW_SCRIPTS_HEADER]: allowed ? "allowed" : "off",
+        ...remember,
         "X-Content-Type-Options": "nosniff",
         "Cross-Origin-Resource-Policy": "same-origin",
         "Referrer-Policy": "no-referrer",

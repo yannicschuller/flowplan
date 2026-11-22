@@ -52,6 +52,7 @@ import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
 import { saveStudySettings, studyCommand, studyOptimize } from "./study";
+import { clearHtmlScripts, htmlScriptsHash, setHtmlScripts } from "./html-scripts-trust";
 import { gitSetup } from "./git-integration";
 import { gitAccessCommand } from "./git-backlinks";
 import { issueSyncCommand } from "./issue-sync";
@@ -909,6 +910,9 @@ async function runCommand(
   // Fitting FSRS parameters takes up to half a minute (#344): never inside
   // a transaction – it reads, and stores its result in one of its own.
   if (action === "study.optimize" && !withinTransaction) return await studyOptimize(user, b);
+  // "Bei dieser Datei immer zulassen" (#425): the file's hash is read from
+  // disk before the transaction, not inside it.
+  const htmlHash = action === "profile.htmlScripts" && b.allow === true && !withinTransaction ? await htmlScriptsHash(user, b) : undefined;
   const pid = () => uuid.parse(b.pageId);
   const wid = () => uuid.parse(b.workspaceId);
   const write = async () => {
@@ -1142,6 +1146,15 @@ async function runCommand(
       // instance's default (#378, lib/feature-modules.ts).
       case "profile.modules":
         result = await setUserFeatureModules(user, b.hidden);
+        break;
+      // "Bei dieser Datei immer zulassen" in the HTML viewer (#425,
+      // lib/html-scripts-trust.ts): a file's scripts remembered or
+      // forgotten, or every remembered file forgotten.
+      case "profile.htmlScripts":
+        result = await setHtmlScripts(user, b, htmlHash);
+        break;
+      case "profile.htmlScriptsClear":
+        result = await clearHtmlScripts(user);
         break;
       // "Was ist neu": the latest release notes up to the running version.
       case "releaseNotes.list":

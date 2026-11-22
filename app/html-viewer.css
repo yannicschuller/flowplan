@@ -72,3 +72,20 @@
     box-shadow: none;
   }
 }
+/* "Bei dieser Datei immer zulassen" (#425): next to the button. */
+.html-viewer-remember {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.html-viewer-remember input {
+  margin: 0;
+}
+.html-viewer-problem-text {
+  flex-shrink: 0;
+  color: var(--red);
+}

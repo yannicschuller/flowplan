@@ -9,7 +9,7 @@
 // verdict on the file: it is shown inert, not judged. Larger files than
 // the server's preview limit (FLOWPLAN_HTML_PREVIEW_MB) are only downloaded.
 //
-// "Run scripts" (for this opening only, never remembered): the frame is
+// "Run scripts" (for this opening only, unless remembered – see below): the frame is
 // replaced by one with sandbox="allow-scripts" – never the same origin,
 // top navigation, popups, forms or modals – that loads the preview with
 // ?scripts=1, whose policy runs the file's inline scripts and still loads
@@ -17,20 +17,38 @@
 // app, the session or its data. "Stop scripts" loads it inert again. The
 // button is there only if the server allows it (FLOWPLAN_HTML_PREVIEW_SCRIPTS,
 // told by the HEAD request's X-Flowplan-Preview-Scripts).
+//
+// "Bei dieser Datei immer zulassen" (#425, lib/html-scripts-trust.ts): the
+// person's own files (/api/files/<id>, never shared links or published
+// pages) can be remembered in their account – the viewer then starts with
+// scripts running on all their devices, isolated just the same. The HEAD
+// request says whether it is (X-Flowplan-Preview-Remembered, "yes"/"no";
+// the header is missing where the box is not offered or scripts are off).
+// The server keys it to the file's content: a changed file asks again.
+// Unticking forgets it (scripts keep running for this opening).
 import { useEffect, useRef, useState } from "react";
 import { DownloadSimple, FileHtml, Info, Play, Stop, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { htmlPreviewUrl } from "@/lib/html-files";
+import { api } from "./ui";
 import "@/app/viewer3d.css";
 import "@/app/html-viewer.css";
 
 type State = "loading" | "ready" | "large" | "missing" | "failed";
+
+// The id of one's own uploaded file (/api/files/<id>), else null.
+const ownFileId = (src: string) => /\/api\/files\/([0-9a-f-]{36})(?:[?#]|$)/i.exec(src)?.[1] ?? null;
 
 export default function HtmlViewerDialog({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
   const t = useT();
   const [state, setState] = useState<State>("loading");
   const [scriptsAllowed, setScriptsAllowed] = useState(false);
   const [scripts, setScripts] = useState(false);
+  // The box: offered (null = not), and whether it is ticked.
+  const [always, setAlways] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState("");
+  const fileId = ownFileId(src);
   const name = title || "HTML";
   const preview = htmlPreviewUrl(src);
   const dialog = useRef<HTMLDivElement>(null);
@@ -41,14 +59,37 @@ export default function HtmlViewerDialog({ src, title, onClose }: { src: string;
     const controller = new AbortController();
     fetch(preview, { method: "HEAD", credentials: "same-origin", signal: controller.signal })
       .then((response) => {
-        setScriptsAllowed(response.ok && response.headers.get("X-Flowplan-Preview-Scripts") === "allowed");
+        const allowed = response.ok && response.headers.get("X-Flowplan-Preview-Scripts") === "allowed";
+        setScriptsAllowed(allowed);
+        const remembered = response.headers.get("X-Flowplan-Preview-Remembered");
+        const offered = allowed && !!fileId && (remembered === "yes" || remembered === "no");
+        setAlways(offered ? remembered === "yes" : null);
+        // Remembered with this content: scripts from the start.
+        setScripts(offered && remembered === "yes");
         setState(response.ok ? "ready" : response.status === 413 ? "large" : [403, 404, 410, 415].includes(response.status) ? "missing" : "failed");
       })
       .catch(() => {
         if (!controller.signal.aborted) setState("failed");
       });
     return () => controller.abort();
-  }, [preview]);
+  }, [preview, fileId]);
+
+  const remember = async (allow: boolean) => {
+    if (!fileId) return;
+    // Shown at once; undone if the server refuses.
+    setSaving(true);
+    setProblem("");
+    setAlways(allow);
+    if (allow) setScripts(true);
+    try {
+      await api("/api/command", { action: "profile.htmlScripts", fileId, allow });
+    } catch (e) {
+      setAlways(!allow);
+      setProblem((e as Error).message || t("Konnte nicht gespeichert werden.", "Could not be saved."));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -94,7 +135,16 @@ export default function HtmlViewerDialog({ src, title, onClose }: { src: string;
           {scripts
             ? t("Skripte laufen abgeschottet, ohne Netzwerk.", "Scripts run isolated, without network.")
             : t("Skripte und externe Inhalte sind abgeschaltet.", "Scripts and external content are switched off.")}
-          {!scripts && scriptsAllowed && state === "ready" && (
+          {always && state === "ready" && (
+            <span className="html-viewer-note-more">
+              {" "}
+              {t(
+                "Für diese Datei immer zugelassen, auf all deinen Geräten – ändert sich die Datei, fragt Flowplan erneut.",
+                "Always allowed for this file, on all your devices – if the file changes, Flowplan asks again.",
+              )}
+            </span>
+          )}
+          {!scripts && !always && scriptsAllowed && state === "ready" && (
             <span className="html-viewer-note-more">
               {" "}
               {t(
@@ -104,6 +154,17 @@ export default function HtmlViewerDialog({ src, title, onClose }: { src: string;
             </span>
           )}
         </span>
+        {problem && (
+          <span className="html-viewer-problem-text" role="alert">
+            {problem}
+          </span>
+        )}
+        {always !== null && scriptsAllowed && state === "ready" && (
+          <label className="html-viewer-remember" title={t("Nur für dich; ändert sich die Datei, fragt Flowplan erneut.", "Only for you; if the file changes, Flowplan asks again.")}>
+            <input type="checkbox" checked={always} disabled={saving} onChange={(event) => void remember(event.target.checked)} />
+            {t("Bei dieser Datei immer zulassen", "Always allow for this file")}
+          </label>
+        )}
         {scriptsAllowed && state === "ready" && (
           <button type="button" className="button html-viewer-scripts" onClick={() => setScripts(!scripts)}>
             {scripts ? <Stop size={14} aria-hidden /> : <Play size={14} aria-hidden />}
