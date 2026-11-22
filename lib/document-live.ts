@@ -109,8 +109,8 @@ export function publishPresence(key: string, from?: string) {
 
 // A member's cursor as it now is (lib/editor-presence.ts), to the others'
 // editors with it: they draw it without asking (cursor null: it went).
-// Sent for every accepted update, heartbeats too – each one renews the
-// cursor's lease with the others. `guests`: the text address changed, the
+// Sent when the cursor moved, went, or after a pause; a heartbeat at the
+// same place stays home (the others' requests renew its lease). `guests`: the text address changed, the
 // guests of share links ask again.
 export function publishCursor(key: string, peer: CursorPeer | { id: string; cursor: null }, from?: string, guests = false) {
   signal({ k: "cursor", key, peer, from, ...(guests ? { guests } : {}) });

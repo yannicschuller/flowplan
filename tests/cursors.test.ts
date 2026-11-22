@@ -8,6 +8,7 @@ import {
   cursorRequestSchema,
   relativePositionSchema,
   CURSOR_LEASE_MS,
+  HEARTBEAT_WITH_PEERS_MS,
 } from "../lib/cursor-protocol";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
@@ -327,23 +328,33 @@ test("presence: every accepted update brings the cursor for the others' editors;
   const a = f.request();
   const first = await f.send(f.alice, a);
   assert.deepEqual(first.peer, { id: (first.peer as { id: string }).id, userId: f.alice.identity.id, name: "Alice <script>", cursor, expiresInMs: CURSOR_LEASE_MS });
-  // A heartbeat at the same place: sent again (it renews the lease with
-  // the others), under the same id.
-  const beat = await f.send(f.alice, { ...a, sequence: a.sequence + 1 }, f.now + 1000);
+  // A heartbeat at the same place soon after: nothing on the live channel
+  // (the others' own requests renew the lease), but the lease is renewed.
+  const quiet = await f.send(f.alice, { ...a, sequence: a.sequence + 1 }, f.now + 1000);
+  assert.equal(quiet.peer, undefined);
+  // A moved cursor goes out at once.
+  const moved = { anchor: position, head: { ...position, assoc: 1 } };
+  const move = await f.send(f.alice, { ...a, sequence: a.sequence + 2, cursor: moved }, f.now + 2000);
+  assert.equal(move.peer?.id, first.peer?.id);
+  assert.deepEqual(move.peer && "userId" in move.peer ? move.peer.cursor : null, moved);
+  // The same place after a longer pause (alone, or a newcomer arrived):
+  // sent again under the same id.
+  const beat = await f.send(f.alice, { ...a, sequence: a.sequence + 3, cursor: moved }, f.now + 2000 + CURSOR_LEASE_MS - HEARTBEAT_WITH_PEERS_MS);
   assert.equal(beat.peer?.id, first.peer?.id);
   assert.ok(beat.peer?.cursor);
+  const t = f.now + 2000 + CURSOR_LEASE_MS;
   // A stale request: nothing for the others.
-  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence }, f.now + 1001)).peer, undefined);
+  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence }, t + 1)).peer, undefined);
   // The cursor went: its id with null.
-  assert.deepEqual((await f.send(f.alice, { ...a, sequence: a.sequence + 2, cursor: null }, f.now + 1002)).peer, { id: first.peer?.id, cursor: null });
+  assert.deepEqual((await f.send(f.alice, { ...a, sequence: a.sequence + 4, cursor: null }, t + 2)).peer, { id: first.peer?.id, cursor: null });
   // Gone already: nothing to tell.
-  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 3, cursor: null }, f.now + 1003)).peer, undefined);
+  assert.equal((await f.send(f.alice, { ...a, sequence: a.sequence + 5, cursor: null }, t + 3)).peer, undefined);
 });
 
 test("presence: a heartbeat while alone, moves of the others by signal", async () => {
   // Imported here: the plugin module touches no DOM at import time.
   const { presenceDelay, peerSignature } = await import("../lib/collaboration-cursors");
-  const { HEARTBEAT_ALONE_MS, HEARTBEAT_WITH_PEERS_MS } = await import("../lib/cursor-protocol");
+  const { HEARTBEAT_ALONE_MS } = await import("../lib/cursor-protocol");
   // Alone with the live channel open: a heartbeat of 15–30 s.
   assert.equal(presenceDelay(true, false), HEARTBEAT_ALONE_MS);
   assert.ok(HEARTBEAT_ALONE_MS >= 15_000 && HEARTBEAT_ALONE_MS <= 30_000);

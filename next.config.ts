@@ -244,6 +244,22 @@ const config: NextConfig = {
         source,
         headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
       })),
+      // Live streams (text/event-stream) stay uncompressed: "no-transform"
+      // keeps Next's gzip off them. The rule for /api above replaces the
+      // routes' own "no-cache, no-transform"; compressed, every event cost a
+      // zlib write and flush per stream, and under load updates queued
+      // behind cursor events (#383). Some of these paths also answer as
+      // JSON, which is never stored either.
+      ...[
+        "/api/live",
+        "/api/documents/live",
+        "/api/whiteboards/:id/cursors",
+        "/api/share/:token/live",
+        "/api/share/:token/board",
+      ].map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "private, no-store, no-transform" }],
+      })),
     ];
   },
 };

@@ -4,6 +4,7 @@ import { requirePage, pageRole } from "./permissions";
 import {
   cursorRequestSchema,
   CURSOR_LEASE_MS,
+  HEARTBEAT_WITH_PEERS_MS,
   type CursorPeer,
 } from "./cursor-protocol";
 import type { Identity } from "./types";
@@ -147,11 +148,22 @@ export async function editorPresence(
     );
   const guests = textPeers(prefix, data.clientId, "guest");
   const accepted = data.sequence > (previous?.sequence ?? -1);
+  // A heartbeat at the same place shortly after the last update: the
+  // others already draw this cursor and their own requests (every few
+  // seconds while they see someone) renew its lease from the table, so
+  // nothing goes out on the live channel. After a longer pause (alone, a
+  // newcomer arrives) it goes out again (#383: cursor events doubled the
+  // traffic on every editor's live channel).
+  const unchanged =
+    !!previous &&
+    !!data.cursor &&
+    previous.cursor === JSON.stringify(data.cursor) &&
+    now - previous.seen < CURSOR_LEASE_MS - HEARTBEAT_WITH_PEERS_MS;
   return {
     // What the others' editors draw of this cursor (lib/document-live.ts
-    // publishCursor()): every accepted update – a heartbeat renews the
-    // lease there; null when the cursor went (or was not there).
-    peer: !accepted
+    // publishCursor()): every accepted update that moved it or renews it
+    // after a pause; null when the cursor went (or was not there).
+    peer: !accepted || unchanged
       ? undefined
       : data.cursor
         ? ({ id: presenceId, userId: user.id, name: user.name.slice(0, 100), cursor: data.cursor, expiresInMs: CURSOR_LEASE_MS } satisfies CursorPeer)
