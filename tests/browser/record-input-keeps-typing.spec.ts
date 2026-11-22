@@ -104,17 +104,16 @@ test("a double-click on an empty multi-select cell ticks nothing", async ({ page
   const row = page.locator(".data-table tbody tr[data-row-id]").first();
   await expect(row).toBeVisible();
 
-  // The first click opens the options in the cell, under the pointer.
+  // The first click opens the option search in the cell, under the pointer (#423).
   const cell = row.locator("td").nth(3);
   await cell.dblclick({ position: { x: 16, y: 12 } });
-  const red = cell.getByRole("checkbox", { name: "Rot" });
-  await expect(red).toBeVisible();
-  await expect(red).not.toBeChecked();
-  await expect(cell.getByRole("checkbox", { name: "Grün" })).not.toBeChecked();
+  await expect(page.getByRole("combobox", { name: /^Etiketten: Option suchen/ })).toBeFocused();
+  const options = page.getByRole("listbox", { name: "Optionen von Etiketten" }).getByRole("option");
+  await expect(options).toHaveText(["Rot", "Grün"]);
   await page.waitForTimeout(500);
   expect((await rows())[0].cells.tags ?? []).toEqual([]);
 
-  // A click of its own still ticks an option.
-  await red.click();
+  // A click of its own still picks an option.
+  await options.filter({ hasText: "Rot" }).click();
   await expect.poll(async () => (await rows())[0].cells.tags, { timeout: 10000 }).toEqual(["Rot"]);
 });

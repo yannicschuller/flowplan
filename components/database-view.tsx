@@ -35,6 +35,7 @@ import { tagByName, useTagOptions } from "./tag-options-context";
 import { isTagField } from "@/lib/page-properties";
 import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRename } from "@/lib/option-renames";
 import { OPTION_COLORS, carryColors, choiceChipClass, colorOptions, hasOwnOptions, legacyOptionColor, optionColor, type OptionColor } from "@/lib/option-colors";
+import { foldOption } from "@/lib/option-search";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import { RecordPropertyList } from "./record-property-order";
@@ -2107,8 +2108,12 @@ export default function DatabaseView({
       </button>
     );
   }
-  async function updateCell(row: Row, field: Field, value: unknown) {
+  // `keepOpen`: the cell's editor stays (a multi-select's search, #423).
+  async function updateCell(row: Row, field: Field, value: unknown, keepOpen = false) {
     if (JSON.stringify(row.cells[field.id]) === JSON.stringify(value)) return;
+    // The cell's edit this change came from (the same cell opened again
+    // meanwhile is a new one and stays open).
+    const session = editingCell;
     const result = await act({
       action: "row.update",
       rowId: row.id,
@@ -2117,7 +2122,7 @@ export default function DatabaseView({
     });
     // Only the cell that was saved closes: on a slow connection another one
     // (the next cell, after the record's title) may be open by now.
-    if (result) setEditingCell((open) => (open?.rowId === row.id && open.fieldId === field.id ? null : open));
+    if (result && !keepOpen) setEditingCell((open) => (open && open === session && open.rowId === row.id && open.fieldId === field.id ? null : open));
     return result;
   }
   async function createRow(
@@ -2184,6 +2189,26 @@ export default function DatabaseView({
   function optionData(f: Field | undefined, value: string) {
     return optionsEditable && hasOwnOptions(f) && f!.options?.includes(value) ? { "data-option-field": f!.id, "data-option": value } : {};
   }
+  // An option typed into a select or multi-select that is not there yet
+  // (#423): added to the property as from the column header or a new board
+  // column, so colours, versions and the server's checks work as there.
+  async function createOption(fieldId: string, name: string) {
+    const current = databaseRef.current;
+    const f = current.fields.find((x) => x.id === fieldId);
+    if (!f || !hasOwnOptions(f) || f.options?.some((o) => foldOption(o) === foldOption(name))) return false;
+    const saved = await updateSchema(
+      current.fields.map((x) => (x.id === fieldId ? { ...x, options: [...(x.options || []), name] } : x)),
+      current.views,
+      undefined,
+      Math.max(current.version, expectedVersion.current),
+    );
+    return !!saved;
+  }
+  // The search of select and multi-select values; creating only for people
+  // who may change the properties.
+  const optionPicker = (f: Field) => ({
+    create: optionsEditable && hasOwnOptions(f) ? (name: string) => createOption(f.id, name) : undefined,
+  });
   function openFieldSettings(f: Field) {
     setFieldDraft({
       ...f,
@@ -3174,12 +3199,14 @@ export default function DatabaseView({
                   value={r.cells[f.id]}
                   members={members}
                   related={related}
-                  onChange={(v) => updateCell(r, f, v)}
+                  // A multi-select's search stays open for more (#423).
+                  onChange={(v) => updateCell(r, f, v, f.type === "multiselect" && !f.tagOptions)}
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
                   links
                   editing
                   formatted={isFormattedText(f, fields)}
+                  optionPicker={optionPicker(f)}
                   onCancel={() => setEditingCell(null)}
                 />
               </span>
@@ -4223,6 +4250,7 @@ export default function DatabaseView({
                         links
                         formatted={isFormattedText(f, fields)}
                         multiline
+                        optionPicker={optionPicker(f)}
                       />
                     ),
                   document: (
@@ -6316,7 +6344,7 @@ export default function DatabaseView({
                     save={(order) => act({ action: "database.recordLayout", layout: { ...recordLayout, order } })}
                     render={(f) => (
                     <Fragment key={`${selected.id}-${f.id}`}>
-                      <PropertyRow group={f.type === "files" || f.type === "date" || isTagField(f)}>
+                      <PropertyRow group={f.type === "files" || f.type === "date" || f.type === "select" || f.type === "multiselect" || isTagField(f)}>
                         <span>
                           {f.name}
                           {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
@@ -6347,6 +6375,7 @@ export default function DatabaseView({
                               links
                               formatted={isFormattedText(f, fields)}
                               multiline
+                              optionPicker={optionPicker(f)}
                               onChange={(v) => updateCell(selected, f, v)}
                               upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
                               files={data.files}

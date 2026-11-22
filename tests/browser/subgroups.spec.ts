@@ -173,9 +173,9 @@ test("tables and lists nest subgroups that collapse, create and move entries on 
     expect((await find(ids[1])).version).toBe(2);
   } else {
     await open.locator(".title-cell").filter({ hasText: "Beta" }).tap();
-    await entry
-      .getByRole("combobox", { name: "Priorität", exact: true })
-      .selectOption("Hoch");
+    // The option search (#423).
+    await entry.getByRole("button", { name: /^Priorität: / }).click();
+    await page.getByRole("listbox", { name: "Optionen von Priorität" }).getByRole("option", { name: "Hoch", exact: true }).click();
     await expect.poll(async () => (await find(ids[1])).cells.prio).toBe("Hoch");
     await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   }

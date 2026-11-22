@@ -1736,9 +1736,9 @@ test("manual row order supports desktop drag, mobile actions, independent views 
   } else {
     await page.locator(`[data-row-id="${ids[3]}"] .record-card`).click();
     const record = page.getByRole("dialog", { name: "Eintrag", exact: true });
-    await record
-      .getByRole("combobox", { name: "Status", exact: true })
-      .selectOption("Todo");
+    // The option search (#423).
+    await record.getByRole("button", { name: /^Status: / }).click();
+    await page.getByRole("listbox", { name: "Optionen von Status" }).getByRole("option", { name: "Todo", exact: true }).click();
     await expect
       .poll(
         async () =>
@@ -2849,9 +2849,9 @@ test("grouped tables and lists collapse independently, select visible rows and m
       .dragTo(done.locator(".database-group-header"));
   } else {
     await open.locator(".title-cell").filter({ hasText: "Alpha" }).tap();
-    await entry
-      .getByRole("combobox", { name: "Status", exact: true })
-      .selectOption("Done");
+    // The option search (#423).
+    await entry.getByRole("button", { name: /^Status: / }).click();
+    await page.getByRole("listbox", { name: "Optionen von Status" }).getByRole("option", { name: "Done", exact: true }).click();
     await expect
       .poll(
         async () =>

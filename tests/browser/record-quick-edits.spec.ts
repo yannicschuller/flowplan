@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect, type Locator, type Page, type Route } from "@playwright/test";
 
 // Issue #104: a new record, its title typed and right away the next fields
 // changed – on a slow connection a later change carried the record's version
@@ -126,18 +126,21 @@ test("a new record: title, then status and priority right away", async ({ page }
   await title.fill("test");
   const release = await server.staleReload();
   // Straight on to the status: the title saves on the way (blur).
-  const status = entry.getByLabel("Status", { exact: true });
+  // The values' buttons open the option search (#423).
+  const status = entry.getByRole("button", { name: /^Status: / });
+  const choose = async (button: Locator, field: string, option: string) => {
+    await button.click();
+    await page.getByRole("listbox", { name: `Optionen von ${field}` }).getByRole("option", { name: option, exact: true }).click();
+  };
   const reloaded = reloadedAfter(page, db.id, "status");
-  await status.focus();
-  await status.selectOption("In Arbeit");
+  await choose(status, "Status", "In Arbeit");
   await reloaded;
   await saved(page, db.id).toEqual([["test", "In Arbeit", undefined]]);
   // The late reload answers with the record from before the title.
   release();
   await page.waitForTimeout(300);
-  const priority = entry.getByLabel("Priorität", { exact: true });
-  await priority.focus();
-  await priority.selectOption("Hoch");
+  const priority = entry.getByRole("button", { name: /^Priorität: / });
+  await choose(priority, "Priorität", "Hoch");
 
   await saved(page, db.id).toEqual([["test", "In Arbeit", "Hoch"]]);
   await page.waitForTimeout(1000);
@@ -145,8 +148,8 @@ test("a new record: title, then status and priority right away", async ({ page }
   await expect(page.getByText("Datensatz wurde geändert")).toHaveCount(0);
   // What the dialog shows is what was saved.
   await expect(title).toHaveValue("test");
-  await expect(status).toHaveValue("In Arbeit");
-  await expect(priority).toHaveValue("Hoch");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit");
+  await expect(priority).toHaveAccessibleName("Priorität: Hoch");
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await page.reload();
@@ -154,8 +157,8 @@ test("a new record: title, then status and priority right away", async ({ page }
   await expect(page.locator(".database")).toBeVisible();
   if (!(await reopened.isVisible())) await page.getByRole("button", { name: "Eintrag öffnen: test" }).first().click();
   await expect(reopened.getByRole("textbox", { name: "Titel des Eintrags" })).toHaveValue("test");
-  await expect(reopened.getByLabel("Status", { exact: true })).toHaveValue("In Arbeit");
-  await expect(reopened.getByLabel("Priorität", { exact: true })).toHaveValue("Hoch");
+  await expect(reopened.getByRole("button", { name: "Status: In Arbeit" })).toBeVisible();
+  await expect(reopened.getByRole("button", { name: "Priorität: Hoch" })).toBeVisible();
 });
 
 test("a new record: title, then right away the table's cells", async ({ page }, info) => {
@@ -180,14 +183,19 @@ test("a new record: title, then right away the table's cells", async ({ page }, 
   const row = table.locator("tbody tr[data-row-id]").first();
   // The selection, the title, then status and priority.
   const reloaded = reloadedAfter(page, db.id, "status");
+  // The cell opens its option search: typed, Enter takes it (#423).
   await row.locator("td").nth(2).click();
-  await row.getByLabel("Status", { exact: true }).selectOption("Erledigt");
+  await expect(page.getByRole("combobox", { name: /^Status: Option suchen/ })).toBeFocused();
+  await page.keyboard.type("Erledigt");
+  await page.keyboard.press("Enter");
   await reloaded;
   await saved(page, db.id).toEqual([["Zeile", "Erledigt", undefined]]);
   release();
   await page.waitForTimeout(300);
   await row.locator("td").nth(3).click();
-  await row.getByLabel("Priorität", { exact: true }).selectOption("Niedrig");
+  await expect(page.getByRole("combobox", { name: /^Priorität: Option suchen/ })).toBeFocused();
+  await page.keyboard.type("Niedrig");
+  await page.keyboard.press("Enter");
 
   await saved(page, db.id).toEqual([["Zeile", "Erledigt", "Niedrig"]]);
   await page.waitForTimeout(1000);

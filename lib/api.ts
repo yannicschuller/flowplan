@@ -1,4 +1,5 @@
 import { withReadMemo } from "./read-memo";
+import { duplicateNewOptions } from "./option-search";
 import { sidebarPages, withKeptParts, workspaceMembers } from "./bootstrap-pages";
 import { noteRequestAction } from "./request-context";
 import { noteCommand } from "./metrics";
@@ -2599,6 +2600,14 @@ async function runCommand(
         if (fields.length > 80)
           throw new HttpError(400, "Zu viele Eigenschaften.");
         await validateFieldAccess(user, await write(), fields, d.fields);
+        // A new option written like another one of its property (case and
+        // accents aside) would be a second "Erledigt" (#423).
+        const twin = duplicateNewOptions(fields, d.fields);
+        if (twin)
+          throw new HttpError(
+            400,
+            `Die Option „${twin.option}“ gibt es in „${fields.find((f) => f.id === twin.field)?.name ?? ""}“ schon.`,
+          );
         // "Mit Uhrzeit" off is stored as `noTime: true` on date properties only (#327).
         cleanNoTime(fields);
         // AI properties: references, output types, who automatic updates run as.
