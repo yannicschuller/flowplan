@@ -584,7 +584,7 @@ export type View = {
   name: string;
   type: "table" | "board" | "calendar" | "gallery" | "list" | "timeline" | "form" | "chart" | "feed" | "sprint" | "study";
   chart?: {
-    kind: "bar" | "horizontal" | "line" | "donut";
+    kind: "bar" | "horizontal" | "line" | "donut" | "flow";
     xField?: string;
     yField?: string;
     aggregate: "count" | "sum" | "average" | "min" | "max";
@@ -605,6 +605,8 @@ export type View = {
     valueAxisLabel?: string;
     valueMin?: number;
     valueMax?: number;
+    targetField?: string;
+    unit?: string;
   };
   study?: {
     order?: "due" | "random";
@@ -2866,7 +2868,7 @@ export type CommandDatabaseUpdate = {
     name: string;
     type: "table" | "board" | "calendar" | "gallery" | "list" | "timeline" | "form" | "chart" | "feed" | "sprint" | "study";
     chart?: {
-      kind: "bar" | "horizontal" | "line" | "donut";
+      kind: "bar" | "horizontal" | "line" | "donut" | "flow";
       xField?: string;
       yField?: string;
       aggregate: "count" | "sum" | "average" | "min" | "max";
@@ -2887,6 +2889,8 @@ export type CommandDatabaseUpdate = {
       valueAxisLabel?: string;
       valueMin?: number;
       valueMax?: number;
+      targetField?: string;
+      unit?: string;
     };
     study?: {
       order?: "due" | "random";

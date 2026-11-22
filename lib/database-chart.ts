@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { cellText } from "./cell-text";
+import { MAX_FLOW_UNIT, cleanFlowUnit, flowGraph, type FlowGraph } from "./flow-diagram";
 import type { Field, Row, User } from "./types";
 
 export const chartSchema = z.object({
-  kind: z.enum(["bar", "horizontal", "line", "donut"]),
+  kind: z.enum(["bar", "horizontal", "line", "donut", "flow"]),
   xField: z.string().min(1).max(500).optional(),
   yField: z.string().min(1).max(500).optional(),
   aggregate: z.enum(["count", "sum", "average", "min", "max"]),
@@ -33,6 +34,10 @@ export const chartSchema = z.object({
   valueAxisLabel: z.string().max(80).optional(),
   valueMin: z.number().finite().optional(),
   valueMax: z.number().finite().optional(),
+  // Flow diagrams (#427): every record flows from its xField value to its
+  // targetField value, by its amount (count or sum of yField).
+  targetField: z.string().min(1).max(500).optional(),
+  unit: z.string().max(MAX_FLOW_UNIT).optional(),
 });
 // The value range of a chart: configured bounds when valid, otherwise from
 // the data including zero. Values outside are clipped to the plot.
@@ -123,6 +128,7 @@ export const chartKinds = {
   horizontal: "Balken",
   line: "Linie",
   donut: "Donut",
+  flow: "Flussdiagramm",
 };
 export const chartAggregates = {
   count: "Anzahl Einträge",
@@ -152,6 +158,7 @@ export function chartConfigError(
   config: ChartConfig,
   fields: Field[],
 ): string | null {
+  if (config.kind === "flow") return flowConfigError(config, fields);
   if (
     config.xField &&
     !fields.some((f) => f.id === config.xField && chartGroupField(f))
@@ -174,6 +181,18 @@ export function chartConfigError(
     if (config.measures.some((m) => !fields.some((f) => f.id === m.field && chartNumberField(f))))
       return "Weitere Werte brauchen Zahl-, Formel- oder Rollup-Eigenschaften.";
   }
+  return null;
+}
+function flowConfigError(config: ChartConfig, fields: Field[]): string | null {
+  const usable = (id: string | undefined) => !!id && fields.some((f) => f.id === id && chartGroupField(f));
+  if (!usable(config.xField))
+    return "Ein Flussdiagramm braucht eine Eigenschaft für die Quelle. Bitte das Diagramm konfigurieren.";
+  if (!usable(config.targetField) || config.targetField === config.xField)
+    return "Ein Flussdiagramm braucht eine Eigenschaft für das Ziel, die sich von der Quelle unterscheidet.";
+  if (config.aggregate !== "count" && config.aggregate !== "sum")
+    return "Flussdiagramme zählen Einträge oder summieren einen Betrag.";
+  if (config.aggregate === "sum" && !fields.some((f) => f.id === config.yField && chartNumberField(f)))
+    return "Für den Betrag eine Zahl-, Formel- oder Rollup-Eigenschaft wählen.";
   return null;
 }
 export type ChartPoint = {
@@ -427,3 +446,43 @@ export function chartSeries(
     values,
   };
 }
+
+// A flow diagram from records (#427): every record adds its amount (1 when
+// counting, else its yField value) to the flow from its source value to its
+// target value; multi-value cells give one flow per combination. Equal
+// values in both properties are one node, so flows can be chained.
+export type ChartFlow = { source: string; target: string; value: number; rows: Row[] };
+export function chartFlows(
+  rows: Row[],
+  fields: Field[],
+  config: ChartConfig,
+  related: Record<string, Row[]> = {},
+  members: Pick<User, "id" | "name">[] = [],
+): { flows: ChartFlow[]; graph: FlowGraph & { dropped: number } } {
+  const empty = { flows: [], graph: flowGraph([]) };
+  if (config.kind !== "flow" || chartConfigError(config, fields)) return empty;
+  const labels = (fieldId: string | undefined) => {
+    const byRow = new Map<string, string[]>();
+    for (const group of chartGroups(rows, fields.find((f) => f.id === fieldId), config, config.includeEmpty, related, members))
+      for (const row of group.rows) byRow.set(row.id, [...(byRow.get(row.id) || []), group.label]);
+    return byRow;
+  };
+  const sources = labels(config.xField),
+    targets = labels(config.targetField);
+  const pairs = new Map<string, ChartFlow>();
+  for (const row of rows) {
+    const amount = config.aggregate === "count" ? 1 : numeric(row.cells[config.yField || ""]);
+    if (amount === null) continue;
+    for (const source of sources.get(row.id) || [])
+      for (const target of targets.get(row.id) || []) {
+        const key = JSON.stringify([source, target]);
+        if (!pairs.has(key)) pairs.set(key, { source, target, value: 0, rows: [] });
+        const pair = pairs.get(key)!;
+        pair.value += amount;
+        pair.rows.push(row);
+      }
+  }
+  const flows = [...pairs.values()];
+  return { flows, graph: flowGraph(flows) };
+}
+export const chartFlowUnit = (config: ChartConfig) => cleanFlowUnit(config.unit);

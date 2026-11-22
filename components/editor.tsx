@@ -21,6 +21,7 @@ import dynamic from "next/dynamic";
 const ImageAnnotator = dynamic(() => import("./image-annotator").then((m) => m.ImageAnnotator), { ssr: false });
 const OcclusionEditor = dynamic(() => import("./study/occlusion-editor").then((m) => m.OcclusionEditor), { ssr: false });
 import { FunctionPlotView } from "./function-plot-view";
+import { FlowDiagramView, openNextFlowDiagram } from "./flow-diagram-view";
 import { MetricView } from "./metric-view";
 import { TicketRefs } from "@/lib/ticket-ref-plugin";
 import { AutoLinkRules } from "@/lib/auto-link-plugin";
@@ -209,6 +210,7 @@ import {
   ChartLine,
   PlayCircle,
   FlowArrow,
+  ArrowsSplit,
   UsersThree,
   Note,
   Sparkle,
@@ -959,6 +961,7 @@ export default function DocumentEditor({
         mermaidNodeView(setDiagram),
         drawioNodeView(setDrawio),
         FunctionPlotView,
+        FlowDiagramView,
         MetricView.configure({ pageId }),
         PluginBlockView.configure({ pageId, title: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.title || "" }),
         // The workflow button (#168): starts a workflow with a manual trigger.
@@ -2169,6 +2172,18 @@ export default function DocumentEditor({
       description: t("Abläufe, Sequenzen und Beziehungen", "Flows, sequences and relationships"),
       icon: Code,
       run: () => setDiagram({ source: DEFAULT_DIAGRAM }),
+    },
+    {
+      id: "flow",
+      group: "media",
+      name: t("Flussdiagramm", "Flow diagram"),
+      keywords: ["sankey", "fluss", "flow", "geldfluss", "budget", "cashflow", "energiefluss", "diagramm", "diagram"],
+      description: t("Beträge, die sich aufteilen – als Sankey-Diagramm", "Amounts that split up – as a Sankey diagram"),
+      icon: ArrowsSplit,
+      run: () => {
+        openNextFlowDiagram();
+        editor?.chain().focus().insertContent({ type: "flowDiagram", attrs: { source: "", unit: "" } }).run();
+      },
     },
     ...(drawioEditor()
       ? [

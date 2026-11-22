@@ -51,6 +51,7 @@ export function documentConfluence(html: string, context: TextExportContext): st
         case "mathBlock":
           return codeMacro(String(node.attrs.expression || ""), null);
         case "mermaidBlock":
+        case "flowDiagram":
           return codeMacro(String(node.attrs.source || ""), null);
         case "drawioBlock":
           return placeholder(ct("draw.io-Diagramm (nur in Flowplan)", "draw.io diagram (only in Flowplan)"));

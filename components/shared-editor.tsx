@@ -49,6 +49,7 @@ import {
   DiagramEditorDialog,
   type DiagramTarget,
 } from "./mermaid-editor";
+import { FlowDiagramView } from "./flow-diagram-view";
 import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts } from "@/lib/block-shortcuts";
@@ -107,10 +108,11 @@ export default function SharedEditor({
       PageLinkIcons,
       mermaidNodeView(setDiagram),
       ...mathNodeViews(setMath),
+      FlowDiagramView,
       ...documentExtensions
         .filter(
           (e) =>
-            !["mathBlock", "mathInline", "codeBlock", "mermaidBlock"].includes(
+            !["mathBlock", "mathInline", "codeBlock", "mermaidBlock", "flowDiagram"].includes(
               e.name,
             ),
         )

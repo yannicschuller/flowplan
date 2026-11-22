@@ -23527,6 +23527,117 @@ h3 .block-reactions {
   color: var(--text);
 }
 
+/* ---------- Flow diagrams (lib/flow-diagram.ts, #427) ---------- */
+.flow-diagram {
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.flow-stage {
+  line-height: 0;
+}
+.flow-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.flow-labels {
+  fill: var(--text);
+  stroke: var(--bg);
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.chart-flow {
+  min-width: 520px;
+  padding: 4px 0;
+}
+.chart-flow .flow-svg {
+  max-height: 640px;
+}
+.flow-hint {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+}
+.flow-link {
+  transition: fill-opacity 0.15s;
+}
+.flow-link:hover {
+  fill-opacity: 0.6;
+}
+[data-theme="dark"] .flow-link {
+  fill-opacity: 0.5;
+}
+[data-theme="dark"] .flow-link:hover {
+  fill-opacity: 0.72;
+}
+.flow-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.flow-controls:empty {
+  display: none;
+}
+.flow-toggle {
+  justify-self: start;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.flow-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.flow-editor {
+  display: grid;
+  gap: 8px;
+}
+.flow-source,
+.flow-unit {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: var(--secondary);
+  font: 600 12.5px var(--font-ui);
+}
+.flow-source textarea,
+.flow-unit input {
+  font-variant-ligatures: none;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 var(--font-mono);
+}
+.flow-source textarea {
+  resize: vertical;
+}
+.flow-unit input {
+  max-width: 160px;
+}
+.flow-errors {
+  margin: 0;
+  padding: 6px 10px 6px 26px;
+  border-radius: 7px;
+  background: var(--hover);
+  color: var(--signal);
+  font-size: 12.5px;
+}
+.flow-errors[hidden] {
+  display: none;
+}
+.flow-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* ---------- Dashboard metrics (components/metric-view.ts) ---------- */
 .metric-block {
   margin: 8px 0;
@@ -32138,7 +32249,8 @@ html.hide-keyboard-fab-shown .modal {
   max-width: 100%;
 }
 .presentation-document [data-mermaid] svg,
-.presentation-document [data-function-plot] svg {
+.presentation-document [data-function-plot] svg,
+.presentation-document [data-flow-diagram] svg {
   max-width: 100%;
   max-height: 520px;
 }

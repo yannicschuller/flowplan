@@ -306,6 +306,8 @@ export function documentJira(html: string, context: TextExportContext): string {
         return `{noformat}\n${macroBody(String(node.attrs.expression || ""), "noformat")}\n{noformat}`;
       case "mermaidBlock":
         return `{code}\n${macroBody(String(node.attrs.source || ""), "code")}\n{code}`;
+      case "flowDiagram":
+        return `{code}\n${macroBody(String(node.attrs.source || ""), "code")}\n{code}`;
       case "functionPlot":
         return placeholder(ct("Funktionsgraph (nur in Flowplan)", "Function plot (only in Flowplan)"));
       case "metricBlock":
