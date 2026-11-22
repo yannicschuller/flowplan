@@ -124,12 +124,13 @@ test("the three levels: all, only breaking changes (and only those), never", () 
   for (const v of [null, undefined, "", "some", 1]) assert.equal(pref.updateNotesLevelOf(v), "all");
 });
 
-test("texts in the reader's language; French and Chinese fall back to English", () => {
+test("texts in the reader's language; French and Chinese fall back to English, Russian reads English", () => {
   const i = { de: "Neu", en: "New", fr: "Nouveau" };
   assert.equal(pref.noteText(i, "de"), "Neu");
   assert.equal(pref.noteText(i, "en-US"), "New");
   assert.equal(pref.noteText(i, "fr"), "Nouveau");
   assert.equal(pref.noteText(i, "zh"), "New");
+  assert.equal(pref.noteText(i, "ru"), "New");
 });
 
 async function account(name: string, used = true) {

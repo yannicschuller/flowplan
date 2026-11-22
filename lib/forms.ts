@@ -333,7 +333,7 @@ export async function confirmFormAnswer(
     const value = cells[f.id];
     if (f.type === "files") {
       const count = Array.isArray(value) ? value.length : 0;
-      return count ? [{ question: f.name, answer: t(`${count} ${count === 1 ? "Datei" : "Dateien"}`, `${count} ${count === 1 ? "file" : "files"}`) }] : [];
+      return count ? [{ question: f.name, answer: count === 1 ? t("1 Datei", "1 file") : t(`${count} Dateien`, `${count} files`) }] : [];
     }
     const text = answerText(value);
     return text ? [{ question: f.name, answer: text.slice(0, 2000) }] : [];

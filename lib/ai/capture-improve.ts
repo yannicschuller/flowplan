@@ -39,7 +39,7 @@ const input = z.object({
   pageId: z.uuid(),
   text: z.string().max(IMPROVE_LIMITS.text),
   today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  locale: z.enum(["de", "en", "fr", "zh"]).default("de"),
+  locale: z.enum(["de", "en", "fr", "zh", "ru"]).default("de"),
   device: z.boolean().default(false),
   // The Mac's answer, to be checked.
   answer: z.string().max(IMPROVE_LIMITS.text * 2).optional(),

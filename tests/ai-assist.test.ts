@@ -40,6 +40,9 @@ test("language: German, English and French text are recognised; short or mixed t
   assert.equal(prompts.guessLanguage("Ceci est une note sur le plan et nous sommes prêts pour la suite."), "fr");
   assert.equal(prompts.guessLanguage("Okay"), null);
   assert.equal(prompts.guessLanguage("12 345 678"), null);
+  // Russian: mostly Cyrillic; Ukrainian (і, ї, є, ґ) is not taken for Russian.
+  assert.equal(prompts.guessLanguage("Это короткая заметка о плане на неделю, и мы готовы продолжать."), "ru");
+  assert.equal(prompts.guessLanguage("Це коротка нотатка про план на тиждень, і ми готові продовжувати."), null);
   // Translating: German to English, everything else to German.
   assert.equal(prompts.defaultTranslateTarget("Wir treffen uns morgen und besprechen den Plan.", "en"), "en");
   assert.equal(prompts.defaultTranslateTarget("We meet tomorrow and discuss the plan with the team.", "de"), "de");
@@ -100,6 +103,10 @@ test("summary prompts: three sections in the content's language; map and merge p
   assert.match(english.system!, /records of a database/);
   assert.match(english.messages[0].content, /These are 3 of 9 records/);
   assert.match(prompts.summaryPrompt({ kind: "transcript", content: "x", locale: "de" }).system!, /speech recognition/);
+  // A Russian interface: unclear content is summarised in Russian, with Russian headings.
+  const russian = prompts.summaryPrompt({ kind: "page", content: "x", locale: "ru" }).system!;
+  assert.match(russian, /Answer in Russian/);
+  assert.match(russian, /## Краткое содержание/);
   assert.match(prompts.summaryPrompt({ kind: "page", content: "x", locale: "de", partial: true }).system!, /summaries of the consecutive parts/);
   const part = prompts.chunkSummaryPrompt({ kind: "page", content: "abc", part: 2, parts: 5, language: "de" });
   assert.match(part.system!, /part 2 of 5[\s\S]*open task[\s\S]*Answer in German/);

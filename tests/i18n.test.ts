@@ -12,6 +12,8 @@ test("the language: the reader's choice first, then the browser, English otherwi
   assert.equal(pickLocale("fr", "de-DE"), "fr");
   assert.equal(pickLocale(undefined, "en;q=0.5,de;q=0.9"), "de");
   assert.equal(pickLocale("xx", null), "en");
+  assert.equal(pickLocale(undefined, "ru-RU,ru;q=0.9,en;q=0.8"), "ru");
+  assert.equal(pickLocale("ru", "de-DE"), "ru");
   assert.equal(translate("en")("Anmelden", "Sign in"), "Sign in");
 });
 
@@ -35,7 +37,7 @@ test("US English: chosen for US browsers, English texts with US dates and Sunday
   assert.equal(short("en-US"), "11/6/2026");
   assert.equal(short("en"), "06/11/2026");
   assert.equal(weekStart("en-US"), "sunday");
-  for (const locale of ["de", "en", "fr", "zh"] as const) assert.equal(weekStart(locale), "monday", locale);
+  for (const locale of ["de", "en", "fr", "zh", "ru"] as const) assert.equal(weekStart(locale), "monday", locale);
 });
 
 test("server messages have an English version, with values kept", async () => {
@@ -89,6 +91,20 @@ test("further languages come from catalogues keyed by the English text", async (
   const { localizedMessage } = await import("../lib/i18n-errors");
   assert.equal(localizedMessage("Seite nicht gefunden.", "fr"), "Page introuvable.");
   assert.equal(localizedMessage("Eigenschaft „Status“ wurde nicht gefunden.", "fr"), "La propriété « Status » est introuvable.");
+});
+
+test("Russian is offered: its catalogue, ru-RU dates, the English docs", async () => {
+  const { LOCALES, LANGUAGES, IN_TRANSLATION, docsLanguage, isLocale } = await import("../lib/i18n");
+  assert.ok(LOCALES.includes("ru") && isLocale("ru"));
+  assert.equal(LANGUAGES.ru.name, "Русский");
+  assert.equal(localeTag("ru"), "ru-RU");
+  assert.equal(textLocale("ru"), "ru");
+  assert.deepEqual([...IN_TRANSLATION], []);
+  assert.equal(docsLanguage("ru"), "en");
+  const t = translate("ru");
+  assert.equal(t("Anmelden", "Sign in"), "Войти");
+  const { localizedMessage } = await import("../lib/i18n-errors");
+  assert.equal(localizedMessage("Seite nicht gefunden.", "ru"), "Страница не найдена.");
 });
 
 test("catalogues keep the placeholders of their texts (missing translations are only reported)", async () => {

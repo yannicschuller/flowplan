@@ -11,7 +11,7 @@ test("the language menu on the sign-in page switches the language", async ({ pag
   await expect(trigger).toContainText("DE");
   await trigger.click();
   const menu = page.getByRole("menu");
-  await expect(menu.getByRole("menuitemradio")).toHaveCount(5);
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(6);
   await expect(menu.getByRole("menuitemradio", { name: "Deutsch" })).toHaveAttribute("aria-checked", "true");
   await page.waitForTimeout(400); // the menu fades in
   await page.screenshot({ path: `test-results/language-menu/${info.project.name}-login.png` });
@@ -44,7 +44,7 @@ test("the language list in the settings shows flags and the automatic choice", a
   await page.goto("/#settings/appearance");
   const select = page.getByRole("combobox", { name: "Sprache" });
   await expect(select).toBeAttached({ timeout: 60_000 });
-  await expect(select.locator("option")).toHaveText(["🌐 Automatisch (folgt dem Browser)", "🇩🇪 Deutsch", "🇬🇧 English", "🇺🇸 English (US)", "🇫🇷 Français", "🇨🇳 简体中文"]);
+  await expect(select.locator("option")).toHaveText(["🌐 Automatisch (folgt dem Browser)", "🇩🇪 Deutsch", "🇬🇧 English", "🇺🇸 English (US)", "🇫🇷 Français", "🇨🇳 简体中文", "🇷🇺 Русский"]);
   await expect(select).toHaveValue("");
   await select.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `test-results/language-menu/${info.project.name}-settings.png` });
@@ -55,4 +55,34 @@ test("the language list in the settings shows flags and the automatic choice", a
     await page.screenshot({ path: `test-results/language-menu/${info.project.name}-settings-open.png` });
     await page.keyboard.press("Escape");
   }
+});
+
+// Russian (#422): chosen in Settings → Appearance and language, the whole
+// interface follows; back to automatic at the end.
+test("Русский in the settings switches the interface to Russian", async ({ page }, info) => {
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  await page.goto("/#settings/appearance");
+  const select = page.getByRole("combobox", { name: "Sprache" });
+  await expect(select).toBeAttached({ timeout: 60_000 });
+  await page.locator(".language-select").click();
+  await page.locator(".fp-select-list").getByText("🇷🇺 Русский").click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru", { timeout: 30_000 });
+  const russian = page.getByRole("combobox", { name: "Язык" });
+  await expect(russian).toBeAttached({ timeout: 30_000 });
+  await expect(russian).toHaveValue("ru");
+  await expect(page.getByText("Язык и внешний вид").first()).toBeVisible();
+  await page.screenshot({ path: `test-results/language-menu/${info.project.name}-settings-ru.png` });
+  // The workspace in Russian.
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru", { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Поиск" }).first()).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `test-results/language-menu/${info.project.name}-workspace-ru.png` });
+  // Back to automatic.
+  await page.goto("/#settings/appearance");
+  await expect(russian).toBeAttached({ timeout: 60_000 });
+  await page.locator(".language-select").click();
+  await page.locator(".fp-select-list").getByText(/^🌐/).click();
+  await expect(page.locator("html")).not.toHaveAttribute("lang", "ru", { timeout: 30_000 });
 });

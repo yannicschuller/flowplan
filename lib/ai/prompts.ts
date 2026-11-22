@@ -10,10 +10,10 @@
 import type { PromptLink } from "./links";
 import type { AiRunInput } from "./run";
 
-export type AiLocale = "de" | "en" | "fr" | "zh";
+export type AiLocale = "de" | "en" | "fr" | "zh" | "ru";
 // Languages the answers are written in (a superset of the interface's: any
 // WRITE_LANGUAGES entry may be the language of the text being worked on).
-export type TextLanguage = "de" | "en" | "fr" | "zh";
+export type TextLanguage = "de" | "en" | "fr" | "zh" | "ru";
 
 // i18n-table: 2 4 – [id, German, English, German hint, English hint]
 export const WRITE_ACTIONS = [
@@ -56,6 +56,7 @@ export const WRITE_LANGUAGES = [
   ["nl", "Niederländisch", "Dutch"],
   ["pl", "Polnisch", "Polish"],
   ["pt", "Portugiesisch", "Portuguese"],
+  ["ru", "Russisch", "Russian"],
   ["sv", "Schwedisch", "Swedish"],
   ["tr", "Türkisch", "Turkish"],
   ["uk", "Ukrainisch", "Ukrainian"],
@@ -72,7 +73,7 @@ const STOPWORDS: Record<"de" | "en" | "fr", Set<string>> = {
   en: new Set("the and is are not a an with for on i we you it to of in this that be will can or but as at by from have has was were if what which our your there".split(" ")),
   fr: new Set("le la les et est pas un une des du de avec pour sur je nous vous il elle ce cette qui que dans au aux sont être ou mais comme par plus se".split(" ")),
 };
-// "de", "en", "fr" or "zh" when the text clearly is in that language, else
+// "de", "en", "fr", "zh" or "ru" when the text clearly is in that language, else
 // null (too short, mixed or another language: the model then keeps the text's
 // language by itself).
 export function guessLanguage(text: string): TextLanguage | null {
@@ -81,6 +82,9 @@ export function guessLanguage(text: string): TextLanguage | null {
   const cjk = (text.match(/[㐀-鿿]/g) || []).length;
   const letters = (text.match(/\p{L}/gu) || []).length;
   if (cjk >= 10 && cjk / letters > 0.2) return "zh";
+  // Mostly Cyrillic and none of the letters only Ukrainian has (і ї є ґ).
+  const cyrillic = (text.match(/[\u0400-\u04ff]/g) || []).length;
+  if (cyrillic >= 10 && cyrillic / letters > 0.5) return /[іїєґ]/i.test(text) ? null : "ru";
   const score = { de: 0, en: 0, fr: 0 };
   for (const word of words.slice(0, 600))
     for (const lang of ["de", "en", "fr"] as const) if (STOPWORDS[lang].has(word)) score[lang]++;
@@ -270,6 +274,7 @@ export const SUMMARY_HEADINGS: Record<TextLanguage, { summary: string; points: s
   en: { summary: "Summary", points: "Key points", tasks: "Open tasks", none: "None" },
   fr: { summary: "Résumé", points: "Points clés", tasks: "Tâches ouvertes", none: "Aucune" },
   zh: { summary: "总结", points: "要点", tasks: "待办事项", none: "无" },
+  ru: { summary: "Краткое содержание", points: "Ключевые моменты", tasks: "Открытые задачи", none: "Нет" },
 };
 
 const KIND_TEXT: Record<SummaryKind, string> = {
@@ -353,6 +358,7 @@ export const JOURNAL_SUMMARY_HEADINGS: Record<TextLanguage, { highlights: string
   en: { highlights: "Highlights & achievements", overview: "Chronological overview", open: "Open items & follow-ups", none: "None" },
   fr: { highlights: "Points forts et réussites", overview: "Aperçu chronologique", open: "Points ouverts et suites à donner", none: "Aucun" },
   zh: { highlights: "亮点与成就", overview: "时间线概览", open: "待办与后续", none: "无" },
+  ru: { highlights: "Главное и достижения", overview: "Хронологический обзор", open: "Открытые вопросы и дальнейшие шаги", none: "Нет" },
 };
 
 export function journalSummaryPrompt(request: { content: string; title?: string; period: string; language: TextLanguage; partial?: boolean; note?: string }): AiRunInput {

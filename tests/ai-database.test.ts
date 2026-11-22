@@ -80,6 +80,8 @@ test("prompt templates: the content reference in every UI language", async () =>
   assert.equal(isContentReferenceName("内容"), true);
   assert.equal((await renderAiPrompt("用一句话总结：{内容}", base, {}, { id: "r" }, context)).text, "用一句话总结：Inhalt des Eintrags");
   assert.equal((await renderAiPrompt("{ CONTENU } {content}", base, {}, { id: "r" }, context)).text, "Inhalt des Eintrags Inhalt des Eintrags");
+  // Russian, any case.
+  assert.equal((await renderAiPrompt("Кратко: {содержимое}", base, {}, { id: "r" }, context)).text, "Кратко: Inhalt des Eintrags");
   // A property with that name wins over the page content.
   const named: Field[] = [...base, { id: "nf", name: "内容", type: "text" }];
   assert.equal((await renderAiPrompt("{内容}", named, { nf: "属性" }, { id: "r" }, context)).text, "属性");

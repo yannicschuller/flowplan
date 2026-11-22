@@ -148,7 +148,7 @@ test("Matrix: HTML subset and plain body; Teams: Adaptive Card; Discord: embed",
 
 test("every event has a default template and a sample that renders in every format", () => {
   for (const event of [...templates.noticeEvents, "test" as const])
-    for (const lang of ["de", "en", "fr"] as const) {
+    for (const lang of ["de", "en", "fr", "zh", "ru"] as const) {
       const sample = sampleNotice(event, lang);
       for (const format of ["slack", "matrix", "teams", "discord"] as const) {
         const json = JSON.stringify(templates.renderPayload(format, sample, { config: { language: lang } }));

@@ -34,7 +34,7 @@ function display(field: Field, value: unknown, locale: Locale) {
     return value.map((item: { text?: string; done?: boolean }) => `${item.done ? "☑" : "☐"} ${item.text || ""}`).join("\n");
   if (field.type === "files") {
     const count = Array.isArray(value) ? value.length : 0;
-    return count ? translate(locale)(`${count} ${count === 1 ? "Datei" : "Dateien"}`, `${count} ${count === 1 ? "file" : "files"}`) : "";
+    return count === 1 ? translate(locale)("1 Datei", "1 file") : count ? translate(locale)(`${count} Dateien`, `${count} files`) : "";
   }
   return cellText(value);
 }

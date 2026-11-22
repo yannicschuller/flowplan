@@ -2,8 +2,8 @@
 // a rule's text may hold and how one goes into it. The rules fill them as
 // record templates do (lib/record-placeholders.ts, lib/record-template-
 // apply.ts): "{{Name}}" is the property of that name (any case, spaces
-// squeezed), the built-ins answer to their German, English and French
-// names. A property whose name cannot stand between braces (braces or
+// squeezed), the built-ins answer to their German, English, French and
+// Russian names. A property whose name cannot stand between braces (braces or
 // angle brackets in it, a line break, over 120 characters) or that
 // another property's name hides goes in by id ("{{field:abc}}"), which the
 // resolver reads as well. Names are what the rule stores: a property
@@ -33,10 +33,10 @@ export function fieldToken(field: Field, fields: Field[]): string | null {
 
 // A built-in in the reader's language where a property of that name does
 // not hide it, else in one of the other languages; null when all are hidden.
-export function builtinToken(key: Builtin, fields: Field[], lang: "de" | "en" | "fr"): string | null {
+export function builtinToken(key: Builtin, fields: Field[], lang: BuiltinLang): string | null {
   const entry = BUILTINS.find((b) => b.key === key);
   if (!entry) return null;
-  for (const name of new Set([entry.token[lang], entry.token.de, entry.token.en, entry.token.fr])) {
+  for (const name of new Set([entry.token[lang], entry.token.de, entry.token.en, entry.token.fr, entry.token.ru])) {
     const target = resolvesTo(name, fields);
     if (target && "builtin" in target && target.builtin === key) return `{{${name}}}`;
   }
@@ -47,7 +47,7 @@ export function builtinToken(key: Builtin, fields: Field[], lang: "de" | "en" | 
 // only some people may read – they stay empty, as in record templates),
 // then the built-ins. A scheduled rule has no record: only the date, the
 // time, the person who saved it and the database's name have a value.
-export function rulePlaceholders(fields: Field[], options: { scheduled: boolean; lang: "de" | "en" | "fr" }): RulePlaceholder[] {
+export function rulePlaceholders(fields: Field[], options: { scheduled: boolean; lang: BuiltinLang }): RulePlaceholder[] {
   const out: RulePlaceholder[] = [];
   if (!options.scheduled)
     for (const field of fields) {
@@ -64,7 +64,8 @@ export function rulePlaceholders(fields: Field[], options: { scheduled: boolean;
 }
 
 // The picker's language for the built-ins (Chinese and others: English).
-export const builtinLang = (locale: string): "de" | "en" | "fr" => (locale.startsWith("de") ? "de" : locale.startsWith("fr") ? "fr" : "en");
+export type BuiltinLang = "de" | "en" | "fr" | "ru";
+export const builtinLang = (locale: string): BuiltinLang => (locale.startsWith("de") ? "de" : locale.startsWith("fr") ? "fr" : locale.startsWith("ru") ? "ru" : "en");
 
 // Typing "{{" opens the picker (not a third brace).
 export function opensPicker(before: string, after: string, caret: number) {

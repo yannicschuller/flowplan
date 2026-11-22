@@ -52,7 +52,7 @@ export function useAppOfflineOffer(userId: string, workspaceId: string, guest: b
     );
   if (!outcome) return null;
   const n = outcome.pages ?? 0;
-  const pagesText = t(`${n} ${n === 1 ? "Seite" : "Seiten"}`, `${n} ${n === 1 ? "page" : "pages"}`);
+  const pagesText = n === 1 ? t("1 Seite", "1 page") : t(`${n} Seiten`, `${n} pages`);
   return (
     <div className="offline-refresh-status" role="status">
       {outcome.result === "signed-out"

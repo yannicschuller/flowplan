@@ -335,7 +335,12 @@ export default function DataSection() {
                     await onRefresh();
                     report("restore", {
                       tone: "ok",
-                      text: t(`${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`, `${result.pages} ${result.pages === 1 ? "page" : "pages"} and ${result.files} ${result.files === 1 ? "file" : "files"} imported.${result.omittedRelations ? ` ${result.omittedRelations} links to records not included could not be kept.` : ""}`) + omittedNote(result.omittedSettings),
+                      text:
+                        t(`Importiert – Seiten: ${result.pages}, Dateien: ${result.files}.`, `Imported – pages: ${result.pages}, files: ${result.files}.`) +
+                        (result.omittedRelations
+                          ? " " + t(`Verknüpfungen zu nicht enthaltenen Einträgen, die nicht übernommen werden konnten: ${result.omittedRelations}.`, `Links to records not included that could not be kept: ${result.omittedRelations}.`)
+                          : "") +
+                        omittedNote(result.omittedSettings),
                     });
                   } catch (e) {
                     fail("restore")(e);

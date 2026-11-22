@@ -188,9 +188,11 @@ export function CommentHub({
                   className="text-button"
                   href={pageLocationHash({ pageId, threadId: item.thread.id })}
                 >
-                  {item.thread.messageCount > 1
-                    ? t(`${item.thread.messageCount - 1} ${item.thread.messageCount === 2 ? "Antwort" : "Antworten"} · Zur Textstelle`, `${item.thread.messageCount - 1} ${item.thread.messageCount === 2 ? "reply" : "replies"} · Go to passage`)
-                    : t("Zur Textstelle und antworten", "Go to passage and reply")}
+                  {item.thread.messageCount === 2
+                    ? t("1 Antwort · Zur Textstelle", "1 reply · Go to passage")
+                    : item.thread.messageCount > 2
+                      ? t(`${item.thread.messageCount - 1} Antworten · Zur Textstelle`, `${item.thread.messageCount - 1} replies · Go to passage`)
+                      : t("Zur Textstelle und antworten", "Go to passage and reply")}
                 </a>
                 {item.thread.canResolve && (
                   <button

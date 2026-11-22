@@ -219,6 +219,8 @@ test("'Leere Tage entfernen' previews conservatively and moves only those days t
 test("@heute, @gestern and @2026-10-27 link to the journal's day", async () => {
   assert.deepEqual(journalDayQuery("heu", "2026-10-27", "2026-10-26"), { label: "today", date: "2026-10-27" });
   assert.deepEqual(journalDayQuery("@today", "2026-10-27", "2026-10-26"), { label: "today", date: "2026-10-27" });
+  assert.deepEqual(journalDayQuery("Сего", "2026-10-27", "2026-10-26"), { label: "today", date: "2026-10-27" });
+  assert.deepEqual(journalDayQuery("вчера", "2026-10-27", "2026-10-26"), { label: "yesterday", date: "2026-10-26" });
   assert.deepEqual(journalDayQuery("Gestern", "2026-10-27", "2026-10-26"), { label: "yesterday", date: "2026-10-26" });
   assert.deepEqual(journalDayQuery("2026-10-27"), { label: "date", date: "2026-10-27" });
   assert.equal(journalDayQuery("2026-02-30"), null);

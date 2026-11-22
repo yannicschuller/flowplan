@@ -8,7 +8,7 @@ export function localDate(offset = 0, now = new Date()) {
   date.setDate(date.getDate() + offset);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
-// Today and yesterday in German, English and French – also while still
+// Today and yesterday in German, English, French and Russian – also while still
 // being typed ("heu") – or an ISO date.
 export function journalDayQuery(term: string, today = localDate(), yesterday = localDate(-1)) {
   const word = term.trim().replace(/^@/, "").toLocaleLowerCase();
@@ -18,7 +18,7 @@ export function journalDayQuery(term: string, today = localDate(), yesterday = l
   }
   if (word.length < 2) return null;
   const starts = (words: string[]) => words.some((w) => w.startsWith(word));
-  if (starts(["heute", "today", "aujourd'hui", "aujourd’hui"])) return { label: "today" as const, date: today };
-  if (starts(["gestern", "yesterday", "hier"])) return { label: "yesterday" as const, date: yesterday };
+  if (starts(["heute", "today", "aujourd'hui", "aujourd’hui", "сегодня"])) return { label: "today" as const, date: today };
+  if (starts(["gestern", "yesterday", "hier", "вчера"])) return { label: "yesterday" as const, date: yesterday };
   return null;
 }

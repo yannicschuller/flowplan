@@ -178,7 +178,7 @@ export function PublishDialog({ config, source, onClose }: { config: Marketplace
     [summaryEn, setSummaryEn] = useState(""),
     [category, setCategory] = useState("other"),
     [tags, setTags] = useState(""),
-    [language, setLanguage] = useState<string>(locale === "en" ? "en" : locale === "fr" ? "fr" : locale === "zh" ? "zh" : "de"),
+    [language, setLanguage] = useState<string>(locale === "de" ? "de" : locale === "fr" || locale === "zh" ? locale : "en"),
     [pictures, setPictures] = useState<Picture[]>([]),
     [pictureError, setPictureError] = useState(""),
     [sending, setSending] = useState<Sending>({ step: "idle" });
