@@ -47,7 +47,7 @@ jobs:
       - id: playwright
         if: runner.environment == 'github-hosted'
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         if: runner.environment == 'github-hosted'
         with:
           path: ~/.cache/ms-playwright
@@ -63,7 +63,7 @@ jobs:
           timeout 300 npx playwright install-deps chromium || echo "::warning::Chromium's Ubuntu packages could not be installed (Ubuntu mirrors unreachable?); using what the runner image has"
       # Turbopack's build cache, shared with the visual tests' build
       # (visual.yml, the same production build).
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: .next/cache
           key: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}

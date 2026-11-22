@@ -71,7 +71,7 @@ jobs:
       # between runs: a build on top of the last one's cache took 30 s
       # instead of 3 min locally. Keyed on the lockfile; the newest one of
       # the same lockfile is restored. Image builds (Dockerfile) never see it.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: .next/cache
           # v2: Turbopack panicked on a cache from before the merged API
@@ -97,7 +97,7 @@ jobs:
       - id: playwright
         if: runner.environment == 'github-hosted'
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         if: runner.environment == 'github-hosted'
         with:
           path: ~/.cache/ms-playwright
@@ -284,7 +284,7 @@ jobs:
           cache: npm
       # pg and the schema helpers the check imports.
       - run: npm ci
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: standalone-build
           path: ${{ runner.temp }}

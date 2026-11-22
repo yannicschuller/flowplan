@@ -49,7 +49,7 @@ jobs:
       - id: playwright
         if: runner.environment == 'github-hosted'
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         if: runner.environment == 'github-hosted'
         with:
           path: ~/.cache/ms-playwright
@@ -69,7 +69,7 @@ jobs:
         run: echo "CHROMIUM=/opt/pw-browsers/chromium" >> "$GITHUB_ENV"
       # Turbopack's build cache, shared with the UI gallery and the visual
       # tests (the same production build).
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: .next/cache
           key: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}

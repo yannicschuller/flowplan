@@ -46,7 +46,7 @@ jobs:
       # the key changes with Playwright's version in the lockfile.
       - id: playwright
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
@@ -66,7 +66,7 @@ jobs:
       # between runs: a build on top of the last one's cache took 30 s
       # instead of 3 min locally. Keyed on the lockfile; the newest one of
       # the same lockfile is restored. Image builds (Dockerfile) never see it.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: .next/cache
           key: next-build-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
