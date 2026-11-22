@@ -46,6 +46,7 @@ import { knownUpdate } from "./update-check";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
 import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
+import { cancelUnconfirmed, markUnconfirmed, pendingDeletionOf, resendKeepLink, unconfirmedPlan } from "./unconfirmed-deletion";
 import { assertMayCreateWorkspace, limitGroupNames, ownedWorkspaces, setGroupLimits, setUserLimits, userBytes, userLimitDetails, userStorageCheckpoint } from "./user-limits";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
@@ -515,6 +516,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // What applies to me: limits with my usage, and my fixed language.
     myLimits: user.isAdmin ? null : await myLimits(user.id),
     language: await fixedLanguage(user.id),
+    // Marked for deletion because the address is unconfirmed (#436): the
+    // notice after signing in, with the day.
+    pendingDeletion: user.demo || user.apiScope ? null : await pendingDeletionOf(user.id),
     // New accounts see the introduction once (components/onboarding.tsx).
     onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
     // The checklist "Erste Schritte" after the introduction (null: none)
@@ -4215,6 +4219,24 @@ async function runCommand(
         requireAdmin(user);
         result = await adminResendWelcome(user, uuid.parse(b.userId), contentLocale());
         break;
+      // Accounts with an unconfirmed address (#436,
+      // lib/unconfirmed-deletion.ts): the dialog's numbers, marking for
+      // deletion and cancelling; the person's own link once more.
+      case "admin.unconfirmedPlan":
+        requireAdmin(user);
+        result = await unconfirmedPlan(user, b, contentLocale());
+        break;
+      case "admin.unconfirmedMark":
+        requireAdmin(user);
+        result = await markUnconfirmed(user, b, contentLocale());
+        break;
+      case "admin.unconfirmedCancel":
+        requireAdmin(user);
+        await cancelUnconfirmed(user, uuid.parse(b.userId));
+        break;
+      case "account.keepLink":
+        result = await resendKeepLink(user, contentLocale());
+        break;
       case "admin.revoke":
         requireAdmin(user);
         await run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));
@@ -4252,6 +4274,10 @@ async function runCommand(
         "admin.changeEmail",
         // Written with the new account and its address (lib/account-create.ts).
         "admin.createAccount",
+        // Written per account with the address and the day (lib/unconfirmed-deletion.ts).
+        "admin.unconfirmedPlan",
+        "admin.unconfirmedMark",
+        "admin.unconfirmedCancel",
         "document.sync",
         "document.markdown",
         "row.document.sync",

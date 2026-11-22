@@ -292,7 +292,7 @@ async function handleGET(
         await signIn(userId, await localGroups(userId));
       }
       return NextResponse.redirect(
-        new URL(userId ? (here ? "/?verified=1" : "/?confirmed=1") : `/?authError=${encodeURIComponent(translate(await requestLocale())("Der Bestätigungslink ist abgelaufen. Melde dich an, um einen neuen zu bekommen.", "The confirmation link has expired. Sign in to get a new one."))}`, appUrl()),
+        new URL(userId ? (here || confirmed?.signedIn ? "/?verified=1" : "/?confirmed=1") : `/?authError=${encodeURIComponent(translate(await requestLocale())("Der Bestätigungslink ist abgelaufen. Melde dich an, um einen neuen zu bekommen.", "The confirmation link has expired. Sign in to get a new one."))}`, appUrl()),
       );
     }
     if (action === "callback") {

@@ -47,6 +47,7 @@ import { SpaceExportDialog } from "./space-export";
 import type { OnboardingStep } from "./onboarding";
 import { FindInPage } from "./find-in-page";
 import { InstanceBanners } from "./instance-banners";
+import { UnconfirmedDeletionNotice } from "./unconfirmed-deletion-notice";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { SplitDivider, SplitPane, SplitUnsupported, clampSplit } from "./split-pane";
@@ -5115,6 +5116,8 @@ export default function WorkspaceApp({
           </div>
         )}
         <InstanceBanners initial={boot.instance?.banners || []} />
+        {/* Marked for deletion, address unconfirmed (#436). */}
+        {boot.pendingDeletion && <UnconfirmedDeletionNotice due={boot.pendingDeletion.due} />}
         {offlineNotice}
         {appOfflineNotice}
         {signedOut && (

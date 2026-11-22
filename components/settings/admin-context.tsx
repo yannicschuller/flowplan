@@ -85,6 +85,10 @@ export type AdminData = {
   // FLOWPLAN_INVITE_LINKS=off (#320): the switch cannot turn them on.
   inviteLinksForcedOff?: boolean;
   localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean; password?: boolean; invited?: boolean }>;
+  // Unconfirmed addresses (#436, lib/unconfirmed-deletion.ts): which
+  // accounts count, which this administrator may mark, the marked ones with
+  // their day of deletion; available only while the instance sends e-mail.
+  unconfirmed?: { available: boolean; ids: string[]; markable: string[]; marks: Record<string, number> };
   // Connected SSO identities (#101) and the accounts that sign in with LDAP.
   identities?: { user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }[];
   ldapAccounts?: string[];

@@ -579,6 +579,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Link zum Zurücksetzen des Passworts", en: "Password reset link" } },
       { title: { de: "Konten zusammenführen", en: "Merge accounts" }, keywords: { de: "doppelt duplikat sso verbinden", en: "duplicate sso link merge" } },
       { title: { de: "Einstellungsstufe einer Person", en: "Settings level of a person" }, keywords: { de: "stufe einsteiger normal experte", en: "level beginner normal expert" } },
+      { title: { de: "Unbestätigte Konten zur Löschung vormerken", en: "Mark unconfirmed accounts for deletion" }, keywords: { de: "e-mail unbestätigt spam löschen", en: "e-mail unconfirmed spam delete" } },
     ],
   },
   {
@@ -592,6 +593,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Registrierung mit E-Mail und Passwort", en: "Sign-up with email and password" }, anchor: "registration" },
       { title: { de: "Inaktive Konten sperren", en: "Block inactive accounts" }, anchor: "registration" },
+      { title: { de: "Unbestätigte Konten automatisch vormerken", en: "Automatically mark unconfirmed accounts" }, keywords: { de: "e-mail unbestätigt spam löschen", en: "e-mail unconfirmed spam delete" }, anchor: "registration" },
       { title: { de: "Zwei-Faktor-Anmeldung verlangen", en: "Require two-factor sign-in" }, keywords: { de: "2fa", en: "2fa" }, anchor: "two-factor" },
       { title: { de: "Notfallzugriff erlauben", en: "Allow emergency access" }, keywords: { de: "vertrauensperson notfall", en: "trusted contact emergency" }, anchor: "emergency" },
       { title: { de: "Nachricht bei Inaktivität erlauben", en: "Allow inactivity messages" }, keywords: { de: "totmannschalter inaktivität", en: "dead man's switch inactivity" }, anchor: "deadman" },

@@ -39,6 +39,10 @@ export const securityKinds = {
   "admin.user": { severity: "warn", de: "Konto durch Admin geändert", en: "Account changed by an admin" },
   // Administration → Benutzer → "Konto anlegen" (#433, lib/account-create.ts).
   "admin.account_created": { severity: "warn", de: "Konto durch Admin angelegt", en: "Account created by an admin" },
+  // Accounts with an unconfirmed address marked for deletion (#436, lib/unconfirmed-deletion.ts).
+  "admin.deletion_marked": { severity: "warn", de: "Unbestätigte Konten zur Löschung vorgemerkt", en: "Unconfirmed accounts marked for deletion" },
+  "admin.deletion_cancelled": { severity: "info", de: "Vorgemerkte Löschung abgebrochen", en: "Pending deletion cancelled" },
+  "account.deletion_averted": { severity: "info", de: "Löschung durch Bestätigen der Adresse abgewendet", en: "Deletion averted by confirming the address" },
   "admin.messenger_bot": { severity: "warn", de: "Telegram-Bot der Instanz geändert", en: "Instance Telegram bot changed" },
   "admin.settings": { severity: "warn", de: "Sicherheitsrelevante Einstellung geändert", en: "Security-relevant setting changed" },
   // SSO groups → workspace roles and groups (lib/sso-mappings.ts, #321).

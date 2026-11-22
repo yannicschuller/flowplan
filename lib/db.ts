@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 120;
+export const SCHEMA_VERSION = 121;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1660,11 +1660,24 @@ function migrate(d: DatabaseSync) {
   // Schema 120 – limits per group (lib/user-limits.ts) and the model after
   // a used-up AI quota (lib/ai/quota.ts).
   migrateGroupLimits(d);
+  // Schema 121 – accounts with an unconfirmed address marked for deletion
+  // (#436, lib/unconfirmed-deletion.ts).
+  migrateUnconfirmedDeletions(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 121 – deleting accounts whose e-mail address was never confirmed
+// (#436, lib/unconfirmed-deletion.ts): one row per marked account with the
+// day of deletion, when the reminder went out, who marked it (NULL: the
+// automatic rule) and, once an administrator cancelled it, when – the
+// automatic rule does not mark such an account again. Confirming the
+// address removes the row. An older version would neither delete nor
+// remind, hence the number.
+function migrateUnconfirmedDeletions(d: DatabaseSync) {
+  d.exec("CREATE TABLE IF NOT EXISTS unconfirmed_deletions(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,due_at INTEGER NOT NULL,marked_at INTEGER NOT NULL,marked_by TEXT,reminder_at INTEGER,cancelled_at INTEGER)");
 }
 // Schema 120 – limits per group and the model after a used-up AI quota:
 // - group_limits: storage, own workspaces and the largest upload (JSON, the

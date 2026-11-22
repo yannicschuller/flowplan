@@ -926,3 +926,28 @@
   flex: 1 1 100%;
   font-size: 13px;
 }
+/* Filter "E-Mail unbestätigt" (#436): what it means and "mark all filtered". */
+.admin-unconfirmed-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.admin-unconfirmed-bar > span {
+  flex: 1 1 320px;
+}
+@media (max-width: 720px) {
+  .admin-unconfirmed-bar {
+    padding-inline: 16px;
+  }
+}
+/* "Löschung am …" with "Abbrechen", in the table and the panel. */
+.admin-unconfirmed-mark {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
