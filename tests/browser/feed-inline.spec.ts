@@ -65,9 +65,9 @@ test("feed entries edit properties and documents inline and accept quick comment
   await expect(entry).toBeVisible();
   await entry.getByRole("button", { name: "Bearbeiten" }).click();
   const editor = entry.getByLabel("Montag bearbeiten");
-  await editor
-    .getByRole("combobox", { name: "Stimmung" })
-    .selectOption("super");
+  // The option search (#423).
+  await editor.getByRole("button", { name: /^Stimmung: / }).click();
+  await page.getByRole("listbox", { name: "Optionen von Stimmung" }).getByRole("option", { name: "super", exact: true }).click();
   await expect
     .poll(async () => (await read()).rows[0].cells.mood)
     .toBe("super");

@@ -26,22 +26,27 @@ test("changed cells show immediately on a slow connection", async ({ page }, inf
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   // On a phone a record's properties start folded (record-properties-fold.spec.ts).
   if (info.project.name === "mobile") await entry.getByRole("button", { name: /^Eigenschaften ausklappen/ }).click();
-  const status = entry.getByLabel("Status", { exact: true });
-  await expect(status).toHaveValue("Nicht begonnen");
+  // The value's button (the option search, #423).
+  const status = entry.getByRole("button", { name: /^Status: / });
+  const choose = async (option: string) => {
+    await status.click();
+    await page.getByRole("listbox", { name: "Optionen von Status" }).getByRole("option", { name: option, exact: true }).click();
+  };
+  await expect(status).toHaveAccessibleName("Status: Nicht begonnen");
 
   await page.route("**/api/command", async (route) => {
     if (route.request().postData()?.includes('"row.update"')) await new Promise((r) => setTimeout(r, 3000));
     await route.continue();
   });
-  await status.selectOption("In Arbeit");
-  await expect(status).toHaveValue("In Arbeit", { timeout: 1000 });
-  await expect(entry.locator(".fp-select-value").filter({ hasText: "In Arbeit" })).toBeVisible({ timeout: 1000 });
+  await choose("In Arbeit");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit", { timeout: 1000 });
+  await expect(status.locator(".tag").filter({ hasText: "In Arbeit" })).toBeVisible({ timeout: 1000 });
   // After the answer the value stays.
   await expect
     .poll(async () => (await (await page.request.get(`/api/pages/${p.id}`)).json()).rows[0].cells.status)
     .toBe("In Arbeit");
   await page.waitForTimeout(500);
-  await expect(status).toHaveValue("In Arbeit");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit");
 
   // A rejected change brings the old value back.
   await page.unroute("**/api/command");
@@ -50,8 +55,8 @@ test("changed cells show immediately on a slow connection", async ({ page }, inf
       return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Geändert von jemand anderem." }) });
     await route.continue();
   });
-  await status.selectOption("Erledigt");
-  await expect(status).toHaveValue("In Arbeit");
+  await choose("Erledigt");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit");
   await expect(page.getByText("Geändert von jemand anderem.")).toBeVisible();
   expect(errors).toEqual([]);
 });

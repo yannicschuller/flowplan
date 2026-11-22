@@ -121,3 +121,117 @@
 .record-menu .dropdown-item[role="menuitemradio"] {
   justify-content: flex-start;
 }
+
+/* Finding and creating options in a cell or record (#423,
+   components/option-picker.tsx): the value as its chip(s), the search field
+   and its list (the styled select's, .fp-select-list). */
+.option-input {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.option-input-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: min(160px, 100%);
+  max-width: 100%;
+  min-height: calc(1.5em + 20px);
+  padding: 4px 9px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.option-input-trigger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--border) 60%, var(--muted));
+}
+.option-input-trigger:focus-visible {
+  outline: none;
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.option-input-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.option-input-trigger > .tag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.option-input-chip {
+  gap: 2px;
+  max-width: 100%;
+}
+.option-input-chip .page-tag-remove {
+  --tag-fg: currentColor;
+  display: inline-grid;
+  place-items: center;
+  margin: -2px -6px -2px -1px;
+}
+.option-picker {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: min(200px, 100%);
+  max-width: 100%;
+}
+/* The chosen values above the search (#426). */
+.option-picker-chosen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.option-picker-chosen .page-tag-remove:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.option-picker > input {
+  width: 100%;
+}
+.inline-cell .option-picker > input {
+  max-width: none;
+}
+.fp-select-list.option-picker-list {
+  top: var(--option-list-top, 0);
+  left: var(--option-list-left, 0);
+  min-width: max(var(--option-list-width, 0px), 220px);
+  max-width: min(360px, calc(100vw - 24px));
+}
+.option-picker-list .fp-select-option {
+  min-height: 34px;
+  padding: 5px 8px;
+}
+.option-picker-list .fp-select-option > .tag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.option-picker-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.option-picker-empty {
+  margin: 0;
+  padding: 7px 10px;
+}
+/* Touch: larger rows to tap. */
+@media (pointer: coarse) {
+  .option-picker-list .fp-select-option {
+    min-height: 44px;
+  }
+}

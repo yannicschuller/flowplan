@@ -126,9 +126,9 @@ test("linked databases insert, filter independently, edit source records, add vi
   ]);
   await first.locator(".title-cell").filter({ hasText: "Beta" }).click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await entry
-    .getByRole("combobox", { name: "Status", exact: true })
-    .selectOption("Open");
+  // The option search (#423).
+  await entry.getByRole("button", { name: /^Status: / }).click();
+  await page.getByRole("listbox", { name: "Optionen von Status" }).getByRole("option", { name: "Open", exact: true }).click();
   await expect
     .poll(
       async () =>

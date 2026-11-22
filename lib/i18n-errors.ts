@@ -1731,6 +1731,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+): Eintrag nicht gefunden\.$/, "$1: record not found."],
   [/^(.+): Datei nicht gefunden\.$/, "$1: file not found."],
   [/^Eigenschaft „(.+)“ wurde nicht gefunden\.$/, "Property “$1” was not found."],
+  [/^Die Option „(.+)“ gibt es in „(.*)“ schon\.$/, "The option “$1” already exists in “$2”."],
   [/^Speicherkontingent des Arbeitsbereichs erschöpft \((.+) von (.+) MB belegt\)\.$/, "The workspace's storage quota is used up ($1 of $2 MB used)."],
   [/^Speicherkontingent des Arbeitsbereichs reicht nicht \((.+) von (.+) MB belegt, benötigt zusätzlich (.+)\)\.$/, "The workspace's storage quota is not enough ($1 of $2 MB used, $3 more needed)."],
   [/^Ungültiger Wert für „(.+)“\.$/, "Invalid value for “$1”."],

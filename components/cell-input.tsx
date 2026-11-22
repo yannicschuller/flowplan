@@ -20,6 +20,7 @@ import { aliasList } from "@/lib/aliases";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
+import { OptionInput, type CreateOption } from "./option-picker";
 import { PageIcon } from "./ui";
 import { Cube, Eye } from "@phosphor-icons/react";
 import { isModelName } from "@/lib/model-formats";
@@ -78,7 +79,13 @@ export function CellInput({
   onCancel,
   formatted,
   multiline = false,
+  optionPicker,
 }: {
+  // Select and multi-select values with the search (#423,
+  // components/option-picker.tsx) – in the database's own views; `create`
+  // for people who may change its properties. Left out (forms, bulk
+  // changes, shared records): the plain list and checkboxes.
+  optionPicker?: { create?: CreateOption };
   // A formatted text property (#126, lib/inline-markdown.ts) edited with
   // its formatting. Left out for the title, page properties and forms
   // (answers are plain text; the server escapes them).
@@ -221,6 +228,18 @@ export function CellInput({
             </option>
           ))}
       </Select>
+    );
+  if (optionPicker && (f.type === "select" || (f.type === "multiselect" && !f.tagOptions)))
+    return (
+      <OptionInput
+        field={f}
+        value={value}
+        disabled={disabled}
+        editing={editing}
+        create={optionPicker.create}
+        onChange={onChange}
+        onCancel={onCancel}
+      />
     );
   if (["select", "person"].includes(f.type)) {
     const options =

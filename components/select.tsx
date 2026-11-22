@@ -42,6 +42,53 @@ function holdsFixed(el: HTMLElement) {
   }
   return false;
 }
+// Where a list under (or above) `anchor` goes: the host it is rendered
+// into and its position there (also components/option-picker.tsx).
+export type ListPlacement = {
+  host: HTMLElement;
+  top: number;
+  left: number;
+  width: number;
+  up: boolean;
+  fixed: boolean;
+};
+export function listPlacement(el: HTMLElement): ListPlacement {
+  const rect = el.getBoundingClientRect();
+  // Inside dialogs the list stays in the dialog's DOM, so it remains
+  // usable (focus trap, outside clicks). It is placed against the window
+  // (position: fixed, .fp-select-list.fixed) and not inside the dialog's
+  // scroll area: there a list reaching below the dialog's edge made the
+  // dialog scroll and showed a scrollbar while it was open, and the list
+  // was cut off at the dialog's bottom (#219). Where the dialog (or a box
+  // around it) would hold fixed children itself – a transform, as in
+  // popovers or while a dialog opens – it stays placed inside the host.
+  const host =
+    (el.closest("[role=dialog]") as HTMLElement | null) || document.body;
+  const fixed = host !== document.body && !holdsFixed(host);
+  const base = fixed
+    ? { top: 0, left: 0 }
+    : host === document.body
+      ? { top: -window.scrollY, left: -window.scrollX }
+      : (() => {
+          const r = host.getBoundingClientRect();
+          return {
+            top: r.top + host.clientTop - host.scrollTop,
+            left: r.left + host.clientLeft - host.scrollLeft,
+          };
+        })();
+  // The room above and below, without the status bar and home indicator.
+  const safe = safeInsets();
+  const below = window.innerHeight - safe.bottom - rect.bottom;
+  const up = below < 240 && rect.top - safe.top > below;
+  return {
+    host,
+    top: (up ? rect.top - 4 : rect.bottom + 4) - base.top,
+    left: rect.left - base.left,
+    width: rect.width,
+    up,
+    fixed,
+  };
+}
 // Drop-in replacement for <select> with a styled list. The native element
 // stays in place (invisible) as the form control: it keeps the value,
 // labels, forms and keyboard focus; the list only sets its value and fires
@@ -71,14 +118,7 @@ export function Select({
     [active, setActive] = useState(0),
     [label, setLabel] = useState(""),
     [labelFont, setLabelFont] = useState<string | undefined>(undefined),
-    [place, setPlace] = useState<{
-      host: HTMLElement;
-      top: number;
-      left: number;
-      width: number;
-      up: boolean;
-      fixed: boolean;
-    } | null>(null);
+    [place, setPlace] = useState<ListPlacement | null>(null);
   const setRefs = useCallback(
     (node: HTMLSelectElement | null) => {
       native.current = node;
@@ -158,42 +198,7 @@ export function Select({
   });
   const place_ = useCallback(() => {
     const el = wrapper.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    // Inside dialogs the list stays in the dialog's DOM, so it remains
-    // usable (focus trap, outside clicks). It is placed against the window
-    // (position: fixed, .fp-select-list.fixed) and not inside the dialog's
-    // scroll area: there a list reaching below the dialog's edge made the
-    // dialog scroll and showed a scrollbar while it was open, and the list
-    // was cut off at the dialog's bottom (#219). Where the dialog (or a box
-    // around it) would hold fixed children itself – a transform, as in
-    // popovers or while a dialog opens – it stays placed inside the host.
-    const host =
-      (el.closest("[role=dialog]") as HTMLElement | null) || document.body;
-    const fixed = host !== document.body && !holdsFixed(host);
-    const base = fixed
-      ? { top: 0, left: 0 }
-      : host === document.body
-        ? { top: -window.scrollY, left: -window.scrollX }
-        : (() => {
-            const r = host.getBoundingClientRect();
-            return {
-              top: r.top + host.clientTop - host.scrollTop,
-              left: r.left + host.clientLeft - host.scrollLeft,
-            };
-          })();
-    // The room above and below, without the status bar and home indicator.
-    const safe = safeInsets();
-    const below = window.innerHeight - safe.bottom - rect.bottom;
-    const up = below < 240 && rect.top - safe.top > below;
-    setPlace({
-      host,
-      top: (up ? rect.top - 4 : rect.bottom + 4) - base.top,
-      left: rect.left - base.left,
-      width: rect.width,
-      up,
-      fixed,
-    });
+    if (el) setPlace(listPlacement(el));
   }, []);
   const show = useCallback(() => {
     const el = native.current;
