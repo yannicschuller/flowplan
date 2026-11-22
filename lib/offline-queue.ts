@@ -29,6 +29,8 @@ export type QueuedChange = { key?: string } & (
       rowId: string;
       cells: Record<string, unknown>;
       at: number;
+      // Created on the server; leaves the queue once the views have it.
+      sent?: boolean;
     }
   | {
       id: string;

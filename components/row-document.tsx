@@ -1,7 +1,7 @@
 "use client";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "./i18n";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { Clock, CloudSlash, Plus, SquaresFour } from "@phosphor-icons/react";
@@ -13,6 +13,8 @@ import type { Field, Page, User } from "@/lib/types";
 import { Select } from "./select";
 import { PlaceholderMenu, editorIn } from "./placeholder-menu";
 import type { SaveStatus } from "@/lib/save-status";
+import { isPendingRow, onPendingChange, sendPendingNow } from "@/lib/offline-pending";
+import { offlineRowGeneration } from "./offline-uploads";
 const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false });
 type RowDocumentData = {
   html: string;
@@ -20,6 +22,10 @@ type RowDocumentData = {
   generation: string;
   snapshots: { id: string; created_at: string }[];
 };
+// A record made offline (#370) starts with an empty document of its own,
+// kept on this device. The server creates it blank with the same
+// generation when the record is sent, so the editor goes on unchanged.
+const offlineDocument = (rowId: string): RowDocumentData => ({ html: "", state: "", generation: offlineRowGeneration(rowId), snapshots: [] });
 export default function RowDocument({
   pageId,
   rowId,
@@ -53,11 +59,25 @@ export default function RowDocument({
 }) {
   const t = useT();
   const statusLabel = useStatusLabel();
+  // Made offline and not on the server yet: nothing to load, and the editor
+  // holds its text back until the queue created the record (it waits there
+  // behind the record's creation, components/offline-queue.tsx).
+  const [pending, setPending] = useState(() => isPendingRow(pageId, rowId));
+  // Opened while it was only on this device: the editor waits like for a
+  // page made offline, also once the record is on the server.
+  const [madeOffline] = useState(pending);
+  useEffect(() => {
+    const check = () => setPending(isPendingRow(pageId, rowId));
+    check();
+    return onPendingChange(check);
+  }, [pageId, rowId]);
   // Saving state as a key (lib/save-status.ts), put into words where shown.
   // A record opened (or loaded ahead) recently shows at once; the editor's
   // sync and the reload below bring it up to date (lib/swr-cache.ts).
-  const [data, setData] = useState<RowDocumentData | null>(
-      () => (typeof window === "undefined" ? null : appCache().get<RowDocumentData>(rowKey(pageId, rowId))?.value ?? null),
+  const [data, setData] = useState<RowDocumentData | null>(() =>
+      typeof window === "undefined"
+        ? null
+        : (appCache().get<RowDocumentData>(rowKey(pageId, rowId))?.value ?? (isPendingRow(pageId, rowId) ? offlineDocument(rowId) : null)),
     ),
     [status, setStatus] = useState<SaveStatus>("loading"),
     [history, setHistory] = useState(false),
@@ -85,6 +105,11 @@ export default function RowDocument({
     );
   }, [pageId, rowId]);
   useEffect(() => {
+    if (pending) {
+      setData((previous) => previous ?? offlineDocument(rowId));
+      setUnavailable(false);
+      return;
+    }
     let first = true;
     const load = () =>
       refresh(first).then(
@@ -109,7 +134,25 @@ export default function RowDocument({
       clearInterval(timer);
       window.removeEventListener("online", back);
     };
-  }, [refresh, onError]);
+  }, [refresh, onError, pending, rowId]);
+  // The editor of a record made offline: it saves once the record exists.
+  const draft = useMemo(
+    () =>
+      madeOffline
+        ? {
+            ensure: async () => {
+              if (isPendingRow(pageId, rowId)) {
+                sendPendingNow();
+                throw new TypeError("Offline record not created yet");
+              }
+              return true;
+            },
+          }
+        : undefined,
+    [madeOffline, pageId, rowId],
+  );
+  // Versions and templates are the server's: once the record is there.
+  const notYet = pending ? t("Geht, sobald der Eintrag synchronisiert ist.", "Available once the record is synced.") : undefined;
   const onHtml = useCallback(() => {}, []);
   const section = useRef<HTMLElement>(null);
   async function act(action: string, extra: Record<string, unknown> = {}) {
@@ -132,7 +175,9 @@ export default function RowDocument({
         </span>
         <button
           className="icon-button"
-          title={t("Datensatz-Versionen", "Record versions")}
+          title={notYet ?? t("Datensatz-Versionen", "Record versions")}
+          aria-label={t("Datensatz-Versionen", "Record versions")}
+          disabled={pending}
           onClick={() => setHistory(true)}
         >
           <Clock size={18} />
@@ -150,6 +195,8 @@ export default function RowDocument({
         {editable && (
           <button
             className="button compact"
+            disabled={pending}
+            title={notYet}
             onClick={() => {
               const draft = templates?.find((x) => x.id === draftOf);
               setReplaceId(draft?.id || "");
@@ -182,6 +229,7 @@ export default function RowDocument({
           state={data.state}
           html={data.html}
           generation={data.generation}
+          draft={draft}
           editable={editable}
           readOnlyHint={readOnlyHint}
           onStatus={setStatus}

@@ -12,6 +12,7 @@ import {
   offlineTemplate,
   pageChange,
   pendingPageIds,
+  pendingRows,
   renamePending,
   retryFailed,
   uploadRoom,
@@ -154,4 +155,22 @@ test("a new title goes along with the waiting page; the lists show it marked", (
   assert.equal(localPageChange([], [{ change: doc, reason: "weg", at: 0 }], "r1")?.reason, "weg");
   // Pages and uploads are no records: the views skip them.
   assert.deepEqual(applyQueue([], [doc, upload("r1")], "r1"), []);
+});
+
+test("records made offline count as pending until sent, also when they failed with their page (#370)", () => {
+  const db = page("db", "database");
+  const a = record("db", "row-a"),
+    b = record("existing", "row-b");
+  const queue: QueuedChange[] = [db, a, b, upload("db")];
+  assert.deepEqual(pendingRows(queue), [
+    { pageId: "db", rowId: "row-a" },
+    { pageId: "existing", rowId: "row-b" },
+  ]);
+  // The database refused: its record waits among the failed ones (content stays).
+  const next = failChange(queue, [], 0, "Kein Zugriff.", 1);
+  assert.deepEqual(pendingRows(next.queue, next.failed).map((r) => r.rowId).sort(), ["row-a", "row-b"]);
+  // Created on the server (waiting for the views to have it): not pending.
+  assert.deepEqual(pendingRows([{ ...a, sent: true } as QueuedChange, b]).map((r) => r.rowId), ["row-b"]);
+  // Updates and deletes of records the server has are not pending records.
+  assert.deepEqual(pendingRows([{ id: "u", kind: "update", pageId: "x", rowId: "r", version: 1, cells: {}, base: {}, at: 0 }, { id: "d", kind: "delete", pageId: "x", rowId: "r2", at: 0 }]), []);
 });

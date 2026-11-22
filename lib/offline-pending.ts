@@ -3,18 +3,25 @@
 // whiteboard and the notebook ask whether their page is still only on this
 // device (#370) – then they keep their content here and send nothing – and
 // the editor holds its document back while pictures of the page still wait
-// to be uploaded, so the shared document never points at a file the server
+// to be uploaded, a record made offline opens with an empty document of its
+// own that waits behind the record's creation (components/row-document.tsx), so the shared document never points at a file the server
 // does not have yet. Images of such uploads show their local copy
 // (components/image-placeholder-view.ts). A small store for the tab.
 
 let pages = new Set<string>();
+let rows = new Set<string>();
 let uploads = new Map<string, Set<string>>();
 const listeners = new Set<() => void>();
 const previews = new Map<string, string>();
 const previewListeners = new Map<string, Set<(url: string) => void>>();
 
-export function setPending(pageIds: Iterable<string>, files: Iterable<{ pageId: string; fileId: string }>) {
+export function setPending(
+  pageIds: Iterable<string>,
+  files: Iterable<{ pageId: string; fileId: string }>,
+  rowIds: Iterable<{ pageId: string; rowId: string }> = [],
+) {
   pages = new Set(pageIds);
+  rows = new Set([...rowIds].map((r) => `${r.pageId}/${r.rowId}`));
   uploads = new Map();
   for (const f of files) {
     const set = uploads.get(f.pageId) || new Set<string>();
@@ -25,6 +32,9 @@ export function setPending(pageIds: Iterable<string>, files: Iterable<{ pageId: 
 }
 // The page was made offline and is not on the server yet.
 export const isPendingPage = (pageId: string) => pages.has(pageId);
+// The record was made offline and is not on the server yet (its creation
+// waits in the queue, or failed with the page it was made in).
+export const isPendingRow = (pageId: string, rowId: string) => rows.has(`${pageId}/${rowId}`);
 // Pictures or files of the page wait to be uploaded.
 export const hasPendingUploads = (pageId: string) => !!uploads.get(pageId)?.size;
 export const isPendingFile = (fileId: string) => [...uploads.values()].some((set) => set.has(fileId));

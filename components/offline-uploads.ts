@@ -65,6 +65,12 @@ export async function keptUploads(userId: string): Promise<Stored[]> {
 // document's generation is "1", lib/db.ts) and the whiteboard's of a board
 // made offline.
 export const documentStore = (userId: string, pageId: string) => `flowplan:${userId}:${pageId}:page:1`;
+// A record made offline: its document is created on the server with the
+// record's id as its generation (row.create documentGeneration), so the
+// editor opened offline goes on with the same store once it is there.
+export const offlineRowGeneration = (rowId: string) => rowId;
+export const rowDocumentStore = (userId: string, pageId: string, rowId: string) =>
+  `flowplan:${userId}:${pageId}:${rowId}:${offlineRowGeneration(rowId)}`;
 export const OFFLINE_BOARD_GENERATION = "offline";
 export const boardStore = (userId: string, pageId: string) => `flowplan:${userId}:${pageId}:whiteboard:${OFFLINE_BOARD_GENERATION}`;
 

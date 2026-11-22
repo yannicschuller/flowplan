@@ -2861,6 +2861,18 @@ async function runCommand(
               : (await fillNewRecord({ page: await write(), rowId: rid, template, actor: user, zone: typeof b.timeZone === "string" ? b.timeZone : undefined })),
             user.id,
           );
+        // A record made offline (#370): its document starts blank with the
+        // generation the device chose, so what was written in it offline
+        // (row.document.sync right after) and an editor still open there
+        // go on with the same document.
+        else if (b.rowId && b.documentGeneration !== undefined)
+          await run(
+            "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
+            rid,
+            htmlState(""),
+            "<p></p>",
+            uuid.parse(b.documentGeneration),
+          );
         await afterContactWrite(pid(), rid);
         await rowCreated(user, await requirePage(user, pid()), rid);
         result = { id: rid };
