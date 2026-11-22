@@ -284,3 +284,28 @@
     min-height: 44px;
   }
 }
+/* The group pickers (components/settings/admin/group-picker.tsx) and the
+   limits per group (Grenzen & Aufbewahrung). */
+.group-picker-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.group-limits-table td.primary {
+  min-width: 180px;
+}
+.group-limits-table .number-field input {
+  width: 100%;
+  min-width: 72px;
+  max-width: 120px;
+}
+.ai-quota-after {
+  min-width: 120px;
+  max-width: 200px;
+}
+.limit-source {
+  display: block;
+  color: var(--secondary);
+  font-size: 12px;
+}

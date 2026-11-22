@@ -251,7 +251,7 @@ export function InstanceText({
   maxLength,
   multiline = false,
 }: {
-  field: "name" | "announcement";
+  field: "name" | "announcement" | "moreLimitsUrl";
   label: string;
   description?: ReactNode;
   placeholder?: string;

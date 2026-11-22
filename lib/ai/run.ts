@@ -96,11 +96,13 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   if (!options.charged) limitAi(user.id);
   // The AI quota (#382, lib/ai/quota.ts): only the instance's provider
   // counts. The estimate – the prompt and the most the answer may take –
-  // must fit, else nothing is sent.
+  // must fit, else nothing is sent – or, once the person's limit is used
+  // up and a rule says so, it goes with the model the rule names.
   const quota = resolved.source === "instance" ? await requireQuota(user, { feature, model: resolved.config.model, tokensIn: estimateTokens(size), tokensOut: input.maxTokens ?? 1024 }) : null;
+  const config = quota?.model ? { ...resolved.config, model: quota.model } : resolved.config;
   const release = await takeAiSlot(user.id, AI_LIMITS.concurrent);
   if (!release) {
-    quota?.();
+    quota?.release();
     throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
   }
   // Tokens per feature for the monitoring (lib/metrics.ts): as reported by
@@ -114,7 +116,7 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   // The CPU of the request counts as AI while the answer streams.
   const area = shiftArea("api", "ai");
   try {
-    for await (const piece of streamChat(resolved.config, { ...input, signal: options.signal, usage })) {
+    for await (const piece of streamChat(config, { ...input, signal: options.signal, usage })) {
       written += piece.length;
       yield piece;
     }
@@ -135,11 +137,11 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
         try {
           workspaceId = (await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", options.pageId))?.workspace_id || null;
         } catch {}
-      noteAiCall({ feature, tokensIn, tokensOut, answered, failure, ms: Date.now() - started, model: resolved.config.model, source: resolved.source, workspaceId, userId: user.id });
+      noteAiCall({ feature, tokensIn, tokensOut, answered, failure, ms: Date.now() - started, model: config.model, source: resolved.source, workspaceId, userId: user.id });
     }
     if (answered && resolved.source === "instance")
-      await recordQuotaUsage({ userId: user.id, kind: feature === "workflows" ? "workflow" : "person", model: resolved.config.model, tokensIn, tokensOut });
-    quota?.();
+      await recordQuotaUsage({ userId: user.id, kind: feature === "workflows" ? "workflow" : "person", model: config.model, tokensIn, tokensOut });
+    quota?.release();
     release();
   }
 }

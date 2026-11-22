@@ -633,10 +633,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "Gauge",
     title: { de: "Grenzen & Aufbewahrung", en: "Limits & retention" },
     description: { de: "Standard-Kontingente, größte Datei und wie lange Versionen bleiben.", en: "Default quotas, largest file and how long versions are kept." },
-    keywords: { de: "grenzen kontingent speicher upload datei größe versionen aufbewahrung standard workflows", en: "limits quota storage upload file size versions retention default workflows" },
+    keywords: { de: "grenzen kontingent speicher upload datei größe versionen aufbewahrung standard workflows gruppe", en: "limits quota storage upload file size versions retention default workflows group" },
     entries: [
       { title: { de: "Größte Datei beim Hochladen", en: "Largest upload" }, anchor: "storage-limits" },
       { title: { de: "Speicher je Arbeitsbereich", en: "Storage per workspace" }, anchor: "storage-limits" },
+      { title: { de: "Link für mehr Speicher oder KI", en: "Link for more storage or AI" }, anchor: "storage-limits" },
+      { title: { de: "Grenzen pro Gruppe", en: "Limits per group" }, keywords: { de: "gruppe scim ldap sso verzeichnis speicher arbeitsbereiche upload", en: "group scim ldap sso directory storage workspaces upload" }, anchor: "group-limits" },
       { title: { de: "Versionen aufbewahren", en: "Keep versions" }, anchor: "retention" },
       { title: { de: "Workflows", en: "Workflows" }, keywords: { de: "automation läufe ablauf grenzen warteschlange", en: "automation runs flow limits queue" }, anchor: "workflows" },
     ],

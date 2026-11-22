@@ -117,19 +117,19 @@ test("precedence: the own rule, else the highest group or role limit per period,
     { scope: "group", target: "g-free", exempt: true, limits: {} },
   ];
   const who = (userId: string, groups: string[] = [], roles: ("admin" | "guest")[] = []) => quota.personalLimits(rules, { userId, groups, roles });
-  assert.deepEqual(who("u-none"), { limits: { day: 100, month: 1000 }, exempt: false, source: "default" });
-  assert.deepEqual(who("u-g1", ["g1"]), { limits: { day: 300, month: 2000 }, exempt: false, source: "group" });
+  assert.deepEqual(who("u-none"), { limits: { day: 100, month: 1000 }, exempt: false, source: "default", after: null });
+  assert.deepEqual(who("u-g1", ["g1"]), { limits: { day: 300, month: 2000 }, exempt: false, source: "group", after: null });
   // Several groups: the highest per period; a period one group leaves open is open.
-  assert.deepEqual(who("u-both", ["g1", "g2"]), { limits: { day: 500 }, exempt: false, source: "group" });
-  assert.deepEqual(who("u-guest", [], ["guest"]), { limits: { day: 10, month: 50 }, exempt: false, source: "group" });
-  assert.deepEqual(who("u-guest-g1", ["g1"], ["guest"]), { limits: { day: 300, month: 2000 }, exempt: false, source: "group" });
+  assert.deepEqual(who("u-both", ["g1", "g2"]), { limits: { day: 500 }, exempt: false, source: "group", after: null });
+  assert.deepEqual(who("u-guest", [], ["guest"]), { limits: { day: 10, month: 50 }, exempt: false, source: "group", after: null });
+  assert.deepEqual(who("u-guest-g1", ["g1"], ["guest"]), { limits: { day: 300, month: 2000 }, exempt: false, source: "group", after: null });
   // The own rule wins over groups, even a smaller one.
-  assert.deepEqual(who("u-own", ["g1"]), { limits: { week: 7 }, exempt: false, source: "user" });
+  assert.deepEqual(who("u-own", ["g1"]), { limits: { week: 7 }, exempt: false, source: "user", after: null });
   // Exemptions: a person or a group.
-  assert.deepEqual(who("u-free", ["g1"]), { limits: null, exempt: true, source: "user" });
-  assert.deepEqual(who("u-x", ["g1", "g-free"]), { limits: null, exempt: true, source: "group" });
+  assert.deepEqual(who("u-free", ["g1"]), { limits: null, exempt: true, source: "user", after: null });
+  assert.deepEqual(who("u-x", ["g1", "g-free"]), { limits: null, exempt: true, source: "group", after: null });
   assert.deepEqual(quota.instanceLimits(rules), { month: 1_000_000 });
-  assert.deepEqual(quota.personalLimits([], { userId: "a", groups: [], roles: [] }), { limits: null, exempt: false, source: "none" });
+  assert.deepEqual(quota.personalLimits([], { userId: "a", groups: [], roles: [] }), { limits: null, exempt: false, source: "none", after: null });
 });
 
 test("tokens or cost: the current prices per model, unpriced models count nothing towards cost", () => {
@@ -399,4 +399,85 @@ test("a deleted or merged account's usage stays in the instance's total without 
   assert.equal(await one("SELECT 1 FROM ai_quota_usage WHERE user_id=?", dora.id), undefined);
   assert.equal(Number((await one<{ n: number }>("SELECT SUM(tokens_in) n FROM ai_quota_usage WHERE user_id=''"))?.n), 730);
   assert.deepEqual(await quota.quotaRules(), []);
+});
+
+/* ---------- After the quota: another model ---------- */
+
+test("precedence of the model after the quota: own rule, else the most capable of the groups, else the default", () => {
+  const prices = [
+    { model: "small", input: 1, output: 1 },
+    { model: "medium", input: 3, output: 15 },
+  ];
+  const rules: QuotaRule[] = [
+    { scope: "default", target: "", exempt: false, limits: { month: 100 } },
+    { scope: "group", target: "dir:Plus", exempt: false, limits: { month: 1000 }, after: "small", afterKind: "ollama" },
+    { scope: "group", target: "dir:Pro", exempt: false, limits: { month: 5000 }, after: "medium", afterKind: "ollama" },
+    { scope: "user", target: "u-own", exempt: false, limits: { month: 10 } },
+  ];
+  const who = (userId: string, groups: string[] = []) => quota.personalLimits(rules, { userId, groups, roles: [] }, prices);
+  assert.equal(who("u-free").after, null, "the default stops");
+  assert.deepEqual(who("u-plus", ["dir:Plus"]).after, { model: "small", kind: "ollama" });
+  assert.deepEqual(who("u-both", ["dir:Plus", "dir:Pro"]), { limits: { month: 5000 }, exempt: false, source: "group", after: { model: "medium", kind: "ollama" } });
+  // The own rule without a model: AI stops for this person.
+  assert.equal(who("u-own", ["dir:Plus"]).after, null);
+  // Only for the provider kind it was chosen for.
+  assert.equal(quota.activeAfter(who("u-plus", ["dir:Plus"]), { kind: "ollama", model: "chat" }), "small");
+  assert.equal(quota.activeAfter(who("u-plus", ["dir:Plus"]), { kind: "openai", model: "gpt" }), null);
+});
+
+test("a group goes on with a cheaper model once its quota is used up – counted, not limited; others stop; the instance ceiling still applies", async () => {
+  await clearUsage();
+  await command(admin, { action: "admin.ai", settings: { prices: [{ model: "small", input: 0, output: 0 }] } });
+  // Directory group "Plus" over SCIM: Cleo is a member (no workspace group, no mapping needed).
+  const scimGroup = id();
+  await run("INSERT INTO scim_groups(id,display_name,version,created_at,updated_at) VALUES(?,?,1,?,?)", scimGroup, "Plus", Date.now(), Date.now());
+  await run("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)", scimGroup, cleo.id);
+  try {
+    // A model that is not one of the instance's: refused.
+    await assert.rejects(setQuota([{ scope: "group", target: "dir:Plus", exempt: false, limits: { month: 60 }, after: "unknown-model" }]), /nicht vorgesehen/);
+    await setQuota([
+      { scope: "instance", target: "", exempt: false, limits: { month: 10_000 } },
+      { scope: "default", target: "", exempt: false, limits: { month: 60 } },
+      { scope: "group", target: "dir:Plus", exempt: false, limits: { month: 60 }, after: "small" },
+    ]);
+    assert.deepEqual((await quota.quotaRules()).find((r) => r.target === "dir:Plus"), { scope: "group", target: "dir:Plus", exempt: false, limits: { month: 60 }, after: "small", afterKind: "ollama" });
+    await use(ben, 100);
+    await use(cleo, 100);
+    // Ben (default) stops.
+    assert.equal(await status(ask(ben)), 429);
+    // Cleo goes on with "small"; the request is counted towards her.
+    const before = mock.chats.length;
+    assert.equal(await ask(cleo), "OK");
+    assert.equal(mock.chats.length, before + 1);
+    assert.equal(mock.chats[mock.chats.length - 1].model, "small");
+    const small = await one<{ tokens_in: number }>("SELECT SUM(tokens_in) tokens_in FROM ai_quota_usage WHERE user_id=? AND model='small'", cleo.id);
+    assert.ok(Number(small?.tokens_in) > 0);
+    // What she sees: not blocked, the model named.
+    const s = await quota.quotaStatus(cleo, "instance");
+    assert.equal(s.blocked, false);
+    assert.equal(s.after, "small");
+    assert.equal((await quota.quotaStatus(ben, "instance")).blocked, true);
+    // The instance ceiling still refuses.
+    await use(ben, 10_000);
+    const error = await ask(cleo).then(
+      () => null,
+      (e) => e as InstanceType<typeof quota.AiQuotaError>,
+    );
+    assert.ok(error instanceof quota.AiQuotaError);
+    assert.equal(error.quota.level, "instance");
+    // The administration shows the model per person.
+    await clearUsage();
+    const view = await quota.adminQuotaView("month");
+    assert.equal(view.people.find((p) => p.id === cleo.id)?.after, "small");
+    assert.ok(view.groups.some((g) => g.id === "dir:Plus" && g.directory && g.members === 1));
+    // The same through the person's panel (admin.aiRule).
+    const { saveAiRule } = await import("../lib/ai/admin-rule");
+    const panel = await saveAiRule(admin, { scope: "user", target: ben.id, quota: { exempt: false, limits: { month: 5 }, after: "small" } });
+    assert.equal(panel.quota.after, "small");
+    assert.equal((await quota.quotaRules()).find((r) => r.target === ben.id)?.after, "small");
+  } finally {
+    await run("DELETE FROM scim_groups WHERE id=?", scimGroup);
+    await command(admin, { action: "admin.ai", settings: { prices: [] } });
+    await setQuota([], { unit: "tokens" });
+  }
 });

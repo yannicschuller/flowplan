@@ -769,6 +769,7 @@ function eventText(e: MonitoringEvent, t: T): { title: string; detail?: string }
         "admin.settings": t("Instanz", "Instance"),
         "admin.quota": t("Kontingent", "Quota"),
         "admin.userLimits": t("Grenzen je Person", "Limits per person"),
+        "admin.groupLimits": t("Grenzen pro Gruppe", "Limits per group"),
         "admin.ai": t("KI", "AI"),
         "admin.aiQuotas": t("KI-Kontingente", "AI quotas"),
         "admin.aiRule": t("KI-Modell und -Kontingent einer Person oder Gruppe", "AI model and quota of a person or group"),

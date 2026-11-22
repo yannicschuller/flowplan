@@ -13,17 +13,19 @@ import { HttpError } from "../auth";
 import { requireAdmin } from "../permissions";
 import type { Identity } from "../types";
 import { instanceAiSettings } from "./settings";
-import { amountOf, cleanLimits, limitsSchema, periodBounds, personalLimits, quotaPerson, quotaRules, quotaSettings, type PersonalLimits } from "./quota";
+import { activeAfter, afterSchema, amountOf, checkedAfter, cleanLimits, instanceModelOptions, limitsSchema, periodBounds, personalLimits, quotaPerson, quotaRules, quotaSettings, type PersonalLimits } from "./quota";
+import { allGroupKeys, validGroupKey } from "../person-groups";
+import { directoryName, isDirectoryKey } from "../group-keys";
 import { chooseModel, MODEL_NAME, modelRules } from "./model-policy";
 import { MODEL_RULE_SCOPES, QUOTA_PERIODS, QUOTA_ROLES, type ModelPolicy, type ModelRule, type ModelRuleScope, type QuotaPeriod, type QuotaRule } from "./quota-shared";
 
-const target = z.string().trim().min(1).max(200);
+const target = z.string().trim().min(1).max(210);
 const scopeInput = z.object({ scope: z.enum(MODEL_RULE_SCOPES), target });
 
 // The target exists: a role of QUOTA_ROLES, a group, an account.
 async function requireTarget(scope: ModelRuleScope, id: string) {
   if (scope === "role" && !(QUOTA_ROLES as readonly string[]).includes(id)) throw new HttpError(400, "Unbekannte Rolle.");
-  if (scope === "group" && !(await one("SELECT 1 FROM groups WHERE id=?", id))) throw new HttpError(404, "Gruppe nicht gefunden.");
+  if (scope === "group" && !(await validGroupKey(id))) throw new HttpError(404, "Gruppe nicht gefunden.");
   if (scope === "user" && !(await one("SELECT 1 FROM users WHERE id=?", id))) throw new HttpError(404, "Benutzer nicht gefunden.");
 }
 
@@ -31,9 +33,7 @@ async function requireTarget(scope: ModelRuleScope, id: string) {
 // of the rules for the instance's provider kind (the provider's own list is
 // fetched in the browser on demand: POST /api/ai/admin/models).
 export async function modelOptions(kind: string | null, rules?: ModelRule[]) {
-  const ai = await instanceAiSettings();
-  const list = [ai.provider?.model || "", ...ai.prices.map((p) => p.model), ...(rules ?? (await modelRules())).filter((r) => r.kind === kind).map((r) => r.model)];
-  return [...new Set(list.map((m) => m.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return await instanceModelOptions(kind, rules ?? (await modelRules()));
 }
 
 type UsageRow = { day: string; model: string; tokens_in: number; tokens_out: number };
@@ -66,8 +66,9 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
     inheritedQuota = personalLimits(
       rules.filter((r) => !(r.scope === "user" && r.target === id)),
       who,
+      ai.prices,
     );
-    effectiveQuota = personalLimits(rules, who);
+    effectiveQuota = personalLimits(rules, who, ai.prices);
     if (provider) {
       inheritedModel = chooseModel(
         models.filter((r) => !(r.scope === "user" && r.target === id)),
@@ -79,8 +80,11 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
     }
     for (const g of await all<{ id: string; name: string; workspace: string | null }>("SELECT g.id,g.name,w.name workspace FROM groups g LEFT JOIN workspaces w ON w.id=g.workspace_id WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id=?)", id))
       names.set(g.id, `${g.workspace ?? "–"} · ${g.name}`);
+    for (const key of who.groups) if (isDirectoryKey(key)) names.set(key, directoryName(key));
   } else if (scope === "group") {
-    people = (await all<{ user_id: string }>("SELECT user_id FROM group_members WHERE group_id=?", id)).map((m) => m.user_id);
+    people = isDirectoryKey(id)
+      ? [...(await allGroupKeys())].filter(([, keys]) => keys.includes(id)).map(([userId]) => userId)
+      : (await all<{ user_id: string }>("SELECT user_id FROM group_members WHERE group_id=?", id)).map((m) => m.user_id);
     members = people.length;
     if (provider) effectiveModel = ownModel && ownModel.kind === provider.kind && ownModel.model ? { model: ownModel.model, source: "group", target: id, default: provider.model } : { model: provider.model, source: "instance", target: null, default: provider.model };
   } else if (provider)
@@ -112,8 +116,11 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
   }));
   for (const source of [effectiveModel, inheritedModel])
     if (source?.source === "group" && source.target && !names.has(source.target)) {
-      const g = await one<{ name: string; workspace: string | null }>("SELECT g.name,w.name workspace FROM groups g LEFT JOIN workspaces w ON w.id=g.workspace_id WHERE g.id=?", source.target);
-      if (g) names.set(source.target, `${g.workspace ?? "–"} · ${g.name}`);
+      if (isDirectoryKey(source.target)) names.set(source.target, directoryName(source.target));
+      else {
+        const g = await one<{ name: string; workspace: string | null }>("SELECT g.name,w.name workspace FROM groups g LEFT JOIN workspaces w ON w.id=g.workspace_id WHERE g.id=?", source.target);
+        if (g) names.set(source.target, `${g.workspace ?? "–"} · ${g.name}`);
+      }
     }
   return {
     scope,
@@ -123,7 +130,7 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
     currency: ai.currency,
     priced: ai.prices.length > 0,
     members,
-    quota: { own: ownQuota, inherited: inheritedQuota, effective: effectiveQuota },
+    quota: { own: ownQuota, inherited: inheritedQuota, effective: effectiveQuota, after: scope === "user" ? activeAfter(effectiveQuota, provider) : null },
     usage,
     model: {
       own: ownModel,
@@ -144,7 +151,7 @@ const saveInput = scopeInput.extend({
   model: z.string().trim().max(200).regex(MODEL_NAME, "Ungültiger Modellname.").or(z.literal("")).nullable().optional(),
   // Absent: unchanged; null: no own limits (inherited); else the rule of
   // the quota table for this target.
-  quota: z.object({ exempt: z.boolean().default(false), limits: limitsSchema.default({}) }).nullable().optional(),
+  quota: z.object({ exempt: z.boolean().default(false), limits: limitsSchema.default({}), after: afterSchema }).nullable().optional(),
 });
 
 // admin.aiRule: the model and/or the limits of one person, group or role.
@@ -175,14 +182,18 @@ export async function saveAiRule(user: Identity, raw: unknown) {
     else {
       const { unit } = await quotaSettings();
       const limits = cleanLimits(b.quota.exempt ? {} : b.quota.limits, unit);
+      const after = b.quota.exempt ? null : await checkedAfter(b.quota.after);
       await run(
-        "INSERT INTO ai_quota_rules(scope,target,exempt,limits,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET exempt=excluded.exempt,limits=excluded.limits,updated_at=excluded.updated_at",
+        "INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET exempt=excluded.exempt,limits=excluded.limits,after_model=excluded.after_model,after_kind=excluded.after_kind,updated_at=excluded.updated_at",
         b.scope,
         b.target,
         b.quota.exempt ? 1 : 0,
         JSON.stringify(limits),
+        after?.model ?? null,
+        after?.kind ?? null,
         Date.now(),
       );
+      if (after) detail.after = after.model;
     }
     detail.quota = b.quota === null ? "inherited" : b.quota.exempt ? "exempt" : cleanLimits(b.quota.limits, (await quotaSettings()).unit);
   }

@@ -1,13 +1,23 @@
 // Limits per person: storage for the files they upload or copy (across all
 // workspaces), how many workspaces they may own, and the size of a single
-// upload. Each can be set per account; otherwise the instance default applies
-// (0 or empty = unlimited). Admins are not limited.
+// upload. Each can be set per account and per group (a workspace group or a
+// directory group, lib/group-keys.ts); otherwise the instance default
+// applies (0 or empty = unlimited). Admins are not limited.
+//
+// Precedence per limit, like the AI quotas (lib/ai/quota.ts): the account's
+// own value, else the most generous value of the person's groups (0 =
+// unlimited wins; a group without a value for this limit does not count),
+// else the instance's default. The groups of a person: their workspace
+// groups in every workspace and their directory groups
+// (lib/person-groups.ts).
 import { z } from "zod";
-import { all, lockFor, one, run } from "./db";
+import { all, audit, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
-import { instanceSettings } from "./instance-settings";
+import { instanceSettings, type InstanceSettings } from "./instance-settings";
 import type { Identity } from "./types";
 import { mapAsync } from "./each-async";
+import { allGroupKeys, groupChoices, personGroupKeys, validGroupKey } from "./person-groups";
+import { MAX_DIRECTORY_NAME } from "./group-keys";
 
 export const userLimitsSchema = z.object({
   storageMb: z.number().int().min(0).max(10_000_000).nullable().optional(),
@@ -25,15 +35,65 @@ export async function storedUserLimits(userId: string): Promise<UserLimits> {
     return {};
   }
 }
-// What applies to a person: own value, else the default. 0 = unlimited.
-export async function effectiveUserLimits(userId: string) {
+export const USER_LIMIT_FIELDS = ["storageMb", "workspaces", "uploadMb"] as const;
+export type UserLimitField = (typeof USER_LIMIT_FIELDS)[number];
+export type EffectiveLimits = Record<UserLimitField, number>;
+// Where a value comes from: the account, a group (its key) or the default.
+export type LimitSource = { from: "user" | "group" | "default"; group: string | null };
+export type GroupLimitRule = { target: string; limits: UserLimits };
+
+const parseLimits = (raw: string | null | undefined): UserLimits => {
+  try {
+    const parsed = userLimitsSchema.safeParse(JSON.parse(raw || "{}"));
+    return parsed.success ? Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== null && v !== undefined)) : {};
+  } catch {
+    return {};
+  }
+};
+export async function groupLimitRules(): Promise<GroupLimitRule[]> {
+  try {
+    return (await all<{ target: string; limits: string }>("SELECT target,limits FROM group_limits ORDER BY target")).map((r) => ({ target: r.target, limits: parseLimits(r.limits) }));
+  } catch {
+    return [];
+  }
+}
+// More is more generous; 0 (storage, workspaces) is unlimited.
+const generous = (a: number, b: number) => (a === 0 || b === 0 ? 0 : Math.max(a, b));
+// Pure: what applies, with where each value comes from.
+export function resolveUserLimits(own: UserLimits, rules: GroupLimitRule[], groups: string[], settings: Pick<InstanceSettings, "defaultUserStorageMb" | "defaultUserWorkspaces" | "maxUploadMb">) {
+  const fallback: EffectiveLimits = { storageMb: settings.defaultUserStorageMb ?? 0, workspaces: settings.defaultUserWorkspaces ?? 0, uploadMb: settings.maxUploadMb };
+  const mine = rules.filter((r) => groups.includes(r.target));
+  const values = {} as EffectiveLimits;
+  const sources = {} as Record<UserLimitField, LimitSource>;
+  for (const field of USER_LIMIT_FIELDS) {
+    const value = own[field];
+    if (typeof value === "number") {
+      values[field] = value;
+      sources[field] = { from: "user", group: null };
+      continue;
+    }
+    let best: { value: number; group: string } | null = null;
+    // In a fixed order: among equal values the first key decides.
+    for (const r of [...mine].sort((a, b) => a.target.localeCompare(b.target))) {
+      const v = r.limits[field];
+      if (typeof v !== "number") continue;
+      if (!best || (generous(best.value, v) === v && v !== best.value)) best = { value: v, group: r.target };
+    }
+    values[field] = best ? best.value : fallback[field];
+    sources[field] = best ? { from: "group", group: best.group } : { from: "default", group: null };
+  }
+  return { values, sources };
+}
+export async function userLimitDetails(userId: string) {
   const own = await storedUserLimits(userId);
   const settings = await instanceSettings();
-  return {
-    storageMb: own.storageMb ?? settings.defaultUserStorageMb ?? 0,
-    workspaces: own.workspaces ?? settings.defaultUserWorkspaces ?? 0,
-    uploadMb: own.uploadMb ?? settings.maxUploadMb,
-  };
+  const rules = await groupLimitRules();
+  return resolveUserLimits(own, rules, rules.length ? await personGroupKeys(userId) : [], settings);
+}
+// What applies to a person: own value, else their groups', else the
+// default. 0 = unlimited.
+export async function effectiveUserLimits(userId: string): Promise<EffectiveLimits> {
+  return (await userLimitDetails(userId)).values;
 }
 export async function setUserLimits(userId: string, input: unknown) {
   const limits = userLimitsSchema.parse(input);
@@ -106,12 +166,61 @@ export async function usersUsage() {
     if (list) list.push(r.w);
     else memberOf.set(r.id, [r.w]);
   }
-  return await mapAsync(await all<{ id: string }>("SELECT id FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%'"), async ({ id }) => ({
-    id,
-    bytes: bytes.get(id) || 0,
-    workspaces: owned.get(id) || 0,
-    memberOf: memberOf.get(id) || [],
-    limits: await storedUserLimits(id),
-    effective: await effectiveUserLimits(id),
-  }));
+  const settings = await instanceSettings();
+  const rules = await groupLimitRules();
+  const groupsOf = rules.length ? await allGroupKeys() : new Map<string, string[]>();
+  return await mapAsync(await all<{ id: string; limits: string | null }>("SELECT id,limits FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%'"), async ({ id, limits }) => {
+    const own = parseLimits(limits);
+    const resolved = resolveUserLimits(own, rules, groupsOf.get(id) || [], settings);
+    return {
+      id,
+      bytes: bytes.get(id) || 0,
+      workspaces: owned.get(id) || 0,
+      memberOf: memberOf.get(id) || [],
+      limits: own,
+      effective: resolved.values,
+      sources: resolved.sources,
+    };
+  });
+}
+
+/* ---------- Limits per group (Administration → Grenzen & Aufbewahrung) ---------- */
+
+const groupTarget = z.string().min(1).max(MAX_DIRECTORY_NAME + 10);
+const groupLimitInput = z.object({ target: groupTarget, limits: userLimitsSchema.nullable() });
+// admin.groupLimits: the limits of one group; null removes the row ({}: a
+// row without values yet – the group's members get what they would anyway).
+export async function setGroupLimits(actorId: string, raw: unknown) {
+  const b = groupLimitInput.parse(raw);
+  const clean = Object.fromEntries(Object.entries(b.limits || {}).filter(([, v]) => v !== null && v !== undefined));
+  if (b.limits === null) await run("DELETE FROM group_limits WHERE target=?", b.target);
+  else {
+    if (!(await validGroupKey(b.target))) throw new HttpError(404, "Gruppe nicht gefunden.");
+    await run(
+      "INSERT INTO group_limits(target,limits,updated_at) VALUES(?,?,?) ON CONFLICT(target) DO UPDATE SET limits=excluded.limits,updated_at=excluded.updated_at",
+      b.target,
+      JSON.stringify(clean),
+      Date.now(),
+    );
+  }
+  await audit(actorId, "admin.groupLimits", b.target, b.limits === null ? "removed" : JSON.stringify(clean));
+  return await groupLimitsView();
+}
+// The rules and the groups to choose from (names for both).
+export async function groupLimitsView() {
+  const rules = await groupLimitRules();
+  return { rules, groups: await groupChoices(rules.map((r) => r.target)) };
+}
+export type GroupLimitsView = Awaited<ReturnType<typeof groupLimitsView>>;
+// The names of a person's groups that set one of their limits.
+export async function limitGroupNames(keys: string[]) {
+  const out: Record<string, string> = {};
+  for (const key of new Set(keys)) {
+    if (key.startsWith("dir:")) out[key] = key.slice(4);
+    else {
+      const g = await one<{ name: string }>("SELECT name FROM groups WHERE id=?", key);
+      if (g) out[key] = g.name;
+    }
+  }
+  return out;
 }

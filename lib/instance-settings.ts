@@ -45,6 +45,14 @@ export const instanceSettingsSchema = z.object({
   // Defaults for every account without its own limits (0 = unlimited).
   defaultUserStorageMb: z.number().int().min(0).max(10_000_000).nullable().default(null),
   defaultUserWorkspaces: z.number().int().min(0).max(10_000).nullable().default(null),
+  // "Link für mehr Speicher oder KI": an address shown in "Deine Grenzen"
+  // (Settings → Account) – a plain link, no tokens ('' = none).
+  moreLimitsUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((v) => v === "" || (/^https?:\/\/\S+$/i.test(v) && URL.canParse(v)), "Bitte eine Adresse mit http:// oder https:// angeben.")
+    .default(""),
   // Two-factor sign-in for accounts with e-mail and password: not required,
   // required for administrators, or for everyone (lib/two-factor-policy.ts).
   twoFactor: z.enum(["off", "admins", "all"]).default("off"),
@@ -128,6 +136,7 @@ const defaults: InstanceSettings = {
   deleteInactiveDays: null,
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,
+  moreLimitsUrl: "",
   twoFactor: "off",
   pluginsAnyOrigin: false,
   customDomains: false,

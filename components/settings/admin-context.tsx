@@ -15,6 +15,7 @@ import type { MarkdownExportStatus, SpaceGitOverview } from "../markdown-export-
 import type { EncryptionStatus } from "../encryption-settings";
 import type { SsoMappingRow } from "../sso-mappings";
 import { api } from "../ui";
+import type { GroupLimitsView, LimitSource } from "@/lib/user-limits";
 
 export type AdminData = {
   users: User[];
@@ -40,7 +41,11 @@ export type AdminData = {
     memberOf?: string[];
     limits: { storageMb?: number | null; workspaces?: number | null; uploadMb?: number | null };
     effective: { storageMb: number; workspaces: number; uploadMb: number };
+    // Where each effective value comes from (lib/user-limits.ts).
+    sources?: Record<"storageMb" | "workspaces" | "uploadMb", LimitSource>;
   }[];
+  // Limits per group (lib/user-limits.ts): the rules and the groups to choose from.
+  groupLimits?: GroupLimitsView;
   oidcConfigured: boolean;
   // SSO groups mapped to workspaces (lib/sso-mappings.ts).
   ssoMappings?: SsoMappingRow[];

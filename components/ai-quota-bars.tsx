@@ -38,6 +38,7 @@ export function AiQuotaBars() {
           );
         })}
       </ul>
+      {s.after && <p className="muted ai-quota-free">{t(`Ist dein Kontingent aufgebraucht, geht es mit ${s.after} weiter.`, `Once your quota is used up, AI goes on with ${s.after}.`)}</p>}
       <p className="muted ai-quota-unit">{s.unit === "cost" ? t("Geschätzte Kosten aus den Preisen je Modell.", "Estimated cost from the prices per model.") : t("Tokens: Eingabe und Ausgabe zusammen.", "Tokens: input and output together.")}</p>
     </SettingGroup>
   );

@@ -46,7 +46,7 @@ import { knownUpdate } from "./update-check";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
 import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
-import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
+import { assertMayCreateWorkspace, limitGroupNames, ownedWorkspaces, setGroupLimits, setUserLimits, userBytes, userLimitDetails, userStorageCheckpoint } from "./user-limits";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
@@ -352,6 +352,20 @@ export async function publicRows(pid: string): Promise<Row[]> {
 }
 // `agent`: the request's user agent – the mobile apps get no sponsor link
 // (lib/about.ts).
+// "Deine Grenzen" (Settings → Account): what applies, where it comes from
+// (the names of the person's own groups only) and the instance's link for more.
+async function myLimits(userId: string) {
+  const { values, sources } = await userLimitDetails(userId);
+  const groups = Object.values(sources).flatMap((s) => (s.group ? [s.group] : []));
+  return {
+    ...values,
+    sources,
+    groupNames: groups.length ? await limitGroupNames(groups) : {},
+    moreUrl: (await instanceSettings()).moreLimitsUrl || null,
+    usedBytes: await userBytes(userId),
+    ownedWorkspaces: await ownedWorkspaces(userId),
+  };
+}
 export async function bootstrap(user: Identity, wid?: string, agent?: string | null) {
   if (!user.demo && !user.apiScope) await acceptPendingInvites(user.id);
   const workspaces = (await all<{
@@ -498,9 +512,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       about: { ...aboutInfo(agent), ...(user.isAdmin ? { update: knownUpdate() } : {}) },
     },
     // What applies to me: limits with my usage, and my fixed language.
-    myLimits: user.isAdmin
-      ? null
-      : { ...(await effectiveUserLimits(user.id)), usedBytes: await userBytes(user.id), ownedWorkspaces: await ownedWorkspaces(user.id) },
+    myLimits: user.isAdmin ? null : await myLimits(user.id),
     language: await fixedLanguage(user.id),
     // New accounts see the introduction once (components/onboarding.tsx).
     onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
@@ -1225,6 +1237,11 @@ async function runCommand(
       case "admin.userLimits":
         requireAdmin(user);
         result = await setUserLimits(z.uuid().parse(b.userId), b.limits);
+        break;
+      // Limits per group (lib/user-limits.ts): one workspace or directory group.
+      case "admin.groupLimits":
+        requireAdmin(user);
+        result = await setGroupLimits(user.id, b);
         break;
       // "Neuigkeiten nach Updates" of a person (#223): a level or null for
       // the instance's default (lib/user-update-notes.ts).

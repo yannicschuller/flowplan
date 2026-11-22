@@ -67,28 +67,7 @@ export default function AccountSection() {
 
       {!demo && <DeadManSwitchSettings onError={onError} />}
 
-      {boot.myLimits && (
-        <SettingGroup
-          id="limits"
-          title={t("Deine Grenzen", "Your limits")}
-          description={t("So viel steht dir auf dieser Instanz zur Verfügung. Mehr gibt es bei den Admins.", "This is what you have on this instance. Admins can give you more.")}
-        >
-          <div className="setting-row wide">
-            <div className="limits-overview">
-              <UsageMeter
-                label={t("Speicher (deine Dateien und Bilder)", "Storage (your files and images)")}
-                used={boot.myLimits.usedBytes}
-                limit={boot.myLimits.storageMb * 1024 * 1024}
-                format={(n) => `${(n / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: n < 10 * 1024 * 1024 ? 1 : 0 })} MB`}
-              />
-              <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={boot.myLimits.ownedWorkspaces} limit={boot.myLimits.workspaces} format={(n) => String(n)} />
-            </div>
-          </div>
-          <SettingRow label={t("Größte Datei beim Hochladen", "Largest upload")}>
-            <strong className="setting-value">{boot.myLimits.uploadMb} MB</strong>
-          </SettingRow>
-        </SettingGroup>
-      )}
+      {boot.myLimits && <MyLimits limits={boot.myLimits} />}
 
       {!demo && (
         <DangerZone id="danger" description={t("Was du hier tust, lässt sich nicht rückgängig machen.", "What you do here cannot be undone.")}>
@@ -103,5 +82,62 @@ export default function AccountSection() {
         </DangerZone>
       )}
     </>
+  );
+}
+
+type Limits = NonNullable<ReturnType<typeof useUserSettings>["boot"]["myLimits"]>;
+// "Deine Grenzen": what applies, where it comes from (own, a group, the
+// default) and, when the instance has one, its link for more.
+function MyLimits({ limits }: { limits: Limits }) {
+  const t = useT();
+  const from = (field: "storageMb" | "workspaces" | "uploadMb") => {
+    const source = limits.sources?.[field];
+    if (!source || source.from === "default") return null;
+    if (source.from === "user") return t("für dich festgelegt", "set for you");
+    const name = (source.group && limits.groupNames?.[source.group]) || t("einer deiner Gruppen", "one of your groups");
+    return t(`aus Gruppe ${name}`, `from group ${name}`);
+  };
+  const note = (field: "storageMb" | "workspaces" | "uploadMb") => {
+    const text = from(field);
+    return text ? <small className="limit-source">{text}</small> : null;
+  };
+  return (
+    <SettingGroup
+      id="limits"
+      title={t("Deine Grenzen", "Your limits")}
+      description={
+        limits.moreUrl ? (
+          <>
+            {t("So viel steht dir auf dieser Instanz zur Verfügung.", "This is what you have on this instance.")}{" "}
+            <a href={limits.moreUrl} target="_blank" rel="noopener noreferrer">
+              {t("Mehr Speicher oder KI? →", "More storage or AI? →")}
+            </a>
+          </>
+        ) : (
+          t("So viel steht dir auf dieser Instanz zur Verfügung. Mehr gibt es bei den Admins.", "This is what you have on this instance. Admins can give you more.")
+        )
+      }
+    >
+      <div className="setting-row wide">
+        <div className="limits-overview">
+          <div>
+            <UsageMeter
+              label={t("Speicher (deine Dateien und Bilder)", "Storage (your files and images)")}
+              used={limits.usedBytes}
+              limit={limits.storageMb * 1024 * 1024}
+              format={(n) => `${(n / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: n < 10 * 1024 * 1024 ? 1 : 0 })} MB`}
+            />
+            {note("storageMb")}
+          </div>
+          <div>
+            <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={limits.ownedWorkspaces} limit={limits.workspaces} format={(n) => String(n)} />
+            {note("workspaces")}
+          </div>
+        </div>
+      </div>
+      <SettingRow label={t("Größte Datei beim Hochladen", "Largest upload")} description={from("uploadMb") ?? undefined}>
+        <strong className="setting-value">{limits.uploadMb} MB</strong>
+      </SettingRow>
+    </SettingGroup>
   );
 }
