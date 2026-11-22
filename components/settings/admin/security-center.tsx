@@ -443,7 +443,7 @@ function IncidentPage({ id, live, act, busy }: { id: string; live: Overview; act
         return i.actor ? <DisableAccount actor={i.actor} act={actHere} busy={busy} /> : null;
       case "resolve":
         return i.resolvedAt ? (
-          <span className="muted">{t(`Erledigt${i.resolvedBy ? ` von ${i.resolvedBy}` : ""}`, `Resolved${i.resolvedBy ? ` by ${i.resolvedBy}` : ""}`)}</span>
+          <span className="muted">{i.resolvedBy ? t(`Erledigt von ${i.resolvedBy}`, `Resolved by ${i.resolvedBy}`) : t("Erledigt", "Resolved")}</span>
         ) : (
           <button type="button" className="text-button" disabled={busy} onClick={() => void actHere({ action: "incident.resolve", id: i.id })}>
             {t("Als erledigt markieren", "Mark as resolved")}

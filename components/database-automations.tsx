@@ -184,7 +184,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
                     <input
                       type="checkbox"
                       role="switch"
-                      aria-label={t(`${rule.name || "Regel"} aktiv`, `${rule.name || "Rule"} active`)}
+                      aria-label={t(`${rule.name || t("Regel", "Rule")} aktiv`, `${rule.name || t("Regel", "Rule")} active`)}
                       checked={rule.enabled}
                       disabled={busy}
                       onChange={(e) => void store(rules.map((r) => (r.id === rule.id ? { ...r, enabled: e.target.checked } : r)))}
@@ -197,7 +197,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
                     <button
                       type="button"
                       className="icon-button"
-                      aria-label={t(`„${rule.name || "Regel"}“ im Canvas öffnen und erweitern`, `Open “${rule.name || "Rule"}” in the canvas and extend it`)}
+                      aria-label={t(`„${rule.name || t("Regel", "Rule")}“ im Canvas öffnen und erweitern`, `Open “${rule.name || t("Regel", "Rule")}” in the canvas and extend it`)}
                       title={
                         rule.actions.some((a) => a.type === "task")
                           ? t("Regeln mit „Aufgabe erstellen“ lassen sich noch nicht im Canvas öffnen.", "Rules with “Create task” cannot be opened in the canvas yet.")

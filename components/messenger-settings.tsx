@@ -255,7 +255,7 @@ function ConnectForm({
   const [saving, setSaving] = useState(false);
   const set = (key: string) => (e: { target: { value: string } }) => setFields((current) => ({ ...current, [key]: e.target.value }));
   const name = messengerNames[form.service];
-  const kept = existing?.hasSecret ? t(`leer lassen: bleibt ${existing.secretHint || "gesetzt"}`, `leave empty: keeps ${existing.secretHint || "the stored one"}`) : "";
+  const kept = !existing?.hasSecret ? "" : existing.secretHint ? t(`leer lassen: bleibt ${existing.secretHint}`, `leave empty: keeps ${existing.secretHint}`) : t("leer lassen: bleibt gesetzt", "leave empty: keeps the stored one");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);

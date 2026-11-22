@@ -182,7 +182,7 @@ export function DatabaseWorkflow({
                           {from !== to && (
                             <input
                               type="checkbox"
-                              aria-label={t(`Von ${from || "leer"} nach ${to}`, `From ${from || "empty"} to ${to}`)}
+                              aria-label={from ? t(`Von ${from} nach ${to}`, `From ${from} to ${to}`) : t(`Von leer nach ${to}`, `From empty to ${to}`)}
                               checked={allowed(from, to)}
                               onChange={(e) => toggle(from, to, e.target.checked)}
                             />

@@ -263,8 +263,8 @@ export async function seedDemoShowcase(workspace: string, space: string, user: s
   await setDocument(
     knowledge,
     ct(
-      `<p>Wissen wächst als Seitenbaum: ${link(faq, "FAQ")} und ${link(howto, "Anleitung")} sind Unterseiten dieser Seite und stammen aus der Vorlagengalerie.</p>`,
-      `<p>Knowledge grows as a page tree: ${link(faq, "FAQ")} and ${link(howto, "How-to guide")} are sub-pages of this page and come from the template gallery.</p>`,
+      `<p>Wissen wächst als Seitenbaum: ${link(faq, "FAQ")} und ${link(howto, ct("Anleitung", "How-to guide"))} sind Unterseiten dieser Seite und stammen aus der Vorlagengalerie.</p>`,
+      `<p>Knowledge grows as a page tree: ${link(faq, "FAQ")} and ${link(howto, ct("Anleitung", "How-to guide"))} are sub-pages of this page and come from the template gallery.</p>`,
     ),
     "📚",
   );
@@ -299,8 +299,8 @@ export async function seedDemoShowcase(workspace: string, space: string, user: s
       ),
       ct('<p data-indent="1">Mit Tab eingerückter Absatz.</p>', '<p data-indent="1">A paragraph indented with Tab.</p>'),
       ct(
-        `<p>Erwähnung: <span data-mention="${esc(user)}" class="mention">@${guest}</span> · Link auf eine Seite: ${link(projects, "Projekte")}</p>`,
-        `<p>Mention: <span data-mention="${esc(user)}" class="mention">@${guest}</span> · Link to a page: ${link(projects, "Projects")}</p>`,
+        `<p>Erwähnung: <span data-mention="${esc(user)}" class="mention">@${guest}</span> · Link auf eine Seite: ${link(projects, ct("Projekte", "Projects"))}</p>`,
+        `<p>Mention: <span data-mention="${esc(user)}" class="mention">@${guest}</span> · Link to a page: ${link(projects, ct("Projekte", "Projects"))}</p>`,
       ),
       ct("<h2>Listen und Aufgaben</h2>", "<h2>Lists and tasks</h2>"),
       ct(
@@ -317,8 +317,8 @@ export async function seedDemoShowcase(workspace: string, space: string, user: s
       )}</p>`,
       ct("<h2>Vorschläge</h2>", "<h2>Suggestions</h2>"),
       ct(
-        `<p>Im Vorschlagsmodus (Stift in der Werkzeugleiste) wird aus Änderungen ein Vorschlag: Das Treffen ist am ${suggestion("delete", "Montag")}${suggestion("insert", "Dienstag")} um 10 Uhr.</p>`,
-        `<p>In suggestion mode (the pen in the toolbar) changes become suggestions: the meeting is on ${suggestion("delete", "Monday")}${suggestion("insert", "Tuesday")} at 10 am.</p>`,
+        `<p>Im Vorschlagsmodus (Stift in der Werkzeugleiste) wird aus Änderungen ein Vorschlag: Das Treffen ist am ${suggestion("delete", ct("Montag", "Monday"))}${suggestion("insert", ct("Dienstag", "Tuesday"))} um 10 Uhr.</p>`,
+        `<p>In suggestion mode (the pen in the toolbar) changes become suggestions: the meeting is on ${suggestion("delete", ct("Montag", "Monday"))}${suggestion("insert", ct("Dienstag", "Tuesday"))} at 10 am.</p>`,
       ),
       ct("<h2>Synchronisierter Block</h2>", "<h2>Synced block</h2>"),
       `<div data-synced-block="${synced}"></div>`,

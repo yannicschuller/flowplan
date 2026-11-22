@@ -508,8 +508,8 @@ async function changedMail(userId: string, workspaceId: string, old: string[], n
     t(`Hallo ${holder.name},`, `Hello ${holder.name},`),
     recipientsChanged
       ? t(
-          `die Empfänger deiner Nachricht bei Inaktivität für „${ws}“ wurden eben geändert. Jetzt: ${now.join(", ") || "niemand"}. Vorher: ${old.join(", ") || "niemand"}.`,
-          `the recipients of your inactivity message for “${ws}” were just changed. Now: ${now.join(", ") || "nobody"}. Before: ${old.join(", ") || "nobody"}.`,
+          `die Empfänger deiner Nachricht bei Inaktivität für „${ws}“ wurden eben geändert. Jetzt: ${now.join(", ") || t("niemand", "nobody")}. Vorher: ${old.join(", ") || t("niemand", "nobody")}.`,
+          `the recipients of your inactivity message for “${ws}” were just changed. Now: ${now.join(", ") || t("niemand", "nobody")}. Before: ${old.join(", ") || t("niemand", "nobody")}.`,
         )
       : t(`die Notiz deiner Nachricht bei Inaktivität für „${ws}“ wurde eben geändert.`, `the note of your inactivity message for “${ws}” was just changed.`),
     ...(recipientsChanged && noteChanged ? [t("Auch die Notiz wurde geändert.", "The note was changed as well.")] : []),

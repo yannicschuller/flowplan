@@ -347,7 +347,7 @@ export default function FormulaEditor({
                 type="button"
                 disabled={disabled}
                 onClick={() => insert(suggestion)}
-                aria-label={t(`${suggestion.kind === "property" ? "Eigenschaft" : "Funktion"} ${suggestion.name} einfügen`, `Insert ${suggestion.kind === "property" ? "property" : "function"} ${suggestion.name}`)}
+                aria-label={suggestion.kind === "property" ? t(`Eigenschaft ${suggestion.name} einfügen`, `Insert property ${suggestion.name}`) : t(`Funktion ${suggestion.name} einfügen`, `Insert function ${suggestion.name}`)}
               >
                 <strong>
                   {suggestion.kind === "function"

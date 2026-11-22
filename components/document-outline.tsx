@@ -324,7 +324,7 @@ export function DocumentOutline({
                 <button
                   type="button"
                   className="icon-button document-outline-link"
-                  aria-label={t(`Link zu „${h.text || "Überschrift"}“ kopieren`, `Copy link to “${h.text || "heading"}”`)}
+                  aria-label={h.text ? t(`Link zu „${h.text}“ kopieren`, `Copy link to “${h.text}”`) : t("Link zur Überschrift kopieren", "Copy link to heading")}
                   title={t("Link zur Überschrift kopieren", "Copy link to heading")}
                   onClick={() => onCopyLink(h.pos)}
                 >

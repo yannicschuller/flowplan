@@ -264,7 +264,7 @@ export function SplitPane({
       </div>
     );
   return (
-    <section className="split-pane" aria-label={t(`Geteilte Ansicht: ${page?.title || "Seite"}`, `Split view: ${page?.title || "Page"}`)}>
+    <section className="split-pane" aria-label={t(`Geteilte Ansicht: ${page?.title || t("Seite", "Page")}`, `Split view: ${page?.title || t("Seite", "Page")}`)}>
       {tabBar}
       <div className="split-pane-scroll" id="frame-panel-1" role="tabpanel">
         <article

@@ -1117,7 +1117,7 @@ export default function DatabaseCalendar({
                                         <button
                                           key={edge}
                                           className={`calendar-time-resize ${edge}`}
-                                          aria-label={t(`${edge === "start" ? "Beginn" : "Ende"} von ${name} ziehen`, `Drag ${edge === "start" ? "start" : "end"} of ${name}`)}
+                                          aria-label={edge === "start" ? t(`Beginn von ${name} ziehen`, `Drag start of ${name}`) : t(`Ende von ${name} ziehen`, `Drag end of ${name}`)}
                                           aria-disabled={busy}
                                           onPointerDown={(e) =>
                                             begin(

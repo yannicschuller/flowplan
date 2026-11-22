@@ -106,7 +106,7 @@ export function useBoardAi(ctl: BoardAiControl) {
   }
   const scopeText = (s: Awaited<ReturnType<typeof scope>>, count: string) =>
     s.where === "frame"
-      ? t(`${count} im Rahmen „${s.name || "Rahmen"}“`, `${count} in the frame “${s.name || "Frame"}”`)
+      ? t(`${count} im Rahmen „${s.name || t("Rahmen", "Frame")}“`, `${count} in the frame “${s.name || t("Rahmen", "Frame")}”`)
       : s.where === "selection"
         ? t(`${count} ausgewählt`, `${count} selected`)
         : s.where === "view"

@@ -180,10 +180,9 @@ export default function NotebookView({
     sizeOf: (surface) => sizesRef.current.get(surface) || null,
     onConflict: (by) =>
       setNotice({
-        text: t(
-          `${by || "Jemand"} hat auf diesem Blatt gleichzeitig geschrieben; beides ist erhalten.`,
-          `${by || "Someone"} wrote on this sheet at the same time; both are kept.`,
-        ),
+        text: by
+          ? t(`${by} hat auf diesem Blatt gleichzeitig geschrieben; beides ist erhalten.`, `${by} wrote on this sheet at the same time; both are kept.`)
+          : t("Jemand hat auf diesem Blatt gleichzeitig geschrieben; beides ist erhalten.", "Someone wrote on this sheet at the same time; both are kept."),
       }),
   });
   const primed = useRef(false);

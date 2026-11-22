@@ -746,10 +746,15 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         {view.semantic && (view.semantic.active || view.semantic.chunks > 0) && (
           <SettingRow label={t("Gespeichert", "Stored")}>
             <span className="setting-value">
-              {t(
-                `${view.semantic.chunks} Abschnitte aus ${view.semantic.sources} Seiten und Einträgen · ${mb(view.semantic.bytes)} MB${view.semantic.pending ? ` · ${view.semantic.pending} warten` : ""}`,
-                `${view.semantic.chunks} chunks from ${view.semantic.sources} pages and records · ${mb(view.semantic.bytes)} MB${view.semantic.pending ? ` · ${view.semantic.pending} waiting` : ""}`,
-              )}
+              {view.semantic.pending
+                ? t(
+                    `${view.semantic.chunks} Abschnitte aus ${view.semantic.sources} Seiten und Einträgen · ${mb(view.semantic.bytes)} MB · ${view.semantic.pending} warten`,
+                    `${view.semantic.chunks} chunks from ${view.semantic.sources} pages and records · ${mb(view.semantic.bytes)} MB · ${view.semantic.pending} waiting`,
+                  )
+                : t(
+                    `${view.semantic.chunks} Abschnitte aus ${view.semantic.sources} Seiten und Einträgen · ${mb(view.semantic.bytes)} MB`,
+                    `${view.semantic.chunks} chunks from ${view.semantic.sources} pages and records · ${mb(view.semantic.bytes)} MB`,
+                  )}
             </span>
           </SettingRow>
         )}

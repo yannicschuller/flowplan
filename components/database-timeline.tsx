@@ -841,7 +841,7 @@ export default function DatabaseTimeline({
                   <button
                     key={operation}
                     className={`timeline-resize ${operation}`}
-                    aria-label={t(`${operation === "resize-start" ? "Beginn" : "Ende"} von ${name} ziehen`, `Drag ${operation === "resize-start" ? "start" : "end"} of ${name}`)}
+                    aria-label={operation === "resize-start" ? t(`Beginn von ${name} ziehen`, `Drag start of ${name}`) : t(`Ende von ${name} ziehen`, `Drag end of ${name}`)}
                     aria-disabled={busy}
                     onPointerDown={(event) => begin(event, row, operation)}
                     {...handlers}
@@ -1442,10 +1442,12 @@ export default function DatabaseTimeline({
               {(() => {
                 const name = (id: string) => title(preview.rows.find((r) => r.id === id) || rows.find((r) => r.id === id)!);
                 const first = dragConflicts[0];
-                return t(
-                  `„${name(first.to)}“ läge dann zu früh: Es wartet auf „${name(first.from)}“.${dragConflicts.length > 1 ? ` (+${dragConflicts.length - 1} weitere)` : ""}`,
-                  `“${name(first.to)}” would then be too early: it waits for “${name(first.from)}”.${dragConflicts.length > 1 ? ` (+${dragConflicts.length - 1} more)` : ""}`,
-                );
+                return dragConflicts.length > 1
+                  ? t(
+                      `„${name(first.to)}“ läge dann zu früh: Es wartet auf „${name(first.from)}“. (+${dragConflicts.length - 1} weitere)`,
+                      `“${name(first.to)}” would then be too early: it waits for “${name(first.from)}”. (+${dragConflicts.length - 1} more)`,
+                    )
+                  : t(`„${name(first.to)}“ läge dann zu früh: Es wartet auf „${name(first.from)}“.`, `“${name(first.to)}” would then be too early: it waits for “${name(first.from)}”.`);
               })()}
             </p>
           )}

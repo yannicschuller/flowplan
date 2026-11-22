@@ -77,7 +77,7 @@ export function VersionsView({
       kind: "version",
       at: x.activated_at,
       who: x.activatedBy?.name || "",
-      title: t(`Version ${x.number}${x.id === activeId ? " · aktiv" : ""}`, `Version ${x.number}${x.id === activeId ? " · active" : ""}`),
+      title: x.id === activeId ? t(`Version ${x.number} · aktiv`, `Version ${x.number} · active`) : t(`Version ${x.number}`, `Version ${x.number}`),
       note: x.note,
     }));
     const d: Entry[] = data.drafts.map((x) => ({ id: x.id, kind: "draft", at: Date.parse(x.createdAt.includes("T") ? x.createdAt : `${x.createdAt.replace(" ", "T")}Z`), who: x.createdBy?.name || "", title: t("Entwurfsstand", "Draft state") }));

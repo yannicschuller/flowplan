@@ -88,7 +88,7 @@ export function TransferDialog({
   const shown = (targets || []).filter((x) => x.title.toLowerCase().includes(query.trim().toLowerCase()));
   const n = rowIds.length;
   return (
-    <Modal open onClose={onClose} title={n > 1 ? t(`${n} Einträge ${mode === "move" ? "verschieben" : "kopieren"}`, `${mode === "move" ? "Move" : "Copy"} ${n} records`) : mode === "move" ? t("Eintrag verschieben", "Move record") : t("Eintrag kopieren", "Copy record")}>
+    <Modal open onClose={onClose} title={n > 1 ? (mode === "move" ? t(`${n} Einträge verschieben`, `Move ${n} records`) : t(`${n} Einträge kopieren`, `Copy ${n} records`)) : mode === "move" ? t("Eintrag verschieben", "Move record") : t("Eintrag kopieren", "Copy record")}>
       <form
         className="transfer-dialog"
         onSubmit={async (e) => {

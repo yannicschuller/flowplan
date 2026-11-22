@@ -4078,7 +4078,7 @@ export default function WorkspaceApp({
     { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal"), module: PAGE_KIND_MODULE.journal },
     // "Journal: Heute" – with several journals one per journal, the last used first.
     ...journalsByUse().map((journal, _, list) => ({
-      label: list.length > 1 ? t(`Journal: Heute – ${journal.title || "Ohne Titel"}`, `Journal: Today – ${journal.title || "Untitled"}`) : t("Journal: Heute", "Journal: Today"),
+      label: list.length > 1 ? t(`Journal: Heute – ${journal.title || t("Ohne Titel", "Untitled")}`, `Journal: Today – ${journal.title || t("Ohne Titel", "Untitled")}`) : t("Journal: Heute", "Journal: Today"),
       keywords: `${t("tagebuch tag heute eintrag", "tagebuch tag heute diary day today entry journal")} ${journal.title}`,
       icon: CalendarCheck,
       run: () => void openJournalToday(journal.id),
@@ -4116,7 +4116,7 @@ export default function WorkspaceApp({
     { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study"), module: "flashcards" },
     // Each deck with something left today (#study's counts, loaded when the
     // palette opens).
-    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || "Ohne Titel"}`, `Study: ${d.title || "Untitled"}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const })),
+    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || t("Ohne Titel", "Untitled")}`, `Study: ${d.title || t("Ohne Titel", "Untitled")}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const })),
     // From the open page (a deck: into it), else from pasted text or a file.
     ...(aiUsable(uiAi, "flashcards") && !boot.workspace.guest && featureShown("flashcards")
       ? [
@@ -7896,7 +7896,7 @@ export default function WorkspaceApp({
               aria-label={
                 selectedPages.length > 1 && selectedPages.includes(pageMenu.page.id)
                   ? t(`Aktionen für ${pagesLabel(selectedPages.length)}`, `Actions for ${pagesLabel(selectedPages.length)}`)
-                  : t(`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`, `Actions for ${pageMenu.page.title || "Untitled"}`)
+                  : t(`Aktionen für ${pageMenu.page.title || t("Ohne Titel", "Untitled")}`, `Actions for ${pageMenu.page.title || t("Ohne Titel", "Untitled")}`)
               }
             >
               {(() => {

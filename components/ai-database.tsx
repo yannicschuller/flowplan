@@ -319,9 +319,10 @@ export function AiFillDialog({
           </label>
           <p className="muted">
             {t(
-              `Die KI füllt „${chosen?.name}“ in ${rowIds.length} ausgewählten Einträgen aus – nur wo das Feld leer ist, aus Titel, übrigen Eigenschaften und Inhalt.${chosen && ["select", "multiselect"].includes(chosen.type) ? " Nur vorhandene Optionen werden verwendet." : ""}`,
-              `The AI fills in “${chosen?.name}” in ${rowIds.length} selected records – only where it is empty, from the title, the other properties and the content.${chosen && ["select", "multiselect"].includes(chosen.type) ? " Only existing options are used." : ""}`,
+              `Die KI füllt „${chosen?.name}“ in ${rowIds.length} ausgewählten Einträgen aus – nur wo das Feld leer ist, aus Titel, übrigen Eigenschaften und Inhalt.`,
+              `The AI fills in “${chosen?.name}” in ${rowIds.length} selected records – only where it is empty, from the title, the other properties and the content.`,
             )}
+            {chosen && ["select", "multiselect"].includes(chosen.type) ? ` ${t("Nur vorhandene Optionen werden verwendet.", "Only existing options are used.")}` : ""}
           </p>
           <p className="muted">
             <Sparkle size={13} /> {aiProviderLabel(ai?.provider ?? null, t)}

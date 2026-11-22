@@ -222,11 +222,16 @@ const money = (v: number, currency: string): [string, string] => {
 };
 type Part = string | [string, string];
 // A sentence from fixed text and numbers: de(…) and en(…) side by side.
-function say(de: Part[], en: Part[]): [string, string] {
+// Given two (template) strings instead, say(de, en) is a catalogue key
+// (scripts/i18n.mjs), so the other languages translate the whole sentence –
+// numbers as {0}, {1} … – rather than leaving English words inside it.
+function say(de: string, en: string): [string, string];
+function say(de: Part[], en: Part[]): [string, string];
+function say(de: Part[] | string, en: Part[] | string): [string, string] {
+  if (typeof de === "string" || typeof en === "string") return [String(de), String(en)];
   const join = (parts: Part[], i: 0 | 1) => parts.map((p) => (typeof p === "string" ? p : p[i])).join("");
   return [join(de, 0), join(en, 1)];
 }
-const plural = (count: number, one: [string, string], many: [string, string]): [string, string] => (count === 1 ? one : many);
 
 /* ---------- The rules ---------- */
 
@@ -516,7 +521,9 @@ export const restarts: Rule = (x, t) => {
     "restarts",
     "warn",
     ["Häufige Neustarts", "Frequent restarts"],
-    say(["Flowplan war in den letzten 7 Tagen ", n(count), " ", plural(count, ["Mal", "time"], ["Mal", "times"]), " für mehr als 5 Minuten weg (Neustarts oder Ausfälle)."], ["Flowplan was gone for more than 5 minutes ", n(count), " ", plural(count, ["Mal", "time"], ["Mal", "times"]), " in the last 7 days (restarts or outages)."]),
+    count === 1
+      ? say("Flowplan war in den letzten 7 Tagen einmal für mehr als 5 Minuten weg (Neustarts oder Ausfälle).", "Flowplan was gone for more than 5 minutes once in the last 7 days (restarts or outages).")
+      : say(`Flowplan war in den letzten 7 Tagen ${n(count)[0]} Mal für mehr als 5 Minuten weg (Neustarts oder Ausfälle).`, `Flowplan was gone for more than 5 minutes ${n(count)[1]} times in the last 7 days (restarts or outages).`),
     ["Prüf, ob der Container wegen zu wenig Arbeitsspeicher beendet wird (OOM); die Debug-Daten helfen in einem Fehlerbericht.", "Check whether the container is stopped for lack of memory (OOM); the debug data help in a bug report."],
     docs("monitoring"),
     { gaps: x.days.map((d) => ({ day: new Date(d.day).toISOString().slice(0, 10), gaps: d.gaps, memPeak: Math.round(d.memPeak * 100) / 100 })) },

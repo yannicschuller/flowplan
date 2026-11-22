@@ -44,8 +44,16 @@ export function RequestsChart({ requests, kind = "requests", height, onPick }: {
       title={title}
       description={
         kind === "requests"
-          ? t(`Durchschnitt je ${long ? "Stunde" : requests.range === "24h" ? "5 Minuten" : "Minute"}, ${rangeLabel(requests.range, t)}.`, `Average per ${long ? "hour" : requests.range === "24h" ? "5 minutes" : "minute"}, ${rangeLabel(requests.range, t)}.`)
-          : t(`Antworten mit Status 500–599 je ${long ? "Stunde" : requests.range === "24h" ? "5 Minuten" : "Minute"}.`, `Answers with status 500–599 per ${long ? "hour" : requests.range === "24h" ? "5 minutes" : "minute"}.`)
+          ? long
+            ? t(`Durchschnitt je Stunde, ${rangeLabel(requests.range, t)}.`, `Average per hour, ${rangeLabel(requests.range, t)}.`)
+            : requests.range === "24h"
+              ? t(`Durchschnitt je 5 Minuten, ${rangeLabel(requests.range, t)}.`, `Average per 5 minutes, ${rangeLabel(requests.range, t)}.`)
+              : t(`Durchschnitt je Minute, ${rangeLabel(requests.range, t)}.`, `Average per minute, ${rangeLabel(requests.range, t)}.`)
+          : long
+            ? t("Antworten mit Status 500–599 je Stunde.", "Answers with status 500–599 per hour.")
+            : requests.range === "24h"
+              ? t("Antworten mit Status 500–599 je 5 Minuten.", "Answers with status 500–599 per 5 minutes.")
+              : t("Antworten mit Status 500–599 je Minute.", "Answers with status 500–599 per minute.")
       }
       x={requests.points.map((p) => p.at)}
       series={[{ key: kind, label: kind === "requests" ? t("Anfragen/Min.", "Requests/min") : t("Fehler", "Errors"), values, color: kind === "requests" ? 0 : 1 }]}

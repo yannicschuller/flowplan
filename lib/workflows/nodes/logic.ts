@@ -306,6 +306,6 @@ export const logicApproval: NodeImpl = async (ctx) => {
       Date.now(),
     );
   const title = ctx.workflowPage.title || "Workflow";
-  await opsNotify(approvers, ctx.workflowPage.id, (tr) => tr(`Freigabe erbeten – ${title}: ${message || "Bitte genehmigen oder ablehnen."}`, `Approval requested – ${title}: ${message || "Please approve or reject."}`), null, approvalId);
+  await opsNotify(approvers, ctx.workflowPage.id, (tr) => tr(`Freigabe erbeten – ${title}: ${message || tr("Bitte genehmigen oder ablehnen.", "Please approve or reject.")}`, `Approval requested – ${title}: ${message || tr("Bitte genehmigen oder ablehnen.", "Please approve or reject.")}`), null, approvalId);
   return { wait: expires ?? FAR, state: { $wait: true, approvalId, approvers } };
 };

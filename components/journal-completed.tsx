@@ -93,7 +93,7 @@ export function JournalCompleted({ pageId, journalId }: { pageId: string; journa
               )}
               <small>
                 {item.kind === "study"
-                  ? t(`in ${item.database || "Ohne Titel"}`, `in ${item.database || "Untitled"}`)
+                  ? t(`in ${item.database || t("Ohne Titel", "Untitled")}`, `in ${item.database || t("Ohne Titel", "Untitled")}`)
                   : item.database || (item.kind === "task" ? t("Ohne Titel", "Untitled") : t("Datenbank", "Database"))}
               </small>
             </li>

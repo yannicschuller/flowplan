@@ -15,7 +15,9 @@ export default function ClipperSection() {
       canWrite={boot.workspace.role !== "viewer" && !boot.workspace.guest}
       onImport={async (spaceId, html) => {
         const result = (await mutate({ action: "bookmarks.import", workspaceId: boot.workspace.id, spaceId, html })) as { added: number; skipped: number };
-        return t(`${result.added} Lesezeichen importiert${result.skipped ? `, ${result.skipped} übersprungen` : ""}.`, `${result.added} bookmarks imported${result.skipped ? `, ${result.skipped} skipped` : ""}.`);
+        return result.skipped
+          ? t(`${result.added} Lesezeichen importiert, ${result.skipped} übersprungen.`, `${result.added} bookmarks imported, ${result.skipped} skipped.`)
+          : t(`${result.added} Lesezeichen importiert.`, `${result.added} bookmarks imported.`);
       }}
     />
   );

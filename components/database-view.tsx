@@ -855,7 +855,12 @@ export default function DatabaseView({
       setBulk(null);
       if (!undoShownSince(since))
         showToast({
-          text: t(`${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records ${operation === "update" ? "updated" : operation === "duplicate" ? "duplicated" : "deleted"}. The previous state was saved in the version history.`),
+          text:
+            operation === "update"
+              ? t(`${selectionRows.length} Einträge aktualisiert. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records updated. The previous state was saved in the version history.`)
+              : operation === "duplicate"
+                ? t(`${selectionRows.length} Einträge dupliziert. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records duplicated. The previous state was saved in the version history.`)
+                : t(`${selectionRows.length} Einträge gelöscht. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records deleted. The previous state was saved in the version history.`),
         });
     }
   }
@@ -2064,7 +2069,7 @@ export default function DatabaseView({
       <button
         type="button"
         className="row-order-handle"
-        aria-label={t(`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || "Ohne Titel"}`, `Move record: ${cellText(row.cells[fields[0].id]) || "Untitled"}`)}
+        aria-label={t(`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}`, `Move record: ${cellText(row.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}`)}
         title={t("Ziehen (auf Touchscreens kurz halten) oder Position wählen · Leertaste hebt an, Pfeiltasten verschieben · Alt + Pfeil hoch/runter", "Drag (on touch screens hold briefly) or choose a position · Space lifts, arrow keys move · Alt + arrow up/down")}
         aria-keyshortcuts="Space Alt+ArrowUp Alt+ArrowDown"
         aria-pressed={keyLift?.rowId === row.id && keyLift.groupKey === groupKey ? true : undefined}
@@ -2931,7 +2936,7 @@ export default function DatabaseView({
         <button
           className="group-toggle"
           aria-expanded={!closed}
-          aria-label={t(`Gruppe ${g.label} in ${where} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} group ${g.label} in ${where}`)}
+          aria-label={closed ? t(`Gruppe ${g.label} in ${where} ausklappen`, `Expand group ${g.label} in ${where}`) : t(`Gruppe ${g.label} in ${where} einklappen`, `Collapse group ${g.label} in ${where}`)}
           disabled={schemaBusy}
           onClick={() =>
             void setGroupsCollapsed(
@@ -2982,7 +2987,7 @@ export default function DatabaseView({
             <button
               className="group-toggle"
               aria-expanded={!closed}
-              aria-label={t(`Abschnitt ${g.label} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} section ${g.label}`)}
+              aria-label={closed ? t(`Abschnitt ${g.label} ausklappen`, `Expand section ${g.label}`) : t(`Abschnitt ${g.label} einklappen`, `Collapse section ${g.label}`)}
               disabled={schemaBusy}
               onClick={() =>
                 void setGroupsCollapsed([pathCollapseKey(keys)], !closed)
@@ -3013,7 +3018,7 @@ export default function DatabaseView({
         <button
           className="group-toggle"
           aria-expanded={!closed}
-          aria-label={t(`Untergruppe ${sub.label} in ${group.label} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} sub-group ${sub.label} in ${group.label}`)}
+          aria-label={closed ? t(`Untergruppe ${sub.label} in ${group.label} ausklappen`, `Expand sub-group ${sub.label} in ${group.label}`) : t(`Untergruppe ${sub.label} in ${group.label} einklappen`, `Collapse sub-group ${sub.label} in ${group.label}`)}
           disabled={schemaBusy}
           onClick={() =>
             void setGroupsCollapsed(
@@ -3056,7 +3061,7 @@ export default function DatabaseView({
         <button
           className="group-toggle"
           aria-expanded={!collapsed(group.key)}
-          aria-label={t(`Gruppe ${group.label} ${collapsed(group.key) ? "ausklappen" : "einklappen"}`, `${collapsed(group.key) ? "Expand" : "Collapse"} group ${group.label}`)}
+          aria-label={collapsed(group.key) ? t(`Gruppe ${group.label} ausklappen`, `Expand group ${group.label}`) : t(`Gruppe ${group.label} einklappen`, `Collapse group ${group.label}`)}
           disabled={schemaBusy}
           onClick={() =>
             void setGroupsCollapsed([group.key], !collapsed(group.key))
@@ -3948,7 +3953,7 @@ export default function DatabaseView({
                 <button
                   className="icon-button group-toggle"
                   aria-expanded={!collapsed(g.key)}
-                  aria-label={t(`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`, `${collapsed(g.key) ? "Expand" : "Collapse"} group ${g.label}`)}
+                  aria-label={collapsed(g.key) ? t(`Gruppe ${g.label} ausklappen`, `Expand group ${g.label}`) : t(`Gruppe ${g.label} einklappen`, `Collapse group ${g.label}`)}
                   disabled={schemaBusy}
                   onClick={() =>
                     void setGroupsCollapsed([g.key], !collapsed(g.key))
@@ -3983,7 +3988,7 @@ export default function DatabaseView({
                   <button
                     className="group-toggle"
                     aria-expanded={!closed}
-                    aria-label={t(`Swimlane ${lane.label} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} swimlane ${lane.label}`)}
+                    aria-label={closed ? t(`Swimlane ${lane.label} ausklappen`, `Expand swimlane ${lane.label}`) : t(`Swimlane ${lane.label} einklappen`, `Collapse swimlane ${lane.label}`)}
                     disabled={schemaBusy}
                     onClick={() => void setGroupsCollapsed([laneKey], !closed)}
                   >
@@ -4076,7 +4081,7 @@ export default function DatabaseView({
                 <button
                   className="icon-button group-toggle"
                   aria-expanded={!collapsed(g.key)}
-                  aria-label={t(`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`, `${collapsed(g.key) ? "Expand" : "Collapse"} group ${g.label}`)}
+                  aria-label={collapsed(g.key) ? t(`Gruppe ${g.label} ausklappen`, `Expand group ${g.label}`) : t(`Gruppe ${g.label} einklappen`, `Collapse group ${g.label}`)}
                   disabled={schemaBusy}
                   onClick={() =>
                     void setGroupsCollapsed([g.key], !collapsed(g.key))

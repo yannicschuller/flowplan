@@ -166,7 +166,7 @@ export function FramesPanel({
                     <button
                       type="button"
                       className="wb-frame-grip"
-                      aria-label={t(`„${frame.text || "Rahmen"}“ verschieben (Alt+Pfeiltasten)`, `Move “${frame.text || "Frame"}” (Alt+arrow keys)`)}
+                      aria-label={t(`„${frame.text || t("Rahmen", "Frame")}“ verschieben (Alt+Pfeiltasten)`, `Move “${frame.text || t("Rahmen", "Frame")}” (Alt+arrow keys)`)}
                       title={t("Ziehen, um die Reihenfolge zu ändern", "Drag to change the order")}
                       onPointerDown={(e) => gripDown(e, index)}
                       onKeyDown={(e) => {
@@ -180,7 +180,7 @@ export function FramesPanel({
                       <DotsSixVertical size={16} weight="bold" />
                     </button>
                   )}
-                  <button type="button" className="wb-frame-fly" onClick={() => onFly(frame)} aria-label={t(`Zu „${frame.text || "Rahmen"}“`, `Go to “${frame.text || "Frame"}”`)}>
+                  <button type="button" className="wb-frame-fly" onClick={() => onFly(frame)} aria-label={t(`Zu „${frame.text || t("Rahmen", "Frame")}“`, `Go to “${frame.text || t("Rahmen", "Frame")}”`)}>
                     <span className="wb-frame-number">{frame.presentHidden ? "–" : frames.slice(0, index + 1).filter((f) => !f.presentHidden).length}</span>
                     <FrameThumb frame={frame} items={items} byId={byId} pages={pages} cards={cards} />
                   </button>
@@ -249,7 +249,7 @@ export function FramesPanel({
                       defaultValue={frame.notes || ""}
                       maxLength={20000}
                       placeholder={t("Notizen für die Referentenansicht …", "Notes for the presenter view …")}
-                      aria-label={t(`Sprechernotizen zu „${frame.text || "Rahmen"}“`, `Speaker notes for “${frame.text || "Frame"}”`)}
+                      aria-label={t(`Sprechernotizen zu „${frame.text || t("Rahmen", "Frame")}“`, `Speaker notes for “${frame.text || t("Rahmen", "Frame")}”`)}
                       onKeyDown={(e) => e.stopPropagation()}
                       onChange={(e) => onNotes(frame.id, e.target.value)}
                     />

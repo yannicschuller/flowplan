@@ -457,8 +457,8 @@ export function KeyboardShortcuts({
                             disabled={saving}
                             aria-label={t(`${actionLabel(action, t)}: zurücksetzen`, `${actionLabel(action, t)}: reset`)}
                             title={t(
-                              `Zurück zu ${DEFAULT_KEYMAP[action].map((c) => formatCombo(c, mac)).join(" / ") || "keiner Kombination"}`,
-                              `Back to ${DEFAULT_KEYMAP[action].map((c) => formatCombo(c, mac)).join(" / ") || "no combination"}`,
+                              `Zurück zu ${DEFAULT_KEYMAP[action].map((c) => formatCombo(c, mac)).join(" / ") || t("keiner Kombination", "no combination")}`,
+                              `Back to ${DEFAULT_KEYMAP[action].map((c) => formatCombo(c, mac)).join(" / ") || t("keiner Kombination", "no combination")}`,
                             )}
                             onClick={() => {
                               const next = { ...overrides };

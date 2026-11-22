@@ -198,7 +198,7 @@ export function StudyScreen({ workspaceId, userId, spaces = [], onOpenPage }: { 
                   <span>{d.title || t("Ohne Titel", "Untitled")}</span>
                 </button>
                 <StudyCounts counts={d} />
-                <button className="button compact" disabled={!left(d)} onClick={() => setSession({ decks: [d], index: 0 })} aria-label={t(`${d.title || "Ohne Titel"} lernen`, `Study ${d.title || "Untitled"}`)}>
+                <button className="button compact" disabled={!left(d)} onClick={() => setSession({ decks: [d], index: 0 })} aria-label={t(`${d.title || t("Ohne Titel", "Untitled")} lernen`, `Study ${d.title || t("Ohne Titel", "Untitled")}`)}>
                   <Play aria-hidden weight="fill" /> {t("Lernen", "Study")}
                 </button>
               </li>

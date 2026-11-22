@@ -171,7 +171,7 @@ export function DatabaseSprints({
               <button
                 type="button"
                 className="sprint-row-handle"
-                aria-label={t(`${cellText(r.cells[fields[0].id]) || "Ohne Titel"} verschieben`, `Move ${cellText(r.cells[fields[0].id]) || "Untitled"}`)}
+                aria-label={t(`${cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")} verschieben`, `Move ${cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}`)}
                 title={t("Ziehen (auf Touchscreens kurz halten) · Leertaste hebt an, Pfeiltasten wählen den Abschnitt", "Drag (on touch screens hold briefly) · Space lifts, arrow keys choose the section")}
                 aria-keyshortcuts="Space"
                 aria-pressed={lifted?.id === r.id ? true : undefined}

@@ -247,7 +247,7 @@ function Health({ d }: { d: MonitoringOverview }) {
         : !h.backup.enabled
           ? t("geplante Sicherung aus", "scheduled backup off")
           : h.backup.lastAt
-            ? t(`letzte Sicherung ${ago(h.backup.lastAt, t)} · ${h.backup.target === "s3" ? "S3" : "lokal"}`, `last backup ${ago(h.backup.lastAt, t)} · ${h.backup.target === "s3" ? "S3" : "local"}`)
+            ? (h.backup.target === "s3" ? t(`letzte Sicherung ${ago(h.backup.lastAt, t)} · S3`, `last backup ${ago(h.backup.lastAt, t)} · S3`) : t(`letzte Sicherung ${ago(h.backup.lastAt, t)} · lokal`, `last backup ${ago(h.backup.lastAt, t)} · local`))
             : t("noch keine Sicherung", "no backup yet"),
       href: settingsHash({ area: "admin", section: "storage" }),
       icon: ArrowClockwise,
@@ -298,7 +298,7 @@ function Health({ d }: { d: MonitoringOverview }) {
       key: "update",
       title: t("Aktualisierung", "Update"),
       tone: h.update.latest ? "info" : "ok",
-      detail: h.update.latest ? t(`${h.update.latest} verfügbar · läuft ${h.update.version || "?"}`, `${h.update.latest} available · running ${h.update.version || "?"}`) : t(`${h.update.version ? `v${h.update.version}` : "Version"} · läuft seit ${uptime(h.uptimeSeconds, t)}`, `${h.update.version ? `v${h.update.version}` : "Version"} · running for ${uptime(h.uptimeSeconds, t)}`),
+      detail: h.update.latest ? t(`${h.update.latest} verfügbar · läuft ${h.update.version || "?"}`, `${h.update.latest} available · running ${h.update.version || "?"}`) : (h.update.version ? t(`v${h.update.version} · läuft seit ${uptime(h.uptimeSeconds, t)}`, `v${h.update.version} · running for ${uptime(h.uptimeSeconds, t)}`) : t(`Version · läuft seit ${uptime(h.uptimeSeconds, t)}`, `Version · running for ${uptime(h.uptimeSeconds, t)}`)),
       href: settingsHash({ area: "admin", section: "general" }),
       icon: ArrowCircleUp,
     },
@@ -502,7 +502,7 @@ function Traffic({ d, onPick }: { d: MonitoringOverview; onPick: (at: number) =>
       ) : (
         <>
           <RequestsChart requests={d.requests} />
-          <h3 className="mon-subhead">{t(`Fehler (5xx) je ${long ? "Stunde" : d.requests.range === "24h" ? "5 Minuten" : "Minute"}`, `Errors (5xx) per ${long ? "hour" : d.requests.range === "24h" ? "5 minutes" : "minute"}`)}</h3>
+          <h3 className="mon-subhead">{long ? t("Fehler (5xx) je Stunde", "Errors (5xx) per hour") : d.requests.range === "24h" ? t("Fehler (5xx) je 5 Minuten", "Errors (5xx) per 5 minutes") : t("Fehler (5xx) je Minute", "Errors (5xx) per minute")}</h3>
           <RequestsChart
             requests={d.requests}
             kind="errors"
@@ -1217,7 +1217,7 @@ function InstanceNumbers() {
         : t(`${num(m.pages)} aktiv · ${num(m.trashedPages)} im Papierkorb`, `${num(m.pages)} active · ${num(m.trashedPages)} in trash`),
     ],
     [t("Datensätze", "Records"), num(m.rows)],
-    [t("Versionen", "Versions"), t(`${num(m.snapshots)} · Aufbewahrung ${m.retentionDays ? `${m.retentionDays} Tage` : "unbegrenzt"}`, `${num(m.snapshots)} · kept ${m.retentionDays ? `${m.retentionDays} days` : "forever"}`)],
+    [t("Versionen", "Versions"), (m.retentionDays ? t(`${num(m.snapshots)} · Aufbewahrung ${m.retentionDays} Tage`, `${num(m.snapshots)} · kept ${m.retentionDays} days`) : t(`${num(m.snapshots)} · Aufbewahrung unbegrenzt`, `${num(m.snapshots)} · kept forever`))],
     [t("Erinnerungen", "Reminders"), num(m.reminders)],
     [
       t("Demos", "Demos"),

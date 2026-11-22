@@ -95,10 +95,12 @@ export function serverFinding(s: MonitoringServer, t: T): string[] {
   const total = Object.values(s.areas).reduce((a, b) => a + b, 0);
   const busiest = (Object.entries(s.areas) as [Area, number][]).filter(([k]) => k !== "other").sort((a, b) => b[1] - a[1])[0];
   out.push(
-    t(
-      `CPU: ${num(s.now.cpu.cores, 2)} von ${num(s.now.cpu.limit, 1)} Kernen in der letzten Minute${busiest && total && busiest[1] ? ` – die meiste Rechenzeit ging an ${areaName(busiest[0], t)} (${percent(busiest[1] / total)})` : ""}.`,
-      `CPU: ${num(s.now.cpu.cores, 2)} of ${num(s.now.cpu.limit, 1)} cores in the last minute${busiest && total && busiest[1] ? ` – most CPU time went to ${areaName(busiest[0], t)} (${percent(busiest[1] / total)})` : ""}.`,
-    ),
+    busiest && total && busiest[1]
+      ? t(
+          `CPU: ${num(s.now.cpu.cores, 2)} von ${num(s.now.cpu.limit, 1)} Kernen in der letzten Minute – die meiste Rechenzeit ging an ${areaName(busiest[0], t)} (${percent(busiest[1] / total)}).`,
+          `CPU: ${num(s.now.cpu.cores, 2)} of ${num(s.now.cpu.limit, 1)} cores in the last minute – most CPU time went to ${areaName(busiest[0], t)} (${percent(busiest[1] / total)}).`,
+        )
+      : t(`CPU: ${num(s.now.cpu.cores, 2)} von ${num(s.now.cpu.limit, 1)} Kernen in der letzten Minute.`, `CPU: ${num(s.now.cpu.cores, 2)} of ${num(s.now.cpu.limit, 1)} cores in the last minute.`),
   );
   return out;
 }
@@ -149,7 +151,7 @@ export function ServerCard({ s, range }: { s: MonitoringServer; range: "1h" | "2
         <Legend items={series.map((x) => ({ label: x.label, color: x.color, line: true }))} />
         <LineChart
           title={t("Server: CPU, RAM, Speicherplatz", "Server: CPU, RAM, disk")}
-          description={t(`Anteil am Limit, je ${long ? "Stunde" : range === "24h" ? "5 Minuten" : "Minute"}.`, `Share of the limit, per ${long ? "hour" : range === "24h" ? "5 minutes" : "minute"}.`)}
+          description={long ? t("Anteil am Limit, je Stunde.", "Share of the limit, per hour.") : range === "24h" ? t("Anteil am Limit, je 5 Minuten.", "Share of the limit, per 5 minutes.") : t("Anteil am Limit, je Minute.", "Share of the limit, per minute.")}
           x={p.map((x) => x.at)}
           series={series}
           area={false}

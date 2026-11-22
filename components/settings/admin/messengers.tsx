@@ -73,10 +73,12 @@ export default function MessengersSection() {
   return (
     <>
       <AdminStatus items={items} action={<FixLink href={guide}>{t("Anleitung", "Guide")}</FixLink>}>
-        {t(
-          `${active} Verbindungen aktiv${disabled ? `, ${disabled} nach Fehlern ausgeschaltet` : ""} · ${d.delivered} Nachrichten in 24 Stunden zugestellt.`,
-          `${active} connections active${disabled ? `, ${disabled} switched off after errors` : ""} · ${d.delivered} messages delivered in 24 hours.`,
-        )}
+        {disabled
+          ? t(
+              `${active} Verbindungen aktiv, ${disabled} nach Fehlern ausgeschaltet · ${d.delivered} Nachrichten in 24 Stunden zugestellt.`,
+              `${active} connections active, ${disabled} switched off after errors · ${d.delivered} messages delivered in 24 hours.`,
+            )
+          : t(`${active} Verbindungen aktiv · ${d.delivered} Nachrichten in 24 Stunden zugestellt.`, `${active} connections active · ${d.delivered} messages delivered in 24 hours.`)}
         {d.lastError ? ` ${t("Letzter Fehler:", "Last error:")} ${messengerErrorText(d.lastError, t)}` : ""}
       </AdminStatus>
 

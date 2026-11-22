@@ -136,10 +136,15 @@ export function AiStatisticsSection() {
             />
           </div>
           <p className="muted mon-small">
-            {t(
-              `Grenzen: höchstens ${num(s.limits.requestsPerPersonHour)} KI-Anfragen je Person und Stunde${s.limits.workflowTokensPerDay !== null ? `, ${compact(s.limits.workflowTokensPerDay)} Tokens je Workflow und Tag` : ""}. Eine Grenze je Arbeitsbereich gibt es nicht.`,
-              `Limits: at most ${num(s.limits.requestsPerPersonHour)} AI requests per person and hour${s.limits.workflowTokensPerDay !== null ? `, ${compact(s.limits.workflowTokensPerDay)} tokens per workflow and day` : ""}. There is no limit per workspace.`,
-            )}
+            {s.limits.workflowTokensPerDay !== null
+              ? t(
+                  `Grenzen: höchstens ${num(s.limits.requestsPerPersonHour)} KI-Anfragen je Person und Stunde, ${compact(s.limits.workflowTokensPerDay)} Tokens je Workflow und Tag. Eine Grenze je Arbeitsbereich gibt es nicht.`,
+                  `Limits: at most ${num(s.limits.requestsPerPersonHour)} AI requests per person and hour, ${compact(s.limits.workflowTokensPerDay)} tokens per workflow and day. There is no limit per workspace.`,
+                )
+              : t(
+                  `Grenzen: höchstens ${num(s.limits.requestsPerPersonHour)} KI-Anfragen je Person und Stunde. Eine Grenze je Arbeitsbereich gibt es nicht.`,
+                  `Limits: at most ${num(s.limits.requestsPerPersonHour)} AI requests per person and hour. There is no limit per workspace.`,
+                )}
           </p>
           <QuotaLines quota={s.limits.quota} money={money} />
           {s.people && (

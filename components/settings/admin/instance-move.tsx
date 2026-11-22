@@ -230,10 +230,15 @@ function SourceSide({ status, act, onError }: { status: Status; act: Act; onErro
           description={
             s.movedTo
               ? t("Den Hinweis entfernen und die Instanz wieder beschreibbar machen – nur, wenn der Umzug rückgängig gemacht wird.", "Remove the notice and make the instance writable again – only when the move is undone.")
-              : t(
-                  `Seit ${s.readOnlyAt ? when(s.readOnlyAt) : "dem letzten Abgleich"} schreibgeschützt für den letzten Abgleich. Lesen und Anmelden gehen weiter.`,
-                  `Read-only since ${s.readOnlyAt ? when(s.readOnlyAt) : "the last sync"} for the final sync. Reading and signing in still work.`,
-                )
+              : s.readOnlyAt
+                ? t(
+                    `Seit ${when(s.readOnlyAt)} schreibgeschützt für den letzten Abgleich. Lesen und Anmelden gehen weiter.`,
+                    `Read-only since ${when(s.readOnlyAt)} for the final sync. Reading and signing in still work.`,
+                  )
+                : t(
+                    "Schreibgeschützt für den letzten Abgleich. Lesen und Anmelden gehen weiter.",
+                    "Read-only for the final sync. Reading and signing in still work.",
+                  )
           }
         >
           <button type="button" className="button" disabled={busy} onClick={() => void run({ action: "unfreeze" })}>
