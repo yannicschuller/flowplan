@@ -11951,6 +11951,7 @@
   "The page is locked.": "页面已锁定。",
   "The page is locked. Unlock it first to edit.": "页面已锁定。请先解锁才能编辑。",
   "The page is no longer shared or the link was withdrawn.": "该页面不再共享或链接已被撤回。",
+  "The page is too large to print in the app (25 MB at most, pictures included). Leave out the cover or large pictures, or print in the browser.": "页面太大，无法在应用中打印（含图片最多 25 MB）。请省略封面或大图片，或在浏览器中打印。",
   "The page itself goes to the trash.": "页面本身会移到回收站。",
   "The page was changed in the meantime. Please read it again and retry.": "页面在此期间已被更改。请重新读取后再试。",
   "The page was changed in the meantime. Reload it before saving again. Your draft is kept here.": "此页面已在此期间更改。请在再次保存前重新加载。你的草稿已保存在此处。",

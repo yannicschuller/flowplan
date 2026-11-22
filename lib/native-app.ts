@@ -71,6 +71,11 @@ type FlowplanApp = {
   // with the events "flowplan:offline-enable" / "flowplan:offline-status"
   // (lib/app-offline-offer.ts).
   offlineStatus?: (status: import("./app-offline-offer").AppOfflineStatus) => void;
+  // Printing (#424; apps newer than 1.1.2): their web views ignore
+  // window.print(), so the page hands its lean print copy – styles and
+  // pictures inside, at most lib/print-way.ts APP_PRINT_MAX_CHARS – to the
+  // app, which opens the system's print dialog (a printer or "Save as PDF").
+  print?: (request: import("./print-way").AppPrintRequest) => void;
 };
 // Made by the app per instance on first launch, kept in the system's key
 // store: a public id and its secret.

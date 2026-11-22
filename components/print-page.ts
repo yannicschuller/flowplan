@@ -2,6 +2,9 @@
 import { tr } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/server-message";
 import { applyPrintOptions, printOptionsCss, type PrintOptions } from "@/lib/print-options";
+import { nativeApp } from "@/lib/native-app";
+import { absoluteCssUrls, APP_PRINT_IMAGE_BUDGET, APP_PRINT_MAX_CHARS, printWay, styleText, type AppPrintRequest } from "@/lib/print-way";
+import { showToast } from "./toast";
 // Printing (and "Save as PDF"): the page content alone, as a lean copy –
 // Safari lays out the whole app before showing its print dialog, which takes
 // long. Started after the menu has closed – Safari ignores print() while a
@@ -15,9 +18,18 @@ export function printPage(root?: HTMLElement, options?: PrintOptions) {
     if (!source) return window.print();
     document.querySelector("iframe.print-frame")?.remove();
     document.querySelector(".print-copy")?.remove();
+    const way = currentWay();
+    // The iPhone/iPad and Android app prints itself (#424): the same copy,
+    // with its styles and pictures inside, goes to the system's print dialog.
+    if (way === "app")
+      return void printInApp(async () => {
+        const copy = leanCopy(source, document, options);
+        await inlineImages(copy, APP_PRINT_IMAGE_BUDGET);
+        return `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base href="${escapeHtml(location.origin)}/"><title>${escapeHtml(document.title)}</title>${await inlinedStyles()}${optionsStyle(options)}</head><body class="print-view">${copy.outerHTML}</body></html>`;
+      }, options?.paper);
     // Apps on the iPhone and iPad home screen cannot print at all: the view
     // opens in the browser instead.
-    if (isIOS() && isStandalone())
+    if (way === "browser")
       return void printInBrowser(async () => {
         const copy = leanCopy(source, document, options);
         await inlineImages(copy);
@@ -25,7 +37,7 @@ export function printPage(root?: HTMLElement, options?: PrintOptions) {
       });
     // iPhone and iPad print the page itself, not a frame, and only while the
     // tap still counts: the copy goes into the page, printed right away.
-    if (isIOS()) {
+    if (way === "in-page") {
       const style = document.createElement("style");
       style.textContent = options ? printOptionsCss(options, "page") : "";
       return printInPage([style, leanCopy(source, document, options)]);
@@ -47,13 +59,23 @@ export function printDocument(html: string) {
     (document.activeElement as HTMLElement | null)?.blur?.();
     document.querySelector("iframe.print-frame")?.remove();
     document.querySelector(".print-copy")?.remove();
-    if (isIOS() && isStandalone())
+    const way = currentWay();
+    if (way === "app")
+      return void printInApp(async () => {
+        const parsed = new DOMParser().parseFromString(html, "text/html");
+        await inlineImages(parsed.body, APP_PRINT_IMAGE_BUDGET);
+        const base = parsed.createElement("base");
+        base.href = `${location.origin}/`;
+        parsed.head.prepend(base);
+        return `<!doctype html>${parsed.documentElement.outerHTML}`;
+      }, null);
+    if (way === "browser")
       return void printInBrowser(async () => {
         const parsed = new DOMParser().parseFromString(html, "text/html");
         await inlineImages(parsed.body);
         return `<!doctype html>${parsed.documentElement.outerHTML}`;
       });
-    if (isIOS()) {
+    if (way === "in-page") {
       const parsed = new DOMParser().parseFromString(html, "text/html");
       return printInPage([...parsed.head.querySelectorAll("style"), ...parsed.body.children].map((el) => document.importNode(el, true) as HTMLElement));
     }
@@ -65,6 +87,7 @@ const optionsStyle = (options?: PrintOptions) => {
   const css = options ? printOptionsCss(options, "page") : "";
   return css ? `<style data-print-options>${css.replace(/<\//g, "<\\/")}</style>` : "";
 };
+const currentWay = () => printWay({ app: nativeApp(), ios: isIOS(), standalone: isStandalone() });
 const isStandalone = () =>
   (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia("(display-mode: standalone)").matches;
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -72,6 +95,48 @@ const appStyles = () =>
   [...document.head.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')]
     .map((el) => (el instanceof HTMLLinkElement ? `<link rel="stylesheet" href="${escapeHtml(el.href)}">` : `<style>${el.textContent}</style>`))
     .join("");
+// The app's own copy has no address to load the styles from (the app's
+// printing renders it apart from the instance, without a session or the
+// instance's certificate): the instance's sheets go inside, their fonts and
+// pictures at absolute addresses. Sheets from elsewhere stay links.
+async function inlinedStyles() {
+  const sheets = [...document.head.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')];
+  const parts = await Promise.all(
+    sheets.map(async (el) => {
+      if (!(el instanceof HTMLLinkElement)) return `<style>${styleText(absoluteCssUrls(el.textContent || "", location.href))}</style>`;
+      try {
+        if (new URL(el.href).origin === location.origin) {
+          const res = await fetch(el.href, { credentials: "same-origin" });
+          if (res.ok) return `<style>${styleText(absoluteCssUrls(await res.text(), el.href))}</style>`;
+        }
+      } catch {}
+      return `<link rel="stylesheet" href="${escapeHtml(el.href)}">`;
+    }),
+  );
+  return parts.join("");
+}
+// The app prints (FlowplanApp.print, #424): the system's print dialog, with
+// a printer or "Save as PDF". Too big for one request (pictures as data):
+// said so, nothing printed.
+async function printInApp(build: () => Promise<string>, paper: PrintOptions["paper"] | null | undefined) {
+  const app = nativeApp();
+  if (!app?.print) return;
+  try {
+    const html = await build();
+    if (html.length > APP_PRINT_MAX_CHARS)
+      return void showToast({
+        tone: "error",
+        text: tr(
+          "Die Seite ist zu groß, um sie in der App zu drucken (höchstens 25 MB mit Bildern). Lass Titelbild oder große Bilder weg oder drucke im Browser.",
+          "The page is too large to print in the app (25 MB at most, pictures included). Leave out the cover or large pictures, or print in the browser.",
+        ),
+      });
+    const request: AppPrintRequest = { html, title: document.title, paper: paper === "a4" || paper === "letter" ? paper : null };
+    app.print(request);
+  } catch {
+    showToast({ tone: "error", text: tr("Druckansicht konnte nicht erstellt werden.", "The print view could not be created.") });
+  }
+}
 // The copy goes into the page itself (iPhone, iPad), printed right away.
 function printInPage(elements: HTMLElement[]) {
   const holder = document.createElement("div");
@@ -165,9 +230,9 @@ async function printInBrowser(build: () => Promise<string>) {
     status.textContent = (e as Error).message || tr("Druckansicht konnte nicht erstellt werden.", "The print view could not be created.");
   }
 }
-// Own pictures (behind the session) as data, up to 30 MB together.
-async function inlineImages(root: HTMLElement) {
-  let budget = 30 * 1024 * 1024;
+// Own pictures (behind the session) as data, up to 30 MB together (the
+// app: less, its request has a limit).
+async function inlineImages(root: HTMLElement, budget = 30 * 1024 * 1024) {
   await Promise.all(
     [...root.querySelectorAll("img")].map(async (img) => {
       const src = img.getAttribute("src");
