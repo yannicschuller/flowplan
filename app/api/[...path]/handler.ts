@@ -166,7 +166,7 @@ import { ARCHIVE_LIMIT, jsonExportWorkspace } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
 import { plainHttpInstance } from "@/lib/instance-https";
 import { updateStatus } from "@/lib/update-check";
-import { enforceUserStorage, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
+import { enforceUserStorage, groupLimitsView, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
 import {
   enforceQuota,
@@ -1326,6 +1326,7 @@ async function handleGET(
         update: await updateStatus(),
         plainHttp: plainHttpInstance(),
         userUsage: await usersUsage(),
+        groupLimits: await groupLimitsView(),
         users: await all(
           "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,update_notes,settings_level,modules,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
         ),
@@ -2193,7 +2194,7 @@ async function handlePOST(
         throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
       const maxUpload = await maxUploadMbFor(user);
       if (file.size > maxUpload * 1024 * 1024)
-        throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
+        throw new HttpError(413, `Die Datei ist zu groß: Du kannst Dateien bis ${maxUpload} MB hochladen.`);
       await enforceQuota(p.workspace_id, file.size);
       await enforceUserStorage(user, file.size);
       if (

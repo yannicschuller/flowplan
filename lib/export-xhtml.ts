@@ -8,7 +8,9 @@ import { calloutType } from "./document-schema";
 import { STATUS_BOX, taskStatusOf, taskSymbolOf } from "./task-status";
 import { CALLOUT_COLORS, calloutColor, calloutFill, calloutIcon } from "./callout-types";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
-import { ct } from "./content-locale";
+import { ct, contentLocale } from "./content-locale";
+import { localeTag } from "./i18n";
+import { flowSourceSvg } from "./flow-diagram";
 import { footnoteText, URL_PATTERN } from "./footnotes";
 import { documentNode } from "./export-content";
 import { captionCounter, captionText } from "./block-captions";
@@ -214,6 +216,13 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         return `<pre class="mermaid">${xml(String(node.attrs.source || ""))}</pre>`;
       case "functionPlot":
         return `<p class="placeholder">${xml(ct("Funktionsgraph (nur in Flowplan)", "Function plot (only in Flowplan)"))}</p>`;
+      case "flowDiagram": {
+        // A flow diagram (#427) as its picture, like a draw.io diagram.
+        const label = ct("Flussdiagramm", "Flow diagram");
+        const svg = flowSourceSvg(String(node.attrs.source || ""), { unit: String(node.attrs.unit || ""), locale: localeTag(contentLocale()), t: ct, fixedSize: true });
+        const src = context.svg ? context.svg(svg) : `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+        return `<figure class="flow-diagram"><img src="${xml(src)}" alt="${xml(label)}"/></figure>`;
+      }
       case "drawioBlock": {
         // The stored picture, cleaned (lib/drawio-svg.ts), as a data: image.
         const label = ct("draw.io-Diagramm", "draw.io diagram");

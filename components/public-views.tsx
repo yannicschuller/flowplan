@@ -7,12 +7,15 @@ import { cellText } from "@/lib/database";
 import {
   chartAggregates,
   chartConfigError,
+  chartFlowUnit,
+  chartFlows,
   chartPalettes,
   chartPoints,
   chartSeries,
   defaultChart,
 } from "@/lib/database-chart";
 import { dateDay, scheduleFields } from "@/lib/database-timeline";
+import { flowSvg } from "@/lib/flow-diagram";
 import { publicTimelineData } from "@/lib/public-timeline";
 import { PublicTimelineGrid } from "./public-timeline-lazy";
 import {
@@ -282,6 +285,37 @@ export async function PublicChart({
     config.aggregate === "count"
       ? chartAggregates.count
       : t(`${chartAggregates[config.aggregate]} von ${fields.find((f) => f.id === config.yField)?.name || ""}`, `${t(chartAggregates[config.aggregate])} of ${fields.find((f) => f.id === config.yField)?.name || ""}`);
+  // Flow diagrams (#427): the SVG (escaped text) and a table of the flows.
+  if (config.kind === "flow") {
+    const { flows, graph } = chartFlows(records, fields, config);
+    return (
+      <section className="public-chart" aria-label={t(`Flussdiagramm: ${measure}`, `Flow diagram: ${measure}`)}>
+        <div
+          className="chart-flow"
+          dangerouslySetInnerHTML={{ __html: flowSvg(graph, { unit: chartFlowUnit(config), locale: tag, palette: colors, t, label: measure }) }}
+        />
+        <table className="data-table public-chart-table">
+          <caption className="muted">{measure}</caption>
+          <thead>
+            <tr>
+              <th>{t("Quelle", "Source")}</th>
+              <th>{t("Ziel", "Target")}</th>
+              <th>{t("Wert", "Value")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {flows.slice(0, 200).map((f) => (
+              <tr key={JSON.stringify([f.source, f.target])}>
+                <td>{f.source}</td>
+                <td>{f.target}</td>
+                <td>{format(f.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    );
+  }
   const total = points.reduce((sum, p) => sum + Math.max(0, p.value || 0), 0);
   let angle = 0;
   const donut =

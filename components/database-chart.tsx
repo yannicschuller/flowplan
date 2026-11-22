@@ -11,6 +11,8 @@ import {
   chartDateField,
   chartGroupField,
   chartDomain,
+  chartFlowUnit,
+  chartFlows,
   chartKinds,
   chartNumberField,
   chartPaletteNames,
@@ -25,6 +27,7 @@ import {
   type SeriesValue,
 } from "@/lib/database-chart";
 import { cellText } from "@/lib/cell-text";
+import { flowSvg } from "@/lib/flow-diagram";
 import type { Field, Row, User, View } from "@/lib/types";
 import { Modal, download } from "./ui";
 const paletteOf = (config: ChartConfig) =>
@@ -661,6 +664,7 @@ function ChartSettings({
     setError("");
   };
   const invalid = chartConfigError(draft, fields);
+  const flow = draft.kind === "flow";
   return (
     <form
       onSubmit={async (e) => {
@@ -697,12 +701,12 @@ function ChartSettings({
           </Select>
         </label>
         <label>
-          {t("Gruppierung", "Grouping")}
+          {flow ? t("Quelle", "Source") : t("Gruppierung", "Grouping")}
           <Select
             value={draft.xField || ""}
             onChange={(e) => patch({ xField: e.target.value || undefined })}
           >
-            <option value="">{t("Alle Einträge", "All records")}</option>
+            <option value="">{flow ? t("Eigenschaft wählen", "Choose property") : t("Alle Einträge", "All records")}</option>
             {fields.filter(chartGroupField).map((f) => (
               <option key={f.id} value={f.id}>
                 {f.name}
@@ -710,6 +714,24 @@ function ChartSettings({
             ))}
           </Select>
         </label>
+        {flow && (
+          <label>
+            {t("Ziel", "Target")}
+            <Select
+              value={draft.targetField || ""}
+              onChange={(e) => patch({ targetField: e.target.value || undefined })}
+            >
+              <option value="">{t("Eigenschaft wählen", "Choose property")}</option>
+              {fields
+                .filter((f) => chartGroupField(f) && f.id !== draft.xField)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </Select>
+          </label>
+        )}
         {chartDateField(fields.find((f) => f.id === draft.xField)) && (
           <label>
             {t("Datumsintervall", "Date interval")}
@@ -739,11 +761,13 @@ function ChartSettings({
               })
             }
           >
-            {Object.entries(chartAggregates).map(([value, title]) => (
-              <option key={value} value={value}>
-                {t(title)}
-              </option>
-            ))}
+            {Object.entries(chartAggregates)
+              .filter(([value]) => !flow || value === "count" || value === "sum")
+              .map(([value, title]) => (
+                <option key={value} value={value}>
+                  {t(title)}
+                </option>
+              ))}
           </Select>
         </label>
         {draft.aggregate !== "count" && (
@@ -762,6 +786,19 @@ function ChartSettings({
             </Select>
           </label>
         )}
+        {flow && (
+          <label>
+            {t("Einheit (optional)", "Unit (optional)")}
+            <input
+              aria-label={t("Einheit", "Unit")}
+              maxLength={16}
+              placeholder={t("z. B. €", "e.g. €")}
+              value={draft.unit || ""}
+              onChange={(e) => patch({ unit: e.target.value || undefined })}
+            />
+          </label>
+        )}
+        {!flow && (
         <label>
           {t("Datenreihen", "Series")}
           <Select
@@ -782,7 +819,8 @@ function ChartSettings({
               ))}
           </Select>
         </label>
-        {!draft.seriesField && draft.kind !== "donut" && (
+        )}
+        {!flow && !draft.seriesField && draft.kind !== "donut" && (
           <fieldset className="chart-measures">
             <legend>{t("Weitere Werte", "More values")}</legend>
             {(draft.measures || []).map((m, i) => (
@@ -855,7 +893,7 @@ function ChartSettings({
             )}
           </fieldset>
         )}
-        {draft.seriesField &&
+        {!flow && draft.seriesField &&
           draft.kind !== "line" &&
           draft.kind !== "donut" && (
             <label>
@@ -877,7 +915,7 @@ function ChartSettings({
               </Select>
             </label>
           )}
-        {(draft.seriesField || !!draft.measures?.length) && (
+        {!flow && (draft.seriesField || !!draft.measures?.length) && (
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -903,6 +941,7 @@ function ChartSettings({
             ))}
           </Select>
         </label>
+        {!flow && (
         <label className="checkbox-label">
           <input
             type="checkbox"
@@ -911,7 +950,8 @@ function ChartSettings({
           />
           {t("Gitterlinien anzeigen", "Show grid lines")}
         </label>
-        {draft.kind !== "donut" && (
+        )}
+        {!flow && draft.kind !== "donut" && (
           <>
             <label>
               {t("Beschriftung Gruppenachse", "Group axis label")}
@@ -982,6 +1022,7 @@ function ChartSettings({
               )}
           </>
         )}
+        {!flow && (
         <label>
           {t("Gruppen sortieren", "Sort groups")}
           <Select
@@ -996,14 +1037,18 @@ function ChartSettings({
             <option value="value_desc">{t("Wert absteigend", "Value descending")}</option>
           </Select>
         </label>
+        )}
         <label className="checkbox-label">
           <input
             type="checkbox"
             checked={draft.includeEmpty}
             onChange={(e) => patch({ includeEmpty: e.target.checked })}
           />
-          {t("Einträge ohne Gruppierungswert anzeigen", "Show records without a grouping value")}
+          {flow
+            ? t("Einträge ohne Quelle oder Ziel als „Ohne Wert“ anzeigen", "Show records without source or target as “No value”")
+            : t("Einträge ohne Gruppierungswert anzeigen", "Show records without a grouping value")}
         </label>
+        {!flow && (
         <label className="checkbox-label">
           <input
             type="checkbox"
@@ -1012,8 +1057,9 @@ function ChartSettings({
           />
           {t("Werte im Diagramm anzeigen", "Show values in the chart")}
         </label>
+        )}
       </fieldset>
-      {invalid && <p role="alert">{invalid}</p>}
+      {invalid && <p role="alert">{t(invalid)}</p>}
       {stale && (
         <div role="alert">
           <p>
@@ -1050,6 +1096,36 @@ function ChartSettings({
     </form>
   );
 }
+// A flow diagram from the records (#427); the SVG is built from escaped
+// text by lib/flow-diagram.ts.
+function FlowGraphic({ data, config }: { data: NonNullable<ReturnType<typeof chartFlows>>; config: ChartConfig }) {
+  const t = useT();
+  if (!data.graph.flows.length)
+    return (
+      <p className="muted">
+        {t("Keine Flüsse für diese Auswertung. Passe Filter, Suche, Quelle oder Ziel an.", "No flows for this chart. Adjust filters, search, source or target.")}
+      </p>
+    );
+  return (
+    <>
+      <div
+        className="chart-flow"
+        dangerouslySetInnerHTML={{
+          __html: flowSvg(data.graph, { unit: chartFlowUnit(config), palette: paletteOf(config), t, label: t("Flussdiagramm", "Flow diagram") }),
+        }}
+      />
+      {data.graph.dropped > 0 && (
+        <p className="muted" role="status">
+          {t(
+            `${data.graph.dropped} Flüsse fehlen im Diagramm (Kreise, gleiche Quelle und Ziel oder negative Beträge); die Wertetabelle enthält alle.`,
+            `${data.graph.dropped} flows are left out of the diagram (cycles, same source and target or negative amounts); the value table contains all of them.`,
+          )}
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function DatabaseChart({
   view,
   version,
@@ -1088,13 +1164,31 @@ export default function DatabaseChart({
   const config = view.chart || defaultChart(fields),
     invalid = chartConfigError(config, fields),
     colors = paletteOf(config);
+  const flow = config.kind === "flow";
+  const flowData = useMemo(
+    () => (flow ? chartFlows(rows, fields, config, related, members) : null),
+    [flow, rows, fields, config, related, members],
+  );
+  // A flow diagram's value table lists its flows ("Source → Target").
   const points = useMemo(
-    () => chartPoints(rows, fields, config, related, members),
-    [rows, fields, config, related, members],
+    () =>
+      flowData
+        ? flowData.flows.map((f) => ({
+            key: JSON.stringify([f.source, f.target]),
+            label: `${f.source} → ${f.target}`,
+            value: f.value,
+            rows: f.rows,
+            numericCount: f.rows.length,
+          }))
+        : chartPoints(rows, fields, config, related, members),
+    [flowData, rows, fields, config, related, members],
   );
   const { series, values } = useMemo(
-    () => chartSeries(points, fields, config, related, members),
-    [points, fields, config, related, members],
+    () =>
+      flow
+        ? { series: [] as ChartSeries[], values: new Map<string, Map<string, SeriesValue>>() }
+        : chartSeries(points, fields, config, related, members),
+    [flow, points, fields, config, related, members],
   );
   const withSeries = series.length > 0 && config.kind !== "donut";
   // Further values: series are measures, a total across them means nothing.
@@ -1134,7 +1228,7 @@ export default function DatabaseChart({
         <div>
           <h3>{title}</h3>
           <p className="muted">
-            {rows.length} {t("Einträge ·", "records ·")}{" "}{points.length} {t("Gruppen", "Groups")}
+            {rows.length} {t("Einträge ·", "records ·")}{" "}{points.length} {flow ? t("Flüsse", "Flows") : t("Gruppen", "Groups")}
           </p>
         </div>
         <div className="chart-actions">
@@ -1175,10 +1269,10 @@ export default function DatabaseChart({
         </div>
       </div>
       {invalid ? (
-        <p role="alert">{invalid}</p>
+        <p role="alert">{t(invalid)}</p>
       ) : (
         <>
-          {points.length > 100 && (
+          {!flow && points.length > 100 && (
             <p role="status">
               {t("Im Diagramm werden die ersten 100 von", "The chart shows the first 100 of")}{" "}{points.length} {t("Gruppen dargestellt. Die Wertetabelle und der CSV-Export enthalten alle Gruppen.", "groups. The value table and the CSV export contain all groups.")}
             </p>
@@ -1190,7 +1284,9 @@ export default function DatabaseChart({
             role="region"
             aria-label={t("Diagramm, bei Bedarf horizontal scrollen", "Chart, scroll horizontally if needed")}
           >
-            {withSeries ? (
+            {flowData ? (
+              <FlowGraphic data={flowData} config={config} />
+            ) : withSeries ? (
               <SeriesGraphic
                 points={points}
                 series={series}
@@ -1229,7 +1325,7 @@ export default function DatabaseChart({
               <caption>{t("Wertetabelle ·", "Value table ·")}{" "}{title}</caption>
               <thead>
                 <tr>
-                  <th>{t("Gruppe", "Group")}</th>
+                  <th>{flow ? t("Fluss", "Flow") : t("Gruppe", "Group")}</th>
                   {series.map((x) => (
                     <th key={x.key}>{x.label}</th>
                   ))}

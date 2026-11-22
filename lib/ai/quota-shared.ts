@@ -19,7 +19,8 @@ export type QuotaLimits = Partial<Record<QuotaPeriod, number | null>>;
 // role: "admin" (instance administrators) or "guest" (people who are a
 // full member of no workspace);
 // group: a workspace group (groups.id; SSO, SCIM and LDAP groups reach
-// these through the SSO group mappings);
+// these through the SSO group mappings) or a directory group by name
+// ("dir:<name>", lib/group-keys.ts: SCIM, LDAP and SSO groups directly);
 // user: a single account.
 export const QUOTA_SCOPES = ["instance", "default", "role", "group", "user"] as const;
 export type QuotaScope = (typeof QUOTA_SCOPES)[number];
@@ -28,7 +29,12 @@ export type QuotaRole = (typeof QUOTA_ROLES)[number];
 
 // exempt: no personal limit at all (a person or a group the limits don't
 // apply to); the instance ceiling still does.
-export type QuotaRule = { scope: QuotaScope; target: string; exempt: boolean; limits: QuotaLimits };
+// after: once the personal limits of this rule are used up, requests go on
+// with this model of the instance's provider instead of being refused –
+// counted, not limited; the instance ceiling still applies. Absent or null:
+// AI stops until the period resets. afterKind: the provider kind the model
+// was chosen for (another kind: the rule stops as without one).
+export type QuotaRule = { scope: QuotaScope; target: string; exempt: boolean; limits: QuotaLimits; after?: string | null; afterKind?: string | null };
 
 export type QuotaUnit = "tokens" | "cost";
 export type QuotaSettings = {
@@ -65,9 +71,13 @@ export type QuotaStatus = {
   // personal: the person is exempt from personal limits.
   exempt: boolean;
   periods: QuotaPeriodState[];
-  // Some period has less than (100 − warnAt) % left / nothing left.
+  // Some period has less than (100 − warnAt) % left / nothing left (and
+  // no model to go on with).
   low: boolean;
   blocked: boolean;
+  // The model requests go on with once the personal limit is used up
+  // (null: AI stops).
+  after?: string | null;
 };
 
 // Share of a limit used, 0…1 (a limit of 0 is used up).

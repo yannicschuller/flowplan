@@ -148,6 +148,8 @@ import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredL
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
 import { ListSkeleton, SettingsSkeleton, ViewSkeleton, viewShapeOf } from "./skeleton";
 import { RoutePendingPlaceholder } from "./route-pending";
+import { PageMissing } from "./page-missing";
+import { classifyError } from "@/lib/error-kinds";
 import { routePendingDone } from "@/lib/route-pending";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
@@ -604,6 +606,9 @@ export default function WorkspaceApp({
     // place in the address.
     [routeSettled, setRouteSettled] = useState(false),
     [dataState, setData] = useState<PageData | null>(null),
+    // A page that does not exist (any more) or is not shared with this
+    // person (404/403): an empty state in its place instead of a toast.
+    [missingPage, setMissingPage] = useState<{ id: string; status: number } | null>(null),
     [mobile, setMobile] = useState(false),
     [search, setSearch] = useState(false),
     // The keyboard shortcut overlay ("?", ⌘/, command, sidebar).
@@ -2032,6 +2037,8 @@ export default function WorkspaceApp({
       );
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
+      // Asked again: what the last answer said no longer counts.
+      setMissingPage((missing) => (missing?.id === id ? null : missing));
       try {
         const p = await api<PageData>(`/api/pages/${id}`, undefined, {
           "X-Flowplan-Visit": "1",
@@ -2072,13 +2079,21 @@ export default function WorkspaceApp({
           appCache().delete(pageKey(id));
           if (version === navigationVersion.current && currentId.current === id) setData(null);
         }
+        // Not there or not shared: the page area says so (PageMissing) – no
+        // toast on top, and no retry that could not help.
+        if (e instanceof ApiError && (e.status === 403 || e.status === 404) && !e.transient) {
+          if (version === navigationVersion.current && currentId.current === id) setMissingPage({ id, status: e.status });
+          return;
+        }
         // The kept copy stays open offline (#332): that the fresh one could
         // not be fetched without a network is what the offline icon says –
         // no "Keine Verbindung" toast over the page one goes on editing.
-        // Without a kept copy, or online, the failure is shown with Retry.
+        // Without a kept copy, or online, the failure is shown – with Retry
+        // only where trying again can help (no network, a server error).
+        const kind = classifyError(e).kind;
         if (version === navigationVersion.current)
           reportError(e, {
-            retry: () => void openPageRef.current(id, target),
+            retry: kind === "offline" || kind === "server" ? () => void openPageRef.current(id, target) : undefined,
             background: keptShown && currentId.current === id,
           });
       } finally {
@@ -5184,7 +5199,7 @@ export default function WorkspaceApp({
                     study: t("Lernen", "Study"),
                     settings: t("Einstellungen", "Settings"),
                     admin: t("Administration", "Administration"),
-                    page: t("Seite", "Page"),
+                    page: missingPage && missingPage.id === pageId && !busy ? t("Seite nicht gefunden", "Page not found") : t("Seite", "Page"),
                   }[screen]
                 }
               </span>
@@ -5731,6 +5746,15 @@ export default function WorkspaceApp({
                   view={viewShapeOf(pageId)}
                 />
               </div>
+            ) : missingPage && missingPage.id === pageId ? (
+              <PageMissing
+                status={missingPage.status}
+                onHome={() => go("home")}
+                // The place before, if this tab has one; otherwise the start page.
+                onBack={() => {
+                  if (!goBack()) go("home");
+                }}
+              />
             ) : (
               <div className="loading-content">{t("Seite nicht verfügbar.", "Page not available.")}</div>
             )

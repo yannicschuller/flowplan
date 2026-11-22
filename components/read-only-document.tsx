@@ -79,6 +79,12 @@ export function ReadOnlyDocument({
       void import("@/lib/function-plot").then(({ mountPlot, parsePlot }) => {
         for (const element of plots) mountPlot(element, parsePlot(element.dataset.functionPlot), { editable: false });
       });
+    // Flow diagrams (#427): drawn from their text.
+    const flows = Array.from(root.querySelectorAll<HTMLElement>("[data-flow-diagram]"));
+    if (flows.length)
+      void import("@/lib/flow-diagram").then(({ flowSourceSvg }) => {
+        for (const element of flows) element.innerHTML = flowSourceSvg(element.dataset.flowDiagram || "", { unit: element.dataset.flowUnit || "" });
+      });
     // Dashboard numbers: fetched for whoever reads the page ("–" without access).
     const metrics = Array.from(root.querySelectorAll<HTMLElement>("[data-metric]"));
     const metricHandles: { destroy(): void }[] = [];

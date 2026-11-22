@@ -35,6 +35,7 @@ const names: Record<string, string> = {
   mathBlock: tr("Formel", "Formula"),
   mermaidBlock: tr("Diagramm", "Diagram"),
   drawioBlock: tr("draw.io-Diagramm", "draw.io diagram"),
+  flowDiagram: tr("Flussdiagramm", "Flow diagram"),
   columns: tr("Spalten", "Columns"),
   tabs: tr("Tabs", "Tabs"),
   media: tr("Medium", "Media"),
@@ -79,7 +80,7 @@ export function documentBlocks(doc: Node): DocumentBlock[] {
             node.textContent ||
             node.attrs.title ||
             node.attrs.expression ||
-            (["mermaidBlock", "drawioBlock"].includes(node.type.name) && heading
+            (["mermaidBlock", "drawioBlock", "flowDiagram"].includes(node.type.name) && heading
               ? tr(`unter „${heading}“`, `below “${heading}”`)
               : "") ||
             node.attrs.alt ||

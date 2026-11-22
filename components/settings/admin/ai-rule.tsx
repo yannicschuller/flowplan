@@ -60,6 +60,23 @@ export function LimitInput({ value, unit, label, placeholder, disabled, onCommit
   );
 }
 
+// "Nach Erreichen des Kontingents": AI off, or go on with a model of the
+// instance's provider (counted, not limited; lib/ai/quota.ts).
+export function AfterSelect({ id, value, active, options, label, className = "", onChange }: { id?: string; value: string | null; active: boolean; options: string[]; label: string; className?: string; onChange: (model: string | null) => void }) {
+  const t = useT();
+  const list = [...new Set([...options, ...(value ? [value] : [])])].sort((a, b) => a.localeCompare(b));
+  return (
+    <Select id={id} className={className} aria-label={id ? undefined : label} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">{t("KI aus", "AI off")}</option>
+      {list.map((m) => (
+        <option key={m} value={m}>
+          {value === m && !active ? t(`weiter mit ${m} (anderer Anbieter – gilt nicht)`, `go on with ${m} (other provider – does not apply)`) : t(`weiter mit ${m}`, `go on with ${m}`)}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
 // Where a model comes from, in a few words.
 export function modelSource(policy: ModelPolicy | null, t: T, groupNames: Record<string, string> = {}) {
   if (!policy || policy.source === "instance") return t("Standard der Instanz", "Instance default");
@@ -79,7 +96,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
   const [fetched, setFetched] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [status, run] = useSaveState();
-  const ids = { model: useId(), quota: useId() };
+  const ids = { model: useId(), quota: useId(), after: useId() };
   const load = useCallback(async () => {
     try {
       setView(await api<AiRuleView>(`/api/ai/admin/rule?scope=${scope}&target=${encodeURIComponent(target)}`));
@@ -89,7 +106,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
     }
   }, [scope, target]);
   useEffect(() => void load(), [load]);
-  const save = (patch: { model?: string | null; quota?: { exempt: boolean; limits: QuotaLimits } | null }) =>
+  const save = (patch: { model?: string | null; quota?: { exempt: boolean; limits: QuotaLimits; after?: string | null } | null }) =>
     void run(async () => {
       setView(await api<AiRuleView>("/api/command", { action: "admin.aiRule", scope, target, ...patch }));
     });
@@ -151,7 +168,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
     const limits: QuotaLimits = { ...(quota?.limits || {}) };
     if (v === null) delete limits[period];
     else limits[period] = v;
-    save({ quota: { exempt: false, limits } });
+    save({ quota: { exempt: false, limits, after: quota?.after ?? null } });
   };
   return (
     <section className={`ai-rule ${className}`} aria-label={t(`KI für ${name}`, `AI for ${name}`)}>
@@ -233,6 +250,26 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
               </Select>
             </span>
           </div>
+          {quotaValue === "own" && (
+            <div className="ai-rule-row">
+              <span className="ai-rule-text">
+                <label htmlFor={ids.after}>{t("Nach Erreichen des Kontingents", "Once the quota is reached")}</label>
+                <small>{t("KI aus – oder weiter mit einem anderen Modell: gezählt, aber nicht begrenzt; die Grenze der ganzen Instanz gilt weiter.", "AI off – or go on with another model: counted, but not limited; the whole instance's ceiling still applies.")}</small>
+              </span>
+              <span className="ai-rule-control">
+                <AfterSelect
+                  id={ids.after}
+                  className="ai-rule-select"
+                  label={t("Nach Erreichen des Kontingents", "Once the quota is reached")}
+                  value={quota?.after ?? null}
+                  active={!quota?.after || quota.afterKind === view.provider.kind}
+                  options={view.model.options}
+                  onChange={(after) => save({ quota: { exempt: false, limits: quota?.limits || {}, after } })}
+                />
+              </span>
+            </div>
+          )}
+          {quotaValue === "inherit" && scope === "user" && view.quota.after && <p className="muted ai-rule-note">{t(`Danach weiter mit ${view.quota.after}.`, `Then goes on with ${view.quota.after}.`)}</p>}
           {quotaValue === "own" && (
             <div className="ai-rule-limits">
               {QUOTA_PERIODS.map((p) => (

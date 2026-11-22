@@ -1,13 +1,17 @@
 "use client";
 // Administration → Grenzen & Aufbewahrung: the defaults for storage, own
-// workspaces and uploads, and how long page versions are kept. Single
-// workspaces and people can differ (Arbeitsbereiche, Benutzer).
+// workspaces and uploads, the limits per group, and how long page versions
+// are kept. Single workspaces and people can differ (Arbeitsbereiche,
+// Benutzer).
+import { Trash } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
-import { SettingGroup } from "../../settings-ui";
+import { ResponsiveTable, SaveState, SettingGroup, useSaveState } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
-import { AdminStatus, InstanceNumber } from "./parts";
+import { AdminStatus, InstanceNumber, InstanceText, NumberInput } from "./parts";
 import { WorkflowLimits } from "./workflow-limits";
+import { GroupPicker, groupLabel } from "./group-picker";
+import type { GroupLimitRule, UserLimits } from "@/lib/user-limits";
 
 export default function LimitsSection() {
   const t = useT();
@@ -83,7 +87,18 @@ export default function LimitsSection() {
           max={1024}
           fallback={10}
         />
+        <InstanceText
+          field="moreLimitsUrl"
+          label={t("Link für mehr Speicher oder KI", "Link for more storage or AI")}
+          description={t(
+            "Optional: eine Adresse, die Personen unter „Deine Grenzen“ sehen – etwa eine Seite, auf der sie mehr bekommen. Leer = kein Link.",
+            "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.",
+          )}
+          placeholder="https://"
+          maxLength={500}
+        />
       </SettingGroup>
+      <GroupLimits />
       <SettingGroup
         id="retention"
         title={t("Aufbewahrung", "Retention")}
@@ -118,5 +133,99 @@ export default function LimitsSection() {
       </SettingGroup>
       <WorkflowLimits />
     </>
+  );
+}
+
+// "Grenzen pro Gruppe": storage, own workspaces and the largest upload for
+// the members of a group (lib/user-limits.ts). Saved per row at once.
+function GroupLimits() {
+  const t = useT();
+  const { data, mutate, load } = useAdminData();
+  const [status, run] = useSaveState();
+  const view = data?.groupLimits;
+  if (!view) return null;
+  const save = (target: string, limits: UserLimits | null) =>
+    void run(async () => {
+      await mutate({ action: "admin.groupLimits", target, limits });
+      await load();
+    });
+  const name = (target: string) => {
+    const g = view.groups.find((x) => x.id === target);
+    return g ? groupLabel(g, t) : t("Gelöschte Gruppe", "Deleted group");
+  };
+  const rows = [...view.rules].sort((a, b) => name(a.target).localeCompare(name(b.target)));
+  const taken = new Set(rows.map((r) => r.target));
+  const unlimited = t("unbegrenzt", "unlimited");
+  const s = data.settings;
+  const set = (rule: GroupLimitRule, field: keyof UserLimits, value: number | null) => {
+    const next: UserLimits = { ...rule.limits, [field]: value };
+    if (value === null) delete next[field];
+    save(rule.target, next);
+  };
+  const members = (target: string) => view.groups.find((g) => g.id === target)?.members;
+  return (
+    <SettingGroup
+      id="group-limits"
+      title={t("Grenzen pro Gruppe", "Limits per group")}
+      description={t(
+        "Mehr (oder weniger) für die Mitglieder einer Gruppe. Für eine Person gilt ihr eigener Wert, sonst der großzügigste ihrer Gruppen (0 = unbegrenzt), sonst der Standard. Leer = von der Gruppe nicht festgelegt. Für Admins gelten keine Grenzen.",
+        "More (or less) for the members of a group. A person gets their own value, else the most generous of their groups (0 = unlimited), else the default. Empty = not set by the group. Admins are not limited.",
+      )}
+      actions={<SaveState status={status} />}
+    >
+      {rows.length > 0 && (
+        <div className="mon-table group-limits-table">
+          <ResponsiveTable
+            label={t("Grenzen pro Gruppe", "Limits per group")}
+            rows={rows}
+            rowKey={(r) => r.target}
+            columns={[
+              {
+                key: "name",
+                header: t("Gruppe", "Group"),
+                primary: true,
+                render: (r) => (
+                  <span>
+                    {name(r.target)}
+                    {members(r.target) !== undefined && <small className="limit-source">{t(`${members(r.target)} Mitglieder`, `${members(r.target)} members`)}</small>}
+                  </span>
+                ),
+              },
+              {
+                key: "storage",
+                header: t("Speicher (MB)", "Storage (MB)"),
+                render: (r) => <NumberInput value={r.limits.storageMb ?? null} max={10_000_000} label={t(`${name(r.target)}: Speicher`, `${name(r.target)}: storage`)} placeholder={s.defaultUserStorageMb ? String(s.defaultUserStorageMb) : unlimited} onCommit={(v) => set(r, "storageMb", v)} />,
+              },
+              {
+                key: "workspaces",
+                header: t("Eigene Arbeitsbereiche", "Own workspaces"),
+                render: (r) => <NumberInput value={r.limits.workspaces ?? null} max={10_000} label={t(`${name(r.target)}: eigene Arbeitsbereiche`, `${name(r.target)}: own workspaces`)} placeholder={s.defaultUserWorkspaces ? String(s.defaultUserWorkspaces) : unlimited} onCommit={(v) => set(r, "workspaces", v)} />,
+              },
+              {
+                key: "upload",
+                header: t("Größte Datei (MB)", "Largest file (MB)"),
+                render: (r) => <NumberInput value={r.limits.uploadMb ?? null} min={1} max={1024} label={t(`${name(r.target)}: größte Datei`, `${name(r.target)}: largest file`)} placeholder={String(s.maxUploadMb)} onCommit={(v) => set(r, "uploadMb", v)} />,
+              },
+              {
+                key: "remove",
+                header: "",
+                render: (r) => (
+                  <button type="button" className="icon-button" aria-label={t(`Grenzen für ${name(r.target)} entfernen`, `Remove the limits for ${name(r.target)}`)} onClick={() => save(r.target, null)}>
+                    <Trash size={16} />
+                  </button>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+      <GroupPicker
+        label={t("Gruppe hinzufügen", "Add a group")}
+        description={t("Gruppen der Arbeitsbereiche (in allen Arbeitsbereichen einer Person) und Verzeichnisgruppen aus SCIM, LDAP und SSO.", "Workspace groups (in all of a person's workspaces) and directory groups from SCIM, LDAP and SSO.")}
+        groups={view.groups}
+        taken={taken}
+        onPick={(target) => save(target, {})}
+      />
+    </SettingGroup>
   );
 }

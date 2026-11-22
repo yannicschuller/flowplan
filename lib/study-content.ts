@@ -74,7 +74,7 @@ export function htmlHasContent(html: string) {
   const parser = new Parser(
     {
       onopentag(name, attributes) {
-        if (CONTENT_TAGS.has(name) || "data-math" in attributes || "data-mermaid" in attributes || "data-drawio" in attributes) found = true;
+        if (CONTENT_TAGS.has(name) || "data-math" in attributes || "data-mermaid" in attributes || "data-drawio" in attributes || "data-flow-diagram" in attributes) found = true;
       },
       ontext(text) {
         if (text.trim()) found = true;

@@ -21,7 +21,17 @@
 //   rules ("SSO always wins", the last owner stays). A membership change is
 //   applied right away.
 // - Accounts with e-mail and password can be linked (and deactivated), but
-//   mappings never change their memberships, as for SSO.
+//   mappings never change their memberships, as for SSO. Linked, they keep
+//   their address, password and sign-in; a POST that links an existing
+//   account changes its name only when the request names the person, and
+//   its "active" state only when the request says so. Their SCIM groups
+//   still count as directory groups for the limits per group and the AI
+//   quotas (lib/person-groups.ts).
+// - Only linking: a POST /Users with the Flowplan extension
+//   {"urn:ietf:params:scim:schemas:extension:flowplan:2.0:User":
+//   {"linkExisting": true}} never creates an account – without an existing
+//   one with that confirmed address it is answered 404 (for services that
+//   manage what existing accounts get, not who has one).
 import { createHash, randomBytes } from "node:crypto";
 import { all, audit, id, lockFor, one, run, transaction } from "./db";
 import { appUrl } from "./auth";
@@ -47,6 +57,7 @@ import { mapAsync } from "./each-async";
 const ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
 const LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
 const PATCH_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
+export const FLOWPLAN_USER_SCHEMA = "urn:ietf:params:scim:schemas:extension:flowplan:2.0:User";
 export const SCIM_CONTENT_TYPE = "application/scim+json; charset=utf-8";
 const MAX_COUNT = 200;
 const MAX_TOKENS = 20;
@@ -248,7 +259,9 @@ const bool = (value: unknown, fallback: boolean) => {
   if (typeof value === "string" && /^(true|false)$/i.test(value)) return value.toLowerCase() === "true";
   throw new ScimError(400, "active must be a boolean.", "invalidValue");
 };
-type UserInput = { userName: string; externalId: string | null; givenName: string | null; familyName: string | null; displayName: string | null; email: string; active: boolean };
+// named: the request names the person (displayName, name); activeGiven:
+// it says whether the account is active.
+type UserInput = { userName: string; externalId: string | null; givenName: string | null; familyName: string | null; displayName: string | null; email: string; active: boolean; named: boolean; activeGiven: boolean; linkExisting: boolean };
 function userInput(r: unknown): UserInput {
   if (!r || typeof r !== "object" || Array.isArray(r)) throw new ScimError(400, "A JSON object is expected.", "invalidSyntax");
   const userName = str(getKey(r, "userName"), "userName");
@@ -262,14 +275,21 @@ function userInput(r: unknown): UserInput {
   }
   if (!email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(userName)) email = userName;
   if (email && !/^[^@\s]+@[^@\s]+$/.test(email)) throw new ScimError(400, "Invalid e-mail address.", "invalidValue");
+  const givenName = str(getKey(name, "givenName"), "name.givenName", 100),
+    familyName = str(getKey(name, "familyName"), "name.familyName", 100),
+    displayName = str(getKey(r, "displayName"), "displayName", 100) || str(getKey(name, "formatted"), "name.formatted", 100);
+  const rawActive = getKey(r, "active");
   return {
     userName,
     externalId: str(getKey(r, "externalId"), "externalId"),
-    givenName: str(getKey(name, "givenName"), "name.givenName", 100),
-    familyName: str(getKey(name, "familyName"), "name.familyName", 100),
-    displayName: str(getKey(r, "displayName"), "displayName", 100) || str(getKey(name, "formatted"), "name.formatted", 100),
+    givenName,
+    familyName,
+    displayName,
     email: email.toLowerCase(),
-    active: bool(getKey(r, "active"), true),
+    active: bool(rawActive, true),
+    named: !!(givenName || familyName || displayName),
+    activeGiven: rawActive !== undefined && rawActive !== null,
+    linkExisting: bool(getKey(getKey(r, FLOWPLAN_USER_SCHEMA), "linkExisting"), false),
   };
 }
 const flowplanName = (u: UserInput) => (u.displayName || [u.givenName, u.familyName].filter(Boolean).join(" ") || u.userName).slice(0, 80);
@@ -408,8 +428,10 @@ async function setActive(userId: string, active: boolean) {
   }
 }
 const isLocal = async (userId: string) => !!(await one("SELECT 1 FROM local_accounts WHERE user_id=?", userId));
-async function updateProfile(userId: string, input: UserInput) {
-  await run("UPDATE users SET name=? WHERE id=?", flowplanName(input), userId);
+async function updateProfile(userId: string, input: UserInput, linking = false) {
+  // Linking an existing account: its name stays unless the request names
+  // the person (the userName alone is no name).
+  if (!linking || input.named) await run("UPDATE users SET name=? WHERE id=?", flowplanName(input), userId);
   // An account with e-mail and password keeps its address: it signs in with it.
   // A different address is confirmed by nobody yet: the old confirmation goes.
   if (input.email && !(await isLocal(userId)))
@@ -435,10 +457,12 @@ async function createUser(body: unknown) {
           ))?.id
         : undefined);
     if (userId && await one("SELECT 1 FROM scim_users WHERE user_id=?", userId)) throw new ScimError(409, "This account is already provisioned.", "uniqueness");
+    const linking = !!userId;
     if (!userId) {
+      if (input.linkExisting) throw new ScimError(404, "No account with this confirmed e-mail address.", "noTarget");
       userId = id();
       await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", userId, subject, flowplanName(input), input.email);
-    } else await updateProfile(userId, input);
+    } else await updateProfile(userId, input, true);
     const scimId = id();
     const now = Date.now();
     await run(
@@ -453,9 +477,10 @@ async function createUser(body: unknown) {
       now,
       now,
     );
-    await setActive(userId, input.active);
+    // A linked account keeps its state unless the request says otherwise.
+    if (!linking || input.activeGiven) await setActive(userId, input.active);
     await reapplySsoUser(userId);
-    await audit("", "scim.user.create", userId, input.userName);
+    await audit("", linking ? "scim.user.link" : "scim.user.create", userId, input.userName);
     return await renderUser((await userRow(scimId))!);
   });
 }
@@ -646,7 +671,10 @@ const resourceTypes = () => [
     endpoint: "/Users",
     description: "Flowplan account",
     schema: USER_SCHEMA,
-    schemaExtensions: [{ schema: ENTERPRISE_SCHEMA, required: false }],
+    schemaExtensions: [
+      { schema: ENTERPRISE_SCHEMA, required: false },
+      { schema: FLOWPLAN_USER_SCHEMA, required: false },
+    ],
     meta: { resourceType: "ResourceType", location: `${scimBase()}/ResourceTypes/User` },
   },
   {
@@ -697,6 +725,20 @@ const schemas = () => [
       }),
     ],
     meta: { resourceType: "Schema", location: `${scimBase()}/Schemas/${USER_SCHEMA}` },
+  },
+  {
+    id: FLOWPLAN_USER_SCHEMA,
+    name: "FlowplanUser",
+    description: "Flowplan's request-only options for creating users",
+    attributes: [
+      attribute("linkExisting", {
+        type: "boolean",
+        mutability: "writeOnly",
+        returned: "never",
+        description: "Only link an existing account with this confirmed e-mail address; never create one (404 without).",
+      }),
+    ],
+    meta: { resourceType: "Schema", location: `${scimBase()}/Schemas/${FLOWPLAN_USER_SCHEMA}` },
   },
   {
     id: GROUP_SCHEMA,
