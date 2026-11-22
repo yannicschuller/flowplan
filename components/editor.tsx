@@ -1125,9 +1125,11 @@ export default function DocumentEditor({
           }
           return false;
         },
-        handleDoubleClickOn: (_view, pos, node) => {
+        // `nodePos`, not the clicked position: they differ when the click
+        // lands on the image's far side (seen without the editor's focus).
+        handleDoubleClickOn: (_view, _pos, node, nodePos) => {
           if (!editable || node.type.name !== "image") return false;
-          setAnnotate({ pos, src: node.attrs.src, original: node.attrs.original, annotations: node.attrs.annotations });
+          setAnnotate({ pos: nodePos, src: node.attrs.src, original: node.attrs.original, annotations: node.attrs.annotations });
           return true;
         },
         handleKeyDown: (_view, event) => {
@@ -2674,6 +2676,15 @@ export default function DocumentEditor({
       onError((e as Error).message);
     }
   }
+  // The markup window open: the editor lets go of the focus and the native
+  // selection. On the iPad a focused editor kept its keyboard and text menu
+  // (copy, cut …) over the window, and taps on its tools went there.
+  const annotating = !!annotate;
+  useEffect(() => {
+    if (!annotating || !editor || editor.isDestroyed) return;
+    if (editor.view.dom.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    window.getSelection()?.removeAllRanges();
+  }, [annotating, editor]);
   // Marks up the selected image (toolbar button).
   function annotateSelectedImage() {
     if (!editor) return;
@@ -3663,7 +3674,8 @@ export default function DocumentEditor({
               editable={editable}
               onReplace={(pos, file) => void replaceImage(pos, file)}
               onAnnotate={(pos) => {
-                editor.chain().focus().setNodeSelection(pos).run();
+                // Selected without the focus (see the effect on `annotate`).
+                editor.commands.setNodeSelection(pos);
                 annotateSelectedImage();
               }}
               onCopyImage={(pos) => {

@@ -94,6 +94,7 @@ export function ImageTools({
   const [hovered, setHovered] = useState<Shown | null>(null);
   const [menu, setMenu] = useState<{ pos: number; anchor: DOMRect; button: HTMLElement } | null>(null);
   const [viewer, setViewer] = useState<Shown | null>(null);
+  const annotating = useRef(false);
   const [, redraw] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
@@ -173,7 +174,16 @@ export function ImageTools({
     { icon: <TextAlignCenter />, label: t("Mitte", "Centre"), checked: align === "center", run: () => setAlign(pos, "center") },
     { icon: <TextAlignRight />, label: t("Rechts", "Right"), checked: align === "right", run: () => setAlign(pos, "right") },
     "separator",
-    { icon: <PencilSimpleLine />, label: t("Bild markieren", "Mark up image"), run: () => onAnnotate(pos) },
+    {
+      icon: <PencilSimpleLine />,
+      label: t("Bild markieren", "Mark up image"),
+      run: () => {
+        // The markup window takes over: the editor must not get the focus
+        // back (on the iPad its keyboard and text menu took the first taps).
+        annotating.current = true;
+        onAnnotate(pos);
+      },
+    },
     ...(onOcclusion && occlusionOffered?.(pos)
       ? [{ icon: <SelectionBackground />, label: t("Bildverdeckung bearbeiten (Lernkarten)", "Edit image occlusion (flashcards)"), run: () => onOcclusion(pos) }]
       : []),
@@ -192,7 +202,7 @@ export function ImageTools({
   ];
 
   const button = (label: string, icon: React.ReactNode, action: (e: React.MouseEvent<HTMLButtonElement>) => void, extra: Record<string, unknown> = {}) => (
-    <button type="button" aria-label={label} title={label} onMouseDown={keep} onClick={action} {...extra}>
+    <button type="button" aria-label={label} title={label} onPointerDown={keep} onMouseDown={keep} onClick={action} {...extra}>
       {icon}
     </button>
   );
@@ -233,6 +243,7 @@ export function ImageTools({
               className="image-tools-markup"
               aria-label={t("Bild markieren", "Mark up image")}
               title={t("Bild markieren (Doppelklick)", "Mark up image (double-click)")}
+              onPointerDown={keep}
               onMouseDown={keep}
               onClick={() => onAnnotate(shown.pos)}
             >
@@ -262,7 +273,8 @@ export function ImageTools({
           views={{ main: { title: t("Bild", "Image"), items: menuItems(menu.pos) } }}
           onClose={(reason?: BlockMenuClose) => {
             setMenu(null);
-            if (reason !== "away") editor.view.focus();
+            if (reason !== "away" && !annotating.current) editor.view.focus();
+            annotating.current = false;
           }}
         />
       )}

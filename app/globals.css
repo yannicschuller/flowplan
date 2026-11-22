@@ -1836,6 +1836,12 @@ kbd,
 .image-tools {
   position: absolute;
   display: flex;
+  /* A tap on the iPad is a tap on a button, not on the text under it: no
+     copy/cut menu, no text selection, no double-tap zoom. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
   gap: 1px;
   padding: 2px;
   border: 1px solid var(--border);
@@ -22635,6 +22641,10 @@ h3 .block-reactions {
 }
 .annotator-tools {
   display: flex;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 14px;
