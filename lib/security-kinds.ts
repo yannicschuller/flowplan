@@ -37,6 +37,8 @@ export const securityKinds = {
   "admin.granted": { severity: "critical", de: "Adminrechte vergeben", en: "Admin rights granted" },
   "admin.revoked": { severity: "warn", de: "Adminrechte entzogen", en: "Admin rights removed" },
   "admin.user": { severity: "warn", de: "Konto durch Admin geändert", en: "Account changed by an admin" },
+  // Administration → Benutzer → "Konto anlegen" (#433, lib/account-create.ts).
+  "admin.account_created": { severity: "warn", de: "Konto durch Admin angelegt", en: "Account created by an admin" },
   "admin.messenger_bot": { severity: "warn", de: "Telegram-Bot der Instanz geändert", en: "Instance Telegram bot changed" },
   "admin.settings": { severity: "warn", de: "Sicherheitsrelevante Einstellung geändert", en: "Security-relevant setting changed" },
   // SSO groups → workspace roles and groups (lib/sso-mappings.ts, #321).

@@ -127,6 +127,7 @@ import { templateFromSaved } from "./journal-saved-template";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
+import { adminCreateAccount, adminResendWelcome } from "./account-create";
 import { adminChangeEmail } from "./email-change";
 import { cleanDefaults, creationTime, withDefaults } from "./field-defaults";
 import { isLdapAccount } from "./ldap-auth";
@@ -4175,6 +4176,16 @@ async function runCommand(
         result = { url: await adminResetLink(uuid.parse(b.userId)) };
         securityEvent("admin.user", { actorId: user.id, detail: `password reset link ${b.userId}` });
         break;
+      // "Konto anlegen" (#433, lib/account-create.ts): an account with
+      // e-mail and password for someone else, and its link once more.
+      case "admin.createAccount":
+        requireAdmin(user);
+        result = await adminCreateAccount(user, b, contentLocale());
+        break;
+      case "admin.accountLink":
+        requireAdmin(user);
+        result = await adminResendWelcome(user, uuid.parse(b.userId), contentLocale());
+        break;
       case "admin.revoke":
         requireAdmin(user);
         await run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));
@@ -4210,6 +4221,8 @@ async function runCommand(
       ![
         // Written with the old and new address (lib/email-change.ts).
         "admin.changeEmail",
+        // Written with the new account and its address (lib/account-create.ts).
+        "admin.createAccount",
         "document.sync",
         "document.markdown",
         "row.document.sync",

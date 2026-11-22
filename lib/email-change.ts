@@ -232,7 +232,7 @@ async function applyEmailChange(userId: string, email: string, actorId: string, 
       await run("UPDATE users SET email=?,email_verified=1 WHERE id=?", email, userId);
       // Links sent to the old address stop working: whoever reads that
       // mailbox no longer resets the password.
-      await run("DELETE FROM auth_tokens WHERE user_id=? AND kind IN ('email-change','email-cancel','reset','verify')", userId);
+      await run("DELETE FROM auth_tokens WHERE user_id=? AND kind IN ('email-change','email-cancel','reset','verify','welcome')", userId);
       // E-mail inboxes of the person's workspaces that let the old address
       // in let the new one in instead.
       const oldLower = old.toLowerCase();

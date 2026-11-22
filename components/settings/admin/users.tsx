@@ -12,6 +12,7 @@ import {
   ArrowsLeftRight,
   ArrowsMerge,
   ArrowUp,
+  Copy,
   CaretDown,
   CaretLeft,
   CaretRight,
@@ -27,6 +28,7 @@ import {
   SignOut,
   Stack,
   Trash,
+  UserPlus,
   Users,
 } from "@phosphor-icons/react";
 import type { MergePreview } from "@/lib/account-merge";
@@ -56,6 +58,8 @@ type Local = {
   passkeys: number;
   totp?: boolean;
   password?: boolean;
+  // Created by an administrator, no password and no sign-in yet (#433).
+  invited?: boolean;
 };
 type Usage = NonNullable<AdminData["userUsage"]>[number];
 type Activity = Pick<UserActivity, "openAt" | "activeAt">;
@@ -111,7 +115,8 @@ export default function UsersSection() {
     [perPage, setPerPage] = useState(25),
     [selected, setSelected] = useState<Set<string>>(new Set()),
     [open, setOpen] = useState<string | null>(null),
-    [bulk, setBulk] = useState(false);
+    [bulk, setBulk] = useState(false),
+    [creating, setCreating] = useState(false);
   const now = useMemo(() => Date.now(), [data]);
   const live = useLiveActivity();
   const scroll = useEdgeShadows();
@@ -237,6 +242,15 @@ export default function UsersSection() {
       <AdminStatus items={items} action={data.localLogin ? <FixLink href="#admin/signin/registration">{t("Registrierung einstellen", "Set up sign-up")}</FixLink> : undefined}>
         {data.sessions === 1 ? t("1 aktive Sitzung.", "1 active session.") : t(`${data.sessions} aktive Sitzungen.`, `${data.sessions} active sessions.`)}{" "}
         {t(`Inaktiv heißt: ${INACTIVE_DAYS} Tage oder länger ohne Anmeldung.`, `Inactive means: ${INACTIVE_DAYS} days or more without signing in.`)}
+        {!data.localLogin && (
+          <>
+            {" "}
+            {t(
+              "Konten mit E-Mail und Passwort sind auf dieser Instanz ausgeschaltet (FLOWPLAN_LOCAL_LOGIN=false): Neue Personen kommen über SSO, deshalb gibt es hier kein „Konto anlegen“.",
+              "Accounts with e-mail and password are turned off on this instance (FLOWPLAN_LOCAL_LOGIN=false): new people come through SSO, so there is no “Create account” here.",
+            )}
+          </>
+        )}
       </AdminStatus>
       <section className="admin-users" aria-labelledby="admin-users-title">
         <header className="admin-users-head">
@@ -254,6 +268,11 @@ export default function UsersSection() {
                 onChange={(e) => changeQuery(e.target.value)}
               />
             </span>
+            {data.localLogin && (
+              <button type="button" className="button primary" aria-haspopup="dialog" onClick={() => setCreating(true)}>
+                <UserPlus size={16} aria-hidden /> {t("Konto anlegen", "Create account")}
+              </button>
+            )}
           </div>
           {/* Buttons, not a select: one tap on phones, and the system picker
               of some phones did not pass the choice on. */}
@@ -402,7 +421,153 @@ export default function UsersSection() {
         )}
       </section>
       {person && <UserDrawer key={person.id} user={person} data={data} state={states.get(person.id)!} activity={activityOf(person)} now={liveNow} onClose={() => setOpen(null)} />}
+      {creating && <CreateAccountDialog mail={!!data.mail?.configured} onClose={() => setCreating(false)} />}
     </>
+  );
+}
+
+// "Kontoname" → "Adas Arbeitsbereich" / "Ada's workspace": the first name.
+function workspaceNameFor(name: string, t: (de: string, en: string) => string) {
+  const first = name.trim().split(/\s+/)[0] || "";
+  if (!first) return "";
+  const genitive = /[sßxz]$/i.test(first) ? `${first}’` : `${first}s`;
+  return t(`${genitive} Arbeitsbereich`, `${first}'s workspace`);
+}
+
+// Copies a link; where the clipboard is refused, the field stays to copy by hand.
+async function copyLink(url: string, t: (de: string, en: string) => string) {
+  try {
+    await navigator.clipboard.writeText(url);
+    showNotice(t("Link kopiert.", "Link copied."));
+  } catch {
+    showNotice(t("Kopieren ging nicht – markiere den Link und kopiere ihn selbst.", "Copying did not work – select the link and copy it yourself."));
+  }
+}
+
+// "Konto anlegen" (#433, lib/account-create.ts): name, address, role and
+// optionally a workspace; afterwards what happens next – the e-mail that
+// went out, or the link to hand over.
+function CreateAccountDialog({ mail, onClose }: { mail: boolean; onClose: () => void }) {
+  const t = useT();
+  const { mutate, load } = useAdminData();
+  const [name, setName] = useState(""),
+    [email, setEmail] = useState(""),
+    [role, setRole] = useState<"member" | "admin">("member"),
+    [withWorkspace, setWithWorkspace] = useState(true),
+    [workspace, setWorkspace] = useState<string | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [created, setCreated] = useState<{ email: string; mailed: boolean; url?: string } | null>(null);
+  // Follows the name until it is edited.
+  const workspaceName = workspace ?? workspaceNameFor(name, t);
+  return (
+    <Modal open sheet className="ws-sheet" title={t("Konto anlegen", "Create account")} onClose={() => !busy && onClose()}>
+      {created ? (
+        <div className="ws-form">
+          {created.mailed ? (
+            <p className="ws-note" role="status">
+              {t(
+                `Konto angelegt. ${created.email} bekommt eine E-Mail mit einem Link zum Festlegen des Passworts. Er gilt 7 Tage und nur einmal; einen neuen gibt es im Konto mit „Link erneut senden“.`,
+                `Account created. ${created.email} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.`,
+              )}
+            </p>
+          ) : (
+            <div className="ws-field">
+              <label htmlFor="create-account-link">{t("Link zum Festlegen des Passworts", "Link to set the password")}</label>
+              <input id="create-account-link" readOnly value={created.url || ""} onFocus={(e) => e.currentTarget.select()} />
+              <small>
+                {t(
+                  `Konto angelegt. Diese Instanz versendet keine E-Mails: Gib den Link ${created.email} selbst weiter. Er gilt 7 Tage und nur einmal – wer ihn hat, legt das Passwort fest. Die Adresse bleibt unbestätigt, bis du sie im Konto als bestätigt markierst.`,
+                  `Account created. This instance sends no e-mail: hand the link to ${created.email} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.`,
+                )}
+              </small>
+            </div>
+          )}
+          <div className="modal-actions ws-form-actions">
+            <button type="button" className="button" onClick={onClose}>
+              {t("Fertig", "Done")}
+            </button>
+            {created.url && (
+              <button type="button" className="button primary" onClick={() => void copyLink(created.url!, t)}>
+                <Copy size={16} aria-hidden /> {t("Link kopieren", "Copy link")}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <form
+          className="ws-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError("");
+            try {
+              const result = (await mutate({ action: "admin.createAccount", name, email, role, workspace: withWorkspace ? workspaceName : null })) as { email: string; mailed: boolean; url?: string };
+              setCreated(result);
+              await load();
+            } catch (err) {
+              setError((err as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <div className="ws-field">
+            <label htmlFor="create-account-name">{t("Name", "Name")}</label>
+            <input id="create-account-name" required maxLength={80} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+          </div>
+          <div className="ws-field">
+            <label htmlFor="create-account-email">{t("E-Mail-Adresse", "E-mail address")}</label>
+            <input id="create-account-email" required type="email" maxLength={200} autoComplete="off" placeholder={t("name@unternehmen.de", "name@company.com")} value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+          </div>
+          <div className="ws-field">
+            <label htmlFor="create-account-role">{t("Rolle", "Role")}</label>
+            <Select id="create-account-role" value={role} onChange={(e) => setRole(e.target.value === "admin" ? "admin" : "member")} disabled={busy}>
+              <option value="member">{t("Mitglied", "Member")}</option>
+              <option value="admin">{t("Admin", "Admin")}</option>
+            </Select>
+            <small>{t("Admins verwalten die ganze Instanz.", "Admins manage the whole instance.")}</small>
+          </div>
+          <label className="ws-check">
+            <input type="checkbox" checked={withWorkspace} onChange={(e) => setWithWorkspace(e.target.checked)} disabled={busy} />
+            <span>
+              {t("Auch einen Arbeitsbereich für die Person anlegen", "Also create a workspace for this person")}
+              <small>{t("Mit den Startinhalten neuer Konten. Ohne ihn bekommt die Person bei der ersten Anmeldung einen eigenen, wenn sie in keinem Mitglied ist.", "With the starter content of new accounts. Without it, the person gets one of their own at the first sign-in unless they are a member of one.")}</small>
+            </span>
+          </label>
+          {withWorkspace && (
+            <div className="ws-field">
+              <label htmlFor="create-account-workspace">{t("Name des Arbeitsbereichs", "Workspace name")}</label>
+              <input id="create-account-workspace" required maxLength={100} autoComplete="off" value={workspaceName} onChange={(e) => setWorkspace(e.target.value)} disabled={busy} />
+            </div>
+          )}
+          <p className="ws-note">
+            {mail
+              ? t(
+                  "Das Konto hat noch kein Passwort. Die Person bekommt eine E-Mail mit einem Link, der 7 Tage gilt: Damit legt sie ihr Passwort fest und ist angemeldet. Die Adresse gilt danach als bestätigt.",
+                  "The account has no password yet. The person gets an e-mail with a link valid for 7 days: with it they set their password and are signed in. The address then counts as confirmed.",
+                )
+              : t(
+                  "Das Konto hat noch kein Passwort. Diese Instanz versendet keine E-Mails: Danach siehst du einen Link, der 7 Tage gilt, und gibst ihn der Person. Damit legt sie ihr Passwort fest und ist angemeldet.",
+                  "The account has no password yet. This instance sends no e-mail: afterwards you see a link valid for 7 days and hand it to the person. With it they set their password and are signed in.",
+                )}
+          </p>
+          <div className="modal-actions ws-form-actions">
+            <button type="button" className="button" onClick={onClose} disabled={busy}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+            <button className="button primary" disabled={busy || !name.trim() || !email.trim() || (withWorkspace && !workspaceName.trim())}>
+              <UserPlus size={16} aria-hidden /> {t("Konto anlegen", "Create account")}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -572,6 +737,7 @@ function signIn(local: Local | undefined, t: (de: string, en: string) => string,
   // SSO identities (#101): a local account may be connected to SSO too.
   const ssoText = sso ? (sso === 1 ? "SSO" : `SSO × ${sso}`) : null;
   if (!local) return [ssoText, ldap ? "LDAP" : null].filter(Boolean).join(" · ") || t("SSO / Verzeichnis", "SSO / directory");
+  if (local.invited) return t("E-Mail + Passwort · noch nicht festgelegt", "E-mail + password · not set yet");
   return [
     local.password === false ? null : t("E-Mail + Passwort", "E-mail + password"),
     ssoText,
@@ -655,7 +821,13 @@ function UserRow({
                 <span>{u.name}</span>
               </button>
               {admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
-              {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
+              {local?.invited ? (
+                <StatusBadge tone="warn" title={t("Konto angelegt, Passwort noch nicht festgelegt", "Account created, password not set yet")}>
+                  {t("Eingeladen", "Invited||account")}
+                </StatusBadge>
+              ) : (
+                local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>
+              )}
             </strong>
             <small title={u.email}>{u.email}</small>
           </span>
@@ -778,6 +950,8 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
   const names = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const memberOf = (usage?.memberOf || []).map((id) => names.get(id)).filter((n): n is string => !!n);
   const [resetLink, setResetLink] = useState("");
+  // "Link erneut senden" of an account still waiting for its first sign-in (#433).
+  const [accountLink, setAccountLink] = useState("");
   // "E-Mail ändern …" (#405): only without e-mail on the instance – with it,
   // the person changes the address and confirms it by link.
   const [newEmail, setNewEmail] = useState<string | null>(null),
@@ -857,6 +1031,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
           <span className="admin-user-badges">
             <StateBadge state={state} />
             {admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
+            {local?.invited && <StatusBadge tone="warn">{t("Eingeladen · Passwort noch nicht festgelegt", "Invited · password not set yet")}</StatusBadge>}
             {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
             <DeletionBadge due={u.deletion_due_at} />
             <Presence activity={activity} now={now} long />
@@ -942,7 +1117,39 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             <SignOut size={15} aria-hidden /> {t("Abmelden", "Sign out")}
           </button>
         </PanelRow>
-        {local && (
+        {local?.invited && (
+          <div className={`ux-row-item${accountLink ? " wide" : ""}`}>
+            <span className="ux-row-text">
+              <strong>{t("Link zum Festlegen des Passworts", "Link to set the password")}</strong>
+              <small>
+                {data.mail?.configured
+                  ? t("Noch nicht angemeldet. Eine neue E-Mail mit einem Link, 7 Tage gültig – der bisherige gilt dann nicht mehr.", "Not signed in yet. A new e-mail with a link, valid for 7 days – the previous one stops working.")
+                  : t("Noch nicht angemeldet. Ein neuer Link, 7 Tage gültig, zum Weitergeben – der bisherige gilt dann nicht mehr.", "Not signed in yet. A new link, valid for 7 days, to hand over – the previous one stops working.")}
+              </small>
+            </span>
+            {accountLink ? (
+              <span className="ux-email-change">
+                <input className="ux-reset-link" readOnly aria-label={t(`Link zum Festlegen des Passworts für ${u.name}`, `Link to set the password for ${u.name}`)} value={accountLink} onFocus={(e) => e.currentTarget.select()} />
+                <button type="button" className="button compact" onClick={() => void copyLink(accountLink, t)}>
+                  <Copy size={15} aria-hidden /> {t("Kopieren", "Copy")}
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="button compact"
+                onClick={async () => {
+                  const result = (await run({ action: "admin.accountLink", userId: u.id })) as { mailed?: boolean; url?: string } | undefined;
+                  if (result?.url) setAccountLink(result.url);
+                  else if (result?.mailed) setNote(t(`Neuer Link an ${u.email} verschickt.`, `New link sent to ${u.email}.`));
+                }}
+              >
+                <EnvelopeSimple size={15} aria-hidden /> {t("Link erneut senden", "Resend link")}
+              </button>
+            )}
+          </div>
+        )}
+        {local && !local.invited && (
           <div className={`ux-row-item${resetLink ? " wide" : ""}`}>
             <span className="ux-row-text">
               <strong>{t("Passwort", "Password")}</strong>
@@ -1148,7 +1355,9 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             hint={t("Verbinden und trennen kann die Person SSO-Konten selbst unter Einstellungen → Konto.", "The person connects and disconnects SSO identities under Settings → Account.")}
           >
             <span className="admin-user-badges">
-              <StatusBadge tone={local && local.password !== false ? "ok" : "off"}>{local ? (local.password === false ? t("Passwort entfernt", "Password removed") : t("Passwort", "Password")) : t("Kein Passwort", "No password")}</StatusBadge>
+              <StatusBadge tone={local && local.password !== false ? "ok" : "off"}>
+                {local ? (local.invited ? t("Passwort noch nicht festgelegt", "Password not set yet") : local.password === false ? t("Passwort entfernt", "Password removed") : t("Passwort", "Password")) : t("Kein Passwort", "No password")}
+              </StatusBadge>
               {ldap && <StatusBadge tone="ok">LDAP</StatusBadge>}
               <StatusBadge tone={identities.length ? "ok" : "off"}>{identities.length ? `SSO × ${identities.length}` : t("Kein SSO", "No SSO")}</StatusBadge>
             </span>

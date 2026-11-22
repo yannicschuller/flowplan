@@ -50,6 +50,7 @@ import {
 import { appSignInReportLine } from "@/lib/app-sign-in-report";
 import { readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { provesApp } from "@/lib/app-devices";
+import { acceptWelcome } from "@/lib/account-create";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview, ssoOnlyAccount } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
 import { cancelEmailChange, cancelEmailChangeByLink, confirmEmailChange, emailChangeStatus, requestEmailChange } from "@/lib/email-change";
@@ -569,6 +570,20 @@ async function handlePOST(
     }
     if (action === "reset") {
       await resetPassword(await body(), locale);
+      return NextResponse.json({ ok: true });
+    }
+    // The link of an account an administrator created (#433,
+    // lib/account-create.ts): the first password, then signed in.
+    if (action === "welcome") {
+      const input = await body();
+      const { userId, groups } = await acceptWelcome(input, locale);
+      await refuseSsoOnly(userId, locale);
+      const next = await afterPassword(userId, false, locale);
+      if ("pending" in next) {
+        await rememberPending(next.pending);
+        return NextResponse.json({ ok: true, twoFactor: true });
+      }
+      await signIn(userId, groups, false, await provesApp({ via: "form", userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     // ---- The links of a change of the e-mail address (#405, app/email-change):

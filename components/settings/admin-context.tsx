@@ -23,7 +23,7 @@ export type AdminData = {
   sessions: number;
   // Active sessions per account.
   userSessions?: Record<string, number>;
-  audit: { id: string; name: string; action: string; resource_id: string; created_at: string }[];
+  audit: { id: string; name: string; action: string; resource_id: string; detail?: string | null; created_at: string }[];
   adminGroup: string;
   build?: BuildInfo;
   // A newer release than the running one (lib/update-check.ts).
@@ -79,7 +79,7 @@ export type AdminData = {
   deadManForcedOff?: boolean;
   // FLOWPLAN_INVITE_LINKS=off (#320): the switch cannot turn them on.
   inviteLinksForcedOff?: boolean;
-  localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean; password?: boolean }>;
+  localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean; password?: boolean; invited?: boolean }>;
   // Connected SSO identities (#101) and the accounts that sign in with LDAP.
   identities?: { user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }[];
   ldapAccounts?: string[];
