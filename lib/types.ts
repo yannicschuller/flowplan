@@ -410,6 +410,8 @@ export type Bootstrap = {
   } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;
+  // Marked for deletion while the address is unconfirmed (#436).
+  pendingDeletion?: { due: number } | null;
   // New account: show the introduction (components/onboarding.tsx).
   onboarding?: boolean;
   // The checklist "Erste Schritte" (lib/getting-started.ts); null: none.

@@ -233,6 +233,8 @@ async function applyEmailChange(userId: string, email: string, actorId: string, 
       // Links sent to the old address stop working: whoever reads that
       // mailbox no longer resets the password.
       await run("DELETE FROM auth_tokens WHERE user_id=? AND kind IN ('email-change','email-cancel','reset','verify','welcome')", userId);
+      // Confirmed now: a pending deletion for an unconfirmed address ends (#436).
+      await (await import("./unconfirmed-deletion")).keepConfirmed(userId);
       // E-mail inboxes of the person's workspaces that let the old address
       // in let the new one in instead.
       const oldLower = old.toLowerCase();

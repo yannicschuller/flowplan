@@ -113,6 +113,17 @@ type Session = { origin: string; ids: Ids; storageState: Awaited<ReturnType<Brow
 
 const SCENE_TIMEOUT = 45_000;
 
+// The gallery is recorded in English only (#438) – the interface and the
+// seeded example content (seed.ts): it is read by people who do not speak
+// German (vote.flowplan.org). German is checked by hand where it matters
+// (the design-review skill). The scenes click by the English texts of the
+// t("Deutsch", "English") pairs.
+const LANGUAGE = {
+  locale: "en-US",
+  acceptLanguage: "en-US,en;q=0.9",
+  processEnv: { LANG: "en_US.UTF-8", LANGUAGE: "en", LC_ALL: "en_US.UTF-8" },
+};
+
 function matches(scene: Scene, only: string[]) {
   if (!only.length) return true;
   const hay = `${scene.id} ${scene.title} ${scene.group}`.toLowerCase();
@@ -199,7 +210,7 @@ async function main() {
   try {
     const api = await request.newContext({
       baseURL: origin,
-      extraHTTPHeaders: { "Accept-Language": "de-DE,de;q=0.9" },
+      extraHTTPHeaders: { "Accept-Language": LANGUAGE.acceptLanguage },
       ...(session ? { storageState: session.storageState } : {}),
     });
     if (!session) console.log(`Seeding the gallery account on ${origin} …`);
@@ -218,7 +229,7 @@ async function main() {
     }
     const command = commandFor(api, origin!);
     let htmlState: ((html: string) => Uint8Array) | null = null;
-    const fixture: SceneContext["fixture"] = async ({ title = "Entwurf", kind = "document", html } = {}) => {
+    const fixture: SceneContext["fixture"] = async ({ title = "Draft", kind = "document", html } = {}) => {
       const { id } = await command({ action: "page.create", workspaceId: ids.workspaceId, spaceId: ids.spaceId, parentId: ids.sandboxId, kind, title });
       if (html) {
         htmlState ??= (await import("../../lib/document-server")).htmlState;
@@ -228,11 +239,11 @@ async function main() {
       return id;
     };
 
-    // A German browser, not only German pages: Playwright's `locale` sets
+    // An English browser, not only English pages: Playwright's `locale` sets
     // navigator.language and Accept-Language, but Chromium draws native
-    // fields (the "tt.mm.jjjj" of <input type="date">) in the language of
+    // fields (the "mm/dd/yyyy" of <input type="date">) in the language of
     // the browser itself, which on Linux comes from the process locale.
-    const launched = await launchChromium({ env: { ...process.env, LANG: "de_DE.UTF-8", LANGUAGE: "de", LC_ALL: "de_DE.UTF-8" } });
+    const launched = await launchChromium({ env: { ...process.env, ...LANGUAGE.processEnv } });
     if (!launched.browser) throw new Error(`No Chromium starts: ${launched.error}. Run \`npx playwright install chromium\`.`);
     browser = launched.browser as Browser;
 
@@ -251,9 +262,9 @@ async function main() {
         ...(scene.viewport ? { viewport: scene.viewport } : {}),
         colorScheme: variant.theme,
         reducedMotion: "reduce",
-        locale: "de-DE",
+        locale: LANGUAGE.locale,
         timezoneId: "Europe/Berlin",
-        extraHTTPHeaders: { "Accept-Language": "de-DE,de;q=0.9" },
+        extraHTTPHeaders: { "Accept-Language": LANGUAGE.acceptLanguage },
         storageState: scene.signedOut ? { cookies: [], origins: [] } : storageState,
       });
       context.setDefaultTimeout(10_000);

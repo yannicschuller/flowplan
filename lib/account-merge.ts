@@ -62,6 +62,10 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "sso_group_reports.user_id": "drop",
   "api_tokens.user_id": "drop",
   "auth_tokens.user_id": "drop",
+  // A pending deletion for an unconfirmed address (#436): it was about the
+  // source account; who marked it moves.
+  "unconfirmed_deletions.user_id": "drop",
+  "unconfirmed_deletions.marked_by": "move",
   "auth_challenges.user_id": "drop",
   "idempotency_keys.user_id": "drop",
   "mobile_devices.user_id": "drop",

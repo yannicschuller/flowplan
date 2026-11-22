@@ -42,6 +42,10 @@ export const instanceSettingsSchema = z.object({
   // Accounts without any use for this many days are deleted, after an
   // e-mail 14 and 3 days before (null = never; lib/inactive-accounts.ts).
   deleteInactiveDays: z.number().int().min(60).max(3650).nullable().default(null),
+  // Accounts whose address is still unconfirmed this many days after they
+  // were created are marked for deletion, with the same 14-day warning as
+  // marking by hand (null = never; lib/unconfirmed-deletion.ts, #436).
+  unconfirmedAutoDays: z.number().int().min(7).max(3650).nullable().default(null),
   // Defaults for every account without its own limits (0 = unlimited).
   defaultUserStorageMb: z.number().int().min(0).max(10_000_000).nullable().default(null),
   defaultUserWorkspaces: z.number().int().min(0).max(10_000).nullable().default(null),
@@ -134,6 +138,7 @@ const defaults: InstanceSettings = {
   backupInterval: "daily",
   inactiveDays: null,
   deleteInactiveDays: null,
+  unconfirmedAutoDays: null,
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,
   moreLimitsUrl: "",

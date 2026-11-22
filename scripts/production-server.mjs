@@ -92,7 +92,14 @@ export async function startProductionServer({ env = {} } = {}) {
 // run: a document, a project database (table and board) with fixed dates.
 export const ACCOUNT = { name: "Mara Lindqvist", email: "mara@example.test", password: "ein-langes-passwort" };
 
-const DOCUMENT = `## Ziele für das Quartal
+// The example content in German (the visual tests and quality budgets) and
+// in English (the UI gallery, #438): the same structure, so the screens show
+// as much in either language.
+const CONTENT = {
+  de: {
+    document: {
+      title: "Projektbriefing",
+      markdown: `## Ziele für das Quartal
 
 Wir bringen die neue Version im Herbst heraus und halten die Ladezeit unter einer Sekunde.
 
@@ -107,15 +114,63 @@ Wir bringen die neue Version im Herbst heraus und halten die Ladezeit unter eine
 1. Entwürfe bis Freitag abstimmen
 2. Testplan schreiben
 3. Release vorbereiten
-`;
+`,
+    },
+    database: {
+      title: "Projekte",
+      fields: { title: "Name", status: "Status", priority: "Priorität", date: "Fällig", tags: "Tags" },
+      status: ["Offen", "In Arbeit", "Erledigt"],
+      priority: ["Hoch", "Mittel", "Niedrig"],
+      tags: ["Design", "Produkt"],
+      views: { table: "Tabelle", board: "Board" },
+      rows: [
+        ["Onboarding vereinfachen", "In Arbeit", "Hoch", "2026-10-12", ["Design"]],
+        ["Designsystem dokumentieren", "Offen", "Mittel", "2026-10-14", ["Design"]],
+        ["Mobile Navigation", "In Arbeit", "Mittel", "2026-10-16", ["Produkt"]],
+        ["Feedback aus Nutzertests", "Erledigt", "Niedrig", "2026-10-09", ["Produkt"]],
+        ["Release vorbereiten", "Offen", "Hoch", "2026-10-20", ["Produkt", "Design"]],
+      ],
+    },
+    workflow: { title: "Projektseiten verlinken", trigger: "Neue Projektseite", action: "Auf Briefing eintragen" },
+  },
+  en: {
+    document: {
+      title: "Project brief",
+      markdown: `## Goals for the quarter
 
-const ROWS = [
-  ["Onboarding vereinfachen", "In Arbeit", "Hoch", "2026-10-12", ["Design"]],
-  ["Designsystem dokumentieren", "Offen", "Mittel", "2026-10-14", ["Design"]],
-  ["Mobile Navigation", "In Arbeit", "Mittel", "2026-10-16", ["Produkt"]],
-  ["Feedback aus Nutzertests", "Erledigt", "Niedrig", "2026-10-09", ["Produkt"]],
-  ["Release vorbereiten", "Offen", "Hoch", "2026-10-20", ["Produkt", "Design"]],
-];
+We ship the new version in the autumn and keep the load time under one second.
+
+- Onboarding in three steps
+- Offline mode for tables
+- New templates for teams
+
+> We write our decisions down – briefly, with the date and the reason.
+
+### Next steps
+
+1. Agree on the drafts by Friday
+2. Write the test plan
+3. Prepare the release
+`,
+    },
+    database: {
+      title: "Projects",
+      fields: { title: "Name", status: "Status", priority: "Priority", date: "Due", tags: "Tags" },
+      status: ["Open", "In progress", "Done"],
+      priority: ["High", "Medium", "Low"],
+      tags: ["Design", "Product"],
+      views: { table: "Table", board: "Board" },
+      rows: [
+        ["Simplify onboarding", "In progress", "High", "2026-10-12", ["Design"]],
+        ["Document the design system", "Open", "Medium", "2026-10-14", ["Design"]],
+        ["Mobile navigation", "In progress", "Medium", "2026-10-16", ["Product"]],
+        ["Feedback from user tests", "Done", "Low", "2026-10-09", ["Product"]],
+        ["Prepare the release", "Open", "High", "2026-10-20", ["Product", "Design"]],
+      ],
+    },
+    workflow: { title: "Link project pages", trigger: "New project page", action: "Add to the brief" },
+  },
+};
 
 // A Yjs update that replaces the content of a document by the given HTML,
 // base64 (lib/document-server.ts). It builds on the stored state and removes
@@ -150,7 +205,12 @@ process.stdin.on("data", (d) => (input += d)).on("end", () => {
 // a Playwright APIRequestContext, which keeps the session cookie, and seeds
 // the content. Returns the ids of the pages. Another account than ACCOUNT
 // signs up on a server that has accounts already (the UI gallery's --url).
-export async function seedAccount(request, origin, account = ACCOUNT) {
+// `language` picks the example content (CONTENT); the request context's
+// Accept-Language should match it, since the server creates the first
+// workspace and its built-in pages in the language of the request.
+export async function seedAccount(request, origin, account = ACCOUNT, { language = "de" } = {}) {
+  const content = CONTENT[language];
+  if (!content) throw new Error(`No example content in ${language}`);
   const post = async (path, data) => {
     const response = await request.post(path, { headers: { origin }, data });
     if (!response.ok()) throw new Error(`${path} ${data?.action ?? ""}: ${response.status()} ${await response.text()}`);
@@ -165,42 +225,42 @@ export async function seedAccount(request, origin, account = ACCOUNT) {
     if (page.kind === "database" || page.parent_id) await command({ action: "page.delete", pageId: page.id }).catch(() => {});
   const workspaceId = boot.workspace.id;
   const spaceId = boot.spaces[0].id;
-  const doc = await command({ action: "page.create", workspaceId, spaceId, title: "Projektbriefing", kind: "document" });
+  const doc = await command({ action: "page.create", workspaceId, spaceId, title: content.document.title, kind: "document" });
   // The server turns the Markdown into HTML (as "Edit as Markdown" does);
   // the document's collaborative state is built from it like the editor's.
-  const { html } = await command({ action: "document.markdown.apply", pageId: doc.id, markdown: DOCUMENT, check: true });
+  const { html } = await command({ action: "document.markdown.apply", pageId: doc.id, markdown: content.document.markdown, check: true });
   const { generation, state } = await (await request.get(`/api/pages/${doc.id}`)).json();
   await command({ action: "document.sync", pageId: doc.id, generation, update: documentUpdate(html, state) });
-  const db = await command({ action: "page.create", workspaceId, spaceId, title: "Projekte", kind: "database" });
+  const db = await command({ action: "page.create", workspaceId, spaceId, title: content.database.title, kind: "database" });
   const read = async () => (await request.get(`/api/pages/${db.id}`)).json();
   await command({
     action: "database.update",
     pageId: db.id,
     version: (await read()).database.version,
     fields: [
-      { id: "title", name: "Name", type: "text" },
-      { id: "status", name: "Status", type: "select", options: ["Offen", "In Arbeit", "Erledigt"] },
-      { id: "priority", name: "Priorität", type: "select", options: ["Hoch", "Mittel", "Niedrig"] },
-      { id: "date", name: "Fällig", type: "date" },
-      { id: "tags", name: "Tags", type: "multiselect", options: ["Design", "Produkt"] },
+      { id: "title", name: content.database.fields.title, type: "text" },
+      { id: "status", name: content.database.fields.status, type: "select", options: content.database.status },
+      { id: "priority", name: content.database.fields.priority, type: "select", options: content.database.priority },
+      { id: "date", name: content.database.fields.date, type: "date" },
+      { id: "tags", name: content.database.fields.tags, type: "multiselect", options: content.database.tags },
     ],
     views: [
-      { id: "table", name: "Tabelle", type: "table", filters: [], sorts: [] },
-      { id: "board", name: "Board", type: "board", filters: [], sorts: [], groupBy: "status" },
+      { id: "table", name: content.database.views.table, type: "table", filters: [], sorts: [] },
+      { id: "board", name: content.database.views.board, type: "board", filters: [], sorts: [], groupBy: "status" },
     ],
   });
-  for (const [title, status, priority, date, tags] of ROWS)
+  for (const [title, status, priority, date, tags] of content.database.rows)
     await command({ action: "row.create", pageId: db.id, cells: { title, status, priority, date, tags } });
   // A workflow page (#168): the issue's example as its draft.
-  const workflow = await command({ action: "page.create", workspaceId, spaceId, title: "Projektseiten verlinken", kind: "workflow" });
+  const workflow = await command({ action: "page.create", workspaceId, spaceId, title: content.workflow.title, kind: "workflow" });
   const node = (id, type, label, x, config) => ({ id, type, typeVersion: 1, label, note: "", position: { x, y: 0 }, disabled: false, config });
   await command({
     action: "workflow.draft",
     pageId: workflow.id,
     graph: {
       nodes: [
-        node("n_quality1", "trigger.page.created", "Neue Projektseite", 0, { scope: { kind: "below", pageId: doc.id, depth: "children" } }),
-        node("n_quality2", "action.page.append", "Auf Briefing eintragen", 300, { page: "{{n_quality1.page.parent}}", blocks: [{ type: "bullet", text: "{{n_quality1.page.link}}" }], noDuplicate: true }),
+        node("n_quality1", "trigger.page.created", content.workflow.trigger, 0, { scope: { kind: "below", pageId: doc.id, depth: "children" } }),
+        node("n_quality2", "action.page.append", content.workflow.action, 300, { page: "{{n_quality1.page.parent}}", blocks: [{ type: "bullet", text: "{{n_quality1.page.link}}" }], noDuplicate: true }),
       ],
       edges: [{ id: "e_1", from: { node: "n_quality1", port: "out" }, to: { node: "n_quality2", port: "in" } }],
     },

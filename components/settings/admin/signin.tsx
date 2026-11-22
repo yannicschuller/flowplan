@@ -149,6 +149,28 @@ export default function SigninSection() {
           max={3650}
           placeholder={t("nie", "never")}
         />
+        {/* Unconfirmed addresses (#436, lib/unconfirmed-deletion.ts). */}
+        {data.localLogin && (
+          <InstanceNumber
+            field="unconfirmedAutoDays"
+            label={t("Unbestätigte Konten automatisch vormerken", "Automatically mark unconfirmed accounts")}
+            description={
+              data.mail?.configured
+                ? t(
+                    "Ist die E-Mail-Adresse so viele Tage nach dem Anlegen noch unbestätigt, wird das Konto zur Löschung vorgemerkt (mindestens 7): Die Person bekommt eine E-Mail mit einem Bestätigungslink und 3 Tage vorher eine Erinnerung; ohne Bestätigung wird das Konto nach 14 Tagen gelöscht. Admins, SSO-, LDAP- und SCIM-Konten nie; eine abgebrochene Löschung merkt die Regel nicht erneut vor. Leer = nie.",
+                    "If the e-mail address is still unconfirmed this many days after the account was created, the account is marked for deletion (at least 7): the person gets an e-mail with a confirmation link and a reminder 3 days before; without confirming, the account is deleted after 14 days. Never admins, SSO, LDAP or SCIM accounts; the rule does not mark a cancelled deletion again. Empty = never.",
+                  )
+                : t(
+                    "Braucht den E-Mail-Versand (Administration → E-Mail): Ohne Vorwarnung per E-Mail wird kein Konto vorgemerkt. Leer = nie.",
+                    "Needs e-mail delivery (Administration → E-mail): without a warning by e-mail no account is marked. Empty = never.",
+                  )
+            }
+            unit={t("Tage", "days")}
+            min={7}
+            max={3650}
+            placeholder={t("nie", "never")}
+          />
+        )}
       </SettingGroup>
 
       {data.localLogin && (

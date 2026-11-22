@@ -128,6 +128,9 @@ export async function register() {
     startLitestreamWorker();
     const { startInactiveWorker } = await import("./lib/inactive-accounts");
     startInactiveWorker();
+    // Accounts with an unconfirmed address marked for deletion (#436), hourly.
+    const { startUnconfirmedWorker } = await import("./lib/unconfirmed-deletion");
+    startUnconfirmedWorker();
     // LDAP groups and account state, hourly (only with LDAP_URL).
     const { startLdapSyncWorker } = await import("./lib/ldap-auth");
     startLdapSyncWorker();

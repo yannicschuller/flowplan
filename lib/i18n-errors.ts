@@ -427,6 +427,7 @@ const exact: Record<string, string> = {
   "Die vCard-Datei kann nicht gelesen werden.": "The vCard file cannot be read.",
   "Die Datei enthält keine Kontakte (vCard).": "The file contains no contacts (vCard).",
   "Administrator-Gruppe erforderlich.": "Administrator group required.",
+  "Für dieses Konto ist keine Löschung vorgemerkt.": "No deletion is pending for this account.",
   "Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.": "The directory service (LDAP) cannot be reached right now.",
   // Merging accounts (lib/account-merge.ts, #101).
   "Bitte zwei verschiedene Konten wählen.": "Please choose two different accounts.",

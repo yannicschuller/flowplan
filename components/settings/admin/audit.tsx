@@ -18,6 +18,13 @@ const parse = (value: string) => Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? 
 
 export default function AuditSection() {
   const t = useT();
+  const unconfirmedLabels: Record<string, string> = {
+    "admin.markUnconfirmed": t("Zur Löschung vorgemerkt (E-Mail unbestätigt)", "Marked for deletion (e-mail unconfirmed)"),
+    "user.unconfirmedMarked": t("Automatisch zur Löschung vorgemerkt (E-Mail unbestätigt)", "Automatically marked for deletion (e-mail unconfirmed)"),
+    "admin.cancelUnconfirmedDeletion": t("Vorgemerkte Löschung abgebrochen", "Pending deletion cancelled"),
+    "user.unconfirmedConfirmed": t("Adresse bestätigt, Löschung abgewendet", "Address confirmed, deletion averted"),
+    "user.unconfirmedDeleted": t("Gelöscht (E-Mail unbestätigt)", "Deleted (e-mail unconfirmed)"),
+  };
   const { data } = useAdminData();
   const [query, setQuery] = useState(""),
     [person, setPerson] = useState(""),
@@ -115,6 +122,12 @@ export default function AuditSection() {
                 a.action === "admin.createAccount" ? (
                   <span className="admin-break">
                     {t("Konto angelegt", "Account created")}: {a.detail} <code>{a.action}</code>
+                  </span>
+                ) : unconfirmedLabels[a.action] ? (
+                  // Accounts with an unconfirmed address (#436): each step with its account.
+                  <span className="admin-break">
+                    {unconfirmedLabels[a.action]}
+                    {a.detail ? `: ${a.detail}` : ""} <code>{a.action}</code>
                   </span>
                 ) : (
                   <code className="admin-break">{a.action}</code>

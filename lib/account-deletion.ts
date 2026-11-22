@@ -41,6 +41,8 @@ const PERSONAL = [
   "ai_cell_jobs",
   "api_tokens",
   "auth_tokens",
+  // A pending deletion for an unconfirmed address (#436).
+  "unconfirmed_deletions",
   "auth_challenges",
   "caldav_accesses",
   "carddav_accesses",

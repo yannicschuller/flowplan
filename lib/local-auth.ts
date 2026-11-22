@@ -22,7 +22,7 @@ import {
 } from "@simplewebauthn/server";
 import { all, id, inTransaction, lockFor, one, run } from "./db";
 import { db } from "./db-driver";
-import { HttpError, acceptInvites, acceptPendingInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
+import { HttpError, acceptInvites, currentUser, acceptPendingInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { acceptInviteLink, inviteLinkOpensSignup, inviteLinkPreview } from "./invite-links";
 import { instanceSettings } from "./instance-settings";
 import { loopbackHost, plainHttpInstance } from "./instance-https";
@@ -602,6 +602,8 @@ async function recentlySent(userId: string) {
 export async function confirmAddress(userId: string) {
   await run("UPDATE local_accounts SET email_verified=1 WHERE user_id=?", userId);
   await run("UPDATE users SET email_verified=1 WHERE id=?", userId);
+  // A pending deletion for the unconfirmed address ends (#436).
+  await (await import("./unconfirmed-deletion")).keepConfirmed(userId);
   const user = await one<User>("SELECT * FROM users WHERE id=?", userId);
   if (user) await acceptInvites(user, true);
 }
@@ -612,8 +614,21 @@ export async function confirmAddress(userId: string) {
 // may have signed up for another person's (invited) address. Then nothing
 // set before the confirmation survives, and the owner sets the password
 // with a fresh one-time link (`setPassword`); invitations wait for that.
-export async function verifyEmail(token: string, registrant?: string | null): Promise<{ userId: string; setPassword?: string } | null> {
-  const userId = await takeToken(token, "verify");
+//
+// The link of the warning before deleting an unconfirmed account (#436,
+// lib/unconfirmed-deletion.ts) confirms the same way; that account may have
+// been in use for a while, so a browser signed in to it (`signedIn`) counts
+// like the one that signed up (`signedIn`: that account's id; undefined:
+// the session of the current request). The answer then says `signedIn`.
+export async function verifyEmail(token: string, registrant?: string | null, signedIn?: string | null): Promise<{ userId: string; setPassword?: string; signedIn?: true } | null> {
+  let userId = await takeToken(token, "verify");
+  let here = false;
+  if (!userId) {
+    userId = await (await import("./unconfirmed-deletion")).takeKeepToken(token);
+    if (userId && signedIn === undefined) signedIn = (await currentUser().catch(() => null))?.id ?? null;
+    here = !!userId && signedIn === userId;
+    if (here) registrant = userId;
+  }
   if (!userId) return null;
   const account = await accountOf(userId);
   if (account && !account.email_verified && registrant !== userId) {
@@ -623,10 +638,11 @@ export async function verifyEmail(token: string, registrant?: string | null): Pr
       for (const table of ["sessions", "passkeys", "api_tokens", "mobile_devices", "app_devices", "user_totp", "user_identities"])
         await run(`DELETE FROM ${table} WHERE user_id=?`, userId);
     });
+    await (await import("./unconfirmed-deletion")).keepConfirmed(userId);
     return { userId, setPassword: await issueToken(userId, "reset") };
   }
   await confirmAddress(userId);
-  return { userId };
+  return here ? { userId, signedIn: true } : { userId };
 }
 // The link once more, for "Link erneut senden" (same answer for every address).
 export async function resendVerification(input: unknown, locale: Locale) {

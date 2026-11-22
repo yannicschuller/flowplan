@@ -135,6 +135,7 @@ import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
 import { canAddPersonalTask, personalTaskPage } from "@/lib/personal-tasks";
 import { homeAction, homeData, homeOptions } from "@/lib/home-widgets";
 import { localAccountInfo, localLoginEnabled } from "@/lib/local-auth";
+import { unconfirmedOverview } from "@/lib/unconfirmed-deletion";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { clipArticle } from "@/lib/web-clip";
@@ -1366,6 +1367,8 @@ async function handleGET(
         // How long sessions last, and what the environment would give (#133).
         sessionPolicy: await sessionSettings(),
         localAccounts: await localAccountInfo(),
+        // Unconfirmed addresses and accounts marked for deletion (#436).
+        unconfirmed: await unconfirmedOverview(user),
         // Connected SSO identities of every account (#101).
         identities: await all<{ user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }>(
           "SELECT user_id,id,issuer,email,created_at,last_used_at FROM user_identities ORDER BY created_at",

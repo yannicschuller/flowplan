@@ -41105,3 +41105,31 @@ a.favorite-nav.selected {
   flex-wrap: wrap;
   gap: 4px 12px;
 }
+
+/* Marked for deletion while the address is unconfirmed (#436,
+   components/unconfirmed-deletion-notice.tsx). */
+.unconfirmed-deletion-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 18px;
+  background: color-mix(in srgb, var(--signal) 12%, var(--bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--signal) 30%, var(--border));
+  font-size: 13.5px;
+}
+.unconfirmed-deletion-banner > svg {
+  color: var(--signal);
+  flex: none;
+}
+.unconfirmed-deletion-banner > span {
+  flex: 1 1 280px;
+}
+.unconfirmed-deletion-banner small {
+  display: block;
+  margin-top: 4px;
+}
+.unconfirmed-deletion-banner .button {
+  padding: 6px 12px;
+  font-size: 13px;
+}

@@ -64,7 +64,7 @@ type Local = {
 };
 type Usage = NonNullable<AdminData["userUsage"]>[number];
 type Activity = Pick<UserActivity, "openAt" | "activeAt">;
-type Filter = "all" | "here" | "active" | "inactive" | "disabled" | "admins";
+type Filter = "all" | "here" | "active" | "inactive" | "disabled" | "admins" | "unconfirmed";
 type SortKey = "name" | "status" | "workspaces" | "storage" | "last" | "created";
 type Sort = { key: SortKey; dir: "asc" | "desc" };
 // The direction a column starts with: names A–Z, the rest largest or newest first.
@@ -117,7 +117,9 @@ export default function UsersSection() {
     [selected, setSelected] = useState<Set<string>>(new Set()),
     [open, setOpen] = useState<string | null>(null),
     [bulk, setBulk] = useState(false),
-    [creating, setCreating] = useState(false);
+    [creating, setCreating] = useState(false),
+    // "Zur Löschung vormerken …" (#436): the accounts the dialog is for.
+    [marking, setMarking] = useState<User[] | null>(null);
   const now = useMemo(() => Date.now(), [data]);
   const live = useLiveActivity();
   const scroll = useEdgeShadows();
@@ -130,14 +132,20 @@ export default function UsersSection() {
   const isAdmin = (id: string) => admins.has(id) || !!local[id]?.admin;
   const states = new Map(data.users.map((u) => [u.id, stateOf(u, now)]));
   const usages = new Map((data.userUsage || []).map((x) => [x.id, x]));
+  // Unconfirmed addresses (#436, lib/unconfirmed-deletion.ts).
+  const unconfirmed = data.unconfirmed;
+  const unconfirmedIds = new Set(unconfirmed?.ids || []);
+  const markable = new Set(unconfirmed?.available ? unconfirmed.markable : []);
+  const marks = unconfirmed?.marks || {};
   const count = (f: Filter) => data.users.filter((u) => matches(u, f)).length;
   function matches(u: User, f: Filter) {
     const s = states.get(u.id)!.key;
+    if (f === "unconfirmed") return unconfirmedIds.has(u.id);
     if (f === "here") return ["active", "idle"].includes(activityState(activityOf(u), liveNow));
     return f === "all" || (f === "admins" ? isAdmin(u.id) : s === f);
   }
   // What a column sorts by; ties by name.
-  const statusRank = (u: User) => (u.disabled ? 3 : u.deletion_due_at ? 2 : states.get(u.id)!.key === "inactive" ? 1 : 0);
+  const statusRank = (u: User) => (u.disabled ? 3 : u.deletion_due_at || marks[u.id] ? 2 : states.get(u.id)!.key === "inactive" ? 1 : 0);
   const sortValue: Record<SortKey, (u: User) => number | string> = {
     name: (u) => u.name.toLocaleLowerCase(LOCALE_TAG),
     status: statusRank,
@@ -196,6 +204,10 @@ export default function UsersSection() {
   };
   const signOut = async (u: User) => {
     if ((await act({ action: "admin.revoke", userId: u.id })) !== undefined) showNotice(t(`${u.name} ist auf allen Geräten abgemeldet.`, `${u.name} is signed out on every device.`));
+  };
+  // "Abbrechen" next to "Löschung am …".
+  const cancelMark = async (u: User) => {
+    if ((await act({ action: "admin.unconfirmedCancel", userId: u.id })) !== undefined) showNotice(t(`Löschung von ${u.name} abgebrochen.`, `Deletion of ${u.name} cancelled.`));
   };
   const inactive = count("inactive"),
     disabled = count("disabled"),
@@ -286,6 +298,7 @@ export default function UsersSection() {
                 ["inactive", t("Inaktiv", "Inactive"), inactive],
                 ["disabled", t("Deaktiviert", "Disabled"), disabled],
                 ["admins", t("Admins", "Admins"), count("admins")],
+                ["unconfirmed", t("E-Mail unbestätigt", "E-mail unconfirmed"), count("unconfirmed")],
               ] as [Filter, string, number][]
             ).map(([key, label, n]) => (
               <button key={key} type="button" className={`admin-user-filter${filter === key ? " on" : ""}`} aria-pressed={filter === key} onClick={() => changeFilter(key)}>
@@ -318,6 +331,30 @@ export default function UsersSection() {
             </button>
           </div>
         </header>
+        {filter === "unconfirmed" && (
+          <div className="admin-unconfirmed-bar" role="region" aria-label={t("Unbestätigte Adressen", "Unconfirmed addresses")}>
+            {unconfirmed?.available ? (
+              <>
+                <span className="muted">
+                  {t(
+                    "Konten mit E-Mail und Passwort, deren Adresse nie bestätigt wurde. Vorgemerkte Konten bekommen eine E-Mail und werden nach 14 Tagen gelöscht, wenn sie die Adresse nicht bestätigen. Admins, SSO-, LDAP- und SCIM-Konten nie.",
+                    "Accounts with e-mail and password whose address was never confirmed. Marked accounts get an e-mail and are deleted after 14 days unless they confirm the address. Never admins, SSO, LDAP or SCIM accounts.",
+                  )}
+                </span>
+                <button type="button" className="button danger" disabled={!shown.some((u) => markable.has(u.id))} onClick={() => setMarking(shown.filter((u) => markable.has(u.id)))}>
+                  <Trash size={16} aria-hidden /> {t("Alle gefilterten zur Löschung vormerken …", "Mark all filtered for deletion …")}
+                </button>
+              </>
+            ) : (
+              <span className="muted">
+                {t(
+                  "Zur Löschung vormerken gibt es nur, wenn diese Instanz E-Mails versendet (Administration → E-Mail): Niemand wird ohne Vorwarnung gelöscht.",
+                  "Marking for deletion is only offered while this instance sends e-mail (Administration → E-mail): nobody is deleted without a warning.",
+                )}
+              </span>
+            )}
+          </div>
+        )}
         {chosen.length > 0 && (
           <div className="admin-bulk" role="region" aria-label={t("Aktionen für die Auswahl", "Actions for the selection")}>
             <strong>{chosen.length === 1 ? t("1 ausgewählt", "1 selected") : t(`${chosen.length} ausgewählt`, `${chosen.length} selected`)}</strong>
@@ -349,6 +386,11 @@ export default function UsersSection() {
                 }}
               >
                 {t("Sperren", "Block||account")}
+              </button>
+            )}
+            {chosen.some((u) => markable.has(u.id)) && (
+              <button type="button" className="button danger" disabled={bulk} onClick={() => setMarking(chosen.filter((u) => markable.has(u.id)))}>
+                {t("Zur Löschung vormerken …", "Mark for deletion …")}
               </button>
             )}
             <button type="button" className="button" disabled={bulk} onClick={() => setSelected(new Set())}>
@@ -412,6 +454,9 @@ export default function UsersSection() {
                       onOpen={() => setOpen(u.id)}
                       onSignOut={() => void signOut(u)}
                       onBlock={() => (u.disabled ? void act({ action: "admin.user", userId: u.id, disabled: false }) : block(u))}
+                      markDue={marks[u.id]}
+                      onMark={markable.has(u.id) ? () => setMarking([u]) : undefined}
+                      onCancelMark={() => void cancelMark(u)}
                     />
                   ))}
                 </tbody>
@@ -421,7 +466,29 @@ export default function UsersSection() {
           </>
         )}
       </section>
-      {person && <UserDrawer key={person.id} user={person} data={data} state={states.get(person.id)!} activity={activityOf(person)} now={liveNow} onClose={() => setOpen(null)} />}
+      {person && (
+        <UserDrawer
+          key={person.id}
+          user={person}
+          data={data}
+          state={states.get(person.id)!}
+          activity={activityOf(person)}
+          now={liveNow}
+          onClose={() => setOpen(null)}
+          onMark={markable.has(person.id) ? () => setMarking([person]) : undefined}
+          onCancelMark={() => void cancelMark(person)}
+        />
+      )}
+      {marking && (
+        <MarkDialog
+          users={marking}
+          onClose={() => setMarking(null)}
+          onDone={() => {
+            setMarking(null);
+            setSelected(new Set());
+          }}
+        />
+      )}
       {creating && <CreateAccountDialog mail={!!data.mail?.configured} onClose={() => setCreating(false)} />}
     </>
   );
@@ -722,6 +789,104 @@ function DeletionBadge({ due, short }: { due?: number | null; short?: boolean })
   );
 }
 
+// Marked for deletion while the address is unconfirmed (#436): the day
+// and "Abbrechen".
+function UnconfirmedMark({ due, name, onCancel }: { due: number; name: string; onCancel: () => void }) {
+  const t = useT();
+  const date = new Date(due).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short", year: "numeric" });
+  return (
+    <span className="admin-unconfirmed-mark">
+      <StatusBadge tone="error" title={t("E-Mail-Adresse unbestätigt", "E-mail address unconfirmed")}>
+        {t(`Löschung am ${date}`, `Deletion on ${date}`)}
+      </StatusBadge>
+      <button type="button" className="button compact" aria-label={t(`Löschung von ${name} abbrechen`, `Cancel the deletion of ${name}`)} onClick={onCancel}>
+        {t("Abbrechen", "Cancel")}
+      </button>
+    </span>
+  );
+}
+
+// "Zur Löschung vormerken …" (#436, lib/unconfirmed-deletion.ts): how many,
+// the day, how many wrote in shared workspaces, then marking.
+function MarkDialog({ users, onClose, onDone }: { users: User[]; onClose: () => void; onDone: () => void }) {
+  const t = useT();
+  const { mutate, load } = useAdminData();
+  const [plan, setPlan] = useState<{ count: number; skipped: number; shared: number; due: number } | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const ids = users.map((u) => u.id);
+  useEffect(() => {
+    let stop = false;
+    mutate({ action: "admin.unconfirmedPlan", userIds: ids })
+      .then((p) => !stop && setPlan(p as typeof plan))
+      .catch((e) => !stop && setError((e as Error).message));
+    return () => {
+      stop = true;
+    };
+  }, [ids.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const date = plan ? new Date(plan.due).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric" }) : "";
+  const title = users.length === 1 ? t(`${users[0].name} zur Löschung vormerken`, `Mark ${users[0].name} for deletion`) : t(`${users.length} Konten zur Löschung vormerken`, `Mark ${users.length} accounts for deletion`);
+  return (
+    <Modal open onClose={() => !busy && onClose()} title={title}>
+      <div className="delete-account">
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        {!plan ? (
+          !error && <p className="muted">{t("Lädt …", "Loading …")}</p>
+        ) : (
+          <ul>
+            <li>
+              {plan.count === 1
+                ? t(`1 Konto mit unbestätigter Adresse wird am ${date} gelöscht, wenn die Person ihre Adresse bis dahin nicht bestätigt.`, `1 account with an unconfirmed address is deleted on ${date} unless the person confirms their address by then.`)
+                : t(`${plan.count} Konten mit unbestätigter Adresse werden am ${date} gelöscht, wenn die Personen ihre Adresse bis dahin nicht bestätigen.`, `${plan.count} accounts with an unconfirmed address are deleted on ${date} unless the people confirm their address by then.`)}
+            </li>
+            <li>{t("Jede Person bekommt jetzt eine E-Mail mit einem Bestätigungslink und 3 Tage vorher eine Erinnerung. Anmelden allein verhindert die Löschung nicht.", "Each person gets an e-mail with a confirmation link now and a reminder 3 days before. Signing in alone does not stop the deletion.")}</li>
+            {plan.shared > 0 && (
+              <li>
+                {plan.shared === 1
+                  ? t("1 davon hat Inhalte in gemeinsamen Arbeitsbereichen – sie bleiben und erscheinen als „Gelöschtes Konto“.", "1 of them has content in shared workspaces – it stays and appears as “Deleted account”.")
+                  : t(`${plan.shared} davon haben Inhalte in gemeinsamen Arbeitsbereichen – sie bleiben und erscheinen als „Gelöschtes Konto“.`, `${plan.shared} of them have content in shared workspaces – it stays and appears as “Deleted account”.`)}
+              </li>
+            )}
+            {plan.skipped > 0 && (
+              <li>{t(`${plan.skipped} ausgelassen: Admins, dein eigenes Konto und schon vorgemerkte Konten.`, `${plan.skipped} left out: admins, your own account and accounts already marked.`)}</li>
+            )}
+          </ul>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="button" disabled={busy} onClick={onClose}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          <button
+            type="button"
+            className="button danger-solid"
+            disabled={busy || !plan || plan.count === 0}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                const result = (await mutate({ action: "admin.unconfirmedMark", userIds: ids })) as { marked: string[] };
+                await load();
+                showNotice(result.marked.length === 1 ? t("1 Konto vorgemerkt, die E-Mail ist unterwegs.", "1 account marked, the e-mail is on its way.") : t(`${result.marked.length} Konten vorgemerkt, die E-Mails sind unterwegs.`, `${result.marked.length} accounts marked, the e-mails are on their way.`));
+                onDone();
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? t("Merkt vor …", "Marking …") : t("Zur Löschung vormerken", "Mark for deletion")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function StateBadge({ state }: { state: State }) {
   const t = useT();
   const tone: Tone = state.key === "disabled" ? "error" : state.key === "inactive" ? "off" : "ok";
@@ -777,6 +942,9 @@ function UserRow({
   onOpen,
   onSignOut,
   onBlock,
+  markDue,
+  onMark,
+  onCancelMark,
 }: {
   index: number;
   user: User;
@@ -792,6 +960,10 @@ function UserRow({
   onOpen: () => void;
   onSignOut: () => void;
   onBlock: () => void;
+  // Marked for deletion (unconfirmed address, #436): the day; and the actions.
+  markDue?: number;
+  onMark?: () => void;
+  onCancelMark: () => void;
 }) {
   const t = useT();
   const all = usage?.memberOf?.length ?? 0,
@@ -834,7 +1006,15 @@ function UserRow({
           </span>
         </div>
       </td>
-      <td className="state">{u.deletion_due_at && !u.disabled ? <DeletionBadge due={u.deletion_due_at} short /> : <StateBadge state={state} />}</td>
+      <td className="state">
+        {markDue ? (
+          <UnconfirmedMark due={markDue} name={u.name} onCancel={onCancelMark} />
+        ) : u.deletion_due_at && !u.disabled ? (
+          <DeletionBadge due={u.deletion_due_at} short />
+        ) : (
+          <StateBadge state={state} />
+        )}
+      </td>
       <td className="end ux-num" title={wsTitle}>
         <Stack size={14} aria-hidden className="ux-card-icon" />
         {all}
@@ -870,6 +1050,17 @@ function UserRow({
                 <SignOut size={16} aria-hidden /> {t("Überall abmelden", "Sign out everywhere")}
               </Dropdown.Item>
               <Dropdown.Separator className="dropdown-separator" />
+              {markDue ? (
+                <Dropdown.Item className="dropdown-item" onSelect={onCancelMark}>
+                  {t("Löschung abbrechen", "Cancel deletion")}
+                </Dropdown.Item>
+              ) : (
+                onMark && (
+                  <Dropdown.Item className="dropdown-item danger" onSelect={onMark}>
+                    <Trash size={16} aria-hidden /> {t("Zur Löschung vormerken …", "Mark for deletion …")}
+                  </Dropdown.Item>
+                )
+              )}
               <Dropdown.Item className={`dropdown-item${u.disabled ? "" : " danger"}`} onSelect={onBlock}>
                 {u.disabled ? <LockOpen size={16} aria-hidden /> : <Prohibit size={16} aria-hidden />} {u.disabled ? t("Entsperren", "Unblock") : t("Sperren …", "Block …")}
               </Dropdown.Item>
@@ -936,7 +1127,25 @@ function PanelRow({ label, hint, children, htmlFor }: { label: string; hint?: Re
 // One account in a side panel (a bottom sheet on phones): facts, storage,
 // role, limits, sessions and password; further settings folded; blocking
 // and deleting at the end.
-function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: User; data: AdminData; state: State; activity: Activity; now: number; onClose: () => void }) {
+function UserDrawer({
+  user: u,
+  data,
+  state,
+  activity,
+  now,
+  onClose,
+  onMark,
+  onCancelMark,
+}: {
+  user: User;
+  data: AdminData;
+  state: State;
+  activity: Activity;
+  now: number;
+  onClose: () => void;
+  onMark?: () => void;
+  onCancelMark: () => void;
+}) {
   const t = useT();
   const { act, mutate, load } = useAdminData();
   const local = data.localAccounts?.[u.id];
@@ -1052,6 +1261,7 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
             {local?.invited && <StatusBadge tone="warn">{t("Eingeladen · Passwort noch nicht festgelegt", "Invited · password not set yet")}</StatusBadge>}
             {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
             <DeletionBadge due={u.deletion_due_at} />
+            <DeletionBadge due={data.unconfirmed?.marks[u.id]} />
             <Presence activity={activity} now={now} long />
           </span>
         </span>
@@ -1256,6 +1466,37 @@ function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: Us
               {t("Als bestätigt markieren", "Mark as confirmed")}
             </button>
           </PanelRow>
+        )}
+        {/* Unconfirmed address (#436): mark for deletion, or the marked day with "Abbrechen". */}
+        {data.unconfirmed?.marks[u.id] ? (
+          <PanelRow
+            label={t("Löschung vorgemerkt", "Marked for deletion")}
+            hint={t(
+              "Die Person hat eine E-Mail mit einem Link bekommen. Bestätigt sie ihre Adresse, bleibt das Konto; Anmelden allein reicht nicht.",
+              "The person got an e-mail with a link. Confirming the address keeps the account; signing in alone is not enough.",
+            )}
+          >
+            <UnconfirmedMark due={data.unconfirmed.marks[u.id]} name={u.name} onCancel={onCancelMark} />
+          </PanelRow>
+        ) : (
+          data.unconfirmed?.ids.includes(u.id) && (
+            <PanelRow
+              label={t("Zur Löschung vormerken", "Mark for deletion")}
+              hint={
+                !data.unconfirmed.available
+                  ? t("Nur wenn diese Instanz E-Mails versendet: Niemand wird ohne Vorwarnung gelöscht.", "Only while this instance sends e-mail: nobody is deleted without a warning.")
+                  : onMark
+                    ? t("Die Person bekommt eine E-Mail; ohne Bestätigung der Adresse wird das Konto nach 14 Tagen gelöscht.", "The person gets an e-mail; without confirming the address the account is deleted after 14 days.")
+                    : t("Admins und dein eigenes Konto werden nie vorgemerkt.", "Admins and your own account are never marked.")
+              }
+            >
+              {onMark && (
+                <button type="button" className="button compact danger" onClick={onMark}>
+                  <Trash size={15} aria-hidden /> {t("Vormerken …", "Mark …")}
+                </button>
+              )}
+            </PanelRow>
+          )
         )}
         <details className="ux-more">
           <summary>

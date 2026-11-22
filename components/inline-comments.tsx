@@ -679,7 +679,7 @@ export function InlineComments({
                         t("Kommentar gelöscht", "Comment deleted")}
                     </span>
                     <small>
-                      {thread.messageCount} {t("Beiträge", "posts")}
+                      {thread.messageCount === 1 ? t("1 Beitrag", "1 post") : t(`${thread.messageCount} Beiträge`, `${thread.messageCount} posts`)}
                       {!range(thread) ? t(" · Textstelle nicht mehr verfügbar", " · passage no longer available") : ""}
                     </small>
                   </button>
