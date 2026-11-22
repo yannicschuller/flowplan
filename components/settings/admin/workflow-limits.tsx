@@ -97,10 +97,15 @@ export function WorkflowLimits() {
             <div className="callout admin-update" role="note">
               <Info size={20} aria-hidden="true" />
               <span>
-                {t(
-                  `Beim Update auf 0.10.0 eingeschaltet geblieben, weil ${data.mailMigration.workflows.length === 1 ? "ein aktiver Workflow" : `${data.mailMigration.workflows.length} aktive Workflows`} E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.`,
-                  `Left on by the update to 0.10.0 because ${data.mailMigration.workflows.length === 1 ? "an active workflow sends" : `${data.mailMigration.workflows.length} active workflows send`} e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.`,
-                )}
+                {data.mailMigration.workflows.length === 1
+                  ? t(
+                      "Beim Update auf 0.10.0 eingeschaltet geblieben, weil ein aktiver Workflow E-Mails an Adressen aus Platzhaltern schickt. Prüfe ihn und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.",
+                      "Left on by the update to 0.10.0 because an active workflow sends e-mail to addresses from placeholders. Check it and switch it off if it is not needed – this note goes away once you decide here.",
+                    )
+                  : t(
+                      `Beim Update auf 0.10.0 eingeschaltet geblieben, weil ${data.mailMigration.workflows.length} aktive Workflows E-Mails an Adressen aus Platzhaltern schicken. Prüfe sie und schalte es aus, wenn es nicht gebraucht wird – dieser Hinweis verschwindet, sobald du hier entscheidest.`,
+                      `Left on by the update to 0.10.0 because ${data.mailMigration.workflows.length} active workflows send e-mail to addresses from placeholders. Check them and switch it off if it is not needed – this note goes away once you decide here.`,
+                    )}
               </span>
               <span className="admin-update-links">
                 {data.mailMigration.workflows.map((w) => (

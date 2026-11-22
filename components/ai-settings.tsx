@@ -945,7 +945,7 @@ function DeviceAiSettings({
   const t = useT();
   const locale = textLocale(useLocale());
   const state = useDeviceAi(view.instance.device);
-  const reason = view.instance.device ? deviceReason(state, locale === "en" || locale === "fr" ? locale : "de") : null;
+  const reason = view.instance.device ? deviceReason(state, locale) : null;
   const [lineDe, lineEn] = DEVICE_REASON_TEXT[reason || "available"];
   const off = !view.settings.enabled;
   const mode: DeviceAiMode = off ? "off" : view.settings.device;

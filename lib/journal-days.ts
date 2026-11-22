@@ -33,6 +33,7 @@ import {
 } from "./journal-extras";
 import { dayDoc, dayStart, dayTitle, hasOwnEntry, journalDate, rollJournal } from "./journal";
 import { dayTitle as localDayTitle } from "./journal-title";
+import { LOCALES } from "./i18n";
 import type { Identity, Page, PageCounts } from "./types";
 import { filterAsync, flatMapAsync, someAsync } from "./each-async";
 
@@ -260,7 +261,7 @@ const plain = (title: string) => title.normalize("NFKC").replace(/\s+/g, " ").tr
 function automaticTitle(title: string, date: string) {
   const own = plain(title);
   if (!own) return true;
-  return (["de", "en", "en-US", "fr"] as const).some((locale) => plain(localDayTitle(date, locale)) === own);
+  return LOCALES.some((locale) => plain(localDayTitle(date, locale)) === own);
 }
 const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 // A day nobody wrote in, as conservatively as possible: nothing beyond the

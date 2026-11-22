@@ -97,7 +97,7 @@ export const proposeCardsInput = z.object({
   count: z.number().int().min(1).max(FLASHCARD_LIMITS.cards).default(20),
   types: z.array(z.enum(AI_CARD_TYPES)).min(1).max(4).default(["basic", "cloze"]),
   focus: z.string().trim().max(FLASHCARD_LIMITS.focus).default(""),
-  language: z.enum(["auto", "de", "en", "fr", "zh"]).default("auto"),
+  language: z.enum(["auto", "de", "en", "fr", "zh", "ru"]).default("auto"),
   // Fronts already suggested ("Neu erzeugen" asks for different cards).
   avoid: z.array(z.string().max(FLASHCARD_LIMITS.front)).max(FLASHCARD_LIMITS.cards).default([]),
   // Only the estimate (characters, parts, tokens) – no request to the model.
@@ -192,7 +192,7 @@ async function existingFronts(user: Identity, deck: Deck) {
 
 // ---- the prompt ----
 
-const LANGUAGE_NAMES: Record<TextLanguage, string> = { de: "German", en: "English", fr: "French", zh: "Chinese" };
+const LANGUAGE_NAMES: Record<TextLanguage, string> = { de: "German", en: "English", fr: "French", zh: "Chinese", ru: "Russian" };
 export const FLASHCARDS_SYSTEM = `You write flashcards for spaced repetition from a source text. Answer only with one JSON object {"cards": [ … ]}, no other text.
 Each card: {"type": "basic" | "cloze" | "typed" | "choice", "front": "…", "back": "…", "hint": "…" (optional, short), "choices": ["wrong 1", "wrong 2", "wrong 3"] (choice only), "tags": ["…"] (optional, at most 3), "source": "the heading or passage of the source the card is based on"}.
 Rules:

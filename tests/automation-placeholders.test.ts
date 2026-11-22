@@ -40,9 +40,11 @@ test("a property named like a built-in hides that name: another language's name 
   const shadow: Field[] = [{ id: "t", name: "Heute", type: "text" }];
   assert.equal(fieldToken(shadow[0], shadow), "{{Heute}}");
   assert.equal(builtinToken("today", shadow, "de"), "{{Today}}");
-  const all: Field[] = ["Heute", "Today", "Aujourd’hui"].map((name, i) => ({ id: `f${i}`, name, type: "text" }));
+  const all: Field[] = ["Heute", "Today", "Aujourd’hui", "Сегодня"].map((name, i) => ({ id: `f${i}`, name, type: "text" }));
   assert.equal(builtinToken("today", all, "de"), null);
   assert.equal(builtinLang("zh"), "en");
+  assert.equal(builtinLang("ru"), "ru");
+  assert.equal(builtinToken("today", [], "ru"), "{{Сегодня}}");
   assert.equal(builtinLang("fr-FR"), "fr");
   assert.equal(builtinLang("de-CH"), "de");
 });

@@ -2480,7 +2480,7 @@ CreateMeetingForm = TypedDict("CreateMeetingForm", {
     "others": FormFile,
     "transcript": str,
     "consent": bool,
-    "language": Literal["de", "en", "fr", "zh"],
+    "language": Literal["de", "en", "fr", "zh", "ru"],
 }, total=False)
 
 GetMeetingQuery = TypedDict("GetMeetingQuery", {

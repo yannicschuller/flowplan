@@ -456,7 +456,7 @@ function RelationPicker({
       <small>
         {selection.length} {t("ausgewählt", "selected")}
         {rows
-          ? ` · ${filtered.length} ${t("Treffer", filtered.length === 1 ? "match" : "matches")}`
+          ? ` · ${filtered.length === 1 ? t("1 Treffer", "1 match") : t(`${filtered.length} Treffer`, `${filtered.length} matches`)}`
           : t(" · Datenbank nicht zugänglich", " · database not accessible")}
       </small>
       <div className="relation-options">

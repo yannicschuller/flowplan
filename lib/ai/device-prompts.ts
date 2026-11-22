@@ -29,8 +29,8 @@ export const deviceTokens = (text: string) => Math.ceil(text.length / DEVICE_LIM
 
 type Lang = "de" | "en" | "fr";
 // The on-device instructions exist in German, English and French; Chinese
-// uses the English ones (the target language is named explicitly).
-const lang = (locale: AiLocale): Lang => (locale === "en" || locale === "fr" ? locale : locale === "zh" ? "en" : "de");
+// and Russian use the English ones (the target language is named explicitly).
+const lang = (locale: AiLocale): Lang => (locale === "en" || locale === "fr" || locale === "de" ? locale : "en");
 
 // Language names in each interface language.
 const FRENCH_NAMES = new Map<string, string>([
@@ -42,6 +42,7 @@ const FRENCH_NAMES = new Map<string, string>([
   ["nl", "néerlandais"],
   ["pl", "polonais"],
   ["pt", "portugais"],
+  ["ru", "russe"],
   ["sv", "suédois"],
   ["tr", "turc"],
   ["uk", "ukrainien"],

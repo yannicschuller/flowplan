@@ -829,7 +829,9 @@ export default function DatabaseView({
         showToast({
           text:
             operation === "delete"
-              ? t(`${list.length} ${list.length === 1 ? "Eintrag" : "Einträge"} in den Papierkorb gelegt.`, `${list.length} ${list.length === 1 ? "record" : "records"} moved to the trash.`)
+              ? list.length === 1
+                ? t("1 Eintrag in den Papierkorb gelegt.", "1 record moved to the trash.")
+                : t(`${list.length} Einträge in den Papierkorb gelegt.`, `${list.length} records moved to the trash.`)
               : t(`${list.length} Einträge dupliziert.`, `${list.length} records duplicated.`),
         });
     }

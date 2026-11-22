@@ -932,7 +932,7 @@ export type Webhook = {
   templates: Record<string, string>;
   /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
   config: {
-    language?: "de" | "en" | "en-US" | "fr" | "zh";
+    language?: "de" | "en" | "en-US" | "fr" | "zh" | "ru";
     digestTime?: string;
     timeZone?: string;
     matrixRoom?: string;
@@ -972,7 +972,7 @@ export type WebhookCreate = {
   templates?: Record<string, string>;
   /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
   config?: {
-    language?: "de" | "en" | "en-US" | "fr" | "zh";
+    language?: "de" | "en" | "en-US" | "fr" | "zh" | "ru";
     digestTime?: string;
     timeZone?: string;
     matrixRoom?: string;
@@ -1001,7 +1001,7 @@ export type WebhookUpdate = {
   templates?: Record<string, string>;
   /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
   config?: {
-    language?: "de" | "en" | "en-US" | "fr" | "zh";
+    language?: "de" | "en" | "en-US" | "fr" | "zh" | "ru";
     digestTime?: string;
     timeZone?: string;
     matrixRoom?: string;
@@ -4624,7 +4624,7 @@ export class FlowplanClient {
     others?: Blob;
     transcript?: string;
     consent?: boolean;
-    language?: "de" | "en" | "fr" | "zh";
+    language?: "de" | "en" | "fr" | "zh" | "ru";
   }, options?: RequestOptions): Promise<{
     id: string;
     pageId?: string;
@@ -4660,7 +4660,7 @@ export class FlowplanClient {
     force?: boolean;
     /** Only count the corrected passages */
     dryRun?: boolean;
-    language?: "de" | "en" | "fr" | "zh";
+    language?: "de" | "en" | "fr" | "zh" | "ru";
   }, options?: RequestOptions): Promise<{
     edited?: number;
     keepsEdited?: boolean;

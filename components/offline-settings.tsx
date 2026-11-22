@@ -89,11 +89,7 @@ export function OfflineSettings({
       "Auf diesem Gerät ist zu wenig Speicher für die Offline-Kopie frei – gib etwas Speicher frei und aktualisiere dann erneut.",
       "There is too little storage left on this device for the offline copy – free up some space, then update again.",
     );
-  const pagesText = (n: number) =>
-    t(
-      `${n} ${n === 1 ? "Seite" : "Seiten"}`,
-      `${n} ${n === 1 ? "page" : "pages"}`,
-    );
+  const pagesText = (n: number) => (n === 1 ? t("1 Seite", "1 page") : t(`${n} Seiten`, `${n} pages`));
   async function enable() {
     setBusy(true);
     setMessage("");

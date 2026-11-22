@@ -42,6 +42,15 @@ test("keys: stored id, name without regard to case, built-in, id", () => {
   assert.deepEqual(placeholderTarget("date", props), { field: props[2] });
   assert.deepEqual(placeholderTarget("Heute", props), { builtin: "today" });
   assert.deepEqual(placeholderTarget("Title", props), { builtin: "title" });
+  // Russian names, any case (the hints of locales/ru.json use them).
+  assert.deepEqual(placeholderTarget("Сегодня", props), { builtin: "today" });
+  assert.deepEqual(placeholderTarget("название", props), { builtin: "title" });
+  assert.deepEqual(placeholderTarget("Дата", props), { builtin: "today" });
+  assert.deepEqual(placeholderTarget("Сейчас", props), { builtin: "now" });
+  assert.deepEqual(placeholderTarget("Создатель", props), { builtin: "creator" });
+  assert.deepEqual(placeholderTarget("Автор", props), { builtin: "creator" });
+  assert.deepEqual(placeholderTarget("Я", props), { builtin: "me" });
+  assert.deepEqual(placeholderTarget("База  данных", props), { builtin: "database" });
   assert.deepEqual(placeholderTarget("tags", props), { field: props[3] });
   assert.equal(placeholderTarget("Unknown thing", props), null);
 });

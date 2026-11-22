@@ -417,7 +417,9 @@ export default function MembersSection() {
         title={t(`Mitglieder · ${boot.members.length}`, `Members · ${boot.members.length}`)}
         description={
           guests
-            ? t(`Davon ${guests === 1 ? "1 Gast" : `${guests} Gäste`} – Gäste sehen nur geteilte Seiten.`, `${guests === 1 ? "1 guest" : `${guests} guests`} among them – guests see only shared pages.`)
+            ? guests === 1
+              ? t("Davon 1 Gast – Gäste sehen nur geteilte Seiten.", "1 guest among them – guests see only shared pages.")
+              : t(`Davon ${guests} Gäste – Gäste sehen nur geteilte Seiten.`, `${guests} guests among them – guests see only shared pages.`)
             : t("Eigentümer verwalten den Arbeitsbereich, „Bearbeiten“ darf Inhalte ändern, „Ansehen“ nur lesen.", "Owners manage the workspace, “Edit” may change content, “View” may only read.")
         }
         actions={owner ? inviteButton : undefined}

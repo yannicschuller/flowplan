@@ -35,7 +35,7 @@ import { z } from "zod";
 import { all, audit, id, one, run, sql } from "./db";
 import { adminUserIds, HttpError } from "./auth";
 import { ct } from "./content-locale";
-import { translate, type Locale } from "./i18n";
+import { pickLocale, translate, type Locale } from "./i18n";
 import { localizedMessage } from "./i18n-errors";
 import { userLocale } from "./user-locale";
 import { openSecret, sealSecret, keyHint } from "./ai/secrets";
@@ -794,7 +794,7 @@ type TelegramUpdate = {
 // The answer in the chat: in the person's language once known, else in
 // the language of their Telegram app.
 async function linkReply(result: LinkResult, languageCode: string | undefined) {
-  const locale: Locale = result.status === "linked" ? (await userLocale(result.userId)) : languageCode?.startsWith("de") ? "de" : languageCode?.startsWith("fr") ? "fr" : "en";
+  const locale: Locale = result.status === "linked" ? (await userLocale(result.userId)) : pickLocale(null, languageCode);
   const say = translate(locale);
   switch (result.status) {
     case "linked":

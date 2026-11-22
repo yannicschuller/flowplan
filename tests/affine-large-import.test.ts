@@ -51,9 +51,11 @@ test("a large workspace file: imported in the background within a small heap, an
     largeAffine(file, 300, 60, 20_000);
     // Before #163 this import needed well over 300 MB of heap (every page's
     // DOM stayed until the end of the transaction) and the process died.
+    // The heap also holds the language catalogues the server registers at
+    // start (about 54 MB for fr, zh and ru since #422), hence 224 MB.
     const child = spawnSync(
       process.execPath,
-      ["--max-old-space-size=192", "--import", "tsx", "--import", "./tests/helpers/cleanup.mjs", "tests/helpers/affine-large-run.ts", file],
+      ["--max-old-space-size=224", "--import", "tsx", "--import", "./tests/helpers/cleanup.mjs", "tests/helpers/affine-large-run.ts", file],
       { encoding: "utf8", timeout: 300_000 },
     );
     assert.equal(child.status, 0, `the import ran out of memory or failed:\n${child.stderr.slice(-3000)}`);

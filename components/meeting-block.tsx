@@ -83,7 +83,7 @@ import {
 } from "@/lib/meeting-transcript-edit";
 import { formatTimestamp } from "@/lib/transcript";
 import { tr } from "@/lib/locale-tag";
-import { localeTag } from "@/lib/i18n";
+import { localeTag, textLocale } from "@/lib/i18n";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { streamAiFrom } from "@/lib/ai/client";
 import { BlockMenu, type BlockMenuClose, type BlockMenuItem, type BlockMenuView } from "./block-menu";
@@ -147,7 +147,7 @@ const todayIso = () => {
 };
 const BUSY = new Set(["transcribing", "summarizing"]);
 // The languages by their own names (the same in every interface language).
-const LANGUAGE_NAMES: Record<MeetingLanguage, string> = { de: "Deutsch", en: "English", fr: "Français", zh: "中文" };
+const LANGUAGE_NAMES: Record<MeetingLanguage, string> = { de: "Deutsch", en: "English", fr: "Français", zh: "中文", ru: "Русский" };
 // The separators of a menu level without empty groups.
 const tidy = (items: (BlockMenuItem | false | null | undefined)[]): BlockMenuItem[] => {
   const out: BlockMenuItem[] = [];
@@ -230,7 +230,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
   const system = useMemo(() => systemAudioSupport(), []);
   const unlocked = useTranscriptUnlocked(meetingId);
   const language = (MEETING_LANGUAGES as readonly string[]).includes(String(node.attrs.language)) ? (node.attrs.language as MeetingLanguage) : null;
-  const spoken = language || locale;
+  const spoken = language || textLocale(locale);
   const position = () => (typeof getPos === "function" ? getPos() : undefined);
 
   // A block without id (old paste) or a copy of another block: its own id.
@@ -469,7 +469,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
   const playConsent = () => {
     if (typeof speechSynthesis === "undefined") return;
     const utterance = new SpeechSynthesisUtterance(consentText);
-    utterance.lang = locale === "de" ? "de-DE" : locale === "fr" ? "fr-FR" : locale === "zh" ? "zh-CN" : "en-US";
+    utterance.lang = locale === "de" ? "de-DE" : locale === "fr" ? "fr-FR" : locale === "zh" ? "zh-CN" : locale === "ru" ? "ru-RU" : "en-US";
     speechSynthesis.cancel();
     speechSynthesis.speak(utterance);
   };

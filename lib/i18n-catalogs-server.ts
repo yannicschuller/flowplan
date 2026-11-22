@@ -5,10 +5,11 @@
 // client component, or the catalogue lands in every page's JavaScript.
 import { createHash } from "node:crypto";
 import fr from "../locales/fr.json" with { type: "json" };
+import ru from "../locales/ru.json" with { type: "json" };
 import zh from "../locales/zh.json" with { type: "json" };
 import { registerCatalog, type Catalog } from "./i18n-catalogs";
 
-export const serverCatalogs: Record<string, Catalog> = { fr, zh };
+export const serverCatalogs: Record<string, Catalog> = { fr, zh, ru };
 for (const [locale, catalog] of Object.entries(serverCatalogs)) registerCatalog(locale, catalog);
 
 const scripts = new Map<string, { body: string; version: string }>();

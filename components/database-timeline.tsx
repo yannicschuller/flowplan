@@ -955,10 +955,11 @@ export default function DatabaseTimeline({
           <button
             className="icon-button"
             aria-label={t(`${name} hinter Vorgänger verschieben`, `Move ${name} after its predecessor`)}
-            title={t(
-              `Um ${resolve.days} ${resolve.days === 1 ? "Tag" : "Tage"} verschieben, damit die Abhängigkeit erfüllt ist`,
-              `Move by ${resolve.days} ${resolve.days === 1 ? "day" : "days"} so the dependency is met`,
-            )}
+            title={
+              resolve.days === 1
+                ? t("Um 1 Tag verschieben, damit die Abhängigkeit erfüllt ist", "Move by 1 day so the dependency is met")
+                : t(`Um ${resolve.days} Tage verschieben, damit die Abhängigkeit erfüllt ist`, `Move by ${resolve.days} days so the dependency is met`)
+            }
             disabled={busy}
             onClick={() => void apply(r, version, resolve.change, false, { resolve: true })}
           >

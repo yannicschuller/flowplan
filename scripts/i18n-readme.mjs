@@ -24,7 +24,7 @@ if (!block) throw new Error("LANGUAGES not found in lib/i18n.ts");
 const languages = [...block.matchAll(/^\s*"?([a-z]{2}(?:-[A-Z]{2})?)"?: \{ name: "([^"]+)", tag: "[^"]+", flag: "([^"]+)" \}/gm)].map(([, code, name, flag]) => ({ code, name, flag }));
 // Catalogues that exist but are not offered in the app yet (IN_TRANSLATION
 // in lib/i18n.ts), with their own name and flag.
-const DRAFTS = { ru: { name: "Русский", flag: "🇷🇺" } };
+const DRAFTS = {};
 for (const code of coverage.keys())
   if (!languages.some((l) => l.code === code)) languages.push({ code, ...(DRAFTS[code] || { name: code, flag: "🏳️" }), draft: true });
 

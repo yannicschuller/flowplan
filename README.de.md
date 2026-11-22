@@ -56,7 +56,7 @@
 - **Datenschutz von Grund auf** – kein Tracking, Rechte bis auf den einzelnen Eintrag, Zwei-Faktor-Anmeldung, Verschlüsselung von Dateien und Sicherungen mit eigenem Schlüssel.
 - **Deine Daten bleiben mitnehmbar** – Markdown mit Frontmatter, CSV und ZIP, geplante Exporte nach S3 oder Git, Import aus Notion, AppFlowy, Obsidian, Jira und Trello.
 
-Die Oberfläche gibt es auf Deutsch, Englisch, Französisch und vereinfachtem Chinesisch – weitere Sprachen lassen sich als JSON-Kataloge ergänzen ([Hilf beim Übersetzen](#hilf-beim-übersetzen)); die Dokumentation ist auf Deutsch und Englisch.
+Die Oberfläche gibt es auf Deutsch, Englisch, Französisch, vereinfachtem Chinesisch und Russisch – weitere Sprachen lassen sich als JSON-Kataloge ergänzen ([Hilf beim Übersetzen](#hilf-beim-übersetzen)); die Dokumentation ist auf Deutsch und Englisch.
 
 ## Schnellstart
 
@@ -556,12 +556,12 @@ Deutsch und Englisch stehen direkt im Code; jede weitere Sprache ist ein JSON-Ka
 <!-- i18n:start -->
 | Sprache | Code | Übersetzt | Stand |
 | --- | --- | ---: | --- |
-| 🇩🇪 Deutsch (im Code) | `de` | 14.108 / 14.108 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇬🇧 English (im Code) | `en` | 14.108 / 14.108 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇺🇸 English (US) (im Code) | `en-US` | 14.108 / 14.108 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
-| 🇫🇷 Français | `fr` | 14.104 / 14.108 | [![Français](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=fr)](https://translate.flowplan.org/c/flowplan-web/fr) |
-| 🇨🇳 简体中文 | `zh` | 14.104 / 14.108 | [![简体中文](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=zh)](https://translate.flowplan.org/c/flowplan-web/zh) |
-| 🇷🇺 Русский (noch nicht in der App) | `ru` | 0 / 14.108 | [![Русский](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=ru)](https://translate.flowplan.org/c/flowplan-web/ru) |
+| 🇩🇪 Deutsch (im Code) | `de` | 14.131 / 14.131 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇬🇧 English (im Code) | `en` | 14.131 / 14.131 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇺🇸 English (US) (im Code) | `en-US` | 14.131 / 14.131 | ![100 %](https://img.shields.io/badge/100%25-2ea44f?style=flat-square) |
+| 🇫🇷 Français | `fr` | 14.127 / 14.131 | [![Français](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=fr)](https://translate.flowplan.org/c/flowplan-web/fr) |
+| 🇨🇳 简体中文 | `zh` | 14.127 / 14.131 | [![简体中文](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=zh)](https://translate.flowplan.org/c/flowplan-web/zh) |
+| 🇷🇺 Русский | `ru` | 14.131 / 14.131 | [![Русский](https://translate.flowplan.org/api/badge?component=flowplan-web&lang=ru)](https://translate.flowplan.org/c/flowplan-web/ru) |
 
 Hilf beim Übersetzen auf [translate.flowplan.org](https://translate.flowplan.org) – mit deinem GitHub-Konto, jede Änderung kommt als Pull Request.
 

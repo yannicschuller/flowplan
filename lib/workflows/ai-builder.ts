@@ -30,14 +30,14 @@ import { draftOf, requireWorkflow } from "./store";
 import { databaseFields } from "./nodes/data";
 
 export const AI_BUILDER_LIMITS = { prompt: 1000, nodes: 30, pages: 300, databases: 40 } as const;
-type Locale = "de" | "en" | "fr" | "zh";
-const LANGUAGE: Record<Locale, string> = { de: "German", en: "English", fr: "French", zh: "Chinese" };
+type Locale = "de" | "en" | "fr" | "zh" | "ru";
+const LANGUAGE: Record<Locale, string> = { de: "German", en: "English", fr: "French", zh: "Chinese", ru: "Russian" };
 const UUIDS = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 export const aiDraftInput = z.object({
   pageId: z.uuid(),
   prompt: z.string().trim().min(3).max(AI_BUILDER_LIMITS.prompt),
-  locale: z.enum(["de", "en", "fr", "zh"]).default("de"),
+  locale: z.enum(["de", "en", "fr", "zh", "ru"]).default("de"),
 });
 
 // What the model answers: lenient ids, the rest checked afterwards.

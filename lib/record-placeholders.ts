@@ -19,7 +19,7 @@ const PATTERN = /\{\{\s*([^{}<>\n]{1,120}?)\s*\}\}/g;
 export const FIELD_PREFIX = "field:";
 
 export type Builtin = "title" | "today" | "now" | "creator" | "me" | "database";
-// Every name a built-in answers to (German, English, French).
+// Every name a built-in answers to (German, English, French, Russian).
 const BUILTIN_NAMES: Record<string, Builtin> = {
   title: "title",
   titel: "title",
@@ -43,15 +43,23 @@ const BUILTIN_NAMES: Record<string, Builtin> = {
   database: "database",
   datenbank: "database",
   "base de données": "database",
+  название: "title",
+  дата: "today",
+  сегодня: "today",
+  сейчас: "now",
+  автор: "creator",
+  создатель: "creator",
+  я: "me",
+  "база данных": "database",
 };
 // The built-ins as the template editor offers them, in each language.
-export const BUILTINS: { key: Builtin; token: { de: string; en: string; fr: string } }[] = [
-  { key: "title", token: { de: "Titel", en: "Title", fr: "Titre" } },
-  { key: "today", token: { de: "Heute", en: "Today", fr: "Aujourd’hui" } },
-  { key: "now", token: { de: "Jetzt", en: "Now", fr: "Maintenant" } },
-  { key: "creator", token: { de: "Ersteller", en: "Creator", fr: "Créateur" } },
-  { key: "me", token: { de: "Ich", en: "Me", fr: "Moi" } },
-  { key: "database", token: { de: "Datenbank", en: "Database", fr: "Base de données" } },
+export const BUILTINS: { key: Builtin; token: { de: string; en: string; fr: string; ru: string } }[] = [
+  { key: "title", token: { de: "Titel", en: "Title", fr: "Titre", ru: "Название" } },
+  { key: "today", token: { de: "Heute", en: "Today", fr: "Aujourd’hui", ru: "Сегодня" } },
+  { key: "now", token: { de: "Jetzt", en: "Now", fr: "Maintenant", ru: "Сейчас" } },
+  { key: "creator", token: { de: "Ersteller", en: "Creator", fr: "Créateur", ru: "Автор" } },
+  { key: "me", token: { de: "Ich", en: "Me", fr: "Moi", ru: "Я" } },
+  { key: "database", token: { de: "Datenbank", en: "Database", fr: "Base de données", ru: "База данных" } },
 ];
 
 const norm = (s: string) => s.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();

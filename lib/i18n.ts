@@ -19,18 +19,19 @@ export const LANGUAGES = {
   "en-US": { name: "English (US)", tag: "en-US", flag: "🇺🇸" },
   fr: { name: "Français", tag: "fr-FR", flag: "🇫🇷" },
   zh: { name: "简体中文", tag: "zh-CN", flag: "🇨🇳" },
+  ru: { name: "Русский", tag: "ru-RU", flag: "🇷🇺" },
 } as const;
 export type Locale = keyof typeof LANGUAGES;
 // Catalogues being translated at translate.flowplan.org that are not offered
-// yet (#422): their file in locales/ gets every new text (npm run i18n), but
-// the language joins LANGUAGES only once most of it is translated (about
-// 80 %) – until then nobody sees a half-English interface.
-export const IN_TRANSLATION = ["ru"] as const;
+// yet: their file in locales/ gets every new text (npm run i18n), but the
+// language joins LANGUAGES only once most of it is translated (about 80 %) –
+// until then nobody sees a half-English interface. Russian joined in #422.
+export const IN_TRANSLATION: readonly string[] = [];
 // The language of the texts: "en-US" → "en".
 export type TextLocale = Exclude<Locale, `${string}-${string}`>;
 // The language path of docs.flowplan.org for a UI language (#367): German,
 // English, and French and Chinese (a translated first-steps page, the
-// rest in English with a note).
+// rest in English with a note); Russian and others read the English docs.
 export const docsLanguage = (locale: string): "de" | "en" | "fr" | "zh" => (locale === "de" || locale === "fr" || locale === "zh" ? locale : "en");
 export const textLocale = (locale: Locale) => locale.split("-")[0] as TextLocale;
 export const LOCALES = Object.keys(LANGUAGES) as Locale[];
