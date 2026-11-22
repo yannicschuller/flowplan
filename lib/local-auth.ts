@@ -75,12 +75,12 @@ export async function verifyPassword(password: string, stored: string) {
   });
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
-const passwordSchema = (t: Tr) =>
+export const passwordSchema = (t: Tr) =>
   z
     .string()
     .min(MIN_PASSWORD, t(`Das Passwort braucht mindestens ${MIN_PASSWORD} Zeichen.`, `The password needs at least ${MIN_PASSWORD} characters.`))
     .max(200, t("Das Passwort ist zu lang.", "The password is too long."));
-type Tr = (de: string, en: string) => string;
+export type Tr = (de: string, en: string) => string;
 const tr = (locale: Locale): Tr => translate(locale);
 
 // ---- Accounts ----
@@ -705,9 +705,11 @@ export async function setLocalAdmin(userId: string, admin: boolean) {
 }
 export async function localAccountInfo() {
   return Object.fromEntries(
-    (await all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number; password: number }>(
-      "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys,EXISTS(SELECT 1 FROM user_totp t WHERE t.user_id=a.user_id AND t.enabled=1) totp,a.password_hash<>'' password FROM local_accounts a",
-    )).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp, password: !!a.password }]),
+    (await all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number; password: number; invited: number }>(
+      // invited: created by an administrator (lib/account-create.ts), no
+      // password and no sign-in yet – waiting for its link.
+      "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys,EXISTS(SELECT 1 FROM user_totp t WHERE t.user_id=a.user_id AND t.enabled=1) totp,a.password_hash<>'' password,(a.password_hash='' AND u.last_login_at IS NULL AND NOT EXISTS(SELECT 1 FROM user_identities i WHERE i.user_id=a.user_id)) invited FROM local_accounts a JOIN users u ON u.id=a.user_id",
+    )).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp, password: !!a.password, invited: !!a.invited && !Number(a.passkeys) }]),
   );
 }
 

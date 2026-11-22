@@ -110,7 +110,15 @@ export default function AuditSection() {
               key: "action",
               header: t("Aktion", "Action"),
               primary: true,
-              render: (a) => <code className="admin-break">{a.action}</code>,
+              render: (a) =>
+                // An account an administrator created (#433): with its address.
+                a.action === "admin.createAccount" ? (
+                  <span className="admin-break">
+                    {t("Konto angelegt", "Account created")}: {a.detail} <code>{a.action}</code>
+                  </span>
+                ) : (
+                  <code className="admin-break">{a.action}</code>
+                ),
             },
             {
               key: "who",
