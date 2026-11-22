@@ -8,6 +8,9 @@ import type { Scene, SceneContext } from "./types";
 // fresh browser context per variant (desktop/phone × light/dark); one that
 // changes content works on a page of its own (ctx.fixture).
 //
+// The gallery is recorded in English (#438): the locators use the English
+// half of the t("Deutsch", "English") pairs, the example content is English.
+//
 // `covers` names the component files whose dialog, menu or popover the
 // scene shows; tests/gallery-coverage.test.ts checks that every such file
 // has a scene or is listed in scripts/gallery/uncovered.json.
@@ -18,9 +21,9 @@ const dialog = (page: Page, name: string | RegExp) => page.getByRole("dialog", {
 const waitDialog = (page: Page, name: string | RegExp) => dialog(page, name).first().waitFor();
 const menu = (page: Page) => page.getByRole("menu").last();
 const button = (scope: Page | Locator, name: string | RegExp) => scope.getByRole("button", { name, exact: typeof name === "string" });
-const editor = (page: Page) => page.getByLabel("Dokumentinhalt", { exact: true });
-// Until no part of the page is still loading – no "Dokument wird geöffnet …"
-// or "Whiteboard wird geöffnet …" (the skeleton) left on screen.
+const editor = (page: Page) => page.getByLabel("Document content", { exact: true });
+// Until no part of the page is still loading – no "Opening document …" or
+// "Opening whiteboard …" (the skeleton) left on screen.
 async function loaded(page: Page) {
   await page.waitForFunction(() => !document.querySelector(".page-skeleton"), undefined, { timeout: 20_000 });
 }
@@ -30,7 +33,7 @@ async function documentReady(page: Page) {
   await loaded(page);
 }
 
-// A flashcard deck of its own (Vorderseite/Rückseite) with a study view.
+// A flashcard deck of its own (Front/Back) with a study view.
 async function studyDeck(ctx: SceneContext, title: string, settings: Record<string, unknown> = {}) {
   const db = await ctx.fixture({ kind: "database", title });
   const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
@@ -39,10 +42,10 @@ async function studyDeck(ctx: SceneContext, title: string, settings: Record<stri
     pageId: db,
     version: database.version,
     fields: [
-      { id: "title", name: "Vorderseite", type: "text" },
-      { id: "back", name: "Rückseite", type: "text" },
+      { id: "title", name: "Front", type: "text" },
+      { id: "back", name: "Back", type: "text" },
     ],
-    views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [], default: true }],
+    views: [{ id: "study", name: "Study", type: "study", filters: [], sorts: [], default: true }],
   });
   await ctx.command({ action: "study.settings", pageId: db, settings: { version: 1, front: { field: "title" }, back: { field: "back" }, ...settings } });
   return db;
@@ -52,7 +55,7 @@ async function studyDeck(ctx: SceneContext, title: string, settings: Record<stri
 async function occlusionDeck(ctx: SceneContext, title: string) {
   const { diagramPng } = await import("../../tests/helpers/png");
   const db = await studyDeck(ctx, title, { type: { fixed: "occlusion" } });
-  const row = await ctx.command({ action: "row.create", pageId: db, cells: { title: "Welche Region ist markiert?", back: "Aus dem Atlas, Seite 12" } });
+  const row = await ctx.command({ action: "row.create", pageId: db, cells: { title: "Which region is marked?", back: "From the atlas, page 12" } });
   const upload = await ctx.api.post("/api/upload", { headers: { origin: ctx.origin }, multipart: { pageId: db, file: { name: "atlas.png", mimeType: "image/png", buffer: diagramPng() } } });
   if (!upload.ok()) throw new Error(`upload: ${upload.status()}`);
   const { url } = await upload.json();
@@ -60,9 +63,9 @@ async function occlusionDeck(ctx: SceneContext, title: string) {
     v: 1,
     mode: "hide-all",
     masks: [
-      { id: "0a000000-0000-4000-8000-000000000001", shape: "ellipse", x: 0.07, y: 0.17, w: 0.28, h: 0.44, label: "Nordregion" },
-      { id: "0a000000-0000-4000-8000-000000000002", shape: "rect", x: 0.39, y: 0.11, w: 0.24, h: 0.32, label: "Hochland" },
-      { id: "0a000000-0000-4000-8000-000000000003", shape: "rect", x: 0.69, y: 0.19, w: 0.24, h: 0.24, group: "0b000000-0000-4000-8000-000000000001", label: "Küste" },
+      { id: "0a000000-0000-4000-8000-000000000001", shape: "ellipse", x: 0.07, y: 0.17, w: 0.28, h: 0.44, label: "North" },
+      { id: "0a000000-0000-4000-8000-000000000002", shape: "rect", x: 0.39, y: 0.11, w: 0.24, h: 0.32, label: "Highlands" },
+      { id: "0a000000-0000-4000-8000-000000000003", shape: "rect", x: 0.69, y: 0.19, w: 0.24, h: 0.24, group: "0b000000-0000-4000-8000-000000000001", label: "Coast" },
       { id: "0a000000-0000-4000-8000-000000000004", shape: "polygon", x: 0, y: 0, w: 0, h: 0, points: [[0.07, 0.69], [0.33, 0.69], [0.33, 0.89], [0.07, 0.89]], group: "0b000000-0000-4000-8000-000000000001" },
       { id: "0a000000-0000-4000-8000-000000000005", shape: "ellipse", x: 0.41, y: 0.55, w: 0.32, h: 0.34 },
     ],
@@ -75,13 +78,13 @@ async function occlusionDeck(ctx: SceneContext, title: string) {
     pageId: db,
     rowId: row.id,
     generation,
-    update: Buffer.from(htmlState(`<p>Karte der Regionen</p><img src="${url}" alt="Karte mit fünf Regionen" data-occlusion="${attr}">`)).toString("base64"),
+    update: Buffer.from(htmlState(`<p>Map of the regions</p><img src="${url}" alt="Map with five regions" data-occlusion="${attr}">`)).toString("base64"),
   });
   return { db, rowId: row.id as string };
 }
 // A few cards rated over the last days, for the statistics and counts.
 async function studied(ctx: SceneContext, db: string) {
-  const words = [["hola", "hallo"], ["perro", "Hund"], ["gato", "Katze"], ["casa", "Haus"]];
+  const words = [["hola", "hello"], ["perro", "dog"], ["gato", "cat"], ["casa", "house"]];
   const ids: string[] = [];
   for (const [title, back] of words) ids.push((await ctx.command({ action: "row.create", pageId: db, cells: { title, back } })).id);
   const day = 86_400_000;
@@ -97,77 +100,101 @@ async function studied(ctx: SceneContext, db: string) {
 // A published deck (flashcards phase 7): a few cards of every kind of text,
 // a cloze among them; the publication's token.
 async function publishedDeck(ctx: SceneContext) {
-  const db = await studyDeck(ctx, "Spanisch A1");
+  const db = await studyDeck(ctx, "Spanish A1");
   for (const [title, back] of [
-    ["¿Dónde está la estación?", "Wo ist der Bahnhof?"],
-    ["el perro", "der Hund"],
+    ["¿Dónde está la estación?", "Where is the station?"],
+    ["el perro", "the dog"],
     ["Me llamo {{c1::Ana}} y vivo en {{c2::Madrid}}.", ""],
-    ["gracias", "danke"],
-    ["la casa", "das Haus"],
+    ["gracias", "thank you"],
+    ["la casa", "the house"],
   ])
     await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
   await ctx.command({ action: "page.publish", pageId: db, enabled: true });
   const { page } = await (await ctx.api.get(`/api/pages/${db}`)).json();
   return page.public_token as string;
 }
+// The Anki deck of the import tests (tests/helpers/anki-fixture.ts) with
+// English decks and notes: the same note types, cards, reviews and media.
+async function englishAnkiFixture() {
+  const { sampleFixture } = await import("../../tests/helpers/anki-fixture");
+  const fixture = sampleFixture();
+  const decks: Record<number, string> = { 10: "Spanish", 11: "Spanish::Lesson 1", 20: "Biology" };
+  const fields: Record<number, string[]> = {
+    1: ["<b>hola</b>", "hello<script>alert(1)</script>"],
+    2: ["perro", '<span style="color:red" onclick="x()">dog</span>'],
+    3: ["gato", "cat"],
+    4: ["la casa", "the house", "Mi casa es su casa.", "house", "just for me"],
+    5: ["The {{c1::mitochondria}} are the {{c2::powerhouses::picture}} of the cell. H<sub>2</sub>O", "Cell biology"],
+    6: ['What does the picture show? <img src="cell.png">', 'A cell [sound:cell.mp3] <img src="missing.png">'],
+    7: ["{{c1::image-occlusion:rect:left=.1:top=.1:width=.2:height=.2}}", '<img src="cell.png">', "Organelles", "", ""],
+    8: ["Formula?", "\\(E=mc^2\\)"],
+  };
+  const tags: Record<string, string> = { gruss: "greeting", tiere: "animals", zelle: "cell" };
+  return {
+    ...fixture,
+    decks: fixture.decks.map((d) => ({ ...d, name: decks[d.id] ?? d.name })),
+    notes: fixture.notes.map((n) => ({ ...n, fields: fields[n.id] ?? n.fields, ...(n.tags ? { tags: n.tags.map((t) => tags[t] ?? t) } : {}) })),
+    media: { "cell.png": fixture.media!["zelle.png"], "cell.mp3": fixture.media!["zelle.mp3"], "unused.png": fixture.media!["unbenutzt.png"] },
+  };
+}
 const docPath = (c: SceneContext) => `#page=${c.ids.documentId}`;
 const dbPath = (c: SceneContext) => `#page=${c.ids.databaseId}`;
 const recordPath = (c: SceneContext) => `#page=${c.ids.databaseId}&row=${c.ids.rowId}`;
 
-// A view of the database by its tab, or from "Weitere" when the tabs do not fit.
+// A view of the database by its tab, or from "More views" when the tabs do not fit.
 async function openView(page: Page, name: string) {
-  const views = page.getByRole("group", { name: "Ansichten" });
+  const views = page.getByRole("group", { name: "Views" });
   await views.waitFor();
   const tab = views.getByRole("button", { name, exact: true });
   if (await tab.isVisible()) await tab.click();
   else {
-    await views.getByRole("button", { name: /^Weitere Ansichten/ }).click();
+    await views.getByRole("button", { name: /^More views/ }).click();
     await page.getByRole("menuitem", { name, exact: true }).click();
   }
 }
 
 // The phone drawer (the sidebar).
 async function openDrawer(page: Page) {
-  await page.locator(".mobile-tab-bar, .topbar").getByRole("button", { name: "Navigation öffnen", exact: true }).first().click();
+  await page.locator(".mobile-tab-bar, .topbar").getByRole("button", { name: "Open navigation", exact: true }).first().click();
   await page.locator(".nav-open .sidebar").waitFor();
 }
 
-// Vorlagen, Medien, Papierkorb, Einstellungen …: a row of symbols, on phones
-// behind "Mehr" in the drawer (tests/browser/sidebar-tools.ts).
+// Templates, media, trash, settings …: a row of symbols, on phones
+// behind "More" in the drawer (tests/browser/sidebar-tools.ts).
 async function sidebarTool(page: Page, ctx: SceneContext, name: string) {
   if (ctx.phone) {
     await openDrawer(page);
     await page.locator("aside.sidebar .sidebar-more").click();
-    await dialog(page, "Mehr").getByRole("button", { name, exact: true }).click();
+    await dialog(page, "More").getByRole("button", { name, exact: true }).click();
   } else await page.locator("aside.sidebar .sidebar-tools").getByRole("button", { name, exact: true }).click();
 }
 
 // An entry of the page's ⋯ menu.
 async function pageAction(page: Page, item: string) {
-  await button(page, "Seitenaktionen").click();
+  await button(page, "Page actions").click();
   await menu(page).getByRole("menuitem", { name: item, exact: true }).click();
 }
 
-// "Teilen": in the top bar, inside ⋯ on phones (tests/browser/page-top-bar.ts).
+// "Share": in the top bar, inside ⋯ on phones (tests/browser/page-top-bar.ts).
 async function openShare(page: Page, ctx: SceneContext) {
-  if (ctx.phone) await pageAction(page, "Teilen");
-  else await button(page, "Teilen").click();
+  if (ctx.phone) await pageAction(page, "Share");
+  else await button(page, "Share").click();
 }
 
-// The account menu: "⋯" next to the name, on phones in the "Mehr" sheet.
+// The account menu: "⋯" next to the name, on phones in the "More" sheet.
 async function accountMenu(page: Page, ctx: SceneContext) {
   if (ctx.phone) {
     await openDrawer(page);
     await page.locator("aside.sidebar .sidebar-more").click();
-    await waitDialog(page, "Mehr");
+    await waitDialog(page, "More");
   } else {
-    await button(page, "Kontomenü").click();
+    await button(page, "Account menu").click();
     await menu(page).waitFor();
   }
 }
 
 // A page of its own with the given HTML, opened, the editor ready.
-async function editorWith(page: Page, ctx: SceneContext, html: string, title = "Entwurf") {
+async function editorWith(page: Page, ctx: SceneContext, html: string, title = "Draft") {
   const id = await ctx.fixture({ html, title });
   await ctx.open(`#page=${id}`);
   await editor(page).waitFor();
@@ -184,7 +211,7 @@ async function caretAfter(page: Page, text: string) {
 // The block handle of the block with this text (hover on desktop).
 async function blockMenu(page: Page, text: string) {
   await editor(page).getByText(text, { exact: true }).first().hover();
-  await page.getByRole("button", { name: new RegExp(`^Blockaktionen: [^·]+ · ${text}$`) }).click();
+  await page.getByRole("button", { name: new RegExp(`^Block actions: [^·]+ · ${text}$`) }).click();
 }
 
 // Selects the words of a paragraph (the text menu shows above them).
@@ -204,22 +231,22 @@ async function slashInsert(page: Page, ctx: SceneContext, query: string) {
   await page.keyboard.press("Enter");
 }
 
-// "Einfügen und mehr" on the whiteboard's rail, the sheet "Weitere
-// Werkzeuge" on phones (tests/browser/whiteboard-ui.ts).
+// "Insert and more" on the whiteboard's rail, the sheet "More tools" on
+// phones (tests/browser/whiteboard-ui.ts).
 async function boardInsert(page: Page, name?: string) {
   await page
-    .getByRole("button", { name: "Einfügen und mehr", exact: true })
-    .or(page.getByRole("button", { name: "Weitere Werkzeuge", exact: true }))
+    .getByRole("button", { name: "Insert and more", exact: true })
+    .or(page.getByRole("button", { name: "More tools", exact: true }))
     .first()
     .click();
   if (name) await page.locator(".wb-plus, .wb-sheet").getByRole("button", { name, exact: true }).first().click();
 }
 
 const RICH_HTML =
-  "<h2>Ziele</h2><p>Wir bringen die neue Version im Herbst heraus.</p><p>Alpha</p><p>Bravo</p><ul><li><p>Onboarding</p></li><li><p>Offline-Modus</p></li></ul>";
+  "<h2>Goals</h2><p>We ship the new version in the autumn.</p><p>Alpha</p><p>Bravo</p><ul><li><p>Onboarding</p></li><li><p>Offline mode</p></li></ul>";
 
 const TABLE_HTML =
-  "<p>Budget</p><table><tbody><tr><th><p>Posten</p></th><th><p>Betrag</p></th></tr><tr><td><p>Design</p></td><td><p>1200</p></td></tr><tr><td><p>Druck</p></td><td><p>300</p></td></tr></tbody></table><p>Ende</p>";
+  "<p>Budget</p><table><tbody><tr><th><p>Item</p></th><th><p>Amount</p></th></tr><tr><td><p>Design</p></td><td><p>1200</p></td></tr><tr><td><p>Printing</p></td><td><p>300</p></td></tr></tbody></table><p>End</p>";
 
 // ------------------------------------------------------------------- scenes
 
@@ -234,8 +261,8 @@ const pages: Scene[] = [
     covers: ["components/chip-popover.tsx"],
     path: "#tasks",
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Fälligkeit: / }).click();
-      await page.getByRole("dialog", { name: "Fälligkeit" }).waitFor();
+      await page.getByRole("button", { name: /^Due: / }).click();
+      await page.getByRole("dialog", { name: "Due" }).waitFor();
     },
   },
   {
@@ -244,28 +271,28 @@ const pages: Scene[] = [
     title: "My tasks – all records from databases",
     path: "#tasks",
     steps: async (page) => {
-      await page.locator(".my-tasks-source label", { hasText: "Datenbanken" }).click();
-      await page.locator(".my-tasks-person label", { hasText: "Alle" }).click();
-      await page.getByRole("group", { name: "Nur für Einträge aus Datenbanken" }).waitFor();
+      await page.locator(".my-tasks-source label", { hasText: "Databases" }).click();
+      await page.locator(".my-tasks-person label", { hasText: "All" }).click();
+      await page.getByRole("group", { name: "Only for records from databases" }).waitFor();
     },
   },
   { id: "graph", group: "Pages", title: "Graph", path: "#graph" },
   { id: "trash", group: "Pages", title: "Trash", path: "#trash" },
   { id: "media", group: "Pages", title: "Media library", path: "#media" },
-  // A space shown as a library (#329): "Neues Buch" asks for a name only.
+  // A space shown as a library (#329): "New book" asks for a name only.
   {
     id: "library-new-book",
     group: "Pages",
     title: "Library: new book",
     covers: ["components/library-create-dialog.tsx"],
     steps: async (page, ctx) => {
-      const name = `Handbuch ${ctx.variant.id}`;
+      const name = `Handbook ${ctx.variant.id}`;
       const spaceId = (await ctx.command({ action: "space.create", workspaceId: ctx.ids.workspaceId, name })).id as string;
       await ctx.command({ action: "space.update", spaceId, name, private: false, library: true });
       await ctx.command({ action: "page.create", workspaceId: ctx.ids.workspaceId, spaceId, title: "Installation" });
       await ctx.open(`#library/${spaceId}`);
-      await button(page, "Neues Buch").click();
-      await waitDialog(page, "Neues Buch");
+      await button(page, "New book").click();
+      await waitDialog(page, "New book");
     },
   },
   { id: "tags", group: "Pages", title: "Tags", path: "#tags" },
@@ -279,10 +306,10 @@ const pages: Scene[] = [
     path: docPath,
     steps: async (page, ctx) => {
       await documentReady(page);
-      if (ctx.phone) await pageAction(page, "Lesemodus");
+      if (ctx.phone) await pageAction(page, "Reading mode");
       else {
-        await button(page, "Lesemodus").click();
-        await button(page, "Bearbeiten").first().waitFor();
+        await button(page, "Reading mode").click();
+        await button(page, "Edit").first().waitFor();
       }
     },
   },
@@ -308,10 +335,10 @@ const pages: Scene[] = [
     path: (c) => `#page=${c.ids.databaseId}&row=${c.ids.rowId}&full=1`,
     steps: loaded,
   },
-  { id: "welcome-page", group: "Pages", title: "Example page (Willkommen)", steps: async (page, ctx) => {
+  { id: "welcome-page", group: "Pages", title: "Example page (Welcome)", steps: async (page, ctx) => {
     await ctx.open("#home");
     if (ctx.phone) await openDrawer(page);
-    await page.getByRole("tree").getByRole("button", { name: "Willkommen bei Flowplan", exact: true }).click();
+    await page.getByRole("tree").getByRole("button", { name: "Welcome to Flowplan", exact: true }).click();
     await editor(page).waitFor();
   } },
 ];
@@ -344,14 +371,14 @@ const editorScenes: Scene[] = [
   },
   ...(
     [
-      ["footnote", "fußnote", "Footnote", "Fußnote einfügen", ""],
-      ["synced-block", "synchronisierten", "Synced block", "Synchronisierten Block einfügen", ""],
-      ["voice-note", "sprachnotiz", "Voice note", "Sprachnotiz", "components/voice-recorder.tsx"],
-      ["embed", "einbetten", "Embed", "Inhalt einbetten", ""],
-      ["drawio", "draw.io", "draw.io diagram", "draw.io-Diagramm", "components/drawio-editor.tsx"],
+      ["footnote", "footnote", "Footnote", "Insert footnote", ""],
+      ["synced-block", "insert synced", "Synced block", "Insert synced block", ""],
+      ["voice-note", "voice note", "Voice note", "Voice note", "components/voice-recorder.tsx"],
+      ["embed", "embed", "Embed", "Embed content", ""],
+      ["drawio", "draw.io", "draw.io diagram", "draw.io diagram", "components/drawio-editor.tsx"],
       ["mermaid", "mermaid", "Mermaid diagram", "", "components/mermaid-editor.tsx"],
-      ["math", "formel", "Equation", "", "components/math-editor.tsx"],
-      ["citation", "zitieren", "Citation", "", "components/citation-dialog.tsx"],
+      ["math", "formula", "Equation", "", "components/math-editor.tsx"],
+      ["citation", "cite", "Citation", "", "components/citation-dialog.tsx"],
     ] as const
   ).map(
     ([id, query, title, name, cover]): Scene => ({
@@ -372,9 +399,9 @@ const editorScenes: Scene[] = [
     title: "Code block options",
     covers: ["components/code-block-menu.tsx"],
     steps: async (page, ctx) => {
-      await editorWith(page, ctx, '<p>Beispiel</p><pre><code class="language-ts">const answer = 42;\nconsole.log(answer);</code></pre><p>Ende</p>');
+      await editorWith(page, ctx, '<p>Example</p><pre><code class="language-ts">const answer = 42;\nconsole.log(answer);</code></pre><p>End</p>');
       await editor(page).locator("pre").hover();
-      await page.getByRole("button", { name: /Codeblock-Optionen/ }).first().click();
+      await page.getByRole("button", { name: /Code block options/ }).first().click();
     },
   },
   {
@@ -385,7 +412,7 @@ const editorScenes: Scene[] = [
       await editorWith(
         page,
         ctx,
-        '<aside data-callout="note"><p>Hinweis: Die Abgabe ist am Freitag.</p></aside><aside data-callout="tip"><p>Tipp: Vorlagen sparen Zeit.</p></aside><aside data-callout="warning"><p>Achtung: Nicht vergessen.</p></aside><p>Ende</p>',
+        '<aside data-callout="note"><p>Note: The deadline is on Friday.</p></aside><aside data-callout="tip"><p>Tip: Templates save time.</p></aside><aside data-callout="warning"><p>Warning: Do not forget.</p></aside><p>End</p>',
       );
     },
   },
@@ -398,7 +425,7 @@ const editorScenes: Scene[] = [
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
       await blockMenu(page, "Alpha");
-      await page.getByRole("searchbox", { name: "Aktionen und Blocktypen suchen" }).waitFor();
+      await page.getByRole("searchbox", { name: "Search actions and block types" }).waitFor();
     },
   },
   {
@@ -409,7 +436,7 @@ const editorScenes: Scene[] = [
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
       await blockMenu(page, "Alpha");
-      await page.getByRole("menuitem", { name: /^Umwandeln in/ }).first().hover();
+      await page.getByRole("menuitem", { name: /^Turn into/ }).first().hover();
       await page.getByRole("menuitemradio").first().waitFor();
     },
   },
@@ -421,8 +448,8 @@ const editorScenes: Scene[] = [
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
       await blockMenu(page, "Alpha");
-      await page.getByRole("menuitem", { name: "Farbe", exact: true }).hover();
-      await page.getByRole("menu", { name: "Farbe" }).waitFor();
+      await page.getByRole("menuitem", { name: "Colour", exact: true }).hover();
+      await page.getByRole("menu", { name: "Colour" }).waitFor();
     },
   },
   {
@@ -433,7 +460,7 @@ const editorScenes: Scene[] = [
     covers: ["components/text-menu.tsx"],
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await selectText(page, "Wir bringen die neue Version im Herbst heraus.");
+      await selectText(page, "We ship the new version in the autumn.");
       await page.locator(".text-menu, [role=toolbar]").first().waitFor();
     },
   },
@@ -446,7 +473,7 @@ const editorScenes: Scene[] = [
       await editorWith(page, ctx, RICH_HTML);
       await caretAfter(page, "Bravo");
       await page.keyboard.type(" @Pro");
-      await waitDialog(page, "Seite, Eintrag oder Person erwähnen");
+      await waitDialog(page, "Mention a page, record or person");
     },
   },
   {
@@ -456,9 +483,9 @@ const editorScenes: Scene[] = [
     devices: ["desktop"],
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await selectText(page, "Wir bringen die neue Version im Herbst heraus.");
-      await page.getByRole("toolbar", { name: "Textformatierung" }).getByRole("button", { name: "Link", exact: true }).click();
-      await waitDialog(page, "Link einfügen");
+      await selectText(page, "We ship the new version in the autumn.");
+      await page.getByRole("toolbar", { name: "Text formatting" }).getByRole("button", { name: "Link", exact: true }).click();
+      await waitDialog(page, "Insert link");
     },
   },
   {
@@ -468,8 +495,8 @@ const editorScenes: Scene[] = [
     devices: ["desktop"],
     covers: ["components/link-preview.tsx"],
     steps: async (page, ctx) => {
-      await editorWith(page, ctx, `<p>Alles Weitere steht im <a href="/#page=${ctx.ids.documentId}">Projektbriefing</a>.</p><p>Ende</p>`);
-      await editor(page).getByText("Projektbriefing").hover();
+      await editorWith(page, ctx, `<p>Everything else is in the <a href="/#page=${ctx.ids.documentId}">Project brief</a>.</p><p>End</p>`);
+      await editor(page).getByText("Project brief").hover();
       await page.locator(".link-preview").waitFor();
     },
   },
@@ -479,8 +506,8 @@ const editorScenes: Scene[] = [
     title: "Page icon picker (emoji)",
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await pageAction(page, "Icon ändern");
-      await waitDialog(page, "Seiten-Icon");
+      await pageAction(page, "Change icon");
+      await waitDialog(page, "Page icon");
     },
   },
   {
@@ -490,19 +517,19 @@ const editorScenes: Scene[] = [
     covers: ["components/cover-picker.tsx"],
     steps: async (page, ctx) => {
       // Two covers uploaded, the second one set: the first is a former
-      // cover, marked "Nicht verwendet" with "Entfernen" (#396).
-      const id = await ctx.fixture({ html: RICH_HTML, title: "Entwurf" });
+      // cover, marked "Not used" with "Remove" (#396).
+      const id = await ctx.fixture({ html: RICH_HTML, title: "Draft" });
       const { diagramPng } = await import("../../tests/helpers/png");
       let url = "";
-      for (const name of ["Altes Cover.png", "Neues Cover.png"]) {
+      for (const name of ["Old cover.png", "New cover.png"]) {
         const upload = await ctx.api.post("/api/upload", { headers: { origin: ctx.origin }, multipart: { pageId: id, purpose: "cover", file: { name, mimeType: "image/png", buffer: diagramPng() } } });
         url = (await upload.json()).url;
       }
       await ctx.command({ action: "page.update", pageId: id, patch: { cover: url } });
       await ctx.open(`#page=${id}`);
       await editor(page).waitFor();
-      await pageAction(page, "Cover ändern");
-      await page.getByText("Nicht verwendet").first().waitFor();
+      await pageAction(page, "Change cover");
+      await page.getByText("Not used").first().waitFor();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -525,8 +552,8 @@ const editorScenes: Scene[] = [
     steps: async (page, ctx) => {
       await editorWith(page, ctx, TABLE_HTML);
       await editor(page).getByText("Design", { exact: true }).click();
-      await button(page, "Zeile 2").click();
-      await page.getByRole("menu", { name: "Zeile" }).waitFor();
+      await button(page, "Row 2").click();
+      await page.getByRole("menu", { name: "Row" }).waitFor();
     },
   },
   {
@@ -537,8 +564,8 @@ const editorScenes: Scene[] = [
     steps: async (page, ctx) => {
       await editorWith(page, ctx, TABLE_HTML);
       await editor(page).getByText("Design", { exact: true }).click();
-      await button(page, "Spalte 1").click();
-      await page.getByRole("menu", { name: "Spalte" }).waitFor();
+      await button(page, "Column 1").click();
+      await page.getByRole("menu", { name: "Column" }).waitFor();
     },
   },
   {
@@ -547,12 +574,12 @@ const editorScenes: Scene[] = [
     title: "Comments panel",
     path: docPath,
     steps: async (page, ctx) => {
-      if (ctx.phone) await pageAction(page, "Kommentare");
-      else await button(page, "Kommentare").click();
+      if (ctx.phone) await pageAction(page, "Comments");
+      else await button(page, "Comments").click();
     },
   },
   // Text comments (#314): one button, one panel with the threads and
-  // "Neu" for a comment on the selection; a hard line break stays a line
+  // "New" for a comment on the selection; a hard line break stays a line
   // break in the quote.
   {
     id: "inline-comments",
@@ -563,19 +590,26 @@ const editorScenes: Scene[] = [
       await editorWith(
         page,
         ctx,
-        "<p>Wir bringen die neue Version im Herbst heraus.</p><p>Text 3<br>Text 4</p><p>Alpha</p>",
+        "<p>We ship the new version in the autumn.</p><p>Text 3<br>Text 4</p><p>Alpha</p>",
       );
-      await selectText(page, "Wir bringen die neue Version im Herbst heraus.");
-      await button(page, /^Textkommentare \(/).click();
-      await button(page, "Neuer Textkommentar").click();
-      await page.getByLabel("Kommentar zur Textstelle", { exact: true }).fill("Passt der Termin noch?");
-      await button(page, "Kommentar senden").click();
+      await selectText(page, "We ship the new version in the autumn.");
+      await button(page, /^Text comments \(/).click();
+      await button(page, "New text comment").click();
+      await page.getByLabel("Comment on the passage", { exact: true }).fill("Does the date still work?");
+      await button(page, "Send comment").click();
       await page.locator(".inline-comment-message").waitFor();
-      await button(page, "← Alle Textkommentare").click();
+      // Wide windows show the threads and the new comment in the margin
+      // next to the text (no way back, no quote); narrower ones in the panel.
+      const back = button(page, "← All text comments");
+      const margin = !(await back.isVisible());
+      if (!margin) await back.click();
       await editor(page).locator("p").nth(1).click({ clickCount: 3 });
-      await button(page, "Neuer Textkommentar").click();
-      await page.locator(".inline-comment-new blockquote").waitFor();
-      await page.locator(".inline-thread-link").waitFor();
+      await button(page, "New text comment").click();
+      if (margin) await page.getByLabel("Comment on the passage", { exact: true }).last().waitFor();
+      else {
+        await page.locator(".inline-comment-new blockquote").waitFor();
+        await page.locator(".inline-thread-link").waitFor();
+      }
       // The page context has no `ctx`: pass where to scroll as an argument.
       await page.locator(".inline-comment-panel").evaluate((el, block: ScrollLogicalPosition) => el.scrollIntoView({ block }), (ctx.phone ? "start" : "center") as ScrollLogicalPosition);
     },
@@ -586,8 +620,8 @@ const editorScenes: Scene[] = [
     title: "Edit as Markdown",
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await pageAction(page, "Als Markdown bearbeiten");
-      await page.getByRole("region", { name: "Markdown-Quelltext" }).waitFor();
+      await pageAction(page, "Edit as Markdown");
+      await page.getByRole("region", { name: "Markdown source" }).waitFor();
     },
   },
   {
@@ -597,7 +631,7 @@ const editorScenes: Scene[] = [
     covers: ["components/page-review.tsx"],
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await pageAction(page, "Besitzer und Prüfung …");
+      await pageAction(page, "Owner and review …");
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -608,7 +642,7 @@ const editorScenes: Scene[] = [
     covers: ["components/page-aliases.tsx"],
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await pageAction(page, "Aliasse …");
+      await pageAction(page, "Aliases …");
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -618,8 +652,8 @@ const editorScenes: Scene[] = [
     title: "Version history",
     path: docPath,
     steps: async (page) => {
-      await pageAction(page, "Versionsverlauf");
-      await waitDialog(page, "Versionsverlauf");
+      await pageAction(page, "Version history");
+      await waitDialog(page, "Version history");
     },
   },
   {
@@ -629,7 +663,7 @@ const editorScenes: Scene[] = [
     path: docPath,
     covers: ["components/page-menu.tsx"],
     steps: async (page) => {
-      await button(page, "Seitenaktionen").click();
+      await button(page, "Page actions").click();
       await menu(page).waitFor();
     },
   },
@@ -640,7 +674,7 @@ const editorScenes: Scene[] = [
     covers: ["components/page-properties.tsx"],
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
-      await button(page, "Eigenschaft").first().click();
+      await button(page, "Property").first().click();
     },
   },
   {
@@ -652,9 +686,9 @@ const editorScenes: Scene[] = [
     steps: async (page) => {
       await editor(page).click();
       await page.keyboard.press("ControlOrMeta+k");
-      await page.getByLabel("Suchen oder Befehl").fill("Fokusmodus");
-      await page.getByLabel("Suchen oder Befehl").press("Enter");
-      await page.getByRole("status", { name: "Fokusmodus" }).waitFor();
+      await page.getByLabel("Search or command").fill("Focus mode");
+      await page.getByLabel("Search or command").press("Enter");
+      await page.getByRole("status", { name: "Focus mode" }).waitFor();
     },
   },
 ];
@@ -663,11 +697,11 @@ const databaseScenes: Scene[] = [
   ...(
     [
       ["board", "Board"],
-      ["calendar", "Kalender"],
-      ["timeline", "Zeitleiste"],
-      ["gallery", "Galerie"],
-      ["list", "Liste"],
-      ["chart", "Diagramm"],
+      ["calendar", "Calendar"],
+      ["timeline", "Timeline"],
+      ["gallery", "Gallery"],
+      ["list", "List"],
+      ["chart", "Chart"],
       ["feed", "Feed"],
     ] as const
   ).map(
@@ -689,9 +723,9 @@ const databaseScenes: Scene[] = [
     covers: ["components/form-qr.tsx"],
     path: dbPath,
     steps: async (page) => {
-      await openView(page, "Formular");
-      await button(page, "QR-Code").click();
-      await waitDialog(page, "QR-Code des Formulars");
+      await openView(page, "Form");
+      await button(page, "QR code").click();
+      await waitDialog(page, "Form QR code");
     },
   },
   {
@@ -701,8 +735,8 @@ const databaseScenes: Scene[] = [
     covers: ["components/database-view.tsx"],
     path: dbPath,
     steps: async (page) => {
-      await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
-      await waitDialog(page, "Ansicht konfigurieren");
+      await page.getByTitle("View and properties", { exact: true }).click();
+      await waitDialog(page, "Configure view");
     },
   },
   {
@@ -711,7 +745,7 @@ const databaseScenes: Scene[] = [
     title: "Filter menu",
     path: dbPath,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Filtern/ }).first().click();
+      await page.getByRole("button", { name: /^Filter/ }).first().click();
     },
   },
   {
@@ -720,9 +754,9 @@ const databaseScenes: Scene[] = [
     title: "Advanced filter",
     path: dbPath,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Filtern/ }).first().click();
-      await button(page, "Erweitert …").first().click();
-      await waitDialog(page, "Filter bearbeiten");
+      await page.getByRole("button", { name: /^Filter/ }).first().click();
+      await button(page, "Advanced …").first().click();
+      await waitDialog(page, "Edit filters");
     },
   },
   {
@@ -731,7 +765,7 @@ const databaseScenes: Scene[] = [
     title: "Sort menu",
     path: dbPath,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Sortieren/ }).first().click();
+      await page.getByRole("button", { name: /^Sort/ }).first().click();
     },
   },
   {
@@ -740,7 +774,7 @@ const databaseScenes: Scene[] = [
     title: "Group menu",
     path: dbPath,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Gruppieren/ }).first().click();
+      await page.getByRole("button", { name: /^Group/ }).first().click();
     },
   },
   {
@@ -749,7 +783,7 @@ const databaseScenes: Scene[] = [
     title: "Visible properties menu",
     path: dbPath,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Eigenschaften/ }).first().click();
+      await page.getByRole("button", { name: /^Properties/ }).first().click();
     },
   },
   {
@@ -760,7 +794,7 @@ const databaseScenes: Scene[] = [
     devices: ["desktop"],
     steps: async (page) => {
       await page.locator(".data-table th").getByRole("button", { name: "Status" }).click();
-      await waitDialog(page, "Eigenschaft bearbeiten");
+      await waitDialog(page, "Edit property");
     },
   },
   {
@@ -769,7 +803,7 @@ const databaseScenes: Scene[] = [
     title: "Add a view",
     path: dbPath,
     steps: async (page) => {
-      await button(page, "Ansicht hinzufügen").click();
+      await button(page, "Add view").click();
     },
   },
   {
@@ -779,7 +813,7 @@ const databaseScenes: Scene[] = [
     path: dbPath,
     covers: ["components/database-tools.tsx"],
     steps: async (page) => {
-      await button(page, "Weitere Werkzeuge").first().click();
+      await button(page, "More tools").first().click();
     },
   },
   {
@@ -790,9 +824,9 @@ const databaseScenes: Scene[] = [
     // The dialogs of the "…" menu load with the first one opened.
     covers: ["components/database-tool-panels.tsx"],
     steps: async (page) => {
-      await button(page, "Weitere Werkzeuge").first().click();
-      await menu(page).getByRole("menuitem", { name: "Automationen", exact: true }).click();
-      await waitDialog(page, /^Automationen ·/);
+      await button(page, "More tools").first().click();
+      await menu(page).getByRole("menuitem", { name: "Automations", exact: true }).click();
+      await waitDialog(page, /^Automations ·/);
     },
   },
   {
@@ -800,17 +834,17 @@ const databaseScenes: Scene[] = [
     group: "Databases",
     title: "Placeholder picker of a rule",
     path: dbPath,
-    // The picker of the workflow editor in "Aufgabe erstellen" (#413).
+    // The picker of the workflow editor in "Create task" (#413).
     covers: ["components/placeholder-picker.tsx"],
     steps: async (page) => {
-      await button(page, "Weitere Werkzeuge").first().click();
-      await menu(page).getByRole("menuitem", { name: "Automationen", exact: true }).click();
-      await waitDialog(page, /^Automationen ·/);
-      const rules = dialog(page, /^Automationen ·/).first();
-      await button(rules, "Eigene Regel").click();
-      await rules.getByLabel("Aktion", { exact: true }).selectOption("task");
-      await button(rules, "Platzhalter einfügen in „Aufgabe: Text“").click();
-      await page.getByRole("listbox", { name: "Platzhalter" }).waitFor();
+      await button(page, "More tools").first().click();
+      await menu(page).getByRole("menuitem", { name: "Automations", exact: true }).click();
+      await waitDialog(page, /^Automations ·/);
+      const rules = dialog(page, /^Automations ·/).first();
+      await button(rules, "Custom rule").click();
+      await rules.getByLabel("Action", { exact: true }).selectOption("task");
+      await button(rules, "Insert a placeholder into “Task: text”").click();
+      await page.getByRole("listbox", { name: "Placeholders" }).waitFor();
     },
   },
   {
@@ -819,7 +853,7 @@ const databaseScenes: Scene[] = [
     title: "Export menu",
     path: dbPath,
     steps: async (page) => {
-      await button(page, "Exportieren").first().click();
+      await button(page, "Export").first().click();
     },
   },
   {
@@ -829,7 +863,7 @@ const databaseScenes: Scene[] = [
     path: dbPath,
     covers: ["components/calendar-sync-dialog.tsx"],
     steps: async (page) => {
-      await button(page, "Kalender-Sync").click();
+      await button(page, "Calendar sync").click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -839,11 +873,11 @@ const databaseScenes: Scene[] = [
     title: "Record dialog",
     path: recordPath,
     steps: async (page) => {
-      await waitDialog(page, "Eintrag");
+      await waitDialog(page, "Record");
     },
   },
   // Flashcards (docs/specs/flashcards.md): a database without a card
-  // mapping gets "Karten einrichten" with a study view; the focus mode with
+  // mapping gets "Set up cards" with a study view; the focus mode with
   // a revealed card and the rating buttons.
   {
     id: "study-setup",
@@ -851,21 +885,21 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: set up cards",
     covers: ["components/database-study.tsx"],
     steps: async (page, ctx) => {
-      const db = await ctx.fixture({ kind: "database", title: "Spanisch A1" });
+      const db = await ctx.fixture({ kind: "database", title: "Spanish A1" });
       const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
       await ctx.command({
         action: "database.update",
         pageId: db,
         version: database.version,
         fields: [
-          { id: "title", name: "Spanisch", type: "text" },
-          { id: "answer", name: "Deutsch", type: "text" },
+          { id: "title", name: "Spanish", type: "text" },
+          { id: "answer", name: "English", type: "text" },
         ],
-        views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [], default: true }],
+        views: [{ id: "study", name: "Study", type: "study", filters: [], sorts: [], default: true }],
       });
-      for (const [title, answer] of [["el perro", "der Hund"], ["la ventana", "das Fenster"]]) await ctx.command({ action: "row.create", pageId: db, cells: { title, answer } });
+      for (const [title, answer] of [["el perro", "the dog"], ["la ventana", "the window"]]) await ctx.command({ action: "row.create", pageId: db, cells: { title, answer } });
       await ctx.open(`#page=${db}`);
-      await waitDialog(page, "Karten einrichten");
+      await waitDialog(page, "Set up cards");
     },
   },
   {
@@ -874,23 +908,23 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: focus mode",
     covers: ["components/study/focus.tsx", "components/study/focus-core.tsx"],
     steps: async (page, ctx) => {
-      const db = await ctx.fixture({ kind: "database", title: "Spanisch A1" });
+      const db = await ctx.fixture({ kind: "database", title: "Spanish A1" });
       const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
       await ctx.command({
         action: "database.update",
         pageId: db,
         version: database.version,
         fields: [
-          { id: "title", name: "Vorderseite", type: "text" },
-          { id: "back", name: "Rückseite", type: "text" },
+          { id: "title", name: "Front", type: "text" },
+          { id: "back", name: "Back", type: "text" },
         ],
-        views: [{ id: "study", name: "Lernen", type: "study", filters: [], sorts: [], default: true }],
+        views: [{ id: "study", name: "Study", type: "study", filters: [], sorts: [], default: true }],
       });
       await ctx.command({ action: "study.settings", pageId: db, settings: { version: 1, front: { field: "title" }, back: { field: "back" } } });
-      await ctx.command({ action: "row.create", pageId: db, cells: { title: "¿Dónde está la estación?", back: "Wo ist der Bahnhof?" } });
+      await ctx.command({ action: "row.create", pageId: db, cells: { title: "¿Dónde está la estación?", back: "Where is the station?" } });
       await ctx.open(`#page=${db}`);
-      await button(page, "Lernen starten").click();
-      await button(dialog(page, /^Lernen: /), /^Antwort zeigen/).click();
+      await button(page, "Start studying").click();
+      await button(dialog(page, /^Study: /), /^Show answer/).click();
       await page.locator(".study-ratings").waitFor();
     },
   },
@@ -902,11 +936,11 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: import cards",
     covers: ["components/study/import.tsx"],
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Vokabeln");
+      const db = await studyDeck(ctx, "Vocabulary");
       await ctx.open(`#page=${db}`);
-      await button(page, "Karten importieren").click();
-      const wizard = dialog(page, "Karten importieren");
-      await wizard.getByLabel("Text", { exact: true }).fill("Wort\tÜbersetzung\nhola\thallo\nperro\tHund\ngato\t\nla casa\tdas Haus");
+      await button(page, "Import cards").click();
+      const wizard = dialog(page, "Import cards");
+      await wizard.getByLabel("Text", { exact: true }).fill("Word\tTranslation\nhola\thello\nperro\tdog\ngato\t\nla casa\tthe house");
       await wizard.locator(".study-import-preview").waitFor();
     },
   },
@@ -917,11 +951,11 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: import from Anki",
     covers: ["components/study/anki-import.tsx"],
     steps: async (page, ctx) => {
-      const { ankiPackage, sampleFixture } = await import("../../tests/helpers/anki-fixture");
+      const { ankiPackage } = await import("../../tests/helpers/anki-fixture");
       await ctx.open("#study");
-      await button(page, "Aus Anki importieren").click();
-      const wizard = dialog(page, "Aus Anki importieren");
-      await wizard.getByLabel("Anki-Datei").setInputFiles({ name: "Sprachen.apkg", mimeType: "application/octet-stream", buffer: await ankiPackage(sampleFixture()) });
+      await button(page, "Import from Anki").click();
+      const wizard = dialog(page, "Import from Anki");
+      await wizard.getByLabel("Anki file").setInputFiles({ name: "Languages.apkg", mimeType: "application/octet-stream", buffer: await ankiPackage(await englishAnkiFixture()) });
       await wizard.locator(".study-anki-notetype").first().waitFor({ timeout: 30_000 });
     },
   },
@@ -931,10 +965,10 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: cloze card",
     covers: ["components/study/card-parts.tsx"],
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Erdkunde");
-      await ctx.command({ action: "row.create", pageId: db, cells: { title: "{{c1::Paris}} liegt an der {{c2::Seine::Fluss}}.", back: "Hauptstadt Frankreichs" } });
+      const db = await studyDeck(ctx, "Geography");
+      await ctx.command({ action: "row.create", pageId: db, cells: { title: "{{c1::Paris}} lies on the {{c2::Seine::river}}.", back: "Capital of France" } });
       await ctx.open(`#page=${db}`);
-      await button(page, "Lernen starten").click();
+      await button(page, "Start studying").click();
       await page.locator(".cloze-gap").first().waitFor();
     },
   },
@@ -945,16 +979,16 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: image occlusion editor",
     covers: ["components/study/occlusion-editor.tsx"],
     steps: async (page, ctx) => {
-      const { db, rowId } = await occlusionDeck(ctx, "Geografie");
+      const { db, rowId } = await occlusionDeck(ctx, "Map regions");
       await ctx.open(`#page=${db}&row=${rowId}`);
-      const image = dialog(page, "Eintrag").locator(".ProseMirror img").first();
+      const image = dialog(page, "Record").locator(".ProseMirror img").first();
       await image.waitFor();
       await image.click();
-      await button(page, "Weitere Bildaktionen").first().click();
-      await page.getByRole("menuitem", { name: "Bildverdeckung bearbeiten (Lernkarten)" }).click();
-      const editor = dialog(page, "Bildverdeckung bearbeiten");
+      await button(page, "More image actions").first().click();
+      await page.getByRole("menuitem", { name: "Edit image occlusion (flashcards)" }).click();
+      const editor = dialog(page, "Edit image occlusion");
       await editor.locator(".occlusion-edit-layer").waitFor();
-      await editor.getByRole("button", { name: /^Karte 2: Rechteck auswählen/ }).click();
+      await editor.getByRole("button", { name: /^Card 2: select Rectangle/ }).click();
     },
   },
   {
@@ -963,9 +997,9 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: image occlusion card",
     covers: ["components/study/occlusion-image.tsx"],
     steps: async (page, ctx) => {
-      const { db } = await occlusionDeck(ctx, "Geografie lernen");
+      const { db } = await occlusionDeck(ctx, "Learn the map");
       await ctx.open(`#page=${db}`);
-      await button(page, "Lernen starten").click();
+      await button(page, "Start studying").click();
       await page.locator(".occlusion-card .occlusion-mask.asked").first().waitFor();
     },
   },
@@ -974,12 +1008,12 @@ const databaseScenes: Scene[] = [
     group: "Databases",
     title: "Flashcards: typed answer",
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Spanisch tippen", { type: { fixed: "typed" } });
-      await ctx.command({ action: "row.create", pageId: db, cells: { title: "la estación", back: "der Bahnhof" } });
+      const db = await studyDeck(ctx, "Spanish typing", { type: { fixed: "typed" } });
+      await ctx.command({ action: "row.create", pageId: db, cells: { title: "la estación", back: "the station" } });
       await ctx.open(`#page=${db}`);
-      await button(page, "Lernen starten").click();
-      await page.getByLabel("Deine Antwort").fill("der Banhof");
-      await page.getByLabel("Deine Antwort").press("Enter");
+      await button(page, "Start studying").click();
+      await page.getByLabel("Your answer").fill("the staton");
+      await page.getByLabel("Your answer").press("Enter");
       await page.locator(".study-typed-result").waitFor();
     },
   },
@@ -988,11 +1022,11 @@ const databaseScenes: Scene[] = [
     group: "Databases",
     title: "Flashcards: multiple choice",
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Hauptstädte", { type: { fixed: "choice" } });
-      for (const [title, back] of [["Hauptstadt von Spanien?", "Madrid"], ["Hauptstadt von Italien?", "Rom"], ["Hauptstadt von Polen?", "Warschau"], ["Hauptstadt von Portugal?", "Lissabon"]])
+      const db = await studyDeck(ctx, "Capitals", { type: { fixed: "choice" } });
+      for (const [title, back] of [["Capital of Spain?", "Madrid"], ["Capital of Italy?", "Rome"], ["Capital of Poland?", "Warsaw"], ["Capital of Portugal?", "Lisbon"]])
         await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
       await ctx.open(`#page=${db}`);
-      await button(page, "Lernen starten").click();
+      await button(page, "Start studying").click();
       await page.locator(".study-choice").first().click();
       await page.locator(".study-ratings").waitFor();
     },
@@ -1003,10 +1037,10 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: statistics",
     covers: ["components/study/stats.tsx"],
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Spanisch B1");
+      const db = await studyDeck(ctx, "Spanish B1");
       await studied(ctx, db);
       await ctx.open(`#page=${db}`);
-      await button(page.locator(".study-deck"), "Statistik").click();
+      await button(page.locator(".study-deck"), "Statistics").click();
       await page.locator(".study-stats").waitFor();
     },
   },
@@ -1019,17 +1053,17 @@ const databaseScenes: Scene[] = [
     covers: ["components/study/optimize.tsx"],
     steps: async (page, ctx) => {
       const { syntheticReviews } = await import("../../tests/helpers/fsrs-synthetic");
-      const db = await studyDeck(ctx, "Spanisch C1");
-      await ctx.command({ action: "rows.import", pageId: db, rows: Array.from({ length: 150 }, (_, i) => ({ title: `palabra ${i + 1}`, back: `Wort ${i + 1}` })) });
+      const db = await studyDeck(ctx, "Spanish C1");
+      await ctx.command({ action: "rows.import", pageId: db, rows: Array.from({ length: 150 }, (_, i) => ({ title: `palabra ${i + 1}`, back: `word ${i + 1}` })) });
       const { rows } = await (await ctx.api.get(`/api/pages/${db}`)).json();
       const ids = (rows as { id: string; cells: { title: string } }[]).sort((a, b) => Number(a.cells.title.split(" ")[1]) - Number(b.cells.title.split(" ")[1])).map((r) => r.id);
       const reviews = syntheticReviews(db, ids);
       for (let i = 0; i < reviews.length; i += 500) await ctx.command({ action: "study.reviews", reviews: reviews.slice(i, i + 500) });
       await ctx.open(`#page=${db}`);
-      await button(page.locator(".study-deck"), "Meine Einstellungen").click();
-      await button(dialog(page, "Meine Einstellungen"), "Parameter optimieren …").click();
-      const optimize = dialog(page, "Parameter optimieren");
-      await button(optimize, "Optimieren").click();
+      await button(page.locator(".study-deck"), "My settings").click();
+      await button(dialog(page, "My settings"), "Optimise parameters …").click();
+      const optimize = dialog(page, "Optimise parameters");
+      await button(optimize, "Optimise").click();
       await optimize.locator(".study-optimize-result").waitFor({ timeout: 60_000 });
     },
   },
@@ -1039,7 +1073,7 @@ const databaseScenes: Scene[] = [
     title: "Flashcards: #study",
     covers: ["components/study/screen.tsx"],
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Spanisch A1");
+      const db = await studyDeck(ctx, "Spanish A1");
       await studied(ctx, db);
       await ctx.open("#study");
       await page.locator(".study-deck-list").waitFor();
@@ -1050,8 +1084,8 @@ const databaseScenes: Scene[] = [
     group: "Pages",
     title: "Start page: due cards",
     steps: async (page, ctx) => {
-      const db = await studyDeck(ctx, "Spanisch A1");
-      for (const [title, back] of [["hola", "hallo"], ["perro", "Hund"], ["gato", "Katze"]]) await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
+      const db = await studyDeck(ctx, "Spanish A1");
+      for (const [title, back] of [["hola", "hello"], ["perro", "dog"], ["gato", "cat"]]) await ctx.command({ action: "row.create", pageId: db, cells: { title, back } });
       await ctx.command({
         action: "home.save",
         workspaceId: ctx.ids.workspaceId,
@@ -1068,27 +1102,27 @@ const databaseScenes: Scene[] = [
     },
   },
   {
-    // A due date with a time ("+ Uhrzeit", #314) and a weekly repeating task
+    // A due date with a time ("+ Time", #314) and a weekly repeating task
     // that counts on from it, with a second date property to choose from.
     id: "record-date-time-repeat",
     group: "Databases",
     title: "Record with a time and a repeating task",
     covers: ["components/record-repeat.tsx"],
     steps: async (page, ctx) => {
-      const db = await ctx.fixture({ kind: "database", title: "Termine" });
+      const db = await ctx.fixture({ kind: "database", title: "Appointments" });
       const read = async () => (await ctx.api.get(`/api/pages/${db}`)).json();
       const { database } = await read();
       await ctx.command({
         action: "database.update",
         pageId: db,
         version: database.version,
-        fields: [...database.fields, { id: "start", name: "Beginn", type: "date" }],
+        fields: [...database.fields, { id: "start", name: "Start", type: "date" }],
         views: database.views,
       });
       const row = await ctx.command({
         action: "row.create",
         pageId: db,
-        cells: { title: "Wochenbericht", date: "2026-10-12T07:30:00Z", start: "2026-10-05" },
+        cells: { title: "Weekly report", date: "2026-10-12T07:30:00Z", start: "2026-10-05" },
       });
       const version = (await read()).rows.find((r: { id: string }) => r.id === row.id).version;
       await ctx.command({
@@ -1099,7 +1133,7 @@ const databaseScenes: Scene[] = [
         repeat: { freq: "weekly", interval: 1, weekdays: [1], field: "date", timeZone: "UTC" },
       });
       await ctx.open(`#page=${db}&row=${row.id}`);
-      await waitDialog(page, "Eintrag");
+      await waitDialog(page, "Record");
     },
   },
   {
@@ -1109,9 +1143,9 @@ const databaseScenes: Scene[] = [
     path: recordPath,
     covers: ["components/record-share-dialog.tsx"],
     steps: async (page) => {
-      const record = dialog(page, "Eintrag");
-      await record.getByRole("button", { name: "Teilen" }).first().click();
-      await waitDialog(page, "Eintrag teilen");
+      const record = dialog(page, "Record");
+      await record.getByRole("button", { name: "Share" }).first().click();
+      await waitDialog(page, "Share record");
     },
   },
   {
@@ -1121,7 +1155,7 @@ const databaseScenes: Scene[] = [
     path: dbPath,
     devices: ["desktop"],
     steps: async (page) => {
-      await page.locator(".data-table tbody tr").first().getByRole("gridcell", { name: "In Arbeit" }).click();
+      await page.locator(".data-table tbody tr").first().getByRole("gridcell", { name: "In progress" }).click();
       await page.keyboard.press("Enter");
     },
   },
@@ -1132,7 +1166,7 @@ const databaseScenes: Scene[] = [
     path: dbPath,
     devices: ["desktop"],
     steps: async (page) => {
-      await page.locator(".data-table tbody tr").first().getByRole("gridcell", { name: "12. Okt. 2026" }).click();
+      await page.locator(".data-table tbody tr").first().getByRole("gridcell", { name: "Oct 12, 2026" }).click();
       await page.keyboard.press("Enter");
     },
   },
@@ -1162,8 +1196,8 @@ const whiteboardScenes: Scene[] = [
     path: (c) => `#page=${c.ids.whiteboardId}`,
     covers: ["components/whiteboard/whiteboard.tsx"],
     steps: async (page) => {
-      await button(page, "Moderation").click();
-      await waitDialog(page, "Moderation");
+      await button(page, "Facilitation").click();
+      await waitDialog(page, "Facilitation");
     },
   },
   {
@@ -1172,8 +1206,8 @@ const whiteboardScenes: Scene[] = [
     title: "View and actions",
     path: (c) => `#page=${c.ids.whiteboardId}`,
     steps: async (page) => {
-      await button(page, "Ansicht und Aktionen").click();
-      await waitDialog(page, "Ansicht und Aktionen");
+      await button(page, "View and actions").click();
+      await waitDialog(page, "View and actions");
     },
   },
   {
@@ -1183,7 +1217,7 @@ const whiteboardScenes: Scene[] = [
     path: (c) => `#page=${c.ids.whiteboardId}`,
     covers: ["components/whiteboard/template-gallery.tsx"],
     steps: async (page) => {
-      await boardInsert(page, "Vorlagen");
+      await boardInsert(page, "Templates");
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1194,18 +1228,18 @@ const whiteboardScenes: Scene[] = [
     path: (c) => `#page=${c.ids.whiteboardId}`,
     covers: ["components/whiteboard/shape-library.tsx"],
     steps: async (page) => {
-      await boardInsert(page, "Formenbibliothek");
-      await waitDialog(page, "Formenbibliothek");
+      await boardInsert(page, "Shape library");
+      await waitDialog(page, "Shape library");
     },
   },
   ...(
     [
-      ["media", "Bilder und Symbole suchen", "Images and symbols", "components/whiteboard/media-search.tsx"],
-      ["embed", "Einbetten", "Embed", "components/whiteboard/embed-dialog.tsx"],
-      ["mermaid", "Mermaid/PlantUML importieren …", "Import Mermaid/PlantUML", "components/whiteboard/diagram-panels.tsx"],
+      ["media", "Search images and icons", "Images and symbols", "components/whiteboard/media-search.tsx"],
+      ["embed", "Embed", "Embed", "components/whiteboard/embed-dialog.tsx"],
+      ["mermaid", "Import Mermaid/PlantUML …", "Import Mermaid/PlantUML", "components/whiteboard/diagram-panels.tsx"],
       ["racks", "Racks", "Racks and devices", "components/whiteboard/rack-panels.tsx"],
       ["emoji", "Emoji", "Emoji", ""],
-      ["stamp", "Stempel", "Stamps", ""],
+      ["stamp", "Stamp", "Stamps", ""],
     ] as const
   ).map(
     ([id, name, title, cover]): Scene => ({
@@ -1227,7 +1261,7 @@ const whiteboardScenes: Scene[] = [
     title: "Pen options",
     path: (c) => `#page=${c.ids.whiteboardId}`,
     steps: async (page) => {
-      await button(page, "Zeichnen").click();
+      await button(page, "Draw").click();
     },
   },
 ];
@@ -1240,7 +1274,7 @@ const journalScenes: Scene[] = [
     path: (c) => `#page=${c.ids.journalId}`,
     realTime: true,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Heute/ }).first().click();
+      await page.getByRole("button", { name: /^Today/ }).first().click();
       await editor(page).waitFor();
     },
   },
@@ -1252,10 +1286,10 @@ const journalScenes: Scene[] = [
     covers: ["components/journal-nav.tsx"],
     realTime: true,
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Heute/ }).first().click();
+      await page.getByRole("button", { name: /^Today/ }).first().click();
       await editor(page).waitFor();
-      await page.getByRole("button", { name: /^Tag wählen/ }).click();
-      await waitDialog(page, "Tag im Journal wählen");
+      await page.getByRole("button", { name: /^Choose a day/ }).click();
+      await waitDialog(page, "Choose a day in the journal");
     },
   },
   {
@@ -1265,18 +1299,18 @@ const journalScenes: Scene[] = [
     path: (c) => `#page=${c.ids.journalId}`,
     covers: ["components/journal-parts.tsx"],
     steps: async (page) => {
-      await button(page, "Journal einrichten").click();
-      await waitDialog(page, "Journal einrichten");
+      await button(page, "Set up journal").click();
+      await waitDialog(page, "Set up journal");
     },
   },
   {
     id: "journal-review",
     group: "Journal",
-    title: "Review (Rückblick)",
+    title: "Review",
     path: (c) => `#page=${c.ids.journalId}`,
     steps: async (page) => {
-      await button(page, "Rückblick").click();
-      await waitDialog(page, "Rückblick");
+      await button(page, "Review").click();
+      await waitDialog(page, "Review");
     },
   },
   {
@@ -1285,7 +1319,7 @@ const journalScenes: Scene[] = [
     title: "Journal as a calendar",
     path: (c) => `#page=${c.ids.journalId}`,
     steps: async (page) => {
-      await page.getByRole("group", { name: "Darstellung" }).getByRole("button", { name: "Kalender" }).click();
+      await page.getByRole("group", { name: "Display" }).getByRole("button", { name: "Calendar" }).click();
     },
   },
 ];
@@ -1299,8 +1333,8 @@ const dialogScenes: Scene[] = [
     path: "#home",
     steps: async (page) => {
       await page.keyboard.press("ControlOrMeta+k");
-      await page.getByLabel("Suchen oder Befehl").fill("Pro");
-      await dialog(page, "Schnellsuche").getByText("Projektbriefing").first().waitFor();
+      await page.getByLabel("Search or command").fill("Pro");
+      await dialog(page, "Quick search").getByText("Project brief").first().waitFor();
     },
   },
   {
@@ -1310,7 +1344,7 @@ const dialogScenes: Scene[] = [
     path: "#home",
     steps: async (page) => {
       await page.keyboard.press("ControlOrMeta+k");
-      await page.getByLabel("Suchen oder Befehl").fill(">");
+      await page.getByLabel("Search or command").fill(">");
     },
   },
   {
@@ -1320,19 +1354,19 @@ const dialogScenes: Scene[] = [
     path: "#new",
     covers: ["components/new-page-dialog.tsx"],
     steps: async (page) => {
-      await waitDialog(page, "Neue Seite");
+      await waitDialog(page, "New page");
     },
   },
   {
-    // "Datenbank" with its kinds as one segmented row (#314: "Dokumente"
+    // "Database" with its kinds as one segmented row (#314: "Documents"
     // sat on its border).
     id: "new-page-database",
     group: "Dialogs",
     title: "New page: database kinds",
     path: "#new",
     steps: async (page) => {
-      await waitDialog(page, "Neue Seite");
-      await dialog(page, "Neue Seite").getByRole("radio", { name: /^Datenbank/ }).click();
+      await waitDialog(page, "New page");
+      await dialog(page, "New page").getByRole("radio", { name: /^Database/ }).click();
       await page.locator(".np-kind").waitFor();
     },
   },
@@ -1343,8 +1377,8 @@ const dialogScenes: Scene[] = [
     path: "#home",
     devices: ["desktop"],
     steps: async (page) => {
-      await page.getByRole("button", { name: /Mein Arbeitsbereich/ }).first().click();
-      await menu(page).getByRole("menuitem", { name: "Arbeitsbereich erstellen" }).click();
+      await page.getByRole("button", { name: /My workspace/ }).first().click();
+      await menu(page).getByRole("menuitem", { name: "Create workspace" }).click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1355,7 +1389,7 @@ const dialogScenes: Scene[] = [
     path: "#home",
     devices: ["desktop"],
     steps: async (page) => {
-      await page.getByRole("button", { name: /Mein Arbeitsbereich/ }).first().click();
+      await page.getByRole("button", { name: /My workspace/ }).first().click();
       await menu(page).waitFor();
     },
   },
@@ -1367,7 +1401,7 @@ const dialogScenes: Scene[] = [
     covers: ["components/share-dialog.tsx"],
     steps: async (page, ctx) => {
       await openShare(page, ctx);
-      await waitDialog(page, "Seite teilen");
+      await waitDialog(page, "Share page");
     },
   },
   {
@@ -1377,8 +1411,8 @@ const dialogScenes: Scene[] = [
     path: docPath,
     covers: ["components/move-page-dialog.tsx"],
     steps: async (page) => {
-      await pageAction(page, "Verschieben");
-      await waitDialog(page, "Seite verschieben");
+      await pageAction(page, "Move");
+      await waitDialog(page, "Move page");
     },
   },
   {
@@ -1388,7 +1422,7 @@ const dialogScenes: Scene[] = [
     path: docPath,
     covers: ["components/page-to-record.tsx"],
     steps: async (page) => {
-      await pageAction(page, "In Datenbank verschieben …");
+      await pageAction(page, "Move into database …");
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1399,8 +1433,8 @@ const dialogScenes: Scene[] = [
     path: docPath,
     covers: ["components/page-export.tsx"],
     steps: async (page) => {
-      await pageAction(page, "Exportieren");
-      await waitDialog(page, "Seite exportieren");
+      await pageAction(page, "Export");
+      await waitDialog(page, "Export page");
     },
   },
   {
@@ -1410,8 +1444,8 @@ const dialogScenes: Scene[] = [
     path: docPath,
     covers: ["components/print-dialog.tsx"],
     steps: async (page) => {
-      await pageAction(page, "Drucken / PDF");
-      await waitDialog(page, "Drucken / PDF");
+      await pageAction(page, "Print / PDF");
+      await waitDialog(page, "Print / PDF");
     },
   },
   {
@@ -1420,7 +1454,7 @@ const dialogScenes: Scene[] = [
     title: "Save as template",
     path: docPath,
     steps: async (page) => {
-      await pageAction(page, "Als Vorlage speichern");
+      await pageAction(page, "Save as template");
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1430,8 +1464,8 @@ const dialogScenes: Scene[] = [
     title: "Templates",
     path: "#home",
     steps: async (page, ctx) => {
-      await sidebarTool(page, ctx, "Vorlagen");
-      await waitDialog(page, "Vorlagen");
+      await sidebarTool(page, ctx, "Templates");
+      await waitDialog(page, "Templates");
     },
   },
   {
@@ -1441,8 +1475,8 @@ const dialogScenes: Scene[] = [
     path: "#home",
     covers: ["components/keyboard-shortcuts.tsx"],
     steps: async (page, ctx) => {
-      await sidebarTool(page, ctx, "Tastenkürzel");
-      await waitDialog(page, "Tastenkürzel");
+      await sidebarTool(page, ctx, "Keyboard shortcuts");
+      await waitDialog(page, "Keyboard shortcuts");
     },
   },
   {
@@ -1462,7 +1496,7 @@ const dialogScenes: Scene[] = [
     covers: ["components/whats-new.tsx"],
     steps: async (page, ctx) => {
       await accountMenu(page, ctx);
-      await page.getByRole(ctx.phone ? "button" : "menuitem", { name: "Was ist neu" }).first().click();
+      await page.getByRole(ctx.phone ? "button" : "menuitem", { name: "What’s new" }).first().click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1473,8 +1507,8 @@ const dialogScenes: Scene[] = [
     path: "#settings/appearance",
     covers: ["components/onboarding.tsx"],
     steps: async (page) => {
-      await button(page, "Einführung starten").click();
-      await waitDialog(page, "Willkommen bei Flowplan");
+      await button(page, "Start introduction").click();
+      await waitDialog(page, "Welcome to Flowplan");
     },
   },
   {
@@ -1485,9 +1519,9 @@ const dialogScenes: Scene[] = [
     covers: ["components/space-manager.tsx"],
     steps: async (page, ctx) => {
       if (ctx.phone) await openDrawer(page);
-      await button(page, "Bereich Teamspace verwalten").click();
-      await page.getByRole("menuitem", { name: "Bereich bearbeiten …" }).click();
-      await waitDialog(page, "Bereich verwalten");
+      await button(page, "Manage space Teamspace").click();
+      await page.getByRole("menuitem", { name: "Edit space …" }).click();
+      await waitDialog(page, "Manage space");
     },
   },
   {
@@ -1497,8 +1531,8 @@ const dialogScenes: Scene[] = [
     path: "#home",
     steps: async (page, ctx) => {
       if (ctx.phone) await openDrawer(page);
-      await button(page, "Bereich hinzufügen").click();
-      await waitDialog(page, "Bereich hinzufügen");
+      await button(page, "Add space").click();
+      await waitDialog(page, "Add space");
     },
   },
   {
@@ -1508,7 +1542,7 @@ const dialogScenes: Scene[] = [
     path: "#capture",
     covers: ["components/quick-capture.tsx"],
     steps: async (page) => {
-      await waitDialog(page, "Erfassen");
+      await waitDialog(page, "Capture");
     },
   },
   {
@@ -1516,9 +1550,9 @@ const dialogScenes: Scene[] = [
     group: "Dialogs",
     title: "Toast: moved to the trash, with undo",
     steps: async (page, ctx) => {
-      await editorWith(page, ctx, RICH_HTML, "Wegwerfen");
-      await pageAction(page, "In den Papierkorb");
-      await page.getByRole("status").filter({ hasText: "in den Papierkorb gelegt" }).waitFor();
+      await editorWith(page, ctx, RICH_HTML, "Throwaway");
+      await pageAction(page, "Move to trash");
+      await page.getByRole("status").filter({ hasText: "moved to the trash" }).waitFor();
     },
   },
   {
@@ -1527,7 +1561,7 @@ const dialogScenes: Scene[] = [
     title: "Start page: add a widget",
     path: "#home",
     steps: async (page) => {
-      await button(page, "Anpassen").click();
+      await button(page, "Customize").click();
       await page.locator(".home-editor, [class*=home-edit]").getByRole("button").first().click();
       await page.getByRole("dialog").last().waitFor();
     },
@@ -1540,7 +1574,7 @@ const dialogScenes: Scene[] = [
     covers: ["components/space-export.tsx"],
     steps: async (page, ctx) => {
       if (ctx.phone) await openDrawer(page);
-      await button(page, "Teamspace als Markdown exportieren").click();
+      await button(page, "Export Teamspace as Markdown").click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1551,7 +1585,8 @@ const dialogScenes: Scene[] = [
     path: "#home",
     steps: async (page, ctx) => {
       if (ctx.phone) await openDrawer(page);
-      await button(page, "Seiten auswählen").click();
+      // Library spaces of other scenes have the button too: the first space's.
+      await button(page, "Select pages").first().click();
     },
   },
   {
@@ -1562,7 +1597,7 @@ const dialogScenes: Scene[] = [
     covers: ["components/collection-editor.tsx"],
     steps: async (page, ctx) => {
       if (ctx.phone) await openDrawer(page);
-      await button(page, "Neue Sammlung").click();
+      await button(page, "New collection").click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1573,7 +1608,7 @@ const dialogScenes: Scene[] = [
     path: "#settings/members",
     covers: ["components/settings/user/members.tsx"],
     steps: async (page) => {
-      await page.getByRole("button", { name: /Mitglied einladen|Einladen/ }).first().click();
+      await page.getByRole("button", { name: /Invite member|Invite/ }).first().click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1584,8 +1619,8 @@ const dialogScenes: Scene[] = [
     path: "#settings/account/encryption",
     covers: ["components/e2ee.tsx"],
     steps: async (page) => {
-      await page.getByRole("button", { name: /Verschlüsselung einrichten/ }).first().click();
-      await waitDialog(page, "Verschlüsselung einrichten");
+      await page.getByRole("button", { name: /Set up encryption/ }).first().click();
+      await waitDialog(page, "Set up encryption");
     },
   },
   {
@@ -1595,10 +1630,10 @@ const dialogScenes: Scene[] = [
     path: "#settings/workspace",
     covers: ["components/workspace-icon.tsx"],
     steps: async (page) => {
-      await page.getByRole("button", { name: /Symbol/ }).first().click();
+      await page.getByRole("button", { name: /Emoji or icon/ }).first().click();
       await page.getByRole("dialog").last().waitFor();
-      // The emoji picker loads on demand ("Emojis werden geladen …").
-      await page.getByRole("dialog").last().getByLabel(/Emoji suchen/).waitFor();
+      // The emoji picker loads on demand ("Loading emojis …").
+      await page.getByRole("dialog").last().getByLabel(/Search emoji/).waitFor();
     },
   },
   {
@@ -1607,9 +1642,9 @@ const dialogScenes: Scene[] = [
     title: "Confirm: empty the trash",
     covers: ["components/trash-view.tsx"],
     steps: async (page, ctx) => {
-      await ctx.command({ action: "page.delete", pageId: await ctx.fixture({ title: "Alter Entwurf" }) });
+      await ctx.command({ action: "page.delete", pageId: await ctx.fixture({ title: "Old draft" }) });
       await ctx.open("#trash");
-      await button(page, "Papierkorb leeren").click();
+      await button(page, "Empty trash").click();
       await page.getByRole("dialog").or(page.getByRole("alertdialog")).last().waitFor();
     },
   },
@@ -1621,9 +1656,9 @@ const dialogScenes: Scene[] = [
     devices: ["desktop"],
     covers: ["components/record-transfer.tsx"],
     steps: async (page) => {
-      await page.getByRole("checkbox", { name: "Onboarding vereinfachen auswählen" }).check();
-      await page.getByRole("checkbox", { name: "Mobile Navigation auswählen" }).check();
-      await page.getByRole("button", { name: /Verschieben/ }).first().click();
+      await page.getByRole("checkbox", { name: "Select Simplify onboarding" }).check();
+      await page.getByRole("checkbox", { name: "Select Mobile navigation" }).check();
+      await page.getByRole("button", { name: /Move/ }).first().click();
       await page.getByRole("dialog").or(page.getByRole("menu")).last().waitFor();
     },
   },
@@ -1634,8 +1669,8 @@ const dialogScenes: Scene[] = [
     path: "#home",
     steps: async (page, ctx) => {
       if (ctx.phone) await openDrawer(page);
-      await button(page, "Bereich Teamspace verwalten").click();
-      await page.getByRole("menu", { name: "Bereich Teamspace verwalten" }).waitFor();
+      await button(page, "Manage space Teamspace").click();
+      await page.getByRole("menu", { name: "Manage space Teamspace" }).waitFor();
     },
   },
   {
@@ -1645,9 +1680,9 @@ const dialogScenes: Scene[] = [
     path: "#home",
     covers: ["components/home/home-editor.tsx"],
     steps: async (page) => {
-      await button(page, "Anpassen").click();
+      await button(page, "Customize").click();
       // The editor loads on demand: wait for it, not an empty page.
-      await page.getByText("Startseite anpassen").first().waitFor();
+      await page.getByText("Customize home page").first().waitFor();
     },
   },
   {
@@ -1658,8 +1693,8 @@ const dialogScenes: Scene[] = [
     path: (c) => `#page=${c.ids.workflowId}`,
     covers: ["components/workflow/dialogs.tsx"],
     steps: async (page) => {
-      await button(page, "Probelauf").click();
-      await waitDialog(page, "Probelauf");
+      await button(page, "Dry run").click();
+      await waitDialog(page, "Dry run");
     },
   },
   {
@@ -1670,8 +1705,8 @@ const dialogScenes: Scene[] = [
     path: (c) => `#page=${c.ids.workflowId}`,
     covers: ["components/workflow/dialogs.tsx"],
     steps: async (page) => {
-      await button(page, "Einstellungen des Workflows").click();
-      await waitDialog(page, "Einstellungen des Workflows");
+      await button(page, "Workflow settings").click();
+      await waitDialog(page, "Workflow settings");
     },
   },
   {
@@ -1681,8 +1716,8 @@ const dialogScenes: Scene[] = [
     devices: ["desktop"],
     path: (c) => `#page=${c.ids.workflowId}`,
     steps: async (page) => {
-      await button(page, "Aktivieren").click();
-      await waitDialog(page, "Workflow aktivieren");
+      await button(page, "Activate").click();
+      await waitDialog(page, "Activate the workflow");
     },
   },
   {
@@ -1692,8 +1727,8 @@ const dialogScenes: Scene[] = [
     devices: ["desktop"],
     path: (c) => `#page=${c.ids.workflowId}`,
     steps: async (page) => {
-      await button(page, "Knoten dazwischen einfügen").first().click();
-      await waitDialog(page, "Knoten dazwischen einfügen");
+      await button(page, "Insert a node in between").first().click();
+      await waitDialog(page, "Insert a node in between");
     },
   },
   {
@@ -1703,7 +1738,7 @@ const dialogScenes: Scene[] = [
     path: (c) => `#page=${c.ids.dashboardId}`,
     covers: ["components/dashboard-view.tsx"],
     steps: async (page) => {
-      await button(page, "Erste Kachel hinzufügen").click();
+      await button(page, "Add the first tile").click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1714,8 +1749,8 @@ const dialogScenes: Scene[] = [
     path: (c) => `#page=${c.ids.notebookId}`,
     covers: ["components/notebook/paper-dialog.tsx"],
     steps: async (page) => {
-      await button(page, "Papier ändern").click();
-      await waitDialog(page, "Papier");
+      await button(page, "Change paper").click();
+      await waitDialog(page, "Paper");
     },
   },
   {
@@ -1725,7 +1760,7 @@ const dialogScenes: Scene[] = [
     path: (c) => `#page=${c.ids.notebookId}`,
     covers: ["components/ink/ink-panel.tsx"],
     steps: async (page) => {
-      await button(page, "Stifteinstellungen").click();
+      await button(page, "Pen settings").click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
@@ -1736,7 +1771,7 @@ const dialogScenes: Scene[] = [
     path: (c) => `#page=${c.ids.notebookId}`,
     covers: ["components/notebook/notebook-insert.tsx"],
     steps: async (page) => {
-      await button(page, "Bild oder Sticker einfügen").click();
+      await button(page, "Insert picture or sticker").click();
       await page.getByRole("dialog").or(page.getByRole("menu")).last().waitFor();
     },
   },
@@ -1747,8 +1782,8 @@ const dialogScenes: Scene[] = [
     path: "#settings/account/delete-account",
     covers: ["components/delete-own-account.tsx"],
     steps: async (page) => {
-      await button(page, "Konto löschen …").or(button(page, "Konto löschen")).first().click();
-      await waitDialog(page, "Dein Konto löschen?");
+      await button(page, "Delete account …").or(button(page, "Delete account")).first().click();
+      await waitDialog(page, "Delete your account?");
     },
   },
 ];
@@ -1761,7 +1796,7 @@ const sectionScenes: Scene[] = SETTINGS_SECTIONS.map((s) => ({
   title: s.title.en,
   path: `#${s.area}/${s.id}`,
   steps: async (page: Page) => {
-    await page.getByRole("heading", { name: s.title.de, level: 1 }).first().waitFor();
+    await page.getByRole("heading", { name: s.title.en, level: 1 }).first().waitFor();
   },
 }));
 
@@ -1775,7 +1810,7 @@ const authScenes: Scene[] = [
     signedOut: true,
     steps: async (page) => {
       await page.locator(".login-ways:not([data-pending])").waitFor();
-      const link = button(page, "Mit E-Mail und Passwort");
+      const link = button(page, "With e-mail and password");
       if (await link.isVisible()) await link.click();
       await page.locator("input[name=email]").waitFor();
     },
@@ -1814,9 +1849,9 @@ const publicScenes: Scene[] = [
     covers: ["components/study/public-practice.tsx"],
     steps: async (page, ctx) => {
       await ctx.open(`/share/${await publishedDeck(ctx)}`);
-      await button(page, "Üben").click();
+      await button(page, "Practise").click();
       await page.locator(".public-study-note").waitFor();
-      await button(page, /^Antwort zeigen/).click();
+      await button(page, /^Show answer/).click();
       await page.locator(".study-ratings").waitFor();
     },
   },
@@ -1858,14 +1893,14 @@ const mobileScenes: Scene[] = [
   {
     id: "phone-more",
     group: "Mobile-only",
-    title: "\"Mehr\" sheet",
+    title: "\"More\" sheet",
     path: "#home",
     devices: ["phone"],
     covers: ["components/sidebar-tools.tsx"],
     steps: async (page) => {
       await openDrawer(page);
       await page.locator("aside.sidebar .sidebar-more").click();
-      await waitDialog(page, "Mehr");
+      await waitDialog(page, "More");
     },
   },
   {
@@ -1875,8 +1910,8 @@ const mobileScenes: Scene[] = [
     path: "#home",
     devices: ["phone"],
     steps: async (page) => {
-      await page.locator(".mobile-tab-bar").getByRole("button", { name: "Neue Seite" }).click();
-      await waitDialog(page, "Neue Seite");
+      await page.locator(".mobile-tab-bar").getByRole("button", { name: "New page" }).click();
+      await waitDialog(page, "New page");
     },
   },
   {
@@ -1887,7 +1922,7 @@ const mobileScenes: Scene[] = [
     covers: ["components/page-menu.tsx"],
     devices: ["phone"],
     steps: async (page) => {
-      await button(page, "Seitenaktionen").click();
+      await button(page, "Page actions").click();
       await menu(page).waitFor();
     },
   },
@@ -1912,7 +1947,7 @@ const mobileScenes: Scene[] = [
     path: recordPath,
     devices: ["phone"],
     steps: async (page) => {
-      await waitDialog(page, "Eintrag");
+      await waitDialog(page, "Record");
     },
   },
 ];

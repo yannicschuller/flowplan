@@ -24,6 +24,7 @@ npm run gallery -- --only "<group or text>" --out <scratch>/gallery-<group>
 ```
 
 - It builds once (`npm run build`) if there is no build, seeds example content and writes `<out>/index.html` plus one PNG per scene and variant (desktop/phone × light/dark).
+- The gallery is recorded **in English only** (#438): English interface (browser locale en-US) and English example content. German labels are often longer, so where a screen is tight (buttons in a row, tabs, table headers, phone toolbars) check one German variant by hand: start a seeded server with `npm run gallery -- --serve --out <scratch>/gallery-serve`, then take that screen with Playwright using the `storageState` from `<scratch>/gallery-serve/session.json`, `locale: "de-DE"` and `extraHTTPHeaders: { "Accept-Language": "de-DE,de;q=0.9" }` (the example content stays English; only the interface is German). End the server by its PID.
 - `--url http://127.0.0.1:PORT` uses a running dev server instead (faster while fixing; sign-up must be open on it).
 - A scene that fails shows a red tile with the error – that's a finding too (a broken scene or a broken screen).
 - Look at every PNG of the area with the Read tool. Start with phone and dark: most problems show there.
@@ -48,7 +49,7 @@ For every screenshot, check and note what fails:
 7. **Empty and error states:** a bare grey line instead of an explanation with a way forward; error messages without what to do.
 8. **Dark mode:** low contrast, light boxes on dark backgrounds, invisible borders, images or icons that disappear.
 9. **Phone:** touch targets under ~40 px, toolbars covering content, things that only work with hover.
-10. **Language:** German text in the English variant or the other way round, truncated translations, English and German mixed.
+10. **Language:** German text in the English variant or the other way round, truncated translations, English and German mixed. In the gallery (English throughout) any German word on screen is a missing translation.
 
 Don't report taste – only what a user would notice as broken, inconsistent or hard to use.
 

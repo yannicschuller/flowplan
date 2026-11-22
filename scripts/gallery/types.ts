@@ -57,7 +57,7 @@ export type SceneContext = {
   // POST /api/command as the seeded account.
   command: (data: Record<string, unknown>) => Promise<any>;
   api: APIRequestContext;
-  // A page of its own below "Spielwiese" for scenes that type or change
+  // A page of its own below "Sandbox" for scenes that type or change
   // something, so parallel scenes do not see each other's edits.
   fixture: (options?: FixtureOptions) => Promise<string>;
   // Opens an address of the app ("#home", "/login") with the clock fixed and
