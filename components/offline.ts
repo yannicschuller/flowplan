@@ -30,7 +30,7 @@ import {
   type OfflineAssets,
 } from "@/lib/offline-assets";
 import { installAppOffline } from "@/lib/offline-app";
-import { DATA_CACHE, OFFLINE_CHANGED, OFFLINE_MARKER, SETTINGS_CACHE, appOfflineBridge, offlineStore, type OfflineCache, type OfflineStore } from "@/lib/offline-store";
+import { DATA_CACHE, OFFLINE_CHANGED, OFFLINE_MARKER, SETTINGS_CACHE, appOfflineBridge, isStorageRefusal, offlineStore, type OfflineCache, type OfflineStore } from "@/lib/offline-store";
 import {
   keptPageIds,
   offlineBudget,
@@ -435,8 +435,10 @@ async function inQueue(urls: string[], work: (url: string) => Promise<void>) {
   );
 }
 
+// "storage": the device took nothing – not even the workspace or the
+// marker (lib/offline-store.ts OfflineRefused): too little room for the copy.
 export type RefreshResult = {
-  status: "done" | "incomplete" | "signed-out" | "disabled" | "busy";
+  status: "done" | "incomplete" | "signed-out" | "disabled" | "busy" | "storage";
   fetched: number;
   dropped: number;
 };
@@ -762,6 +764,11 @@ async function refreshNow({
   } catch (error) {
     if (error instanceof SignedOut) return { ...result, status: "signed-out" };
     if (error instanceof TypeError) return { ...result, status: "incomplete" };
+    // The workspace's answer or the marker was refused (#417): in the
+    // iPhone and iPad app, which refuses those only for room, the copy stood
+    // still without a word – settings unsaved, the app's files of the new
+    // build never stored.
+    if (isStorageRefusal(error)) return { ...result, status: "storage" };
     throw error;
   } finally {
     // Switched off meanwhile: nothing fetched may stay behind.

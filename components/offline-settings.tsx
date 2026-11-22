@@ -32,7 +32,7 @@ import {
   type OfflinePersistence,
 } from "./offline";
 import { offlineUnsupportedReason } from "@/lib/native-app";
-import { appOfflineBridge } from "@/lib/offline-store";
+import { appOfflineBridge, isStorageRefusal } from "@/lib/offline-store";
 import { budgetChoices, defaultBudget, isKept, type KeepItem, type SpaceUsage } from "@/lib/offline-keep";
 import type { Page, Space } from "@/lib/types";
 
@@ -83,6 +83,12 @@ export function OfflineSettings({
     if (enabled) void persistOffline({ ask: false }).then(setPersisted);
   }, [enabled, marker?.lastRefresh]);
 
+  // The device took nothing (#417, lib/offline-store.ts OfflineRefused).
+  const storageText = () =>
+    t(
+      "Auf diesem Gerät ist zu wenig Speicher für die Offline-Kopie frei – gib etwas Speicher frei und aktualisiere dann erneut.",
+      "There is too little storage left on this device for the offline copy – free up some space, then update again.",
+    );
   const pagesText = (n: number) =>
     t(
       `${n} ${n === 1 ? "Seite" : "Seiten"}`,
@@ -102,7 +108,9 @@ export function OfflineSettings({
               "Du wurdest abgemeldet – melde dich erneut an, um die Offline-Kopie zu aktualisieren.",
               "You were signed out – sign in again to update the offline copy.",
             )
-          : result.status === "incomplete"
+          : result.status === "storage"
+            ? storageText()
+            : result.status === "incomplete"
             ? t(
                 "Nicht alle Seiten konnten gespeichert werden – sie werden beim nächsten Aktualisieren nachgeholt.",
                 "Not every page could be stored – they follow with the next update.",
@@ -113,7 +121,7 @@ export function OfflineSettings({
               ),
       );
     } catch (error) {
-      setMessage(friendlyError(error));
+      setMessage(isStorageRefusal(error) ? storageText() : friendlyError(error));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -134,7 +142,9 @@ export function OfflineSettings({
               "Du wurdest abgemeldet – melde dich erneut an, um die Offline-Kopie zu aktualisieren.",
               "You were signed out – sign in again to update the offline copy.",
             )
-          : result.status === "incomplete"
+          : result.status === "storage"
+            ? storageText()
+            : result.status === "incomplete"
             ? t(
                 "Nicht alle Seiten konnten aktualisiert werden – sie werden beim nächsten Mal nachgeholt.",
                 "Not every page could be updated – they follow next time.",
@@ -150,12 +160,25 @@ export function OfflineSettings({
                 ),
       );
     } catch (error) {
-      setMessage(friendlyError(error));
+      setMessage(isStorageRefusal(error) ? storageText() : friendlyError(error));
     } finally {
       setBusy(false);
       setProgress(null);
       load();
     }
+  }
+  // A choice the device did not store (#417): said so, and the settings
+  // show again what is stored – not the choice as if it had been kept.
+  function unsaved(error: unknown) {
+    setMessage(
+      isStorageRefusal(error)
+        ? t(
+            "Die Einstellung konnte auf diesem Gerät nicht gespeichert werden – zu wenig Speicher frei. Gib etwas Speicher frei und versuche es erneut.",
+            "The setting could not be saved on this device – too little storage left. Free up some space and try again.",
+          )
+        : friendlyError(error),
+    );
+    load();
   }
   async function records(on: boolean) {
     setBusy(true);
@@ -166,6 +189,8 @@ export function OfflineSettings({
       load();
       // Fetches the records and files right away.
       if (on) await update();
+    } catch (error) {
+      unsaved(error);
     } finally {
       setBusy(false);
     }
@@ -184,7 +209,9 @@ export function OfflineSettings({
               "Du wurdest abgemeldet – melde dich erneut an, um die Offline-Kopie zu aktualisieren.",
               "You were signed out – sign in again to update the offline copy.",
             )
-          : result.status === "incomplete"
+          : result.status === "storage"
+            ? storageText()
+            : result.status === "incomplete"
             ? t(
                 "Nicht alle Seiten konnten aktualisiert werden – sie werden beim nächsten Mal nachgeholt.",
                 "Not every page could be updated – they follow next time.",
@@ -192,7 +219,7 @@ export function OfflineSettings({
             : t("Offline-Kopie ist auf dem neuesten Stand.", "Offline copy is up to date."),
       );
     } catch (error) {
-      setMessage(friendlyError(error));
+      setMessage(isStorageRefusal(error) ? storageText() : friendlyError(error));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -201,12 +228,20 @@ export function OfflineSettings({
   }
   async function budget(value: number) {
     setMarker((m) => (m ? { ...m, budget: value } : m));
-    await setOfflineBudget(value);
+    try {
+      await setOfflineBudget(value);
+    } catch (error) {
+      return unsaved(error);
+    }
     load();
     await follow();
   }
   async function keep(item: KeepItem, on: boolean) {
-    await setOfflineKeep(item, on);
+    try {
+      await setOfflineKeep(item, on);
+    } catch (error) {
+      return unsaved(error);
+    }
     load();
     await follow();
   }

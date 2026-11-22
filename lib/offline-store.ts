@@ -105,6 +105,20 @@ export async function responseEntry(response: Response): Promise<StoredEntry> {
   };
 }
 
+// A write the device's storage did not take: the app's refusal, or the
+// browser's quota (QuotaExceededError). For the marker and the workspace's
+// bootstrap answer – a valid key, status 200, a few KB – the app has no
+// other reason to refuse than room, so components/offline.ts reports those
+// as "too little storage" (#417).
+export class OfflineRefused extends Error {
+  constructor() {
+    super("refused");
+    this.name = "OfflineRefused";
+  }
+}
+export const isStorageRefusal = (error: unknown) =>
+  error instanceof OfflineRefused || (typeof error === "object" && error !== null && (error as { name?: unknown }).name === "QuotaExceededError");
+
 export function appStore(bridge: AppOfflineBridge): OfflineStore {
   const cache = (name: string): OfflineCache => ({
     match: async (key) => {
@@ -112,9 +126,11 @@ export function appStore(bridge: AppOfflineBridge): OfflineStore {
       return entry ? entryResponse(entry) : undefined;
     },
     put: async (key, response) => {
-      // The app refuses what it does not keep (keys, sizes, no-store); a
-      // refusal counts like a failed request.
-      if (!(await bridge.put(name, key, await responseEntry(response)))) throw new Error("refused");
+      // The app refuses what it does not keep (keys, sizes, no-store) and
+      // what does not fit (its 2 GB per profile, 300 MB of the disk kept
+      // free: flowplan-app src/offline/policy.ts); a refusal counts like a
+      // failed request.
+      if (!(await bridge.put(name, key, await responseEntry(response)))) throw new OfflineRefused();
     },
     delete: (key) => bridge.delete(name, key),
     keys: () => bridge.keys(name),

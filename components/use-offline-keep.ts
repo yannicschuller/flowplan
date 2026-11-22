@@ -8,6 +8,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { OFFLINE_CHANGED, offlineMarker, offlineSupported, refreshOffline, setOfflineKeep, type OfflineMarker } from "./offline";
 import { isKept, type KeepItem } from "@/lib/offline-keep";
+import { isStorageRefusal } from "@/lib/offline-store";
+import { tr } from "@/lib/locale-tag";
+import { showToast } from "./toast";
 
 export function useOfflineKeep(userId: string) {
   const [marker, setMarker] = useState<OfflineMarker | null>(null);
@@ -26,7 +29,22 @@ export function useOfflineKeep(userId: string) {
     };
   }, [userId]);
   const toggle = useCallback(async (item: KeepItem, on: boolean) => {
-    await setOfflineKeep(item, on);
+    try {
+      await setOfflineKeep(item, on);
+    } catch (error) {
+      // Not stored on the device (#417): said so instead of a switch that
+      // silently stays as it was.
+      showToast({
+        tone: "error",
+        text: isStorageRefusal(error)
+          ? tr(
+              "„Offline behalten“ konnte nicht gespeichert werden – auf diesem Gerät ist zu wenig Speicher frei.",
+              "“Keep offline” could not be saved – too little storage left on this device.",
+            )
+          : tr("„Offline behalten“ konnte nicht gespeichert werden.", "“Keep offline” could not be saved."),
+      });
+      return;
+    }
     if (navigator.onLine) void refreshOffline({ again: true }).catch(() => undefined);
   }, []);
   return {

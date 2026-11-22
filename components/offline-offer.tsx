@@ -9,6 +9,7 @@ import { nativeApp } from "@/lib/native-app";
 import { offlineOfferPossible, readOfferAnswer, saveOfferAnswer, shouldOfferOffline } from "@/lib/offline-offer";
 import { settingsHash } from "@/lib/settings-sections";
 import { enableOffline, offlineMarker, offlineSupported } from "./offline";
+import { isStorageRefusal } from "@/lib/offline-store";
 import { useT } from "./i18n";
 
 // Whether this device may be asked; null while it is being found out.
@@ -50,6 +51,12 @@ export function OfflineOfferPanel({
     saveOfferAnswer(value);
     onAnswered?.(value);
   };
+  // The device took nothing (#417, lib/offline-store.ts OfflineRefused).
+  const storageText = () =>
+    t(
+      "Auf diesem Gerät ist zu wenig Speicher für die Offline-Kopie frei – gib etwas Speicher frei und aktualisiere dann erneut.",
+      "There is too little storage left on this device for the offline copy – free up some space, then update again.",
+    );
   const enable = async () => {
     setBusy(true);
     setMessage("");
@@ -59,14 +66,16 @@ export function OfflineOfferPanel({
       setMessage(
         result.status === "signed-out"
           ? t("Du wurdest abgemeldet – melde dich erneut an, um die Offline-Kopie zu aktualisieren.", "You were signed out – sign in again to update the offline copy.")
-          : result.status === "incomplete"
-            ? t("Nicht alle Seiten konnten gespeichert werden – sie werden beim nächsten Aktualisieren nachgeholt.", "Not every page could be stored – they follow with the next update.")
-            : t(`${pages} Seiten auf diesem Gerät offline verfügbar.`, `${pages} pages available offline on this device.`),
+          : result.status === "storage"
+            ? storageText()
+            : result.status === "incomplete"
+              ? t("Nicht alle Seiten konnten gespeichert werden – sie werden beim nächsten Aktualisieren nachgeholt.", "Not every page could be stored – they follow with the next update.")
+              : t(`${pages} Seiten auf diesem Gerät offline verfügbar.`, `${pages} pages available offline on this device.`),
       );
       setDone(true);
       answer("enabled");
     } catch (error) {
-      setMessage((error as Error).message || t("Offline-Nutzung konnte nicht eingeschaltet werden.", "Offline use could not be switched on."));
+      setMessage(isStorageRefusal(error) ? storageText() : (error as Error).message || t("Offline-Nutzung konnte nicht eingeschaltet werden.", "Offline use could not be switched on."));
     } finally {
       setBusy(false);
       setProgress(null);

@@ -104,8 +104,11 @@ import { MediaLibrary } from "./media-library";
 import {
   checkOfflineOwner,
   disableOffline,
+  offlineMarker,
   registerServiceWorker,
 } from "./offline";
+import { appCopyHolds } from "@/lib/offline-assets";
+import { BUILD_META } from "@/lib/stale-copy";
 import { useOfflineRefresh } from "./offline-refresh";
 import { useOfflineKeep } from "./use-offline-keep";
 import { joinRefusalText } from "./join-refusal";
@@ -369,14 +372,22 @@ const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), {
   ssr: false,
   loading: () => <Loading what="emoji" />,
 });
-const DocumentEditor = dynamic(() => loadView(() => import("./editor")), {
+// The views a page made offline opens (#370), loaded through one function
+// each: next/dynamic gives an import() written inside its call a loader of
+// its own (with a wrapper chunk), so the code loaded ahead below
+// (preloadOfflineViews) would not be the code the view then asks for.
+const loadEditor = () => import("./editor");
+const loadDatabaseView = () => import("./database-view");
+const loadWhiteboard = () => import("./whiteboard/whiteboard");
+const loadNotebookView = () => import("./notebook/notebook-view");
+const DocumentEditor = dynamic(() => loadView(loadEditor), {
   ssr: false,
   loading: () => <Loading what="document" />,
 });
 // Databases with their views, toolbar, tools and records: loaded with the
 // first database (started together with the page's data, below, and on
 // hover by the prefetch), not with every page.
-const DatabaseView = dynamic(() => loadView(() => import("./database-view")), { ssr: false, loading: () => <ViewSkeleton /> });
+const DatabaseView = dynamic(() => loadView(loadDatabaseView), { ssr: false, loading: () => <ViewSkeleton /> });
 // The collection editor with its filter builder (#86): loaded when opened.
 const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
@@ -390,7 +401,7 @@ const StudyAiCards = dynamic(() => import("./study/ai-cards"), { ssr: false });
 // "Lernen: <Stapel>" of the command palette: a session started from there.
 const StudyFocus = dynamic(() => import("./study/focus").then((m) => m.StudyFocus), { ssr: false });
 // Notebooks bring the ink engine: loaded with the first notebook.
-const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
+const NotebookView = dynamic(() => loadView(loadNotebookView), { ssr: false, loading: () => <PageSkeleton compact /> });
 // Workflows bring the canvas (xyflow): loaded with the first workflow page.
 const WorkflowView = dynamic(() => loadView(() => import("./workflow/workflow-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 // The introduction (with its import and admin steps) and the checklist
@@ -399,7 +410,7 @@ const Onboarding = dynamic(() => import("./onboarding").then((m) => m.Onboarding
 const GettingStarted = dynamic(() => import("./getting-started"), { ssr: false });
 // Offline use offered once on a further device (#295, lib/offline-offer.ts).
 const OfflineOfferPrompt = dynamic(() => import("./offline-offer"), { ssr: false });
-const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard")), {
+const Whiteboard = dynamic(() => loadView(loadWhiteboard), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
 });
@@ -778,8 +789,8 @@ export default function WorkspaceApp({
   // the page's data instead of after it; so does a database's code.
   const openingKind = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.kind : undefined;
   useEffect(() => {
-    if (openingKind === "database") void import("./database-view").catch(() => {});
-    if (openingKind === "document" || (openingKind === "database" && parsePageLocation(location.hash)?.rowId)) void import("./editor").catch(() => {});
+    if (openingKind === "database") void loadDatabaseView().catch(() => {});
+    if (openingKind === "document" || (openingKind === "database" && parsePageLocation(location.hash)?.rowId)) void loadEditor().catch(() => {});
   }, [openingKind, pageId]);
   const linkIcon = useExternalLinkIcon();
   useEffect(() => {
@@ -1369,15 +1380,15 @@ export default function WorkspaceApp({
       preload: (kind) => {
         const load =
           kind === "whiteboard"
-            ? () => import("./whiteboard/whiteboard")
+            ? loadWhiteboard
             : kind === "dashboard"
               ? () => import("./dashboard-view")
               : kind === "workflow"
                 ? () => import("./workflow/workflow-view")
                 : kind === "document"
-                  ? () => import("./editor")
+                  ? loadEditor
                   : kind === "database"
-                    ? () => import("./database-view")
+                    ? loadDatabaseView
                     : null;
         void load?.().catch(() => {});
       },
@@ -2319,6 +2330,27 @@ export default function WorkspaceApp({
   const appOfflineNotice = useAppOfflineOffer(boot.user.id, boot.workspace.id, !!boot.workspace.guest, !!boot.user.demo);
   // "Offline behalten" in the space and page menus while offline use is on (#417).
   const offlineKeep = useOfflineKeep(boot.user.id);
+  // Pages made offline (#370) open in the editor, a database, a board or a
+  // notebook. While the device's copy of the app's files does not hold
+  // this page's build completely (an update whose files are not stored yet,
+  // a device short of room), their code loads ahead in the background once
+  // the page is up: a page made offline later in this session opens all the
+  // same instead of "Not available offline".
+  useEffect(() => {
+    if (!offlineKeep.enabled) return;
+    let stopped = false;
+    const timer = setTimeout(() => {
+      void offlineMarker().then((marker) => {
+        const build = document.querySelector<HTMLMetaElement>(`meta[name="${BUILD_META}"]`)?.content;
+        if (stopped || !marker || deviceOffline() || appCopyHolds(marker.app, build)) return;
+        for (const load of [loadEditor, loadDatabaseView, loadWhiteboard, loadNotebookView]) void load().catch(() => {});
+      }).catch(() => {});
+    }, 4000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [offlineKeep.enabled]);
   // The service worker serves offline copies once enabled in the settings.
   useEffect(() => {
     void registerServiceWorker()

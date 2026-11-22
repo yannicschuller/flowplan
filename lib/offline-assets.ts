@@ -47,3 +47,11 @@ export function fitsQuota(bytes: number, estimate: { quota?: number; usage?: num
   if (!estimate?.quota) return true;
   return estimate.quota - (estimate.usage || 0) - STORAGE_RESERVE >= bytes;
 }
+
+// Whether the device's copy of the app's files holds the build of the
+// running page completely. Otherwise a part this page never loaded (the
+// editor, a database, a board, a notebook) may be missing offline – e.g.
+// for a page made offline (#370) while the copy is still of an older build.
+export function appCopyHolds(app: { build: string; complete: boolean } | null | undefined, build: string | null | undefined): boolean {
+  return !!app?.complete && !!build && app.build === build;
+}

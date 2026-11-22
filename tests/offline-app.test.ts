@@ -9,12 +9,16 @@ import {
   browserStore,
   entryResponse,
   fromBase64,
+  isStorageRefusal,
+  OfflineRefused,
   responseEntry,
   toBase64,
   type AppOfflineBridge,
   type StoredEntry,
 } from "../lib/offline-store";
-import { storeApp } from "../components/offline";
+import { offlineMarker, refreshOffline, setOfflineBudget, setOfflineKeep, storeApp } from "../components/offline";
+import { appCopyHolds } from "../lib/offline-assets";
+import { GB } from "../lib/offline-keep";
 
 const ORIGIN = "https://flowplan.example";
 
@@ -222,4 +226,65 @@ test("the app's files are stored through the app's bridge like into Cache Storag
     g.window = saved.window;
     g.fetch = saved.fetch;
   }
+});
+
+// #370/#417 in the iPhone app: the refresh fills the storage per space and
+// stores the running build's files; a device the app refuses every write on
+// (no room) says so – the refresh, the budget and "Keep offline" – instead
+// of a copy that stands still while the settings jump back.
+test("a refresh through the app's bridge, and a device without room for it", async () => {
+  const bridge = new FakeBridge();
+  const g = globalThis as Record<string, unknown>;
+  const saved = { window: g.window, fetch: g.fetch };
+  g.window = { FlowplanApp: { offline: bridge }, isSecureContext: true, addEventListener() {}, dispatchEvent() {} };
+  const space = "5a1e3c2d-0000-4000-8000-000000000001";
+  const page = "5a1e3c2d-0000-4000-8000-0000000000a1";
+  const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
+  g.fetch = async (input: string) => {
+    const path = String(input);
+    if (path.startsWith("/api/bootstrap")) return json({ user: { id: "u1" }, workspace: { id: "w1" }, spaces: [{ id: space }], pages: [{ id: page, space_id: space, parent_id: null }] });
+    if (path.startsWith("/api/offline/changes")) return json({ now: "2026-11-22T10:00:00.000Z", full: true, pages: [page], changed: [], rows: {}, study: [] });
+    if (path === "/api/offline/assets") return json({ build: "B9", version: "0.11.0", files: [{ path: "/_next/static/chunks/editor.js", size: 10 }], bytes: 10 });
+    if (path === `/api/pages/${page}`) return json({ page: { id: page }, html: "<p>Hallo</p>" });
+    if (path === "/") return new Response("<html></html>", { headers: { "content-type": "text/html" } });
+    return new Response(`body of ${path}`);
+  };
+  try {
+    await bridge.put("flowplan-settings", "/__flowplan-offline", await responseEntry(json({ user: "u1", since: 1, workspace: "w1" })));
+    // With room: the storage per space and this build's files.
+    assert.equal((await refreshOffline({ full: true })).status, "done");
+    let marker = (await offlineMarker())!;
+    assert.ok(marker.spaces?.[space]?.pages && marker.spaces[space].pages > 0);
+    assert.equal(marker.app?.version, "0.11.0");
+    assert.equal(appCopyHolds(marker.app, "B9"), true);
+    await setOfflineBudget(GB);
+    await setOfflineKeep({ kind: "space", id: space }, true);
+    marker = (await offlineMarker())!;
+    assert.equal(marker.budget, GB);
+    assert.deepEqual(marker.keep, [{ kind: "space", id: space }]);
+
+    // No room: the app refuses every write (flowplan-app policy "full").
+    bridge.refuse = () => true;
+    assert.equal((await refreshOffline({ full: true })).status, "storage");
+    await assert.rejects(setOfflineBudget(200 * 1024 * 1024), (error) => isStorageRefusal(error) && error instanceof OfflineRefused);
+    await assert.rejects(setOfflineKeep({ kind: "space", id: space }, false), isStorageRefusal);
+    // Nothing changed behind the settings' back.
+    marker = (await offlineMarker())!;
+    assert.equal(marker.budget, GB);
+    assert.deepEqual(marker.keep, [{ kind: "space", id: space }]);
+  } finally {
+    g.window = saved.window;
+    g.fetch = saved.fetch;
+  }
+});
+
+test("the copy holds the running build only when it is complete and of that build", () => {
+  assert.equal(appCopyHolds({ build: "B2", complete: true }, "B2"), true);
+  // The reporter's case: the copy is of an older release.
+  assert.equal(appCopyHolds({ build: "B1", complete: true }, "B2"), false);
+  assert.equal(appCopyHolds({ build: "B2", complete: false }, "B2"), false);
+  assert.equal(appCopyHolds(undefined, "B2"), false);
+  assert.equal(appCopyHolds({ build: "B2", complete: true }, null), false);
+  assert.equal(isStorageRefusal(Object.assign(new Error("full"), { name: "QuotaExceededError" })), true);
+  assert.equal(isStorageRefusal(new TypeError("Failed to fetch")), false);
 });
