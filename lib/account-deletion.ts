@@ -98,6 +98,7 @@ const PERSONAL = [
   // Directory links: SCIM provisioning and LDAP sign-in.
   "scim_users",
   "scim_group_members",
+  "directory_group_members",
   "ldap_accounts",
   // SSO identities (#101): a shell left behind never signs in again.
   "user_identities",

@@ -46,6 +46,7 @@ import { Select } from "../../select";
 import { EmptyState, NumberField, SaveState, StatusBadge, useSaveState, type Tone } from "../../settings-ui";
 import { AiUserSwitch } from "../../ai-settings";
 import { AiRulePanel } from "./ai-rule";
+import { PersonDirectoryGroups } from "./directory-groups";
 import { groupLabel } from "./group-picker";
 import { useAdminData, type AdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
@@ -1332,6 +1333,7 @@ function UserDrawer({
         </section>
       )}
       {(ssoGroups || identities.length > 0) && <SsoGroups report={ssoGroups} now={now} />}
+      <PersonDirectoryGroups user={u} />
       {data.aiPolicy?.enabled && <AiRulePanel scope="user" target={u.id} name={u.name} className="ux-block" />}
       <form
         className="ux-block ux-rows"

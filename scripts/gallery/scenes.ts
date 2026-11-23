@@ -307,6 +307,21 @@ const pages: Scene[] = [
       await waitDialog(page, "New book");
     },
   },
+  // Directory groups by hand (#451): the members dialog of a directory
+  // group under Limits per group.
+  {
+    id: "admin-directory-members",
+    group: "Admin",
+    title: "Directory group members",
+    covers: ["components/settings/admin/directory-groups.tsx"],
+    steps: async (page, ctx) => {
+      const name = `Gallery Plus ${ctx.variant.id}`;
+      await ctx.command({ action: "admin.groupLimits", target: `dir:${name}`, limits: { storageMb: 25600 } });
+      await ctx.open("#admin/limits");
+      await button(page, `Members of Directory · ${name}`).click();
+      await waitDialog(page, `Members of “${name}”`);
+    },
+  },
   { id: "tags", group: "Pages", title: "Tags", path: "#tags" },
   { id: "settings-home", group: "Pages", title: "Settings landing page", path: "#settings" },
   { id: "admin-home", group: "Pages", title: "Administration landing page", path: "#admin" },

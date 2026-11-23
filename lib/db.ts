@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 122;
+export const SCHEMA_VERSION = 123;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1666,11 +1666,37 @@ function migrate(d: DatabaseSync) {
   // Schema 122 – a limit for going on after a used-up AI quota
   // (lib/ai/quota.ts): after_limits and the usage of the continuation.
   migrateAiAfterLimits(d);
+  // Schema 123 – directory group memberships made by hand (#451,
+  // lib/directory-groups.ts).
+  migrateDirectoryGroupMembers(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 123 – directory group memberships made by hand by an administrator
+// (#451, lib/directory-groups.ts, Administration → Benutzer and Grenzen pro
+// Gruppe):
+// - scim_group_members.added_by/added_at: who added this member of a SCIM
+//   group by hand and when (NULL: the SCIM client did). Such members are
+//   ordinary members of the SCIM group – SCIM clients see them in GET
+//   /Groups when the person is a SCIM user – and a SCIM DELETE /Users
+//   keeps them.
+// - directory_group_members: hand-made memberships of directory groups that
+//   come from LDAP or the SSO sign-in (no SCIM group of that name). Those
+//   sources are recomputed on every sync and sign-in, so the hand-made
+//   membership is kept apart and merged in by lib/person-groups.ts. The
+//   name is the exact group name (the key "dir:<name>").
+// An older version would ignore both (the hand-made members of LDAP/SSO
+// groups would lose their limits, SCIM ones would lose their marker),
+// hence the number.
+function migrateDirectoryGroupMembers(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(scim_group_members)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("added_by")) d.exec("ALTER TABLE scim_group_members ADD COLUMN added_by TEXT");
+  if (!columns.includes("added_at")) d.exec("ALTER TABLE scim_group_members ADD COLUMN added_at INTEGER");
+  d.exec(`CREATE TABLE IF NOT EXISTS directory_group_members(name TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,added_by TEXT,added_at INTEGER NOT NULL,PRIMARY KEY(name,user_id));
+    CREATE INDEX IF NOT EXISTS directory_group_members_user ON directory_group_members(user_id);`);
 }
 // Schema 122 – a limit for the continuation after a used-up AI quota
 // ("Danach: weiter mit <Modell>", after_model):

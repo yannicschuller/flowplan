@@ -28,6 +28,12 @@ const exact: Record<string, string> = {
   "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.": "Groups and roles have no “instance default” of their own – remove the model instead.",
   "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).": "Please set up an AI provider for the instance first (Administration → AI).",
   "Gruppe nicht gefunden.": "Group not found.",
+  // Directory groups by hand (lib/directory-groups.ts, #451).
+  "Gruppenname fehlt.": "Group name missing.",
+  "Der Gruppenname darf höchstens 200 Zeichen haben.": "The group name may have at most 200 characters.",
+  "Der Gruppenname enthält Steuerzeichen.": "The group name contains control characters.",
+  "Diese Person gibt es nicht.": "This person does not exist.",
+  "Diese Person ist nicht in der Gruppe.": "This person is not in the group.",
   "Ein Add-on braucht mindestens 1 MB.": "An add-on needs at least 1 MB.",
   "Die Datei enthält Fehler – nichts wurde geändert.": "The file has errors – nothing was changed.",
   "Bitte eine Adresse mit http:// oder https:// angeben.": "Please enter an address with http:// or https://.",
@@ -1620,6 +1626,8 @@ const exact: Record<string, string> = {
   "Kein Beispielbereich vorhanden.": "There is no sample space.",
 };
 const patterns: [RegExp, string][] = [
+  // Directory groups by hand (lib/directory-groups.ts, #451).
+  [/^Die Mitgliedschaft kommt aus (.+) – dort ändern\.$/, "The membership comes from $1 – change it there."],
   // The instance's AI quota for administrators (lib/ai/quota.ts instanceAlertText).
   [/^Das KI-Kontingent der Instanz für heute ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for today is used."],
   [/^Das KI-Kontingent der Instanz für heute ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for today is used up – AI through the instance's provider is blocked until $1."],

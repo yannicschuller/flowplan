@@ -13,6 +13,8 @@ import { AdminStatus, InstanceNumber, InstanceText, NumberInput } from "./parts"
 import { WorkflowLimits } from "./workflow-limits";
 import { GroupPicker, groupLabel } from "./group-picker";
 import { LimitsFile } from "./limits-file";
+import { DirectoryMembersButton } from "./directory-groups";
+import { directoryName, isDirectoryKey } from "@/lib/group-keys";
 import { Select } from "../../select";
 import type { GroupLimitRule, GroupLimits, StorageMode, UserLimits } from "@/lib/user-limits";
 import { MAX_UPLOAD_MB } from "@/lib/upload-limit";
@@ -224,6 +226,7 @@ function GroupLimits() {
                   <span>
                     {name(r.target)}
                     {members(r.target) !== undefined && <small className="limit-source">{t(`${members(r.target)} Mitglieder`, `${members(r.target)} members`)}</small>}
+                    {isDirectoryKey(r.target) && <DirectoryMembersButton name={directoryName(r.target)} label={name(r.target)} />}
                   </span>
                 ),
               },

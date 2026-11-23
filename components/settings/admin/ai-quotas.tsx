@@ -14,6 +14,8 @@ import { ResponsiveTable, SaveState, SettingGroup, SettingRow, Switch, useSaveSt
 import { NumberInput } from "./parts";
 import { AfterLimitField, AfterSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
 import { DirectoryGroupInput, GroupOptions, groupLabel } from "./group-picker";
+import { DirectoryMembersButton } from "./directory-groups";
+import { directoryName, isDirectoryKey } from "@/lib/group-keys";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { AdminQuotaView } from "@/lib/ai/quota";
 import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaRule } from "@/lib/ai/quota-shared";
@@ -119,7 +121,20 @@ export function AiQuotasSection() {
             rowKey={(g) => g.id}
             empty={<p className="muted ai-quota-empty">{t("Keine Nutzung durch Gruppenmitglieder.", "No usage by group members.")}</p>}
             columns={[
-              { key: "name", header: t("Gruppe", "Group"), primary: true, render: (g) => groupLabel(g, t) },
+              {
+                key: "name",
+                header: t("Gruppe", "Group"),
+                primary: true,
+                render: (g) =>
+                  g.directory ? (
+                    <span>
+                      {groupLabel(g, t)}
+                      <DirectoryMembersButton name={g.name} label={groupLabel(g, t)} />
+                    </span>
+                  ) : (
+                    groupLabel(g, t)
+                  ),
+              },
               { key: "members", header: t("Mitglieder", "Members"), align: "end", render: (g) => String(g.members) },
               { key: "used", header: t("Verbraucht", "Used||quota"), align: "end", render: (g) => amount(g.used) },
               { key: "tokens", header: t("Tokens", "Tokens"), align: "end", hideOnPhone: true, render: (g) => g.tokens.toLocaleString(LOCALE_TAG) },
@@ -308,7 +323,20 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
           rows={rows}
           rowKey={key}
           columns={[
-            { key: "name", header: t("Für", "For"), primary: true, render: (r) => name(r) },
+            {
+              key: "name",
+              header: t("Für", "For"),
+              primary: true,
+              render: (r) =>
+                r.scope === "group" && isDirectoryKey(r.target) ? (
+                  <span>
+                    {name(r)}
+                    <DirectoryMembersButton name={directoryName(r.target)} label={name(r)} />
+                  </span>
+                ) : (
+                  name(r)
+                ),
+            },
             ...QUOTA_PERIODS.map((p) => ({
               key: p,
               header: unit === "cost" ? t(`${PERIODS[p][0]} (${view.currency})`, `${PERIODS[p][1]} (${view.currency})`) : t(`${PERIODS[p][0]} (Tokens)`, `${PERIODS[p][1]} (tokens)`),

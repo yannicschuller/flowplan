@@ -1049,3 +1049,85 @@
     inset: -13px;
   }
 }
+/* Directory groups by hand (#451, components/settings/admin/directory-groups.tsx):
+   a person's groups with their sources, "Zu Gruppe hinzufügen", and the
+   members dialog of a directory group. */
+.dir-groups-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: var(--secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.dir-groups-head strong {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dir-group-list {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.dir-group-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.dir-group-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dir-group-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dir-group-add-label {
+  display: block;
+  margin: 4px 0;
+  font-weight: 600;
+}
+.dir-group-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.dir-group-add input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.dir-members-button {
+  display: flex;
+  width: fit-content;
+  margin-top: 4px;
+}
+.dir-members-note {
+  margin-top: 0;
+}
+.dir-members-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+@media (max-width: 600px) {
+  .dir-group-item {
+    flex-wrap: wrap;
+  }
+  .dir-group-item .button,
+  .dir-group-add :is(input, .button),
+  .dir-members-button {
+    min-height: 44px;
+  }
+}
