@@ -1,0 +1,173 @@
+{
+  "features": [
+    {
+      "de": "Administration: Konten mit E-Mail und Passwort selbst anlegen – die Person bekommt einen Link zum Passwort-Setzen.",
+      "en": "Administration: create accounts with e-mail and password – the person gets a link to set their password.",
+      "issues": [
+        433
+      ]
+    },
+    {
+      "de": "Grenzen pro Gruppe: Speicher, eigene Arbeitsbereiche und Upload-Größe pro Gruppe, auch für Gruppen aus SCIM, LDAP und SSO; nach dem KI-Kontingent optional weiter mit einem günstigeren Modell.",
+      "en": "Limits per group: storage, own workspaces and upload size per group, also for groups from SCIM, LDAP and SSO; after the AI quota optionally go on with a cheaper model."
+    },
+    {
+      "de": "Konten mit unbestätigter E-Mail-Adresse zur Löschung vormerken – mit Warn-Mail, Erinnerung und optionaler automatischer Regel.",
+      "en": "Mark accounts with an unconfirmed e-mail address for deletion – with a warning e-mail, a reminder and an optional automatic rule.",
+      "issues": [
+        436
+      ]
+    },
+    {
+      "de": "Flussdiagramme (Sankey) als Block und als Diagrammart in Datenbanken.",
+      "en": "Flow diagrams (Sankey) as a block and as a database chart type.",
+      "issues": [
+        427
+      ]
+    },
+    {
+      "de": "Auswahl-Eigenschaften: Optionen tippend suchen, anlegen und wieder entfernen.",
+      "en": "Select properties: search, create and remove options by typing.",
+      "issues": [
+        423,
+        426
+      ]
+    },
+    {
+      "de": "Schreibassistent: den Blocktyp einer Auswahl ändern, z. B. eine Liste in Aufgaben.",
+      "en": "Writing assistant: change a selection's block type, e.g. turn a list into tasks.",
+      "issues": [
+        431
+      ]
+    },
+    {
+      "de": "Russisch als vollständige Sprache im Sprachmenü.",
+      "en": "Russian as a full language in the language menu.",
+      "issues": [
+        422
+      ]
+    },
+    {
+      "de": "Eigene E-Mail-Adresse ändern.",
+      "en": "Change your own e-mail address.",
+      "issues": [
+        405
+      ]
+    },
+    {
+      "de": "Standardwerte pro Datenbank-Eigenschaft.",
+      "en": "Default values per database property.",
+      "issues": [
+        411
+      ]
+    },
+    {
+      "de": "Aufgaben eines Dokuments in eine Aufgaben-Datenbank verschieben.",
+      "en": "Move a document's tasks into a task database.",
+      "issues": [
+        420
+      ]
+    },
+    {
+      "de": "Formulare: QR-Code für den Link; Formulare mit Anmeldung führen zur Anmeldeseite und wieder zurück.",
+      "en": "Forms: a QR code for the link; forms that need a sign-in go to the sign-in page and come back.",
+      "issues": [
+        415,
+        416
+      ]
+    },
+    {
+      "de": "Mehrere Server-Prozesse hinter einem Port für mehr Last auf einem Rechner (Einstellung in der Doku).",
+      "en": "Several server processes behind one port for more load on one machine (setting in the docs).",
+      "issues": [
+        383
+      ]
+    },
+    {
+      "de": "Offline-Kopie: Speicherbudget pro Gerät, dauerhafter Speicher, „Offline behalten“ und Speicher pro Bereich.",
+      "en": "Offline copy: storage budget per device, persistent storage, \"Keep offline\" and storage per space.",
+      "issues": [
+        417
+      ]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Drucken in der iPhone/iPad- und Android-App über die App (ab App 1.1.3).",
+      "en": "Printing in the iPhone/iPad and Android app goes through the app (app 1.1.3 or later).",
+      "issues": [
+        424
+      ]
+    },
+    {
+      "de": "HTML-Vorschau: „Für diese Datei immer erlauben“ merkt sich Skripte pro Person.",
+      "en": "HTML preview: \"Always allow for this file\" remembers scripts per person.",
+      "issues": [
+        425
+      ]
+    },
+    {
+      "de": "Bibliothek: Buch oder Kapitel direkt in der Übersicht umbenennen.",
+      "en": "Library: rename a book or chapter in place on its overview.",
+      "issues": [
+        421
+      ]
+    },
+    {
+      "de": "Regeln: Platzhalter-Auswahl für „Aufgabe erstellen“.",
+      "en": "Rules: placeholder picker for \"Create task\".",
+      "issues": [
+        413
+      ]
+    },
+    {
+      "de": "Angemeldete sehen bei unbekannten Seiten eine eigene 404-Seite mit Weg zurück.",
+      "en": "Signed-in people get their own 404 page with a way back for unknown pages."
+    },
+    {
+      "de": "Texte mit eingesetzten Wörtern sind jetzt in allen Sprachen vollständig übersetzt; Sprachkataloge werden erst bei Bedarf geladen (weniger Speicher).",
+      "en": "Texts with inserted words are now fully translated in every language; language catalogues load on first use (less memory)."
+    },
+    {
+      "de": "Live-Verbindung sparsamer: Cursor und Whiteboard-Zeiger nur, wenn jemand anderes da ist.",
+      "en": "Leaner live connection: cursors and whiteboard pointers only while someone else is there.",
+      "issues": [
+        383
+      ]
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Offline angelegte Datensätze öffnen mit einem leeren, bearbeitbaren Dokument; offline angelegte Seiten öffnen, auch wenn die App-Kopie hinterherhinkt.",
+      "en": "Records made offline open with an empty, editable document; pages made offline open even while the app copy lags behind.",
+      "issues": [
+        370
+      ]
+    },
+    {
+      "de": "Dokument-Tabellen: Rahmen auf breiten Tabellen auch in Safari/WebKit.",
+      "en": "Document tables: borders on wide tables in Safari/WebKit too.",
+      "issues": [
+        419
+      ]
+    },
+    {
+      "de": "Formulare: lange Titel umbrechen auf schmalen Bildschirmen.",
+      "en": "Forms: long titles wrap on narrow screens.",
+      "issues": [
+        412
+      ]
+    },
+    {
+      "de": "iPad: Bildleiste und Markup-Werkzeuge reagieren auf Tippen statt des Textmenüs.",
+      "en": "iPad: the image bar and markup tools take the tap instead of the text menu."
+    },
+    {
+      "de": "Push-Test unterscheidet „Relay erreicht die Instanz nicht“ von Fehlern bei Apple/Google.",
+      "en": "The push test tells \"relay could not fetch this instance's keys\" apart from Apple/Google errors.",
+      "issues": [
+        414
+      ]
+    }
+  ]
+}
