@@ -100,7 +100,11 @@ const PAGES = [
   // viewer (#384) and public timeline load on demand. Measured: database/
   // home 976.0, workflow 1212.5, settings 992.0, settings section 1064.2,
   // administration 999.8, monitoring 1028.0, push 1008.5 KB.
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 910 },
+  // 2026-11-23, 0.11.3: the design batch (the date range menu as an option
+  // list, the group chip with one-tap choices, the kind of a new database
+  // as a select) and the limits notice in the shell. Measured: database
+  // 920.3, settings section 884.3 KB; both budgets are about 3 % above.
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 948 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
@@ -117,7 +121,7 @@ const PAGES = [
   // (components/home/home-editor.tsx).
   { path: "/#home", name: "home", signedIn: true, jsKb: 788, ready: ".home-grid" },
   { path: "/#settings", name: "settings", signedIn: true, jsKb: 801, ready: ".settings-tile" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 880, ready: ".settings-detail .setting-group" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 911, ready: ".settings-detail .setting-group" },
   { path: "/#admin", name: "administration", signedIn: true, jsKb: 809, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
   { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 837, ready: ".mon-health" },

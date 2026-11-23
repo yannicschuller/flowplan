@@ -10,6 +10,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+import { onPostgres } from "./helpers/backend";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-limits-file-"));
 process.env.APP_URL = "https://flowplan.example.test";
 delete process.env.FLOWPLAN_AI;
@@ -223,12 +224,20 @@ test("one transaction: a failing write leaves everything as it was", async () =>
   file.plans[0].storageMb = 30000;
   file.flowplan.defaults.storageMb = 700;
   // A trigger makes the AI rule's write fail after the limits were written.
-  await run("CREATE TRIGGER fail_quota BEFORE UPDATE ON ai_quota_rules BEGIN SELECT RAISE(ABORT, 'boom'); END");
+  if (onPostgres) {
+    await run("CREATE FUNCTION fail_quota_fn() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'boom'; END $f$");
+    await run("CREATE TRIGGER fail_quota BEFORE UPDATE OR INSERT ON ai_quota_rules FOR EACH ROW EXECUTE FUNCTION fail_quota_fn()");
+  } else {
+    await run("CREATE TRIGGER fail_quota BEFORE UPDATE ON ai_quota_rules BEGIN SELECT RAISE(ABORT, 'boom'); END");
+  }
   file.plans[0].aiActions = 2000;
   try {
     await assert.rejects(importFile(file, false));
   } finally {
-    await run("DROP TRIGGER fail_quota");
+    if (onPostgres) {
+      await run("DROP TRIGGER fail_quota ON ai_quota_rules");
+      await run("DROP FUNCTION fail_quota_fn()");
+    } else await run("DROP TRIGGER fail_quota");
   }
   assert.deepEqual(await snapshot(), before);
 });
