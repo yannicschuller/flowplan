@@ -65,6 +65,13 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
     await section.getByRole("button", { name: "Hinzufügen" }).click();
     const mode = section.getByRole("combobox", { name: `Verzeichnis · ${addon}: Art des Speichers` });
     await expect(mode).toBeVisible();
+    // A slow reload of the administration's data after each save: the
+    // storage entered right after the mode must not undo it (the table
+    // still shows the row from before the mode until the reload is in).
+    await admin.page.route("**/api/admin", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
     await mode.selectOption("add");
     const stored = () => JSON.parse((db.prepare("SELECT limits FROM group_limits WHERE target=?").get(`dir:${addon}`) as { limits: string } | undefined)?.limits || "null");
     await expect.poll(stored).toEqual({ storageMode: "add" });
@@ -73,6 +80,7 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
     await extra.fill("51200");
     await extra.press("Enter");
     await expect.poll(stored).toEqual({ storageMode: "add", storageMb: 51200 });
+    await admin.page.unrouteAll({ behavior: "wait" });
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-group-limits.png`, fullPage: true });
 
     // The member sees the sum and where it comes from: 2,000 MB + 50 GB.

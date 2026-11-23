@@ -1,8 +1,9 @@
 "use client";
 // Administration → Grenzen & Aufbewahrung: the defaults for storage, own
 // workspaces and uploads, the limits per group, their export / import as
-// one file (limits-file.tsx), and how long page versions are kept. Single workspaces and people can differ (Arbeitsbereiche,
-// Benutzer).
+// one file (limits-file.tsx), and how long page versions are kept. Single
+// workspaces and people can differ (Arbeitsbereiche, Benutzer).
+import { useRef } from "react";
 import { Trash } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
 import { ResponsiveTable, SaveState, SettingGroup, useSaveState } from "../../settings-ui";
@@ -145,13 +146,36 @@ function GroupLimits() {
   const t = useT();
   const { data, mutate, load } = useAdminData();
   const [status, run] = useSaveState();
+  // Each save sends a group's whole row, built from what is shown. Until
+  // the reload after a save arrives, the table still shows the row from
+  // before it: a second change made in that time (the storage right after
+  // "Zusätzlich (Add-on)") would be built on the old row and undo the
+  // first. So the rows as last saved are kept here until their reload is
+  // in, and the saves go out one after another, in the order made.
+  const pending = useRef(new Map<string, { limits: GroupLimits | null; n: number }>());
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const view = data?.groupLimits;
   if (!view) return null;
-  const save = (target: string, limits: GroupLimits | null) =>
-    void run(async () => {
-      await mutate({ action: "admin.groupLimits", target, limits });
-      await load();
-    });
+  const save = (target: string, limits: GroupLimits | null) => {
+    const n = (pending.current.get(target)?.n ?? 0) + 1;
+    pending.current.set(target, { limits, n });
+    queue.current = queue.current.then(() =>
+      run(async () => {
+        try {
+          await mutate({ action: "admin.groupLimits", target, limits });
+          await load();
+        } finally {
+          // The reload shows this save; a later one of the row stays pending.
+          if (pending.current.get(target)?.n === n) pending.current.delete(target);
+        }
+      }),
+    );
+  };
+  // A row as the next change should start from.
+  const latest = (rule: GroupLimitRule): GroupLimits => {
+    const p = pending.current.get(rule.target);
+    return p ? (p.limits ?? {}) : rule.limits;
+  };
   const name = (target: string) => {
     const g = view.groups.find((x) => x.id === target);
     return g ? groupLabel(g, t) : t("Gelöschte Gruppe", "Deleted group");
@@ -161,13 +185,13 @@ function GroupLimits() {
   const unlimited = t("unbegrenzt", "unlimited");
   const s = data.settings;
   const set = (rule: GroupLimitRule, field: keyof UserLimits, value: number | null) => {
-    const next: GroupLimits = { ...rule.limits, [field]: value };
+    const next: GroupLimits = { ...latest(rule), [field]: value };
     if (value === null) delete next[field];
     save(rule.target, next);
   };
   // "Zusätzlich (Add-on)": the storage is added on top instead of competing.
   const setMode = (rule: GroupLimitRule, mode: StorageMode) => {
-    const next: GroupLimits = { ...rule.limits, storageMode: mode };
+    const next: GroupLimits = { ...latest(rule), storageMode: mode };
     if (mode === "limit") delete next.storageMode;
     // 0 (unlimited) means nothing as an add-on.
     else if (next.storageMb === 0) delete next.storageMb;
