@@ -886,6 +886,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         keywords: { de: "funktionen module ausblenden standard neue konten alle konten zuweisen lernkarten whiteboards ki", en: "features modules hide default new accounts apply all accounts flashcards whiteboards ai" },
         anchor: "modules-default",
       },
+      {
+        title: { de: "Einstellungen exportieren / importieren", en: "Export / import settings" },
+        keywords: {
+          de: "einstellungen datei json export import sichern übertragen andere instanz versionskontrolle wiederherstellen ki grenzen konfiguration",
+          en: "settings file json export import back up transfer move other instance version control restore ai limits configuration",
+        },
+        anchor: "settings-file",
+      },
     ],
   },
 ];

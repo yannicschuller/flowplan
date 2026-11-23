@@ -138,6 +138,9 @@ const settingsSchema = z.object({
   keep: z.number().int().min(1).max(365).default(14),
   uploads: z.boolean().default(true),
 });
+// The options without the secrets: what the instance settings file carries
+// (lib/settings-file.ts) – the secrets only as whether one is set.
+export const sftpOptionsSchema = settingsSchema.omit({ password: true, privateKey: true, passphrase: true });
 export async function saveSftpBackup(actor: string, input: unknown) {
   const parsed = settingsSchema.safeParse(input);
   if (!parsed.success) throw new HttpError(400, "Bitte Server, Benutzer und Anmeldung des SFTP-Ziels angeben.");

@@ -116,7 +116,7 @@ export function periodBounds(period: QuotaPeriod, ms: number, zone: string, week
 
 const limitValue = z.number().min(0).max(1e12).nullable().optional();
 export const limitsSchema = z.object(Object.fromEntries(QUOTA_PERIODS.map((p) => [p, limitValue])) as Record<QuotaPeriod, typeof limitValue>).strict();
-const settingsSchema = z.object({
+export const quotaSettingsSchema = z.object({
   unit: z.enum(["tokens", "cost"]),
   timeZone: z.string().trim().max(100).refine((zone) => validZone(zone), "Unbekannte Zeitzone."),
   weekStart: z.enum(["monday", "sunday"]),
@@ -130,7 +130,7 @@ export async function quotaSettings(): Promise<QuotaSettings> {
   try {
     const row = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", SETTING_KEY);
     if (!row) return defaults;
-    const parsed = settingsSchema.partial().safeParse(JSON.parse(row.value));
+    const parsed = quotaSettingsSchema.partial().safeParse(JSON.parse(row.value));
     return parsed.success ? { ...defaults, ...Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined)) } : defaults;
   } catch {
     return defaults;
@@ -592,7 +592,7 @@ export async function checkedAfter(model: string | null | undefined): Promise<Qu
   return { model, kind: provider.kind };
 }
 const saveInput = z.object({
-  settings: settingsSchema.partial().optional(),
+  settings: quotaSettingsSchema.partial().optional(),
   rules: z
     .array(z.object({ scope: z.enum(QUOTA_SCOPES), target: z.string().trim().max(210).default(""), exempt: z.boolean().default(false), limits: limitsSchema.default({}), after: afterSchema, afterLimits: limitsSchema.nullable().optional() }))
     .max(5000)

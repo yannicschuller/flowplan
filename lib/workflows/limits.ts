@@ -3,7 +3,7 @@
 // administrator (instance setting `workflowLimits`) take precedence; a
 // workflow may set lower values for itself, never higher ones.
 import { z } from "zod";
-import { all, writeGeneration } from "../db";
+import { all, audit, run, writeGeneration } from "../db";
 
 const LIMITS = {
   runsPerMinute: { env: "FLOWPLAN_WORKFLOW_RUNS_PER_MINUTE", fallback: 60, min: 1, max: 1000 },
@@ -72,6 +72,18 @@ export async function storedWorkflowLimits(): Promise<StoredWorkflowLimits> {
     return {};
   }
 }
+// The stored limits and switches (null follows the environment); fields
+// not given keep their value. Also the instance settings file's
+// "instance.workflowLimits" (lib/settings-file.ts).
+export async function saveWorkflowLimits(actorId: string, raw: unknown) {
+  const next = workflowLimitsSchema.parse(raw);
+  const merged = { ...(await storedWorkflowLimits()), ...next };
+  await run("INSERT INTO instance_settings(key,value) VALUES('workflowLimits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(merged));
+  await audit(actorId, "admin.workflowLimits", "", JSON.stringify(next).slice(0, 500));
+  // Decided by an administrator: the update's notice has done its job.
+  if ("externalMailDynamic" in next) await run("DELETE FROM instance_settings WHERE key='workflowMailMigration'");
+}
+
 // The limits in force: stored values over the environment's. `cached`: the
 // queue's hot path (lib/workflows/queue.ts) takes the value of the last
 // CACHE_MS as long as nothing was written through this process (a write

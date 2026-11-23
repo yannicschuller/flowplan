@@ -19,7 +19,7 @@ import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
 import { adminSetSettingsLevel, setUserSettingsLevel, userSettingsLevel } from "./user-settings-level";
 import { adminResetFeatureModules, applyModulesToAll, setUserFeatureModules, userFeatureModules } from "./user-feature-modules";
-import { addedOffViews, kindModule, moduleOff, moduleOffError, modulesOff, modulesOffChange, pageModule, refuseOffCommand, requireModule } from "./instance-modules";
+import { addedOffViews, kindModule, moduleOff, moduleOffError, modulesOff, pageModule, refuseOffCommand, requireModule } from "./instance-modules";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
@@ -49,6 +49,8 @@ import { confirmAddress } from "./local-auth";
 import { cancelUnconfirmed, markUnconfirmed, pendingDeletionOf, resendKeepLink, unconfirmedPlan } from "./unconfirmed-deletion";
 import { assertMayCreateWorkspace, limitGroupNames, ownedWorkspaces, setGroupLimits, setUserLimits, userBytes, userLimitDetails, userStorageCheckpoint } from "./user-limits";
 import { exportLimitsFile, importLimitsFile } from "./limits-file";
+import { exportSettingsFile, importSettingsFile } from "./settings-file";
+import { instanceSettingsChanged } from "./instance-settings-events";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
@@ -1010,31 +1012,10 @@ async function runCommand(
       case "admin.settings": {
         requireAdmin(user);
         const previous = await instanceSettings();
-        const before = previous.emergencyAccess;
-        const deadmanBefore = previous.deadManSwitch;
         // Starter content (#381): only a space this administrator may read,
         // recorded as chosen by them.
         result = await saveInstanceSettings(await starterSettingsInput(user, b.settings));
-        const saved = result as Awaited<ReturnType<typeof instanceSettings>>;
-        // Who may get in, and how: sign-up for anyone, demo accounts,
-        // invitation links (#320) and the two-factor requirement – a
-        // security event each; opening them alerts the administrators
-        // (lib/security-detect.ts, #321).
-        for (const key of ["allowSignup", "publicDemo", "inviteLinks"] as const)
-          if (previous[key] !== saved[key]) securityEvent("admin.settings", { actorId: user.id, detail: `${key} ${saved[key] ? "on" : "off"}` });
-        if (previous.twoFactor !== saved.twoFactor) securityEvent("admin.settings", { actorId: user.id, detail: `twoFactor ${previous.twoFactor}→${saved.twoFactor}` });
-        // Switching the emergency access (#281) suspends or resumes every
-        // granted access: a security event of its own.
-        const after = saved.emergencyAccess;
-        if (before !== after) await audit(user.id, "admin.emergency", "instance", after ? "on" : "off");
-        // The inactivity message (#282) likewise.
-        const deadman = saved.deadManSwitch;
-        if (deadmanBefore !== deadman) await audit(user.id, "admin.deadman", "instance", deadman ? "on" : "off");
-        // Starter content for new accounts (#381): which space, if any.
-        if (previous.starterSpace !== saved.starterSpace) await audit(user.id, "admin.starter", saved.starterSpace || "instance", saved.starterSpace ? "on" : "off");
-        // Features switched off for the instance (#386): which went off, which on.
-        const offChange = modulesOffChange(previous.modulesOff, saved.modulesOff);
-        if (offChange) await audit(user.id, "admin.modulesOff", "instance", offChange);
+        await instanceSettingsChanged(user, previous, result as Awaited<ReturnType<typeof instanceSettings>>);
         break;
       }
       // AI (lib/ai): administration, own settings, what the AI may read.
@@ -1267,6 +1248,14 @@ async function runCommand(
         break;
       case "admin.limitsImport":
         result = await importLimitsFile(user, { file: b.file, dryRun: b.dryRun });
+        break;
+      // The instance settings file (#447, lib/settings-file.ts): instance,
+      // AI and limits in one file, without secrets.
+      case "admin.settingsExport":
+        result = await exportSettingsFile(user);
+        break;
+      case "admin.settingsImport":
+        result = await importSettingsFile(user, { file: b.file, dryRun: b.dryRun });
         break;
       // "Neuigkeiten nach Updates" of a person (#223): a level or null for
       // the instance's default (lib/user-update-notes.ts).
@@ -4302,6 +4291,8 @@ async function runCommand(
         "admin.unconfirmedCancel",
         // Written per change (lib/limits-file.ts); a dry run changes nothing.
         "admin.limitsImport",
+        // Written once per import (lib/settings-file.ts); a dry run changes nothing.
+        "admin.settingsImport",
         "document.sync",
         "document.markdown",
         "row.document.sync",
