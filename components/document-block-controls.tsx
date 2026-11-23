@@ -955,7 +955,7 @@ export function DocumentBlockControls({
       // Esc: the blocks stay chosen and the keys act on them (#264). Not in
       // the sheet of a phone, where a tap beside it closes it the same way.
       if (reason === "escape" && !phone) {
-        requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+        requestAnimationFrame(() => selectingRef.current && focusTarget.current?.focus({ preventScroll: true }));
         return;
       }
       if (chose) {
@@ -1028,8 +1028,11 @@ export function DocumentBlockControls({
     // Nor its highlight (#264): only the tint shows what is chosen.
     const dom = window.getSelection();
     if (dom?.rangeCount && dom.anchorNode && editor.view.dom.contains(dom.anchorNode)) dom.removeAllRanges();
-    // (A menu opened with the choice takes the focus itself.)
-    if (focus) requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+    // (A menu opened with the choice takes the focus itself.) Only while
+    // the blocks are still chosen: Esc and Enter in quick succession end the
+    // choice before the next frame, and the caret Enter put into the text
+    // keeps the focus – the keys typed next must not land here.
+    if (focus) requestAnimationFrame(() => selectingRef.current && focusTarget.current?.focus({ preventScroll: true }));
   }
   function endSelection(caret: boolean) {
     const first = selected.current.length ? Math.min(...selected.current) : null;
@@ -1040,6 +1043,10 @@ export function DocumentBlockControls({
     select([]);
     if (caret && editor && !editor.isDestroyed && first !== null && first <= editor.state.doc.content.size) {
       try {
+        // The text takes the focus now, not a frame later (TipTap's focus
+        // command waits for one): keys typed right after Enter belong there,
+        // not to the focus target the choice had.
+        (editor.view.dom as HTMLElement).focus({ preventScroll: true });
         editor.chain().focus().setTextSelection(Math.min(first + 1, editor.state.doc.content.size)).scrollIntoView().run();
       } catch {}
     }
@@ -1252,7 +1259,7 @@ export function DocumentBlockControls({
         menuChose.current = false;
         setMenu(null);
         step(key === "ArrowUp" ? -1 : 1, true);
-        requestAnimationFrame(() => focusTarget.current?.focus({ preventScroll: true }));
+        requestAnimationFrame(() => selectingRef.current && focusTarget.current?.focus({ preventScroll: true }));
       }
       // Esc before the focus reached the menu: the menu closes (not the
       // record dialog around it, which hears Esc before the menu).
@@ -1360,6 +1367,18 @@ export function DocumentBlockControls({
       if (target?.closest(".document-block-handle, .document-block-add, [role='menu'], .block-menu-sheet, .block-select-band")) return;
       // Inside the text: the caret goes there (the editor does that).
       endSelection(false);
+      // The editor's own selection is still the one from before the choice
+      // (kept while blocks were chosen, e.g. across the items Tab nested). It
+      // moves to the click now: read before the editor has taken the click –
+      // ⌘A right after it, or the editor putting its selection back into the
+      // page as it gains the focus – it chose the old blocks again.
+      if (event.button === 0 && !event.shiftKey && target && editor.view.dom.contains(target)) {
+        const at = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (at)
+          try {
+            editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(at.pos))));
+          } catch {}
+      }
     };
     const blur = () => {};
     window.addEventListener("keydown", keydown, true);

@@ -160,6 +160,14 @@ test("a rectangle from the margin chooses blocks; keys act on all of them", asyn
   await p("Echo").click();
   await expect(page.locator(".document-block-marked")).toHaveCount(0);
   await expect(editor).toBeFocused();
+  // Esc and Enter in quick succession: Enter ends the choice with the caret
+  // at the block's start, and what is typed right after lands there – the
+  // focus the choice took a frame later does not take the keys away.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Vor ");
+  await expect(p("Echo")).toHaveText("Vor Echo");
+  await expect(editor).toBeFocused();
   expect(errors).toEqual([]);
 });
 
