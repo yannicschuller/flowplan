@@ -907,7 +907,6 @@ test("rich reply drafts survive reload and revoked mention access keeps the unse
     await reply.press("ControlOrMeta+a");
     await reply.press("ControlOrMeta+i");
     await reply.press("ArrowRight");
-    // The reply's composer (the record's own comment form has one too, #450).
     const composer = page.locator(".inline-comment-panel .comment-composer");
     await composer
       .getByRole("button", { name: "Person oder Seite erwähnen", exact: true })

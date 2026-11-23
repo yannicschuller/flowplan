@@ -158,6 +158,7 @@ import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
+import { PageCommentField } from "./page-comment-field";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import * as PageMenu from "./page-menu";
@@ -399,8 +400,6 @@ const DatabaseView = dynamic(() => loadView(loadDatabaseView), { ssr: false, loa
 const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
 // The page's QR code (#448): loaded when opened.
 const ItemQrDialog = dynamic(() => loadView(() => import("./item-qr")), { ssr: false });
-// The page comments' form with its editor (#450): with the comments panel.
-const PageCommentForm = dynamic(() => loadView(() => import("./page-comment-form")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // A space as a library (#329): loaded when a library opens.
 const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
@@ -6357,7 +6356,7 @@ export default function WorkspaceApp({
                       time={(value) => relativeTime(value, clock, locale)}
                     />
                     {/* Formatted, with attachments and page mentions (#450). */}
-                    <PageCommentForm pageId={data.page.id} act={act} />
+                    <PageCommentField pageId={data.page.id} act={act} placeholder={t("Schreibe einen Kommentar …", "Write a comment …")} />
                   </aside>
                 )}
               </div>

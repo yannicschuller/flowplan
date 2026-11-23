@@ -42,8 +42,10 @@ test("a page comment with an image, a file, a page mention and a link", async ({
   const { command, target, p } = await setup(page, title);
   await page.goto(`/#page=${p.id}`);
   const panel = await openComments(page);
-  const field = panel.getByRole("textbox", { name: "Kommentar", exact: true });
-  await expect(field).toBeVisible({ timeout: LOAD });
+  // The field opens the comment's editor when used.
+  await panel.getByPlaceholder("Schreibe einen Kommentar …").click();
+  const field = panel.locator(".comment-input");
+  await expect(field).toBeFocused({ timeout: LOAD });
   // Two files at once, by the paperclip's file field.
   await panel.locator('input[type="file"]').setInputFiles([
     { name: "foto.png", mimeType: "image/png", buffer: PNG },
@@ -52,7 +54,6 @@ test("a page comment with an image, a file, a page mention and a link", async ({
   const draftFiles = panel.locator(".comment-composer .comment-files");
   await expect(draftFiles.getByRole("button", { name: "Bild öffnen: foto.png" })).toBeVisible({ timeout: LOAD });
   await expect(draftFiles.getByText("notizen.txt")).toBeVisible();
-  await field.click();
   await page.keyboard.type("Siehe ");
   // "@" offers pages too.
   await page.keyboard.type("@Zielseite");

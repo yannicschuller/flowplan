@@ -134,6 +134,7 @@ export function CommentComposer({
   autoFocus = false,
   disabled = false,
   attachments = true,
+  initialFiles,
 }: {
   body: string;
   content?: CommentNode | null;
@@ -145,6 +146,8 @@ export function CommentComposer({
   disabled?: boolean;
   // Files can be attached (#450); off where uploads are not possible.
   attachments?: boolean;
+  // Files to attach right away (dropped on the field before it opened).
+  initialFiles?: File[];
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -384,6 +387,12 @@ export function CommentComposer({
       }
     }
   };
+  const started = useRef(false);
+  useEffect(() => {
+    if (!editor || started.current || !initialFiles?.length || !attachments) return;
+    started.current = true;
+    void upload.current(initialFiles);
+  }, [editor, initialFiles, attachments]);
   const removeFile = (index: number) => {
     if (!editor) return;
     emit(normalizeCommentContent(editor.getJSON()), { files: live.current.files.filter((_, i) => i !== index) });

@@ -233,6 +233,7 @@ import {
 import { IconImagePicker } from "./icon-image-picker";
 import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
+import { PageCommentField } from "./page-comment-field";
 import { CommentBody } from "./comment-body";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape, ViewSkeleton } from "./skeleton";
@@ -241,8 +242,6 @@ import { colorLabel } from "./color-label";
 import { OptionColorList } from "./option-color-list";
 import { FieldTypeIcon } from "./field-type-icon";
 const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
-// A record comment's form with its editor (#450): with the open record.
-const PageCommentForm = dynamic(() => loadView(() => import("./page-comment-form")), { ssr: false });
 // The views besides table, board, gallery and list load when a database
 // shows one; their placeholder has the view's shape.
 const DatabaseSprints = dynamic(() => loadView(() => import("./database-sprints").then((m) => ({ default: m.DatabaseSprints }))), {
@@ -6639,8 +6638,9 @@ export default function DatabaseView({
                       </div>
                     ))}
                   {/* Formatted, with attachments and page mentions (#450). */}
-                  <PageCommentForm
+                  <PageCommentField
                     key={`comment-${selected.id}`}
+                    placeholder={t("Kommentar schreiben …", "Write a comment …")}
                     pageId={page.id}
                     rowId={selected.id}
                     act={act}

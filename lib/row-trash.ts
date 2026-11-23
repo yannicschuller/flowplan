@@ -231,7 +231,7 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
       String(c.body),
       Number(c.resolved) || 0,
       String(c.created_at || ""),
-      // Formatted comments (#450); deleted before schema 123: none.
+      // Formatted comments (#450); deleted before schema 125: none.
       typeof c.rich_body === "string" ? c.rich_body : null,
     );
   for (const c of payload.reactions || [])

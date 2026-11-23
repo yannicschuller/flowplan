@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 123;
+export const SCHEMA_VERSION = 125;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1666,7 +1666,7 @@ function migrate(d: DatabaseSync) {
   // Schema 122 – a limit for going on after a used-up AI quota
   // (lib/ai/quota.ts): after_limits and the usage of the continuation.
   migrateAiAfterLimits(d);
-  // Schema 123 – formatted page and record comments with attachments,
+  // Schema 125 – formatted page and record comments with attachments,
   // page mentions and link previews (#450, lib/comment-extras.ts).
   migrateCommentRichBody(d);
   // A database from a newer version keeps its number.
@@ -1686,7 +1686,7 @@ function migrate(d: DatabaseSync) {
 //   instance ceiling). Kept 400 days like ai_quota_usage. An older version
 //   would neither stop at the limit nor count the continuation, hence the
 //   number.
-// Schema 123 – page and record comments like text comments (#450):
+// Schema 125 – page and record comments like text comments (#450):
 // comments.rich_body holds the formatted comment (lib/comment-content.ts)
 // with its attachments, page mentions and link previews, as
 // inline_messages.rich_body does; `body` stays its plain text (search,

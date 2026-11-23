@@ -2616,7 +2616,7 @@ async function runCommand(
                 c.body,
                 c.resolved,
                 c.created_at,
-                // Formatted comments (#450); versions before schema 123 have none.
+                // Formatted comments (#450); versions before schema 125 have none.
                 typeof c.rich_body === "string" ? c.rich_body : null,
               );
           await restoreRelationPairs(user, p.id, data.relationPairs);

@@ -1,8 +1,9 @@
 "use client";
 // The form for a new page or record comment (#450): the same composer as
 // text comments – formatting, "@" for people and pages, attachments and
-// link previews – instead of the plain text field. Loaded with the comments
-// panel or the record, not with the page (it brings the editor).
+// link previews – instead of the plain text field. Loaded once the field
+// (components/page-comment-field.tsx) is used, not with the page or the
+// record (it brings the editor).
 //
 // The comment shows at once and the field empties; a refusal brings the
 // draft back. A double submit of the same draft posts it once.
@@ -18,15 +19,20 @@ export default function PageCommentForm({
   act,
   label,
   submitLabel,
+  initialText = "",
+  initialFiles,
 }: {
   pageId: string;
   rowId?: string;
   act: (body: Record<string, unknown>) => Promise<unknown>;
   label?: string;
   submitLabel?: string;
+  // What was typed, dropped or pasted into the field before.
+  initialText?: string;
+  initialFiles?: File[];
 }) {
   const t = useT();
-  const [draft, setDraft] = useState<{ body: string; content: CommentNode | null }>({ body: "", content: null });
+  const [draft, setDraft] = useState<{ body: string; content: CommentNode | null }>({ body: initialText, content: null });
   const ready = commentReady(draft.body, draft.content);
   return (
     <form
@@ -55,6 +61,8 @@ export default function PageCommentForm({
         body={draft.body}
         content={draft.content}
         onChange={(body, content) => setDraft({ body, content })}
+        autoFocus
+        initialFiles={initialFiles}
       />
       <button className="button primary compact" disabled={!ready}>
         {submitLabel || t("Kommentieren", "Comment")}

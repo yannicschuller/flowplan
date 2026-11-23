@@ -239,3 +239,22 @@
     right: -12px;
   }
 }
+/* The field until it is used (components/page-comment-field.tsx). */
+.page-comment-field {
+  margin-top: 12px;
+}
+.page-comment-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  resize: none;
+}
+.comments-panel .page-comment-field {
+  margin-top: 20px;
+}
+.row-detail .settings-section form.page-comment-form {
+  display: block;
+}
+.page-comment-form > .button {
+  margin-top: 4px;
+}
