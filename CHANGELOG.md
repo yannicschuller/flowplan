@@ -2,6 +2,26 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.2 – 2026-11-23
+
+### New
+
+- Limits per group: a group's storage as an add-on – it is added to the storage from the plan or the default instead of replacing it (e.g. 25 GB + 50 GB = 75 GB).
+
+### Improved
+
+- "Your limits" and the account in Administration show what the storage is made of.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.11.2 ([4b13c22](https://github.com/yannicschuller/flowplan/commit/4b13c22fd25b971aad746bfec4f95e2ee21b3edd))
+- Help docs: storage as an add-on ([21f4245](https://github.com/yannicschuller/flowplan/commit/21f42455b30b7ad3ca9735ac783a41a9fe1658da))
+- Limits per group: storage as an add-on on top of the base ([c76ce9e](https://github.com/yannicschuller/flowplan/commit/c76ce9ee460655475778f108f8bd88b11d8661b3))
+- Release notes 0.11.1: the drawing area fixes (#440, #441) ([8375387](https://github.com/yannicschuller/flowplan/commit/8375387f8d7c67e95f63551ccb17c266b9e9c00a))
+
+</details>
+
 ## v0.11.1 – 2026-11-23
 
 ### New
