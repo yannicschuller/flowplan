@@ -138,6 +138,20 @@
   ],
   "fixes": [
     {
+      "de": "Zeichenfläche: Beim Zeichnen mit dem Stift wird die aufliegende Hand ignoriert und scrollt die Seite nicht mehr – auch in Notizbüchern und PDF-Anmerkungen.",
+      "en": "Drawing area: while drawing with a pen, the resting hand is ignored and no longer scrolls the page – also in notebooks and PDF annotations.",
+      "issues": [
+        441
+      ]
+    },
+    {
+      "de": "Zeichenfläche: Eine neu eingefügte Zeichenfläche erscheint ganz im Blick, und mit zwei Fingern lässt sich die Seite währenddessen scrollen.",
+      "en": "Drawing area: a newly inserted drawing area comes fully into view, and two fingers scroll the page meanwhile.",
+      "issues": [
+        440
+      ]
+    },
+    {
       "de": "Offline angelegte Datensätze öffnen mit einem leeren, bearbeitbaren Dokument; offline angelegte Seiten öffnen, auch wenn die App-Kopie hinterherhinkt.",
       "en": "Records made offline open with an empty, editable document; pages made offline open even while the app copy lags behind.",
       "issues": [

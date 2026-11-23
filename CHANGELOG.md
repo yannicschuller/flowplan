@@ -32,6 +32,8 @@ All releases of Flowplan, newest first. Written by the release workflow: the cur
 
 ### Bug fixes
 
+- Drawing area: while drawing with a pen, the resting hand is ignored and no longer scrolls the page – also in notebooks and PDF annotations ([#441](https://github.com/yannicschuller/flowplan/issues/441)).
+- Drawing area: a newly inserted drawing area comes fully into view, and two fingers scroll the page meanwhile ([#440](https://github.com/yannicschuller/flowplan/issues/440)).
 - Records made offline open with an empty, editable document; pages made offline open even while the app copy lags behind ([#370](https://github.com/yannicschuller/flowplan/issues/370)).
 - Document tables: borders on wide tables in Safari/WebKit too ([#419](https://github.com/yannicschuller/flowplan/issues/419)).
 - Forms: long titles wrap on narrow screens ([#412](https://github.com/yannicschuller/flowplan/issues/412)).
