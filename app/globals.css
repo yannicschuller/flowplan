@@ -706,8 +706,13 @@ kbd,
   -webkit-user-select: none;
   user-select: none;
 }
+/* No overflow: hidden here – the row's left edge is the emoji's left edge,
+   and Apple draws its emoji wider than their box: the row cut off their
+   sides (iPhone app). The title shortens itself instead. */
+.page-nav-title > .page-nav-label {
+  min-width: 0;
+}
 .page-nav-title {
-  overflow: hidden;
   justify-content: flex-start;
   padding: 4px 0;
   gap: 9px;
