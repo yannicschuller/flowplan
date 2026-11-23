@@ -12,6 +12,8 @@ import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-drawio-"));
 process.env.APP_URL = "https://flowplan.example.test";
 delete process.env.DRAWIO_URL;
+// No shipped draw.io unless a test makes one (vendor/drawio may exist here).
+process.env.FLOWPLAN_DRAWIO_DIR = join(process.env.FLOWPLAN_DATA_DIR, "no-drawio");
 const { drawioConfig, drawioEditorUrl, drawioDark, parseDrawioMessage, svgFromDataUrl, drawioSvgFile, drawioImageUrl, isDrawioXml, DEFAULT_DRAWIO_URL } = await import(
   "../lib/drawio"
 );

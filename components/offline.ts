@@ -49,6 +49,7 @@ import {
 import { desktopApp, inDesktopApp } from "@/lib/native-app";
 import { isPendingFile, isPendingPage } from "@/lib/offline-pending";
 import { queueKey } from "@/lib/offline-queue";
+import { isDrawioCache } from "@/lib/drawio-offline";
 
 export const PERIODIC_SYNC_TAG = "flowplan-offline";
 // Requests of a refresh carry this header: the service worker passes them
@@ -175,7 +176,8 @@ export async function disableOffline() {
   await (await copies.open(SETTINGS_CACHE)).delete(OFFLINE_MARKER);
   await copies.remove(DATA_CACHE);
   // The app's files are of no use without the copy: their room is freed.
-  for (const name of await copies.names()) if (isStaticCache(name)) await copies.remove(name);
+  // So are the shipped draw.io's (#454, lib/drawio-offline.ts).
+  for (const name of await copies.names()) if (isStaticCache(name) || isDrawioCache(name)) await copies.remove(name);
   await unregisterPeriodicSync().catch(() => undefined);
   await notifyWorker();
   window.dispatchEvent(new Event(OFFLINE_CHANGED));

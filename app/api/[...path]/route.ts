@@ -14,7 +14,8 @@
 // Route files of their own stay where Next.js needs them or where the core
 // is not involved: pages and metadata files, proxy.ts and instrumentation.ts,
 // and the routes outside /api (/.well-known/flowplan-push, /i18n, /llms.txt,
-// and the files served from packages: /libredwg, /occt, /pdfjs, /typst) –
+// and the files served from packages: /libredwg, /occt, /pdfjs, /typst, and
+// the shipped draw.io, /drawio) –
 // moving those here would need rewrites, which give each a second address
 // under /api (with the API's headers and proxy rules), for little gain: of
 // them only /.well-known/flowplan-push and /llms.txt load the core.

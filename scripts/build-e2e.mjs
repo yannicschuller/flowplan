@@ -6,7 +6,7 @@
 // (playwright.config.ts with TEST_SERVERS, scripts/e2e-server.mjs).
 // Usage: node scripts/build-e2e.mjs
 import { spawnSync } from "node:child_process";
-import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -44,4 +44,12 @@ for (const [from, to] of [
   rmSync(to, { recursive: true, force: true });
   cpSync(from, to, { recursive: true });
 }
+// The draw.io Flowplan ships (#454), where the image has it – if this
+// checkout fetched it (node scripts/drawio-fetch.mjs). Without it the
+// build's draw.io is the public embed.diagrams.net, and the spec of the
+// shipped copy (tests/browser/drawio-offline.spec.ts) is skipped.
+const drawio = join(standalone, "vendor", "drawio");
+rmSync(drawio, { recursive: true, force: true });
+if (existsSync(join(root, "vendor", "drawio", ".flowplan-drawio.json"))) cpSync(join(root, "vendor", "drawio"), drawio, { recursive: true });
+else console.log("No draw.io in vendor/drawio (node scripts/drawio-fetch.mjs): the build uses embed.diagrams.net.");
 console.log(`Browser specs' build in ${join(distDir, "standalone")}.`);

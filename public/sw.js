@@ -30,7 +30,34 @@ const offlineAssets = {
     return estimate.quota - (estimate.usage || 0) - STORAGE_RESERVE >= bytes;
   },
 };
-let offlineEnabled, staticCache;
+/* The shipped draw.io (#454): its files of /drawio/<version>/ in a cache of
+   that version, older versions removed once a newer one is stored. Mirrors
+   lib/drawio-offline.ts (tests/drawio-offline.test.ts compares them). */
+const DRAWIO_PREFIX = "flowplan-drawio-",
+  DRAWIO_OFFLINE_LIST = "flowplan-offline.json",
+  DRAWIO_FILE = /^\/drawio\/(\d{1,4}\.\d{1,4}\.\d{1,4})\/(.*)$/;
+const drawioOffline = {
+  drawioCacheName(version) {
+    return `${DRAWIO_PREFIX}${version}`;
+  },
+  isDrawioCache(name) {
+    return name.startsWith(DRAWIO_PREFIX);
+  },
+  staleDrawioCaches(names, version) {
+    return names.filter((name) => drawioOffline.isDrawioCache(name) && name !== drawioOffline.drawioCacheName(version));
+  },
+  drawioRequest(pathname) {
+    const match = DRAWIO_FILE.exec(pathname);
+    if (!match) return null;
+    const file = match[2];
+    return {
+      version: match[1],
+      key: pathname,
+      fresh: file === "" || file === "index.html" || file === "js/PreConfig.js" || file === DRAWIO_OFFLINE_LIST,
+    };
+  },
+};
+let offlineEnabled, staticCache, drawioCleaned;
 // The cache files loaded online go to: the build of the stored copy.
 async function currentStaticCache() {
   if (staticCache === undefined) {
@@ -58,6 +85,8 @@ function offlineKind(request, url) {
     return null;
   // Refreshes of the copy (components/offline.ts) store answers themselves.
   if (request.headers.get("x-flowplan-offline") === "1") return null;
+  // draw.io's page (the editor's frame, a navigation) and files.
+  if (drawioOffline.drawioRequest(url.pathname)) return "drawio";
   if (request.mode === "navigate") return url.pathname === "/" ? "data" : null;
   if (
     url.pathname.startsWith("/_next/static/") ||
@@ -128,6 +157,33 @@ async function networkFirst(request, cacheName, key, anyCache = false) {
     throw error;
   }
 }
+// draw.io's files (#454): those of one version never change – from the
+// cache first; its page and settings from the network first. Only
+// answers of the shipped copy itself (X-Flowplan-Drawio) are kept.
+async function drawioFile(request, url) {
+  const { version, key, fresh } = drawioOffline.drawioRequest(url.pathname);
+  const cacheName = drawioOffline.drawioCacheName(version);
+  if (!fresh) {
+    const cached = await caches.match(key, { cacheName });
+    if (cached) return cached;
+  }
+  let response;
+  try {
+    response = await fetch(request);
+  } catch (error) {
+    const cached = await caches.match(key, { cacheName });
+    if (cached) return cached;
+    throw error;
+  }
+  if (response.ok && response.type === "basic" && response.headers.get("X-Flowplan-Drawio") === version) {
+    await (await caches.open(cacheName)).put(key, response.clone());
+    if (drawioCleaned !== version) {
+      drawioCleaned = version;
+      for (const stale of drawioOffline.staleDrawioCaches(await caches.keys(), version)) await caches.delete(stale);
+    }
+  }
+  return response;
+}
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   const kind = offlineKind(event.request, url);
@@ -135,6 +191,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       if (!(await offlineReady())) return fetch(event.request);
+      if (kind === "drawio") return drawioFile(event.request, url);
       return networkFirst(
         event.request,
         kind === "static" ? await currentStaticCache() : DATA_CACHE,

@@ -5,11 +5,22 @@
 // (https://www.drawio.com/doc/faq/embed-mode); reading only shows the
 // stored picture, draw.io is never loaded for it.
 //
-// DRAWIO_URL names the draw.io to use, e.g. an own jgraph/drawio container;
-// without it the public https://embed.diagrams.net. Shared by server and
-// browser, without dependencies (the proxy reads it for frame-src).
+// Flowplan ships draw.io (#454): the web app of a pinned jgraph/drawio
+// release, served from Flowplan's own origin under /drawio/<version>/
+// (app/drawio/[...path]/route.ts, lib/drawio-bundle.ts), works without any
+// external host and offline (public/sw.js). DRAWIO_URL names another
+// draw.io instead, e.g. an own jgraph/drawio container or
+// https://embed.diagrams.net; without the shipped copy (a development
+// checkout without scripts/drawio-fetch.mjs) the public
+// https://embed.diagrams.net. Shared by server and browser, without
+// dependencies (the proxy reads it for frame-src).
 
 export const DEFAULT_DRAWIO_URL = "https://embed.diagrams.net";
+// Where the shipped copy is served; the version keeps the browser's and the
+// service worker's copies of different releases apart.
+export const DRAWIO_BUNDLE_PATH = "/drawio/";
+export const isDrawioVersion = (value: unknown): value is string => typeof value === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value);
+export const bundledDrawioUrl = (version: string) => `${DRAWIO_BUNDLE_PATH}${version}/`;
 // Hosts of the public service: the editor tells that the diagram is sent
 // there while editing.
 const PUBLIC_HOSTS = /(^|\.)(diagrams\.net|draw\.io|drawio\.com)$/i;
@@ -27,19 +38,31 @@ export const DRAWIO_UIS = ["kennedy", "min", "sketch"] as const;
 export type DrawioUi = (typeof DRAWIO_UIS)[number];
 
 export type DrawioConfig = {
-  // Address of draw.io's page, without parameters.
+  // Address of draw.io's page, without parameters. The shipped copy's is a
+  // path (/drawio/<version>/): the browser completes it with its own
+  // origin (resolveDrawioConfig), the server may not know its public one.
   url: string;
+  // "" for the shipped copy until resolved: the page's own origin.
   origin: string;
   // The public diagrams.net service (not an own installation).
   external: boolean;
+  // The version of the copy Flowplan ships, when it is the one in use.
+  bundled?: string;
 };
 
 // The checked address: HTTPS, plain HTTP only on this machine (a local
 // container while developing); no user name or password. An address that
 // fails the check switches draw.io off instead of falling back to the
 // public service – the operator meant to keep diagrams in house.
-export function drawioConfig(raw: string | undefined = typeof process !== "undefined" ? process.env.DRAWIO_URL : undefined): DrawioConfig | null {
-  const value = (raw ?? "").trim() || DEFAULT_DRAWIO_URL;
+// bundled: the version of the shipped copy (lib/drawio-bundle.ts), null
+// when this server has none.
+export function drawioConfig(
+  raw: string | undefined = typeof process !== "undefined" ? process.env.DRAWIO_URL : undefined,
+  bundled: string | null = null,
+): DrawioConfig | null {
+  const set = (raw ?? "").trim();
+  if (!set && isDrawioVersion(bundled)) return { url: bundledDrawioUrl(bundled), origin: "", external: false, bundled };
+  const value = set || DEFAULT_DRAWIO_URL;
   const config = parseDrawioUrl(value);
   if (!config && !warned.has(value)) {
     warned.add(value);
@@ -61,6 +84,25 @@ function parseDrawioUrl(value: string): DrawioConfig | null {
   return { url: `${url.origin}${path}/`, origin: url.origin, external: PUBLIC_HOSTS.test(url.hostname) };
 }
 
+// The configuration in the browser: the shipped copy's path completed with
+// the page's origin (draw.io runs same-origin, see
+// app/drawio/[...path]/route.ts). Others stay as the server sent them.
+export function resolveDrawioConfig(config: DrawioConfig | null | undefined, origin: string): DrawioConfig | null {
+  if (!config) return null;
+  if (!config.bundled || !config.url.startsWith("/")) return config;
+  return { ...config, url: `${origin}${config.url}`, origin };
+}
+
+// The shipped copy talks to nobody but Flowplan (#454): stealth and
+// lockdown switch off draw.io's logging, version pings and every online
+// service (Google Drive, OneDrive, GitHub, GitLab, Trello, Microsoft 365,
+// export and icon servers, remote images – draw.io's Init.js and
+// EditorUi.isOffline); pwa=0 keeps draw.io's own service worker away
+// (offline=1 would install it – Flowplan's public/sw.js keeps the files
+// instead). The Content Security Policy of /drawio (lib/drawio-bundle.ts)
+// enforces the same in the browser.
+export const BUNDLED_DRAWIO_PARAMS = { stealth: "1", lockdown: "1", pwa: "0" } as const;
+
 // The editor's address: embed mode with JSON messages, a spinner while
 // loading, one "Save & exit" button, the chosen interface and theme and
 // Flowplan's language.
@@ -76,6 +118,7 @@ export function drawioEditorUrl(config: DrawioConfig, options: { ui?: string; da
     noSaveBtn: "1",
     noExitBtn: "0",
     libraries: "1",
+    ...(config.bundled ? BUNDLED_DRAWIO_PARAMS : {}),
   });
   if (options.lang && /^[a-z]{2}(-[a-z]{2})?$/i.test(options.lang)) params.set("lang", options.lang.toLowerCase());
   return `${config.url}?${params}`;
