@@ -10069,6 +10069,31 @@ tr.order-drop-after > td {
   bottom: 12px;
   background: var(--bg);
 }
+/* "Zeichnen" in the cover dialog (components/cover-draw.tsx): the canvas
+   on the drawing's proportions (lib/cover-drawing.ts, 1200 × 400), white
+   like the picture it becomes. */
+.cover-draw .ink-toolbar {
+  position: static;
+  margin-bottom: 10px;
+}
+.cover-draw-surface {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  touch-action: none;
+  line-height: 0;
+}
+.cover-draw-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+}
+.file-pick .cover-draw-start {
+  margin-left: auto;
+}
 .cover-preview {
   height: 180px;
   border-radius: 8px;

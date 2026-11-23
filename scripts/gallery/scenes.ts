@@ -539,6 +539,27 @@ const editorScenes: Scene[] = [
     },
   },
   {
+    // "Draw" in the cover dialog (design review): the canvas with a stroke.
+    id: "cover-draw",
+    group: "Documents & editor",
+    title: "Cover picker: draw a cover",
+    covers: ["components/cover-draw.tsx"],
+    steps: async (page, ctx) => {
+      await editorWith(page, ctx, RICH_HTML);
+      await pageAction(page, "Change cover");
+      await waitDialog(page, "Choose cover");
+      await button(page, "Draw").click();
+      await waitDialog(page, "Draw a cover");
+      const surface = page.locator(".cover-draw-surface");
+      await surface.waitFor();
+      const box = (await surface.boundingBox())!;
+      await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.7);
+      await page.mouse.down();
+      for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + box.width * (0.1 + i * 0.06), box.y + box.height * (0.7 - Math.sin(i / 3) * 0.4));
+      await page.mouse.up();
+    },
+  },
+  {
     id: "table-cell-menu",
     group: "Documents & editor",
     title: "Table: cell and handles",
