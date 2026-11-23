@@ -99,7 +99,7 @@ import { notePresence, pagePresence } from "./page-presence";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
 import { transcriptionEnabled } from "./transcribe";
-import { drawioConfig } from "./drawio";
+import { drawioServerConfig } from "./drawio-bundle";
 import {
   dayEntry,
   inPinJournal,
@@ -518,10 +518,10 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       allowWorkspaceCreation:
         (await instanceSettings()).allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
-      // The draw.io editor (DRAWIO_URL, lib/drawio.ts); null when the
+      // The draw.io editor (DRAWIO_URL or the shipped copy, lib/drawio.ts); null when the
       // address set is not usable, or while draw.io is switched off for the
       // instance (#386): diagrams stay as pictures, the editor does not open.
-      drawio: (await moduleOff("drawio")) ? null : drawioConfig(),
+      drawio: (await moduleOff("drawio")) ? null : drawioServerConfig(),
       mail: !!mailConfig(),
       legal: legalLinks(),
       // The marketplace's origin and this version (lib/marketplace-config.ts); null: off.

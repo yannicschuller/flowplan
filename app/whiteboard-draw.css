@@ -1,0 +1,199 @@
+/* Whiteboard drawing and colours (#455): the colour wheel besides the
+   palettes (components/whiteboard/board-color-picker.tsx), the pen and
+   highlighter options (pen-options.tsx), highlighter strokes and collapsed
+   frames (frame-collapse.tsx, render.tsx). */
+
+/* The "+" after a palette: a rainbow ring, or the own colour in use. */
+.wb-own-color.inline {
+  display: contents;
+}
+.wb-own-color-button {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 0;
+  background: conic-gradient(#e03131, #f08c00, #ffd43b, #2f9e44, #1c7ed6, #7048e8, #e03131) !important;
+  color: #fff;
+  align-self: center;
+  justify-self: center;
+}
+.wb-own-color-button svg {
+  filter: drop-shadow(0 0 1px #0009);
+}
+.wb-own-color-button.active {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.wb-own-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--own-color, transparent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.wb-own-color-menu {
+  gap: 10px;
+  width: min(260px, calc(100vw - 32px));
+  min-width: 0;
+  padding: 10px;
+}
+.wb-own-color-hint {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 400 !important;
+}
+.wb-own-color-panel {
+  grid-column: 1 / -1;
+  display: block;
+  width: min(232px, calc(100vw - 48px));
+  padding: 6px 2px 2px;
+}
+/* The colour wheel's hex row outside the ink menus. */
+:is(.wb-own-color-menu, .wb-own-color-panel) .color-picker-hex {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+:is(.wb-own-color-menu, .wb-own-color-panel) .color-picker-area {
+  height: 120px;
+}
+:is(.wb-own-color-menu, .wb-own-color-panel) .color-picker-recent .ink-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+:is(.wb-own-color-menu, .wb-own-color-panel) .color-picker-recent-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Pen or highlighter, the highlighter's widths, the opacity. */
+/* Eight colours and the wheel in two rows of five. */
+.wb-pen-menu .wb-pen-colors {
+  grid-template-columns: repeat(5, 32px);
+}
+.wb-pen-modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--hover);
+}
+.wb-shape-menu .wb-pen-modes button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12.5px;
+  border-radius: 7px;
+}
+.wb-shape-menu .wb-pen-modes button.active {
+  background: var(--bg);
+  box-shadow: 0 1px 2px #0002;
+}
+.wb-pen-width-line.wh0 {
+  height: 6px;
+  opacity: 0.45;
+}
+.wb-pen-width-line.wh1 {
+  height: 10px;
+  opacity: 0.45;
+}
+.wb-pen-width-line.wh2 {
+  height: 14px;
+  opacity: 0.45;
+}
+.wb-pen-opacity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 3.2em;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--secondary);
+}
+.wb-pen-opacity input {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--blue);
+}
+.wb-pen-opacity output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (pointer: coarse) {
+  .wb-pen-menu .wb-pen-colors {
+    grid-template-columns: repeat(5, 40px);
+  }
+  .wb-own-color-button {
+    width: 28px;
+    height: 28px;
+  }
+  .wb-shape-menu .wb-pen-modes button {
+    height: 38px;
+  }
+}
+
+/* Highlighter strokes: multiplied over pictures, like a marker on paper; on
+   the dark canvas multiplying would swallow them, there they are only
+   translucent. */
+.wb-pen-highlight {
+  mix-blend-mode: multiply;
+}
+.wb-dark-canvas .wb-pen-highlight {
+  mix-blend-mode: normal;
+}
+
+/* Collapsed frames: the caret before the title, the bar with the count. */
+.wb-frame-title.has-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.wb-frame-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.wb-frame-toggle:hover {
+  background: var(--hover);
+}
+.wb-static .wb-frame-toggle,
+.wb-frame-thumb .wb-frame-toggle {
+  display: none;
+}
+.wb-frame-folded {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  font-size: 12px;
+  color: #868e96;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-dark-canvas .wb-frame-folded {
+  color: var(--muted);
+}

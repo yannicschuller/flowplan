@@ -7,7 +7,7 @@ import {
 } from "./lib/custom-domain-routing";
 import { upgradeInsecureRequests } from "./lib/instance-https";
 import { BUILD_HEADER } from "./lib/stale-copy";
-import { drawioConfig } from "./lib/drawio";
+import { drawioServerConfig } from "./lib/drawio-bundle";
 
 // Content Security Policy for every page. Scripts run only with the nonce
 // of this request (Next.js adds it to its own scripts), so an injected
@@ -56,11 +56,12 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean, plugin
 }
 
 // The app itself (/, where the editor runs) may frame draw.io (DRAWIO_URL,
-// lib/drawio.ts); no other page needs it.
+// lib/drawio.ts); no other page needs it. The draw.io Flowplan ships is on
+// this origin, which 'self' allows already (#454).
 export function editorFrameOrigins(path: string): string[] {
   if (path !== "/") return [];
-  const drawio = drawioConfig();
-  return drawio ? [drawio.origin] : [];
+  const drawio = drawioServerConfig();
+  return drawio && !drawio.bundled && drawio.origin ? [drawio.origin] : [];
 }
 
 // Lookups the proxy would repeat for every request, kept for a few seconds:
@@ -101,9 +102,10 @@ async function customHostState(host: string): Promise<HostState> {
   return state;
 }
 // Requests that get no policy: API answers, build files, icons and fonts;
-// prefetches keep the nonce of the page that loads them.
+// prefetches keep the nonce of the page that loads them. The shipped
+// draw.io (/drawio/, #454) brings its own (lib/drawio-bundle.ts).
 const POLICY_EXCLUDED =
-  /^\/(api\/|_next\/static|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$)/;
+  /^\/(api\/|drawio\/|_next\/static|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$)/;
 const servedOverHttps = (request: NextRequest) =>
   upgradeInsecureRequests({ forwardedProto: request.headers.get("x-forwarded-proto"), requestProtocol: request.nextUrl.protocol });
 // Only the router's prefetches (RSC payloads, never a document): a browser
@@ -199,7 +201,7 @@ export async function proxy(request: NextRequest) {
 // Sign-in through a trusted reverse proxy (AUTH_PROXY_USER_HEADER,
 // lib/proxy-auth.ts) for pages and API requests – not for build files,
 // icons or the health check. null: nothing changes.
-const PROXY_AUTH_SKIPPED = /^\/(_next\/static|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$|api\/health$)/;
+const PROXY_AUTH_SKIPPED = /^\/(_next\/static|drawio\/|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$|api\/health$)/;
 async function proxySignIn(request: NextRequest, path: string) {
   if (!process.env.AUTH_PROXY_USER_HEADER?.trim() || PROXY_AUTH_SKIPPED.test(path)) return null;
   try {

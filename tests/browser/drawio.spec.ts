@@ -2,8 +2,10 @@ import { test, expect, type Page } from "@playwright/test";
 
 // draw.io diagrams (#110): inserted from the slash menu, edited in draw.io's
 // embed mode, stored as diagram and cleaned picture, edited again, undone
-// and deleted. draw.io itself is not asked: a stand-in page at the default
-// address speaks its postMessage protocol (init → load → save → export).
+// and deleted. draw.io itself is not asked: a stand-in page at the editor's
+// address (the shipped copy's or embed.diagrams.net, #454) speaks its
+// postMessage protocol (init → load → save → export). The shipped draw.io
+// itself: drawio-offline.spec.ts.
 const FIRST = '<mxfile><diagram id="a" name="Seite-1">erste</diagram></mxfile>';
 const SECOND = '<mxfile><diagram id="a" name="Seite-1">zweite</diagram></mxfile>';
 const picture = (label: string) =>
@@ -48,13 +50,15 @@ async function fixture(page: Page, title: string) {
   const host = await created.json();
   return { host, drawio: boot.instance?.drawio, read: async () => (await page.request.get(`/api/pages/${host.id}`)).json() };
 }
+// The editor's addresses: the shipped copy's path is on this server.
+const editorPattern = (drawio: { url: string }) => `${new URL(drawio.url, process.env.TEST_BASE_URL || "http://127.0.0.1:3000").href}**`;
 
 test("draw.io diagrams: insert, show the cleaned picture, edit, undo and delete", async ({ page }, info) => {
   test.setTimeout(120_000);
   const f = await fixture(page, `draw.io ${info.project.name} ${Date.now()}`);
   test.skip(!f.drawio, "DRAWIO_URL is not usable on this server.");
   const opened: string[] = [];
-  await page.route(`${f.drawio.origin}/**`, (route) => {
+  await page.route(editorPattern(f.drawio), (route) => {
     opened.push(route.request().url());
     return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: STAND_IN });
   });
@@ -133,9 +137,9 @@ test("draw.io diagrams: insert, show the cleaned picture, edit, undo and delete"
 });
 
 // draw.io at the default address answers with the stand-in.
-async function standIn(page: Page, origin: string) {
+async function standIn(page: Page, drawio: { url: string }) {
   const opened: string[] = [];
-  await page.route(`${origin}/**`, (route) => {
+  await page.route(editorPattern(drawio), (route) => {
     opened.push(route.request().url());
     return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: STAND_IN });
   });
@@ -156,7 +160,7 @@ test("draw.io editor: maximize and restore, remembered on the device, changes ke
   test.setTimeout(90_000);
   const f = await fixture(page, `draw.io groß ${info.project.name} ${Date.now()}`);
   test.skip(!f.drawio, "DRAWIO_URL is not usable on this server.");
-  const opened = await standIn(page, f.drawio.origin);
+  const opened = await standIn(page, f.drawio);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`/#page=${f.host.id}`);
@@ -233,7 +237,7 @@ test("the Diagramm-Seite template creates a full-width page with a diagram and o
   test.setTimeout(90_000);
   const f = await fixture(page, `draw.io Vorlage ${info.project.name} ${Date.now()}`);
   test.skip(!f.drawio, "DRAWIO_URL is not usable on this server.");
-  await standIn(page, f.drawio.origin);
+  await standIn(page, f.drawio);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const title = `Ablauf ${info.project.name} ${Date.now()}`;

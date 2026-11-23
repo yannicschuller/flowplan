@@ -179,6 +179,12 @@ import { shortcutLetter } from "@/lib/keymap";
 import { placeStyleBar, type ScreenRect } from "@/lib/whiteboard-style-bar";
 import { BoardColors, DARK_CANVAS_CLASS } from "./board-colors";
 import { boardPalette } from "@/lib/whiteboard-display-colors";
+// Pen and highlighter, own colours, collapsible frames (#455).
+import { HIGHLIGHTER_COLORS, loadPenSettings, savePenSettings, strokeProps, type PenSettings } from "@/lib/whiteboard-pen";
+import { ownColorProps, ownColorSet, ownColorsFor, withOwnColors, type OwnColorProp } from "@/lib/whiteboard-own-colors";
+import { FoldButton, useFrameFolding } from "./frame-collapse";
+import { BoardColorPicker } from "./board-color-picker";
+import { PenLookControls, PenOptions } from "./pen-options";
 import { setWhiteboardCanvasLocal, useDarkCanvas, useDarkTheme, whiteboardCanvas } from "@/lib/whiteboard-canvas-pref-client";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
@@ -212,17 +218,6 @@ const store = (key: string, value: boolean) => {
   try {
     localStorage.setItem(key, value ? "1" : "0");
   } catch {}
-};
-// The pen's three widths (design review): the same steps as a selected
-// line's width (1, 2, 3, 5, 8 px), remembered on this device.
-const PEN_WIDTHS = [2, 3, 5] as const;
-const storedPenWidth = () => {
-  try {
-    const value = Number(localStorage.getItem("flowplan-board-pen-width"));
-    return PEN_WIDTHS.some((w) => w === value) ? value : 3;
-  } catch {
-    return 3;
-  }
 };
 const to64 = (bytes: Uint8Array) => {
   let text = "";
@@ -381,7 +376,19 @@ export default function Whiteboard({
     // Racks give their devices their place (lib/whiteboard-rack.ts).
     return applyRackLayout(list.sort((a, b) => (a.z || 0) - (b.z || 0)));
   }, [itemsMap]);
-  const [items, setItems] = useState<WhiteboardItem[]>(read);
+  const [allItems, setItems] = useState<WhiteboardItem[]>(read);
+  // Collapsed frames (#455): the board shows, hits and selects the folded
+  // view; hidden elements stay in the document (frame-collapse.tsx).
+  const folding = useFrameFolding({
+    all: allItems,
+    editable,
+    change: (fn) => doc.transact(fn, LOCAL),
+    setProps: (id, props) => {
+      const map = itemsMap.get(id);
+      if (map) for (const [key, value] of Object.entries(props)) value === undefined ? map.delete(key) : map.set(key, value);
+    },
+  });
+  const items = folding.view.items;
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const undo = useMemo(
     () =>
@@ -434,7 +441,9 @@ export default function Whiteboard({
   const darkCanvas = useDarkCanvas();
   const [exportLight, setExportLight] = useState(false);
   const shownDark = darkCanvas && !exportLight;
-  const colors = boardPalette(shownDark);
+  // Own colours stay as chosen on the dark canvas (#455).
+  const ownColors = useMemo(() => ownColorSet(allItems), [allItems]);
+  const colors = useMemo(() => withOwnColors(boardPalette(shownDark), ownColors), [shownDark, ownColors]);
   // Runs `copy` while the board is drawn light: re-rendered at once and
   // back afterwards, before the browser paints (nothing flickers).
   const lightCopy = <T,>(copy: () => T): T => {
@@ -471,8 +480,8 @@ export default function Whiteboard({
     // Cables between ports shown on the board (#90), per person.
     [showCables, setShowCables] = useState(() => stored("flowplan-board-cables", true)),
     [recognize, setRecognize] = useState(() => stored("flowplan-board-recognize", false)),
-    [penColor, setPenColor] = useState(strokeColors[0]),
-    [penWidth, setPenWidth] = useState(storedPenWidth),
+    // Pen or highlighter with colour, width and opacity (#455), as last used.
+    [penSettings, setPenSettings] = useState<PenSettings>(loadPenSettings),
     // Pen-only drawing (lib/stylus.ts): fingers move and zoom, the pen draws.
     [penOnly, setPenOnlyState] = useState(() => penOnlySetting() === "on"),
     // Where a hovering pen is (Apple Pencil hover): a preview of the stroke.
@@ -509,6 +518,8 @@ export default function Whiteboard({
     [lastDraw, setLastDraw] = useState<Tool>("pen"),
     // Which frame the frame buttons of the bottom bar went to last.
     [frameNav, setFrameNav] = useState(-1);
+  const penColor = penSettings[penSettings.mode].color,
+    penWidth = penSettings[penSettings.mode].width;
   const plusButton = useRef<HTMLButtonElement>(null),
     moderationButton = useRef<HTMLButtonElement>(null);
   const [diagram, setDiagram] = useState<DiagramPanel | null>(null);
@@ -921,7 +932,10 @@ export default function Whiteboard({
   // until someone changes it), without hidden ones, one at a time.
   const slides = presentationSlides(items);
   function showSlide(index: number) {
-    const frame = slides[index];
+    // A collapsed frame opens when it is presented (#455).
+    const shown = slides[index];
+    if (shown) folding.reveal(shown.id);
+    const frame = shown && (folding.stored(shown.id) ?? shown);
     const rect = container.current?.getBoundingClientRect();
     if (!frame || !rect) return setPresenting(null);
     setPresenting(index);
@@ -1151,6 +1165,12 @@ export default function Whiteboard({
     (id: string, props: Partial<WhiteboardItem>) => {
       const map = itemsMap.get(id);
       if (!map) return;
+      // A collapsed frame keeps its full height; only its bar is drawn
+      // shorter (#455).
+      if ("h" in props && map.get("type") === "frame" && Array.isArray(map.get("collapsed"))) {
+        const { h: _h, ...rest } = props;
+        props = rest;
+      }
       for (const [key, value] of Object.entries(props))
         if (value === undefined) map.delete(key);
         else if (JSON.stringify(map.get(key)) !== JSON.stringify(value))
@@ -1439,7 +1459,8 @@ export default function Whiteboard({
     });
   const duplicate = (original = selected, offset = 24) => {
     // Copies of groups are groups of their own.
-    const list = extras.remapForCopy(original);
+    // Collapsed frames are copied with what they hide (#455).
+    const list = extras.remapForCopy(folding.forCopy(original));
     const ids = new Map(list.map((i) => [i.id, crypto.randomUUID()]));
     const created: string[] = [];
     const copies: WhiteboardItem[] = [];
@@ -1465,6 +1486,7 @@ export default function Whiteboard({
           }
         // Click links to frames copied along point to the copies.
         Object.assign(copy, remapLink(copy, ids));
+        if (Array.isArray(copy.collapsed)) copy.collapsed = copy.collapsed.flatMap((id) => (ids.has(id) ? [ids.get(id)!] : []));
         // Devices: into the copied rack, else the next free place (#90).
         if (item.type === "device") {
           Object.assign(copy, remapRack({ ...copy, id: ids.get(item.id) }, ids, items, copies));
@@ -1604,6 +1626,8 @@ export default function Whiteboard({
   // Runs before every pointer-down on the board (items, handles, background).
   function onDownCapture(e: ReactPointerEvent<SVGSVGElement>) {
     notePenActivity(e);
+    // The caret before a frame's title folds it (#455).
+    if (folding.onPointerDownCapture(e)) return;
     // Links, embed and PDF buttons inside elements (board-extras.tsx).
     if (extras.onPointerDownCapture(e)) return;
     // Handwriting into the open text field (Scribble) past its edges.
@@ -1711,6 +1735,7 @@ export default function Whiteboard({
           w: 200,
           h: 200,
           fill: stickyColor,
+          ownColors: ownColorsFor(stickyColor, stickyColors),
           text: "",
         });
       else if (kind === "text")
@@ -1795,8 +1820,8 @@ export default function Whiteboard({
           w: 1,
           h: 1,
           points: [0, 0],
-          stroke: penColor,
-          strokeWidth: penWidth,
+          ...strokeProps(penSettings),
+          ownColors: ownColorsFor(penColor, penSettings.mode === "highlighter" ? HIGHLIGHTER_COLORS : strokeColors),
         });
       else if (kind === "stamp") {
         // A stamp on an element: one per person, the same one again takes it back.
@@ -1897,6 +1922,8 @@ export default function Whiteboard({
           inner.y + inner.h <= frame.y + frame.h
         )
           moving.push(inner);
+    // Collapsed frames carry what they hide (#455).
+    moving.push(...folding.hiddenWith(moving.map((i) => i.id)).filter((i) => !i.locked));
     for (const i of moving)
       origins.set(i.id, {
         x: i.x,
@@ -2037,7 +2064,7 @@ export default function Whiteboard({
       } else setGuides([]);
       change(() => {
         for (const [id, o] of g.origins) {
-          const item = byId.get(id);
+          const item = byId.get(id) || folding.stored(id);
           if (item?.type === "connector") {
             if (o.from)
               setProps(id, { from: { x: o.from.x + dx, y: o.from.y + dy } });
@@ -2182,8 +2209,8 @@ export default function Whiteboard({
     }
     if (g.kind === "pen") {
       // Drawn lines, rectangles, ellipses, triangles and diamonds become
-      // clean shapes (switch off in the pen menu).
-      const shape = recognize && !e.altKey ? recognizeStroke(g.points) : null;
+      // clean shapes (switch off in the pen menu); highlighter strokes stay.
+      const shape = recognize && !e.altKey && penSettings.mode !== "highlighter" ? recognizeStroke(g.points) : null;
       const pen = byId.get(g.id) || itemsMap.get(g.id)?.toJSON();
       if (shape && pen) {
         let id = "";
@@ -2363,6 +2390,7 @@ export default function Whiteboard({
           w: 200,
           h: 200,
           fill: stickyColor,
+          ownColors: ownColorsFor(stickyColor, stickyColors),
           text: "",
         });
       });
@@ -2513,6 +2541,14 @@ export default function Whiteboard({
         for (const i of selected)
           if (!i.locked && i.type !== "connector")
             setProps(i.id, { x: i.x + dx, y: i.y + dy });
+        // What collapsed frames hide goes along (#455).
+        for (const i of folding.hiddenWith(selected.filter((f) => !f.locked).map((f) => f.id)))
+          if (i.type === "connector")
+            setProps(i.id, {
+              ...(i.from && !i.from.id ? { from: { ...i.from, x: i.from.x + dx, y: i.from.y + dy } } : {}),
+              ...(i.to && !i.to.id ? { to: { ...i.to, x: i.to.x + dx, y: i.to.y + dy } } : {}),
+            });
+          else if (!i.locked) setProps(i.id, { x: i.x + dx, y: i.y + dy });
       });
       return;
     }
@@ -2577,7 +2613,7 @@ export default function Whiteboard({
     flush: flushBoard,
   });
   // Attachments of deleted comment pins and messages (#455).
-  useCommentFileCleanup({ items, pageId, userId, enabled: editable && !guest, flush: flushBoard });
+  useCommentFileCleanup({ items: allItems, pageId, userId, enabled: editable && !guest, flush: flushBoard });
   async function addImage(file: File, at = center()) {
     if (!file.type.startsWith("image/"))
       return onError(t("Nur Bilder können auf das Whiteboard gelegt werden.", "Only images can be placed on the whiteboard."));
@@ -2767,6 +2803,7 @@ export default function Whiteboard({
     dock: layout.dock,
     templatesOpen,
     setTemplatesOpen,
+    folding,
   });
 
   // ---- rendering ----
@@ -2902,6 +2939,14 @@ export default function Whiteboard({
         change(() =>
           selected.forEach((i) => !i.locked && setProps(i.id, props)),
         );
+      // A colour from the colour wheel (#455): kept as the element's own.
+      const setOwn = (prop: OwnColorProp, color: string) =>
+        change(() =>
+          selected.forEach((i) => !i.locked && setProps(i.id, ownColorProps(i, prop, color))),
+        );
+      const ownColor = (prop: OwnColorProp, label: string, presets: readonly string[], value: string | undefined) => (
+        <BoardColorPicker label={label} value={value} presets={presets} onPick={(c) => setOwn(prop, c)} />
+      );
       return (
         <div
           className="wb-style-bar"
@@ -2924,6 +2969,7 @@ export default function Whiteboard({
                 onClick={() => set({ fill: c })}
               />
             ))}
+          {types.has("sticky") && ownColor("fill", t("Eigene Zettelfarbe", "Custom note colour"), stickyColors, first.fill)}
           {(types.has("shape") || types.has("frame")) &&
             fillColors.map((c) => (
               <button
@@ -2934,6 +2980,7 @@ export default function Whiteboard({
                 onClick={() => set({ fill: c })}
               />
             ))}
+          {(types.has("shape") || types.has("frame")) && ownColor("fill", t("Eigene Füllfarbe", "Custom fill colour"), fillColors, first.fill)}
           {(types.has("shape") ||
             (types.has("connector") && !cablesOnly) ||
             types.has("pen")) && (
@@ -2948,6 +2995,13 @@ export default function Whiteboard({
                   onClick={() => set({ stroke: c })}
                 />
               ))}
+              {ownColor("stroke", t("Eigene Linienfarbe", "Custom line colour"), strokeColors, first.stroke)}
+              {types.has("pen") && (
+                <PenLookControls
+                  selected={selected}
+                  onSet={(props) => change(() => selected.forEach((i) => i.type === "pen" && !i.locked && setProps(i.id, props)))}
+                />
+              )}
               <Select
                 aria-label={t("Linienstärke", "Line width")}
                 value={first.strokeWidth ?? 2}
@@ -3007,6 +3061,7 @@ export default function Whiteboard({
                   A
                 </button>
               ))}
+              {ownColor("textColor", t("Eigene Textfarbe", "Custom text colour"), strokeColors.slice(0, 6), first.textColor)}
             </>
           )}
           {types.has("shape") && types.size === 1 && (
@@ -3129,6 +3184,12 @@ export default function Whiteboard({
                 </button>
               </>
             )}
+          {single?.type === "frame" && (
+            <>
+              <span className="wb-sep" />
+              <FoldButton frame={single} folding={folding} />
+            </>
+          )}
           <DiagramStyleControls board={boardApi} selected={selected.filter((i) => !isCable(i))} />
           <RackStyleControls board={boardApi} selected={selected} />
           {extras.styleButtons}
@@ -3961,6 +4022,12 @@ export default function Whiteboard({
                     {handle(single, "n", single.x + single.w / 2, single.y)}
                     {handle(single, "s", single.x + single.w / 2, single.y + single.h)}
                   </>
+                ) : folding.folded(single.id) ? (
+                  // A collapsed frame keeps its height: only its width changes (#455).
+                  <>
+                    {handle(single, "w", single.x, single.y + single.h / 2)}
+                    {handle(single, "e", single.x + single.w, single.y + single.h / 2)}
+                  </>
                 ) : (
                 <>
                 {handle(single, "nw", single.x, single.y)}
@@ -4734,6 +4801,7 @@ export default function Whiteboard({
               onClick={() => setStickyColor(c)}
             />
           ))}
+          <BoardColorPicker inline label={t("Eigene Zettelfarbe", "Custom note colour")} value={stickyColor} presets={stickyColors} onPick={(c) => setStickyColor(c)} />
         </div>
       )}
       {editable && tool === "stamp" && toolMenu && (
@@ -4755,42 +4823,14 @@ export default function Whiteboard({
       {editable && tool === "pen" && toolMenu && (
         <div className="wb-shape-menu wb-pen-menu" aria-label={t("Stift", "Pen")} onPointerDown={(e) => e.stopPropagation()}>
           {drawSwitch}
-          {/* Colours as a compact grid, then the width, then the switches
-              (design review: two far-apart columns and no width). */}
-          <div className="wb-pen-colors" role="group" aria-label={t("Stiftfarbe", "Pen colour")}>
-            {strokeColors.map((c) => (
-              <button
-                key={c}
-                className={`wb-swatch line${penColor === c ? " active" : ""}`}
-                style={{ borderColor: c }}
-                aria-label={t(`Stiftfarbe ${c}`, `Pen colour ${c}`)}
-                aria-pressed={penColor === c}
-                onClick={() => setPenColor(c)}
-              />
-            ))}
-          </div>
-          <div className="wb-pen-widths" role="group" aria-label={t("Strichstärke", "Line width")}>
-            {PEN_WIDTHS.map((w) => {
-              const name = w === 2 ? t("Fein", "Fine||pen width") : w === 3 ? t("Mittel", "Medium") : t("Breit", "Bold||pen width");
-              return (
-                <button
-                  key={w}
-                  className={penWidth === w ? "active" : ""}
-                  aria-pressed={penWidth === w}
-                  aria-label={name}
-                  title={name}
-                  onClick={() => {
-                    setPenWidth(w);
-                    try {
-                      localStorage.setItem("flowplan-board-pen-width", String(w));
-                    } catch {}
-                  }}
-                >
-                  <span className={`wb-pen-width-line w${w}`} aria-hidden="true" />
-                </button>
-              );
-            })}
-          </div>
+          {/* Pen or highlighter, colour, width and opacity (#455). */}
+          <PenOptions
+            settings={penSettings}
+            onChange={(next) => {
+              setPenSettings(next);
+              savePenSettings(next);
+            }}
+          />
           <label className="wb-check">
             <input
               type="checkbox"
