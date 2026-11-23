@@ -101,7 +101,7 @@ export const commandActionNames = [
   "notebook.trash.restore", "notebook.sheets.transfer", "search.save", "search.delete",
   "collection.create", "collection.update", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder",
   "thread.create", "thread.reply", "thread.resolve", "thread.color", "thread.reanchor", "thread.edit", "thread.deleteMessage", "thread.react",
-  "comment.create", "comment.resolve", "comment.react", "reminder.set",
+  "comment.create", "comment.resolve", "comment.edit", "comment.delete", "comment.react", "reminder.set",
   "notification.prefs", "notification.read", "notification.mark", "notification.delete",
   "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme",
   "record.shares", "record.share.create", "record.share.revoke", "record.share.protect", "record.share.fields", "record.publish", "record.publication.protect",
@@ -1181,6 +1181,29 @@ export const commandActions: ActionDoc[] = [
     result: okResult,
   },
   {
+    action: "comment.edit",
+    summary: "Edit a page or record comment",
+    description:
+      "Only the comment's author, with read access to the page (and the record). `version` is the comment's `version` as last read; a comment changed meanwhile is refused (409) and stays as it is. Takes `body` or `content` as `comment.create` does and replaces both; files and link previews the comment already had stay allowed. The comment gets `edited_at`. People mentioned anew are notified (and the `mention` webhook fires), nobody else; attachments the edit removes go to the file trash when nothing else uses them. Guests' comments cannot be edited.",
+    input: z.object({
+      action: z.literal("comment.edit"),
+      pageId: uuid,
+      commentId: uuid,
+      version: z.number().int().positive(),
+      body: z.string().trim().max(5000),
+      content: z.record(z.string(), z.unknown()).optional(),
+    }),
+    result: z.object({ id: uuid, version: z.number().int() }),
+  },
+  {
+    action: "comment.delete",
+    summary: "Delete a page or record comment",
+    description:
+      "Only the comment's author, with read access to the page (and the record), and the comment's current `version` (409 otherwise). Removes the comment with its reactions; its attachments go to the file trash when nothing else uses them. Notifies nobody.",
+    input: z.object({ action: z.literal("comment.delete"), pageId: uuid, commentId: uuid, version: z.number().int().positive() }),
+    result: okResult,
+  },
+  {
     action: "member.invite",
     summary: "Invite a person to a workspace",
     description: "Owners only. At most 40 invitations per hour per person (429 beyond that). An address that belongs to an account with a confirmed address becomes a member right away (with a notification); any other gets an open invitation. The answer is the same either way.",
@@ -1774,6 +1797,8 @@ const schemas: Record<string, Json> = {
       body: { type: "string" },
       resolved: { type: "integer" },
       created_at: { type: "string" },
+      version: { type: "integer", description: "Counts the author's edits; `comment.edit` and `comment.delete` name it" },
+      edited_at: { type: ["string", "null"], description: "When the author last edited the comment (null: never)" },
     },
     required: ["id", "page_id", "row_id", "name", "body", "resolved", "created_at"],
   },

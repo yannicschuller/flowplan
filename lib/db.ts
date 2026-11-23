@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 125;
+export const SCHEMA_VERSION = 126;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1674,6 +1674,9 @@ function migrate(d: DatabaseSync) {
   // Schema 125 – formatted page and record comments with attachments,
   // page mentions and link previews (#450, lib/comment-extras.ts).
   migrateCommentRichBody(d);
+  // Schema 126 – page and record comments edited (#450): their version and
+  // when they were last edited.
+  migrateCommentEdits(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1723,6 +1726,17 @@ function migrateDirectoryGroupMembers(d: DatabaseSync) {
 //   instance ceiling). Kept 400 days like ai_quota_usage. An older version
 //   would neither stop at the limit nor count the continuation, hence the
 //   number.
+// Schema 126 – page and record comments can be edited and deleted by their
+// author (#450), as text comments: comments.version counts the edits (an
+// edit or deletion names the version it saw, a stale one is refused like
+// inline_messages.version) and comments.edited_at is when the comment was
+// last edited ("bearbeitet"; NULL: never). Deleting removes the row. An
+// older version would ignore both, hence the number.
+function migrateCommentEdits(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(comments)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("version")) d.exec("ALTER TABLE comments ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+  if (!columns.includes("edited_at")) d.exec("ALTER TABLE comments ADD COLUMN edited_at TEXT");
+}
 // Schema 125 – page and record comments like text comments (#450):
 // comments.rich_body holds the formatted comment (lib/comment-content.ts)
 // with its attachments, page mentions and link previews, as

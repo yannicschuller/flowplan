@@ -282,6 +282,8 @@ export async function mutateLinkedDatabase(
         "row.snapshot.restore",
         "comment.create",
         "comment.resolve",
+        "comment.edit",
+        "comment.delete",
         "form.update",
         "form.submit",
       ];

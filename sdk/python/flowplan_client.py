@@ -445,6 +445,8 @@ Comment = TypedDict("Comment", {
     "body": Required[str],
     "resolved": Required[int],
     "created_at": Required[str],
+    "version": int,  # Counts the author's edits; `comment.edit` and `comment.delete` name it
+    "edited_at": Optional[str],  # When the author last edited the comment (null: never)
 }, total=False)
 
 Member = TypedDict("Member", {
@@ -1914,6 +1916,33 @@ CommandCommentResolveResult = TypedDict("CommandCommentResolveResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Edit a page or record comment. Only the comment's author, with read access to the page (and the record). `version` is the comment's `version` as last read; a comment changed meanwhile is refused (409) and stays as it is. Takes `body` or `content` as `comment.create` does and replaces both; files and link previews the comment already had stay allowed. The comment gets `edited_at`. People mentioned anew are notified (and the `mention` webhook fires), nobody else; attachments the edit removes go to the file trash when nothing else uses them. Guests' comments cannot be edited.
+CommandCommentEdit = TypedDict("CommandCommentEdit", {
+    "action": Required[Literal["comment.edit"]],
+    "pageId": Required[str],
+    "commentId": Required[str],
+    "version": Required[int],
+    "body": Required[str],
+    "content": dict[str, Any],
+}, total=False)
+
+CommandCommentEditResult = TypedDict("CommandCommentEditResult", {
+    "id": Required[str],
+    "version": Required[int],
+}, total=False)
+
+# Delete a page or record comment. Only the comment's author, with read access to the page (and the record), and the comment's current `version` (409 otherwise). Removes the comment with its reactions; its attachments go to the file trash when nothing else uses them. Notifies nobody.
+CommandCommentDelete = TypedDict("CommandCommentDelete", {
+    "action": Required[Literal["comment.delete"]],
+    "pageId": Required[str],
+    "commentId": Required[str],
+    "version": Required[int],
+}, total=False)
+
+CommandCommentDeleteResult = TypedDict("CommandCommentDeleteResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
 # Invite a person to a workspace. Owners only. At most 40 invitations per hour per person (429 beyond that). An address that belongs to an account with a confirmed address becomes a member right away (with a notification); any other gets an open invitation. The answer is the same either way.
 CommandMemberInvite = TypedDict("CommandMemberInvite", {
     "action": Required[Literal["member.invite"]],
@@ -2187,7 +2216,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandProfileHtmlScripts", "CommandProfileHtmlScriptsClear", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandProfileHtmlScripts", "CommandProfileHtmlScriptsClear", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandCommentEdit", "CommandCommentDelete", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

@@ -79,6 +79,9 @@ test("no comments, reactions or resolving behind the PIN", async () => {
   assert.equal(await status(() => act({ action: "comment.create", pageId: note, body: "Ohne PIN" }, member)), 423);
   assert.equal(await status(() => act({ action: "comment.react", pageId: note, commentId: comment, emoji: "👍" }, member)), 423);
   assert.equal(await status(() => act({ action: "comment.resolve", pageId: note, commentId: comment, resolved: true }, member)), 423);
+  // Editing and deleting (#450) as well.
+  assert.equal(await status(() => act({ action: "comment.edit", pageId: note, commentId: comment, version: 1, body: "Ohne PIN" }, member)), 423);
+  assert.equal(await status(() => act({ action: "comment.delete", pageId: note, commentId: comment, version: 1 }, member)), 423);
   assert.equal(await one("SELECT 1 FROM comments WHERE page_id=? AND body='Ohne PIN'", note), undefined);
   assert.equal(await one("SELECT 1 FROM comment_reactions WHERE comment_id=?", comment), undefined);
   assert.equal((await one<{ resolved: number }>("SELECT resolved FROM comments WHERE id=?", comment))!.resolved, 0);

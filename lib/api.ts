@@ -81,7 +81,7 @@ import { journalDate, openJournalDay, rollJournal, rollJournals } from "./journa
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { OFFLINE_JOURNAL_MAX, offlineEntryHasText } from "./journal-offline";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
-import { commentRecipients, commentTextMentions } from "./comment-recipients";
+import { commentRecipients, commentTextMentions, mayHear } from "./comment-recipients";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { propertiesCollapsed, recordPropertiesCollapsed, setPropertiesCollapsed, setRecordPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
@@ -619,8 +619,8 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
   // the titles they may read, missing files marked (lib/comment-extras.ts).
   const presentComment = commentPresenter(user, p.workspace_id);
   const comments = await mapAsync((await all<{ id: string; row_id: string | null; body: string; rich_body: string | null }>(
-    `SELECT c.id,c.page_id,c.row_id,c.author_id,c.body,c.rich_body,c.resolved,c.created_at,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
-     UNION ALL SELECT id,page_id,row_id,NULL author_id,body,NULL rich_body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
+    `SELECT c.id,c.page_id,c.row_id,c.author_id,c.body,c.rich_body,c.resolved,c.created_at,u.name,c.version,c.edited_at FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
+     UNION ALL SELECT id,page_id,row_id,NULL author_id,body,NULL rich_body,resolved,created_at,name || ' (Gast)' name,1 version,NULL edited_at FROM shared_comments WHERE page_id=? ORDER BY created_at`,
     pid,
     pid,
   ))
@@ -2627,7 +2627,7 @@ async function runCommand(
           if (Array.isArray(data.comments))
             for (const c of data.comments)
               await run(
-                "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at,rich_body) VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at,rich_body,version,edited_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 c.id,
                 p.id,
                 c.row_id,
@@ -2637,6 +2637,9 @@ async function runCommand(
                 c.created_at,
                 // Formatted comments (#450); versions before schema 125 have none.
                 typeof c.rich_body === "string" ? c.rich_body : null,
+                // Edits (#450); versions before schema 126 have none.
+                Number(c.version) > 0 ? Number(c.version) : 1,
+                typeof c.edited_at === "string" ? c.edited_at : null,
               );
           await restoreRelationPairs(user, p.id, data.relationPairs);
           // Tag-backed properties: values become tags again where allowed (#79).
@@ -3441,6 +3444,67 @@ async function runCommand(
           commentId,
           p.id,
         );
+        break;
+      }
+      // Editing and deleting a page or record comment (#450), as text
+      // comments (lib/inline-comments.ts thread.edit / thread.deleteMessage):
+      // only its author, with the version they saw; whoever may comment –
+      // read the page and the record – may do so. Newly mentioned people
+      // hear of an edit, nobody else; files the comment no longer has go
+      // to the file trash when nothing else uses them.
+      case "comment.edit":
+      case "comment.delete": {
+        const p = await requirePage(user, pid());
+        await requireUnlocked(user, p);
+        const commentId = uuid.parse(b.commentId);
+        const comment = await one<{ row_id: string | null; author_id: string | null; body: string; rich_body: string | null; version: number }>(
+          "SELECT row_id,author_id,body,rich_body,version FROM comments WHERE id=? AND page_id=?",
+          commentId,
+          p.id,
+        );
+        if (!comment) throw new HttpError(404, "Kommentar nicht gefunden.");
+        if (comment.row_id) await requireRow(user, p.id, comment.row_id);
+        if (comment.author_id !== user.id) throw new HttpError(403, "Nur eigene Kommentare können geändert werden.");
+        if (Number(comment.version) !== z.number().int().positive().parse(b.version))
+          throw new HttpError(409, "Dieser Kommentar wurde inzwischen geändert. Dein Entwurf bleibt erhalten.");
+        const stored = comment.rich_body ? richCommentSchema.parse(JSON.parse(comment.rich_body)) : null;
+        if (b.action === "comment.edit") {
+          const formatted = b.content == null ? null : await messageInput(b, p, user, stored);
+          const body = formatted ? formatted.body : z.string().trim().min(1).max(5000).parse(b.body);
+          await run(
+            "UPDATE comments SET body=?,rich_body=?,version=version+1,edited_at=? WHERE id=?",
+            body,
+            formatted?.serialized ?? null,
+            nowText(),
+            commentId,
+          );
+          // Only people the edit mentions anew, and only who may read the
+          // page and the record (lib/comment-recipients.ts mayHear).
+          const guest = await isGuest(user, p.workspace_id);
+          const mentionsOf = async (content: typeof stored, text: string) =>
+            content ? (guest ? [] : commentMentions(content)) : await commentTextMentions(user, p, text);
+          const before = new Set(await mentionsOf(stored, comment.body));
+          for (const recipient of new Set(await mentionsOf(formatted?.content ?? null, body)))
+            if (recipient !== user.id && !before.has(recipient) && await mayHear(recipient, p, comment.row_id)) {
+              await run(
+                "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
+                id(),
+                recipient,
+                `${user.name} hat dich in einem Kommentar in „${p.title}“ erwähnt`,
+                p.id,
+                comment.row_id,
+                "mention",
+              );
+              await mentionWebhook(p.workspace_id, p.id, comment.row_id, recipient, user.name, user.id);
+            }
+          await trashDroppedAttachments(user, p, stored, formatted?.content ?? null);
+          result = { id: commentId, version: Number(comment.version) + 1 };
+        } else {
+          await run("DELETE FROM comment_reactions WHERE comment_id=?", commentId);
+          await run("DELETE FROM comments WHERE id=?", commentId);
+          await trashDroppedAttachments(user, p, stored, null);
+          result = { ok: true };
+        }
         break;
       }
       case "row.appearance":
@@ -4587,7 +4651,7 @@ async function createWorkspaceInner(user: string, name: string) {
 }
 import { inlineCommentCommand, messageInput } from "./inline-comments";
 import { commentAttachments, commentMentions, richCommentSchema } from "./comment-content";
-import { attachmentNote, commentPresenter } from "./comment-extras";
+import { attachmentNote, commentPresenter, trashDroppedAttachments } from "./comment-extras";
 import { gettingStarted, gettingStartedAfterCommand, gettingStartedCommand } from "./getting-started";
 import { sampleSpaceCommand, sampleSpaceOf } from "./sample-space";
 import {

@@ -398,6 +398,27 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
         })),
       };
     }
+    case "comment.edit": {
+      // The edited text shows at once, marked "bearbeitet" (#450); the
+      // server's answer (checked files and mentions) replaces it.
+      const id = str(b.commentId),
+        body = str(b.body)?.trim() ?? "";
+      const content = b.content && typeof b.content === "object" ? (b.content as Comment["content"]) : null;
+      if (!pageId || !id || (!body && !content?.attrs?.attachments?.length)) return null;
+      return {
+        page: onPage((data) => ({
+          ...data,
+          comments: data.comments?.map((c) =>
+            c.id === id ? { ...c, body, content: content ?? null, edited_at: sqlNow(now), version: (c.version ?? 1) + 1 } : c,
+          ),
+        })),
+      };
+    }
+    case "comment.delete": {
+      const id = str(b.commentId);
+      if (!pageId || !id) return null;
+      return { page: onPage((data) => ({ ...data, comments: data.comments?.filter((c) => c.id !== id) })) };
+    }
     case "comment.react": {
       const id = str(b.commentId),
         emoji = str(b.emoji);

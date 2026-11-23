@@ -62,7 +62,6 @@ import { leaveTo } from "@/lib/history-nav";
 import { NEW_TIMELINE, scheduleFields } from "@/lib/database-timeline";
 import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, usePointerDrag, type DragPoint, type RecordDropDetail } from "./pointer-drag";
 import { keyboardStep, nearestIndex, placementIn, slotFor, type KeyPosition } from "@/lib/pointer-drag";
-import { Reactions } from "./reactions";
 import { startBoardCardDrag, type BoardCardDrag } from "./board-card-drag";
 import FormulaEditor from "./formula-editor";
 import {
@@ -234,7 +233,7 @@ import { IconImagePicker } from "./icon-image-picker";
 import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
 import { PageCommentField } from "./page-comment-field";
-import { CommentBody } from "./comment-body";
+import { PageComment } from "./page-comment";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape, ViewSkeleton } from "./skeleton";
 import { showToast, showUndo, toastSerial, undoShownSince } from "./toast";
@@ -6616,26 +6615,7 @@ export default function DatabaseView({
                   {data.comments
                     .filter((c) => c.row_id === selected.id)
                     .map((c) => (
-                      <div className="comment" key={c.id}>
-                        <Avatar name={c.name} small />
-                        <div>
-                          <strong>{c.name}</strong>
-                          <CommentBody content={c.content} body={c.body} />
-                          {c.author_id && (
-                            <Reactions
-                              reactions={c.reactions || []}
-                              onToggle={(emoji, active) =>
-                                act({
-                                  action: "comment.react",
-                                  commentId: c.id,
-                                  emoji,
-                                  active,
-                                })
-                              }
-                            />
-                          )}
-                        </div>
-                      </div>
+                      <PageComment key={c.id} comment={c} pageId={page.id} userId={userId} act={act} />
                     ))}
                   {/* Formatted, with attachments and page mentions (#450). */}
                   <PageCommentField

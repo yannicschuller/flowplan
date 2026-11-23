@@ -258,3 +258,25 @@
 .page-comment-form > .button {
   margin-top: 4px;
 }
+/* A page or record comment's reactions and, for its author, edit and delete
+   (components/page-comment.tsx). */
+.page-comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+}
+.page-comment-actions .reactions {
+  margin: 4px 0;
+}
+.page-comment-actions > .icon-button {
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+.page-comment-edit .inline-comment-actions {
+  margin-top: 6px;
+}
+.comments-panel .page-comment-edit {
+  margin-top: 6px;
+}
