@@ -126,8 +126,8 @@ export type ActionResult = {
 
 // ---- Context for the model ----
 
-type Member = { id: string; name: string; email: string };
-const members = async (workspaceId: string) =>
+export type Member = { id: string; name: string; email: string };
+export const members = async (workspaceId: string) =>
   await all<Member>("SELECT u.id,u.name,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name", workspaceId);
 
 // Property types the AI may fill: plain values a person types.
@@ -137,7 +137,7 @@ export async function writableFields(user: Identity, page: Page) {
   const readOnly = await readOnlyFieldIds(user, page, fields);
   return fields.filter((f) => FILLABLE.includes(f.type) && !readOnly.includes(f.id) && !f.ai);
 }
-const editable = (role: string | null | undefined) => role === "editor" || role === "owner";
+export const editable = (role: string | null | undefined) => role === "editor" || role === "owner";
 
 export type ActionContextInput = {
   workspaceId: string;
@@ -282,12 +282,12 @@ async function openDocument(user: Identity, pageId: string) {
 // ---- Checking and normalizing ----
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function validDay(value: string | null | undefined) {
+export function validDay(value: string | null | undefined) {
   if (!value || !ISO_DATE.test(value)) return undefined;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : undefined;
 }
-function memberBy(list: Member[], value: unknown): Member | undefined {
+export function memberBy(list: Member[], value: unknown): Member | undefined {
   if (typeof value !== "string" || !value.trim()) return undefined;
   const wanted = value.trim().replace(/^@/, "").toLocaleLowerCase();
   return list.find((m) => m.id === value || m.email.toLocaleLowerCase() === wanted || m.name.toLocaleLowerCase() === wanted);
@@ -342,7 +342,7 @@ export async function cellPatch(user: Identity, page: Page, input: Record<string
   return { cells: await validateCellPatch(user, page, fields, patch), fields };
 }
 
-async function documentTarget(user: Identity, workspaceId: string, pageId: string) {
+export async function documentTarget(user: Identity, workspaceId: string, pageId: string) {
   const page = await requirePage(user, pageId, true);
   if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
@@ -351,7 +351,7 @@ async function documentTarget(user: Identity, workspaceId: string, pageId: strin
   if (!(await aiMayRead(user, page.id))) throw new HttpError(403, AI_BLOCKED_MESSAGE);
   return page;
 }
-async function databaseTarget(user: Identity, workspaceId: string, databaseId: string) {
+export async function databaseTarget(user: Identity, workspaceId: string, databaseId: string) {
   const page = await requirePage(user, databaseId, true);
   if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
@@ -361,7 +361,7 @@ async function databaseTarget(user: Identity, workspaceId: string, databaseId: s
 }
 
 // Stored rows carry their cells as JSON text.
-function storedCells(cells: unknown): Record<string, unknown> {
+export function storedCells(cells: unknown): Record<string, unknown> {
   if (typeof cells !== "string") return (cells as Record<string, unknown>) || {};
   try {
     return JSON.parse(cells);
@@ -461,28 +461,39 @@ export async function tasksHtml(tasks: { text: string; assignee?: string | null;
   return `<ul data-type="taskList">${items.join("")}</ul>`;
 }
 
-// HTML appended to a stored document as one change, sent like an edit from
-// the editor ("document.sync"): versions, mentions, tasks, the activity and
-// webhooks behave the same. With `replace` the HTML takes the place of the
-// whole content (the previous one stays in the page's versions).
-export async function appendHtml(user: Identity, pageId: string, html: string, options: { replace?: boolean } = {}) {
+// A change to a stored document as the person, sent like an edit from the
+// editor ("document.sync"): versions, mentions, tasks, links, the activity
+// and webhooks behave the same. `change` gets the document and returns the
+// new one (null: nothing to change). Also for plans (lib/ai/plan.ts).
+export async function syncDocument(user: Identity, pageId: string, change: (doc: PMNode, schema: ReturnType<typeof documentSchema>) => PMNode | null) {
   const stored = await one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", pageId);
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const schema = documentSchema();
-  const added = PMNode.fromJSON(schema, htmlJson(cleanHtml(html) || "<p></p>"));
   const ydoc = new Y.Doc();
   try {
     Y.applyUpdate(ydoc, stored.state || htmlState(stored.html));
     const before = Y.encodeStateVector(ydoc);
     const doc = PMNode.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default"));
-    const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
-    const next = doc.type.create(doc.attrs, empty || options.replace ? added.content : doc.content.append(added.content));
+    const next = change(doc, schema);
+    if (!next) return false;
     ydoc.transact(() => updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }));
     const update = stored.state ? Y.encodeStateAsUpdate(ydoc, before) : Y.encodeStateAsUpdate(ydoc);
     await command(user, { action: "document.sync", pageId, generation: stored.generation, update: Buffer.from(update).toString("base64") });
+    return true;
   } finally {
     ydoc.destroy();
   }
+}
+
+// HTML appended to a stored document as one change (syncDocument). With
+// `replace` the HTML takes the place of the whole content (the previous one
+// stays in the page's versions).
+export async function appendHtml(user: Identity, pageId: string, html: string, options: { replace?: boolean } = {}) {
+  await syncDocument(user, pageId, (doc, schema) => {
+    const added = PMNode.fromJSON(schema, htmlJson(cleanHtml(html) || "<p></p>"));
+    const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
+    return doc.type.create(doc.attrs, empty || options.replace ? added.content : doc.content.append(added.content));
+  });
 }
 
 export const runInput = z.object({

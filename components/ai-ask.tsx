@@ -18,9 +18,14 @@
 // question a greeting with a few questions that fit what is open
 // (lib/ai/ask-suggestions.ts), the conversation as chat, and at the bottom
 // one composer box with the question, where to look, the model and send.
+// Instructions (#462): an input that asks for changes ("Lege für jedes
+// Projekt eine Seite an …") gets a plan instead of an answer – the AI reads
+// (read-only), then proposes steps to check and run (components/ai-plan.tsx,
+// loaded only then). Plain questions go straight to the answer; the switch
+// "Nur antworten" turns plans off.
 import { AiQuotaNote } from "./ai-quota";
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowClockwise, ArrowSquareOut, ArrowUp, CalendarCheck, CaretDown, Check, Copy, FileText, Info, Lifebuoy, ListBullets, ListChecks, MagnifyingGlass, PencilLine, Plus, PushPin, PushPinSlash, Sparkle, Stop, Warning, X } from "@phosphor-icons/react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowClockwise, ArrowSquareOut, ArrowUp, CalendarCheck, CaretDown, ChatText, Check, Copy, FileText, Info, Lifebuoy, ListBullets, ListChecks, MagnifyingGlass, PencilLine, Plus, PushPin, PushPinSlash, Sparkle, Stop, Warning, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { Select } from "./select";
@@ -31,7 +36,9 @@ import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { useMedia } from "./use-media";
 import { addBackCloser } from "@/lib/app-back";
 import { ASK_DEFAULT, ASK_MIN, ASK_OVERLAY_MEDIA, ASK_SHEET_BELOW, askMax, clampAsk } from "@/lib/ask-panel";
-import { askAi, aiPageReadable, aiUsable, citationParts, helpSourceUrl, splitSources, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
+import { askAi, aiPageReadable, aiUsable, citationParts, helpSourceUrl, planAi, splitSources, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
+import { plainQuestion, type PlanReadItem } from "@/lib/ai/plan-shared";
+import type { PlanState } from "./ai-plan";
 import { AI_PROVIDER_NAMES, AI_PROVIDER_NAMES_EN, type AiStatus } from "@/lib/ai/features";
 import { askSuggestions, firstName, modelDisplayName, recentAskPages, type AskSuggestion } from "@/lib/ai/ask-suggestions";
 import type { Page, Space } from "@/lib/types";
@@ -46,10 +53,16 @@ type Message = {
   page?: { id: string; title: string; truncated?: boolean };
   // "Als Änderungsvorschlag einfügen": running, or what came of it.
   suggest?: { busy?: boolean; text?: string; error?: boolean };
+  // An instruction (#462): what the AI reads while planning, then the plan.
+  reading?: PlanReadItem[];
+  planning?: boolean;
+  plan?: PlanState;
 };
+// The plan card, loaded with the first plan.
+const AiPlanCard = lazy(() => import("./ai-plan").then((m) => ({ default: m.AiPlanCard })));
 // The open page as the panel knows it.
 export type AskCurrentPage = { id: string; title: string; kind?: string; editable?: boolean; encrypted?: boolean; hasDate?: boolean };
-type Stored = { messages: Message[]; scope: string; across?: boolean };
+type Stored = { messages: Message[]; scope: string; across?: boolean; onlyAnswer?: boolean };
 const storageKey = (workspaceId: string) => `flowplan-ask:${workspaceId}`;
 const MAX_TURNS = 20;
 
@@ -64,7 +77,13 @@ function load(workspaceId: string): Stored {
   try {
     const raw = JSON.parse(sessionStorage.getItem(storageKey(workspaceId)) || "null");
     if (raw && Array.isArray(raw.messages))
-      return { messages: raw.messages.filter((m: Message) => !m.streaming), scope: String(raw.scope || "workspace"), across: !!raw.across };
+      return {
+        // A plan interrupted while running shows as not run (the server has the truth).
+        messages: raw.messages.filter((m: Message) => !m.streaming).map((m: Message) => (m.plan && (m.plan.phase === "running" || m.plan.phase === "undoing") ? { ...m, plan: { ...m.plan, phase: m.plan.phase === "running" ? "preview" : "done" } } : m)),
+        scope: String(raw.scope || "workspace"),
+        across: !!raw.across,
+        onlyAnswer: !!raw.onlyAnswer,
+      };
   } catch {}
   return { messages: [], scope: "workspace", across: false };
 }
@@ -139,6 +158,8 @@ export function AskPanel({
   const [busy, setBusy] = useState(false);
   // "Alle Arbeitsbereiche": the question goes to every workspace of the person.
   const [across, setAcross] = useState(false);
+  // "Nur antworten": no plans, every input is answered as a question.
+  const [onlyAnswer, setOnlyAnswer] = useState(false);
   const [actions, setActions] = useState<AiActionsRequest | null>(null);
   // The workspace whose conversation is loaded (nothing is saved before).
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -176,13 +197,14 @@ export function AskPanel({
     const stored = load(workspaceId);
     setMessages(stored.messages);
     setAcross(!!stored.across);
+    setOnlyAnswer(!!stored.onlyAnswer);
     setScope(stored.scope.startsWith("page:") && stored.scope !== `page:${currentPage?.id}` ? "workspace" : stored.scope);
     setLoaded(workspaceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
   useEffect(() => {
-    if (loaded === workspaceId) save(workspaceId, { messages: messages.filter((m) => !m.streaming), scope, across });
-  }, [messages, scope, across, loaded, workspaceId]);
+    if (loaded === workspaceId) save(workspaceId, { messages: messages.filter((m) => !m.streaming), scope, across, onlyAnswer });
+  }, [messages, scope, across, onlyAnswer, loaded, workspaceId]);
   // A page scope only makes sense while that page is open.
   useEffect(() => {
     setScope((s) => (s.startsWith("page:") && s !== `page:${currentPage?.id}` ? "workspace" : s));
@@ -288,6 +310,43 @@ export function AskPanel({
       });
     };
     try {
+      // An instruction gets a plan (#462): unless plans are off, the input is
+      // plainly a question, or the panel looks beyond this workspace.
+      const plans = !onlyAnswer && aiUsable(ai, "actions") && !target.across && target.scope !== "help";
+      if (plans && !plainQuestion(text)) {
+        update({ planning: true });
+        const outcome = await planAi({
+          workspaceId,
+          instruction: text,
+          history,
+          pageId: going?.id || null,
+          signal: abort.signal,
+          onEvent: (event) => {
+            if (event.type === "reading") update({ reading: event.items });
+          },
+        });
+        if (outcome.kind === "plan") {
+          const content = outcome.summary || (outcome.steps.length === 1 ? t("Plan mit 1 Schritt.", "Plan with 1 step.") : t(`Plan mit ${outcome.steps.length} Schritten.`, `Plan with ${outcome.steps.length} steps.`));
+          update({
+            streaming: false,
+            planning: false,
+            reading: undefined,
+            content,
+            plan: {
+              summary: outcome.summary,
+              steps: outcome.steps,
+              read: outcome.read,
+              tokens: outcome.tokens,
+              ...(outcome.stopped ? { stopped: outcome.stopped } : {}),
+              chosen: outcome.steps.filter((s) => s.ok).map((s) => s.index),
+              phase: "preview",
+            },
+          });
+          return;
+        }
+        // The AI found it is a question after all: answered as one.
+        update({ planning: false, reading: undefined });
+      }
       const result = await askAi({
         workspaceId,
         question: text,
@@ -300,8 +359,8 @@ export function AskPanel({
       });
       update({ content: result.text, sources: result.sources, streaming: false, ...(page ? { page: { ...page, truncated: result.page === "truncated" } } : {}) });
     } catch (error) {
-      if ((error as Error).name === "AbortError") update({ streaming: false, content: t("Abgebrochen.", "Stopped."), error: true });
-      else update({ streaming: false, content: (error as Error).message, error: true });
+      if ((error as Error).name === "AbortError") update({ streaming: false, planning: false, reading: undefined, content: t("Abgebrochen.", "Stopped."), error: true });
+      else update({ streaming: false, planning: false, reading: undefined, content: (error as Error).message, error: true });
     } finally {
       if (controller.current === abort) {
         setBusy(false);
@@ -525,7 +584,25 @@ export function AskPanel({
             ) : (
               <div key={i} className={`ai-ask-answer${m.streaming ? " streaming" : ""}${m.error ? " failed" : ""}`}>
                 {m.streaming && !m.content ? (
-                  <p className="ai-ask-thinking">{t("Sucht im Arbeitsbereich …", "Searching the workspace …")}</p>
+                  <p className="ai-ask-thinking">
+                    {m.planning
+                      ? m.reading?.length
+                        ? t(`Liest ${readingText(m.reading, t)} …`, `Reading ${readingText(m.reading, t)} …`)
+                        : t("Prüft die Anweisung …", "Looking at the instruction …")
+                      : t("Sucht im Arbeitsbereich …", "Searching the workspace …")}
+                  </p>
+                ) : m.plan ? (
+                  <>
+                    <p className="ai-ask-plan-summary">{m.content}</p>
+                    <Suspense fallback={<div className="ai-proposal-loading" aria-hidden />}>
+                      <AiPlanCard
+                        workspaceId={workspaceId}
+                        plan={m.plan}
+                        onChange={(plan) => setMessages((list) => list.map((x, j) => (j === i && x.plan ? { ...x, plan } : x)))}
+                        onOpen={openPage}
+                      />
+                    </Suspense>
+                  </>
                 ) : m.error ? (
                   <div className="ai-ask-error" role="alert">
                     <Warning size={16} aria-hidden="true" />
@@ -547,7 +624,7 @@ export function AskPanel({
                     {t(`„${m.page.title}“ war zu lang für die KI – nur der Anfang ging mit.`, `“${m.page.title}” was too long for the AI – only its beginning went along.`)}
                   </p>
                 )}
-                {!m.streaming && !m.error && !!m.content && (
+                {!m.streaming && !m.error && !!m.content && !m.plan && (
                   <div className="ai-ask-answer-tools">
                     <button
                       type="button"
@@ -642,7 +719,7 @@ export function AskPanel({
               rows={1}
               maxLength={2000}
               aria-label={t("Deine Frage", "Your question")}
-              placeholder={t("Frag etwas …", "Ask something …")}
+              placeholder={!onlyAnswer && aiUsable(ai, "actions") ? t("Frag etwas oder sag, was zu tun ist …", "Ask something or say what to do …") : t("Frag etwas …", "Ask something …")}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
@@ -677,6 +754,24 @@ export function AskPanel({
                   <option value="help">{t("Nur Flowplan-Hilfe", "Only the Flowplan help")}</option>
                 </Select>
               </span>
+              {aiUsable(ai, "actions") && (
+                <button
+                  type="button"
+                  className={`ai-ask-only${onlyAnswer ? " active" : ""}`}
+                  aria-pressed={onlyAnswer}
+                  aria-label={t("Nur antworten", "Only answer")}
+                  disabled={busy}
+                  title={
+                    onlyAnswer
+                      ? t("Nur antworten: Die KI beantwortet alles als Frage und schlägt keine Änderungen vor.", "Only answer: the AI answers everything as a question and proposes no changes.")
+                      : t("Anweisungen wie „Lege … an“ bekommen einen Plan zum Bestätigen. Klicken, um nur zu antworten.", "Instructions like “Create …” get a plan to confirm. Click to only answer.")
+                  }
+                  onClick={() => setOnlyAnswer((on) => !on)}
+                >
+                  <ChatText size={13} aria-hidden="true" />
+                  <span>{t("Nur antworten", "Only answer")}</span>
+                </button>
+              )}
               {provider && (
                 <Disclosure
                   className="ai-ask-model"
@@ -869,4 +964,12 @@ function AnswerText({ text, sources, onOpen, streaming }: { text: string; source
       <AiMarkdown text={text} renderText={withCitations} after={streaming ? <span className="ai-ask-caret" aria-hidden /> : null} />
     </div>
   );
+}
+
+// What the AI reads while planning, for the progress line.
+function readingText(items: PlanReadItem[], t: (de: string, en: string) => string) {
+  const names = items.map((item) =>
+    item.kind === "search" ? t(`Suche „${item.title}“`, `search “${item.title}”`) : item.kind === "list" ? t(`Seiten in „${item.title}“`, `pages in “${item.title}”`) : `„${item.title}“`,
+  );
+  return names.slice(0, 3).join(", ") + (names.length > 3 ? " …" : "");
 }

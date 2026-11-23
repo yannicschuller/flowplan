@@ -246,3 +246,68 @@ export async function proposeAiFlashcards(body: Record<string, unknown>, signal?
 export async function addAiFlashcards(body: Record<string, unknown>) {
   return await postJson<{ deckId: string; title: string; added: number }>("/api/ai/flashcards/add", body);
 }
+
+// ---- Plans (#462, POST /api/ai/plan{,/run,/undo}, lib/ai/plan.ts) ----
+
+export type { PlanEvent, PlanOutcome, PlanPreview, PlanReadItem, PlanStepResult, PlanUndoResult } from "./plan-shared";
+import type { PlanEvent, PlanOutcome, PlanStepResult, PlanUndo, PlanUndoResult } from "./plan-shared";
+
+export type PlanAiOptions = {
+  workspaceId: string;
+  instruction: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  pageId?: string | null;
+  signal?: AbortSignal;
+  // Progress while the AI reads ("liest „Projektübersicht“ …").
+  onEvent?: (event: PlanEvent) => void;
+};
+// An instruction read and planned: the outcome (a checked plan, or "this is
+// a question") – nothing is written.
+export async function planAi({ signal, onEvent, ...body }: PlanAiOptions): Promise<PlanOutcome> {
+  const local = new Date();
+  const today = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  const response = await fetch("/api/ai/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, today }), signal });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => ({}));
+    throw new AiRequestError(serverMessage(data?.error || "Die KI-Anfrage ist fehlgeschlagen."), response.status);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let outcome: PlanOutcome | null = null;
+  const line = (text: string) => {
+    if (!text.trim()) return;
+    let event: PlanEvent;
+    try {
+      event = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (event.type === "error") throw new AiRequestError(serverMessage(event.error), 502);
+    if (event.type === "outcome") outcome = event.outcome;
+    else onEvent?.(event);
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      lines.forEach(line);
+    }
+    line(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (!outcome) throw new AiRequestError(serverMessage("Die KI-Anfrage ist fehlgeschlagen."), 502);
+  return outcome;
+}
+// Runs the chosen steps (each checked again on the server).
+export async function runAiPlan(workspaceId: string, steps: { index: number; step: unknown }[]) {
+  return (await postJson<{ results: PlanStepResult[] }>("/api/ai/plan/run", { workspaceId, steps })).results;
+}
+// "Alles rückgängig": what the run returned, newest first on the server.
+export async function undoAiPlan(workspaceId: string, undo: { index: number; undo: PlanUndo }[]) {
+  return (await postJson<{ results: PlanUndoResult[] }>("/api/ai/plan/undo", { workspaceId, undo })).results;
+}

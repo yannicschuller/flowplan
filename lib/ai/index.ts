@@ -114,6 +114,11 @@
 //     model proposes pages, tasks, text and records as JSON tool calls; the
 //     server checks them as the person and shows a preview; only confirmed
 //     actions run (checked again, via command(), audited as "ai.action").
+//   plans (#462, lib/ai/plan-read.ts, lib/ai/plan.ts, POST /api/ai/plan,
+//     /plan/run, /plan/undo; feature "actions"): an instruction in "Ask"
+//     – the model reads read-only for a few rounds (JSON protocol, handles
+//     instead of ids), then proposes steps; checked as the person, run in
+//     order after confirmation (audited "ai.plan"), undone as a whole.
 //   ask across workspaces (scope { kind: "all" }), related pages by meaning
 //     (semanticNeighbours, lib/related-pages.ts – no provider call) and the
 //     AI summary of the weekly digest (lib/weekly-digest.ts, "summarize").

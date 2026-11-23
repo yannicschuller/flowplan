@@ -128,6 +128,19 @@ class AccessContext {
     }
     return this.scope === "all" ? null : "excluded";
   }
+  // A space as a place to create in (plans, #462): not in the trash, not
+  // end-to-end encrypted, not closed to the AI, not excluded by the
+  // person's rules (the space's or the workspace's).
+  async spaceVerdict(spaceId: string, workspaceId: string): Promise<"trash" | "blocked" | "excluded" | null> {
+    const space = (await this.workspace(workspaceId)).spaces.get(spaceId);
+    if (!space || space.deleted) return "trash";
+    if ((space.encrypted && !this.device) || this.blocks.has(spaceId)) return "blocked";
+    for (const level of [spaceId, workspaceId]) {
+      const rule = this.rules.get(level);
+      if (rule) return rule === "exclude" ? "excluded" : null;
+    }
+    return this.scope === "all" ? null : "excluded";
+  }
   // Records: the database page must be readable, and the record visible.
   async rowsReadable(pageId: string, rowIds: string[]): Promise<Set<string>> {
     if ((await this.pageVerdict(pageId)) !== null) return new Set();
@@ -172,6 +185,11 @@ export async function aiFilter<T extends AiTarget>(user: Identity, items: T[]): 
 // Page ids the AI may read.
 export async function aiReadablePages(user: Identity, pageIds: string[]): Promise<Set<string>> {
   return new Set((await aiFilter(user, pageIds.map((pageId) => ({ pageId })))).map((i) => i.pageId));
+}
+
+// Whether the AI may create content in this space for this person.
+export async function aiSpaceOpen(user: Identity, spaceId: string, workspaceId: string): Promise<boolean> {
+  return (await (await AccessContext.create(user)).spaceVerdict(spaceId, workspaceId)) === null;
 }
 
 // For features: refuse before anything of the page reaches a prompt.
