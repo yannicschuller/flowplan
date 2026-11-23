@@ -18,7 +18,8 @@ const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 // A single line only with a formula that looks like one ("\(t=0\)",
 // "$$\frac{a}{b}$$"), not "sed 's/\(foo\)/'" or "kill $$".
 const MATH_LIKE = /\\[A-Za-z]+|[\^_=]/;
-// $…$ follows the dollar rule (#446): "costs $5 and $10" is no formula.
+// $…$ follows the dollar rule (#446) and must look like LaTeX: "costs $5
+// and $10" or "echo $HOME/$USER" is no formula.
 export function looksLikeChatText(text: string) {
   const dollars = () => dollarFormulas(text);
   if (!text.includes("\n"))
@@ -103,13 +104,17 @@ export function chatTextToHtml(text: string): string {
 }
 
 // Dollar formulas outside fenced code blocks and code spans, with their
-// offsets in the whole text.
+// offsets in the whole text. Pasted $…$ must also look like LaTeX, so
+// shell lines ("echo $HOME/$USER") and prices stay text (typing and the
+// Markdown import take the plain rule).
+const LATEX_LIKE = /[\\^_={]/;
 function dollarFormulas(text: string) {
   const found: ReturnType<typeof findDollarMath> = [];
   let offset = 0;
   for (const part of text.split(/(^ {0,3}(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}(?:`{3,}|~{3,})[ \t]*$)/m)) {
     if (!/^ {0,3}(?:`{3,}|~{3,})/.test(part))
-      for (const math of findDollarMath(part, { codeSpans: true })) found.push({ ...math, from: math.from + offset, to: math.to + offset });
+      for (const math of findDollarMath(part, { codeSpans: true }))
+        if (math.display || LATEX_LIKE.test(math.expression)) found.push({ ...math, from: math.from + offset, to: math.to + offset });
     offset += part.length;
   }
   return found;

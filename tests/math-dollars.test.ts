@@ -71,13 +71,18 @@ test("Markdown import reads $…$ and $$…$$ by the same rule", () => {
   assert.equal(html("$`a^2`$ and \\$5"), '<p><span data-math="a^2">a^2</span> and $5</p>');
 });
 
-test("pasted text: $…$ by the rule, $$…$$ as formula blocks", () => {
-  assert.equal(looksLikeChatText("Setze $x$ ein."), true);
+test("pasted text: $…$ by the rule and only when it looks like LaTeX, $$…$$ as formula blocks", () => {
+  assert.equal(looksLikeChatText("Setze $x_1$ ein."), true);
+  // Pasted $…$ must look like LaTeX: shell lines and plain letters stay text.
+  assert.equal(looksLikeChatText("echo $HOME/$USER"), false);
+  assert.equal(looksLikeChatText("Setze $x$ ein."), false);
+  assert.match(chatTextToHtml("**Shell**\necho $HOME/$USER"), /echo \$HOME\/\$USER/);
+  assert.match(chatTextToHtml("**Mathe**\nmit $\\frac{a}{b}$ und $x^2$ und $n$"), /mit <span data-math="\\frac\{a\}\{b\}"><\/span> und <span data-math="x\^2"><\/span> und \$n\$/);
   assert.equal(looksLikeChatText("costs $5 and $10"), false);
   assert.equal(looksLikeChatText("Zeile eins\ncosts $5 and $10"), false);
-  assert.equal(looksLikeChatText("Zeile eins\nmit $a+b$ darin"), true);
-  const html = chatTextToHtml("Setze $x$ ein, costs $5 and $10\n$$\na^2\n$$\n`$y$` bleibt");
-  assert.match(html, /<p>Setze <span data-math="x"><\/span> ein, costs \$5 and \$10<\/p>/);
+  assert.equal(looksLikeChatText("Zeile eins\nmit $a=b$ darin"), true);
+  const html = chatTextToHtml("Setze $x_1$ ein, costs $5 and $10\n$$\na^2\n$$\n`$y$` bleibt");
+  assert.match(html, /<p>Setze <span data-math="x_1"><\/span> ein, costs \$5 and \$10<\/p>/);
   assert.match(html, /<div data-math="a\^2"><\/div>/);
   assert.match(html, /<code>\$y\$<\/code> bleibt/);
   // Not inside fenced code.
