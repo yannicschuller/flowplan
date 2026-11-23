@@ -208,7 +208,11 @@ test("study.params: weights for a deck schedule its cards, offline too; reset go
   const withWeights = schedule(memory, 3, now, { retention: 0.9, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500, weights: fit.weights }, { zone }, third);
   // (The stored state is the optimiser's fold, ts-fsrs rounds each step to 8 decimals.)
   assert.ok(Math.abs(Number(log!.stability) / withWeights.memory.stability - 1) < 1e-6, `${log!.stability} vs ${withWeights.memory.stability}`);
-  assert.ok(Math.abs(withWeights.memory.stability - schedule(memory, 3, now, { retention: 0.9, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 }, { zone }, third).memory.stability) > 1);
+  // …and they matter: the defaults give another stability. (How far apart
+  // depends on the fit, which depends on where the synthetic log's days
+  // fall relative to now – a fixed gap of a whole day made this flaky.)
+  const withDefaults = schedule(memory, 3, now, { retention: 0.9, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 }, { zone }, third).memory.stability;
+  assert.ok(Math.abs(withWeights.memory.stability / withDefaults - 1) > 1e-6, `${withWeights.memory.stability} vs ${withDefaults}`);
   // The offline deck carries them (lib/study-offline.ts schedules with deck.params).
   const offline: any = await studyOffline(owner, { pageId, zone });
   assert.deepEqual(offline.params.weights, fit.weights);
