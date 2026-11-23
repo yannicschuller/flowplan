@@ -372,6 +372,19 @@ async function handleGET(
         },
       });
     }
+    // Pages and records for "@" in comments (#450).
+    if (path.length === 2 && path[0] === "threads" && path[1] === "pages") {
+      const { commentPageCandidates } = await import("@/lib/comment-page-mentions");
+      return NextResponse.json(
+        await commentPageCandidates(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          url.searchParams.get("row") ? z.uuid().parse(url.searchParams.get("row")) : undefined,
+          url.searchParams.get("q") || "",
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (path.length === 2 && path[0] === "threads" && path[1] === "mentions")
       return NextResponse.json(
         await inlineMentionCandidates(
@@ -2199,6 +2212,18 @@ async function handlePOST(
       const length = req.headers.get("content-length");
       if (length && Number(length) > maxUpload * 1024 * 1024 + 1024 * 1024) throw tooLarge();
       const target = async (fields: Map<string, string>) => {
+        // Attachments of comments (#450, lib/comment-extras.ts): whoever may
+        // comment – read – the page, also when it is locked; a record's
+        // comment also needs the record. Limits and checks as for any upload.
+        if (fields.get("purpose") === "comment") {
+          const p = await requirePage(user, z.string().uuid().parse(fields.get("pageId")));
+          if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+          await requireUnlocked(user, p);
+          if (fields.get("rowId")) await requireRow(user, p.id, z.uuid().parse(fields.get("rowId")));
+          if (await isEncryptedPage(p))
+            throw new HttpError(409, "Anhänge an Kommentaren gibt es in verschlüsselten Bereichen nicht.");
+          return { p, encrypted: false };
+        }
         const p = await requirePage(user, z.string().uuid().parse(fields.get("pageId")), true);
         if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
         // Pages of encrypted spaces take only files the browser encrypted

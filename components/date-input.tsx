@@ -84,7 +84,7 @@ export default function DateInput({
       setError("");
       if (commit === "change") void onChange(next);
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     }
   }
   const failed = () =>
@@ -100,7 +100,7 @@ export default function DateInput({
       setError("");
       changed.current = false;
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     }
   }
   // "Datum entfernen": saves "" at once. A pending draft is dropped, so the

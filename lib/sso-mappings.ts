@@ -120,7 +120,8 @@ async function applyWorkspace(userId: string, workspaceId: string, matched: SsoM
 }
 
 // The groups a directory gives this person: SCIM groups they are a member
-// of and the groups of their LDAP account.
+// of (also by hand), the groups of their LDAP account and the LDAP/SSO
+// groups an administrator gave them by hand (lib/directory-groups.ts).
 export async function directoryGroups(userId: string) {
   const groups = (await all<{ name: string }>(
     "SELECT g.display_name name FROM scim_group_members m JOIN scim_groups g ON g.id=m.group_id WHERE m.user_id=?",
@@ -128,6 +129,7 @@ export async function directoryGroups(userId: string) {
   )).map((g) => g.name);
   const ldap = await one<{ groups_json: string }>("SELECT groups_json FROM ldap_accounts WHERE user_id=?", userId);
   if (ldap) groups.push(...sessionGroups(ldap.groups_json));
+  for (const g of await all<{ name: string }>("SELECT name FROM directory_group_members WHERE user_id=?", userId)) groups.push(g.name);
   return groups;
 }
 
@@ -202,7 +204,7 @@ export async function reapplySsoMappings(workspaceId: string) {
     await applySsoGroups(s.user_id, sessionGroups(s.groups_json), workspaceId);
   }
   for (const u of await all<{ user_id: string }>(
-    "SELECT DISTINCT user_id FROM scim_group_members UNION SELECT user_id FROM ldap_accounts WHERE groups_json<>'[]'",
+    "SELECT DISTINCT user_id FROM scim_group_members UNION SELECT user_id FROM ldap_accounts WHERE groups_json<>'[]' UNION SELECT user_id FROM directory_group_members",
   ))
     if (!seen.has(u.user_id)) {
       seen.add(u.user_id);

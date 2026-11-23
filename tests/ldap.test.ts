@@ -383,3 +383,33 @@ test("a changed directory address drops the confirmation of the old one", async 
   await syncLdapAccounts();
   assert.deepEqual(await row(), { email: "victim@example.org", email_verified: 0 });
 });
+
+test("a directory group given by hand (#451) survives the LDAP sync; the LDAP membership itself cannot be removed by hand", async () => {
+  const { personGroupKeys } = await import("../lib/person-groups");
+  const { personDirectoryGroups } = await import("../lib/directory-groups");
+  const adminId = id();
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", adminId, `test:${adminId}`, "Admin", "ldap-admin@example.test");
+  const admin = { id: adminId, name: "Admin", email: "ldap-admin@example.test", groups: [], isAdmin: true } as never as Identity;
+  person("grace", { memberOf: [`cn=design,ou=groups,${BASE}`] });
+  person("henry", { memberOf: [`cn=research,ou=groups,${BASE}`] });
+  const grace = (await ldapPasswordLogin("grace", "secret-pw", "203.0.113.30", "de")).userId;
+  await ldapPasswordLogin("henry", "secret-pw", "203.0.113.31", "de");
+  // "research" is an LDAP group (Henry's): Grace's hand-made membership is kept apart, not as a SCIM group.
+  assert.deepEqual(await command(admin, { action: "admin.directoryGroupAdd", userId: grace, name: "research" }), { name: "research", stored: "manual", created: false, already: false });
+  assert.equal(await one("SELECT 1 FROM scim_groups WHERE display_name='research'"), undefined);
+  await syncLdapAccounts();
+  const keys = await personGroupKeys(grace);
+  assert.ok(keys.includes("dir:research"), "survives the sync");
+  assert.ok(keys.includes("dir:design"));
+  // (Each LDAP group by its DN and its CN.)
+  assert.deepEqual((await personDirectoryGroups(grace)).filter((g) => !g.name.includes("=")).map((g) => [g.name, g.sources, g.byHand, g.removable]), [
+    ["design", ["ldap"], false, false],
+    ["research", [], true, true],
+  ]);
+  // From LDAP: refused, it would come back with the next sync.
+  await assert.rejects(command(admin, { action: "admin.directoryGroupRemove", userId: grace, name: "design" }), /kommt aus LDAP – dort ändern/);
+  assert.ok((await personGroupKeys(grace)).includes("dir:design"));
+  await command(admin, { action: "admin.directoryGroupRemove", userId: grace, name: "research" });
+  await syncLdapAccounts();
+  assert.ok(!(await personGroupKeys(grace)).includes("dir:research"));
+});

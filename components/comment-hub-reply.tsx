@@ -6,7 +6,7 @@
 // without scrolling to the passage. Loaded with the first text comment the
 // panel shows, not with the page.
 import { useState } from "react";
-import type { CommentNode } from "@/lib/comment-content";
+import { commentReady, type CommentNode } from "@/lib/comment-content";
 import type { InlineMessage, InlineThread } from "@/lib/inline-comment-types";
 import { CommentBody, CommentComposer } from "./comment-composer";
 import { useT } from "./i18n";
@@ -64,7 +64,7 @@ export default function CommentHubReply({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (busy || !body.trim()) return;
+            if (busy || !commentReady(body, content)) return;
             setBusy(true);
             setError("");
             try {
@@ -94,7 +94,7 @@ export default function CommentHubReply({
               setContent(next ?? null);
             }}
           />
-          <button className="button primary compact" disabled={busy || !body.trim()}>
+          <button className="button primary compact" disabled={busy || !commentReady(body, content)}>
             {t("Antwort senden", "Send reply")}
           </button>
         </form>

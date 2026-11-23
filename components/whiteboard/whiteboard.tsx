@@ -3044,11 +3044,17 @@ export default function Whiteboard({
           {types.has("table") && types.size === 1 && (
             <>
               <span className="wb-sep" />
-              <button onClick={() => resizeTable(first, 1, 0)}>+ Zeile</button>
-              <button onClick={() => resizeTable(first, -1, 0)}>− Zeile</button>
-              <button onClick={() => resizeTable(first, 0, 1)}>+ Spalte</button>
-              <button onClick={() => resizeTable(first, 0, -1)}>
-                − Spalte
+              <button title={t("Zeile hinzufügen", "Add row")} onClick={() => resizeTable(first, 1, 0)}>
+                {t("+ Zeile", "+ Row")}
+              </button>
+              <button title={t("Letzte Zeile entfernen", "Remove last row")} onClick={() => resizeTable(first, -1, 0)}>
+                {t("− Zeile", "− Row")}
+              </button>
+              <button title={t("Spalte hinzufügen", "Add column")} onClick={() => resizeTable(first, 0, 1)}>
+                {t("+ Spalte", "+ Column")}
+              </button>
+              <button title={t("Letzte Spalte entfernen", "Remove last column")} onClick={() => resizeTable(first, 0, -1)}>
+                {t("− Spalte", "− Column")}
               </button>
               <button
                 className={first.header !== false ? "active" : ""}

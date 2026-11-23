@@ -1,6 +1,5 @@
 import {
   richCommentSchema,
-  mapCommentMentions,
   commentText,
 } from "./comment-content";
 import { z } from "zod";
@@ -11,6 +10,7 @@ import { commentAnchor, commentQuote, commentRange } from "./comment-positions";
 import type { CommentAnchor } from "./inline-comment-types";
 import { mapAsync } from "./each-async";
 import { COMMENT_COLORS, storedCommentColor } from "./comment-colors";
+import { importedContent } from "./comment-extras";
 export const archivedThreadsSchema = z
   .array(
     z.object({
@@ -158,6 +158,8 @@ export async function importInlineComments(
   threads: ArchivedThreads,
   rowMap: Map<string, string>,
   ownerId: string,
+  // An archive's files under their new addresses (#450); null: the same files.
+  mapSrc: ((src: string) => string | null) | null = null,
 ) {
   for (const t of threads) {
     const rowId = t.row_id ? rowMap.get(t.row_id)! : null;
@@ -209,12 +211,7 @@ export async function importInlineComments(
         JSON.stringify(m.deleted ? [] : m.reactions),
         m.deleted || !m.content
           ? null
-          : JSON.stringify(
-              await mapCommentMentions(m.content, (_id, label) => ({
-                userId: null,
-                label,
-              })),
-            ),
+          : JSON.stringify(await importedContent(m.content, mapSrc)),
       );
   }
 }

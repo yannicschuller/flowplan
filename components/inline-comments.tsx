@@ -3,7 +3,7 @@ import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import type { CommentNode } from "@/lib/comment-content";
+import { commentReady, type CommentNode } from "@/lib/comment-content";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/core";
@@ -414,7 +414,8 @@ export function InlineComments({
       setEditing(null);
       setError("");
     } catch (e) {
-      setError((e as Error).message);
+      // The anchor is checked in the browser, with the server's German texts.
+      setError(serverMessage((e as Error).message));
       setOpen(true);
     }
   }
@@ -625,7 +626,7 @@ export function InlineComments({
     }
   }
   async function submitDraft() {
-    if (!draft || busy || !body.trim()) return;
+    if (!draft || busy || !commentReady(body, bodyContent)) return;
     setBusy(true);
     setError("");
     try {

@@ -1,5 +1,7 @@
 "use client";
-import { LinkTargetIcon } from "./page-link-icons-store";
+// Writing a comment or reply (page, record and text comments, #314/#450):
+// formatting, "@" for people and for pages and records, attachments (button,
+// drag & drop, paste) and previews of the first links.
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -13,8 +15,6 @@ import {
   useRef,
   useState,
   useId,
-  createElement,
-  type ReactNode,
 } from "react";
 import {
   TextB,
@@ -27,14 +27,24 @@ import {
   Quotes,
   Link,
   At,
+  Paperclip,
 } from "@phosphor-icons/react";
 import {
   normalizeCommentContent,
   plainCommentContent,
   commentText,
   safeCommentLink,
+  MAX_COMMENT_ATTACHMENTS,
+  MAX_COMMENT_PREVIEWS,
+  type CommentAttachment,
+  type CommentLinkPreview,
   type CommentNode,
 } from "@/lib/comment-content";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { CommentFiles, CommentPreviews } from "./comment-body";
+import { PageIcon } from "./ui";
+import { shownPageIcon } from "@/lib/page-link-icons";
+export { CommentBody } from "./comment-body";
 import { AutoLinkRules } from "@/lib/auto-link-plugin";
 import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 const Mention = Node.create({
@@ -64,7 +74,50 @@ const Mention = Node.create({
     "@" + node.attrs.label,
   ],
 });
-type MentionChoice = { id: string; name: string; email: string };
+// A page or record named with "@" (#450); shown as its title, stored by id.
+const PageMention = Node.create({
+  name: "pageMention",
+  group: "inline",
+  inline: true,
+  atom: true,
+  addAttributes() {
+    return { pageId: { default: null }, rowId: { default: null }, label: { default: "" }, noAccess: { default: false } };
+  },
+  parseHTML: () => [
+    {
+      tag: "span[data-comment-page]",
+      getAttrs: (el) => ({
+        pageId: (el as HTMLElement).getAttribute("data-comment-page"),
+        rowId: (el as HTMLElement).getAttribute("data-comment-row") || null,
+        label: (el as HTMLElement).textContent || "",
+      }),
+    },
+  ],
+  renderHTML: ({ node }) => [
+    "span",
+    {
+      "data-comment-page": node.attrs.pageId || "",
+      ...(node.attrs.rowId ? { "data-comment-row": node.attrs.rowId } : {}),
+      class: `comment-page-mention${node.attrs.noAccess ? " no-access" : ""}`,
+    },
+    node.attrs.noAccess ? "🔒" : node.attrs.label || "…",
+  ],
+});
+type PersonChoice = { id: string; name: string; email: string };
+type PageChoice = { pageId: string; rowId?: string; title: string; icon: string; kind: string; pageTitle?: string };
+type MentionChoice = ({ kind: "person" } & PersonChoice) | ({ kind: "page"; id: string; pageKind: string } & Omit<PageChoice, "kind">);
+// The http(s) links of a comment, in order (for the previews).
+function contentLinks(node: CommentNode, out: string[] = []) {
+  for (const mark of node.marks || [])
+    if (mark.type === "link" && /^https?:/i.test(mark.attrs?.href || "") && !out.includes(mark.attrs!.href)) out.push(mark.attrs!.href);
+  node.content?.forEach((c) => contentLinks(c, out));
+  return out;
+}
+const withoutAttrs = (node: CommentNode): CommentNode => {
+  const { attrs: _attrs, ...rest } = node;
+  void _attrs;
+  return rest;
+};
 type MentionRange = {
   from: number;
   to: number;
@@ -80,6 +133,8 @@ export function CommentComposer({
   rowId,
   autoFocus = false,
   disabled = false,
+  attachments = true,
+  initialFiles,
 }: {
   body: string;
   content?: CommentNode | null;
@@ -89,6 +144,10 @@ export function CommentComposer({
   rowId?: string;
   autoFocus?: boolean;
   disabled?: boolean;
+  // Files can be attached (#450); off where uploads are not possible.
+  attachments?: boolean;
+  // Files to attach right away (dropped on the field before it opened).
+  initialFiles?: File[];
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -100,8 +159,29 @@ export function CommentComposer({
     [loading, setLoading] = useState(false),
     [link, setLink] = useState<string | null>(null),
     [, render] = useState(0);
-  const live = useRef({ onChange, mention, choices, choice });
-  live.current = { onChange, mention, choices, choice };
+  // Attachments and link previews live in the doc node's attrs (#450).
+  const files = content?.attrs?.attachments || [],
+    previews = content?.attrs?.previews || [];
+  const [uploading, setUploading] = useState<string[]>([]);
+  const dismissed = useRef(new Set<string>());
+  const fileInput = useRef<HTMLInputElement>(null);
+  const live = useRef({ onChange, mention, choices, choice, files, previews, content });
+  live.current = { onChange, mention, choices, choice, files, previews, content };
+  // The editor's text with the current attachments and previews.
+  const emit = (doc: CommentNode, next: { files?: CommentAttachment[]; previews?: CommentLinkPreview[] } = {}) => {
+    const attachments = next.files ?? live.current.files,
+      shown = next.previews ?? live.current.previews;
+    const value: CommentNode = {
+      ...withoutAttrs(doc),
+      ...(attachments.length || shown.length
+        ? { attrs: { ...(attachments.length ? { attachments } : {}), ...(shown.length ? { previews: shown } : {}) } }
+        : {}),
+    };
+    live.current.content = value;
+    live.current.files = attachments;
+    live.current.previews = shown;
+    live.current.onChange(commentText(value), value);
+  };
   const selectMention = useRef<(person: MentionChoice) => void>(() => {});
   // Emoji suggestions after ":" (#388), as in the document.
   const emojiSuggest = useEmojiSuggest();
@@ -113,6 +193,7 @@ export function CommentComposer({
         link: { openOnClick: false, isAllowedUri: safeCommentLink },
       }),
       Mention,
+      PageMention,
       // The workspace's automatic links (#202), as long as comments allow them.
       AutoLinkRules.configure({ allow: safeCommentLink }),
       emojiSuggest.extension,
@@ -127,7 +208,7 @@ export function CommentComposer({
                   normalizeCommentContent(transaction.doc.toJSON());
                   return true;
                 } catch (e) {
-                  queueMicrotask(() => setError((e as Error).message));
+                  queueMicrotask(() => setError(serverMessage((e as Error).message)));
                   return false;
                 }
               },
@@ -151,6 +232,20 @@ export function CommentComposer({
           : {}),
         "aria-label": label,
         "aria-multiline": "true",
+      },
+      // Files dropped or pasted into the text become attachments (#450).
+      handlePaste(_view, event) {
+        const pasted = [...(event.clipboardData?.files || [])];
+        if (!pasted.length || !attachments) return false;
+        void upload.current(pasted);
+        return true;
+      },
+      handleDrop(_view, event) {
+        const dropped = [...((event as DragEvent).dataTransfer?.files || [])];
+        if (!dropped.length || !attachments) return false;
+        event.preventDefault();
+        void upload.current(dropped);
+        return true;
       },
       handleKeyDown(view, event) {
         if (event.isComposing) return false;
@@ -197,9 +292,11 @@ export function CommentComposer({
       if (autoFocus) editor.commands.focus("end");
     },
     onUpdate: ({ editor }) => {
-      const next = normalizeCommentContent(editor.getJSON());
-      live.current.onChange(commentText(next), next);
+      emit(normalizeCommentContent(editor.getJSON()));
       setError("");
+    },
+    onMount: ({ editor }) => {
+      editor.view.dom.classList.remove("tiptap");
     },
     onTransaction: ({ editor, transaction }) => {
       render((n) => n + 1);
@@ -232,17 +329,16 @@ export function CommentComposer({
       );
     },
   });
-  selectMention.current = (person) => {
+  selectMention.current = (picked) => {
     const range = live.current.mention;
     if (!editor || !range || disabled) return;
     editor
       .chain()
       .focus()
       .insertContentAt({ from: range.from, to: range.to }, [
-        {
-          type: "mention",
-          attrs: { userId: person.id, label: person.name.slice(0, 200) },
-        },
+        picked.kind === "page"
+          ? { type: "pageMention", attrs: { pageId: picked.pageId, rowId: picked.rowId || null, label: (picked.title || "").slice(0, 200) } }
+          : { type: "mention", attrs: { userId: picked.id, label: picked.name.slice(0, 200) } },
         { type: "text", text: " " },
       ])
       .run();
@@ -251,16 +347,115 @@ export function CommentComposer({
   };
   useEffect(() => {
     if (!editor) return;
-    const next = content || plainCommentContent(body);
+    const next = withoutAttrs(content || plainCommentContent(body));
     if (
-      JSON.stringify(normalizeCommentContent(editor.getJSON())) !==
+      JSON.stringify(withoutAttrs(normalizeCommentContent(editor.getJSON()))) !==
       JSON.stringify(next)
     )
       editor.commands.setContent(next, { emitUpdate: false });
   }, [editor, body, content]);
+  // Uploads go one after the other to the comment's page (POST /api/upload,
+  // purpose=comment): the same checks and limits as every upload.
+  const upload = useRef<(picked: File[]) => Promise<void>>(async () => {});
+  upload.current = async (picked: File[]) => {
+    if (!editor || disabled || !picked.length) return;
+    const room = MAX_COMMENT_ATTACHMENTS - live.current.files.length - uploading.length;
+    if (picked.length > room) {
+      setError(t(`Höchstens ${MAX_COMMENT_ATTACHMENTS} Anhänge pro Kommentar.`, `At most ${MAX_COMMENT_ATTACHMENTS} attachments per comment.`));
+      picked = picked.slice(0, Math.max(0, room));
+    }
+    for (const file of picked) {
+      setUploading((now) => [...now, file.name]);
+      try {
+        const form = new FormData();
+        form.set("pageId", pageId);
+        if (rowId) form.set("rowId", rowId);
+        form.set("purpose", "comment");
+        form.set("file", file);
+        const response = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(serverMessage(data.error) || t("Die Datei konnte nicht hochgeladen werden.", "The file could not be uploaded."));
+        const attachment: CommentAttachment = { src: data.url, name: data.name || file.name, mime: data.mime || file.type, size: file.size };
+        if (!editor.isDestroyed) emit(normalizeCommentContent(editor.getJSON()), { files: [...live.current.files, attachment] });
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setUploading((now) => {
+          const at = now.indexOf(file.name);
+          return at < 0 ? now : [...now.slice(0, at), ...now.slice(at + 1)];
+        });
+      }
+    }
+  };
+  const started = useRef(false);
+  useEffect(() => {
+    if (!editor || started.current || !initialFiles?.length || !attachments) return;
+    started.current = true;
+    void upload.current(initialFiles);
+  }, [editor, initialFiles, attachments]);
+  const removeFile = (index: number) => {
+    if (!editor) return;
+    emit(normalizeCommentContent(editor.getJSON()), { files: live.current.files.filter((_, i) => i !== index) });
+  };
+  // Previews of the first links (#450): what GET /api/embed finds for them
+  // (server-side and SSRF-safe, lib/oembed.ts); a removed one stays away.
+  const links = contentLinks(content || plainCommentContent(body)).join("\n");
+  useEffect(() => {
+    if (!editor) return;
+    const wanted = links ? links.split("\n").filter((url) => !dismissed.current.has(url)).slice(0, MAX_COMMENT_PREVIEWS) : [];
+    const kept = live.current.previews.filter((p) => wanted.includes(p.url));
+    if (kept.length !== live.current.previews.length) emit(normalizeCommentContent(editor.getJSON()), { previews: kept });
+    const missing = wanted.filter((url) => !kept.some((p) => p.url === url));
+    if (!missing.length) return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      const found: CommentLinkPreview[] = [];
+      for (const url of missing) {
+        try {
+          const response = await fetch(`/api/embed?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+          if (!response.ok) continue;
+          const card = await response.json();
+          let host = url;
+          try {
+            host = new URL(url).hostname;
+          } catch {}
+          found.push(
+            card.kind === "card"
+              ? { url, title: String(card.title || ""), site: String(card.provider || host), description: String(card.description || ""), image: String(card.image || "") }
+              : { url, title: String(card.provider || host), site: host, description: "", image: "" },
+          );
+        } catch {}
+      }
+      if (!active || editor.isDestroyed || !found.length) return;
+      const now = contentLinks(normalizeCommentContent(editor.getJSON()));
+      const next = [...live.current.previews, ...found.filter((p) => now.includes(p.url) && !live.current.previews.some((q) => q.url === p.url))]
+        .sort((a, b) => now.indexOf(a.url) - now.indexOf(b.url))
+        .slice(0, MAX_COMMENT_PREVIEWS);
+      try {
+        emit(normalizeCommentContent(editor.getJSON()), { previews: normalizeCommentContent({ type: "doc", content: [{ type: "paragraph" }], attrs: { previews: next } }).attrs?.previews || [] });
+      } catch {}
+    }, 700);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, links]);
+  const removePreview = (url: string) => {
+    if (!editor) return;
+    dismissed.current.add(url);
+    emit(normalizeCommentContent(editor.getJSON()), { previews: live.current.previews.filter((p) => p.url !== url) });
+  };
   useEffect(() => {
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
+  // Not a document editor: without tiptap's class (its styles and the
+  // document's lookups), also when the view is mounted again later.
+  useEffect(() => {
+    try {
+      if (editor && !editor.isDestroyed) editor.view.dom.classList.remove("tiptap");
+    } catch {}
+  });
   useEffect(() => {
     if (!mention) {
       setChoices([]);
@@ -276,17 +471,24 @@ export function CommentComposer({
       setError(t("Die Personensuche hat zu lange gedauert. Bitte erneut suchen.", "The person search took too long. Please search again."));
     }, 8000);
     const timer = setTimeout(() => {
-      void fetch(
-        `/api/threads/mentions?page=${pageId}${rowId ? `&row=${rowId}` : ""}&q=${encodeURIComponent(mention.query)}`,
-        { signal: controller.signal, cache: "no-store" },
-      )
-        .then(async (r) => {
-          const data = await r.json();
-          if (!r.ok)
-            throw new Error(
-              serverMessage(data.error) || t("Personen konnten nicht geladen werden.", "People could not be loaded."),
-            );
-          if (!controller.signal.aborted) setChoices(data);
+      const query = `page=${pageId}${rowId ? `&row=${rowId}` : ""}&q=${encodeURIComponent(mention.query)}`;
+      const load = async <T,>(path: string, failed: string) => {
+        const r = await fetch(`${path}?${query}`, { signal: controller.signal, cache: "no-store" });
+        const data = await r.json();
+        if (!r.ok) throw new Error(serverMessage(data.error) || failed);
+        return data as T;
+      };
+      // People with access, then pages and records the author may read (#450).
+      void Promise.all([
+        load<PersonChoice[]>("/api/threads/mentions", t("Personen konnten nicht geladen werden.", "People could not be loaded.")),
+        load<PageChoice[]>("/api/threads/pages", t("Seiten konnten nicht geladen werden.", "Pages could not be loaded.")).catch(() => [] as PageChoice[]),
+      ])
+        .then(([people, pages]) => {
+          if (!controller.signal.aborted)
+            setChoices([
+              ...people.map((p) => ({ kind: "person" as const, ...p })),
+              ...pages.map(({ kind, ...p }) => ({ ...p, kind: "page" as const, pageKind: kind, id: p.rowId ? `${p.pageId}-${p.rowId}` : p.pageId })),
+            ]);
         })
         .catch((e) => {
           if (!controller.signal.aborted) setError(e.message);
@@ -397,8 +599,8 @@ export function CommentComposer({
         </button>
         <button
           type="button"
-          aria-label={t("Person erwähnen", "Mention a person")}
-          title={t("Person erwähnen (@)", "Mention a person (@)")}
+          aria-label={t("Person oder Seite erwähnen", "Mention a person or page")}
+          title={t("Person oder Seite erwähnen (@)", "Mention a person or page (@)")}
           disabled={!editor || disabled}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
@@ -411,6 +613,32 @@ export function CommentComposer({
         >
           <At />
         </button>
+        {attachments && (
+          <>
+            <button
+              type="button"
+              aria-label={t("Datei anhängen", "Attach file")}
+              title={t("Dateien oder Bilder anhängen (auch per Ziehen oder Einfügen)", "Attach files or images (also by dragging or pasting)")}
+              disabled={!editor || disabled || files.length + uploading.length >= MAX_COMMENT_ATTACHMENTS}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => fileInput.current?.click()}
+            >
+              <Paperclip />
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              hidden
+              aria-label={t("Dateien zum Anhängen", "Files to attach")}
+              onChange={(e) => {
+                const picked = [...(e.target.files || [])];
+                e.target.value = "";
+                void upload.current(picked);
+              }}
+            />
+          </>
+        )}
       </div>
       {link !== null && (
         <div className="comment-link-editor">
@@ -473,15 +701,40 @@ export function CommentComposer({
           </button>
         </div>
       )}
-      <EditorContent editor={editor} />
+      <div
+        className="comment-drop"
+        onDragOver={(e) => {
+          if (attachments && !disabled && e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (!attachments || disabled || !e.dataTransfer.files.length || e.defaultPrevented) return;
+          e.preventDefault();
+          void upload.current([...e.dataTransfer.files]);
+        }}
+      >
+        <EditorContent editor={editor} />
+      </div>
       <EmojiSuggest suggest={emojiSuggest} />
+      {(files.length > 0 || uploading.length > 0) && <CommentFiles files={files} pending={uploading} onRemove={disabled ? undefined : removeFile} />}
+      {previews.length > 0 && <CommentPreviews previews={previews} onRemove={disabled ? undefined : removePreview} />}
+      {/* Sending waits for the uploads: the form does not submit meanwhile. */}
+      <input
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        value=""
+        readOnly={!uploading.length}
+        required={uploading.length > 0}
+        onChange={() => {}}
+        ref={(el) => el?.setCustomValidity(uploading.length ? t("Bitte warte, bis die Anhänge hochgeladen sind.", "Please wait until the attachments are uploaded.") : "")}
+      />
       {mention && (
         <div className="comment-mention-picker">
           {mention.manual && (
             <label>
-              {t("Person suchen", "Search person")}
+              {t("Person oder Seite suchen", "Search person or page")}
               <input
-                aria-label={t("Person suchen", "Search person")}
+                aria-label={t("Person oder Seite suchen", "Search person or page")}
                 role="combobox"
                 aria-expanded="true"
                 aria-controls={listId}
@@ -528,27 +781,40 @@ export function CommentComposer({
           <div
             id={listId}
             role="listbox"
-            aria-label={t("Personen mit Seitenzugriff", "People with access to the page")}
+            aria-label={t("Personen und Seiten", "People and pages")}
           >
-            {choices.map((person, index) => (
+            {choices.map((item, index) => (
               <button
                 type="button"
                 role="option"
-                id={`${listId}-${person.id}`}
+                id={`${listId}-${item.id}`}
                 aria-selected={choice === index}
-                key={person.id}
+                key={`${item.kind}-${item.id}`}
+                className={item.kind === "page" ? "comment-mention-page" : undefined}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selectMention.current(person)}
+                onClick={() => selectMention.current(item)}
               >
-                <span>{person.name}</span>
-                <small>{person.email}</small>
+                {item.kind === "page" ? (
+                  <>
+                    <span>
+                      <PageIcon name={shownPageIcon(item.icon, item.rowId ? "record" : item.pageKind)} size={14} />
+                      {item.title || t("Ohne Titel", "Untitled")}
+                    </span>
+                    <small>{item.pageTitle || (item.rowId ? t("Eintrag", "Record") : t("Seite", "Page"))}</small>
+                  </>
+                ) : (
+                  <>
+                    <span>{item.name}</span>
+                    <small>{item.email}</small>
+                  </>
+                )}
               </button>
             ))}
           </div>
           {loading ? (
-            <p role="status">{t("Personen werden geladen …", "Loading people …")}</p>
+            <p role="status">{t("Personen und Seiten werden geladen …", "Loading people and pages …")}</p>
           ) : !choices.length ? (
-            <p role="status">{t("Keine berechtigte Person gefunden.", "No person with access found.")}</p>
+            <p role="status">{t("Keine Person oder Seite gefunden.", "No person or page found.")}</p>
           ) : null}
           <button
             type="button"
@@ -569,81 +835,5 @@ export function CommentComposer({
         {keyHints.visible && ` · ${t(`${keyHints.keys("Mod+Enter")} zum Senden`, `${keyHints.keys("Mod+Enter")} to send`)}`}
       </small>
     </fieldset>
-  );
-}
-export function CommentBody({
-  content,
-  body,
-}: {
-  content?: CommentNode | null;
-  body: string;
-}) {
-  const t = useT();
-  function render(node: CommentNode, index: number): ReactNode {
-    let child: ReactNode =
-      node.type === "text" ? node.text : (node.content || []).map(render);
-    if (node.type === "mention")
-      child = (
-        <span
-          className="comment-mention"
-          data-comment-mention={node.attrs?.userId || undefined}
-          title={
-            node.attrs?.userId ? t("Erwähnte Person", "Mentioned person") : t("Historische Erwähnung", "Historic mention")
-          }
-        >
-          @{node.attrs?.label}
-        </span>
-      );
-    if (node.type === "hardBreak") child = <br />;
-    for (const mark of node.marks || []) {
-      if (mark.type === "link") {
-        if (safeCommentLink(mark.attrs?.href))
-          child = (
-            <a href={mark.attrs.href} target="_blank" rel="noopener noreferrer">
-              {/* A page or record: its own icon (#96). */}
-              <LinkTargetIcon href={mark.attrs.href} />
-              {child}
-            </a>
-          );
-      } else {
-        const tags = {
-          bold: "strong",
-          italic: "em",
-          underline: "u",
-          strike: "s",
-          code: "code",
-        };
-        child = createElement(tags[mark.type] || "span", null, child);
-      }
-    }
-    if (["text", "mention", "hardBreak"].includes(node.type))
-      return <span key={index}>{child}</span>;
-    if (node.type === "codeBlock")
-      return (
-        <pre key={index}>
-          <code>{child}</code>
-        </pre>
-      );
-    const tags: Record<string, string> = {
-      doc: "div",
-      paragraph: "p",
-      blockquote: "blockquote",
-      bulletList: "ul",
-      orderedList: "ol",
-      listItem: "li",
-    };
-    return createElement(
-      tags[node.type] || "div",
-      {
-        key: index,
-        ...(node.type === "orderedList" ? { start: node.attrs?.start } : {}),
-      },
-      child,
-    );
-  }
-  return (
-    <div className="comment-rich-body">
-      {content ? render(content, 0) : <p>{body}</p>}
-    </div>
   );
 }

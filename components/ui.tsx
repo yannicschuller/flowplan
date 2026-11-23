@@ -315,7 +315,9 @@ export function setErrorToaster(show: (e: ShownError) => void) {
   };
 }
 export function errorView(kind: ErrorKind, detail?: string, retry?: () => void): ShownError {
-  return { kind, ...describeError({ kind, detail }, tr), ...(retry ? { retry } : {}) };
+  // Errors thrown in the browser (date, timeline, comment checks) carry the
+  // server's German texts too: shown in the reader's language.
+  return { kind, ...describeError({ kind, detail: serverMessage(detail) }, tr), ...(retry ? { retry } : {}) };
 }
 // The topmost open dialog the reader is working in, if any.
 function activeDialog() {

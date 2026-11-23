@@ -28,6 +28,12 @@ const exact: Record<string, string> = {
   "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.": "Groups and roles have no “instance default” of their own – remove the model instead.",
   "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).": "Please set up an AI provider for the instance first (Administration → AI).",
   "Gruppe nicht gefunden.": "Group not found.",
+  // Directory groups by hand (lib/directory-groups.ts, #451).
+  "Gruppenname fehlt.": "Group name missing.",
+  "Der Gruppenname darf höchstens 200 Zeichen haben.": "The group name may have at most 200 characters.",
+  "Der Gruppenname enthält Steuerzeichen.": "The group name contains control characters.",
+  "Diese Person gibt es nicht.": "This person does not exist.",
+  "Diese Person ist nicht in der Gruppe.": "This person is not in the group.",
   "Ein Add-on braucht mindestens 1 MB.": "An add-on needs at least 1 MB.",
   "Die Datei enthält Fehler – nichts wurde geändert.": "The file has errors – nothing was changed.",
   "Bitte eine Adresse mit http:// oder https:// angeben.": "Please enter an address with http:// or https://.",
@@ -808,6 +814,14 @@ const exact: Record<string, string> = {
   "Bitte einen Datensatz auswählen.": "Please select a record.",
   "Das Dokument ist noch nicht gespeichert.": "The document is not saved yet.",
   "Eine erwähnte Person hat keinen Zugriff mehr. Bitte entferne die Erwähnung oder wähle eine berechtigte Person.": "A mentioned person no longer has access. Please remove the mention or choose a person with access.",
+  // Attachments, page mentions and link previews of comments (#450).
+  "Höchstens 10 Anhänge pro Kommentar.": "At most 10 attachments per comment.",
+  "Ungültiger Anhang.": "Invalid attachment.",
+  "Zu viele Linkvorschauen.": "Too many link previews.",
+  "Ungültige Linkvorschau.": "Invalid link preview.",
+  "Ein Anhang ist nicht verfügbar. Bitte entferne ihn und lade die Datei erneut hoch.": "An attachment is not available. Please remove it and upload the file again.",
+  "Eine erwähnte Seite ist nicht verfügbar. Bitte entferne die Erwähnung.": "A mentioned page is not available. Please remove the mention.",
+  "Anhänge an Kommentaren gibt es in verschlüsselten Bereichen nicht.": "Comments have no attachments in encrypted spaces.",
   "Die ausgewählte Textstelle hat sich geändert. Bitte erneut auswählen; dein Entwurf bleibt erhalten.": "The selected passage has changed. Please select it again; your draft is kept.",
   "Nur Verfasser oder Bearbeiter können diesen Thread abschließen.": "Only authors or editors can resolve this thread.",
   "Nur Verfasser oder Bearbeiter können die Farbe dieses Threads ändern.": "Only authors or editors can change the colour of this thread.",
@@ -1619,8 +1633,21 @@ const exact: Record<string, string> = {
   "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
   "Keine Checkliste „Erste Schritte“ in diesem Arbeitsbereich.": "No “Getting started” checklist in this workspace.",
   "Kein Beispielbereich vorhanden.": "There is no sample space.",
+  // Messages that had no English yet (#453): shared pages and backups,
+  // workflow steps, storage overview.
+  "Anfrage konnte nicht verarbeitet werden.": "The request could not be processed.",
+  "Upload konnte nicht verarbeitet werden.": "The upload could not be processed.",
+  "Sicherung konnte nicht verarbeitet werden.": "The backup could not be processed.",
+  "Nicht verfügbar.": "Not available.",
+  "Das Archiv entspricht nicht dem unterstützten Flowplan-Format.": "The archive does not match the supported Flowplan format.",
+  "Dieses Journal ist mit einer PIN gesperrt – Workflows lesen es nicht.": "This journal is locked with a PIN – workflows do not read it.",
+  "Das Journal liegt in einem verschlüsselten Bereich, dort kann der Server nichts lesen.": "The journal is in an encrypted space, the server cannot read anything there.",
+  "Die Datenbank liegt in einem anderen Arbeitsbereich als der Workflow.": "The database is in another workspace than the workflow.",
+  "Nicht erreichbar": "Not reachable",
 };
 const patterns: [RegExp, string][] = [
+  // Directory groups by hand (lib/directory-groups.ts, #451).
+  [/^Die Mitgliedschaft kommt aus (.+) – dort ändern\.$/, "The membership comes from $1 – change it there."],
   // The instance's AI quota for administrators (lib/ai/quota.ts instanceAlertText).
   [/^Das KI-Kontingent der Instanz für heute ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for today is used."],
   [/^Das KI-Kontingent der Instanz für heute ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for today is used up – AI through the instance's provider is blocked until $1."],
@@ -1899,6 +1926,19 @@ const patterns: [RegExp, string][] = [
   ],
   [/^Die Datei darf höchstens (\d+) MB groß sein \(FLOWPLAN_IMPORT_MAX_MB\)\.$/, "The file may be at most $1 MB (FLOWPLAN_IMPORT_MAX_MB)."],
   [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Administration → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Administration → Limits & retention), at least 100 MB."],
+  // Messages with values that had no English yet (#453).
+  [/^Der Import würde (\d+) neue Auswahl-Optionen anlegen \(höchstens (\d+)\)\. Passt die Spalte zur Eigenschaft\?$/, "The import would create $1 new select options (at most $2). Does the column fit the property?"],
+  [/^„(.+)“ hätte mehr als (\d+) Optionen\.$/, "“$1” would have more than $2 options."],
+  [/^Unbekannte Funktion „(.+)“\.$/, "Unknown function “$1”."],
+  [/^Höchstens (\d+) Einladungslinks können gleichzeitig offen sein\. Zieh zuerst einen zurück\.$/, "At most $1 invite links can be open at the same time. Revoke one first."],
+  [/^Zu viele Elemente \(höchstens (\d+)\)\.$/, "Too many elements (at most $1)."],
+  [/^Der Host (\S+) steht in keinem HTTP-Knoten dieser Version\.$/, "The host $1 is not in any HTTP node of this version."],
+  [/^Zahl oder Text in \[ \] erwartet bei Zeichen (\d+)\.$/, "Number or text expected in [ ] at character $1."],
+  [/^Liste der Litestream-Replik: HTTP (\d+)$/, "List of the Litestream replica: HTTP $1"],
+  [/^FLOWPLAN_SECRETS_KEY_FILE kann nicht gelesen werden: (.+)$/s, "FLOWPLAN_SECRETS_KEY_FILE cannot be read: $1"],
+  [/^Ungültiger Pfad: (.+)$/s, "Invalid path: $1"],
+  [/^Ungültiger Dateischlüssel: (.+)$/s, "Invalid file key: $1"],
+  [/^Datei (.+) weder lokal noch im Bucket\.$/, "File $1 is neither local nor in the bucket."],
 ];
 
 // An incident of the instance for the administrators (lib/security-detect.ts
@@ -1931,8 +1971,13 @@ function taskFailureEnglish(message: string): string | null {
   return `Rule “${m[1]}”: task not created – ${reason ? m[2].replace(reason[0], reason[1]) : englishMessage(m[2])}`;
 }
 
+// " · 📎 2 Anhänge" after a comment's notification (lib/comment-extras.ts).
+const ATTACHMENT_NOTE = / · 📎 (\d+) (?:Anhang|Anhänge)$/;
 export function englishMessage(message: string): string {
   if (exact[message]) return exact[message];
+  const note = ATTACHMENT_NOTE.exec(message);
+  if (note)
+    return `${englishMessage(message.slice(0, note.index))} · 📎 ${note[1]} ${note[1] === "1" ? "attachment" : "attachments"}`;
   const task = taskFailureEnglish(message);
   if (task) return task;
   const incident = incidentEnglish(message);

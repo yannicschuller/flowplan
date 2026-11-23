@@ -73,6 +73,7 @@ import {
   type ArrowObstacle,
   type MeasuredLink,
 } from "./timeline-frame";
+import { serverMessage } from "@/lib/server-message";
 // Touch: how long a finger rests on a bar before it moves it, and how far
 // it may wander meanwhile (further, it is a swipe that scrolls).
 const TOUCH_HOLD_MS = 350;
@@ -470,7 +471,7 @@ export default function DatabaseTimeline({
     try {
       await onSchedule({ viewId: view.id, version, ...input });
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -499,7 +500,7 @@ export default function DatabaseTimeline({
       try {
         await onView({ timeline: migrateTimeline({ ...config, ...patch }) });
       } catch (e) {
-        setError((e as Error).message);
+        setError(serverMessage((e as Error).message));
       } finally {
         setLocalScale(undefined);
         setLocalWeekends(undefined);
@@ -515,7 +516,7 @@ export default function DatabaseTimeline({
     try {
       await onView(patch);
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -527,7 +528,7 @@ export default function DatabaseTimeline({
     try {
       await onView({ timeline: { ...config, dayWidth } });
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     }
   }
   // A new window: the zoom that fits it, from its start.
@@ -681,7 +682,7 @@ export default function DatabaseTimeline({
     try {
       await onSchedule({ action: "timeline.link", viewId: view.id, version, from, to: target });
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -1279,7 +1280,7 @@ export default function DatabaseTimeline({
                     };
                     await onSchema([...fields, field], { timeline: { ...migrateTimeline(config), dependencyField: field.id } });
                   } catch (e) {
-                    setError((e as Error).message);
+                    setError(serverMessage((e as Error).message));
                   } finally {
                     setBusy(false);
                   }

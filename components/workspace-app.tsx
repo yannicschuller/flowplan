@@ -158,6 +158,7 @@ import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
+import { PageCommentField } from "./page-comment-field";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import * as PageMenu from "./page-menu";
@@ -167,6 +168,7 @@ import {
   BookmarkSimple,
   Stack,
   CaretDown,
+  CaretUp,
   CaretRight,
   ArrowUp,
   ArrowDown,
@@ -678,7 +680,6 @@ export default function WorkspaceApp({
     [focusMode, setFocusMode] = useState(false),
     // Documents opened for reading on this device (no editing, no handles).
     [readPages, setReadPages] = useState<string[]>([]),
-    [comment, setComment] = useState(""),
     // The session ended while the app was open: a banner until the reader signs in again.
     [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
@@ -2806,6 +2807,7 @@ export default function WorkspaceApp({
   // folded (p:<id> unfolds one), spaces and groups open (s:<id>, g:<name>
   // fold them), journal folders follow lib/journal-nav.ts (jo:/jc:).
   const folds = useSidebarFolds(boot.workspace.id, boot.sidebar);
+  const navCompact = folds.has("g:nav");
   // A library (#329) starts folded: its tree opens by hand (so:<space>).
   const foldSpace = (id: string, fold: boolean) =>
     folds.change(boot.spaces.find((sp) => sp.id === id)?.library ? { [`so:${id}`]: !fold } : { [`s:${id}`]: fold });
@@ -4626,30 +4628,32 @@ export default function WorkspaceApp({
           </Dropdown.Portal>
         </Dropdown.Root>
         <div className="sidebar-scroll" ref={treeRoot}>
-          <nav className="main-nav">
-            <button onClick={openSearch}>
+          {/* The navigation folds into one row of icons (#452): g:nav, stored
+              like the other sidebar folds. */}
+          <nav className={`main-nav${navCompact ? " compact" : ""}`} aria-label={t("Navigation", "Navigation")}>
+            <button title={navCompact ? t("Suchen", "Search") : undefined} onClick={openSearch}>
               <MagnifyingGlass size={19} />
-              {t("Suchen", "Search")}
+              <span className="main-nav-label">{t("Suchen", "Search")}</span>
               {keyHints.visible && shortcutHint("search", mac) && <span className="keycap">{shortcutHint("search", mac)}</span>}
             </button>
             {canAsk && (
-              <button onClick={() => openAsk("")}>
+              <button title={navCompact ? t("KI fragen", "Ask AI") : undefined} onClick={() => openAsk("")}>
                 <Sparkle size={19} />
-                {t("KI fragen", "Ask AI")}
+                <span className="main-nav-label">{t("KI fragen", "Ask AI")}</span>
               </button>
             )}
-            <button
+            <button title={navCompact ? t("Startseite", "Home") : undefined}
               className={screen === "home" ? "selected" : ""}
               data-open-place=""
               onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace("home", openModeOf(e))) && go("home")}
               onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace("home", openModeOf(e))}
             >
               <House size={19} />
-              {t("Startseite", "Home")}
+              <span className="main-nav-label">{t("Startseite", "Home")}</span>
             </button>
             {/* The library (#329): only with a space shown as a library. */}
             {hasLibrary && (
-              <button
+              <button title={navCompact ? t("Bibliothek", "Library") : undefined}
                 className={screen === "library" && !libraryPlace ? "selected" : ""}
                 data-open-place=""
                 aria-current={screen === "library" && !libraryPlace ? "page" : undefined}
@@ -4657,31 +4661,31 @@ export default function WorkspaceApp({
                 onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace(LIBRARY_HOME, openModeOf(e))}
               >
                 <Books size={19} />
-                {t("Bibliothek", "Library")}
+                <span className="main-nav-label">{t("Bibliothek", "Library")}</span>
               </button>
             )}
-            <button
+            <button title={navCompact ? t("Posteingang", "Inbox") : undefined}
               className={screen === "inbox" ? "selected" : ""}
               data-open-place=""
               onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace("inbox", openModeOf(e))) && go("inbox")}
               onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace("inbox", openModeOf(e))}
             >
               <Bell size={19} />
-              {t("Posteingang", "Inbox")}
+              <span className="main-nav-label">{t("Posteingang", "Inbox")}</span>
               {boot.notifications.some((n) => !n.read_at) && (
                 <span className="notification-count">
                     {boot.notifications.filter((n) => !n.read_at).length}
                 </span>
               )}
             </button>
-            <button
+            <button title={navCompact ? t("Meine Aufgaben", "My tasks") : undefined}
               className={screen === "tasks" ? "selected" : ""}
               data-open-place=""
               onClick={(e) => !(tabs.on && openModeOf(e) !== "here" && tabs.openPlace("tasks", openModeOf(e))) && go("tasks")}
               onAuxClick={(e) => e.button === 1 && tabs.on && tabs.openPlace("tasks", openModeOf(e))}
             >
               <CheckSquare size={19} />
-              {t("Meine Aufgaben", "My tasks")}
+              <span className="main-nav-label">{t("Meine Aufgaben", "My tasks")}</span>
               {/* Given to me by others since I last opened My tasks (#208). */}
               {!!boot.newTasks && screen !== "tasks" && (
                 <span
@@ -4697,6 +4701,15 @@ export default function WorkspaceApp({
                   {boot.dueTasks}
                 </span>
               )}
+            </button>
+            <button
+              className="main-nav-toggle"
+              aria-expanded={!navCompact}
+              aria-label={navCompact ? t("Navigation ausklappen", "Expand navigation") : t("Navigation einklappen", "Collapse navigation")}
+              title={navCompact ? t("Navigation ausklappen", "Expand navigation") : t("Navigation einklappen", "Collapse navigation")}
+              onClick={() => folds.change({ "g:nav": !navCompact })}
+            >
+              {navCompact ? <CaretDown size={14} aria-hidden="true" /> : <CaretUp size={14} aria-hidden="true" />}
             </button>
           </nav>
           <div className="tree-filter">
@@ -6355,36 +6368,8 @@ export default function WorkspaceApp({
                       act={act}
                       time={(value) => relativeTime(value, clock, locale)}
                     />
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        // The comment shows at once and the field empties; a
-                        // refusal brings the text back into the field. A
-                        // double submit of the same draft posts it once.
-                        const body = comment;
-                        const draft = `comment:${pageId}`;
-                        setComment("");
-                        const r = await act(keyed({ action: "comment.create", pageId, body }, draftKey(draft, body)));
-                        if (r) draftSent(draft);
-                        else setComment((now) => now || body);
-                      }}
-                    >
-                      <textarea
-                        required
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        onKeyDown={(e) => {
-                          if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) {
-                            e.preventDefault();
-                            e.currentTarget.form?.requestSubmit();
-                          }
-                        }}
-                        placeholder={t("Schreibe einen Kommentar …", "Write a comment …")}
-                      />
-                      <button className="button primary compact">
-                        {t("Kommentieren", "Comment")}
-                      </button>
-                    </form>
+                    {/* Formatted, with attachments and page mentions (#450). */}
+                    <PageCommentField pageId={data.page.id} act={act} placeholder={t("Schreibe einen Kommentar …", "Write a comment …")} />
                   </aside>
                 )}
               </div>

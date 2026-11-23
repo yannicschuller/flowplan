@@ -50,11 +50,14 @@ test("double submit in the comment form posts the comment once", async ({ page }
   // on phones "Kommentare" is in the ⋯ menu until there is a comment.
   if (phoneTopBar(page)) await (await openPageMenu(page)).getByRole("menuitem", { name: "Kommentare", exact: true }).click();
   else await page.getByRole("button", { name: "Kommentare", exact: true }).click();
-  const field = page.getByPlaceholder("Schreibe einen Kommentar …");
-  await field.fill("Doppelklick");
-  // Ctrl+Enter and the button right after each other, before the answer.
+  // Typing into the field opens the comment's editor (#450) with the text.
+  await page.getByPlaceholder("Schreibe einen Kommentar …").fill("Doppelklick");
+  const field = page.locator(".comments-panel .comment-input");
+  await expect(field).toBeFocused();
+  await expect(field).toHaveText("Doppelklick");
+  // Ctrl+Enter twice right after each other, before the answer.
   await field.press("Control+Enter");
   await field.press("Control+Enter");
-  await expect(field).toHaveValue("");
+  await expect(field).toHaveText("");
   await expect.poll(async () => (await comments(page.request, created.id)).filter((c) => c.body === "Doppelklick").length).toBe(1);
 });

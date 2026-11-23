@@ -253,10 +253,16 @@ export async function recordToPage(
   );
   const html = doc?.html ?? row.content ?? "";
   // The page refers to its own copies of the files; the record keeps the originals.
-  const comments = await all<{ id: string; body: string }>("SELECT id,body FROM comments WHERE page_id=? AND row_id=?", database.id, row.id);
+  const comments = await all<{ id: string; body: string; rich_body: string | null }>("SELECT id,body,rich_body FROM comments WHERE page_id=? AND row_id=?", database.id, row.id);
+  // Attachments of the record's text comments (#450) as well.
+  const messages = await all<{ id: string; rich_body: string }>(
+    "SELECT m.id,m.rich_body FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE t.page_id=? AND t.row_id=? AND m.rich_body LIKE '%/api/files/%'",
+    database.id,
+    row.id,
+  );
   const fileIds = [
     ...new Set(
-      [...[JSON.stringify(plan.cells), row.icon || "", row.cover || "", html, ...comments.map((c) => c.body)].join(" ").matchAll(FILE_URL)].map((m) =>
+      [...[JSON.stringify(plan.cells), row.icon || "", row.cover || "", html, ...comments.map((c) => `${c.body} ${c.rich_body || ""}`), ...messages.map((m) => m.rich_body)].join(" ").matchAll(FILE_URL)].map((m) =>
         m[1].toLowerCase(),
       ),
     ),
@@ -272,7 +278,12 @@ export async function recordToPage(
     return next === d ? null : next;
   });
   if (result) publish.push(result.publish);
-  for (const comment of comments) if (swap(comment.body) !== comment.body) await run("UPDATE comments SET body=? WHERE id=?", swap(comment.body), comment.id);
+  for (const comment of comments) {
+    if (swap(comment.body) !== comment.body) await run("UPDATE comments SET body=? WHERE id=?", swap(comment.body), comment.id);
+    if (comment.rich_body && swap(comment.rich_body) !== comment.rich_body) await run("UPDATE comments SET rich_body=? WHERE id=?", swap(comment.rich_body), comment.id);
+  }
+  for (const message of messages)
+    if (swap(message.rich_body) !== message.rich_body) await run("UPDATE inline_messages SET rich_body=? WHERE id=?", swap(message.rich_body), message.id);
   // Comments, text comments, tasks, authorship and notifications follow the content.
   for (const table of ["comments", "inline_threads", "shared_comments", "notifications"])
     await run(`UPDATE ${table} SET page_id=?,row_id=NULL WHERE page_id=? AND row_id=?`, pageId, database.id, row.id);

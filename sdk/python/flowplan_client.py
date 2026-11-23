@@ -537,7 +537,7 @@ ApiToken = TypedDict("ApiToken", {
     "marketplace_check": Literal[0, 1],  # 1: the token has the permission “Marketplace check” (POST /api/marketplace/check only, never a real import)
 }, total=False)
 
-# row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`.
+# row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`, `attachments` = the number of attached files when there are any); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`.
 WebhookEvent = Literal["row.created", "row.updated", "row.done", "form.submitted", "page.created", "comment.created", "mention", "digest.due"]
 
 Webhook = TypedDict("Webhook", {
@@ -1889,16 +1889,17 @@ CommandRowsImportResult = TypedDict("CommandRowsImportResult", {
     "newOptions": Required[list[dict[str, Any]]],
 }, total=False)
 
-# Comment on a page or record
+# Comment on a page or record. Plain text in `body` ("@Full Name" mentions a member), or a formatted comment in `content` – the format of text comments (`doc` with paragraphs, lists, quotes, code, links, `mention` nodes `{ userId, label }` and `pageMention` nodes `{ pageId, rowId? }` for a page or record the author may read). `content.attrs.attachments` lists up to 10 files the author uploaded to the page (`POST /api/upload` with `purpose=comment`), each `{ src: "/api/files/<id>" }`; name, type and size are taken from the file. `content.attrs.previews` holds up to 2 link cards (`{ url, title, site, description, image }`, e.g. from `GET /api/embed`) for links of the comment. With `content`, `body` is derived from it (and may be empty when there are attachments). Mentioning a page notifies nobody.
 CommandCommentCreate = TypedDict("CommandCommentCreate", {
     "action": Required[Literal["comment.create"]],
     "pageId": Required[str],
     "rowId": str,
     "body": Required[str],
+    "content": dict[str, Any],
 }, total=False)
 
 CommandCommentCreateResult = TypedDict("CommandCommentCreateResult", {
-    "ok": Required[Literal[True]],
+    "id": Required[str],
 }, total=False)
 
 # Resolve or reopen a comment
@@ -2384,6 +2385,12 @@ RowSnapshotChangesQuery = TypedDict("RowSnapshotChangesQuery", {
     "against": str,  # Compare with this version instead
 }, total=False)
 
+CommentPageMentionsQuery = TypedDict("CommentPageMentionsQuery", {
+    "page": Required[str],  # Page ID of the comment
+    "row": str,  # Record ID of the comment
+    "q": str,  # Search text
+}, total=False)
+
 ThreadsQuery = TypedDict("ThreadsQuery", {
     "page": Required[str],  # Page ID
     "row": str,  # Record ID
@@ -2512,8 +2519,9 @@ SheetPreviewQuery = TypedDict("SheetPreviewQuery", {
 
 UploadFileForm = TypedDict("UploadFileForm", {
     "pageId": Required[str],
+    "rowId": str,
     "file": Required[FormFile],
-    "purpose": Literal["cover", "e2ee"],
+    "purpose": Literal["cover", "e2ee", "comment"],
     "fileId": str,
 }, total=False)
 
@@ -3075,6 +3083,10 @@ class FlowplanClient:
         """What a version of a record changed (GET /api/pages/{pageId}/rows/{rowId}/snapshots/{snapshotId}/changes)"""
         return self._json("GET", "/api/pages/" + _p(page_id) + "/rows/" + _p(row_id) + "/snapshots/" + _p(snapshot_id) + "/changes", query=dict(query) if query else None, headers=headers)
 
+    def comment_page_mentions(self, query: "CommentPageMentionsQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
+        """Pages and records to mention in a comment — For "@" in comments: up to 8 pages and records of the comment's workspace the caller may read that match `q` (with an empty `q`: recently visited ones). Answered with `Cache-Control: no-store`. (GET /api/threads/pages)"""
+        return self._json("GET", "/api/threads/pages", query=dict(query) if query else None, headers=headers)
+
     def threads(self, query: "ThreadsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Inline comment threads of a page or record (GET /api/threads)"""
         return self._json("GET", "/api/threads", query=dict(query) if query else None, headers=headers)
@@ -3208,7 +3220,7 @@ class FlowplanClient:
         return self._json("GET", "/api/files/" + _p(file_id) + "/sheet", query=dict(query) if query else None, headers=headers)
 
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
-        """Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
+        """Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. (POST /api/upload)"""
         return self._json("POST", "/api/upload", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def image_placeholders(self, query: "ImagePlaceholdersQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

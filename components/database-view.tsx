@@ -233,6 +233,8 @@ import {
 import { IconImagePicker } from "./icon-image-picker";
 import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
+import { PageCommentField } from "./page-comment-field";
+import { CommentBody } from "./comment-body";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape, ViewSkeleton } from "./skeleton";
 import { showToast, showUndo, toastSerial, undoShownSince } from "./toast";
@@ -489,7 +491,6 @@ export default function DatabaseView({
     [optionsText, setOptionsText] = useState<string | null>(null),
     [viewName, setViewName] = useState(""),
     [viewType, setViewType] = useState<View["type"]>("table"),
-    [comment, setComment] = useState(""),
     // Occurrence of a repeating record opened from the calendar.
     [occurrence, setOccurrence] = useState<{
       rowId: string;
@@ -6619,7 +6620,7 @@ export default function DatabaseView({
                         <Avatar name={c.name} small />
                         <div>
                           <strong>{c.name}</strong>
-                          <p>{c.body}</p>
+                          <CommentBody content={c.content} body={c.body} />
                           {c.author_id && (
                             <Reactions
                               reactions={c.reactions || []}
@@ -6636,29 +6637,15 @@ export default function DatabaseView({
                         </div>
                       </div>
                     ))}
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      if (comment.trim()) {
-                        // Shows at once; a refusal brings the text back.
-                        const body = comment;
-                        setComment("");
-                        const sent = await act({
-                          action: "comment.create",
-                          rowId: selected.id,
-                          body,
-                        });
-                        if (!sent) setComment((now) => now || body);
-                      }
-                    }}
-                  >
-                    <input
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      placeholder={t("Kommentar schreiben …", "Write a comment …")}
-                    />
-                    <button className="button compact">{t("Senden", "Send")}</button>
-                  </form>
+                  {/* Formatted, with attachments and page mentions (#450). */}
+                  <PageCommentField
+                    key={`comment-${selected.id}`}
+                    placeholder={t("Kommentar schreiben …", "Write a comment …")}
+                    pageId={page.id}
+                    rowId={selected.id}
+                    act={act}
+                    submitLabel={t("Senden", "Send")}
+                  />
                 </div>
               </div>
             </div>

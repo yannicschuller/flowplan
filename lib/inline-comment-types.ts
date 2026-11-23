@@ -12,6 +12,8 @@ export const commentAnchorSchema = z
 export type CommentAnchor = z.infer<typeof commentAnchorSchema>;
 export type InlineMessage = {
   content?: CommentNode | null;
+  // Summaries (no content): how many files the message has (#450).
+  attachmentCount?: number;
   id: string;
   author_id: string | null;
   name: string;

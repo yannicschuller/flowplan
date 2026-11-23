@@ -68,8 +68,8 @@ export const pageMovedEvent = async (pageId: string, actorId: string | null | un
 export const pageTaggedEvent = async (pageId: string, actorId: string | null | undefined, tags: { id: string; name: string }[]) => {
   for (const tag of tags) await pageEvent("page.tagged", pageId, actorId, { tagId: tag.id, tag: tag.name });
 };
-export const commentEvent = async (pageId: string, rowId: string | null, actorId: string | null | undefined, comment: { id: string | null; text: string; inline?: boolean }) =>
-  await pageEvent("comment.created", pageId, actorId, { commentId: comment.id, text: comment.text.slice(0, 10_000), inline: !!comment.inline }, { rowId });
+export const commentEvent = async (pageId: string, rowId: string | null, actorId: string | null | undefined, comment: { id: string | null; text: string; inline?: boolean; attachments?: number }) =>
+  await pageEvent("comment.created", pageId, actorId, { commentId: comment.id, text: comment.text.slice(0, 10_000), inline: !!comment.inline, ...(comment.attachments ? { attachments: comment.attachments } : {}) }, { rowId });
 export const mentionEvent = async (pageId: string, rowId: string | null, userId: string, actorId: string | null | undefined) =>
   await pageEvent("mention", pageId, actorId, { userId }, { rowId });
 // A journal got the page of a day (lib/journal.ts rollJournal): fires when
