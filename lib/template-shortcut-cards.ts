@@ -255,6 +255,30 @@ export const shortcutCards: { de: CatalogRow[]; en: CatalogRow[] } = {
     },
     {
       "cells": {
+        "title": "Formel im Satz: zwischen Dollarzeichen schreiben",
+        "mac": "$x^2$",
+        "pc": "$x^2$",
+        "area": "Editor"
+      }
+    },
+    {
+      "cells": {
+        "title": "Formelblock: $$ in einer leeren Zeile, dann Leertaste oder Enter",
+        "mac": "$$",
+        "pc": "$$",
+        "area": "Editor"
+      }
+    },
+    {
+      "cells": {
+        "title": "Im Formeldialog einfügen oder speichern (Inline-Formel: auch Enter)",
+        "mac": "⌘ ↵",
+        "pc": "Ctrl + Enter",
+        "area": "Editor"
+      }
+    },
+    {
+      "cells": {
         "title": "Rückgängig / Wiederholen",
         "mac": "⌘ Z / ⇧ ⌘ Z",
         "pc": "Ctrl + Z / Ctrl + Shift + Z",
@@ -588,6 +612,30 @@ export const shortcutCards: { de: CatalogRow[]; en: CatalogRow[] } = {
         "title": "Collapse or expand the section (in the heading) or the toggle",
         "mac": "⌥ ⌘ ↵",
         "pc": "Ctrl + Alt + Enter",
+        "area": "Editor"
+      }
+    },
+    {
+      "cells": {
+        "title": "Inline formula: write it between dollar signs",
+        "mac": "$x^2$",
+        "pc": "$x^2$",
+        "area": "Editor"
+      }
+    },
+    {
+      "cells": {
+        "title": "Formula block: $$ in an empty line, then Space or Enter",
+        "mac": "$$",
+        "pc": "$$",
+        "area": "Editor"
+      }
+    },
+    {
+      "cells": {
+        "title": "Insert or save in the formula dialog (inline formula: Enter too)",
+        "mac": "⌘ ↵",
+        "pc": "Ctrl + Enter",
         "area": "Editor"
       }
     },
