@@ -47,6 +47,7 @@ import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUser
 import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
 import { cancelUnconfirmed, markUnconfirmed, pendingDeletionOf, resendKeepLink, unconfirmedPlan } from "./unconfirmed-deletion";
+import { addToDirectoryGroup, directoryGroupMembers, directoryGroupNames, personDirectoryGroups, removeFromDirectoryGroup } from "./directory-groups";
 import { assertMayCreateWorkspace, limitGroupNames, ownedWorkspaces, setGroupLimits, setUserLimits, userBytes, userLimitDetails, userStorageCheckpoint } from "./user-limits";
 import { exportLimitsFile, importLimitsFile } from "./limits-file";
 import { exportSettingsFile, importSettingsFile } from "./settings-file";
@@ -1236,6 +1237,24 @@ async function runCommand(
       case "admin.userLimits":
         requireAdmin(user);
         result = await setUserLimits(z.uuid().parse(b.userId), b.limits);
+        break;
+      // Directory groups by hand (#451, lib/directory-groups.ts): a
+      // person's groups, a group's members, adding and removing.
+      case "admin.directoryGroups":
+        requireAdmin(user);
+        result = { groups: await personDirectoryGroups(z.uuid().parse(b.userId)), ...(await directoryGroupNames()) };
+        break;
+      case "admin.directoryGroupMembers":
+        requireAdmin(user);
+        result = await directoryGroupMembers(b.name);
+        break;
+      case "admin.directoryGroupAdd":
+        requireAdmin(user);
+        result = await addToDirectoryGroup(user.id, z.uuid().parse(b.userId), b.name);
+        break;
+      case "admin.directoryGroupRemove":
+        requireAdmin(user);
+        result = await removeFromDirectoryGroup(user.id, z.uuid().parse(b.userId), b.name);
         break;
       // Limits per group (lib/user-limits.ts): one workspace or directory group.
       case "admin.groupLimits":

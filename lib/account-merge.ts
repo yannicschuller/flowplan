@@ -109,6 +109,11 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "invite_links.created_by": "move",
   "group_members.user_id": "move",
   "scim_group_members.user_id": "move",
+  // Directory groups of LDAP/SSO given by hand (schema 123, lib/directory-groups.ts).
+  "directory_group_members.user_id": "move",
+  // Who added a directory group member by hand (schema 123).
+  "directory_group_members.added_by": "move",
+  "scim_group_members.added_by": "move",
   "sso_sources.user_id": "move",
   "comments.author_id": "move",
   "comment_reactions.user_id": "move",

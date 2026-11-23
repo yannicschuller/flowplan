@@ -27,6 +27,11 @@
 //   its "active" state only when the request says so. Their SCIM groups
 //   still count as directory groups for the limits per group and the AI
 //   quotas (lib/person-groups.ts).
+// - Administrators may add members to a group by hand (#451,
+//   lib/directory-groups.ts): ordinary rows of scim_group_members marked
+//   with added_by. The client sees those that are SCIM users; replacing the
+//   members never removes those it cannot see (no SCIM user), and DELETE
+//   /Users keeps the hand-made ones. Responses keep the standard shape.
 // - Only linking: a POST /Users with the Flowplan extension
 //   {"urn:ietf:params:scim:schemas:extension:flowplan:2.0:User":
 //   {"linkExisting": true}} never creates an account – without an existing
@@ -509,7 +514,8 @@ async function deleteUser(scimId: string) {
     const row = await userRow(scimId);
     if (!row) throw new ScimError(404, "User not found.");
     await setActive(row.user_id, false);
-    await run("DELETE FROM scim_group_members WHERE user_id=?", row.user_id);
+    // Memberships an administrator made by hand stay (lib/directory-groups.ts).
+    await run("DELETE FROM scim_group_members WHERE user_id=? AND added_by IS NULL", row.user_id);
     await run("DELETE FROM scim_users WHERE id=?", scimId);
     await audit("", "scim.user.delete", row.user_id, row.user_name);
   });
@@ -529,9 +535,14 @@ async function uniqueGroupName(name: string, except?: string) {
   if (await one("SELECT 1 FROM scim_groups WHERE lower(display_name)=lower(?) AND id<>?", name, except || ""))
     throw new ScimError(409, "displayName is already in use.", "uniqueness");
 }
-// Sets the members; returns everyone whose groups changed.
+// Sets the members; returns everyone whose groups changed. Members without
+// a SCIM user (accounts an administrator added by hand that the client
+// never provisioned, lib/directory-groups.ts) are not part of the resource
+// the client sees, so its list cannot name them: they stay.
 async function setMembers(groupId: string, wanted: Set<string>) {
-  const current = new Set((await all<{ user_id: string }>("SELECT user_id FROM scim_group_members WHERE group_id=?", groupId)).map((m) => m.user_id));
+  const current = new Set(
+    (await all<{ user_id: string }>("SELECT m.user_id FROM scim_group_members m WHERE m.group_id=? AND EXISTS (SELECT 1 FROM scim_users s WHERE s.user_id=m.user_id)", groupId)).map((m) => m.user_id),
+  );
   const changed = new Set<string>();
   for (const userId of current)
     if (!wanted.has(userId)) {
