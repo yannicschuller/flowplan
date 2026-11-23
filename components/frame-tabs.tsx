@@ -10,9 +10,29 @@
 // Only the active tab of a frame is mounted: switching tabs in the left
 // frame is a navigation of the main view (the address is replaced), the
 // right frame shows its active tab's page (components/split-pane.tsx).
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { ArrowLineLeft, ArrowLineRight, Copy, Plus, PushPin, PushPinSlash, SquareSplitHorizontal, X, XSquare } from "@phosphor-icons/react";
+import {
+  ArrowLeft,
+  ArrowLineLeft,
+  ArrowLineRight,
+  ArrowRight,
+  CaretDown,
+  CaretRight,
+  Copy,
+  PencilSimple,
+  Palette,
+  Plus,
+  PushPin,
+  PushPinSlash,
+  SquareSplitHorizontal,
+  Stack,
+  StackMinus,
+  StackPlus,
+  X,
+  XSquare,
+} from "@phosphor-icons/react";
+import { colorLabel } from "./color-label";
 import { useT } from "./i18n";
 import { safeCollisionPadding } from "./safe-area";
 import {
@@ -20,7 +40,19 @@ import {
   activePlace,
   close,
   closeFrame,
+  closeGroup,
   closeOthers,
+  createGroup,
+  GROUP_COLORS,
+  groupTabs,
+  joinGroup,
+  leaveGroup,
+  moveGroup,
+  newGroupId,
+  tabHidden,
+  ungroup,
+  updateGroup,
+  type GroupColor,
   cycle,
   focus,
   follow,
@@ -489,6 +521,19 @@ export function useFrameTabs({
     close: (frame: number, id: string) => run((l) => close(l, frame, id)),
     closeOthers: (frame: number, id: string) => run((l) => closeOthers(l, frame, id)),
     pin: (frame: number, id: string, pinned: boolean) => run((l) => pin(l, frame, id, pinned)),
+    // Tab groups (#444).
+    newGroup: (frame: number, id: string, name: string) => {
+      const group = newGroupId();
+      run((l) => createGroup(l, frame, id, { id: group, name }));
+      return group;
+    },
+    joinGroup: (frame: number, id: string, group: string) => run((l) => joinGroup(l, frame, id, group)),
+    leaveGroup: (frame: number, id: string) => run((l) => leaveGroup(l, frame, id)),
+    updateGroup: (frame: number, group: string, change: { name?: string; color?: GroupColor; collapsed?: boolean }) =>
+      run((l) => updateGroup(l, frame, group, change)),
+    ungroup: (frame: number, group: string) => run((l) => ungroup(l, frame, group)),
+    closeGroup: (frame: number, group: string) => run((l) => closeGroup(l, frame, group)),
+    moveGroup: (frame: number, group: string, delta: number) => run((l) => moveGroup(l, frame, group, delta)),
     // The "+" of the tab bar.
     newTab: onNewTab ? (frame: number) => newTabRef.current?.(frame) : null,
     closeFrame: (frame: number) => run((l) => closeFrame(l, frame)),
@@ -534,6 +579,11 @@ export function TabBar({
   const t = useT();
   const list = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  // The menu of a group's chip, and the group being renamed (#444).
+  const [groupMenu, setGroupMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const renamingRef = useRef<string | null>(null);
+  renamingRef.current = renaming;
   const pressed = useRef<{ id: string; x: number; y: number; pointer: number; dragging: boolean } | null>(null);
   const dragged = useRef(false);
   const only = frames === 1 && frame.tabs.length === 1;
@@ -547,12 +597,13 @@ export function TabBar({
     const bar = under?.closest<HTMLElement>("[data-tab-frame]");
     if (!bar) return null;
     const target = Number(bar.dataset.tabFrame);
+    // The tabs shown (a collapsed group's are not): their place in the frame.
     const items = [...bar.querySelectorAll<HTMLElement>("[role=tab]")];
-    let at = items.length;
-    for (const [i, item] of items.entries()) {
+    let at = Number(bar.dataset.tabCount) || items.length;
+    for (const item of items) {
       const box = item.getBoundingClientRect();
       if (x < box.left + box.width / 2) {
-        at = i;
+        at = Number(item.dataset.index);
         break;
       }
     }
@@ -560,11 +611,30 @@ export function TabBar({
   };
 
   const focusTab = (id: string) => requestAnimationFrame(() => document.getElementById(`tab-${id}`)?.focus());
+  // Roving focus over the tabs and the groups' chips, as they stand.
+  const rove = (e: React.KeyboardEvent<HTMLElement>) => {
+    const items = [...(list.current?.querySelectorAll<HTMLElement>("[data-roving]") ?? [])];
+    const at = items.indexOf(e.currentTarget);
+    const n = items.length;
+    if (at < 0 || !n) return;
+    const to = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : (at + (e.key === "ArrowRight" ? 1 : -1) + n) % n;
+    items[to].focus();
+  };
+  const groupLabel = (name: string, count: number, collapsed: boolean) => {
+    const label = count === 1 ? t(`Gruppe ${name}, 1 Tab`, `Group ${name}, 1 tab`) : t(`Gruppe ${name}, ${count} Tabs`, `Group ${name}, ${count} tabs`);
+    return collapsed ? t(`${label}, eingeklappt`, `${label}, collapsed`) : label;
+  };
+  const commitRename = (group: string, value: string) => {
+    setRenaming(null);
+    tabs.updateGroup(index, group, { name: value });
+    requestAnimationFrame(() => document.getElementById(`tab-group-${group}`)?.focus());
+  };
 
   return (
     <div
       className={`frame-tabs${focused && frames > 1 ? " focused" : ""}${dropIndex !== null ? " dropping" : ""}`}
       data-tab-frame={index}
+      data-tab-count={frame.tabs.length}
     >
     <div
       ref={list}
@@ -577,17 +647,94 @@ export function TabBar({
         const place = placeOf(tab);
         const look = describe(place);
         const selected = tab.id === frame.active;
+        const group = tab.group ? frame.groups?.find((g) => g.id === tab.group) : undefined;
+        // A group's chip before its first tab.
+        const chip =
+          group && frame.tabs[i - 1]?.group !== group.id
+            ? (() => {
+                const count = groupTabs(frame, group.id).length;
+                if (renaming === group.id)
+                  return (
+                    <input
+                      className={`frame-tab-group-input opt-${group.color}`}
+                      autoFocus
+                      defaultValue={group.name}
+                      maxLength={60}
+                      aria-label={t("Name der Gruppe", "Group name")}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitRename(group.id, e.currentTarget.value);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setRenaming(null);
+                          requestAnimationFrame(() => document.getElementById(`tab-group-${group.id}`)?.focus());
+                        }
+                      }}
+                      onBlur={(e) => renamingRef.current === group.id && commitRename(group.id, e.currentTarget.value)}
+                    />
+                  );
+                return (
+                  <button
+                    type="button"
+                    id={`tab-group-${group.id}`}
+                    data-roving=""
+                    tabIndex={-1}
+                    className={`frame-tab-group opt-${group.color}${group.collapsed ? " collapsed" : ""}`}
+                    aria-expanded={!group.collapsed}
+                    aria-label={groupLabel(group.name, count, !!group.collapsed)}
+                    title={group.collapsed ? t("Gruppe ausklappen", "Expand group") : t("Gruppe einklappen", "Collapse group")}
+                    onClick={() => tabs.updateGroup(index, group.id, { collapsed: !group.collapsed })}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setGroupMenu({ id: group.id, x: e.clientX, y: e.clientY });
+                    }}
+                    onKeyDown={(e) => {
+                      const moving = (e.altKey || e.metaKey || e.ctrlKey) && e.shiftKey;
+                      if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && moving) {
+                        e.preventDefault();
+                        tabs.moveGroup(index, group.id, e.key === "ArrowRight" ? 1 : -1);
+                        requestAnimationFrame(() => document.getElementById(`tab-group-${group.id}`)?.focus());
+                      } else if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Home" || e.key === "End") {
+                        if (e.altKey || e.metaKey || e.ctrlKey) return;
+                        e.preventDefault();
+                        rove(e);
+                      } else if (e.key === "F2") {
+                        e.preventDefault();
+                        setRenaming(group.id);
+                      } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                        e.preventDefault();
+                        const box = e.currentTarget.getBoundingClientRect();
+                        setGroupMenu({ id: group.id, x: box.left, y: box.bottom });
+                      }
+                    }}
+                  >
+                    <span className="frame-tab-group-name">{group.name}</span>
+                    {group.collapsed && (
+                      <span className="frame-tab-group-count" aria-hidden="true">
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })()
+            : null;
+        if (tabHidden(frame, tab)) return <Fragment key={tab.id}>{chip}</Fragment>;
         return (
+          <Fragment key={tab.id}>
+          {chip}
           <div
-            key={tab.id}
             id={`tab-${tab.id}`}
+            data-index={i}
+            data-roving=""
             role="tab"
             aria-selected={selected}
             aria-controls={panelId}
             tabIndex={selected ? 0 : -1}
             title={look.title}
             data-open-place=""
-            className={`frame-tab${selected ? " active" : ""}${tab.pinned ? " pinned" : ""}${drop?.tab === tab.id ? " dragged" : ""}${dropIndex === i ? " drop-before" : ""}${dropIndex === frame.tabs.length && i === frame.tabs.length - 1 ? " drop-after" : ""}`}
+            className={`frame-tab${selected ? " active" : ""}${tab.pinned ? " pinned" : ""}${group ? ` grouped opt-${group.color}` : ""}${drop?.tab === tab.id ? " dragged" : ""}${dropIndex === i ? " drop-before" : ""}${dropIndex === frame.tabs.length && i === frame.tabs.length - 1 ? " drop-after" : ""}`}
             onClick={() => {
               if (dragged.current) {
                 dragged.current = false;
@@ -605,7 +752,6 @@ export function TabBar({
               setMenu({ id: tab.id, x: e.clientX, y: e.clientY });
             }}
             onKeyDown={(e) => {
-              const at = frame.tabs.findIndex((x) => x.id === tab.id);
               const moving = (e.altKey || e.metaKey || e.ctrlKey) && e.shiftKey;
               if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && moving) {
                 e.preventDefault();
@@ -614,15 +760,15 @@ export function TabBar({
               } else if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Home" || e.key === "End") {
                 if (e.altKey || e.metaKey || e.ctrlKey) return;
                 e.preventDefault();
-                const n = frame.tabs.length;
-                const to = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : (at + (e.key === "ArrowRight" ? 1 : -1) + n) % n;
-                document.getElementById(`tab-${frame.tabs[to].id}`)?.focus();
+                rove(e);
               } else if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 tabs.activate(index, tab.id);
               } else if ((e.key === "Delete" || e.key === "Backspace") && !only && !tab.pinned) {
                 e.preventDefault();
-                const neighbour = frame.tabs[at + 1] ?? frame.tabs[at - 1];
+                const shown = frame.tabs.filter((x) => x.id === tab.id || !tabHidden(frame, x));
+                const here = shown.findIndex((x) => x.id === tab.id);
+                const neighbour = shown[here + 1] ?? shown[here - 1];
                 tabs.close(index, tab.id);
                 if (neighbour) focusTab(neighbour.id);
               } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
@@ -688,6 +834,7 @@ export function TabBar({
               </button>
             )}
           </div>
+          </Fragment>
         );
       })}
     </div>
@@ -721,7 +868,8 @@ export function TabBar({
                 aria-label={t(`Aktionen für den Tab ${look.title}`, `Actions for the tab ${look.title}`)}
                 onCloseAutoFocus={(e) => {
                   e.preventDefault();
-                  document.getElementById(`tab-${frame.active}`)?.focus();
+                  // A new group's name field keeps the focus.
+                  if (!renamingRef.current) document.getElementById(`tab-${frame.active}`)?.focus();
                 }}
               >
                 {wide && (frames > 1 || frame.tabs.length > 1) && (
@@ -740,6 +888,40 @@ export function TabBar({
                   {tab.pinned ? <PushPinSlash /> : <PushPin />}
                   {tab.pinned ? t("Lösen", "Unpin tab") : t("Anheften", "Pin tab")}
                 </Dropdown.Item>
+                {/* Groups (#444): pinned tabs are in none. */}
+                {!tab.pinned && (
+                  <Dropdown.Item className="dropdown-item" onSelect={() => setRenaming(tabs.newGroup(index, tab.id, t("Gruppe", "Group")))}>
+                    <StackPlus />
+                    {t("Zu neuer Gruppe hinzufügen", "Add to new group")}
+                  </Dropdown.Item>
+                )}
+                {!tab.pinned && (frame.groups ?? []).some((g) => g.id !== tab.group) && (
+                  <Dropdown.Sub>
+                    <Dropdown.SubTrigger className="dropdown-item page-menu-sub-trigger">
+                      <Stack />
+                      {t("Zu Gruppe hinzufügen", "Add to group")}
+                      <CaretRight className="page-menu-sub-caret" aria-hidden="true" />
+                    </Dropdown.SubTrigger>
+                    <Dropdown.Portal>
+                      <Dropdown.SubContent className="dropdown page-menu-sub" sideOffset={4} alignOffset={-4} collisionPadding={safeCollisionPadding()}>
+                        {(frame.groups ?? [])
+                          .filter((g) => g.id !== tab.group)
+                          .map((g) => (
+                            <Dropdown.Item key={g.id} className="dropdown-item" onSelect={() => tabs.joinGroup(index, tab.id, g.id)}>
+                              <span className={`option-swatch opt-${g.color}`} aria-hidden="true" />
+                              {g.name}
+                            </Dropdown.Item>
+                          ))}
+                      </Dropdown.SubContent>
+                    </Dropdown.Portal>
+                  </Dropdown.Sub>
+                )}
+                {tab.group && (
+                  <Dropdown.Item className="dropdown-item" onSelect={() => tabs.leaveGroup(index, tab.id)}>
+                    <StackMinus />
+                    {t("Aus Gruppe entfernen", "Remove from group")}
+                  </Dropdown.Item>
+                )}
                 {!only && (
                   <Dropdown.Item className="dropdown-item" onSelect={() => tabs.close(index, tab.id)}>
                     <X />
@@ -758,6 +940,81 @@ export function TabBar({
                     {t("Diese Ansicht schließen", "Close this view")}
                   </Dropdown.Item>
                 )}
+              </Dropdown.Content>
+            </Dropdown.Portal>
+          </Dropdown.Root>
+        );
+      })()}
+      {groupMenu && (() => {
+        const group = frame.groups?.find((g) => g.id === groupMenu.id);
+        if (!group) return null;
+        const runs = frame.tabs.filter((x, i) => !x.pinned && (!x.group || frame.tabs[i - 1]?.group !== x.group));
+        const at = runs.findIndex((x) => x.group === group.id);
+        return (
+          <Dropdown.Root open modal={false} onOpenChange={(o) => !o && setGroupMenu(null)}>
+            <Dropdown.Trigger asChild>
+              <span className="context-anchor" style={{ left: groupMenu.x, top: groupMenu.y }} aria-hidden="true" />
+            </Dropdown.Trigger>
+            <Dropdown.Portal>
+              <Dropdown.Content
+                className="dropdown"
+                align="start"
+                sideOffset={2}
+                collisionPadding={safeCollisionPadding()}
+                aria-label={t(`Aktionen für die Gruppe ${group.name}`, `Actions for the group ${group.name}`)}
+                onCloseAutoFocus={(e) => {
+                  e.preventDefault();
+                  if (renamingRef.current) return;
+                  (document.getElementById(`tab-group-${group.id}`) ?? document.getElementById(`tab-${frame.active}`))?.focus();
+                }}
+              >
+                <Dropdown.Item className="dropdown-item" onSelect={() => setRenaming(group.id)}>
+                  <PencilSimple />
+                  {t("Umbenennen", "Rename")}
+                </Dropdown.Item>
+                <Dropdown.Sub>
+                  <Dropdown.SubTrigger className="dropdown-item page-menu-sub-trigger">
+                    <Palette />
+                    {t("Farbe", "Colour")}
+                    <CaretRight className="page-menu-sub-caret" aria-hidden="true" />
+                  </Dropdown.SubTrigger>
+                  <Dropdown.Portal>
+                    <Dropdown.SubContent className="dropdown page-menu-sub" sideOffset={4} alignOffset={-4} collisionPadding={safeCollisionPadding()}>
+                      <Dropdown.RadioGroup value={group.color} onValueChange={(color) => tabs.updateGroup(index, group.id, { color: color as GroupColor })}>
+                        {GROUP_COLORS.map((color) => (
+                          <Dropdown.RadioItem key={color} value={color} className="dropdown-item">
+                            <span className={`option-swatch opt-${color}`} aria-hidden="true" />
+                            {colorLabel(color, t)}
+                          </Dropdown.RadioItem>
+                        ))}
+                      </Dropdown.RadioGroup>
+                    </Dropdown.SubContent>
+                  </Dropdown.Portal>
+                </Dropdown.Sub>
+                <Dropdown.Item className="dropdown-item" onSelect={() => tabs.updateGroup(index, group.id, { collapsed: !group.collapsed })}>
+                  {group.collapsed ? <CaretDown /> : <CaretRight />}
+                  {group.collapsed ? t("Ausklappen", "Expand") : t("Einklappen", "Collapse")}
+                </Dropdown.Item>
+                {at > 0 && (
+                  <Dropdown.Item className="dropdown-item" onSelect={() => tabs.moveGroup(index, group.id, -1)}>
+                    <ArrowLeft />
+                    {t("Gruppe nach links verschieben", "Move group left")}
+                  </Dropdown.Item>
+                )}
+                {at >= 0 && at < runs.length - 1 && (
+                  <Dropdown.Item className="dropdown-item" onSelect={() => tabs.moveGroup(index, group.id, 1)}>
+                    <ArrowRight />
+                    {t("Gruppe nach rechts verschieben", "Move group right")}
+                  </Dropdown.Item>
+                )}
+                <Dropdown.Item className="dropdown-item" onSelect={() => tabs.ungroup(index, group.id)}>
+                  <StackMinus />
+                  {t("Gruppierung aufheben", "Ungroup")}
+                </Dropdown.Item>
+                <Dropdown.Item className="dropdown-item" onSelect={() => tabs.closeGroup(index, group.id)}>
+                  <XSquare />
+                  {t("Gruppe schließen", "Close group")}
+                </Dropdown.Item>
               </Dropdown.Content>
             </Dropdown.Portal>
           </Dropdown.Root>

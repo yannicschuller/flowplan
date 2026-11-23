@@ -203,3 +203,88 @@ test("new tab with Alt+T and +, pinned tabs", async ({ page }, info) => {
   await expect(tabsOf(page).nth(0).getByRole("button", { name: "Seite C schließen" })).toHaveCount(1);
   expect(errors).toEqual([]);
 });
+
+test("tab groups: create from the menu, rename, add, colour, collapse and expand, reload, close", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Tabs are for tablets and computers.");
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { a, b, c, d } = await tabsUser(page);
+  await page.goto(`/#page=${a}`);
+  await expect(mainTitle(page)).toHaveValue("Seite A", { timeout: 30_000 });
+  for (const id of [b, c, d]) await tree(page, id).click({ modifiers: ["ControlOrMeta"] });
+  await expect(titles(page)).toHaveText(["Seite A", "Seite B", "Seite C", "Seite D"]);
+
+  // A new group from B's menu; its name is asked for right there.
+  await tabsOf(page).nth(1).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Zu neuer Gruppe hinzufügen" }).click();
+  const name = bar(page).getByRole("textbox", { name: "Name der Gruppe" });
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue("Gruppe");
+  await page.keyboard.type("Recherche");
+  await page.keyboard.press("Enter");
+  const chip = bar(page).locator(".frame-tab-group");
+  await expect(chip).toHaveAccessibleName("Gruppe Recherche, 1 Tab");
+  await expect(chip).toBeFocused();
+  await expect(tabsOf(page).nth(1)).toHaveClass(/grouped/);
+
+  // C joins it.
+  await tabsOf(page).nth(2).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Zu Gruppe hinzufügen" }).click();
+  await page.getByRole("menuitem", { name: "Recherche" }).click();
+  await expect(chip).toHaveAccessibleName("Gruppe Recherche, 2 Tabs");
+  await expect(tabsOf(page).nth(2)).toHaveClass(/grouped/);
+  await expect(tabsOf(page).nth(3)).not.toHaveClass(/grouped/);
+
+  // Colour from the chip's menu.
+  await chip.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Farbe" }).click();
+  await page.getByRole("menuitemradio", { name: "Grün" }).click();
+  await expect(chip).toHaveClass(/opt-green/);
+  if (shots)
+    for (const scheme of ["light", "dark"] as const) {
+      await page.evaluate((s) => document.documentElement.setAttribute("data-theme", s), scheme);
+      await page.waitForTimeout(200);
+      await bar(page).screenshot({ path: join(shots, `tab-group-${scheme}.png`) });
+    }
+
+  // Collapse with the active tab inside: the tab after the group is shown.
+  await tabsOf(page).nth(1).click();
+  await expect(mainTitle(page)).toHaveValue("Seite B");
+  await chip.click();
+  await expect(chip).toHaveAttribute("aria-expanded", "false");
+  await expect(chip).toHaveAccessibleName("Gruppe Recherche, 2 Tabs, eingeklappt");
+  await expect(titles(page)).toHaveText(["Seite A", "Seite D"]);
+  await expect(mainTitle(page)).toHaveValue("Seite D");
+  // Keyboard: the chip is in the roving focus; Enter expands.
+  await tabsOf(page).nth(1).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(chip).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(titles(page)).toHaveText(["Seite A", "Seite B", "Seite C", "Seite D"]);
+  // Collapsed again; a reload keeps the group, its colour and state.
+  await page.keyboard.press("Enter");
+  await expect(titles(page)).toHaveText(["Seite A", "Seite D"]);
+  await page.reload();
+  await expect(mainTitle(page)).toHaveValue("Seite D", { timeout: 30_000 });
+  await expect(chip).toHaveAccessibleName("Gruppe Recherche, 2 Tabs, eingeklappt");
+  await expect(chip).toHaveClass(/opt-green/);
+
+  // Rename from the menu (Shift+F10 on the focused chip).
+  await chip.focus();
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Umbenennen" }).click();
+  await expect(name).toBeFocused();
+  await page.keyboard.type("Quellen");
+  await page.keyboard.press("Enter");
+  await expect(chip).toHaveAccessibleName("Gruppe Quellen, 2 Tabs, eingeklappt");
+
+  // Close the group: its tabs go.
+  await chip.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Gruppe schließen" }).click();
+  await expect(titles(page)).toHaveText(["Seite A", "Seite D"]);
+  await expect(chip).toHaveCount(0);
+  await expect(mainTitle(page)).toHaveValue("Seite D");
+  expect(errors).toEqual([]);
+});

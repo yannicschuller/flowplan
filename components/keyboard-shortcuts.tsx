@@ -219,6 +219,10 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Zwischen Tabs bewegen (Tab fokussiert)", "Move between tabs (tab focused)"), keys: ["←", "→", "Home", "End"] },
         { label: t("Fokussierten Tab verschieben", "Move the focused tab"), keys: [k("Alt+Shift+ArrowLeft"), k("Alt+Shift+ArrowRight")] },
         { label: t("Fokussierten Tab schließen", "Close the focused tab"), keys: [t("Entf", "Delete")] },
+        { label: t("Tab-Gruppe ein- / ausklappen (Gruppe fokussiert)", "Collapse / expand a tab group (group focused)"), keys: ["↵", t("Leertaste", "Space")] },
+        { label: t("Tab-Gruppe umbenennen (Gruppe fokussiert)", "Rename a tab group (group focused)"), keys: ["F2"] },
+        { label: t("Tab-Gruppe verschieben (Gruppe fokussiert)", "Move a tab group (group focused)"), keys: [k("Alt+Shift+ArrowLeft"), k("Alt+Shift+ArrowRight")] },
+        { label: t("Menü des fokussierten Tabs oder der Gruppe", "Menu of the focused tab or group"), keys: [k("Shift+F10")] },
       ],
     },
     {
