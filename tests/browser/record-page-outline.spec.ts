@@ -44,10 +44,12 @@ test("the open table of contents never covers a record page", async ({ page }, i
     await page.keyboard.press("Enter");
   }
   // A comment on the record, so its comments take room as well.
-  const comment = record.getByPlaceholder("Kommentar schreiben …");
-  await comment.fill("Bitte bis Freitag");
-  await comment.press("Enter");
-  await expect(comment).toHaveValue("");
+  // Typing opens the comment's editor (#450) with the text.
+  await record.getByPlaceholder("Kommentar schreiben …").fill("Bitte bis Freitag");
+  const comment = record.locator(".comment-input");
+  await expect(comment).toBeFocused();
+  await comment.press("ControlOrMeta+Enter");
+  await expect(comment).toHaveText("");
   const toggle = record.locator(".outline-toggle");
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
   const outline = page.getByRole("navigation", { name: "Inhaltsverzeichnis" });

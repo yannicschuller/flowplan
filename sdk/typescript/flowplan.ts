@@ -920,7 +920,7 @@ export type ApiToken = {
   marketplace_check?: 0 | 1;
 };
 
-/** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`. */
+/** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`, `attachments` = the number of attached files when there are any); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`. */
 export type WebhookEvent = "row.created" | "row.updated" | "row.done" | "form.submitted" | "page.created" | "comment.created" | "mention" | "digest.due";
 
 export type Webhook = {
@@ -3182,16 +3182,17 @@ export type CommandRowsImportResult = {
   }[];
 };
 
-/** Comment on a page or record */
+/** Comment on a page or record. Plain text in `body` ("@Full Name" mentions a member), or a formatted comment in `content` – the format of text comments (`doc` with paragraphs, lists, quotes, code, links, `mention` nodes `{ userId, label }` and `pageMention` nodes `{ pageId, rowId? }` for a page or record the author may read). `content.attrs.attachments` lists up to 10 files the author uploaded to the page (`POST /api/upload` with `purpose=comment`), each `{ src: "/api/files/<id>" }`; name, type and size are taken from the file. `content.attrs.previews` holds up to 2 link cards (`{ url, title, site, description, image }`, e.g. from `GET /api/embed`) for links of the comment. With `content`, `body` is derived from it (and may be empty when there are attachments). Mentioning a page notifies nobody. */
 export type CommandCommentCreate = {
   action: "comment.create";
   pageId: string;
   rowId?: string;
   body: string;
+  content?: Record<string, unknown>;
 };
 
 export type CommandCommentCreateResult = {
-  ok: true;
+  id: string;
 };
 
 /** Resolve or reopen a comment */
@@ -4486,6 +4487,25 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/pages/${encodeURIComponent(pageId)}/rows/${encodeURIComponent(rowId)}/snapshots/${encodeURIComponent(snapshotId)}/changes`, { query }, options);
   }
 
+  /** Pages and records to mention in a comment — For "@" in comments: up to 8 pages and records of the comment's workspace the caller may read that match `q` (with an empty `q`: recently visited ones). Answered with `Cache-Control: no-store`. (GET /api/threads/pages) */
+  async commentPageMentions(query: { page: string; row?: string; q?: string }, options?: RequestOptions): Promise<{
+    pageId?: string;
+    rowId?: string;
+    title?: string;
+    icon?: string;
+    kind?: string;
+    pageTitle?: string;
+  }[]> {
+    return this.json<{
+    pageId?: string;
+    rowId?: string;
+    title?: string;
+    icon?: string;
+    kind?: string;
+    pageTitle?: string;
+  }[]>("GET", `/api/threads/pages`, { query }, options);
+  }
+
   /** Inline comment threads of a page or record (GET /api/threads) */
   async threads(query: { page: string; row?: string; thread?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/threads`, { query }, options);
@@ -4782,11 +4802,12 @@ export class FlowplanClient {
   }>("GET", `/api/files/${encodeURIComponent(fileId)}/sheet`, { query }, options);
   }
 
-  /** Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload) */
+  /** Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. (POST /api/upload) */
   async uploadFile(form: {
     pageId: string;
+    rowId?: string;
     file: Blob;
-    purpose?: "cover" | "e2ee";
+    purpose?: "cover" | "e2ee" | "comment";
     fileId?: string;
   }, options?: RequestOptions): Promise<FileInfo> {
     return this.json<FileInfo>("POST", `/api/upload`, { form, idempotent: true }, options);

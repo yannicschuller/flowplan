@@ -907,12 +907,12 @@ test("rich reply drafts survive reload and revoked mention access keeps the unse
     await reply.press("ControlOrMeta+a");
     await reply.press("ControlOrMeta+i");
     await reply.press("ArrowRight");
-    const composer = page.locator(".comment-composer");
+    const composer = page.locator(".inline-comment-panel .comment-composer");
     await composer
-      .getByRole("button", { name: "Person erwähnen", exact: true })
+      .getByRole("button", { name: "Person oder Seite erwähnen", exact: true })
       .click();
     await composer
-      .getByLabel("Person suchen", { exact: true })
+      .getByLabel("Person oder Seite suchen", { exact: true })
       .fill(`${f.uid}@test.invalid`);
     await expect(
       composer.getByRole("option", {
@@ -921,7 +921,7 @@ test("rich reply drafts survive reload and revoked mention access keeps the unse
       }),
     ).toBeVisible();
     await composer
-      .getByLabel("Person suchen", { exact: true })
+      .getByLabel("Person oder Seite suchen", { exact: true })
       .dispatchEvent("keydown", {
         key: "Enter",
         code: "Enter",

@@ -9,7 +9,6 @@
 // (#241) and the image buttons of the formatting toolbar, so they stay
 // reachable with the toolbar hidden (#235). The resize handles stay.
 import { useEffect, useReducer, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
 import {
@@ -27,12 +26,12 @@ import {
   TextAlignLeft,
   TextAlignRight,
   Trash,
-  X,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { BlockMenu, type BlockMenuClose, type BlockMenuItem } from "./block-menu";
 import { editCaption } from "./block-captions-view";
 import { imageAlign } from "@/lib/document-schema";
+import { ImageViewer } from "./image-viewer";
 
 type Shown = { pos: number; src: string; alt: string };
 // From this width of the image on, "Markieren" is spelled out in its bar.
@@ -280,37 +279,5 @@ export function ImageTools({
       )}
       {viewer && <ImageViewer image={viewer} onClose={() => setViewer(null)} />}
     </div>
-  );
-}
-
-// The image alone over the page; Escape, the close button or a click
-// beside it closes it.
-function ImageViewer({ image, onClose }: { image: Shown; onClose: () => void }) {
-  const t = useT();
-  const close = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    close.current?.focus();
-    const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    document.addEventListener("keydown", key, true);
-    return () => {
-      document.removeEventListener("keydown", key, true);
-      before?.focus?.({ preventScroll: true });
-    };
-  }, [onClose]);
-  return createPortal(
-    <div className="image-viewer" role="dialog" aria-modal="true" aria-label={image.alt || t("Bild", "Image")} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={image.src} alt={image.alt} />
-      <button ref={close} type="button" className="image-viewer-close" aria-label={t("Schließen", "Close")} title={t("Schließen", "Close")} onClick={onClose}>
-        <X size={20} />
-      </button>
-    </div>,
-    document.body,
   );
 }

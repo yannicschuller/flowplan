@@ -158,6 +158,7 @@ import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
+import { PageCommentField } from "./page-comment-field";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import * as PageMenu from "./page-menu";
@@ -679,7 +680,6 @@ export default function WorkspaceApp({
     [focusMode, setFocusMode] = useState(false),
     // Documents opened for reading on this device (no editing, no handles).
     [readPages, setReadPages] = useState<string[]>([]),
-    [comment, setComment] = useState(""),
     // The session ended while the app was open: a banner until the reader signs in again.
     [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
@@ -6368,36 +6368,8 @@ export default function WorkspaceApp({
                       act={act}
                       time={(value) => relativeTime(value, clock, locale)}
                     />
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        // The comment shows at once and the field empties; a
-                        // refusal brings the text back into the field. A
-                        // double submit of the same draft posts it once.
-                        const body = comment;
-                        const draft = `comment:${pageId}`;
-                        setComment("");
-                        const r = await act(keyed({ action: "comment.create", pageId, body }, draftKey(draft, body)));
-                        if (r) draftSent(draft);
-                        else setComment((now) => now || body);
-                      }}
-                    >
-                      <textarea
-                        required
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        onKeyDown={(e) => {
-                          if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) {
-                            e.preventDefault();
-                            e.currentTarget.form?.requestSubmit();
-                          }
-                        }}
-                        placeholder={t("Schreibe einen Kommentar …", "Write a comment …")}
-                      />
-                      <button className="button primary compact">
-                        {t("Kommentieren", "Comment")}
-                      </button>
-                    </form>
+                    {/* Formatted, with attachments and page mentions (#450). */}
+                    <PageCommentField pageId={data.page.id} act={act} placeholder={t("Schreibe einen Kommentar …", "Write a comment …")} />
                   </aside>
                 )}
               </div>

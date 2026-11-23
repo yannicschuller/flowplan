@@ -615,13 +615,20 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
   // Pages and records whose text links here.
   const backlinks = await textBacklinks(user, p);
   const hidden = p.kind === "database" ? (await hiddenRowIds(user, p)) : new Set();
-  const comments = await mapAsync((await all<{ id: string; row_id: string | null }>(
-    `SELECT c.id,c.page_id,c.row_id,c.author_id,c.body,c.resolved,c.created_at,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
-     UNION ALL SELECT id,page_id,row_id,NULL author_id,body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
+  // Formatted comments (#450) as this person sees them: page mentions with
+  // the titles they may read, missing files marked (lib/comment-extras.ts).
+  const presentComment = commentPresenter(user, p.workspace_id);
+  const comments = await mapAsync((await all<{ id: string; row_id: string | null; body: string; rich_body: string | null }>(
+    `SELECT c.id,c.page_id,c.row_id,c.author_id,c.body,c.rich_body,c.resolved,c.created_at,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
+     UNION ALL SELECT id,page_id,row_id,NULL author_id,body,NULL rich_body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
     pid,
     pid,
   ))
-    .filter((c) => !c.row_id || !hidden.has(c.row_id)), async (c) => ({ ...c, reactions: await commentReactions(user, c.id) }));
+    .filter((c) => !c.row_id || !hidden.has(c.row_id)), async ({ rich_body, ...c }) => ({
+      ...c,
+      ...(await presentComment(rich_body ? richCommentSchema.parse(JSON.parse(rich_body)) : null, c.body)),
+      reactions: await commentReactions(user, c.id),
+    }));
   const snapshots = await all(
     "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC,seq DESC LIMIT 50",
     pid,
@@ -2620,7 +2627,7 @@ async function runCommand(
           if (Array.isArray(data.comments))
             for (const c of data.comments)
               await run(
-                "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at,rich_body) VALUES(?,?,?,?,?,?,?,?)",
                 c.id,
                 p.id,
                 c.row_id,
@@ -2628,6 +2635,8 @@ async function runCommand(
                 c.body,
                 c.resolved,
                 c.created_at,
+                // Formatted comments (#450); versions before schema 125 have none.
+                typeof c.rich_body === "string" ? c.rich_body : null,
               );
           await restoreRelationPairs(user, p.id, data.relationPairs);
           // Tag-backed properties: values become tags again where allowed (#79).
@@ -3366,31 +3375,42 @@ async function runCommand(
         const p = await requirePage(user, pid());
         await requireUnlocked(user, p);
         if (b.rowId) await requireRow(user, p.id, uuid.parse(b.rowId));
-        const body = z.string().trim().min(1).max(5000).parse(b.body);
+        // Plain text, or formatted like text comments (#450): people and
+        // pages mentioned, attachments, link previews (lib/comment-extras.ts).
+        const formatted = b.content == null ? null : await messageInput(b, p, user);
+        const body = formatted ? formatted.body : z.string().trim().min(1).max(5000).parse(b.body);
+        const commentId = id();
         await run(
-          "INSERT INTO comments(id,page_id,row_id,author_id,body) VALUES(?,?,?,?,?)",
-          id(),
+          "INSERT INTO comments(id,page_id,row_id,author_id,body,rich_body) VALUES(?,?,?,?,?,?)",
+          commentId,
           p.id,
           b.rowId ? uuid.parse(b.rowId) : null,
           user.id,
           body,
+          formatted?.serialized ?? null,
         );
-        await emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
-        await commentEvent(p.id, b.rowId ? uuid.parse(b.rowId) : null, user.id, { id: null, text: body });
+        result = { id: commentId };
+        const attachments = commentAttachments(formatted?.content).length;
+        await emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body, ...(attachments ? { attachments } : {}) }, user.name);
+        await commentEvent(p.id, b.rowId ? uuid.parse(b.rowId) : null, user.id, { id: null, text: body, attachments });
         if (b.rowId) await queueIssuePush(p.id, uuid.parse(b.rowId));
         // Followers, the owner, the record's people, earlier commenters and
         // whoever "@Name" names – not the whole workspace, and only who may
         // read the page and the record (lib/comment-recipients.ts). A
         // mentioned person hears of it once, as a mention.
         const commentRow = b.rowId ? uuid.parse(b.rowId) : null;
-        const mentioned = await commentTextMentions(user, p, body);
+        // Formatted: the mention nodes; plain: "@Name" in the text.
+        const mentioned = formatted
+          ? (await isGuest(user, p.workspace_id)) ? [] : commentMentions(formatted.content)
+          : await commentTextMentions(user, p, body);
+        const note = attachmentNote(formatted?.content);
         for (const recipient of await commentRecipients(user, p, commentRow, mentioned)) {
           const mention = mentioned.includes(recipient);
           await run(
             "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
             id(),
             recipient,
-            mention ? `${user.name} hat dich in einem Kommentar in „${p.title}“ erwähnt` : `${user.name} kommentiert „${p.title}“`,
+            (mention ? `${user.name} hat dich in einem Kommentar in „${p.title}“ erwähnt` : `${user.name} kommentiert „${p.title}“`) + note,
             p.id,
             commentRow,
             mention ? "mention" : "comment",
@@ -4564,7 +4584,9 @@ async function createWorkspaceInner(user: string, name: string) {
   await createPage(wid, sid, user, "Willkommen");
   return wid;
 }
-import { inlineCommentCommand } from "./inline-comments";
+import { inlineCommentCommand, messageInput } from "./inline-comments";
+import { commentAttachments, commentMentions, richCommentSchema } from "./comment-content";
+import { attachmentNote, commentPresenter } from "./comment-extras";
 import { gettingStarted, gettingStartedAfterCommand, gettingStartedCommand } from "./getting-started";
 import { sampleSpaceCommand, sampleSpaceOf } from "./sample-space";
 import {

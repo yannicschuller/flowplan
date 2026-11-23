@@ -1,3 +1,4 @@
+import type { CommentNode } from "./comment-content";
 import type { Locale } from "./i18n";
 export type Role = "owner" | "editor" | "viewer";
 export type PageKind = "document" | "database" | "whiteboard" | "journal" | "dashboard" | "notebook" | "workflow";
@@ -299,6 +300,9 @@ export type Comment = {
   author_id: string;
   name: string;
   body: string;
+  // The formatted comment (#450, lib/comment-content.ts): attachments, page
+  // mentions and link previews; null for plain comments and guests'.
+  content?: CommentNode | null;
   resolved: number;
   created_at: string;
   reactions?: Reaction[];

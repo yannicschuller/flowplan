@@ -20,8 +20,9 @@ const TEXT_SOURCES = [
   "SELECT r.cells||' '||COALESCE(r.icon,'')||' '||COALESCE(r.cover,'')||' '||COALESCE(r.content,'') t FROM rows r JOIN pages p ON p.id=r.page_id WHERE p.workspace_id=?",
   "SELECT d.html t FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id WHERE p.workspace_id=?",
   "SELECT payload t FROM row_trash WHERE workspace_id=?",
-  "SELECT c.body t FROM comments c JOIN pages p ON p.id=c.page_id WHERE p.workspace_id=?",
-  "SELECT m.body t FROM inline_messages m JOIN inline_threads h ON h.id=m.thread_id JOIN pages p ON p.id=h.page_id WHERE p.workspace_id=? AND m.deleted=0",
+  // Comments' attachments sit in their formatted content (#450).
+  "SELECT c.body||' '||COALESCE(c.rich_body,'') t FROM comments c JOIN pages p ON p.id=c.page_id WHERE p.workspace_id=?",
+  "SELECT m.body||' '||COALESCE(m.rich_body,'') t FROM inline_messages m JOIN inline_threads h ON h.id=m.thread_id JOIN pages p ON p.id=h.page_id WHERE p.workspace_id=? AND m.deleted=0",
   "SELECT s.background t FROM notebook_sheets s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND s.background IS NOT NULL",
   "SELECT r.file_id t FROM notebook_recordings r JOIN pages p ON p.id=r.page_id WHERE p.workspace_id=?",
   // Own paper templates of notebooks and sheets, pictures on sheets.

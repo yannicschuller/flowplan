@@ -814,6 +814,14 @@ const exact: Record<string, string> = {
   "Bitte einen Datensatz auswählen.": "Please select a record.",
   "Das Dokument ist noch nicht gespeichert.": "The document is not saved yet.",
   "Eine erwähnte Person hat keinen Zugriff mehr. Bitte entferne die Erwähnung oder wähle eine berechtigte Person.": "A mentioned person no longer has access. Please remove the mention or choose a person with access.",
+  // Attachments, page mentions and link previews of comments (#450).
+  "Höchstens 10 Anhänge pro Kommentar.": "At most 10 attachments per comment.",
+  "Ungültiger Anhang.": "Invalid attachment.",
+  "Zu viele Linkvorschauen.": "Too many link previews.",
+  "Ungültige Linkvorschau.": "Invalid link preview.",
+  "Ein Anhang ist nicht verfügbar. Bitte entferne ihn und lade die Datei erneut hoch.": "An attachment is not available. Please remove it and upload the file again.",
+  "Eine erwähnte Seite ist nicht verfügbar. Bitte entferne die Erwähnung.": "A mentioned page is not available. Please remove the mention.",
+  "Anhänge an Kommentaren gibt es in verschlüsselten Bereichen nicht.": "Comments have no attachments in encrypted spaces.",
   "Die ausgewählte Textstelle hat sich geändert. Bitte erneut auswählen; dein Entwurf bleibt erhalten.": "The selected passage has changed. Please select it again; your draft is kept.",
   "Nur Verfasser oder Bearbeiter können diesen Thread abschließen.": "Only authors or editors can resolve this thread.",
   "Der Thread wurde geändert. Bitte prüfe die neueste Antwort.": "The thread was changed. Please check the latest reply.",
@@ -1962,8 +1970,13 @@ function taskFailureEnglish(message: string): string | null {
   return `Rule “${m[1]}”: task not created – ${reason ? m[2].replace(reason[0], reason[1]) : englishMessage(m[2])}`;
 }
 
+// " · 📎 2 Anhänge" after a comment's notification (lib/comment-extras.ts).
+const ATTACHMENT_NOTE = / · 📎 (\d+) (?:Anhang|Anhänge)$/;
 export function englishMessage(message: string): string {
   if (exact[message]) return exact[message];
+  const note = ATTACHMENT_NOTE.exec(message);
+  if (note)
+    return `${englishMessage(message.slice(0, note.index))} · 📎 ${note[1]} ${note[1] === "1" ? "attachment" : "attachments"}`;
   const task = taskFailureEnglish(message);
   if (task) return task;
   const incident = incidentEnglish(message);

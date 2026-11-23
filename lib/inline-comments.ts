@@ -8,8 +8,15 @@ import {
   commentMentions,
   mapCommentMentions,
   commentContentIdentity,
+  commentAttachments,
   type CommentNode,
 } from "./comment-content";
+import {
+  attachmentNote,
+  commentContentInput,
+  commentPresenter,
+  trashDroppedAttachments,
+} from "./comment-extras";
 import { z } from "zod";
 import * as Y from "yjs";
 import { initProseMirrorDoc } from "@tiptap/y-tiptap";
@@ -87,7 +94,8 @@ export async function inlineThreads(
   detailId?: string,
 ): Promise<InlineThread[]> {
   const page = await scope(user, pageId, rowId),
-    canEdit = (await pageRole(user, page)) !== "viewer";
+    canEdit = (await pageRole(user, page)) !== "viewer",
+    present = commentPresenter(user, page.workspace_id);
   return await mapAsync(await all<StoredThread>(
     "SELECT * FROM inline_threads WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id",
     pageId,
@@ -128,17 +136,20 @@ export async function inlineThreads(
               names: string[];
             }[])
       ).map((r) => ({ ...r, emoji: emojiPresentation(r.emoji) }));
+      // Page mentions with the titles this reader may see (#450): also the
+      // plain text of a summary.
+      const shown = m.deleted
+        ? { content: null, body: "" }
+        : await present(m.rich_body ? richCommentSchema.parse(JSON.parse(m.rich_body)) : null, m.body);
       return {
         id: m.id,
-        content:
-          m.deleted || (summaries && t.id !== detailId) || !m.rich_body
-            ? null
-            : richCommentSchema.parse(JSON.parse(m.rich_body)),
+        content: summaries && t.id !== detailId ? null : shown.content,
+        ...(summaries && t.id !== detailId && shown.content?.attrs?.attachments?.length
+          ? { attachmentCount: shown.content.attrs.attachments.length }
+          : {}),
         author_id: m.author_id,
         name: m.name,
-        body: m.deleted
-          ? ""
-          : m.body.slice(0, summaries && t.id !== detailId ? 160 : 5000),
+        body: shown.body.slice(0, summaries && t.id !== detailId ? 160 : 5000),
         version: m.version,
         deleted: m.deleted,
         created_at: m.created_at,
@@ -173,8 +184,11 @@ export async function inlineMentionCandidates(
   rowId?: string,
   query = "",
 ) {
-  const page = await scope(user, pageId, rowId),
-    search = z.string().max(100).parse(query).trim().toLocaleLowerCase();
+  // Also for page comments of a database (#450): any kind of page.
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
+  if (rowId) await requireRow(user, pageId, rowId);
+  const search = z.string().max(100).parse(query).trim().toLocaleLowerCase();
   const matches: { id: string; name: string; email: string }[] = [];
   // Guests see nobody of the workspace but themselves (like bootstrap and
   // the share dialog), so they get no names or addresses here either.
@@ -195,7 +209,16 @@ export async function inlineMentionCandidates(
   }
   return matches;
 }
-async function messageInput(input: Record<string, unknown>, page: Page) {
+// The text and formatted content of a new or edited comment – also of page
+// and record comments (lib/api.ts comment.create): mentioned people must
+// still read the page, attachments and page mentions are checked
+// (lib/comment-extras.ts).
+export async function messageInput(
+  input: Record<string, unknown>,
+  page: Page,
+  user: Identity,
+  previous: CommentNode | null = null,
+) {
   let content: CommentNode | null =
     input.content == null ? null : richCommentSchema.parse(input.content);
   if (content)
@@ -213,8 +236,12 @@ async function messageInput(input: Record<string, unknown>, page: Page) {
         );
       return { userId, label: member.name.slice(0, 200) };
     });
-  if (content) content = richCommentSchema.parse(content);
-  const body = bodySchema.parse(content ? commentText(content) : input.body);
+  // Attachments, page mentions and link previews (#450, lib/comment-extras.ts).
+  if (content) content = richCommentSchema.parse(await commentContentInput(user, page, content, previous));
+  const body =
+    content && commentAttachments(content).length && !commentText(content).trim()
+      ? ""
+      : bodySchema.parse(content ? commentText(content) : input.body);
   return {
     body,
     content,
@@ -237,6 +264,7 @@ async function notify(
   first: boolean,
   mentions: string[] = [],
   onlyMentions = false,
+  note = "",
 ) {
   const target = await one<{ row_id: string | null }>(
     "SELECT row_id FROM inline_threads WHERE id=?",
@@ -263,9 +291,9 @@ async function notify(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
         id(),
         uid,
-        mentions.includes(uid)
+        (mentions.includes(uid)
           ? `${user.name} hat dich in einem Kommentar in „${page.title}“ erwähnt`
-          : `${user.name} ${first ? "kommentiert eine Textstelle in" : "antwortet auf einen Kommentar in"} „${page.title}“`,
+          : `${user.name} ${first ? "kommentiert eine Textstelle in" : "antwortet auf einen Kommentar in"} „${page.title}“`) + note,
         page.id,
         target?.row_id || null,
         threadId,
@@ -284,7 +312,7 @@ export async function inlineCommentCommand(
   if (action === "thread.create") {
     const threadId = z.uuid().parse(input.threadId),
       messageId = z.uuid().parse(input.messageId),
-      messageInputValue = await messageInput(input, page),
+      messageInputValue = await messageInput(input, page, user),
       { body } = messageInputValue,
       anchor = commentAnchorSchema.parse(input.anchor);
     const existing = await one<StoredThread>(
@@ -356,8 +384,10 @@ export async function inlineCommentCommand(
       threadId,
       true,
       commentMentions(messageInputValue.content),
+      false,
+      attachmentNote(messageInputValue.content),
     );
-    await commentEvent(page.id, rowId || null, user.id, { id: messageId, text: body, inline: true });
+    await commentEvent(page.id, rowId || null, user.id, { id: messageId, text: body, inline: true, attachments: commentAttachments(messageInputValue.content).length });
     return { id: threadId };
   }
   const threadId = z.uuid().parse(input.threadId),
@@ -415,7 +445,7 @@ export async function inlineCommentCommand(
     );
   } else if (action === "thread.reply") {
     const messageId = z.uuid().parse(input.messageId),
-      messageInputValue = await messageInput(input, page),
+      messageInputValue = await messageInput(input, page, user),
       { body } = messageInputValue;
     const old = await one<StoredMessage>(
       "SELECT * FROM inline_messages WHERE id=?",
@@ -460,8 +490,10 @@ export async function inlineCommentCommand(
       thread.id,
       false,
       commentMentions(messageInputValue.content),
+      false,
+      attachmentNote(messageInputValue.content),
     );
-    await commentEvent(page.id, thread.row_id || null, user.id, { id: messageId, text: body, inline: true });
+    await commentEvent(page.id, thread.row_id || null, user.id, { id: messageId, text: body, inline: true, attachments: commentAttachments(messageInputValue.content).length });
   } else {
     const messageId = z.uuid().parse(input.messageId),
       message = await one<StoredMessage>(
@@ -517,9 +549,10 @@ export async function inlineCommentCommand(
           409,
           "Dieser Kommentar wurde inzwischen geändert. Dein Entwurf bleibt erhalten.",
         );
+      const stored: CommentNode | null = message.rich_body ? JSON.parse(message.rich_body) : null;
       const edited =
         action === "thread.edit"
-          ? (await messageInput(input, page))
+          ? (await messageInput(input, page, user, stored))
           : { body: "", content: null, serialized: null };
       await run(
         "UPDATE inline_messages SET body=?,rich_body=?,deleted=?,version=version+1,edited_at=? WHERE id=?",
@@ -545,6 +578,8 @@ export async function inlineCommentCommand(
       }
       if (action === "thread.deleteMessage")
         await run("DELETE FROM inline_reactions WHERE message_id=?", messageId);
+      // Files the message no longer has go to the file trash (#450).
+      await trashDroppedAttachments(user, page, stored, edited.content);
       await run("UPDATE inline_threads SET version=version+1 WHERE id=?", thread.id);
     } else throw new HttpError(400, "Unbekannte Kommentaraktion.");
   }

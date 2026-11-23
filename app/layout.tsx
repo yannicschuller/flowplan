@@ -34,6 +34,7 @@ import "./study.css";
 import "./ai-quota.css";
 import "./settings-usage.css";
 import "./comment-margin.css";
+import "./comment-content.css";
 import "./side-panel.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";

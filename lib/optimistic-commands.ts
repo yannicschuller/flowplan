@@ -370,8 +370,10 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
       };
     }
     case "comment.create": {
-      const body = str(b.body)?.trim();
-      if (!pageId || !body) return null;
+      const body = str(b.body)?.trim() ?? "";
+      // A formatted comment (#450) shows with its files at once as well.
+      const content = b.content && typeof b.content === "object" ? (b.content as Comment["content"]) : null;
+      if (!pageId || (!body && !content?.attrs?.attachments?.length)) return null;
       const comment: Comment = {
         id: `pending-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
         page_id: pageId,
@@ -379,6 +381,7 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
         author_id: ctx.userId,
         name: ctx.userName,
         body,
+        ...(content ? { content } : {}),
         resolved: 0,
         created_at: sqlNow(now),
         reactions: [],

@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 123;
+export const SCHEMA_VERSION = 125;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1669,6 +1669,9 @@ function migrate(d: DatabaseSync) {
   // Schema 123 – directory group memberships made by hand (#451,
   // lib/directory-groups.ts).
   migrateDirectoryGroupMembers(d);
+  // Schema 125 – formatted page and record comments with attachments,
+  // page mentions and link previews (#450, lib/comment-extras.ts).
+  migrateCommentRichBody(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1709,6 +1712,17 @@ function migrateDirectoryGroupMembers(d: DatabaseSync) {
 //   instance ceiling). Kept 400 days like ai_quota_usage. An older version
 //   would neither stop at the limit nor count the continuation, hence the
 //   number.
+// Schema 125 – page and record comments like text comments (#450):
+// comments.rich_body holds the formatted comment (lib/comment-content.ts)
+// with its attachments, page mentions and link previews, as
+// inline_messages.rich_body does; `body` stays its plain text (search,
+// exports, older versions). NULL for every comment written before. An
+// older version shows such a comment as its plain text without the files,
+// hence the number.
+function migrateCommentRichBody(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(comments)").all() as { name: string }[]).some((c) => c.name === "rich_body"))
+    d.exec("ALTER TABLE comments ADD COLUMN rich_body TEXT");
+}
 function migrateAiAfterLimits(d: DatabaseSync) {
   if (!(d.prepare("PRAGMA table_info(ai_quota_rules)").all() as { name: string }[]).some((c) => c.name === "after_limits"))
     d.exec("ALTER TABLE ai_quota_rules ADD COLUMN after_limits TEXT");

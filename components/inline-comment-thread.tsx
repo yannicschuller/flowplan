@@ -9,7 +9,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowCounterClockwise, Check, Link, PencilSimple, Smiley, Trash } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { pageLocationHash } from "@/lib/page-location";
-import type { CommentNode } from "@/lib/comment-content";
+import { commentReady, type CommentNode } from "@/lib/comment-content";
 import type { InlineMessage, InlineThread } from "@/lib/inline-comment-types";
 import { CommentComposer, CommentBody } from "./comment-composer";
 import { CommentQuote } from "./comment-quote";
@@ -130,7 +130,7 @@ export default function InlineCommentThread({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (busy || !editing.body.trim()) return;
+                  if (busy || !commentReady(editing.body, editing.content)) return;
                   if (
                     await act("thread.edit", {
                       messageId: m.id,
@@ -153,7 +153,7 @@ export default function InlineCommentThread({
                   autoFocus
                   onChange={(body, content) => setEditing({ ...editing, body, content })}
                 />
-                <button className="button" disabled={busy || !editing.body.trim()}>
+                <button className="button" disabled={busy || !commentReady(editing.body, editing.content)}>
                   {t("Änderung speichern", "Save change")}
                 </button>
                 <button type="button" className="text-button" onClick={() => setEditing(null)}>
@@ -215,7 +215,7 @@ export default function InlineCommentThread({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (busy || !replyBody.trim()) return;
+            if (busy || !commentReady(replyBody, reply?.content)) return;
             if (
               await act("thread.reply", {
                 messageId: reply?.id,
@@ -236,7 +236,7 @@ export default function InlineCommentThread({
             disabled={busy}
             onChange={onReply}
           />
-          <button className="button primary" disabled={busy || !replyBody.trim()}>
+          <button className="button primary" disabled={busy || !commentReady(replyBody, reply?.content)}>
             {t("Antwort senden", "Send reply")}
           </button>
         </form>
@@ -295,7 +295,7 @@ export function InlineCommentDraft({
         onChange={(text, next) => onChange(text, next ?? null)}
       />
       <div className="inline-comment-actions">
-        <button className="button primary" disabled={busy || !body.trim()}>
+        <button className="button primary" disabled={busy || !commentReady(body, content)}>
           {t("Kommentar senden", "Send comment")}
         </button>
         <button type="button" className="button" disabled={busy} onClick={onCancel}>

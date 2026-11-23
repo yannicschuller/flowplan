@@ -30,6 +30,8 @@ import {
   exportInlineComments,
   importInlineComments,
 } from "./inline-comment-archive";
+import { richCommentSchema } from "./comment-content";
+import { importedContent } from "./comment-extras";
 import {
   appearanceSchema,
   coverSchema,
@@ -367,6 +369,8 @@ export const archiveSchema = z.object({
               row_id: uid.nullable(),
               author: str,
               body: z.string().max(20000),
+              // Formatted comments (#450): attachments, page mentions.
+              content: richCommentSchema.nullable().optional(),
               resolved: z.number().int().min(0).max(1),
               created_at: str,
             }),
@@ -694,12 +698,14 @@ async function snapshotFor(user: Identity, wid: string) {
               p.id,
             )).map(archivedVersion),
         inlineThreads: (await exportInlineComments(p.id)).filter((t) => shown(p.id, t.row_id)),
-        comments: (await all<{ row_id: string | null }>(
-          `SELECT c.row_id,COALESCE(u.name,'Unbekannt') author,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.page_id=?
-           UNION ALL SELECT row_id,name || ' (Gast)' author,body,resolved,created_at FROM shared_comments WHERE page_id=? ORDER BY created_at`,
+        comments: (await all<{ row_id: string | null; rich_body: string | null }>(
+          `SELECT c.row_id,COALESCE(u.name,'Unbekannt') author,c.body,c.rich_body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.page_id=?
+           UNION ALL SELECT row_id,name || ' (Gast)' author,body,NULL rich_body,resolved,created_at FROM shared_comments WHERE page_id=? ORDER BY created_at`,
           p.id,
           p.id,
-        )).filter((c) => shown(p.id, c.row_id)),
+        ))
+          .filter((c) => shown(p.id, c.row_id))
+          .map(({ rich_body, ...c }) => (rich_body ? { ...c, content: richCommentSchema.parse(JSON.parse(rich_body)) } : c)),
       };
     }),
     files: await flatMapAsync(pages, async (p) =>
@@ -1523,10 +1529,25 @@ async function importEntries(
           }
         }
         await importPageExtras(pid, p, rewriteHtml);
-        await importInlineComments(pid, p.inlineThreads, rowMap, user.id);
-        for (const c of p.comments)
+        // Attachments refer to the imported files (#450); others are left out.
+        const mapSrc = (src: string) => {
+          const next = rewriteUrl(src);
+          return next === src ? null : next;
+        };
+        await importInlineComments(pid, p.inlineThreads, rowMap, user.id, mapSrc);
+        for (const c of p.comments) {
+          const content = c.content
+            ? await importedContent(
+                { ...c.content, content: [{ type: "paragraph", content: [{ type: "text", text: `Import · ${c.author}:` }] }, ...(c.content.content || [])] },
+                mapSrc,
+                (pageId, rowId) =>
+                  pageMap.has(pageId) && (!rowId || rowMap.has(rowId))
+                    ? { pageId: pageMap.get(pageId)!, ...(rowId ? { rowId: rowMap.get(rowId)! } : {}) }
+                    : null,
+              )
+            : null;
           await run(
-            "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at,rich_body) VALUES(?,?,?,?,?,?,?,?)",
             id(),
             pid,
             c.row_id ? rowMap.get(c.row_id)! : null,
@@ -1534,7 +1555,9 @@ async function importEntries(
             `Import · ${c.author}:\n${c.body}`,
             c.resolved,
             c.created_at,
+            content ? JSON.stringify(richCommentSchema.parse(content)) : null,
           );
+        }
         // Database snapshots use JSON payloads; remap their rows separately from current records.
         // Board versions hold only a text summary in archives.
         for (const snap of p.kind === "whiteboard" || p.kind === "dashboard" || p.kind === "notebook" || p.kind === "workflow" ? [] : p.snapshots) {
